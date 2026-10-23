@@ -4,6 +4,7 @@
 module LawSpec.Code.Doc
   ( Doc, Layout(..), text, utf8Text, utf8Length, displayWidth, hardline, softline, softbreak
   , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment
+  , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
   ) where
 
@@ -30,6 +31,12 @@ data Doc
   | FirstLineWidth Int Doc
   | Hang Int Doc Doc
   | WhenBroken Doc
+  | Parens Doc
+  | BestFit [Doc]
+  | Operation [Doc] [String]
+  | Prefixed String Doc
+  | ParenthesiseIfFits Doc
+  | Omittable [Doc] String Doc
   deriving (Eq, Show)
 
 -- | Compact removes optional layout only. Mandatory newlines and nesting remain
@@ -219,6 +226,130 @@ firstLineWidth width = FirstLineWidth (max 1 width)
 whenBroken :: Doc -> Doc
 whenBroken = WhenBroken
 
+-- | Parentheses whose contents break inside them. Where a formatter drops
+-- redundant parentheses (Python's return, assignment and if, a lambda's
+-- body), unparen turns them into parentheses that appear only when the
+-- contents break, as ruff writes them.
+parens :: Doc -> Doc
+parens d@(Parens _) = d
+parens d@(Operation _ _) = d
+parens (Group d@(Parens _)) = d
+parens d = Parens d
+
+unparen :: Doc -> Doc
+unparen (Parens a) = optionalParens a
+unparen (Group (Parens a)) = unparen (Parens a)
+-- ruff leaves out the optional parentheses of an expression with one
+-- operator when its last operand ends with brackets of its own (or its
+-- first starts with them): the operand breaks inside them instead.
+unparen (Operation operands operators)
+  | [operator] <- operators, bracketedEnd (last operands) || bracketedStart (head operands) =
+      Omittable operands operator (optionalParens (operationBody operands operators))
+  | otherwise = optionalParens (operationBody operands operators)
+unparen (Prefixed operator operand)
+  | bracketedEnd operand = text (operator ++ " ") <> operand
+  | otherwise = optionalParens (text (operator ++ " ") <> operand)
+unparen d = d
+
+-- | An assignment's or a return's value: as unparen, except that a call
+-- whose opening does not fit is parenthesised, as ruff's best fitting
+-- layout for a statement's last expression does.
+statementValue :: Doc -> Doc
+statementValue d = case d of
+  Parens _ -> unparen d
+  Group (Parens _) -> unparen d
+  Operation _ _ -> unparen d
+  Prefixed _ _ -> unparen d
+  _ -> ParenthesiseIfFits d
+
+-- | A prefix operator (Python's not) and its operand.
+prefixed :: String -> Doc -> Doc
+prefixed = Prefixed
+
+-- | A lambda's body: an operation or a parenthesised expression has its
+-- parentheses only when it breaks; a call breaks inside its own, or is
+-- parenthesised when its opening does not fit.
+lambdaBody :: Doc -> Doc
+lambdaBody d = case d of
+  Parens a -> optionalParens a
+  Group (Parens a) -> optionalParens a
+  Operation operands operators -> optionalParens (operationBody operands operators)
+  Prefixed operator operand -> optionalParens (text (operator ++ " ") <> operand)
+  _ -> bestFit [d, parens d]
+
+-- | An operation as a call's argument needs no parentheses of its own: it
+-- breaks before its operators inside the call's.
+argument :: Doc -> Doc
+argument (Operation operands operators) = group (operationBody operands operators)
+argument d = d
+
+-- | Operands joined by operators, parenthesised and broken before each
+-- operator, as ruff writes a binary or boolean expression.
+operation :: [Doc] -> [String] -> Doc
+operation [operand] [] = operand
+operation operands operators = Operation operands operators
+
+operationBody :: [Doc] -> [String] -> Doc
+operationBody operands operators = case operands of
+  first : rest -> first <> mconcat [softline <> text (o ++ " ") <> d | (o, d) <- zip operators rest]
+  [] -> Empty
+
+operationLine :: [Doc] -> [String] -> Doc
+operationLine operands operators = case operands of
+  first : rest -> first <> mconcat [text (" " ++ o ++ " ") <> d | (o, d) <- zip operators rest]
+  [] -> Empty
+
+optionalParens :: Doc -> Doc
+optionalParens a = group (whenBroken (text "(") <> nest 4 (softbreak <> group a) <> softbreak <> whenBroken (text ")"))
+
+-- | Whether a document ends with non-empty brackets of its own (a call, a
+-- list) or starts with brackets.
+bracketedEnd, bracketedStart :: Doc -> Bool
+bracketedEnd d = case lastText d of
+  Just t -> any (`isSuffixOf'` t) [")", "]", "}"] && not (any (`isSuffixOf'` t) ["()", "[]", "{}"])
+  Nothing -> False
+  where isSuffixOf' a b = reverse a == take (length a) (reverse b)
+bracketedStart d = case firstText d of
+  Just (c : _) -> c `elem` ("([{" :: String)
+  _ -> False
+
+lastText, firstText :: Doc -> Maybe String
+lastText d = case d of
+  Text s -> Just s
+  Utf8Text s -> Just s
+  Append a b -> maybe (lastText a) Just (lastText b)
+  Nest _ a -> lastText a
+  Group a -> lastText a
+  Multiline a -> lastText a
+  FirstLineWidth _ a -> lastText a
+  Parens _ -> Just ")"
+  Operation _ _ -> Just ")"
+  Prefixed _ operand -> lastText operand
+  _ -> Nothing
+firstText d = case d of
+  Text s -> Just s
+  Utf8Text s -> Just s
+  Append a b -> maybe (firstText b) Just (firstText a)
+  Nest _ a -> firstText a
+  Group a -> firstText a
+  Multiline a -> firstText a
+  FirstLineWidth _ a -> firstText a
+  Parens _ -> Just "("
+  Operation _ _ -> Just "("
+  Prefixed operator _ -> Just operator
+  _ -> Nothing
+
+-- | The first alternative whose first line fits, else the last, as ruff's
+-- best fitting layouts choose (a lambda's body breaks inside its call, or
+-- is parenthesised when the call's opening does not fit).
+bestFit :: [Doc] -> Doc
+bestFit [] = Empty
+bestFit [d] = d
+bestFit ds = BestFit ds
+
+parenthesised :: Doc -> Doc
+parenthesised a = group (text "(" <> nest 4 (softbreak <> group a) <> softbreak <> text ")")
+
 -- | The separator goes between documents, never after the last.
 joinWith :: Doc -> [Doc] -> Doc
 joinWith separator = mconcat . intersperse separator
@@ -279,6 +410,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
   where
     pageWidth = case layout of Pretty width -> max 1 width; PrettyTabs width -> max 1 width; PrettyDisplay width -> max 1 width; _ -> maxBound
     measure = case layout of PrettyDisplay _ -> displayWidth; _ -> length
+    prettierFits = case layout of PrettyDisplay _ -> True; _ -> False
     initialMode = case layout of Compact -> Flat; CompactTabs -> Flat; _ -> Broken
     indentationText amount = case layout of
       PrettyTabs _ -> tabs amount
@@ -294,6 +426,47 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Append a b -> layoutWork column ((indentation, mode, margin, a):(indentation, mode, margin, b):rest)
       Nest amount a -> layoutWork column ((indentation + amount, mode, margin, a):rest)
       WhenBroken a -> layoutWork column (if mode == Broken then (indentation, mode, margin, a):rest else rest)
+      Parens a -> layoutWork column ((indentation, mode, margin, parenthesised a):rest)
+      Operation operands operators -> layoutWork column ((indentation, mode, margin, parenthesised (operationBody operands operators)):rest)
+      Prefixed operator operand -> layoutWork column ((indentation, mode, margin, text (operator ++ " ") <> operand):rest)
+      -- ruff's best fit for a statement's value: as it is when its first
+      -- line fits; parenthesised when that makes its first line fit;
+      -- otherwise as it is.
+      ParenthesiseIfFits a ->
+        let asIs = mode == Flat || fits column ((indentation, Broken, margin, a):rest)
+            inside = fits (indentation + 4) [(indentation + 4, Broken, margin, a)]
+            chosen = case layout of
+              Compact -> a
+              CompactTabs -> a
+              _ | asIs || not inside -> a
+                | otherwise -> parens a
+        in layoutWork column ((indentation, mode, margin, chosen):rest)
+      -- ruff leaves the parentheses out when the line up to the last
+      -- operand's opening fits (or, with a bracketed first operand, the
+      -- line from its closing on); otherwise it keeps them.
+      Omittable operands operator withParens ->
+        let operandsFlat = map (text . render Compact) operands
+            line' = operationLine operands [operator]
+            lastFits = bracketedEnd (last operands) &&
+              fits column ((indentation, Broken, margin, operationLine (init operandsFlat ++ [last operands]) [operator]):rest)
+            firstFits = bracketedStart (head operands) &&
+              (fits column ((indentation, Flat, margin, line'):rest) ||
+               fits indentation [(indentation, Broken, margin, text (") " ++ operator ++ " ") <> operationLine (tail operands) [])])
+            chosen = case layout of
+              Compact -> line'
+              CompactTabs -> line'
+              _ | mode == Flat || lastFits || firstFits -> line'
+                | otherwise -> withParens
+        in layoutWork column ((indentation, mode, margin, chosen):rest)
+      BestFit alternatives ->
+        let chosen = case layout of
+              Compact -> head alternatives
+              CompactTabs -> head alternatives
+              _ -> if mode == Flat then head alternatives else
+                case [a | a <- init alternatives, fits column ((indentation, Broken, margin, a):rest)] of
+                  a : _ -> a
+                  [] -> last alternatives
+        in layoutWork column ((indentation, mode, margin, chosen):rest)
       -- Compact layout already fixes optional breaks to spaces. Hanging can
       -- therefore neither change a line choice nor add block indentation;
       -- avoid rescanning the remaining flat expression at each assignment.
@@ -357,6 +530,12 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Append a b -> fits column ((indentation, mode, margin, a):(indentation, mode, margin, b):rest)
       Nest amount a -> fits column ((indentation + amount, mode, margin, a):rest)
       WhenBroken a -> fits column (if mode == Broken then (indentation, mode, margin, a):rest else rest)
+      Parens a -> fits column ((indentation, mode, margin, parenthesised a):rest)
+      BestFit alternatives -> fits column ((indentation, mode, margin, head alternatives):rest)
+      Operation operands operators -> fits column ((indentation, mode, margin, parenthesised (operationBody operands operators)):rest)
+      Prefixed operator operand -> fits column ((indentation, mode, margin, text (operator ++ " ") <> operand):rest)
+      ParenthesiseIfFits a -> fits column ((indentation, mode, margin, a):rest)
+      Omittable operands operator _ -> fits column ((indentation, mode, margin, operationLine operands [operator]):rest)
       Hang _ left right -> fits column ((indentation, mode, margin, left <> text " " <> right):rest)
       FirstLineWidth width a -> fits column ((indentation, Flat, min margin (column + width), a):rest)
       Break (Just s) | mode == Flat -> column + length s <= margin && fits (column + length s) rest
@@ -369,7 +548,10 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Flow items -> fits column ((indentation, mode, margin, joinWith (text " ") items):rest)
       FlowTail items -> fits column ((indentation, mode, margin, mconcat [text " " <> item | item <- items]):rest)
       Multiline _ -> False
-      Group a -> fits column ((indentation, Flat, margin, a):rest)
+      -- Prettier and ruff measure a later group in its enclosing mode, so a
+      -- following call's arguments may still break; the other layouts
+      -- measure every later group flat.
+      Group a -> fits column ((indentation, if prettierFits then mode else Flat, margin, a):rest)
 
     -- An opaque token cannot wrap internally; its following comma or closing
     -- delimiter must fit too. Compound call layouts still test only the prefix.
@@ -394,7 +576,13 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
           FirstLineWidth _ a -> line False a
           Hang _ a b -> line flat a && line flat b
           WhenBroken a -> flat || line flat a
+          Parens a -> line flat (parenthesised a)
+          BestFit alternatives -> all (line flat) alternatives
+          Operation operands operators -> line flat (parenthesised (operationBody operands operators))
+          Prefixed _ operand -> line flat operand
+          ParenthesiseIfFits a -> line flat a
+          Omittable operands _ _ -> all (line flat) operands
 
-    lastColumnWith measure column s = case break (== '\n') s of
-      (_, []) -> column + measure s
-      (_, _:rest) -> lastColumnWith measure 0 rest
+    lastColumnWith measured column s = case break (== '\n') s of
+      (_, []) -> column + measured s
+      (_, _:rest) -> lastColumnWith measured 0 rest

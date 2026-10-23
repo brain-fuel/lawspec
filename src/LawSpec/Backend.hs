@@ -5,10 +5,16 @@ module LawSpec.Backend where
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.Testing (PlannedProperty(..), GeneratorRequirement(..))
-import LawSpec.Common (Generation, Location, Quantification(..), renderReference, documentaryUnit, documentaryName)
+import LawSpec.Common (Generation, Location(..), Quantification(..), renderReference, documentaryUnit, documentaryName)
 import LawSpec.Scalar (prettyScalar)
 import Data.List (intercalate, stripPrefix, isPrefixOf)
 import Data.Char (isAlphaNum, isDigit)
+import qualified Data.Map.Strict as M
+import Numeric (showHex)
+import LawSpec.Scalar (Scalar(..))
+import LawSpec.Code.Literal (printable)
+import LawSpec.Naming (displayLabel)
+import LawSpec.SourceLink (labelled, locationLink)
 
 -- | Emitters were written against these names; the aliases keep their code
 -- unchanged while their input is Core. ref:DEC-typed-core-boundary
@@ -171,39 +177,67 @@ prettyType (C.TypeVariable n) = C.idText n
 prettyType (C.Arrow a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
 -- | Test headers show the expanded law, so a failure names what was tested.
 prettyExpr :: Expr -> String
-prettyExpr e = case C.expressionNode e of
-  C.Constant s -> prettyScalar s
-  C.Construct tag args -> C.idText tag ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
-  C.Match value branches -> "match (" ++ prettyExpr value ++ ") { " ++ intercalate "; "
-    [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map (localName . C.binderId) (C.caseBinders branch)) ++
-      " -> " ++ prettyExpr (C.caseBody branch) | branch <- branches] ++ " }"
-  C.AllElements value binder predicate -> "allElements (" ++ prettyExpr value ++ ") (" ++
-    localName (C.binderId binder) ++ " -> " ++ prettyExpr predicate ++ ")"
-  C.AllPayloads value predicates -> "allPayloads (" ++ prettyExpr value ++ ") [" ++
-    intercalate ", " [localName (C.binderId binder) ++ " -> " ++ prettyExpr predicate
+prettyExpr = prettyExprWith False localName
+
+-- | As prettyExpr, with binders named by a function and, when readable, text
+-- written with its characters rather than escapes.
+prettyExprWith :: Bool -> (C.Id -> String) -> Expr -> String
+prettyExprWith readable local = prettyExpr' where
+ prettyExpr' e = case C.expressionNode e of
+  C.Constant s -> if readable then readableScalar s else prettyScalar s
+  C.Construct tag args -> C.idText tag ++ "(" ++ intercalate ", " (map prettyExpr' args) ++ ")"
+  C.Match value branches -> "match (" ++ prettyExpr' value ++ ") { " ++ intercalate "; "
+    [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map (local . C.binderId) (C.caseBinders branch)) ++
+      " -> " ++ prettyExpr' (C.caseBody branch) | branch <- branches] ++ " }"
+  C.AllElements value binder predicate -> "allElements (" ++ prettyExpr' value ++ ") (" ++
+    local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
+  C.AllPayloads value predicates -> "allPayloads (" ++ prettyExpr' value ++ ") [" ++
+    intercalate ", " [local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate
       | (binder,predicate) <- predicates] ++ "]"
-  C.Local n -> localName n
-  C.ExternalCall n args -> unwords (declarationName n:map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
-  C.Binary op _ a b -> "(" ++ prettyExpr a ++ " " ++ C.binaryName op ++ " " ++ prettyExpr b ++ ")"
-  C.Unary op a -> show op ++ "(" ++ prettyExpr a ++ ")"
-  C.ShortCircuit op a b -> "(" ++ prettyExpr a ++ " " ++ show op ++ " " ++ prettyExpr b ++ ")"
-  C.If c a b -> "(if " ++ prettyExpr c ++ " then " ++ prettyExpr a ++ " else " ++ prettyExpr b ++ ")"
-  C.Convert _ t a -> "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
+  C.Local n -> local n
+  C.ExternalCall n args -> unwords (declarationName n:map argument args)
+  C.Binary op _ a b -> "(" ++ prettyExpr' a ++ " " ++ C.binaryName op ++ " " ++ prettyExpr' b ++ ")"
+  C.Unary op a -> show op ++ "(" ++ prettyExpr' a ++ ")"
+  C.ShortCircuit op a b -> "(" ++ prettyExpr' a ++ " " ++ show op ++ " " ++ prettyExpr' b ++ ")"
+  C.If c a b -> "(if " ++ prettyExpr' c ++ " then " ++ prettyExpr' a ++ " else " ++ prettyExpr' b ++ ")"
+  C.Convert _ t a -> "(" ++ prettyExpr' a ++ " :: " ++ prettyType t ++ ")"
   -- Matchers read as they are written.
-  C.Helper C.Recorded [key, value] -> prettyExpr value ++ " = recorded " ++ prettyExpr key
-  C.Helper C.StartsWith [a, b] -> "(" ++ prettyExpr a ++ " starts with " ++ prettyExpr b ++ ")"
-  C.Helper C.EndsWith [a, b] -> "(" ++ prettyExpr a ++ " ends with " ++ prettyExpr b ++ ")"
-  C.Helper C.TextContains [a, b] -> "(" ++ prettyExpr a ++ " contains " ++ prettyExpr b ++ ")"
-  C.Helper C.RegexMatches [p, t] -> "(" ++ prettyExpr t ++ " matches regex " ++ prettyExpr p ++ ")"
-  C.Helper b args -> show b ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
-  C.Perform op args -> unwords (C.operationName op : map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
-  C.Handle (C.CatchFailure _) body -> "attempt (" ++ prettyExpr body ++ ")"
-  C.Handle (C.WithHandler _ _) body -> "handle (" ++ prettyExpr body ++ ")"
-  C.Project _ index value -> prettyExpr value ++ "." ++ show index
-  C.Update _ index value field -> "(" ++ prettyExpr value ++ " with " ++ show index ++ " = " ++ prettyExpr field ++ ")"
+  C.Helper C.Recorded [key, value] -> prettyExpr' value ++ " = recorded " ++ prettyExpr' key
+  C.Helper C.StartsWith [a, b] -> "(" ++ prettyExpr' a ++ " starts with " ++ prettyExpr' b ++ ")"
+  C.Helper C.EndsWith [a, b] -> "(" ++ prettyExpr' a ++ " ends with " ++ prettyExpr' b ++ ")"
+  C.Helper C.TextContains [a, b] -> "(" ++ prettyExpr' a ++ " contains " ++ prettyExpr' b ++ ")"
+  C.Helper C.RegexMatches [p, t] -> "(" ++ prettyExpr' t ++ " matches regex " ++ prettyExpr' p ++ ")"
+  C.Helper b args -> show b ++ "(" ++ intercalate ", " (map prettyExpr' args) ++ ")"
+  C.Perform op args -> unwords (C.operationName op : map argument args)
+  C.Handle (C.CatchFailure _) body -> "attempt (" ++ prettyExpr' body ++ ")"
+  C.Handle (C.WithHandler _ _) body -> "handle (" ++ prettyExpr' body ++ ")"
+  C.Project _ index value -> prettyExpr' value ++ "." ++ show index
+  C.Update _ index value field -> "(" ++ prettyExpr' value ++ " with " ++ show index ++ " = " ++ prettyExpr' field ++ ")"
   C.Let binder _ _ | searchDecision (C.binderId binder) -> "the scoped requirement"
-  C.Let binder value body -> "let " ++ localName (C.binderId binder) ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body
-  C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr xs) ++ ")") args
+  C.Let binder value body -> "let " ++ local (C.binderId binder) ++ " = " ++ prettyExpr' value ++ " in " ++ prettyExpr' body
+  C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr' xs) ++ ")") args
+ -- Readable text leaves a name or a literal argument unparenthesised.
+ argument a = case C.expressionNode a of
+   C.Local _ | readable -> prettyExpr' a
+   C.Constant _ | readable -> prettyExpr' a
+   _ -> "(" ++ prettyExpr' a ++ ")"
+
+-- | A scalar as a reader writes it: text with its own characters, escaping
+-- only quotes, backslashes, line breaks, tabs and unprintable characters.
+readableScalar :: Scalar -> String
+readableScalar s = case s of
+  SSequence "Text" xs -> "\"" ++ concatMap escape (map toEnum xs) ++ "\""
+  SCharacter "Char" c -> "char(\"" ++ escape (toEnum c) ++ "\")"
+  _ -> prettyScalar s
+  where
+    escape c = case c of
+      '"' -> "\\\""
+      '\\' -> "\\\\"
+      '\n' -> "\\n"
+      '\t' -> "\\t"
+      '\r' -> "\\r"
+      _ | printable c -> [c]
+        | otherwise -> "\\u{" ++ showHex (fromEnum c) "" ++ "}"
 
 -- Internal search decisions are execution machinery. The surrounding failure
 -- already names the authoritative law and its inputs; keep its label readable.
@@ -213,20 +247,74 @@ searchDecision identity = let (digits,rest) = span isDigit (reverse (C.idText id
 
 -- | As in LawSpec.Compile, the quantified statement a test checks.
 prettyExpanded :: Expanded -> String
-prettyExpanded e | propertyKind e == "contract" = description (original e)
-prettyExpanded e
-  | null (inputs e) = propositionText (assertion e)
-  | otherwise = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " => " ++ propositionText (assertion e) ++ " end for all"
+prettyExpanded = prettyExpandedWith False localName
+
+-- | As prettyExpanded, as prettyExprWith writes expressions.
+prettyExpandedWith :: Bool -> (C.Id -> String) -> Expanded -> String
+prettyExpandedWith _ _ e | propertyKind e == "contract" = description (original e)
+prettyExpandedWith readable local e
+  | null (inputs e) = propositionTextWith readable local (assertion e)
+  | otherwise = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " => " ++ propositionTextWith readable local (assertion e) ++ " end for all"
 -- | As prettyExpr, for propositions.
 propositionText :: Assertion -> String
-propositionText (AssertEqual a b) = prettyExpr a ++ " = " ++ prettyExpr b
-propositionText (AssertImplies g p) = prettyExpr g ++ " implies " ++ propositionText p
-propositionText (AssertAll ps) = intercalate " and " (map propositionText ps)
-propositionText (C.Negation body) = "not (" ++ propositionText body ++ ")"
-propositionText (C.Quantified kind q body) =
+propositionText = propositionTextWith False localName
+
+propositionTextWith :: Bool -> (C.Id -> String) -> Assertion -> String
+propositionTextWith readable local = go where
+ expr = prettyExprWith readable local
+ go (AssertEqual a b) = expr a ++ " = " ++ expr b
+ go (AssertImplies g p) = expr g ++ " implies " ++ go p
+ go (AssertAll ps) = intercalate " and " (map go ps)
+ go (C.Negation body) = "not (" ++ go body ++ ")"
+ go (C.Quantified kind q body) =
   (if kind == ForEvery then "for all " else "there exists ") ++ "(" ++ C.binderName (C.quantifiedBinder q) ++
   " :: " ++ prettyType (C.binderType (C.quantifiedBinder q)) ++ ") " ++
-  (if kind == ForEvery then "=> " else "such that ") ++ propositionText body ++ (if kind == ForEvery then " end for all" else " end exists")
+  (if kind == ForEvery then "=> " else "such that ") ++ go body ++ (if kind == ForEvery then " end for all" else " end exists")
+ go _ = ""
+
+-- | Each binder's source name, for readable text about a law: its inputs,
+-- resources and every binder inside it. Others keep their generated names.
+sourceNames :: C.Property -> C.Id -> String
+sourceNames property identity = M.findWithDefault (localName identity) identity table
+  where
+    table = M.fromList [(C.binderId b, C.binderName b) | b <- reverse (propertyBinders property)]
+
+-- | A law's binders in the order they appear: inputs, resources, then those
+-- inside its statement and examples.
+propertyBinders :: C.Property -> [C.Binder]
+propertyBinders property =
+  map C.quantifiedBinder (C.propertyInputs property) ++
+  map C.resourceBinder (C.propertyResources property) ++
+  concatMap expressionBinders (C.propertyExpressions property)
+
+-- | The binders an expression introduces, in order.
+expressionBinders :: Expr -> [C.Binder]
+expressionBinders term = (case C.expressionNode term of
+  C.AllElements _ binder _ -> [binder]
+  C.AllPayloads _ predicates -> map fst predicates
+  C.Match _ cases -> concatMap C.caseBinders cases
+  C.Let binder _ _ -> [binder]
+  _ -> []) ++ concatMap expressionBinders (C.children term)
+
+-- | A law's source line, when it has one.
+propertyLink :: C.Property -> Maybe String
+propertyLink p = let l = location p in if null (file l) then Nothing else Just (locationLink l)
+
+-- | The comment above a law's tests: its name and source line, what it
+-- says, and the statement its tests check, written with source names and
+-- real characters. Empty fields are left out; examples are linked from
+-- their own tests. ref:DEC-readable-output-default
+lawCommentLines :: Expanded -> [String]
+lawCommentLines e = map (map safe) (concatMap lines (
+  [labelled (displayLabel (name e)) (propertyLink (original e))] ++
+  [description (original e) | not (null (description (original e)))] ++
+  ["Rationale: " ++ rationale (original e) | not (null (rationale (original e)))] ++
+  ["References: " ++ intercalate ", " (references (original e)) | not (null (references (original e)))] ++
+  ["Expands: " ++ intercalate "; " (map displayLabel (drop 1 (trace e))) | length (trace e) > 1] ++
+  [prettyExpandedWith True (sourceNames (original e)) e]))
+  where
+    safe c | c < ' ' || c == '\x2028' || c == '\x2029' || c == '\x85' = ' '
+           | otherwise = c
 
 -- | Every generated test begins with its law's description, rationale and
 -- references, so the test explains why it exists.

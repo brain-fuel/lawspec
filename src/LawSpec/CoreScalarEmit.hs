@@ -2,7 +2,12 @@
 -- TypeScript, whose tests run on LawSpec's portable runtime rather than native
 -- numeric types. ref:DEC-portable-exact-arithmetic
 module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, scalarEmitWithNativeGenerators, typeKey) where
-import LawSpec.Backend
+import LawSpec.Backend hiding (inputId, localName, bindings, contractArguments, contractResult)
+import qualified LawSpec.Backend as Backend
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import LawSpec.Naming (claim, scopeWith, localIdentifier, exampleTestSuffix, boundaryTestSuffix, displayLabel)
+import LawSpec.SourceLink (generatedHeader, unitSourceFile, labelled, locationLink, exampleLocation, originLocation)
 import LawSpec.Common
 import LawSpec.Testing
 import qualified LawSpec.Core.Value as V
@@ -11,6 +16,7 @@ import qualified LawSpec.PythonData as PythonData
 import qualified LawSpec.WebData as WebData
 import qualified LawSpec.WebExpr as WebExpr
 import qualified LawSpec.PythonExpr as PythonExpr
+import LawSpec.PythonTypes (pythonLayout)
 import qualified LawSpec.Code.Doc as Doc
 import qualified LawSpec.PortableGenerator as Generator
 import qualified LawSpec.PortableTestHelpers as Helpers
@@ -25,7 +31,7 @@ import qualified Data.Text.Lazy.Encoding as T
 import Data.List (intercalate, isPrefixOf, isInfixOf, stripPrefix, nub)
 import Data.Maybe (listToMaybe)
 import Control.Monad (unless, foldM)
-import Data.Char (toLower)
+import Data.Char (toLower, isAlphaNum)
 import qualified LawSpec.AbilityEmit.Python as PythonAbilities
 import qualified LawSpec.AbilityEmit.Web as WebAbilities
 import LawSpec.AbilityNames (specName, recordingName, productionName, interfaceName, ownAbilities, ownerName, unitAbility, unitAbilityPieces)
@@ -85,7 +91,16 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       tests = laws' ++ modelTexts ++ supervision ++ benchmarks ++ shuffled
   wrappers <- concat <$> mapM contractWrapper (contracts u)
   let completeHeader = if py || hasData || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
-  pure [Artifact stubPath stub "user" "source",Artifact testPath (finish (completeHeader ++ dataHelpers ++ testHelpers ++ wrappers ++ tests)) "generated" "test"]
+      rest = testHelpers ++ wrappers ++ tests
+      -- The machine profile's width is named once (DEC-native-string-literals).
+      usedNames = identifiers (dataHelpers ++ rest)
+      constants = ["# The machine profile's integer width.\nMACHINE_BITS = " ++ show bits | "MACHINE_BITS" `elem` usedNames] ++
+        ["# Unbounded integers are drawn within this limit.\nINTEGER_DRAW_LIMIT = 2**256" | "INTEGER_DRAW_LIMIT" `elem` usedNames]
+      -- The constants come first: the data helpers' generator table uses them.
+      bitsConstant = if py && not (null constants)
+        then (if hasData then "\n" else "\n\n") ++ intercalate "\n" constants ++ (if hasData then "\n\n" else "\n") else ""
+      body = bitsConstant ++ dataHelpers ++ rest
+  pure [Artifact stubPath stub "user" "source",Artifact testPath (finish ((if py then pythonHeader body else completeHeader) ++ body)) "generated" "test"]
   where
     finish content = if py then reverse (dropWhile (== '\n') (reverse content)) ++ "\n" else content
     adapterFunctions = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u, C.declarationId d `notElem` map fst definitions]
@@ -99,13 +114,28 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     usesData = (if py then PythonData.requiresSchema else WebData.requiresSchema) declarations
     expressionNeedsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     expressionNeedsSchema term = usesData (expressionType term) || any expressionNeedsSchema (C.children term)
+    -- A Python test module imports only what it uses.
+    pythonHeader body =
+      let used n = n `elem` identifiers body
+          hypothesis = [n | n <- ["assume", "given", "settings"], used n] ++ ["strategies as st" | used "st"]
+      in "# " ++ generatedHeader (unitSourceFile u) ++ "\n" ++ unlines (
+        ["import lawspec_runtime as ls" | used "ls"] ++
+        ["import lawspec_definition_bodies as _definitions" | not (null definitions), used "_definitions"] ++
+        [i | hasData, (n, i) <- [("_builtins", "import builtins as _builtins"), ("data", "import lawspec_data as data"), ("_schema", "import lawspec_schema as _schema")], used n] ++
+        ["import json" | used "json"] ++ ["import os" | used "os"] ++
+        ["from hypothesis import " ++ intercalate ", " hypothesis | not (null hypothesis)] ++
+        ["from hypothesis import seed as _lawspec_seed" | used "_lawspec_seed"] ++
+        ["from hypothesis.database import DirectoryBasedExampleDatabase" | used "DirectoryBasedExampleDatabase"] ++
+        ["import " ++ unitName u ++ " as impl" | not (null adapterFunctions && null (ownAbilities u)), used "impl"] ++
+        ["import " ++ PythonAbilities.moduleName u ++ " as _abilities" | unitAbilityPieces u, used "_abilities"] ++
+        ["import lawspec_harness as _harness" | hasHarness, used "_harness"])
     dataImports = if hasData then "import builtins as _builtins\nimport lawspec_data as data\nimport lawspec_schema as _schema\n" else ""
     nodeCount (V.ScalarValue _) = 1
     nodeCount (V.PresenceValue _ value) = 1 + maybe 0 nodeCount value
     nodeCount value@(V.DataValue (C.Constructor "List" _) _ _) = either (const 1) ((+1) . sum . map nodeCount) (V.listItems value)
     nodeCount (V.DataValue _ _ fields) = 1 + sum (map nodeCount fields)
     budget = maximum (64 : [8 + nodeCount value | law <- ls, requirement <- generationPlan law, value <- generatorBoundaries requirement])
-    outputLayout = Doc.selectLayout minify (Doc.Pretty (if py then 79 else 80))
+    outputLayout = Doc.selectLayout minify (if py then pythonLayout else Doc.Pretty 80)
     referenceDoc ty = either error id ((if py then PythonData.pythonTypeReferenceDoc else WebData.webTypeReferenceDoc) ty)
     generatorDoc = Generator.generatorDoc py bits usesData referenceDoc
     dataHelpers = if not hasData then "" else
@@ -191,8 +221,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             stubComment ("LawSpec result: " ++ prettyType r)
           asyncStub = n `elem` asyncFunctions u
           signature = Doc.text ((if py then (if asyncStub then "async def " else "def ") else (if asyncStub then "export async function " else "export function ")) ++ n) <>
-            Doc.delimit 4 "(" ")" arguments <>
-            (if py then Doc.text " -> " <> (if r == Named "Unit" then Doc.text "None" else pythonType r) <> Doc.text ":"
+            (if py then Doc.delimitTrailing 4 "(" ")" arguments else Doc.delimit 4 "(" ")" arguments) <>
+            -- ruff breaks the parameters before the return annotation.
+            (if py then Doc.text " -> " <> (if r == Named "Unit" then Doc.text "None" else Doc.text (Doc.render Doc.Compact (pythonType r))) <> Doc.text ":"
              else Doc.text (if ts then ": " ++ (if asyncStub then "Promise<" ++ native r ++ ">" else native r) else ""))
       in signatureComments <> signature <>
         (if py then Doc.nest 4 (Doc.hardline <> Doc.text ("raise NotImplementedError(" ++ q n ++ ")"))
@@ -204,6 +235,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- Diagnostics are expression values, so long messages can concatenate
     -- literal chunks without changing their runtime payload.
     message value
+      | py = quoted value
       | quotedWidth value <= 60 = quoted value
       | otherwise = parenthesized (Doc.joinWith (if py then Doc.softline <> text "+ " else text " +" <> Doc.softline)
           (map quoted (chunks value)))
@@ -227,7 +259,32 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     invoke = if py then PythonExpr.call else WebExpr.call
     array = if py then PythonExpr.array else WebExpr.array
     indentation = if py then 4 else 2
-    width = text (show bits)
+    width = if py then text "MACHINE_BITS" else text (show bits)
+    -- Python locals keep their source names (LawSpec.Naming), each law's
+    -- distinct within it; other targets keep the generated ones.
+    localName identity = if py then M.findWithDefault (Backend.localName identity) identity pythonLocals
+      else Backend.localName identity
+    inputId = localName . C.binderId . C.quantifiedBinder
+    bindings example = [(localName i, v) | (i, v) <- C.exampleBindings example]
+    contractArguments contract = [(localName (C.binderId b), C.binderType b) | b <- C.contractArguments contract]
+    contractResult contract = let b = C.contractResult contract in (localName (C.binderId b), C.binderType b)
+    pythonLocals = M.fromList (concatMap (allocate . propertyBinders . original) ls ++
+      concatMap (\c -> allocate (C.contractArguments c ++ [C.contractResult c])) (contracts u))
+    allocate binders = snd (foldl (\(scope, named) b -> if any ((== C.binderId b) . fst) named then (scope, named) else
+      let (chosen, scope') = claim scope (localIdentifier "python" (C.binderName b))
+      in (scope', named ++ [(C.binderId b, chosen)])) (scopeWith (PythonExpr.pythonReserved ++ testModuleNames), []) binders)
+    -- What a Python test module imports, which its locals must not shadow.
+    testModuleNames = words "impl json os st given settings assume"
+    -- Readable text about a law names its binders as the source does.
+    shownLaw e = owner e ++ "::" ++ displayLabel (name e)
+    -- A failing assertion names its law and case and points at its source.
+    expectationLink proposition = case proposition of
+      AssertEqual a _ | Just l <- originLocation (C.expressionOrigin a), take 1 (file l) /= "<" -> Just (locationLink l)
+      _ -> Nothing
+    -- symbols holds a case's handlers and fixtures; a test without either
+    -- does not make it.
+    usesSymbols doc = "symbols" `elem` identifiers (Doc.render Doc.Compact doc)
+    identifiers = words . map (\c -> if isAlphaNum c || c == '_' then c else ' ')
     runtime name = invoke ("ls." ++ name)
     schema name arguments = invoke ("_lawspec_schema." ++ name)
       (arguments ++ [text "symbols"])
@@ -249,7 +306,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let header = text ((if py then "def " else "function ") ++ name) <>
             Doc.delimitTrailing indentation "(" ")" (map text parameters)
       in if py then PythonExpr.suite header body else header <> text " " <> Doc.block 2 body
-    assign name value = statement (text ((if py then "" else "const ") ++ name ++ " = ") <> value)
+    assign name value = statement (text ((if py then "" else "const ") ++ name ++ " = ") <> (if py then Doc.statementValue value else value))
     freshSymbols = assign "symbols" (if py then text "{}" else invoke "new Map" [])
     renderDocument doc = Doc.render outputLayout doc ++ if py then "\n\n\n" else "\n\n"
     -- Calls containing statement blocks use mandatory argument breaks. A flat
@@ -268,8 +325,10 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
          quoted (typeKey ty),width]
     -- A handler's values cross with the handler schema: the bound native
     -- types when lawspec.json binds them (ls.handler_schema).
-    handlerSchema name args = invoke (Doc.render Doc.Compact (runtime (if py then "handler_schema" else "handlerSchema") [text "_lawspec_schema"]) ++ "." ++ name)
-      (args ++ [text "symbols"])
+    handlerSchema name args
+      | py = PythonExpr.handlerSchemaCall name (args ++ [text "symbols"])
+      | otherwise = invoke (Doc.render Doc.Compact (runtime "handlerSchema" [text "_lawspec_schema"]) ++ "." ++ name)
+          (args ++ [text "symbols"])
     handlerInput ty value = if usesData ty
       then handlerSchema (if py then "to_native" else "toNative") [referenceDoc ty,value,width] else value
     handlerResult ty value = if usesData ty
@@ -385,6 +444,10 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       | ownerName a == unitName u = "abilities." ++ interfaceName a
       | otherwise = "import('" ++ concat (replicate (length parts - 1) "../") ++ "./lawspec_abilities/" ++ ownerSlash (ownerName a) ++ ".js')." ++ interfaceName a
     fresh e = statements (freshSymbols : installs e)
+    -- A case makes symbols only when something in it uses them.
+    withSymbols e docs
+      | py && null (installs e) && null (C.propertyResources (original e)) && not (any usesSymbols docs) = statements docs
+      | otherwise = statements (fresh e : docs)
     -- A law's resources: each case acquires them, then runs, then releases
     -- them, the last first, even when the case fails.
     bracket e doc = foldr wrap (statements (lateInstalls e ++ [doc])) (C.propertyResources (original e))
@@ -408,9 +471,12 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           , if py then PythonExpr.suite (text "try") inner <> Doc.hardline <>
                 PythonExpr.suite (text "finally") (statement (render (C.resourceRelease r)))
             else text "try " <> Doc.block 2 inner <> text " finally " <> Doc.block 2 (statement (render (C.resourceRelease r))) ]
-    render term = either error id (renderer declarations bits localName external term)
+    render = renderWith False
+    -- A lambda's body, where Python drops redundant parentheses.
+    renderBody = renderWith True
+    renderWith atBody term = either error id (renderer declarations bits localName external term)
       where
-        renderer = if py then PythonExpr.renderExpression else WebExpr.renderExpression ts
+        renderer = if py then (if atBody then PythonExpr.renderExpressionBody else PythonExpr.renderExpression) else WebExpr.renderExpression ts
         external expression values = case C.expressionNode expression of
           -- raise aborts to the nearest attempt of its Fail ability.
           C.Perform op [_] | C.isFail (C.operationAbility op) ->
@@ -453,15 +519,18 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                   (invoke ("_lawspec_call_" ++ declarationName decl) (text "symbols":convertedValues))
                 else nativeFailures decl (checkedResult (expressionType expression) invocation))
           _ -> Left "expected portable external call"
-    assertionDoc context proposition = case proposition of
-      AssertAll propositions -> statements (map (assertionDoc context) propositions)
+    assertionDoc = assertionDocLinked Nothing
+    -- Python messages end with the expectation's source line, or the law's.
+    assertionDocLinked fallback context proposition = case proposition of
+      AssertAll propositions -> statements (map (assertionDocLinked fallback context) propositions)
       AssertImplies guard body -> if py
-        then PythonExpr.suite (text "if " <> parenthesized (render guard)) (assertionDoc context body)
+        then PythonExpr.suite (text "if " <> Doc.unparen (renderBody guard)) (assertionDocLinked fallback context body)
         else text "if " <> parenthesized (render guard) <> text " " <> Doc.block 2 (assertionDoc context body)
       AssertEqual left right ->
         let thunk value = asyncPrefix <> lambda [] value
-            arguments = [message (context ++ " | expect " ++ propositionText proposition),
-              thunk (render left),thunk (render right)]
+            arguments = [if py then message (labelled context (maybe fallback Just (expectationLink proposition)))
+                else message (context ++ " | expect " ++ propositionText proposition),
+              thunk (renderBody left),thunk (renderBody right)]
             structural = usesData (expressionType left)
             extra = if structural then [referenceDoc (expressionType left),text "symbols"]
               else map (quoted . typeKey . expressionType) [left,right]
@@ -469,14 +538,17 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
               (if asyncMode then "Async" else "")
         in statement ((if asyncMode then text "await " else mempty) <> invoke helper (arguments ++ extra))
     conjunction [] = text (if py then "True" else "true")
+    -- Python operands are calls or already parenthesised.
+    conjunction [x] | py = x
+    conjunction expressions | py = Doc.operation expressions (replicate (length expressions - 1) "and")
     conjunction expressions = parenthesized (Doc.joinWith
       (if py then Doc.softline <> text "and " else text " &&" <> Doc.softline) (map parenthesized expressions))
     -- LAWSPEC_SEED fixes each property's random seed, so a run can be
     -- repeated exactly (lawspec test records the seed of every passing run).
     seedHelper = if py
-      then "\n\n\n# Adapters may be slow (networks, timers): no per-example deadline.\n# Under lawspec test, failing examples are kept in its failure database.\n_lawspec_failures = os.environ.get(\"LAWSPEC_FAILURES\")\n_lawspec_database = (\n    {\"database\": DirectoryBasedExampleDatabase(\n        os.path.join(_lawspec_failures, \"hypothesis\"))}\n    if _lawspec_failures else {})\nsettings.register_profile(\"lawspec\", deadline=None, **_lawspec_database)\nsettings.load_profile(\"lawspec\")\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n" ++
-        "\n\n# Workflows wait on a virtual clock under test.\nls.use_virtual_clock()\n" ++
-        (if installsClock u then "\n# Workflows and mailboxes read the Clock handler a law installs.\nls.native_class(\"lawspec.time\", \"register_clock\")()\n" else "")
+      then "\n\n\n# Adapters may be slow (networks, timers): no per-example deadline.\n# Under lawspec test, failing examples are kept in its failure database.\n_lawspec_failures = os.environ.get(\"LAWSPEC_FAILURES\")\n_lawspec_database = (\n    {\n        \"database\": DirectoryBasedExampleDatabase(\n            os.path.join(_lawspec_failures, \"hypothesis\")\n        )\n    }\n    if _lawspec_failures\n    else {}\n)\nsettings.register_profile(\"lawspec\", deadline=None, **_lawspec_database)\nsettings.load_profile(\"lawspec\")\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n" ++
+        "\n\n# Workflows wait on a virtual clock under test.\nls.use_virtual_clock()" ++
+        (if installsClock u then "\n\n# Workflows and mailboxes read the Clock handler a law installs.\nls.native_class(\"lawspec.time\", \"register_clock\")()" else "")
       else "\nconst _lawspecSeed = globalThis.process?.env?.LAWSPEC_SEED;\nconst _lawspecSeeded = (options) => _lawspecSeed === undefined\n  ? options\n  : {...options, seed: Number(_lawspecSeed) | 0};\n" ++
         "\n// Workflows wait on a virtual clock under test.\nls.useVirtualClock();\n" ++
         (if installsClock u then "\n// Workflows and mailboxes read the Clock handler a law installs.\nimport {registerClock as _lawspecRegisterClock} from '../src/lawspec/time." ++ (if ts then "js" else "mjs") ++ "';\n_lawspecRegisterClock();\n" else "")
@@ -495,19 +567,33 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           wrapped = py && C.harnessSkip harness == Nothing && C.harnessKnownFailing harness == Nothing && runSettings harness
           prefix = (if py && C.harnessKnownFailing harness /= Nothing then "_lawspec_known_" ++ drop 5 base
             else if wrapped then "_" ++ base else base) ++ "_"
-          examples' = [testBlock (label ++ " example: " ++ exampleName example)
-            (prefix ++ "_example" ++ show j) (statements
-              (fresh e : [assign name (render value) | (name,value) <- bindings example] ++
-               [bracket e (statements (map (assertionDoc (label ++ " example " ++ exampleName example)) (expectations example) ++
-                 [assertionDoc label (assertion e)]))])) |
-            (j,example) <- zip [0 :: Int ..] (examples (original e))]
+          -- Python names an example's test after the example
+          -- (normalizers_agree__spaces_become_hyphens) and numbers boundaries
+          -- from 1; each test's comment links it to its source line.
+          exampleSuffixes = if py
+            then map ("_" ++) (exampleTestSuffix "python" ("property" : "replay" : "skipped" : "known_failing" :
+              map boundaryTestSuffix [0 .. length cases' - 1]) (map exampleName (examples (original e))))
+            else ["_example" ++ show j | j <- [0 .. length (examples (original e)) - 1]]
+          boundarySuffix j = if py then "_" ++ boundaryTestSuffix j else "_boundary" ++ show j
+          shown = if py then shownLaw e else label
+          exampleContext example = shown ++ " example " ++ (if py then displayLabel else id) (exampleName example)
+          linked context link test = if py then Doc.lineComment 88 "# " (labelled context link) <> test else test
+          lawLink = if null (file (location (original e))) then Nothing else Just (locationLink (location (original e)))
+          short = displayLabel (name e)
+          examples' = [linked (short ++ " example " ++ displayLabel (exampleName example)) (locationLink <$> exampleLocation example) $
+            testBlock (label ++ " example: " ++ exampleName example)
+            (prefix ++ suffix) (
+              (withSymbols e ([assign name (render value) | (name,value) <- bindings example] ++
+               [bracket e (statements (map (assertionDocLinked lawLink (exampleContext example)) (expectations example) ++
+                 [assertionDocLinked lawLink shown (assertion e)]))]))) |
+            (suffix,example) <- zip exampleSuffixes (examples (original e))]
           finite = finiteCases e
           cases' = maybe (boundaryCases e) id finite
       boundaries' <- mapM (\(j,values) -> do
         literals <- mapM valueLit values
-        pure (testBlock label (prefix ++ "_boundary" ++ show j) (statements
-          (fresh e : [assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
-           [bracket e (assertionDoc (label ++ " boundary " ++ show j) (assertion e))])))) (zip [0 :: Int ..] cases')
+        pure (linked (short ++ " boundary " ++ show (j + 1)) lawLink $ testBlock label (prefix ++ boundarySuffix j) (
+          (withSymbols e ([assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
+           [bracket e (assertionDocLinked lawLink (shown ++ " boundary " ++ (if py then show (j + 1) else show j)) (assertion e))]))))) (zip [0 :: Int ..] cases')
       -- LawSpec's own search (LawSpec.Search): a failing generated case's
       -- inputs are kept in the failure database, and replayed before the
       -- law's next cases; where fast-check cannot target, a law with
@@ -530,8 +616,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                 [if py then PythonExpr.suite (text "if not " <> conjunction (map render refinements)) (text "return None")
                  else text "if (!" <> conjunction (map render refinements) <> text ") return null;"]
               score = maybe (text "0") render (C.harnessTarget harness)
-              bodyDoc = statements (fresh e : assigned ++ guardDoc ++
-                [bracket e (assertionDoc (label ++ " search") (assertion e)), statement (text "return " <> score)])
+              bodyDoc = withSymbols e (assigned ++ guardDoc ++
+                [bracket e (assertionDocLinked lawLink (shown ++ " search") (assertion e)), statement (text "return " <> score)])
             in if py then function caseName ["_values"] bodyDoc
                else text ("const " ++ caseName ++ " = ") <> callback [text "_values"] bodyDoc <> text ";"
           searchDocs = case descriptors of
@@ -544,11 +630,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                     Doc.block 2 (statement (text "await " <> runtime "searchReplay" [message label, descriptorDoc ds, text caseName])) <> text ");")
               , if py || C.harnessTarget harness == Nothing then "" else renderDocument (text "test(" <> message (label ++ " search") <> text ", async () => " <>
                   Doc.block 2 (statement (text "await " <> runtime "searchClimb" [message label, descriptorDoc ds, text caseName])) <> text ");") )
-      let body = statements (observations e ++ [remembered (bracket e (assertionDoc (label ++ " property") (assertion e)))])
+      let body = statements (observations e ++ [remembered (bracket e (assertionDocLinked lawLink (shown ++ " property") (assertion e)))])
           generators = map (generatorDoc . inputType) (inputs e)
           names = map inputId (inputs e)
           ordinary = if py then pythonProperty prefix [invoke "given" generators] names
-            (statements [fresh e,body])
+            (withSymbols e [body])
             else propertyInvocation label generators (map text names) (statements [fresh e,body]) []
       refined <- (if any (containsStructural . inputType) (inputs e) then nativeRefinedProperty else refinedProperty) prefix label e body
       let needsContext = nativeGenerators || fieldContracts && any (usesData . inputType) (inputs e)
@@ -560,11 +646,12 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let properties = if maybe False (const True) finite then [] else
             if not (null drawn) then drawn else
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
-          tests = examples' ++ boundaries' ++ properties
-          suffixes = ["_example" ++ show j | j <- [0 .. length examples' - 1]] ++
-            ["_boundary" ++ show j | j <- [0 .. length boundaries' - 1]] ++
+          tests = examples' ++ boundaries' ++ map (linked (short ++ " property") lawLink) properties
+          suffixes = exampleSuffixes ++
+            map boundarySuffix [0 .. length boundaries' - 1] ++
             ["_property" | not (null properties)]
-      pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++ fst searchDocs ++ (++ snd searchDocs) (
+      pure (Doc.render outputLayout (if py then mconcat (map (Doc.lineComment 88 "# ") (lawCommentLines e))
+        else metadataDocument 80 "//" e) ++ fst searchDocs ++ (++ snd searchDocs) (
         if not py then webHarness label harness tests
         else case (C.harnessSkip harness, C.harnessKnownFailing harness) of
           -- A skipped law runs nothing; it is still an obligation.
@@ -841,7 +928,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                   selected = scalarName <> text (if py then " == " else " === ") <> quoted (typeKey ty)
                   body = if py then bounded <> text " if " <> selected <> text " else " <> fallback
                     else selected <> text " ? " <> bounded <> text " : " <> fallback
-              in lambda [scalarName] (parenthesized body)
+              in lambda [scalarName] (if py then Doc.parens (bounded <> Doc.softline <> text "if " <> selected <> Doc.softline <> text "else " <> fallback)
+                else parenthesized body)
       pure (case requiredSymbol plan of
         value:_ -> invoke (if py then "st.just" else "fc.constant") [render value]
         [] -> invoke "_data_strategy"
@@ -934,7 +1022,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             (parenthesized (lambda (text "symbols":names) predicate) <>
               Doc.delimitTrailing 4 "(" ")" [text "_case[1]",text "*_case[0]"])
             else lambda [pattern] predicate
-          filtered = method mapped "filter" [condition]
+          -- ruff writes a chain of two or more calls one per line when it breaks.
+          filtered = if py
+            then Doc.group (tuple <> Doc.softbreak <> text "." <> invoke "map" [lambda [text "_values"] caseValue] <>
+              Doc.softbreak <> text "." <> invoke "filter" [condition])
+            else method mapped "filter" [condition]
           assignments = [assign (inputId input) (text ("_values[" ++ show index ++ "]")) |
             (index,input) <- zip [0 :: Int ..] (inputs e)]
       in pure $ if py then pythonProperty prefix
@@ -955,7 +1047,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           run = statement ((if asyncMode then text "await " else mempty) <> runtime (if py then "refined_case" else if asyncMode then "refinedCaseAsync" else "refinedCase")
             [array domains,text "_seed",text (show (maxAttempts cfg)),text (show (maxShrinks cfg)),text "_check",
              message (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))])
-          seededBody = statements [freshSymbols, (if py then Doc.hardline else mempty) <> check, run]
+          seededBody = statements [freshSymbols, (if py then Doc.hardline else mempty) <> check, (if py then Doc.hardline else mempty) <> run]
       pure $ if py then pythonProperty prefix
         [pythonSettings (cases cfg),
          invoke "given" [invoke "st.integers" [text "min_value=0",text "max_value=2147483647"]]]

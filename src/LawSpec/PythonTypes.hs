@@ -2,6 +2,8 @@
 module LawSpec.PythonTypes where
 
 import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous)
+import LawSpec.RecordNames (recordDisplayNames)
+import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, stripPrefix)
@@ -16,9 +18,10 @@ import qualified LawSpec.Core.Schema as S
 import LawSpec.Core.Types (makeRegistry, checkType)
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Code.Literal (literalFor)
 
 q :: String -> String
-q = T.unpack . T.decodeUtf8 . encode
+q = literalFor "python"
 
 -- | Generated Python names for each data declaration, planned once so every
 -- module of a project uses the same name.
@@ -27,8 +30,11 @@ type Names = [(C.Id,String)]
 -- | Two declarations whose names differ only in case would collide on
 -- case-insensitive file systems, so they are refused.
 namesFor :: [C.DataDeclaration] -> Either String Names
-namesFor declarations = do
-  let qualifiedCounts = caseInsensitiveCounts qualified
+namesFor given = do
+  -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames given
+      declarations = [maybe d (\n -> d {C.dataName = n}) (M.lookup (C.dataId d) display) | d <- given]
+      qualifiedCounts = caseInsensitiveCounts qualified
       qualified = flatDataCandidates id (const False) declarations
       names = [(identity, if ambiguous qualifiedCounts name then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
@@ -62,7 +68,8 @@ lookupName names identity = maybe (Left "unplanned Python data name") Right (loo
 
 application :: String -> [D.Doc] -> D.Doc
 application name [] = D.text name
-application name args = D.text name <> D.delimit 4 "[" "]" args
+application name args = D.text name <> D.group (D.text "[" <> D.nest 4 (D.softbreak <>
+  D.group (D.commaSep args <> (if length args > 1 then D.whenBroken (D.text ",") else mempty))) <> D.softbreak <> D.text "]")
 
 -- | A handle's native type: its bound native type, or any object.
 type Handles = [(C.Id,D.Doc)]
@@ -140,9 +147,12 @@ requiresSchema declarations ty = case ty of
   C.Arrow a b -> requiresSchema declarations a || requiresSchema declarations b
   _ -> False
 
--- | Python output is laid out at 79 columns, as PEP 8 asks. ref:pep-8
+-- | Python is laid out as ruff format lays it out. ref:DEC-readable-output-default
+pythonLayout :: D.Layout
+pythonLayout = D.styleLayout (D.styleFor "python")
+
 pythonDataType :: [C.DataDeclaration] -> C.Type -> Either String String
-pythonDataType declarations ty = D.render (D.Pretty 79) <$> pythonDataTypeDoc declarations ty
+pythonDataType declarations ty = D.render pythonLayout <$> pythonDataTypeDoc declarations ty
 
 -- | Types are checked against the registry before rendering, so an unknown type
 -- is a compiler error rather than an invalid hint.
@@ -162,19 +172,13 @@ reference (S.Parameter n) = D.text ("_schema.Parameter(" ++ show n ++ ")")
 reference (S.Named name arguments) = invoke "_schema.Named"
   ([quotedName name] ++ [array (map reference arguments) | not (null arguments)])
 
--- | Adjacent string tokens preserve identity while allowing narrow nested types.
+-- | A type's name is one string literal; literals are never split.
 quotedName :: String -> D.Doc
-quotedName name = D.prefixChoice (q name) (D.text (q name))
-  (D.group (D.text "(" <> D.nest 4
-    (D.softbreak <> D.joinWith D.softline (map (D.text . q) (chunks name))) <>
-    D.softbreak <> D.text ")"))
-  where
-    chunks [] = []
-    chunks rest = take 4 rest : chunks (drop 4 rest)
+quotedName = D.text . q
 
 -- | The runtime validates values against a schema reference built from the type.
 pythonTypeReference :: C.Type -> Either String String
-pythonTypeReference ty = D.render (D.Pretty 79) <$> pythonTypeReferenceDoc ty
+pythonTypeReference ty = D.render pythonLayout <$> pythonTypeReferenceDoc ty
 
 pythonTypeReferenceDoc :: C.Type -> Either String D.Doc
 pythonTypeReferenceDoc ty = reference <$> S.typeReference [] ty

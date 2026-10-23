@@ -15,7 +15,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.DefinitionContracts (validateNativeEmissionDefinitions)
 import LawSpec.Common (Artifact(..), Diagnostic(..), pythonUnitFile)
 import LawSpec.Digest (digestString, digestHex)
-import LawSpec.PythonTypes (q, pythonTypeReference)
+import LawSpec.PythonTypes (q, pythonTypeReference, pythonLayout)
 import qualified LawSpec.PythonData as Data
 import LawSpec.AbilityNames (ownAbilities, ownedAbilityUnits, productionName)
 import LawSpec.Builtins (defaultedUnits)
@@ -60,7 +60,7 @@ prologFromPreparedPython sourceDir testDir bindings plan input = do
   unless (all availableUnit units)
     (Left [Diagnostic "native-name-collision" "an application unit uses a reserved generated Prolog/Python support namespace" Nothing])
   unique input
-  schemas <- checked (Data.emitPythonDataWithProfile bits (D.Pretty 79) datas)
+  schemas <- checked (Data.emitPythonDataWithProfile bits pythonLayout datas)
   bridges <- concat <$> mapM unitArtifacts units
   registry <- models
   let replaced = map artifactPath bridges

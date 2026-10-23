@@ -43,6 +43,7 @@ import qualified LawSpec.ScalaData as ScalaData
 import qualified LawSpec.ScalaDefinitions as ScalaDefinitions
 import qualified LawSpec.GoDefinitions as GoDefinitions
 import qualified LawSpec.PythonData as PythonData
+import LawSpec.PythonTypes (pythonLayout)
 import qualified LawSpec.PythonNativeBinding as PythonNativeBinding
 import qualified LawSpec.PythonDefinitions as PythonDefinitions
 import qualified LawSpec.RustDefinitions as RustDefinitions
@@ -389,7 +390,7 @@ emitPlanFormatted minify target Plan{..} = do
       (JavaData.emitJavaDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
     else if target == "python" && portableSchemaNeeded
       then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-        (PythonData.emitPythonDataWithProfile planMachineBits (layout (Doc.Pretty 79)) planDataDeclarations)
+        (PythonData.emitPythonDataWithProfile planMachineBits (layout pythonLayout) planDataDeclarations)
       else if target `elem` ["javascript","typescript"] && portableSchemaNeeded
         then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
           (WebData.emitWebDataWithProfile (target == "typescript") planMachineBits (layout (Doc.Pretty 80)) planDataDeclarations)
@@ -428,7 +429,7 @@ emitPlanFormatted minify target Plan{..} = do
         (ScalaDefinitions.emitScalaDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
       else if target == "python"
         then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-          (PythonDefinitions.emitPythonDefinitions (layout (Doc.Pretty 79)) planMachineBits planDataDeclarations units)
+          (PythonDefinitions.emitPythonDefinitions (layout pythonLayout) planMachineBits planDataDeclarations units)
         else if target `elem` ["javascript","typescript"]
           then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
             (WebDefinitions.emitWebDefinitions (target == "typescript") (layout (Doc.Pretty 80)) planMachineBits planDataDeclarations units)
@@ -557,7 +558,7 @@ emitPlanFormatted minify target Plan{..} = do
       | target `elem` ["java","kotlin","scala"] = definitionCalls
       | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
-      | target == "python" = PythonDefinitions.definitionCalls (map plannedUnit plannedUnits)
+      | target == "python" = PythonDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
       | otherwise = WebDefinitions.definitionCalls (map plannedUnit plannedUnits)
     lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
@@ -836,7 +837,7 @@ storedLength (Stored _ c _ _ canonical) = T.length c + maybe 0 T.length canonica
 -- | How each target calls a checked definition on logical values.
 remoteCalls :: String -> Plan -> [(C.Id, String)]
 remoteCalls target plan = case target of
-  "python" -> PythonDefinitions.definitionCalls units
+  "python" -> PythonDefinitions.definitionCalls (planDataDeclarations plan) units
   "go" -> GoDefinitions.definitionCalls units
   t | t `elem` ["java", "kotlin","scala"] -> JavaDefinitions.definitionCalls units
   "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]

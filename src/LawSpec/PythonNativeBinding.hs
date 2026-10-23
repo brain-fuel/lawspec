@@ -160,7 +160,7 @@ emitBindings minify bindings plan files = do
            D.hardline <> D.hardline <> factories <> D.hardline <> D.hardline <> D.hardline <> wrapper)) "generated" "test"
     emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
       Scalar.scalarEmitWithNativeGenerators True minify (planDataDeclarations plan)
-        (Definitions.definitionCalls (map plannedUnit (plannedUnits plan)))
+        (Definitions.definitionCalls (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)))
         (planMachineBits plan) "python" (modelTestUnit plan (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits plan, not (null (plannedProperties unit))]
     pure (helper : [file | file <- emitted, artifactPlacement file == "test"] ++
@@ -191,7 +191,7 @@ emitBindings minify bindings plan files = do
       C.Constructor name [] -> C.Id name `elem` handles
       _ -> False
     generators = resolvedGenerators representations
-    layout = D.selectLayout minify (D.Pretty 79)
+    layout = D.selectLayout minify P.pythonLayout
     render doc = D.render layout (doc <> D.hardline)
 
 -- | A scaffold is an application factory, not a second generator implementation.
@@ -234,7 +234,7 @@ generatorStubs generators mappings applicationRefs files = do
          D.hardline <> D.text "raise NotImplementedError" <> D.delimitTrailing 4 "(" ")"
           [D.text (P.q ("Implement generator for " ++ C.idText (resolvedGeneratorType generator)))]))
     pure (Artifact ("tests/" ++ path ++ ".py")
-      (D.render (D.Pretty 79)
+      (D.render P.pythonLayout
         (D.text "# User-owned native generator factories. Implement before running properties." <>
          D.hardline <> D.text "from hypothesis import strategies as _strategies" <>
          D.hardline <> D.hardline <> D.hardline <>

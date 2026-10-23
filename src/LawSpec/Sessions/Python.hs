@@ -20,6 +20,9 @@ import LawSpec.MachineSpec (describe)
 import Control.Monad (foldM)
 import LawSpec.Scalar (isInteger, primitive)
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Code.Literal (literalFor)
+import LawSpec.PythonTypes (pythonLayout)
+import qualified LawSpec.PythonExpr as E
 
 -- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -65,19 +68,25 @@ pythonSessionsWith bits datas units = do
         , "and receive() returns (value, end for the next step); after the last"
         , "step the end is a Done. An end can be used only once."
         , "\"\"\""
+        , ""
         , "from __future__ import annotations"
         , ""
         , "import lawspec_runtime as ls" ] ++
         [ line | usesData, line <- ["import lawspec_data as data", "import lawspec_schema as _schema"] ] ++
         [ line | not (null wires), line <-
           [ ""
-          , "_TYPES = ls.Values({str(f[1]): f for f in ls.read_descriptor(" ++ show (unwords (map snd (reverse types))) ++ ")})"
+          , "_FORMS = " ++ literalFor "python" (unwords (map snd (reverse types)))
+          , "_TYPES = ls.Values({str(form[1]): form for form in ls.read_descriptor(_FORMS)})"
           , if usesData then "_SCHEMA = data.make_schema()" else "_SCHEMA = None"
           , ""
           , ""
           , "def _d(text):"
           , "    return ls.read_descriptor(text)[0]" ] ]
   pure (unlines header ++ concatMap (\c -> "\n\n" ++ c) classes)
+
+-- | A line of Python at an indentation, laid out as ruff lays it out.
+pyLine :: Int -> D.Doc -> String
+pyLine indent doc = D.render pythonLayout (D.text (replicate indent ' ') <> D.nest indent doc)
 
 -- | One end before one step: its class name and what the step does.
 data Position = Position String (Maybe (Bool, C.Type))
@@ -107,7 +116,9 @@ protocol datas sessions wire session = do
     , "    def open() -> tuple[" ++ firstStart ++ ", " ++ secondStart ++ "]:"
     , "        \"\"\"Makes a channel; returns its first end and its second end.\"\"\""
     , "        channel = ls.Channel()"
-    , "        return " ++ firstStart ++ "(channel, 0), " ++ secondStart ++ "(channel, 1)" ] ++
+    , pyLine 8 (D.text "first = " <> E.call firstStart [D.text "channel", D.text "0"])
+    , pyLine 8 (D.text "second = " <> E.call secondStart [D.text "channel", D.text "1"])
+    , "        return first, second" ] ++
     case wire of
       Nothing -> []
       Just steps ->
@@ -118,8 +129,9 @@ protocol datas sessions wire session = do
            , "    @staticmethod"
            , "    def _wire():"
            , "        \"\"\"Each step's wire descriptor and conversion, from the first end.\"\"\""
-           , "        return ([" ++ intercalate ", " ["(" ++ (if s then "True" else "False") ++ ", _d(" ++ show d ++ "))" | (s, d, _) <- steps] ++ "],"
-           , "                [" ++ intercalate ", " (map part steps) ++ "])"
+           , pyLine 8 (D.text "return " <> D.delimitTrailing 4 "(" ")"
+               [ E.array [D.text ("(" ++ (if s then "True" else "False") ++ ", _d(" ++ literalFor "python" d ++ "))") | (s, d, _) <- steps]
+               , E.array (map (D.text . part) steps) ])
            , ""
            , "    @staticmethod"
            , "    def listen(node: ls.Node, name: str) -> " ++ firstStart ++ ":"
@@ -127,13 +139,16 @@ protocol datas sessions wire session = do
            , "        dials at <node address>/name. An end sent over it to another node"
            , "        moves there (a local end stays and is relayed by this node).\"\"\""
            , "        steps, parts = " ++ name ++ "._wire()"
-           , "        return " ++ firstStart ++ "(ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA), 0)"
+           , "        channel = ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA)"
+           , pyLine 8 (D.text "return " <> E.call firstStart [D.text "channel", D.text "0"])
            , ""
            , "    @staticmethod"
            , "    def dial(node: ls.Node, address: str) -> " ++ secondStart ++ ":"
            , "        \"\"\"The second end of the channel listening at address on another node.\"\"\""
            , "        steps, parts = " ++ name ++ "._wire()"
-           , "        return " ++ secondStart ++ "(ls.NativeChannel(node.dial(address, [(not s, d) for s, d in steps], _TYPES), parts, _SCHEMA), 1)" ]
+           , "        reverse = [(not s, d) for s, d in steps]"
+           , "        channel = ls.NativeChannel(node.dial(address, reverse, _TYPES), parts, _SCHEMA)"
+           , pyLine 8 (D.text "return " <> E.call secondStart [D.text "channel", D.text "1"]) ]
   where
     reference ty = if requiresSchema datas ty then either (const "None") (D.render (D.Pretty 1000)) (pythonTypeReferenceDoc ty) else "None"
     name = C.sessionName session
@@ -177,7 +192,7 @@ protocol datas sessions wire session = do
     sendCall ty after = case delegated ty of
       Just q -> "self._send_end(value, " ++ startOf q ++ ", " ++ after ++ ")"
       Nothing -> case ty of
-        C.Constructor n [] | checked n -> "self._send(ls.check_send(value, " ++ show n ++ "), " ++ after ++ ")"
+        C.Constructor n [] | checked n -> "self._send(ls.check_send(value, " ++ literalFor "python" n ++ "), " ++ after ++ ")"
         _ -> "self._send(value, " ++ after ++ ")"
     checked n = isInteger n || n `elem` ["Bool", "Text", "Char", "Bytes"]
     nativeType ty = case delegated ty of

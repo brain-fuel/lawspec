@@ -20,7 +20,7 @@ dataHelperDoc py bits budget entries = D.joinWith separation
     (D.delimitTrailing indentation "{" "}" entries),
    function py "_lawspec_data_generator" ["ty"]
     (statement "return " (call "_data_strategy"
-      [D.text "_lawspec_schema",D.text "ty",D.text (show bits),D.text (show budget),
+      [D.text "_lawspec_schema",D.text "ty",D.text (if py then "MACHINE_BITS" else show bits),D.text (show budget),
        D.text (if py then "_lawspec_primitive_generators.__getitem__"
          else "(name) => _lawspec_primitive_generators[name]")])),
    assertionHelper py (Just bits)]
@@ -61,9 +61,10 @@ assertionHelper py profile = function py name parameters guarded
     equal = case profile of
       Nothing -> call "ls.equal" (map D.text ["a","b","ta","tb"])
       Just bits -> call "_lawspec_schema.equal" (map D.text
-        (["ty","a","b",show bits,"symbols"]))
-    pythonAssert = D.group (D.text "assert (" <> D.nest 4 (D.softbreak <> equal) <>
-      D.softbreak <> D.text "), f'{context} | actual={a!r}, expected={b!r}{ls.difference(a, b)}'")
+        (["ty","a","b",if py then "MACHINE_BITS" else show bits,"symbols"]))
+    -- As ruff lays it out: the message moves into parentheses of its own.
+    pythonAssert = D.text "assert " <> equal <> D.text ", (" <> D.nest 4 (D.hardline <>
+      D.text "f\"{context} | actual={a!r}, expected={b!r}{ls.difference(a, b)}\"") <> D.hardline <> D.text ")"
     -- Where the values differ is worked out only when they do.
     javascriptAssert = D.text "if (!" <> equal <> D.text ") " <> D.block 2 (D.joinWith D.hardline
       ([D.text "const where = ls.difference(a, b);"] ++
@@ -75,7 +76,7 @@ assertionHelper py profile = function py name parameters guarded
       [if py then pythonAssert else javascriptAssert]
     guarded = if py then Python.suite (D.text "try") body <> D.hardline <>
       Python.suite (D.text "except Exception as error")
-        (D.text "raise AssertionError(f'{context}: {error}') from error")
+        (D.text "raise AssertionError(f\"{context}: {error}\") from error")
       else D.text "try " <> D.block 2 body <>
         D.text " catch (error) " <> D.block 2
           (D.text "throw " <> call "new Error"

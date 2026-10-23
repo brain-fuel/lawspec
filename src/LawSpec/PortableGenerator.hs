@@ -50,6 +50,10 @@ generatorDocWithin py bits structural reference within = generate
     boundaries (Named n) = scalarBoundaries bits n
     boundaries _ = []
     bound :: Integer -> String -> D.Doc
+    -- Python names the unbounded integers' draw limit once per test module.
+    bound value _
+      | py && value == 2^(256::Int) = text "INTEGER_DRAW_LIMIT"
+      | py && value == -2^(256::Int) = text "-INTEGER_DRAW_LIMIT"
     bound value suffix
       | value == 2^(256::Int) = text ("2" ++ suffix ++ " ** 256" ++ suffix)
       | value == -2^(256::Int) = text ("-(2" ++ suffix ++ " ** 256" ++ suffix ++ ")")
@@ -100,7 +104,7 @@ generatorDocWithin py bits structural reference within = generate
           let component = generate (Named (if n == "Complex64" then "Float32" else "Float64"))
           in mapped (call (if py then "st.tuples" else "fc.tuple") [component,component]) "v"
             (call (if py then "complex" else "new ls.Complex") [text "v[0]",text "v[1]"])
-      | n == "Char" = if py then call "st.characters" [text "blacklist_categories=('Cs',)"]
+      | n == "Char" = if py then call "st.characters" [text "blacklist_categories=(\"Cs\",)"]
           else mapped scalarCodePoint "x" (call "String.fromCodePoint" [text "x"])
       | n `elem` ["CodePoint","CodeUnit16"] = integerRange 0 (maximumUnit n)
       | n == "Bytes" = if py then call "st.binary" [text "max_size=100"]

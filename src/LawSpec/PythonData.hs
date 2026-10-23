@@ -46,7 +46,7 @@ emitPythonDataWithProfile bits layout declarations = do
     body <- E.renderExpressionWithContext declarations (D.text "bits") ref key local
       (\_ _ -> Left "external call in constructor predicate") predicate
     pure (suite (D.text "def " <> invoke name (map D.text
-      ["_lawspec_schema","_types","_fields","bits","symbols"])) (D.text "return " <> body))
+      ["_lawspec_schema","_types","_fields","bits","symbols"])) (D.text "return " <> D.unparen body))
   -- A handle has no class: its values are the adapters' own objects.
   classes <- concat <$> mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,
     not (isDurationType (C.idText (C.dataId d))), not (C.dataHandle d)]

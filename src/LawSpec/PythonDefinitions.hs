@@ -8,20 +8,42 @@ import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..), pythonUnitFile)
 import qualified LawSpec.PythonData as Native
+import LawSpec.PythonTypes (namesFor)
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
-import Data.List (nub, sort, intercalate)
+import Data.List (nub, nubBy, sort, intercalate)
 import LawSpec.AbilityNames (specName, interfaceName)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
 import LawSpec.Typed.Plan (TypedPlan(..))
+import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.SourceLink (labelled, sourceLink)
 import qualified Data.Map.Strict as M
 
 -- | Generated tests call checked definitions by these names, so every test
 -- file agrees.
-definitionCalls :: [Unit] -> [(Id,String)]
-definitionCalls units = [(declarationId (definitionDeclaration d), "_definitions.evaluate_" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+-- A definition's function is named after it (LawSpec.Naming), with _2 only
+-- when two definitions would share a name.
+definitionCalls :: [DataDeclaration] -> [Unit] -> [(Id,String)]
+definitionCalls declarations units = [(identity, "_definitions." ++ name) | (identity, name) <- definitionNames declarations units]
+
+definitionNames :: [DataDeclaration] -> [Unit] -> [(Id,String)]
+definitionNames declarations units = zip (map (declarationId . definitionDeclaration) definitions)
+  (fst (claimAll (scopeWith (E.pythonReserved ++ moduleNames)) (map base definitions)))
+  where
+    definitions = concatMap unitDefinitions units
+    -- Data types are named as the generated code names them.
+    shown = either (const []) id (namesFor declarations)
+    display ty = case ty of
+      Constructor n args | Just name <- lookup (Id n) shown -> Constructor name (map display' args)
+      Constructor n args -> Constructor n (map display' args)
+      _ -> ty
+    display' (TypeArgument t) = TypeArgument (display t)
+    display' a = a
+    base d = let declaration = definitionDeclaration d
+      in nativeIdentifier "python" FunctionName
+           (readableDefinitionName (declarationName declaration) (map display (fst (functionType (declarationType declaration)))))
+    moduleNames = ["data", "ls", "symbols", "result", "checked_result"]
 
 -- | Checked definitions are emitted as ordinary Python code, so adapters and tests call
 -- the same proved implementation. ref:DEC-total-definitions
@@ -42,20 +64,29 @@ emitPythonDefinitions layout bits declarations units = do
   pure (file "src/lawspec_definition_bodies.py" (["import importlib as _importlib"] ++ ["import lawspec_typed as _typed" | hasTyped]) (adapterLoader : bodies) : wrappers ++ typedFiles)
   where
     -- A typed definition's dynamic entry converts its arguments and result.
-    bridge typed index d function = do
+    bridge typed _ d function = do
       let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
           identity = declarationId (definitionDeclaration d)
-          arguments = ["value_" ++ show i | i <- [0 .. length argTypes - 1]]
+          arguments = argumentNames d
           needsContext = identity `elem` typedContextual (pyTypedPlan typed)
-          call = "_typed." ++ pyTypedTo typed resultType ++ "(_typed." ++ function ++ "(" ++
-            intercalate ", " (["symbols" | needsContext] ++ ["_typed." ++ pyTypedFrom typed t ++ "(" ++ a ++ ")" | (t, a) <- zip argTypes arguments]) ++ "))"
-      pure (E.suite (D.text ("def evaluate_" ++ show index) <> D.delimitTrailing 4 "(" ")" (map D.text ("symbols" : arguments)))
-        (contextual identity (D.text ("return " ++ call))))
-    width = D.text (show bits)
-    callees = definitionCalls units
+          call = E.call ("_typed." ++ pyTypedTo typed resultType) [E.call ("_typed." ++ function)
+            ([D.text "symbols" | needsContext] ++ [E.call ("_typed." ++ pyTypedFrom typed t) [D.text a] | (t, a) <- zip argTypes arguments])]
+      pure (linkComment d <> E.suite (D.text ("def " ++ functionNameOf d) <> D.delimitTrailing 4 "(" ")" (map D.text ("symbols" : arguments)))
+        (contextual identity (D.text "return " <> call)))
+    width = D.text "MACHINE_BITS"
+    names = definitionNames declarations units
+    functionNameOf d = maybe "unnamed" id (lookup (declarationId (definitionDeclaration d)) names)
+    -- A definition's arguments keep their source names.
+    argumentNames d = fst (claimAll (scopeWith (E.pythonReserved ++ ["result", "checked_result"]))
+      [localIdentifier "python" (binderName b) | b <- definitionArguments d])
+    -- Each function's comment links it to its definition.
+    linkComment d = let declaration = definitionDeclaration d
+      in D.lineComment 88 "# " (labelled (declarationName declaration) (sourceLink (declarationOrigin declaration)))
+    callees = definitionCalls declarations units
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
     adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,
       declarationId d `notElem` definitionIds]
+    nubBinders = nubBy (\a b -> binderId a == binderId b)
     file path imports bodies = Artifact path (D.render layout (
       D.text "# Generated by LawSpec. Do not edit." <> D.hardline <>
       D.text "from __future__ import annotations" <> D.hardline <> D.hardline <>
@@ -64,15 +95,19 @@ emitPythonDefinitions layout bits declarations units = do
       D.joinWith D.hardline (map D.text (sort (imports ++
          ["import lawspec_data as data", "import lawspec_runtime as ls", "import lawspec_schema as _schema"]))) <>
       D.hardline <> D.hardline <> D.text "_lawspec_schema = data.make_schema()" <>
+      (if usesBits then D.hardline <> D.text "# The machine profile's integer width." <> D.hardline <>
+        D.text ("MACHINE_BITS = " ++ show bits) else mempty) <>
       D.hardline <> D.hardline <> D.hardline <>
       D.joinWith (D.hardline <> D.hardline <> D.hardline) bodies <> D.hardline)) "generated" "source"
+      where usesBits = "MACHINE_BITS" `elem` words (map (\c -> if c == '_' || c `elem` ['A'..'Z'] then c else ' ')
+              (D.render D.Compact (mconcat bodies)))
     contextual identity body = E.suite (D.text "try") body <> D.hardline <>
       E.suite (D.text "except " <> D.delimitTrailing 4 "(" ")"
         (map D.text ["_builtins.ValueError", "_builtins.TypeError", "_builtins.OverflowError"]) <> D.text " as error")
         (D.text "raise " <> E.call "_builtins.ValueError"
           [D.group (E.quoted (idText identity ++ ": ") <> D.softline <>
             D.text "+ _builtins.str(error)")] <> D.text " from error")
-    assign name value = D.text (name ++ " = ") <> value
+    assign name value = D.text (name ++ " = ") <> D.statementValue value
     -- Adapter modules load when first called, so an adapter that imports its
     -- unit's definitions does not make a cycle.
     adapterLoader = E.suite (D.text "def _adapters(module: _builtins.str)")
@@ -83,11 +118,12 @@ emitPythonDefinitions layout bits declarations units = do
     -- A handler's values cross with the handler schema (ls.handler_schema).
     handlerCall name ty value = do
       ref <- Native.pythonTypeReferenceDoc ty
-      pure (E.call ("ls.handler_schema(_lawspec_schema)." ++ name) [ref,value,width,D.text "symbols"])
-    implementation contracts (index,d) = do
+      pure (E.handlerSchemaCall name [ref,value,width,D.text "symbols"])
+    implementation contracts (_,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
-          names = zip (nub (map binderId binders)) ["value_" ++ show i | i <- [0::Int ..]]
-          local identity = maybe (error "unresolved Python local") id (lookup identity names)
+          locals = zip (nub (map binderId binders)) (fst (claimAll (scopeWith (E.pythonReserved ++ ["result", "checked_result"]))
+            [localIdentifier "python" (binderName b) | b <- nubBinders binders]))
+          local identity = maybe (error "unresolved Python local") id (lookup identity locals)
           arguments = map (local . binderId) (definitionArguments d)
           external term values = case expressionNode term of
             -- raise aborts to the nearest attempt of its Fail ability.
@@ -97,7 +133,7 @@ emitPythonDefinitions layout bits declarations units = do
             -- for its ability (evidence passing).
             Perform op args -> do
               nativeValues <- sequence [handlerCall "to_native" (expressionType a) value | (a, value) <- zip args values]
-              let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
+              let invocation = E.call "ls.handler" [D.text "symbols", E.quoted (abilityKey (operationAbility op))] <> D.text "." <> E.call (operationName op) nativeValues
               result <- if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unit_result" [invocation])
                 else handlerCall "from_native" (expressionType term) invocation
@@ -127,8 +163,8 @@ emitPythonDefinitions layout bits declarations units = do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "to_native" ty value | (ty, value) <- zip parameterTypes values]
               -- An adapter that uses abilities gets their handlers first.
-              let handlers = [D.text ("ls.handler(symbols, " ++ show (abilityKey a) ++ ")") | a <- declarationUses adapter, not (isFail a)]
-                  invocation = E.call ("_adapters(" ++ show owner ++ ")." ++ declarationName adapter) (handlers ++ nativeValues)
+              let handlers = [E.call "ls.handler" [D.text "symbols", E.quoted (abilityKey a)] | a <- declarationUses adapter, not (isFail a)]
+                  invocation = E.call "_adapters" [E.quoted owner] <> D.text "." <> E.call (declarationName adapter) (handlers ++ nativeValues)
               -- A Unit adapter returns None, which is the Unit value.
               let fromNative value
                     | resultType == Constructor "Unit" [] = pure (E.call "ls.unit_result" [value])
@@ -170,8 +206,9 @@ emitPythonDefinitions layout bits declarations units = do
           let aliases = zip (map binderId (contractArguments c))
                 (map (local . binderId) (definitionArguments d)) ++
                 [(binderId (contractResult c),"checked_result")] ++
-                [(binderId b,"contract_value_" ++ show i) | (i,b) <- zip [0::Int ..]
-                  (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c))]
+                zip (map binderId contractBinders) (fst (claimAll (scopeWith (E.pythonReserved ++ ["result", "checked_result"] ++ arguments))
+                  [localIdentifier "python" (binderName b) | b <- contractBinders]))
+              contractBinders = concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c)
               resolve identity = maybe (error "unbound definition contract binder") id (lookup identity aliases)
               require stage predicate = do
                 expression <- E.renderExpression declarations bits resolve external predicate
@@ -181,7 +218,7 @@ emitPythonDefinitions layout bits declarations units = do
           post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checked_result" result] ++
             post ++ [D.text "return checked_result"])
-      pure (E.suite (D.text ("def evaluate_" ++ show index) <>
+      pure (linkComment d <> E.suite (D.text ("def " ++ functionNameOf d) <>
         D.delimitTrailing 4 "(" ")" (map D.text ("symbols":arguments)))
         (contextual (declarationId (definitionDeclaration d)) (D.joinWith D.hardline
           statements)))
@@ -204,11 +241,11 @@ emitPythonDefinitions layout bits declarations units = do
                 "(symbols, attempt, error, ls.DataValue(\"lawspec.time::type::Duration::Duration\", (previous,))))")])
           condition <- case retryWhen r of
             Nothing -> pure (D.text "None")
-            Just p -> (\name -> D.text ("lambda error: " ++ name ++ "(symbols, error)")) <$> evaluator p
+            Just p -> (\name -> lambda ["error"] (name ++ "(symbols, error)")) <$> evaluator p
           pure (E.call "ls.Retry" [strategy, int (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition])
       compensate <- case policyCompensate policy of
         Nothing -> pure (D.text "None")
-        Just undo -> (\name -> D.text ("lambda value: " ++ name ++ "(symbols, value)")) <$> evaluator undo
+        Just undo -> (\name -> lambda ["value"] (name ++ "(symbols, value)")) <$> evaluator undo
       pure (E.call "ls.StagePolicy" [E.quoted (policyStage policy), retry, maybe (D.text "None") int (policyTimeout policy),
         E.quoted key, tuple gates, maybe (D.text "None") int (policyCache policy),
         D.text (if null (policyFailures policy) then "False" else "True"), compensate,
@@ -239,13 +276,21 @@ emitPythonDefinitions layout bits declarations units = do
           lambda ["state", "now"] (admit ++ "(symbols, " ++ n ++ ", state, now)"),
           lambda ["state", "now", "succeeded"] (release ++ "(symbols, state)"), waitDoc (bulkheadWait b)])
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
-    lambda parameters body = D.text ("lambda " ++ intercalate ", " parameters ++ ": " ++ body)
+    -- A callback calling a definition, laid out as a call.
+    lambda parameters body = case break (== '(') body of
+      (f, '(' : rest) | not (null rest), last rest == ')', '(' `notElem` init rest ->
+        E.lambdaExpression (map D.text parameters) (E.call f (map D.text (commaParts (init rest))))
+      _ -> D.text ("lambda " ++ intercalate ", " parameters ++ ": " ++ body)
+    commaParts text = case break (== ',') text of
+      (part, ',' : ' ' : rest) -> part : commaParts rest
+      (part, _) -> [part]
     waitDoc wait = case wait of
       Nothing -> D.text "None"
       Just Nothing -> D.text "-1"
       Just (Just d) -> int d
     tuple [] = D.text "()"
-    tuple items = D.text "(" <> D.joinWith (D.text ", ") items <> D.text ",)"
+    tuple [item] = D.group (D.text "(" <> D.nest 4 (D.softbreak <> item <> D.text ",") <> D.softbreak <> D.text ")")
+    tuple items = D.delimitTrailing 4 "(" ")" items
     int n = D.text (show n)
     jitterName j = case j of
       NoJitter -> "none"
@@ -287,7 +332,7 @@ emitPythonDefinitions layout bits declarations units = do
       , Just (owner, a) <- [findAbility units ability] ]
     -- A spec handler, made with its unit's class.
     specConstruction h = case [(o, x) | o <- units, x <- unitHandlers o, handlerId x == h] of
-      (o, x) : _ -> E.call ("_adapters(" ++ show ("lawspec_abilities." ++ idText (unitId o)) ++ ")." ++ specName x) [D.text "symbols"]
+      (o, x) : _ -> E.call "_adapters" [E.quoted ("lawspec_abilities." ++ idText (unitId o))] <> D.text "." <> E.call (specName x) [D.text "symbols"]
       [] -> E.call "ls.unknown_handler" [E.quoted (idText h)]
     lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
     lowerFirst [] = []

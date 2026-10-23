@@ -6,11 +6,12 @@
 module LawSpec.Naming
   ( Casing(..), NameKind(..), nameWords, cased, casingFor, escapeKeyword, reservedFor
   , nativeIdentifier, Scope, emptyScope, scopeWith, claim, claimAll, uniqueNames
-  , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel
+  , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, typeWords
   ) where
 
-import Data.Char (isAlphaNum, isAscii, isDigit, isLower, isUpper, toLower, toUpper)
-import Data.List (intercalate)
+import Data.Char (isAlphaNum, isAscii, isDigit, isHexDigit, isLower, isUpper, toLower, toUpper)
+import qualified LawSpec.Core as C
+import Data.List (intercalate, stripPrefix, dropWhileEnd)
 import qualified Data.Set as S
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.TestNames (lawWords, testIdentifier)
@@ -72,7 +73,7 @@ casingFor target kind = case (target, kind) of
 -- uses, so a source binder named list or ls cannot shadow them.
 reservedFor :: String -> [String]
 reservedFor target = targetKeywords target ++ case target of
-  "python" -> words "ls impl data symbols json os st given settings assume builtins print len list dict set tuple str int bool bytes float object type id range min max abs all any iter next map filter zip sorted reversed super self cls"
+  "python" -> words "ls data symbols builtins print len list dict set tuple str int bool bytes float object type id range min max abs all any iter next map filter zip sorted reversed super self cls isinstance callable"
   "javascript" -> words "ls impl data schema symbols fc assert test describe undefined NaN Infinity"
   "typescript" -> words "ls impl data schema symbols fc assert test describe undefined NaN Infinity"
   _ -> []
@@ -133,8 +134,8 @@ testName target label = testIdentifier target (lawWords label)
 -- | The suffix naming one example's test, after the law's test name and the
 -- target's separator: the example's own words, so a failure names the case.
 -- Examples with no usable words, or whose words repeat, are numbered from 1.
-exampleTestSuffix :: String -> [String] -> [String]
-exampleTestSuffix target names = uniqueNames
+exampleTestSuffix :: String -> [String] -> [String] -> [String]
+exampleTestSuffix target taken names = fst $ claimAll (scopeWith taken)
   [ case lawWords n of
       ["law"] -> "example_" ++ show i
       ws -> joined ws
@@ -153,3 +154,44 @@ boundaryTestSuffix i = "boundary_" ++ show (i + 1)
 displayLabel :: String -> String
 displayLabel ('"' : rest@('|' : _)) = rest
 displayLabel label = label
+
+-- | A local's identifier on a target. Compiler-made binders
+-- (lawspecSelection0x1, lawspecFieldcents) are named by what they hold.
+localIdentifier :: String -> String -> String
+localIdentifier target name = nativeIdentifier target ValueName (made (dropWhile (== '_') name))
+  where
+    -- lawspecField<f> holds field f; lawspecSelection0x1 a selection;
+    -- match_lawspecSelection0x0_0 a matched selection.
+    made n = case stripPrefix "lawspecField" n of
+      Just field@(_ : _) -> field
+      _ | any (== "lawspec") ws, kept@(_ : _) <- filter (not . null) (map trimmed (filter (/= "lawspec") ws)) -> intercalate "_" kept
+        | otherwise -> n
+      where
+        ws = nameWords n
+        trimmed w = if any isDigit w then dropWhileEnd (`elem` ("0123456789x" :: String)) w else w
+
+-- | A definition's name as a reader sees it. A specialised copy
+-- (lawspec_count_9e2e60259d76bad2, from SpecializeDefinitions) is named
+-- from its definition and its argument types (count_list_int32); its Core
+-- identity keeps the digest.
+readableDefinitionName :: String -> [C.Type] -> String
+readableDefinitionName name arguments = case stripPrefix "lawspec_" name of
+  Just rest | (digits@(_ : _), '_' : base) <- span isHexDigit (reverse rest), length digits >= 8 ->
+    intercalate "_" (filter (not . null) (map (map toLower) (nameWords (reverse base)) ++ concatMap typeWords arguments))
+  _ -> name
+
+-- | A type's words: List Int32 is list int32, a unit's Money is money.
+typeWords :: C.Type -> [String]
+typeWords ty = case ty of
+  C.Constructor n args -> nameWords (lastSegment n) ++ concat [typeWords t | C.TypeArgument t <- args]
+  C.TypeVariable _ -> ["value"]
+  C.Arrow a b -> typeWords a ++ ["to"] ++ typeWords b
+  where
+    lastSegment s = case breakOn s of
+      (_, Just rest) -> lastSegment rest
+      (whole, Nothing) -> whole
+    breakOn s = go [] s
+      where
+        go acc (':' : ':' : rest) = (reverse acc, Just rest)
+        go acc (c : rest) = go (c : acc) rest
+        go acc [] = (reverse acc, Nothing)
