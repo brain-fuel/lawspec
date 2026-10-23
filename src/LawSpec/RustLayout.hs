@@ -321,7 +321,9 @@ opening e = case e of
   _ -> maybe "" id (flat e)
   where
     chainOpening = case (chainPrefix e, snd (unchain e)) of
-      (Just p, links@(_ : _)) | LinkCall name _ _ <- last links -> p ++ "." ++ name ++ "("
+      -- (the chain up to its last call stays on one line only within 60
+      -- columns; otherwise it breaks after its root)
+      (Just p, links@(_ : _)) | LinkCall name _ _ <- last links, width (p ++ "." ++ name ++ "(") <= 60 -> p ++ "." ++ name ++ "("
       _ -> let (root, _) = unchain e in concat [maybe "" id (either flat flatLink r) | r <- root]
 
 -- | A block, or a closure: always overflowable.
@@ -463,6 +465,8 @@ fitsArguments limit open args texts =
 simple :: Expr -> Bool
 simple e = case e of
   Atom t -> not (null t) && (take 1 t == "\"" || "::" `notInfix` t && all (\c -> isAlphaNum c || c `elem` ("_.\"'-" :: String)) t)
+  -- (a string literal laid out as one)
+  Laid _ -> maybe False ((== "\"") . take 1) (flat e)
   Call f _ -> simple f
   Prefix op a -> op `elem` ["&", "*", "!", "-", "&mut "] && simple a
   Cast a _ -> simple a
@@ -502,7 +506,8 @@ overflowing cap e = case e of
   Cast a@(Call {}) t | maybe True (\line' -> maybe False (width line' >) cap) (oneLine e) ->
     overflowing cap a <> D.nest 4 (D.hardline <> castType t)
   -- rustfmt keeps an overflowing chain on one line up to its last call.
-  _ | isChain e, Just prefix <- chainPrefix e, (_, links@(_ : _)) <- unchain e, l@(LinkCall {}) <- last links ->
+  _ | isChain e, Just prefix <- chainPrefix e, (_, links@(_ : _)) <- unchain e, l@(LinkCall name _ _) <- last links
+    , width (prefix ++ "." ++ name ++ "(") <= 60 ->
         D.text prefix <> linkDoc l
   _ -> expr e
 
