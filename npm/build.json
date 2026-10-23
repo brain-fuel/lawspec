@@ -348,6 +348,7 @@
     "src/LawSpec/ElixirNative.hs",
     "src/LawSpec/Emit.hs",
     "src/LawSpec/Eval.hs",
+    "src/LawSpec/Explain.hs",
     "src/LawSpec/Flow.hs",
     "src/LawSpec/Frontend.hs",
     "src/LawSpec/GleamCode.hs",
@@ -514,7 +515,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "a359c45835b3656d7381d5f00f3b4c17ebe25460cdcb7b9905c7842a25eec406",
-    "lawspec.cabal": "9c92585add2ca42d21e4593f2a126bd41a4a76a51519d008f0cb655f80857c8f",
+    "lawspec.cabal": "7235ec118156a828d786be95a84604bdc03ad24f9551c3468f9f487c82315663",
     "package.yaml": "959691dcf00be69db0839fa5abcb0311ac54b9b68444dadc52bc1c3a58329c8e",
     "runtime/LawSpecCodecs.hs": "d4cf9cacf9d0f8f100423f537d30be7232b1ec3634bace0ef8b0780e9d7ad2f3",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -744,7 +745,7 @@
     "src/LawSpec/Actors/Scala.hs": "6a034fb96983fd11b8714d5c6b8c09b5cb24ceb06977b52010c2424a51b60f38",
     "src/LawSpec/Actors/Types.hs": "09f764a8da926f00817a0de0f17a03d48194c819a3c64aca78c96b19d38ac823",
     "src/LawSpec/Actors/Web.hs": "b8a63be30754569d7b150d454e656b4089a63e2f913bb2276ba722e2529e185d",
-    "src/LawSpec/Api.hs": "8fc75d62a458d4c554101057a08963b70f2fcc5df6ab979e9dd8942a97ee4f23",
+    "src/LawSpec/Api.hs": "fa5ff981fb572c363d49e744f9a9564a760983812597ff69300bf9304b334b4d",
     "src/LawSpec/ArtifactEmit.hs": "c6249a494be8c522a59971f60ad1eb935c5d5f510183bbe3692f59d7eea3c416",
     "src/LawSpec/Attestation.hs": "54c932e3cb9a297c220996f0cbe9cb5dc8db8ad8d532f15c6d4220a6a6078f28",
     "src/LawSpec/Backend.hs": "bd11686c38f6bf52791f3d490bb95e60c53feda6f6fd40dda03dcb3278745760",
@@ -860,6 +861,7 @@
     "src/LawSpec/ElixirNative.hs": "877b30fcc03f481470b1b5b04485c8da53eee15caa7a94e2edff5a5667c22046",
     "src/LawSpec/Emit.hs": "943fe7fc59e4e170135ecfcb4585906792d8e44c6196f7f8ebca27519d8a5510",
     "src/LawSpec/Eval.hs": "441bb211945a09fbbe03641e7f2ee4d321699c068909d6be80b3f8fb28adb3ea",
+    "src/LawSpec/Explain.hs": "96876a80ac213e228e66ab8686b8ebfbb99beee07686cf1ae60d1630724f831e",
     "src/LawSpec/Flow.hs": "01c840c6045a2ded8a334947ac3d48f167c49f77bc69ba9c6536860e209f1a87",
     "src/LawSpec/Frontend.hs": "4b4bfd408703cd5f04244cf02145f60c0aa4061564c1d100464a9186f32dd502",
     "src/LawSpec/GleamCode.hs": "49d34079b19593079c768b5c6fd7b38d2c339568c296d8370b955afb28635f9d",
@@ -1023,9 +1025,9 @@
     "wasm/cabal.project": "91ad752c055a034fff42bf1815125ce2174630a41859fe8d5c571e9a12e50b7d",
     "wasm/cabal.project.freeze": "e067df77442b8111c97b3f12cc215af5ca69668aa65f95f3ff90110c22933170",
     "wasm/lawspec-wasm.cabal": "0313a5c4c92f983c40219ca017ee720cbeb2834d69433cec9c3d8f0a3c9b1453",
-    "npm/core.wasm": "0c654192fcf157197ee38dccef4bf0192ad685b92dd8aaf3ef3d0f4d720348b0",
+    "npm/core.wasm": "94d11a399a3b1e7b0d03004f80505c87e92941a63786ccff7ebd1989365a47cd",
     "npm/core_jsffi.js": "686462a345fd076a5385ca8ef633cf948540babab0af89230668e156b29b7536",
-    "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
-    "npm/index.d.ts": "3efda72842f1c99bc15bc2e764f0ef2707db7be0d47dfc98cbae2263dbf7af04"
+    "npm/api.mjs": "d3928fad743a316a026f5d6658e75a9f390626ac3f28b182591a5e93d7cf9888",
+    "npm/index.d.ts": "495de58ad273fb05490c3573c914cc80a63f9d84027f7745541667e341dd763f"
   }
 }

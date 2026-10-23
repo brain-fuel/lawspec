@@ -49,6 +49,8 @@ for(const machineBits of [32,64]){
   for(const [index,text]of fixtures.entries()){
     const input={...options,sources:[{path:'fixture.lawspec',content:text}],machineBits};
     for(const method of ['check','expand'])await compare(method,input,`${method}:${index}:${machineBits}`,{rejected:index===paths.length});
+    // Explanations are compiler output too: every view, byte for byte.
+    for(const view of ['eng','math','dev'])await compare('explain',{...input,view},`explain:${view}:${index}:${machineBits}`,{rejected:index===paths.length});
   }
   console.log('Frontend full-response parity:',fixtures.length,'fixtures,',machineBits,'bits');
 }

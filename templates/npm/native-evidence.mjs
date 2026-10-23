@@ -196,4 +196,15 @@ export function attachNativeEvidence(evidence,observations){
   });
 }
 
-export {nativeEvidenceText} from './explain.mjs';
+// Native conformance a law's evidence row carries, for lawspec evidence.
+export function nativeEvidenceText(item){
+  if(!item.nativeEvidence)return '';
+  const summary=item.nativeEvidence;
+  return [`Native conformance: ${summary.status}; search completeness: ${summary.searchCompleteness}`,
+    ...summary.observations.map(row=>`${row.target} (${row.root}): ${row.outcome}; ${row.freshness}`+
+      (row.attempt?`; seed ${row.attempt.seed}; ${row.attempt.at}`:'')+`; ${row.reason}`),
+    ...summary.observations.flatMap(row=>(row.attempt?.tests??[]).filter(test=>test.status==='failed')
+      .map(test=>`${test.name}: ${test.reason??test.failure??test.message??'native test failed'}`)),
+    ...summary.observations.filter(row=>row.attempt?.invocation.output)
+      .map(row=>'Native invocation output (scoped to that invocation):\n'+row.attempt.invocation.output)].join('\n');
+}

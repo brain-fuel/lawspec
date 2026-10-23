@@ -29,9 +29,7 @@ import Gen.Json
 import Gen.Template
 import Gen.Unicode (caseFoldData)
 import LawSpec.Code.Doc (Layout(..))
-import qualified LawSpec.Core as Core
 import qualified LawSpec.Targets as Targets
-import qualified LawSpec.Core.Types as CoreTypes
 import LawSpec.Collections (collectionsSource)
 import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
@@ -144,13 +142,6 @@ factFills version =
   , ("kotlin-bounded-generators", Block (lines kotlinBoundedCases))
   , ("scala-bounded-generators", Block (lines scalaBoundedCases))
   , ("eq-set-operations-source", Block (lines eqSetConformanceSource))
-  , ("builtin-data-names", Inline (json (Array
-      [ Object [("id", String (Core.idText (Core.dataId declaration))), ("name", String (Core.dataName declaration)),
-          ("constructors", Array [Object [("id", String (Core.idText (Core.constructorId constructor))),
-            ("name", String (Core.constructorName constructor)),
-            ("fields", Array [Object [("name", String (Core.binderName field))] | field <- Core.constructorFields constructor])]
-            | constructor <- Core.dataConstructors declaration])]
-      | declaration <- CoreTypes.builtinDataDeclarations ])))
   , ("targets", Inline (json (Array (map String scaffoldTargets))))
   , ("program-targets", Inline (json (Array (map String Targets.programTargets))))
   , ("artifact-targets", Inline (json (Array (map String Targets.artifactTargets))))

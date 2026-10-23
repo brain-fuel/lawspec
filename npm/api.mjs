@@ -7,6 +7,7 @@ export async function createCompiler() {
     format: (input) => call({schemaVersion: 5, ...input, method: 'format'}),
     check: (input) => call({schemaVersion: 5, ...input, method: 'check'}),
     expand: (input) => call({schemaVersion: 5, ...input, method: 'expand'}),
+    explain: (input) => call({schemaVersion: 5, ...input, method: 'explain'}),
     proofTasks: (input) =>
         call({schemaVersion: 5, ...input, method: 'proofTasks'}),
     planGeneration: (input) =>

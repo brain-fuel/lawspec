@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText} from './compiler-input.mjs';
 import {programTargets as targets} from '../templates.mjs';
 
 test('pinned full Unicode folding preserves author names, scope and mandatory checks through the WASM API',async()=>{
@@ -25,9 +25,12 @@ end unit
     assert.deepEqual(result.diagnostics,[]);
     assert.ok(result.evidence.filter(item=>item.stage==='law').every(item=>item.status==='exhaustively-checked'));
     const law=result.laws.find(law=>law.name==='portable');assert.ok(law);
-    const business=explainLaw(law,result,'business');
-    assert.match(business.text,/prelude\.caseFold/);
-    assert.doesNotMatch(business.text,/textFoldPoint|lawspecTextTextCaseFold/);
+    for(const view of ['eng','math','dev']){
+      const [shown]=await explanations(compiler,input,view,'folding::portable');
+      // eng names prelude functions by their words; math and dev keep the name.
+      assert.match(explanationText(shown),view==='eng'?/The case fold for/:/prelude\.caseFold/);
+      assert.doesNotMatch(explanationText(shown),/textFoldPoint|lawspecTextTextCaseFold/);
+    }
     const none=await compiler.check({...input,verification:{layers:[]}});
     assert.deepEqual(none.diagnostics,[]);
     assert.ok(none.evidence.filter(item=>item.stage==='law').every(item=>item.status==='not-verified'));

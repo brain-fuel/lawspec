@@ -992,6 +992,7 @@ test-suite lawspec-test
       EqSetOperationsSpec
       EqSetSpec
       ExactWideningSpec
+      ExplainSpec
       FieldDefinitionExpansionSpec
       FixtureSource
       FlowSpec

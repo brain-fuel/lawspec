@@ -91,6 +91,8 @@ try {
       "lawspec",
       "explain",
       "example.codec::codec",
+      "--view",
+      "dev",
     ],
     app,
   );

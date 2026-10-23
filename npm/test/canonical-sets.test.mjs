@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText} from './compiler-input.mjs';
 
 const compiler = await createCompiler();
 const request = (content, layers = [], machineBits = 64) => ({
@@ -102,17 +102,18 @@ end unit
 
 
 test('explanation domains use canonical Set and SortedSet metadata', async () => {
-  const result = await compiler.check(request(`unit set_names
+  const names = request(`unit set_names
 
 law members is definition: for all (members :: Set Float64) => members = members end for all end definition end law
 law ordered is definition: for all (members :: SortedSet Integer) => members = members end for all end definition end law
 
 end unit
-`));
+`);
+  const result = await compiler.check(names);
   assert.deepEqual(result.diagnostics, []);
-  const [members, ordered] = result.laws;
-  assert.match(explainLaw(members, result, 'developer').text, /members of type Set Float64/);
-  assert.match(explainLaw(ordered, result, 'developer').text, /members of type SortedSet Integer/);
+  const [members, ordered] = (await explanations(compiler, names, 'dev')).map(explanationText);
+  assert.match(members, /members of type Set Float64/);
+  assert.match(ordered, /members of type SortedSet Integer/);
   assert.ok(evidence(result).every(item => item.status === 'not-verified'));
   const custom = {path: 'custom.lawspec', content: `unit custom
 
@@ -126,10 +127,13 @@ import lawspec.collections as collections
 law own is definition: for all (members :: custom.Set) => members = members end for all end definition end law
 law builtin is definition: for all (members :: collections.Set Bool) => members = members end for all end definition end law
 end unit`};
-  const qualified = await compiler.check({...request(''), sources: [custom, use]});
+  const both = {...request(''), sources: [custom, use]};
+  const qualified = await compiler.check(both);
   assert.deepEqual(qualified.diagnostics, []);
-  const own = qualified.laws.find(law => law.name === 'own');
-  const builtin = qualified.laws.find(law => law.name === 'builtin');
-  assert.match(explainLaw(own, qualified).text, /members of type custom\.Set/);
-  assert.match(explainLaw(builtin, qualified).text, /members of type lawspec\.collections\.Set Bool/);
+  const shown = await explanations(compiler, both, 'dev');
+  const own = explanationText(shown.find(e => e.law === 'display::law::own'));
+  const builtin = explanationText(shown.find(e => e.law === 'display::law::builtin'));
+  assert.match(own, /members of type custom\.Set/);
+  assert.match(builtin, /members of type lawspec\.collections\.Set Bool/);
+  assert.match(explanationText((await explanations(compiler, both, 'eng', 'display::own'))[0]), /For every members \(a custom\.Set\)/);
 });

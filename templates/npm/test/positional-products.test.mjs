@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {createTypePresentation} from '../typed-presentation.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText,explanationViews} from './compiler-input.mjs';
 
 const compiler=await createCompiler();
 const content=await readFile(new URL('../../test/fixtures/canonical-positional-products.lawspec',import.meta.url),'utf8');
@@ -70,14 +69,13 @@ test('all explanation views render tuple positions from typed metadata and retai
   const result=await compiler.check({...options,sources});
   assert.deepEqual(result.diagnostics,[]);
   const before=structuredClone(result);
-  for(const law of result.laws)for(const view of ['developer','business','formal','evidence']) {
-    const explanation=explainLaw(law,result,view);
-    assert.equal(explanation.assertion,law.assertion);
-    assert.deepEqual(explanation.evidence,result.evidence.filter(row=>row.declaration===law.id));
-    assert.doesNotMatch(explanation.text,/_tuple\d+_|lawspec::structural|_lawspecParameter/);
+  for(const view of explanationViews)for(const explanation of await explanations(compiler,{...options,sources},view)) {
+    assert.ok(result.laws.some(law=>law.id===explanation.law));
+    assert.doesNotMatch(explanationText(explanation),/_tuple\d+_|lawspec::structural|_lawspecParameter/);
   }
   const packet=result.laws.find(law=>law.examples.length===5);
-  assert.match(explainLaw(packet,result,'developer').text,/\(record\{ready = true\}, \(true, false\)\)/);
+  const packetText=explanationText((await explanations(compiler,{...options,sources},'dev')).find(e=>e.law===packet.id));
+  assert.match(packetText,/\(record\{ready = true\}, \(true, false\)\)/);
   assert.deepEqual(result,before);
   const domain=await compiler.check({...options,verification:{layers:[]},sources:[{path:'domain.lawspec',content:`unit domain
 
@@ -87,7 +85,13 @@ end unit
 `}]});
   assert.deepEqual(domain.diagnostics,[]);
   const type=domain.laws[0].inputs[0].type;
-  const spelling=createTypePresentation(domain).typeName(type);
+  const [shown]=await explanations(compiler,{...options,verification:{layers:[]},sources:[{path:'domain.lawspec',content:`unit domain
+
+law dimensions is definition: for all (value of type (Nat, Nat)) => true end for all end definition end law
+
+end unit
+`}]},'dev');
+  const spelling=shown.sections.find(section=>section.kind==='inputs').lines[0].replace(/^Inputs: value of type /,'');
   assert.doesNotMatch(spelling,/_tuple|structural/);
   const roundtrip=await compiler.check({...options,verification:{layers:[]},sources:[{path:'identity.lawspec',content:`unit identity
 
@@ -101,43 +105,7 @@ end unit
   assert.deepEqual(identity.arguments[0].type,type);
 });
 
-function mockedTuple() {
-  const type=name=>({kind:'constructor',name,arguments:[]});
-  return {id:'tuple',name:'TupleStorage',parameters:[],constructors:[{id:'tuple::Record',name:'Record',
-    fields:[{id:'right',name:'second',type:type('Bool')},{id:'left',name:'first',type:type('Integer')}]}],
-    structure:{kind:'record',positions:['first','second'],fields:[{name:'first',predicates:[]},{name:'second',predicates:[]}]}};
-}
-
-test('tuple presentations obey explicit positions while keeping computations in actual order',()=>{
-  const declaration=mockedTuple();
-  const presentation=createTypePresentation({dataTypes:[declaration]});
-  const tupleType={kind:'constructor',name:'tuple',arguments:[]};
-  assert.equal(presentation.typeName(tupleType),'(Integer, Bool)');
-  const scalar=(type,value)=>({type,value});
-  assert.equal(presentation.valueText({kind:'data',type:tupleType,constructor:'tuple::Record',fields:[scalar('Bool',true),scalar('Integer',7)]}),'(7, true)');
-  const effect=operation=>({type:tupleType,text:'effect '+operation,node:{kind:'perform',ability:'Trace',operation,arguments:[]}});
-  const expression={type:tupleType,text:'ordered construction',node:{kind:'construct',constructor:'tuple::Record',arguments:[effect('second'),effect('first')]}};
-  const text=presentation.expressionText(expression,new Map());
-  assert.match(text,/let component2 = perform Trace\.second\(\) in let component1 = perform Trace\.first\(\) in \(component1, component2\)/);
-  const local={type:tupleType,text:'input',node:{kind:'local',id:'input'}};
-  const projected={type:tupleType,text:'projection',node:{kind:'field',constructor:'tuple::Record',index:1,value:local}};
-  assert.match(presentation.expressionText(projected,new Map([['input','reading']])),/first matching case of reading: when \(component, #any\) then component end case/);
-  const updated={type:tupleType,text:'update',node:{kind:'update',constructor:'tuple::Record',index:1,value:effect('subject'),field:effect('replacement')}};
-  const update=presentation.expressionText(updated,new Map());
-  assert.ok(update.indexOf('Trace.replacement')<update.indexOf('Trace.subject'));
-});
-
-test('invalid or missing position metadata keeps structural and nominal identities explicit',()=>{
-  for(const positions of [undefined,[],['first','first'],['missing','second']]) {
-    const declaration=mockedTuple();
-    declaration.structure.positions=positions;
-    const presentation=createTypePresentation({dataTypes:[declaration]});
-    assert.equal(presentation.typeName({kind:'constructor',name:'tuple',arguments:[]}),'record{second of type Bool, first of type Integer}');
-  }
-  const declaration=mockedTuple();
-  delete declaration.structure;
-  assert.equal(createTypePresentation({dataTypes:[declaration]}).typeName({kind:'constructor',name:'tuple',arguments:[]}),'TupleStorage');
-});
+// Tuple position metadata in presentation: test/ExplainSpec.hs.
 
 test('generic phrase collisions require an explicit identity-based native name override on every target',async()=>{
   const input={...options,verification:{layers:[]},sources:[{path:'collision.lawspec',content:

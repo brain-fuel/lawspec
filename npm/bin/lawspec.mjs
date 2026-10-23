@@ -8,7 +8,6 @@ import { targets, artifactTargets, templates, commands, setup } from "../templat
 import { generateExamples } from "../examples-command.mjs";
 import { proveWithZ3 } from "../proof.mjs";
 import { serveLanguage } from "../lsp.mjs";
-import { explainLaw, explanationViews } from "../explain.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { recordNativeAttempts, nativeSeed, attestedKeys, readNativeObservations, attachNativeEvidence, nativeEvidenceText } from "../native-evidence.mjs";
@@ -759,7 +758,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -1056,20 +1055,16 @@ async function main() {
     return;
   }
   if (verb === "explain") {
-    const result = diagnostics(await compiler.expand(input));
-    const indices = result.laws
-      .map((e, i) => ({ e, i }))
-      .filter(
-        ({ e }) => !positional[0] || `${e.owner}::${e.name}` === positional[0],
-      );
-    if (!indices.length) throw new Error("No matching law");
-    const view = options.view ?? "developer";
-    if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join("|")}`);
-    const observed={...result,evidence:attachNativeEvidence(result.evidence,await readNativeObservations({
-      compiler,input,selected,roots,configRoot,build:await buildDigest(),evidence:result.evidence,
-      attestation:await readAttestation(config)}))};
-    const explanations = indices.map(({e}) => explainLaw(e, observed, view));
-    output(options.json ? explanations : explanations.map(e => e.text).join("\n\n"));
+    // The compiler words the law (eng by default); the CLI only reads the
+    // recorded native observations and passes their evidence rows in.
+    const request = { ...input, view: options.view ?? "eng", ...(positional[0] ? { law: positional[0] } : {}) };
+    let explained = diagnostics(await compiler.explain(request));
+    const expanded = diagnostics(await compiler.expand(input));
+    const observations = await readNativeObservations({ compiler, input, selected, roots, configRoot,
+      build: await buildDigest(), evidence: expanded.evidence, attestation: await readAttestation(config) });
+    if (observations.length)
+      explained = diagnostics(await compiler.explain({ ...request, evidence: attachNativeEvidence(expanded.evidence, observations) }));
+    output(options.json ? explained.explanations : explained.text);
     return;
   }
   if (verb === "test" && !options.benchmarks && config.version === 2 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))) {

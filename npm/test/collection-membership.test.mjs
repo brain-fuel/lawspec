@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText,explanationViews} from './compiler-input.mjs';
 
 const content = await readFile(new URL('../../test/fixtures/canonical-collection-membership.lawspec', import.meta.url), 'utf8');
 const input = (machineBits, layers, source = content) => ({schemaVersion: 5, languageProfile: '1.0-rc.2',
@@ -23,11 +23,10 @@ test('finite collection membership and predicates share checked typed execution'
     assert.deepEqual(bare.diagnostics, []);
     assert.ok(evidence(bare).every(item => item.status === 'not-verified'));
     assert.deepEqual(bare.laws.map(law => law.assertion), result.laws.map(law => law.assertion));
-    for (const law of result.laws) for (const view of ['developer', 'business', 'formal', 'evidence']) {
-      const shown = explainLaw(law, result, view);
-      assert.equal(shown.assertion, law.assertion);
-      assert.doesNotMatch(shown.text, /~lawspecAnyItem/);
-      assert.doesNotMatch(shown.text, /lawspec_[\w]+_[\da-f]{8,}|EqSetItems|Cons\(head/);
+    for (const view of explanationViews) for (const shown of await explanations(compiler, request, view)) {
+      assert.ok(result.laws.some(law => law.id === shown.law));
+      assert.doesNotMatch(explanationText(shown), /~lawspecAnyItem/);
+      assert.doesNotMatch(explanationText(shown), /lawspec_[\w]+_[\da-f]{8,}|EqSetItems|Cons\(head/);
     }
     const formatted = await compiler.format(request);
     assert.deepEqual(formatted.diagnostics, []);

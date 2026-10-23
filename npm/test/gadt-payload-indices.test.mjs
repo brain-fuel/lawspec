@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText,explanationViews} from './compiler-input.mjs';
 
 const compiler=await createCompiler();
 const path='test/fixtures/canonical-gadt-payload-indices.lawspec';
@@ -68,9 +68,7 @@ test('indexed payload formatting and explanation preserve typed obligations and 
   const checked=await compiler.check({...options,sources:formatted.formattedSources});
   assert.deepEqual(checked.diagnostics,[]);
   assert.deepEqual(checked.dataTypes.map(row=>row.id),result.dataTypes.map(row=>row.id));
-  for(const law of result.laws)for(const view of ['developer','business','formal','evidence']) {
-    const explanation=explainLaw(law,result,view);
-    assert.equal(explanation.assertion,law.assertion);
-    assert.deepEqual(explanation.evidence,result.evidence.filter(row=>row.declaration===law.id));
+  for(const view of explanationViews)for(const explanation of await explanations(compiler,{...options,sources},view)) {
+    assert.ok(result.laws.some(law=>law.id===explanation.law));
   }
 });
