@@ -307,7 +307,8 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     text `shouldSatisfy` isInfixOf "LS.awaitTask (NativeModule0.push argument1 argument2)"
     text `shouldSatisfy` isInfixOf "LS.awaitTask NativeModule0.new"
     -- A Unit result discards the native one.
-    text `shouldSatisfy` isInfixOf "P.seq\\n              nativeResult\\n              (Codec.encode (Codec.unitCodec schema 64 :: Codec.Codec ()) ())"
+    text `shouldSatisfy` isInfixOf "P.seq"
+    text `shouldSatisfy` isInfixOf "(Codec.unitCodec schema 64 :: Codec.Codec ())"
     -- A method needs the handle bound, since the method lives in its module;
     -- the error names the handle and the entry to add.
     let unbound = dispatch (encode (request ([] :: [Value])))

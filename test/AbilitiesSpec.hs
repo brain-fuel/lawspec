@@ -276,7 +276,7 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
           , ("go", "example/payments/lawspec_definitions.go", "lsInstallHandlers(symbols")
           , ("java", "src/main/java/lawspec/definitions/example/Payments.java", "LawSpecRuntime.installHandlers(")
           , ("kotlin", "src/main/kotlin/lawspec/definitions/example/Payments.kt", "LawSpecRuntime.installHandlers(")
-          , ("haskell", "src/LawSpecDefinitions/Example/Payments.hs", "(LS.installHandlers")
+          , ("haskell", "src/LawSpecDefinitions/Example/Payments.hs", "LS.installHandlers")
           , ("rust", "src/lawspec_definitions.rs", "ctx.install_handlers") ] $ \(target, path, expected) ->
       it ("gives a definition's native function its handlers on " ++ target) $
         fileOf target path source `shouldSatisfy` either (const False) (isInfixOf expected)

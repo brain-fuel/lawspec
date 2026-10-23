@@ -77,7 +77,7 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
       text `shouldSatisfy` isInfixOf "} -> Fixed B.ByteString"
       text `shouldSatisfy` isInfixOf "Value :: a0"
       text `shouldSatisfy` isInfixOf "Values :: [a0]"
-      codec `shouldSatisfy` isInfixOf "EmptyCase, GADTs, ScopedTypeVariables"
+      codec `shouldSatisfy` isInfixOf "{-# LANGUAGE GADTs #-}"
       codec `shouldSatisfy` isInfixOf "Codec.bytesCodec schema bits"
       codec `shouldSatisfy` isInfixOf "Codec.encode")
       [D.Pretty 80, D.Compact]

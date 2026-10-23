@@ -369,7 +369,7 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
         contents `shouldSatisfy` isInfixOf "echo :: (Data.Tree I.Int8) -> (Data.Tree I.Int8)"
         contents `shouldSatisfy` isInfixOf "Codec.decode"
         contents `shouldSatisfy` isInfixOf "Strategies.strategy"
-        contents `shouldSatisfy` isInfixOf "Schema.validate"
+        contents `shouldSatisfy` isInfixOf "Schema.checked"
   it "rejects Haskell support-module path collisions before output" $ do
     let source = Source "collision" "unit lawSpecData\n\necho :: Bool -> Bool\nend unit\n"
     (compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "haskell")
