@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, call, callWith, trailingChain, parameters, lambda, trailing, trailingCall, bind, chain, block, statements
+  ( scalaStyle, scalaString, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
   , condition, conjunction, equalsBody, comment
   ) where
 
@@ -83,6 +83,12 @@ chain receiver methods = chainWith receiver methods Nothing
 -- lambda, broken before each dot as chain breaks.
 trailingChain :: D.Doc -> [(String, [D.Doc])] -> String -> [String] -> [D.Doc] -> D.Doc
 trailingChain receiver methods name params body = chainWith receiver methods (Just (D.text ("." ++ name ++ " ") <> lambda params body))
+
+-- | receiver.name(param => body): a chain ending in a call of one lambda,
+-- which scalafmt keeps in the call's parentheses.
+trailingChain' :: D.Doc -> String -> String -> D.Doc -> D.Doc
+trailingChain' receiver name param body = chainWith receiver []
+  (Just (D.group (D.text ("." ++ name ++ "(" ++ param ++ " =>") <> D.nest 2 (D.softline <> body) <> D.softbreak <> D.text ")")))
 
 chainWith :: D.Doc -> [(String, [D.Doc])] -> Maybe D.Doc -> D.Doc
 chainWith receiver methods final

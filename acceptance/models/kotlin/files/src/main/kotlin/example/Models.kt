@@ -16,7 +16,7 @@ object Models {
 
     fun empty(value0: Unit): Stack = Stack.Empty
 
-    fun push(value0: Byte, value1: Stack): PushFlow = PushFlow(Stack.Push(lawspec.data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)))
+    fun push(value0: Byte, value1: Stack): PushFlow = PushFlow(Stack.Push(lawspec.data.PushDetails(value1, value0)))
 
     // The flow signature guarantees a nonempty stack.
     fun pop(value0: Stack): PopFlow {

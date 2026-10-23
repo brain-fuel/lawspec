@@ -10,14 +10,14 @@ object Gadt {
   def evalNumber(value0: lawspec.data.Expr[scala.math.BigInt]): scala.math.BigInt =
     value0 match {
       case Expr.Number(value) => value
-      case Expr.Plus(lawspec.data.Record772b3aa87ecd053fcced573681dbd8344f63903af98f493d5b458b00157f001e(left, right)) => evalNumber(left) + evalNumber(right)
+      case Expr.Plus(lawspec.data.PlusDetails(left, right)) => evalNumber(left) + evalNumber(right)
     }
 
   // (example.gadt::type::Expr (Bool) -> Bool)
   def evalTruth(value0: lawspec.data.Expr[scala.Boolean]): scala.Boolean =
     value0 match {
       case Expr.Truth(value) => value
-      case Expr.Same(lawspec.data.Record772b3aa87ecd053fcced573681dbd8344f63903af98f493d5b458b00157f001e(left, right)) => evalNumber(left) == evalNumber(right)
+      case Expr.Same(lawspec.data.PlusDetails(left, right)) => evalNumber(left) == evalNumber(right)
       case Expr.Negate(operand) => !evalTruth(operand)
     }
 
@@ -27,7 +27,7 @@ object Gadt {
     value0: lawspec.data.Expr[lawspec.data.Pair[scala.math.BigInt, scala.Boolean]],
   ): lawspec.data.Pair[scala.math.BigInt, scala.Boolean] =
     value0 match {
-      case Expr.Both(lawspec.data.Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e(first, second)) => Pair(evalNumber(first), evalTruth(second))
+      case Expr.Both(lawspec.data.BothDetails(first, second)) => Pair(evalNumber(first), evalTruth(second))
     }
 
   // (example.gadt::type::Expr (BigInt) -> example.gadt::type::Expr (BigInt))

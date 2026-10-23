@@ -41,6 +41,6 @@ final class Matchers {
 
   // (Int32 -> example.matchers::type::Order)
   static lawspec.data.Order ship(int value0) {
-    return new lawspec.data.Order.Shipped(new lawspec.data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911('post', value0))
+    return new lawspec.data.Order.Shipped(new lawspec.data.ShippedDetails('post', value0))
   }
 }

@@ -474,7 +474,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       where madeWith = maybe [] (\(t, local) -> [ktNativeArgument t (Doc.text local)]) (resourceOf a c)
     ktExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
-        Right (KotlinExpr.call evaluator (Doc.text "symbols" : values))
+        Right (KotlinExpr.call (KotlinLayout.escapedPath evaluator) (Doc.text "symbols" : values))
       -- raise aborts to the nearest attempt of its Fail ability.
       C.Perform op [_] | C.isFail (C.operationAbility op) ->
         Right (KotlinExpr.call "LawSpecRuntime.raiseFailure" (KotlinExpr.quoted (C.abilityKey (C.operationAbility op)) : values))

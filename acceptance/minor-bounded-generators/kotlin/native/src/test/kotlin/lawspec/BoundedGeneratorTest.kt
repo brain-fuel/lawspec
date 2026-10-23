@@ -8,7 +8,10 @@ import io.kotest.property.RandomSource
 import io.kotest.property.arbitrary.*
 import java.math.BigInteger
 import lawspec.runtime.LawSpecRuntime
+import lawspec.testing.LawSpecScalars
 import lawspec.testing.lawspecList
+
+private const val MACHINE_BITS = 64
 
 private data class RangeCase(
     val name: String, val bits: Int, val lower: BigInteger, val upper: BigInteger,

@@ -2,5 +2,5 @@
 <<<<<<<
 return new Pairs(value0)
 =======
-return new Pairs(new Row.Cell(new lawspec.data.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f((byte) 0, value0)))
+return new Pairs(new Row.Cell(new lawspec.data.CellDetails((byte) 0, value0)))
 >>>>>>>

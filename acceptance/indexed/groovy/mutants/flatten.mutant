@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Indexed.groovy
 <<<<<<<
-      return append(flatten(bin.value().left()), new Vec.VCons<Byte>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<Byte>(bin.value().value(), flatten(bin.value().right()))))
+      return append(flatten(bin.value().left()), new Vec.VCons<Byte>(new lawspec.data.VConsDetails<Byte>(bin.value().value(), flatten(bin.value().right()))))
 =======
-      return append(flatten(bin.value().left()), new Vec.VCons<Byte>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<Byte>(bin.value().value(), new Vec.VNil<Byte>())))
+      return append(flatten(bin.value().left()), new Vec.VCons<Byte>(new lawspec.data.VConsDetails<Byte>(bin.value().value(), new Vec.VNil<Byte>())))
 >>>>>>>

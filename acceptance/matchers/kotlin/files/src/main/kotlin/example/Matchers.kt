@@ -24,5 +24,5 @@ object Matchers {
         words.findAll(value0.lowercase()).map { it.value }.joinToString("-")
 
     // (Int32 -> example.matchers::type::Order)
-    fun ship(value0: kotlin.Int): lawspec.data.Order = lawspec.data.Order.Shipped(lawspec.data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911("post", value0))
+    fun ship(value0: kotlin.Int): lawspec.data.Order = lawspec.data.Order.Shipped(lawspec.data.ShippedDetails("post", value0))
 }

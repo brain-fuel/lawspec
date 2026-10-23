@@ -12,7 +12,7 @@ public final class Failures {
   public static java.util.concurrent.CompletableFuture<java.lang.Integer> settle(int value0) {
     return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
       if (value0 < 0) throw new lawspec.runtime.LawSpecRuntime.Fail(new lawspec.data.PaymentError.Blocked());
-      if (value0 == 0) throw new lawspec.runtime.LawSpecRuntime.Fail(new lawspec.data.PaymentError.Declined(new lawspec.data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7("there is nothing to settle")));
+      if (value0 == 0) throw new lawspec.runtime.LawSpecRuntime.Fail(new lawspec.data.PaymentError.Declined(new lawspec.data.DeclinedDetails("there is nothing to settle")));
       return value0;
     });
   }

@@ -96,7 +96,8 @@ scalaSource datas wire a = do
               Just _ -> [ L.bind "next" call, L.call next [L.chain replyCodec [("encode", [D.text "next.first"])], D.text "next.second"] ]
               Nothing -> [ L.call next [D.text "LawSpecRuntime.absent(\"Unit\")", call] ]
         pure (L.call "handlers.put" [D.text (scalaQuoted (handlerName h)), L.call ("LawSpecRuntime.Served[" ++ own ++ "]")
-          [ D.text ("(s: " ++ own ++ ", args: java.util.List[LawSpecRuntime.Value]) => ") <> L.block (D.text "val symbols = LawSpecScala.symbols()" : result)
+          [ L.parameters mempty [D.text ("s: " ++ own), D.text "args: java.util.List[LawSpecRuntime.Value]"] <> D.text " => " <>
+              L.block (D.text "val symbols = LawSpecScala.symbols()" : result)
           , L.call "java.util.List.of[Object]" (map descriptor ds)
           , descriptor r ]])) (wireHandlers w)
       methods <- mapM (\(h, _, _) -> do

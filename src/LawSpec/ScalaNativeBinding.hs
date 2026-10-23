@@ -105,7 +105,7 @@ emitBindings minify plan testing files = do
         resultBody <- case ref of
           StaticCall r -> do
             let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
-            pure $ if async then [application <> D.text ".map(result => " <> returned <> D.text ")(using scala.concurrent.ExecutionContext.parasitic)"]
+            pure $ if async then [mapped application returned]
               else if result == C.scalarType "Unit" then [application, D.text "()"] else
               [L.bind "result" application, returned]
           _ -> do
@@ -121,9 +121,8 @@ emitBindings minify plan testing files = do
                 helper <- maybe (Left "unplanned native call") Right
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
                 pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
-            pure $ if async then [application <> D.text ".map(result => " <>
-                (if result == C.scalarType "Unit" then D.text "()" else returnedOf (D.text ("result.asInstanceOf[" ++ D.render D.Compact nativeResultType ++ "]"))) <>
-                D.text ")(using scala.concurrent.ExecutionContext.parasitic)"]
+            pure $ if async then [mapped application
+                (if result == C.scalarType "Unit" then D.text "()" else returnedOf (D.text ("result.asInstanceOf[" ++ D.render D.Compact nativeResultType ++ "]")))]
               else if result == C.scalarType "Unit" then [application, D.text "()"]
               -- A method's null is None; anything else is Some.
               else case maybeElement of
@@ -256,6 +255,9 @@ emitBindings minify plan testing files = do
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
     method value name args = L.chain value [(name, args)]
+    -- future.map(result => value)(using parasitic), as a chain.
+    mapped future value = L.trailingChain' future "map" "result" value <>
+      D.text "(using scala.concurrent.ExecutionContext.parasitic)"
     canonicalCodec = S.scalaCodecDocIn ("Schema", "MachineBits") (D.text "symbols") declarations
     nativeCodec = S.scalaNativeCodecDocIn ("Schema", "MachineBits") declarations
     -- The exceptions lawspec.json maps to a failure of type failure, as cases

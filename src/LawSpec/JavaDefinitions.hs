@@ -227,8 +227,9 @@ emitDefinitions style layout bits declarations units = do
              assign "resultCodec" resultCodec,
              D.text "return resultCodec.decode(result);"]
       pure (signature <> D.hardline <> D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline body)))
-    implementation contracts (index,d) = do
-      let args = definitionArguments d
+    implementation contracts (index,d0) = do
+      let d = d0 { definitionBody = freshenShadowed (definitionBody d0) }
+          args = definitionArguments d
           binders = args ++ nestedBinders (definitionBody d)
           -- Binders keep their source names.
           names = jvmLocalTable "java" (jvmReserved "java" ++ ["result", "checkedResult", "failure", "kind"]) binders
@@ -464,3 +465,26 @@ emitDefinitions style layout bits declarations units = do
       (a,_:rest) -> a : split delimiter rest
     capitalize [] = []
     capitalize (c:cs) = toUpper c : cs
+
+-- | Java forbids a local that shadows another in scope, even inside a
+-- lambda, so a binder rebound inside its own scope (a lowering may repeat
+-- one) gets an identity of its own there.
+freshenShadowed :: Expr -> Expr
+freshenShadowed = go S.empty
+  where
+    go scope e = case expressionNode e of
+      Let binder value body ->
+        let (binder', body') = fresh scope binder body
+            inner = S.insert (binderId binder') scope
+        in e { expressionNode = Let binder' (go inner value) (go inner body') }
+      Match value cases ->
+        e { expressionNode = Match (go scope value)
+          [ let (binders, body) = foldr (\b (bs, bd) -> let (b', bd') = fresh scope b bd in (b' : bs, bd')) ([], caseBody c) (caseBinders c)
+            in c { caseBinders = binders, caseBody = go (foldr (S.insert . binderId) scope binders) body }
+          | c <- cases ] }
+      _ -> mapChildren (go scope) e
+    fresh scope binder body
+      | binderId binder `S.member` scope =
+          let renamed = Id (idText (binderId binder) ++ "::shadow::" ++ show (S.size scope))
+          in (binder { binderId = renamed }, renameLocal (binderId binder) renamed body)
+      | otherwise = (binder, body)

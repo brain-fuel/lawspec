@@ -1,6 +1,6 @@
 @@ src/main/java/example/Arithmetic.java
 <<<<<<<
-new Perfect.Node(new lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(node.value().right()), mirror(node.value().left())))
+new Perfect.Node(new lawspec.data.NodeDetails(mirror(node.value().right()), mirror(node.value().left())))
 =======
-new Perfect.Node(new lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(node.value().right()), new Perfect.Leaf((byte) 0)))
+new Perfect.Node(new lawspec.data.NodeDetails(mirror(node.value().right()), new Perfect.Leaf((byte) 0)))
 >>>>>>>

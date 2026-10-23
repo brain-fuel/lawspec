@@ -337,7 +337,7 @@ emitTests Config{..} unit laws = do
       -- Share large handler-bound assertions before registration is chunked:
       -- repeated bodies can overflow the JVM constant pool below 1,024 cases.
       let sharedBoundaries = length boundaryValues >= 64
-          helper = functionName (name e) ++ "Boundary"
+          helper = base' ++ "Boundary"
           names = map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           valuesArray = call "Array[LawSpecRuntime.Value]" (map text names)
           boundaryDocs = [testFunction (fn ++ "_" ++ boundaryTestName i) $ withSymbols

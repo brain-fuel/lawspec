@@ -9,7 +9,7 @@ import lawspec.data.Stack
 @groovy.transform.CompileStatic
 final class Flow {
   static PushFlow push(byte value0, Stack value1) {
-    return new PushFlow(new Stack.Push(new lawspec.data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be(value1, value0)))
+    return new PushFlow(new Stack.Push(new lawspec.data.PushDetails(value1, value0)))
   }
 
   // The flow signature guarantees a nonempty stack.

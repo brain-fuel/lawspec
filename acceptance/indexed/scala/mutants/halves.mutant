@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Arithmetic.scala
 <<<<<<<
-    Halves(lawspec.data.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d(value0, value0))
+    Halves(lawspec.data.HalvesDetails(value0, value0))
 =======
-    Halves(lawspec.data.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d(Row.Cell(lawspec.data.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f(0, value0)), value0))
+    Halves(lawspec.data.HalvesDetails(Row.Cell(lawspec.data.CellDetails(0, value0)), value0))
 >>>>>>>
