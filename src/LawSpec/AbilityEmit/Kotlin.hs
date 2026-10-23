@@ -48,7 +48,20 @@ emit minify bits datas units = do
     layout = if minify then D.Compact else KotlinLayout.kotlinStyle
     -- class X(...) : Supertypes {, the supertypes on the next line when the
     -- line does not fit.
-    classHeader header supertypes = D.group (line (header ++ " :") <> D.nest 4 (D.softline <> line supertypes)) <> line " "
+    -- A header with several parameters breaks them first, as ktfmt does.
+    classHeader header supertypes = case break (== '(') header of
+      (name, '(' : rest) | length (splitParameters (init rest)) > 1 -> KotlinLayout.callWith (line name)
+          (map line (splitParameters (init rest))) <> line (" : " ++ supertypes ++ " ")
+      _ -> D.group (line (header ++ " :") <> D.nest 4 (D.softline <> line supertypes)) <> line " "
+    -- Parameters split at their top-level commas.
+    splitParameters = go (0 :: Int) ""
+      where
+        go _ acc [] = [reverse acc]
+        go depth acc (c : more)
+          | c == ',' && depth == 0 = reverse acc : go depth "" (dropWhile (== ' ') more)
+          | c == '<' = go (depth + 1) (c : acc) more
+          | c == '>' = go (depth - 1) (c : acc) more
+          | otherwise = go depth (c : acc) more
     kdoc width content = javadoc width content
     calls = Definitions.definitionCalls units
     line = D.text
@@ -76,7 +89,7 @@ emit minify bits datas units = do
     signature op ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.kotlinDataTypeDoc datas) args
-      resultType <- if result == C.scalarType "Unit" then pure (line "Unit") else Native.kotlinDataTypeDoc datas result
+      resultType <- if result == C.scalarType "Unit" then pure (line "Unit") else line . D.render D.Compact <$> Native.kotlinDataTypeDoc datas result
       pure (line ("fun " ++ op) <> KotlinLayout.arguments [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
         line ": " <> resultType)
     interface a = do
@@ -231,7 +244,7 @@ productionStub datas u a = do
   methods <- mapM (\(op, ty) -> do
     let (args, result) = C.functionType ty
     types <- mapM (Native.kotlinDataTypeDoc datas) args
-    resultType <- if result == C.scalarType "Unit" then pure (D.text "Unit") else Native.kotlinDataTypeDoc datas result
+    resultType <- if result == C.scalarType "Unit" then pure (D.text "Unit") else D.text . D.render D.Compact <$> Native.kotlinDataTypeDoc datas result
     pure (KotlinLayout.equalsBody (D.text ("override fun " ++ op) <>
       KotlinLayout.arguments [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
       D.text ": " <> resultType) (D.text ("TODO(" ++ show op ++ ")")))) (C.abilityOperations a)

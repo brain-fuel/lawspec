@@ -424,7 +424,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       [Doc.text (q "Integer"),value,Doc.text "MACHINE_BITS"]
     ktNativeResult ty value = ktCodecCall ty "encode" value
     ktHandler ability = Doc.text "(" <> KotlinExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", KotlinExpr.quoted (C.abilityKey ability)] <>
-      Doc.text (" as " ++ ktInterface ability ++ ")")
+      Doc.group (Doc.nest 4 (Doc.softline <> Doc.group (Doc.text "as" <> Doc.softline <> Doc.text (ktInterface ability)))) <> Doc.text ")"
     -- An ability's pieces are its owner's: the interface, the production
     -- handler (in the owner's adapter object) and the recording.
     ktInterface ability = maybe "Any" (\a -> KotlinAbilities.abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability)

@@ -250,10 +250,9 @@ emitTests Config{..} unit laws = do
             ([symbols] ++ draws ++ [call "Pair" [call "listOf" [text (inputId inp) | inp <- inputs e], text "symbols"]])
           predicates = concatMap inputRefinements defaults
           bindingsDoc = [text "val symbols = inputs.second", text "val values = inputs.first", fromValues (inputs e)]
-          strategy = if null predicates then base else L.trailing (call "LawSpecTesting.filter" [base]) ["inputs"]
+          strategy = if null predicates then base else L.trailingCall "LawSpecTesting.filter" [base] ["inputs"]
             (bindingsDoc ++ [conjunction (map (truth . expr) predicates)])
-      pure $ testFunction (fn ++ "_property: " ++ label) [L.trailing
-        (call "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))], strategy]) ["inputs"]
+      pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))], strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     chooser = text "java.util.function.IntUnaryOperator " <> L.lambda ["count"] [text "random.random.nextInt(count)"]
     supplier doc = text "java.util.function.Supplier " <> L.lambda [] [doc]
@@ -431,20 +430,18 @@ emitTests Config{..} unit laws = do
                      number (maxAttempts (generation e)),text "symbols",call "listOf" (seeds ++ hints)] ++
                     [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
                     [scalar]
-                added = L.trailing (call "LawSpecTesting.map" [strategy]) ["drawn"]
+                added = L.trailingCall "LawSpecTesting.map" [strategy] ["drawn"]
                   [braced (L.condition "if" (text "drawn.error != null")) [state (text "values")] <> text " else " <>
                    L.block [state (text "values + drawn.requireValue()")]]
-            pure $ L.trailing (call "lawspecFlatMap" [prior]) ["inputs"]
+            pure $ L.trailingCall "lawspecFlatMap" [prior] ["inputs"]
               [braced (L.condition "if" (text "inputs.error != null")) [text "Arb.constant(inputs)"] <> text " else " <>
                L.block (inputBindings (take index (inputs e)) ++ [added])]
       base <- foldM step (text "LawSpecKotlinStrategies.cases()") (zip [0::Int ..] (generationPlan e))
       let predicates = concatMap inputRefinements (inputs e)
-          strategy = if null predicates then base else L.trailing
-            (call "LawSpecKotlinStrategies.filterCases" [base,number (maxAttempts (generation e))]) ["inputs"]
+          strategy = if null predicates then base else L.trailingCall "LawSpecKotlinStrategies.filterCases" [base,number (maxAttempts (generation e))] ["inputs"]
             (inputBindings (inputs e) ++ [conjunction (map (truth . expr) predicates)])
           body = [text "val symbols = inputs.symbols", text "val values = inputs.requireValues()", fromValues (inputs e)] ++ handlerInstalls e ++ [check]
-      pure $ testFunction (fn ++ "_property: " ++ label) [L.trailing
-        (call "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))],strategy]) ["inputs"] body]
+      pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))],strategy] ["inputs"] body]
     requiredSymbol plan
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
       | otherwise = concatMap required (generatorPredicates plan)
@@ -475,10 +472,9 @@ emitTests Config{..} unit laws = do
           base = call "LawSpecTesting.inputs" [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]
           predicates = concatMap inputRefinements (inputs e)
           bindingsDoc = [text "val symbols = inputs.second", text "val values = inputs.first", fromValues (inputs e)]
-          strategy = if null predicates then base else L.trailing (call "LawSpecTesting.filter" [base]) ["inputs"]
+          strategy = if null predicates then base else L.trailingCall "LawSpecTesting.filter" [base] ["inputs"]
             (bindingsDoc ++ [conjunction (map (truth . expr) predicates)])
-      in testFunction (fn ++ "_property: " ++ label) [L.trailing
-        (call "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))],strategy]) ["inputs"]
+      in testFunction (fn ++ "_property: " ++ label) [L.trailingCall "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))],strategy] ["inputs"]
         (bindingsDoc ++ handlerInstalls e ++ [check])]
     domain e (index,plan) = do
       seeds <- mapM literal (generatorBoundaries plan)
@@ -498,8 +494,7 @@ emitTests Config{..} unit laws = do
           invocation = runtime "refinedCase" [E.array domains,
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ testFunction (fn ++ "_property: " ++ label) [L.trailing
-        (call "checkAll" [call "LawSpecTesting.config" [number (cases cfg)],text "Arb.int()"]) ["seed"] (withSymbols [invocation])]
+      pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "checkAll" [call "LawSpecTesting.config" [number (cases cfg)],text "Arb.int()"] ["seed"] (withSymbols [invocation])]
 
 -- Whether a unit's laws install a Clock handler, so the test registers how
 -- the runtime reads one (lawspec.time's registerClock).

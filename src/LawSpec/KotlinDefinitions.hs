@@ -120,8 +120,8 @@ emitKotlinDefinitions layout bits declarations units = do
     encode codec value = KotlinLayout.chain codec [("encode", [value])]
     decode codec value = KotlinLayout.chain codec [("decode", [value])]
     -- A handler from symbols, as its ability's interface.
-    handlerAs ability = D.group (D.text "(" <> call "LawSpecRuntime.handler" [D.text "symbols", E.quoted (abilityKey ability)] <>
-      D.nest 4 (D.softline <> D.text ("as " ++ abilityInterface ability)) <> D.text ")")
+    handlerAs ability = D.text "(" <> call "LawSpecRuntime.handler" [D.text "symbols", E.quoted (abilityKey ability)] <>
+      D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text (abilityInterface ability)))) <> D.text ")"
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 4 (D.softline <> value))
     typedJvm = emitJvmTyped KotlinStyle declarations units
     -- A typed definition whose types all convert directly calls its typed

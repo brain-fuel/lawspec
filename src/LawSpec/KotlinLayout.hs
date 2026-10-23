@@ -5,7 +5,7 @@
 -- lines, a declaration broken after its =, and a chained call broken
 -- before its dot. Strings are Kotlin literals ($ escaped) and never split.
 module LawSpec.KotlinLayout
-  ( kotlinString, call, callWith, arguments, lambda, trailing, bind, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
+  ( kotlinString, call, callWith, arguments, lambda, trailing, trailingCall, bind, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -49,9 +49,24 @@ lambda parameters body
     opening = D.text "{" <> D.text (if null parameters then "" else " " ++ commaList parameters ++ " ->")
     commaList = foldr1 (\a b -> a ++ ", " ++ b)
 
--- | f(args) { params -> body }.
+-- | f(args) { params -> body }: the arguments stay on the line when they
+-- fit up to the lambda's opening, as ktfmt keeps them; broken arguments
+-- break the lambda's body too.
 trailing :: D.Doc -> [String] -> [D.Doc] -> D.Doc
-trailing invocation parameters body = invocation <> D.text " " <> lambda parameters body
+trailing invocation parameters body
+  | '\n' `elem` flat = broken
+  | otherwise = D.bestFit [D.text (flat ++ " ") <> lambda parameters body, D.prefixChoice opening (D.text (flat ++ " ") <> lambda parameters body) broken]
+  where
+    flat = D.render D.Compact invocation
+    broken = invocation <> D.text " " <> D.multiline (lambdaOpening parameters <> D.nest 4 (D.hardline <> statements body) <> D.hardline <> D.text "}")
+    opening = flat ++ " " ++ D.render D.Compact (lambdaOpening parameters)
+
+-- | name(args) { params -> body }.
+trailingCall :: String -> [D.Doc] -> [String] -> [D.Doc] -> D.Doc
+trailingCall name args = trailing (call name args)
+
+lambdaOpening :: [String] -> D.Doc
+lambdaOpening parameters = D.text "{" <> D.text (if null parameters then "" else " " ++ foldr1 (\a b -> a ++ ", " ++ b) parameters ++ " ->")
 
 -- | val name = value, broken after the = when it does not fit.
 bind :: String -> D.Doc -> D.Doc

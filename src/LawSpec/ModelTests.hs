@@ -58,7 +58,12 @@ modelTestArtifacts target bits datas calls u
       prepared <- mapM (\m -> (,) m <$> prepare bits datas calls u wrap m) (C.unitMachines u)
       pure [Artifact path (render prepared) "generated" "test"]
   where
-    ktCallback body = D.text "LawSpecRuntime.ModelCallback " <> KotlinLayout.lambda ["s", "a"] [D.text body]
+    -- A callback's body is a call name(s, a[0], ...), laid out as a call.
+    ktCallback body = D.text "LawSpecRuntime.ModelCallback " <> KotlinLayout.lambda ["s", "a"] [KotlinLayout.call (takeWhile (/= '(') body)
+      (map D.text (splitArguments (takeWhile (/= ')') (drop 1 (dropWhile (/= '(') body)))))]
+    splitArguments s = case break (== ',') s of
+      (a, []) -> [a]
+      (a, _ : rest) -> a : splitArguments (dropWhile (== ' ') rest)
     -- A Java array: new T[] {a, b}, wrapping inside its braces.
     array element items = D.group (D.text ("new " ++ element ++ "[] {") <> D.nest 4 (D.softbreak <> D.commaSep items) <> D.softbreak <> D.text "}")
     braces items = D.group (D.text "{" <> D.nest 4 (D.softbreak <> D.commaSep items) <> D.softbreak <> D.text "}")

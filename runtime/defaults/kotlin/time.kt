@@ -4,9 +4,8 @@ package lawspec
 import kotlin.time.Duration.Companion.microseconds
 
 /**
- * The default handler of lawspec.time's Clock: the system clock, kept from
- * going back by System.nanoTime. An Instant is microseconds since
- * 1970-01-01T00:00:00Z.
+ * The default handler of lawspec.time's Clock: the system clock, kept from going back by
+ * System.nanoTime. An Instant is microseconds since 1970-01-01T00:00:00Z.
  */
 object Time {
     private val wall: Long
@@ -29,7 +28,9 @@ object Time {
     fun registerClock() {
         lawspec.runtime.LawSpecRuntime.registerClockAbility(
             { handler -> (handler as lawspec.abilities.lawspec.Time.Clock).now().value },
-            { handler, micros -> (handler as lawspec.abilities.lawspec.Time.Clock).sleep(micros.microseconds) },
+            { handler, micros ->
+                (handler as lawspec.abilities.lawspec.Time.Clock).sleep(micros.microseconds)
+            },
             { handler -> handler is ClockHandler },
         )
     }
