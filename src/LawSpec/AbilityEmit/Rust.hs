@@ -31,15 +31,19 @@ handlerConstruction library units current = handlerConstructionWith library unit
 -- the Arc of the ability's trait.
 handlerConstructionWith :: Maybe String -> [C.Unit] -> C.Unit -> (String -> C.HandlerRef -> Maybe String) -> C.AbilityRef -> C.HandlerRef -> L.Expr
 handlerConstructionWith library units current made ref choice = case choice of
+  -- Each handler is made into a binding of the ability's trait, so no cast
+  -- is needed, then installed.
   C.RecordingHandler inner -> L.Block
-    [ L.Let "recording" (L.call (base ++ recordingFor ++ "::new") [handle inner])
-    , L.Let "calls" (L.method (L.Field (L.atom "recording") "calls") "clone" []) ]
-    (Just (L.call "ls::installed_recording" [L.cast (L.call "std::sync::Arc::new" [L.atom "recording"]) arc, L.atom "calls"]))
+    [ L.Let ("handler: " ++ arc) (handle inner)
+    , L.Let "recording" (L.call (base ++ recordingFor ++ "::new") [L.atom "handler"])
+    , L.Let "calls" (L.method (L.Field (L.atom "recording") "calls") "clone" [])
+    , L.Let ("recording: " ++ arc) (L.call "std::sync::Arc::new" [L.atom "recording"]) ]
+    (Just (L.call "ls::installed_recording" [L.atom "recording", L.atom "calls"]))
   -- The default handler names its own type, so a reader can tell it (the
   -- real clock, for lawspec.time's).
   C.ProductionHandler | Nothing <- native ->
-    L.call ("ls::installed_native::<" ++ adapterModule ++ "::" ++ productionFor ++ ", _>") [handle choice]
-  _ -> L.call "ls::installed" [handle choice]
+    typed (L.call ("ls::installed_native::<" ++ adapterModule ++ "::" ++ productionFor ++ ", _>") [L.atom "handler"])
+  _ -> typed (L.call "ls::installed" [L.atom "handler"])
   where
     trait = traitPath units ref
     arc = "std::sync::Arc<dyn " ++ trait ++ ">"
@@ -54,10 +58,11 @@ handlerConstructionWith library units current made ref choice = case choice of
     handle c = case c of
       _ | Just given <- made trait c -> L.atom given
       C.ProductionHandler | Just parts <- native ->
-        L.cast (L.call "std::sync::Arc::new" [L.call (intercalate "::" [if p == "crate" then maybe p id library else p | p <- parts]) []]) arc
-      C.ProductionHandler -> L.cast (L.call "std::sync::Arc::new" [L.call (adapterModule ++ "::" ++ productionFor ++ "::default") []]) arc
-      C.SpecHandler h -> L.cast (L.call "std::sync::Arc::new" [L.call ("lawspec_abilities::" ++ moduleOf current ++ "::" ++ maybe "Unknown" specName (specHandlerOf units h) ++ "::new") [L.atom "ctx"]]) arc
+        L.call "std::sync::Arc::new" [L.call (intercalate "::" [if p == "crate" then maybe p id library else p | p <- parts]) []]
+      C.ProductionHandler -> L.call "std::sync::Arc::new" [L.call (adapterModule ++ "::" ++ productionFor ++ "::default") []]
+      C.SpecHandler h -> L.call "std::sync::Arc::new" [L.call ("lawspec_abilities::" ++ moduleOf current ++ "::" ++ maybe "Unknown" specName (specHandlerOf units h) ++ "::new") [L.atom "ctx"]]
       C.RecordingHandler inner -> handle inner
+    typed installing = L.Block [L.Let ("handler: " ++ arc) (handle choice)] (Just installing)
     native = found >>= C.abilityNative
     productionFor = maybe "Unknown" productionName found
 
@@ -123,10 +128,21 @@ emit minify bits datas units = do
             , Arm "Err(error)" Nothing (L.macroCall "panic" [L.atom "\"{error}\""]) ])))
     -- The handler for a law; it evaluates its clauses in a copy of the
     -- law's context.
-    construction start = line "/// The handler for a law; it evaluates its clauses in a copy of the law's context." <> D.hardline <>
-      L.function "pub fn new" ["ctx: &ls::Context"] "Self" (L.stmts
-        [L.Let (if E.mentions "ctx" (L.expr start) then "mut ctx" else "ctx") (L.method (L.atom "ctx") "clone" []), L.Let "state" start]
-        (Just (L.struct "Self" [("ctx", L.call "std::sync::Mutex::new" [L.atom "ctx"]), ("state", L.call "std::sync::Mutex::new" [L.atom "state"])])))
+    -- A handler keeps a copy of the law's context and its state only when
+    -- its operations read them.
+    construction keepsContext start = line "/// The handler for a law; it evaluates its clauses in a copy of the law's context." <> D.hardline <>
+      let needsContext = keepsContext || maybe False (E.mentions "ctx" . L.expr) start
+          made = L.struct "Self" ([("ctx", L.call "std::sync::Mutex::new" [L.atom "ctx"]) | keepsContext] ++
+                                  [("state", L.call "std::sync::Mutex::new" [L.atom "state"]) | Just _ <- [start]])
+      in L.function "pub fn new" [(if needsContext then "ctx" else "_ctx") ++ ": &ls::Context"] "Self" (L.stmts
+        ([L.Let (if maybe False (E.mentions "ctx" . L.expr) start then "mut ctx" else "ctx") (L.method (L.atom "ctx") "clone" []) | needsContext] ++
+         [L.Let "state" st | Just st <- [start]])
+        (Just made))
+    fields keepsContext stateField = D.joinWith D.hardline
+      ([line "ctx: std::sync::Mutex<ls::Context>," | keepsContext] ++ [line ("state: std::sync::Mutex<" ++ t ++ ">,") | Just t <- [stateField]])
+    structDoc name keepsContext stateField = if not keepsContext && stateField == Nothing
+      then line ("pub struct " ++ name ++ ";")
+      else line ("pub struct " ++ name ++ " ") <> D.block 4 (fields keepsContext stateField)
     starting = line "/// The handler on its own, outside any law: the embedding entry point." <> D.hardline <>
       L.function "pub fn start" [] "Self" (L.expr (L.call "Self::new" [L.atom "&ls::Context::default()"]))
     implementations name answered' methodBlocks = D.joinWith (D.hardline <> D.hardline)
@@ -185,9 +201,8 @@ emit minify bits datas units = do
                    , L.Semi (L.Infix 1 "=" (L.prefix "*" (locked "state")) (L.call "Some" [L.atom "next"])) ] Nothing) ]
       let name = specName h
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
-        line ("pub struct " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
-          [line "ctx: std::sync::Mutex<ls::Context>,", line "state: std::sync::Mutex<Option<ls::Value>>,"]) <> D.hardline <> D.hardline <>
-        impl ("impl " ++ name) ([construction start, starting] ++ accessors ++ attempts) <> D.hardline <> D.hardline <>
+        structDoc name True (Just "Option<ls::Value>" <* C.handlerState h) <> D.hardline <> D.hardline <>
+        impl ("impl " ++ name) ([construction True (start <$ C.handlerState h), starting] ++ accessors ++ attempts) <> D.hardline <> D.hardline <>
         implementations name answered' methodBlocks)
     -- A typed spec handler keeps its state typed: each operation converts
     -- its arguments, runs the typed clause and keeps the next state, which
@@ -234,7 +249,6 @@ emit minify bits datas units = do
                         , L.Semi (L.call "drop" [L.atom "state"]) ]
         method op ty (L.stmts (outcome ++ convertStatements) (Just converted))) (C.abilityOperations answer)
       let name = specName h
-          stateField = maybe "()" id stateType
       -- The state, read and replaced in its native types, and typed.
       accessors <- case C.handlerState h of
         Nothing -> pure []
@@ -258,12 +272,13 @@ emit minify bits datas units = do
                  L.function "pub fn set_typed_state" ["&self", "state: " ++ typedType] "" (L.stmts
                    [L.Semi (L.Infix 1 "=" (L.prefix "*" (locked "state")) (L.atom "state"))] Nothing) ]
       attempts <- attemptMethods answered'
-      let startValue = maybe (L.atom "()") (\v -> answered (L.Call (L.Paren (L.closure "|| -> ls::Result<_>"
+      let keepsContext = or [isContextual (rustTypedPlan typed) clause | answer <- answered', (op, _) <- C.abilityOperations answer, Just clause <- [lookup op (C.handlerClauses h)]] ||
+            not (null attempts) || maybe False (not . rustTypedNative typed . fst) (C.handlerState h)
+          startValue = maybe (L.atom "()") (\v -> answered (L.Call (L.Paren (L.closure "|| -> ls::Result<_>"
             (L.Block [L.Let (if E.mentions "ctx" v then "ctx" else "_ctx") (L.atom "&mut ctx")] (Just (L.call "Ok" [L.Laid v]))))) [])) start
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
-        line ("pub struct " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
-          [line "ctx: std::sync::Mutex<ls::Context>,", line ("state: std::sync::Mutex<" ++ stateField ++ ">,")]) <> D.hardline <> D.hardline <>
-        impl ("impl " ++ name) ([construction startValue, starting] ++ accessors ++ attempts) <> D.hardline <> D.hardline <>
+        structDoc name keepsContext stateType <> D.hardline <> D.hardline <>
+        impl ("impl " ++ name) ([construction keepsContext (startValue <$ C.handlerState h), starting] ++ accessors ++ attempts) <> D.hardline <> D.hardline <>
         implementations name answered' methodBlocks)
     recording a = do
       methods <- mapM (\(op, ty) -> do

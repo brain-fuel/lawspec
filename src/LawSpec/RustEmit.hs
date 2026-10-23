@@ -329,7 +329,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       SpecHandler _ -> Nothing
     made owner p a trait c = case c of
       SpecHandler _ | Just h <- specOf owner c, h `elem` sharedOf owner p ->
-        Just (sharedName h ++ ".clone() as std::sync::Arc<dyn " ++ trait ++ ">")
+        Just (sharedName h ++ ".clone()")
       ProductionHandler | Just (t, local) <- resourceFor p a c, Just (_, ability) <- findAbility allUnits a ->
         let native = either error id (NativeData.rustDataType planDataDeclarations t)
             reference = Doc.render Doc.Compact (either error id (schemaType t))
@@ -338,7 +338,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               Just parts -> intercalate "::" parts
               Nothing -> owned ++ "::" ++ productionName ability ++ "::new"
         in Just ("std::sync::Arc::new(" ++ maker ++ "(<" ++ native ++ " as ls::FromValue>::from_value(lawspec_schema::schema()?.native_value_with_context(" ++
-                 local ++ ".clone(), &" ++ reference ++ ", " ++ show planMachineBits ++ ", ctx)?)?)) as std::sync::Arc<dyn " ++ trait ++ ">")
+                 local ++ ".clone(), &" ++ reference ++ ", " ++ show planMachineBits ++ ", ctx)?)?))")
       _ -> Nothing
     hasSchema = hasNativeGenerators || not (null planDataDeclarations) || hasDefinitions ||
       any (any containsPayload . propertyExpressions . plannedProperty)
@@ -882,7 +882,11 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             | owner <- nub ([o | hasDefinitions, o <- Definitions.workflowAdapterUnits (map LawSpec.Testing.plannedUnit plannedUnits)] ++
                 -- The production handlers of imported abilities are their owners'.
                 map Id (Abilities.foreignOwners unit))]
-          moduleDoc filename name = Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <> Doc.text ("mod " ++ name ++ ";")
+          -- A shared module the tests mount uses only part of it there; the
+          -- adapter and the test support are the tests' own.
+          moduleDoc filename name = Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <>
+            (if name `elem` ["adapter", "ls_gen", "lawspec_runtime", "lawspec_harness"] then mempty else Doc.text "#[allow(dead_code, unused_imports)]" <> Doc.hardline) <>
+            Doc.text ("mod " ++ name ++ ";")
           localImports = [moduleDoc ("../src/" ++ modulePath ++ ".rs") "adapter"] ++
             [moduleDoc "../src/lawspec_data.rs" "lawspec_data" | not (null planDataDeclarations)] ++
             [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
@@ -918,7 +922,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           strategyUsed = any (`mentions` content) ["boxed", "prop_map", "prop_flat_map", "prop_filter"]
           -- Modules, then uses, each in rustfmt's order (by name).
           ordered = sortOn fst [(sortKey (Doc.render Doc.Compact d), d) | d <- imports ++ generatorModules] ++
-            [(("2", ""), Doc.text "use lawspec_runtime as ls;")] ++ [(("2", ""), Doc.text "use proptest::strategy::Strategy;") | strategyUsed]
+            [(("2", ""), Doc.text "use lawspec_runtime as ls;") | mentions "ls" content || mentions "ValueStrategy" content] ++ [(("2", ""), Doc.text "use proptest::strategy::Strategy;") | strategyUsed]
           sortKey text = case [w | l <- lines text, w <- take 1 (drop 1 (words l)), take 4 l == "mod "] of
             name : _ -> ("0", name)
             [] -> ("1", text)

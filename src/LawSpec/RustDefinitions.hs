@@ -5,7 +5,7 @@ module LawSpec.RustDefinitions (operationBridges, abilityTrait, emitRustDefiniti
 import Data.List (intercalate)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isUpper)
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
@@ -74,14 +74,14 @@ emitRustDefinitions layout bits declarations units = do
       Just (_, first) -> do
         name <- nameFor d
         target <- nameFor first
-        pure (D.text ("pub(crate) use self::" ++ target ++ " as " ++ name ++ ";"))
+        pure (D.text ("pub use self::" ++ target ++ " as " ++ name ++ ";"))
       Nothing -> maybe (implementation contracts d) (bridgeTo typed d) (rustTypedFunction typed (declarationId (definitionDeclaration d))))
     (concatMap unitDefinitions units)
   bridges <- mapM bridge adapterCalls
   modules <- forM (filter (not . null . unitDefinitions) units) $ \unit -> do
     functions <- mapM (\d -> case primary d of
       Just (owner, first) -> pure (D.text ("pub use super::" ++ ownerModule owner ++ "::" ++ declarationName (definitionDeclaration first) ++
-        " as " ++ declarationName (definitionDeclaration d) ++ ";"))
+        (if declarationName (definitionDeclaration first) == declarationName (definitionDeclaration d) then "" else " as " ++ declarationName (definitionDeclaration d)) ++ ";"))
       Nothing -> native typed d) (unitDefinitions unit)
     pure (D.text ("pub mod " ++ moduleName unit ++ " ") <> D.block 4
       (D.text "use super::ls;" <> D.hardline <> D.hardline <>
@@ -95,7 +95,7 @@ emitRustDefinitions layout bits declarations units = do
       name <- nameFor d
       let arity = length (definitionArguments d)
           (argTypes, _) = functionType (declarationType (definitionDeclaration d))
-          header = "pub(crate) fn " ++ name
+          header = "pub fn " ++ name
       if isContextual (rustTypedPlan typed) (declarationId (definitionDeclaration d))
         then do
           -- It takes the context, so its arguments are decoded here.
@@ -236,8 +236,6 @@ emitRustDefinitions layout bits declarations units = do
       FullJitter -> "full"
       EqualJitter -> "equal"
       DecorrelatedJitter -> "decorrelated"
-    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
-    lowerFirst [] = []
     ownerModule = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText
     moduleName = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText . unitId
     nameFor d = maybe (Left "unresolved Rust total definition") Right
@@ -254,7 +252,7 @@ emitRustDefinitions layout bits declarations units = do
             _ -> ["value" ++ show i | i <- [0 .. length args - 1]]
           values = map L.atom valueNames
           -- A handler's parameter is named for its ability; Async's is r#async.
-          handlers = [ (ability, rawKeyword (lowerFirst (interfaceName a))) | ability <- declarationUses declaration, not (isFail ability)
+          handlers = [ (ability, nativeIdentifier "rust" ValueName (interfaceName a)) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
           parameters = "ctx: &mut ls::Context" :
             [name ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">" | (ability, name) <- handlers] ++
@@ -285,7 +283,10 @@ emitRustDefinitions layout bits declarations units = do
               (Just (L.call ("<" ++ resultType ++ " as ls::FromValue>::from_value") [L.atom "result"]))
           -- A parameter the body does not read is marked unused.
           parameters' = [ let (n, rest') = break (== ':') p in E.unusedAs n body ++ rest' | p <- parameters ]
-      pure (L.function ("pub fn " ++ declarationName declaration) parameters' ("ls::Result<" ++ resultType ++ ">") body)
+      -- The function keeps its definition's name, which Rust's lint may not
+      -- call snake case.
+      pure ((if any isUpper (declarationName declaration) then D.text "#[allow(non_snake_case)]" <> D.hardline else mempty) <>
+        L.function ("pub fn " ++ declarationName declaration) parameters' ("ls::Result<" ++ resultType ++ ">") body)
     implementation contracts d = do
       name <- nameFor d
       let args = definitionArguments d
@@ -314,7 +315,7 @@ emitRustDefinitions layout bits declarations units = do
           prefix rest = [arity] ++
             [L.Let "schema" (L.try' (L.call "crate::lawspec_schema::schema" [])) | E.mentions "schema" (L.expr (L.Block rest Nothing))] ++
             [L.Let "mut arguments" (L.method (L.atom "arguments") "into_iter" []) | not (null args)] ++
-            [L.Let local (L.method (L.method (L.atom "arguments") "next" []) "unwrap" []) | (_, local) <- locals] ++ rest
+            [L.Let (E.unusedAs local (L.expr (L.Block rest Nothing))) (L.method (L.method (L.atom "arguments") "next" []) "unwrap" []) | (_, local) <- locals] ++ rest
       statements' <- case contract of
         Nothing -> pure (L.stmts (prefix [evaluate]) (Just (L.call "Ok::<ls::Value, String>" [L.atom "result"])))
         Just c -> do
@@ -332,7 +333,7 @@ emitRustDefinitions layout bits declarations units = do
           pure (L.stmts [ L.Let "result" (L.Call (L.Paren (L.closure "||" inner)) [])
                         , L.Let "context" (L.atom (E.quoted identity)) ]
             (Just (L.method (L.atom "result") "map_err" [L.closure "|error: String|" (L.macroCall "format" [L.atom "\"{context}: {error}\""])])))
-      pure (L.function ("pub(crate) fn " ++ name)
+      pure (L.function ("pub fn " ++ name)
         [E.unusedAs "ctx" statements' ++ ": &mut ls::Context", "arguments: Vec<ls::Value>"] "ls::Result<ls::Value>" statements')
     -- Inspect every variant, including unselected native machine fields.
     nativeMachine seen ty = case ty of
@@ -343,8 +344,3 @@ emitRustDefinitions layout bits declarations units = do
       Arrow a b -> nativeMachine seen a || nativeMachine seen b
       _ -> False
 
--- A Rust keyword used as a name, as a raw identifier.
-rawKeyword :: String -> String
-rawKeyword name
-  | name `elem` words "as async await break const continue dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return static struct trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen union" = "r#" ++ name
-  | otherwise = name

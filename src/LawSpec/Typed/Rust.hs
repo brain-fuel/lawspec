@@ -230,7 +230,8 @@ dataDoc env d = do
       line "#[derive(PartialEq, Eq, Debug)]" <> D.hardline <>
       line ("pub enum " ++ node ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
         [line (variantName c ++ (if null ts then "" else "(" ++ intercalate ", " ts ++ ")") ++ ",") | (c, ts) <- zip variants fieldTypes]) <> D.hardline <>
-      impl ("impl" ++ generics ++ " " ++ name ++ generics) [method' "rank" ["&self"] "u32" (matchOn "&*self.0" [arm (wildcard c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline <>
+      -- A rank orders different variants, so a single variant has none.
+      (if length variants > 1 then impl ("impl" ++ generics ++ " " ++ name ++ generics) [method' "rank" ["&self"] "u32" (matchOn "&*self.0" [arm (wildcard c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline else mempty) <>
       impl ("impl" ++ bound "POrd" ++ " POrd for " ++ name ++ generics)
         [L.function "fn pcmp" ["&self", "other: &Self"] "std::cmp::Ordering" (L.stmts
           [L.Do (L.If (L.call "std::sync::Arc::ptr_eq" [L.atom "&self.0", L.atom "&other.0"]) (L.Block [L.Semi (L.Return (Just (L.atom "std::cmp::Ordering::Equal")))] Nothing) Nothing)]

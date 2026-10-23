@@ -327,8 +327,8 @@ expr e = case e of
   Infix {} -> infixDoc e
   -- A cast that does not fit breaks before as.
   Cast a t -> case oneLine e of
-    Just line' -> oneOf [D.text line', expr a <> D.nest 4 (D.hardline <> D.text ("as " ++ t))]
-    Nothing -> expr a <> D.nest 4 (D.hardline <> D.text ("as " ++ t))
+    Just line' -> oneOf [D.text line', expr a <> D.nest 4 (D.hardline <> castType t)]
+    Nothing -> expr a <> D.nest 4 (D.hardline <> castType t)
   Paren a -> D.text "(" <> expr a <> D.text ")"
   Block ss tailExpr -> blockDoc ss tailExpr
   If c a b -> ifDoc c a b
@@ -394,8 +394,11 @@ arguments cap open close limit args =
       _ -> False
     -- Within an overflowing argument's budget, the line up to the last
     -- argument's opening must fit the budget too.
+    -- With other arguments before it, the line's arguments up to the last
+    -- one's opening must be within the width limit too.
     overflowFits = maybe True (\c -> width firstLine <= c) cap &&
-      maybe True (\c -> width (opening lastArg) <= c) lastCap
+      maybe True (\c -> width (opening lastArg) <= c) lastCap &&
+      (null initial || width (concatMap (++ ", ") initialTexts ++ opening lastArg) <= limit)
     rest
       | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
       | overflowLast, overflowFits = [D.prefixChoice firstLine overflowed vertical]
@@ -434,6 +437,15 @@ nestedCall e = case e of
   Cast a _ -> nestedCall a
   _ -> False
 
+-- | A cast's type after its value: a generic type that does not fit
+-- breaks inside its angle brackets, as rustfmt breaks it.
+castType :: String -> D.Doc
+castType t = case break (== '<') t of
+  (outer, '<' : rest) | not (null rest), last rest == '>' ->
+    D.fitsIndented 0 (width ("as " ++ t) + 2) (D.text ("as " ++ t))
+      (D.text ("as " ++ outer ++ "<") <> D.nest 4 (D.hardline <> D.text (init rest ++ ",")) <> D.hardline <> D.text ">")
+  _ -> D.text ("as " ++ t)
+
 -- | A call's overflowing last argument, within the columns left to it: a
 -- call or macro there keeps its arguments on its line only when the whole
 -- fits.
@@ -444,7 +456,8 @@ overflowing cap e = case e of
   Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
   Try a@(Call {}) -> overflowing (subtract 1 <$> cap) a <> D.text "?"
   -- An overflowing cast breaks inside its value, then before as.
-  Cast a@(Call {}) t | isNothing (oneLine e) -> overflowing cap a <> D.nest 4 (D.hardline <> D.text ("as " ++ t))
+  Cast a@(Call {}) t | maybe True (\line' -> maybe False (width line' >) cap) (oneLine e) ->
+    overflowing cap a <> D.nest 4 (D.hardline <> castType t)
   -- rustfmt keeps an overflowing chain on one line up to its last call.
   _ | isChain e, Just prefix <- chainPrefix e, (_, links@(_ : _)) <- unchain e, l@(LinkCall {}) <- last links ->
         D.text prefix <> linkDoc l

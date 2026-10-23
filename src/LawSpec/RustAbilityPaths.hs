@@ -6,6 +6,7 @@ module LawSpec.RustAbilityPaths (moduleOf, moduleOfName, foreignOwners, performB
 import Data.Char (isAlphaNum)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import LawSpec.Naming (NameKind(..), nativeIdentifier)
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.AbilityNames
@@ -38,7 +39,7 @@ performBridges units =
 -- An operation's bridge function: perform_<op>, or for a parameterized
 -- ability's instance, perform_<Instance>_<op>.
 bridgeName :: C.Ability -> String -> String
-bridgeName a op = if null (C.abilityArguments a) then op else interfaceName a ++ "_" ++ op
+bridgeName a op = nativeIdentifier "rust" FunctionName (if null (C.abilityArguments a) then op else interfaceName a ++ " " ++ op)
 
 -- The panic payloads lawspec.json maps to failures of this type, as the
 -- last argument of ls::native_failures: each payload type T becomes its

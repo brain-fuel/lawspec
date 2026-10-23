@@ -311,9 +311,10 @@ renderWith declarations bits schema typeReference typeKey callees = render
         made <- maybe (Left ("no Rust spec handler " ++ idText h)) Right (lookup (Id ("handler:" ++ idText h)) callees)
         trait <- maybe (Left ("no Rust trait for " ++ abilityKey ability)) Right (lookup (Id ("trait:" ++ abilityKey ability)) callees)
         inner <- render names body
-        pure (L.Block [L.Let "installing" (L.vecOf [L.Macro "" "(" ")"
+        pure (L.Block [ L.Let ("handler: std::sync::Arc<dyn " ++ trait ++ ">") (L.call "std::sync::Arc::new" [L.call (made ++ "::new") [L.atom "ctx"]])
+                      , L.Let "installing" (L.vecOf [L.Macro "" "(" ")"
             [ L.method (L.atom (quoted (abilityKey ability))) "to_string" []
-            , L.call "ls::installed" [L.cast (L.call "std::sync::Arc::new" [L.call (made ++ "::new") [L.atom "ctx"]]) ("std::sync::Arc<dyn " ++ trait ++ ">")] ]])]
+            , L.call "ls::installed" [L.atom "handler"] ]])]
           (Just (tried (L.call "ls::with_handlers" [L.atom "ctx", L.atom "installing", valueClosure "|ctx: &mut ls::Context| -> ls::Result<ls::Value>" inner]))))
       Handle _ _ -> Left "unknown Rust handling"
       Calls op args -> do
