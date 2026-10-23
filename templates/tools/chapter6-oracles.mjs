@@ -98,18 +98,19 @@ const tested=await run('generated-tests',['-m','pytest','-q',...testFiles,'--jun
 const xml=await readFile(path.join(project,'chapter6.xml'),'utf8');
 assert.ok(!/<(?:failure|error|skipped)\b/.test(xml),xml);
 const tests=await executedTests({kind:'junit',files:['chapter6.xml']},tested.output,project,since);
-assert.equal(tests.filter(test=>test.name.includes('__example')).length,66,'65 independent table rows plus one named example');
+// Example tests are named after their example; the other kinds have fixed names.
+const exampleTest=name=>{const kind=name.slice(name.indexOf('__')+2);return name.includes('__')&&!/^(boundary_\d+|property|replay)$/.test(kind);};
+assert.equal(tests.filter(test=>exampleTest(test.name)).length,66,'65 independent table rows plus one named example');
 assert.equal(new Set(tests.map(test=>test.name)).size,tests.length,'Each native check runs once');
 const generated={examples:0,properties:0,boundaries:0,replayHooks:0,total:tests.length,lawsExercised:0};
 for(const entry of chapter) {
   let exercised=false;
   for(const test of tests.filter(test=>test.name.startsWith(entry.name+'__'))) {
     const kind=test.name.slice(entry.name.length+2);
-    if(/^example\d+$/.test(kind)) { generated.examples++;exercised=true; }
-    else if(/^boundary\d+$/.test(kind)) { generated.boundaries++;exercised=true; }
+    if(/^boundary_\d+$/.test(kind)) { generated.boundaries++;exercised=true; }
     else if(kind==='property') { generated.properties++;exercised=true; }
     else if(kind==='replay') generated.replayHooks++;
-    else assert.fail('Unknown generated native check: '+test.name);
+    else { generated.examples++;exercised=true; }
   }
   if(exercised) generated.lawsExercised++;
   if(args[0]==='--property') assert.ok(exercised,'No executed property, boundary or example for '+entry.law);

@@ -254,7 +254,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         length bodies `shouldBe` 1
         map ownership (native ++ bodies) `shouldBe` ["generated","generated"]
         map artifactPlacement (native ++ bodies) `shouldBe` ["source","source"]
-        concatMap artifactContent native `shouldSatisfy` isInfixOf "value_0: _builtins.list[_builtins.int]"
+        concatMap artifactContent native `shouldSatisfy` isInfixOf "x: _builtins.list[_builtins.int]"
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "def identity"
   it "rejects Python definition support and module/package name collisions" $ do

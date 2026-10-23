@@ -447,8 +447,13 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Omittable operands operator withParens ->
         let operandsFlat = map (text . render Compact) operands
             line' = operationLine operands [operator]
+            -- The line holding the last operand's opening must fit, with
+            -- the operands before it on one line or broken inside their own
+            -- brackets.
             lastFits = bracketedEnd (last operands) &&
-              fits column ((indentation, Broken, margin, operationLine (init operandsFlat ++ [last operands]) [operator]):rest)
+              (fits column ((indentation, Broken, margin, operationLine (init operandsFlat ++ [last operands]) [operator]):rest) ||
+               bracketedEnd (head operands) &&
+                 fits indentation [(indentation, Broken, margin, text (") " ++ operator ++ " ") <> last operands)])
             firstFits = bracketedStart (head operands) &&
               (fits column ((indentation, Flat, margin, line'):rest) ||
                fits indentation [(indentation, Broken, margin, text (") " ++ operator ++ " ") <> operationLine (tail operands) [])])
