@@ -2,7 +2,7 @@
 %% Values stay in the portable domain until an explicit native boundary.
 %% ref:DEC-typed-core-boundary
 -module(lawspec_beam_runtime).
--export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1, async_call/1,
+-export([bind/2, require/2, assert_equal/3, contextual/2, helper/4, concurrently/1, async_call/1,
     worker_context/0, with_worker_context/2, recorded/4]).
 
 %% LawSpec's allocator, active handler operation, cancellation scopes and
@@ -23,6 +23,10 @@ with_worker_context(Context, Body) ->
     after
         lists:foreach(fun({Key, undefined}) -> erase(Key); ({Key, Value}) -> put(Key, Value) end, Previous)
     end.
+
+%% let x = value in body, as generated code writes it: the value, then the
+%% body given it.
+bind(Value, Body) -> Body(Value).
 
 require(true, _) -> ok;
 require(false, Context) -> erlang:error({lawspec, {contract_failed, Context}});

@@ -52,8 +52,8 @@ emit target layout bits declarations units = do
         name = moduleName unit session
         variable = D.text . ("_Ls" ++) . E.pascal
         runtime = E.remote "lawspec_beam_session"
-        schema = D.text "_LsSchema"
-        fresh = D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
+        schema = D.text "Schema"
+        fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
         native ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeType bits names [] ty <*>
           G.nativeType False names [] ty <*> pure (G.imports False [ty])
         result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []

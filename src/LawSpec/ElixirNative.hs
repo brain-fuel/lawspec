@@ -121,7 +121,7 @@ unitTests layout unit names = Artifact ("test/" ++ E.moduleName (C.unitId unit) 
         D.hardline <> D.text "case action do" <>
         D.nest 2 (D.hardline <> D.text "{:skip, law, reason} -> @tag skip: reason, lawspec_skip: {law, reason}" <>
           D.hardline <> D.text "_ -> :ok") <> D.hardline <> D.text "end" <>
-        D.hardline <> D.text "test " <> X.string (name ++ "__case_") <> D.text " <> Integer.to_string(index)" <>
+        D.hardline <> D.text "test List.to_string(label)" <>
         (if scheduled then D.text ", context do" <>
           D.nest 2 (D.hardline <> X.remote "LawSpec.Beam.ExUnitSchedule" "await"
             [D.text "context.lawspec_schedule", D.text "context.test"])

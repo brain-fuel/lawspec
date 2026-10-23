@@ -567,6 +567,7 @@ library
       LawSpec.BeamMailboxes
       LawSpec.BeamModelChecks
       LawSpec.BeamModels
+      LawSpec.BeamNames
       LawSpec.BeamNativeBinding
       LawSpec.BeamPolicy
       LawSpec.BeamProperties

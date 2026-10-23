@@ -22,7 +22,8 @@ inputs framework schema symbols plan local planned = walk [] (generatorRequireme
     native = E.remote framework
     bind generator name body = native "bind" [generator,E.lambda [D.text name] body]
     bindName binder name outer identity = if C.binderId binder == identity then name else outer identity
-    conjunction = foldr (\a b -> D.text "(" <> a <> D.text " andalso " <> b <> D.text ")") (E.atom "true")
+    conjunction [] = E.atom "true"
+    conjunction ps = foldr1 (E.operator "andalso") ps
     walk previous [] = pure (native "exactly" [E.array previous])
     walk previous (requirement:rest) = do
       let binder = generatorBinder requirement

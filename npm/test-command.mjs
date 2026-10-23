@@ -156,7 +156,7 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
   if (language === "gleam")
     return [{ command: "gleam", args: ["test", "--target", "erlang"], env: {
       LAWSPEC_BEAM_BENCHMARKS: JSON.stringify(entries.map((entry) => ({
-        module: path.posix.basename(entry.file, ".gleam"), function: `${entry.name}__case_0_test`
+        module: path.posix.basename(entry.file, ".gleam"), function: `${entry.name}_test`
       })))
     } }];
   if (language === "python")

@@ -39,8 +39,8 @@ emit target layout bits declarations units = do
         result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
         variable = D.text . ("_Ls" ++) . E.pascal
         boxVar = variable "mailbox"
-        schema = D.text "_LsSchema"
-        fresh = D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
+        schema = D.text "Schema"
+        fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
         runtime = E.remote "lawspec_beam_mailbox"
         bridge direction ref value = E.remote "lawspec_beam_schema" direction [value,ref,schema]
         unitValue = E.atom (if target == "gleam" then "nil" else "ok")

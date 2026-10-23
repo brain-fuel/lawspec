@@ -80,13 +80,15 @@ emitNative layout declarations units = do
 
 -- | The checked case factories live in test-only Erlang modules. Every case
 -- gets a native Gleeunit function so a boundary or example cannot disappear.
-unitTests :: D.Layout -> C.Unit -> [(String,Int,Bool)] -> Artifact
+unitTests :: D.Layout -> C.Unit -> [(String,[String],Bool)] -> Artifact
 unitTests layout unit laws = Artifact ("test/" ++ E.moduleName (C.unitId unit) ++ "_lawspec_test.gleam")
   (D.render layout (G.fileDoc False ([D.text "import gleam/dynamic",
     G.external owner "lawspec_suite" "lawspec_suite" [] (D.text "dynamic.Dynamic"),
     G.function "lawspec_unit" [] (D.text "String") [G.string (C.idText (C.unitId unit))]] ++
     concat [if skipped then [G.external owner (name ++ "_skipped_cases") (name ++ "__skipped_test_") [] (D.text "dynamic.Dynamic")]
-      else [G.external owner (name ++ "_case_" ++ show i) (name ++ "__case_" ++ show i ++ "_test") [] (D.text "Nil")
-        | i <- [0..count-1]] | (name,count,skipped) <- laws]))) "generated" "test"
+      else [G.external owner (named name suffix "_case") (named name suffix "_test") [] (D.text "Nil")
+        | suffix <- suffixes] | (name,suffixes,skipped) <- laws]))) "generated" "test"
   where
     owner = E.moduleName (C.unitId unit) ++ "_lawspec_cases"
+    -- Each case's test is named for it (BeamProperties.caseFunction).
+    named name suffix extra = (if null suffix then name else name ++ "__" ++ suffix) ++ extra

@@ -71,7 +71,7 @@ data St = St
   { stCounter :: Int
   , stWanted :: M.Map String (Crossing, Type)
   , stOrdering :: Bool
-    -- The handler context a function's body uses (LsSchema, LsSymbols).
+    -- The handler context a function's body uses (Schema, Symbols).
   , stContext :: S.Set String
   }
 
@@ -123,8 +123,8 @@ emitBeamTyped target bound allDeclarations units = do
       modify (\st -> st { stContext = S.empty })
       body <- cstmt env [] start
       used <- gets stContext
-      let schema = if "LsSchema" `S.member` used then "LsSchema" else "_LsSchema"
-          symbols = if "LsSymbols" `S.member` used then "LsSymbols" else "_LsSymbols"
+      let schema = if "Schema" `S.member` used then "Schema" else "_Schema"
+          symbols = if "Symbols" `S.member` used then "Symbols" else "_Symbols"
       pure (D.text "%% A typed handler's start state." <> D.hardline <>
         functionHead name [schema, symbols] body)
     hs <- helpers env S.empty
@@ -170,7 +170,7 @@ emitBeamTyped target bound allDeclarations units = do
 
 functionHead :: String -> [String] -> [D.Doc] -> D.Doc
 functionHead name params body =
-  E.atom name <> D.text ("(" ++ intercalate ", " params ++ ") ->") <> sequenceBlock body <> D.text "."
+  E.call name (map D.text params) <> D.text " ->" <> sequenceBlock body <> D.text "."
 
 -- | Expressions in sequence, each on its own line, indented.
 sequenceBlock :: [D.Doc] -> D.Doc
@@ -205,7 +205,7 @@ functionDoc env c d = do
       shown (i, l) = if intrinsic || i `elem` free then l else "_" ++ l
       context n = if n `S.member` used then n else "_" ++ n
   pure (D.text ("%% " ++ idText (declarationId declaration)) <> D.hardline <>
-    functionHead name ([context "LsSchema" | contextual] ++ [context "LsSymbols" | contextual] ++ map shown params) body)
+    functionHead name ([context "Schema" | contextual] ++ [context "Symbols" | contextual] ++ map shown params) body)
 
 -- | Expressions in sequence whose last is the value.
 cstmt :: Env -> Scope -> Expr -> M [D.Doc]
@@ -243,8 +243,8 @@ callOf :: Env -> Scope -> Id -> [Expr] -> M ([D.Doc], D.Doc)
 callOf env scope i args = do
   c <- maybe (failWith ("untyped callee " ++ idText i)) pure (definitionClass (envPlan env) i)
   parts <- mapM (cexpr env scope) args
-  let context = if isContextual (envPlan env) i then [D.text "LsSchema", D.text "LsSymbols"] else []
-  when (isContextual (envPlan env) i) (usesContext ["LsSchema", "LsSymbols"])
+  let context = if isContextual (envPlan env) i then [D.text "Schema", D.text "Symbols"] else []
+  when (isContextual (envPlan env) i) (usesContext ["Schema", "Symbols"])
   pure (concatMap fst parts, E.call (envFunctions env M.! c) (context ++ map snd parts))
 
 usesContext :: [String] -> M ()
@@ -360,8 +360,8 @@ cexpr env scope e = case expressionNode e of
   Perform op args -> do
     parts <- mapM (cexpr env scope) args
     values <- forM (zip args parts) $ \(a, (_, v)) -> convert env ToDynamic (expressionType a) v
-    usesContext ["LsSchema"]
-    let invocation = E.remote "lawspec_beam_effects" "perform" [D.text "LsSchema", E.binary (abilityKey (operationAbility op)),
+    usesContext ["Schema"]
+    let invocation = E.remote "lawspec_beam_effects" "perform" [D.text "Schema", E.binary (abilityKey (operationAbility op)),
           E.binary (operationName op), E.array values]
     result <- convert env FromDynamic (expressionType e) invocation
     bind (concatMap fst parts) result
@@ -494,7 +494,7 @@ conConstruct env d c values = case envTarget env of
 -- | A data constructor's target form, matched.
 conPattern :: Env -> DataDeclaration -> DataConstructor -> [D.Doc] -> D.Doc
 conPattern env d c values = case envTarget env of
-  "elixir" -> D.delimit 4 "#{" "}" [a <> D.text " := " <> b | (a, b) <-
+  "elixir" -> D.delimit 4 "#{" "}" [E.field ":=" a b | (a, b) <-
     (E.atom "__struct__", E.atom ("Elixir." ++ E.elixirDataModule (tagOf env c))) : zip (map E.atom (E.elixirFields d c)) values]
   _ -> plainConstructor (nativeTag env c) values
 
@@ -772,7 +772,7 @@ helperDoc :: Env -> String -> Crossing -> Type -> M D.Doc
 helperDoc env n k ty = do
   clauses <- if k == Ordered then compareClauses env n ty else conversionClauses env k ty
   pure (D.text ("%% " ++ describe k ++ " " ++ show ty) <> D.hardline <>
-    D.joinWith (D.text ";" <> D.hardline) [ E.atom n <> D.text ("(" ++ intercalate ", " ps ++ ") ->") <> sequenceBlock body | (ps, body) <- clauses ] <>
+    D.joinWith (D.text ";" <> D.hardline) [ E.call n ps <> D.text " ->" <> sequenceBlock body | (ps, body) <- clauses ] <>
     D.text ".")
   where
     describe c = case c of
@@ -782,28 +782,32 @@ helperDoc env n k ty = do
       ToNative -> "To the native value of"
       Ordered -> "The portable order of"
 
-render' :: D.Doc -> String
-render' = D.render (D.Pretty 1000)
+render' :: D.Doc -> D.Doc
+render' = id
+
+-- | Patterns written as text.
+texts :: [String] -> [D.Doc]
+texts = map D.text
 
 -- | A conversion's clauses: (patterns, body).
-conversionClauses :: Env -> Crossing -> Type -> M [([String], [D.Doc])]
+conversionClauses :: Env -> Crossing -> Type -> M [([D.Doc], [D.Doc])]
 conversionClauses env k ty = case ty of
   Constructor "Unit" [] -> pure $ case k of
-    FromDynamic -> [(["ls_unit"], [E.atom (unitAtom target)])]
-    ToDynamic -> [([unitAtom target], [E.atom "ls_unit"])]
-    _ -> [(["Value"], [D.text "Value"])]
+    FromDynamic -> [(texts ["ls_unit"], [E.atom (unitAtom target)])]
+    ToDynamic -> [(texts [unitAtom target], [E.atom "ls_unit"])]
+    _ -> [(texts ["Value"], [D.text "Value"])]
   Constructor "List" [TypeArgument a] -> do
     item <- fresh "Item"
     x <- convert env k a (D.text item)
-    pure [(["Values"], [D.text "[" <> x <> D.text (" || " ++ item ++ " <- Values]")])]
+    pure [(texts ["Values"], [D.text "[" <> x <> D.text (" || " ++ item ++ " <- Values]")])]
   Constructor "Maybe" [TypeArgument a] -> do
     x <- convert env k a (D.text "Value")
     let (nothing, just) = maybes target
     pure $ if dynamicSide
       then if k == FromDynamic
         then [ ([render' (dyn "Maybe::Absent" [])], [E.atom nothing]), ([render' (dyn "Maybe::Present" [D.text "Value"])], [E.tuple [E.atom just, x]]) ]
-        else [ ([nothing], [dyn "Maybe::Absent" []]), ([render' (E.tuple [E.atom just, D.text "Value"])], [dyn "Maybe::Present" [x]]) ]
-      else [ ([nothing], [E.atom nothing]), ([render' (E.tuple [E.atom just, D.text "Value"])], [E.tuple [E.atom just, x]]) ]
+        else [ ([D.text nothing], [dyn "Maybe::Absent" []]), ([render' (E.tuple [E.atom just, D.text "Value"])], [dyn "Maybe::Present" [x]]) ]
+      else [ ([D.text nothing], [E.atom nothing]), ([render' (E.tuple [E.atom just, D.text "Value"])], [E.tuple [E.atom just, x]]) ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     xa <- convert env k a (D.text "Value")
     xb <- convert env k b (D.text "Value")
@@ -829,10 +833,10 @@ conversionClauses env k ty = case ty of
         [E.remote "lawspec_beam_fast" "key_val_of" [D.text "[" <> E.tuple [xk, xv] <> D.text " || " <> conPattern env ed ec [D.text key, D.text value] <> D.text " <- Entries]"]])]
       ToDynamic -> do
         pairs <- sortedPairs env ty (D.text "Map")
-        pure [(["Map"], [dyn kvTag [D.text "[" <> dyn entryTag [xk, xv] <> D.text " || " <> E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]"]])]
+        pure [(texts ["Map"], [dyn kvTag [D.text "[" <> dyn entryTag [xk, xv] <> D.text " || " <> E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]"]])]
       _ -> do
         pairs <- sortedPairs env ty (D.text "Map")
-        pure [(["Map"], [conConstruct env kd kc [D.text "[" <> conConstruct env ed ec [xk, xv] <> D.text " || " <> E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]"]])]
+        pure [(texts ["Map"], [conConstruct env kd kc [D.text "[" <> conConstruct env ed ec [xk, xv] <> D.text " || " <> E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]"]])]
   _ | Just ("Set", [at]) <- collectionArguments ty -> do
     (sd, sc) <- collectionDeclaration env "Set"
     item <- fresh "Item"
@@ -844,10 +848,10 @@ conversionClauses env k ty = case ty of
       FromNative -> pure [([render' (conPattern env sd sc [D.text "Items"])], [E.remote "lawspec_beam_fast" "set_of" [listOf (D.text "Items")]])]
       ToDynamic -> do
         items <- sortedItems env ty (D.text "Set")
-        pure [(["Set"], [dyn setTag [listOf items]])]
+        pure [(texts ["Set"], [dyn setTag [listOf items]])]
       _ -> do
         items <- sortedItems env ty (D.text "Set")
-        pure [(["Set"], [conConstruct env sd sc [listOf items]])]
+        pure [(texts ["Set"], [conConstruct env sd sc [listOf items]])]
   Constructor n args | Just d <- M.lookup n (envAll env) -> do
     let typeArgs = [t | TypeArgument t <- args]
     forM (dataConstructors d) $ \c -> do
@@ -866,23 +870,23 @@ conversionClauses env k ty = case ty of
     dyn tag fields = E.tuple [E.atom "ls_data", E.binary tag, E.array fields]
 
 -- | A comparison's clauses, in the order the dynamic code compares.
-compareClauses :: Env -> String -> Type -> M [([String], [D.Doc])]
+compareClauses :: Env -> String -> Type -> M [([D.Doc], [D.Doc])]
 compareClauses env n ty = case ty of
   Constructor "List" [TypeArgument a] -> do
     c <- compareCall env a (D.text "X") (D.text "Y")
-    pure [ (["[]", "[]"], [D.text "0"]), (["[]", "_"], [D.text "-1"]), (["_", "[]"], [D.text "1"])
-         , (["[X | Xs]", "[Y | Ys]"], [caseDoc c [(D.text "0", [E.call n [D.text "Xs", D.text "Ys"]]), (D.text "Order", [D.text "Order"])]]) ]
+    pure [ (texts ["[]", "[]"], [D.text "0"]), (texts ["[]", "_"], [D.text "-1"]), (texts ["_", "[]"], [D.text "1"])
+         , (texts ["[X | Xs]", "[Y | Ys]"], [caseDoc c [(D.text "0", [E.call n [D.text "Xs", D.text "Ys"]]), (D.text "Order", [D.text "Order"])]]) ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- compareCall env a (D.text "X") (D.text "Y")
     let (nothing, just) = maybes (envTarget env)
-    pure [ ([nothing, nothing], [D.text "0"]), ([nothing, "_"], [D.text "-1"]), (["_", nothing], [D.text "1"])
+    pure [ (texts [nothing, nothing], [D.text "0"]), (texts [nothing, "_"], [D.text "-1"]), (texts ["_", nothing], [D.text "1"])
          , ([render' (E.tuple [E.atom just, D.text "X"]), render' (E.tuple [E.atom just, D.text "Y"])], [c]) ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     ca <- compareCall env a (D.text "X") (D.text "Y")
     cb <- compareCall env b (D.text "X") (D.text "Y")
     let (left, right) = sides (envTarget env)
         side tag v = render' (E.tuple [E.atom tag, D.text v])
-    pure [ ([side left "X", side left "Y"], [ca]), ([side left "_", "_"], [D.text "-1"]), (["_", side left "_"], [D.text "1"])
+    pure [ ([side left "X", side left "Y"], [ca]), ([side left "_", D.text "_"], [D.text "-1"]), ([D.text "_", side left "_"], [D.text "1"])
          , ([side right "X", side right "Y"], [cb]) ]
   _ | Just ("KeyVal", [kt, vt]) <- collectionArguments ty -> do
     (ed, _) <- entryConstructor env
@@ -890,12 +894,12 @@ compareClauses env n ty = case ty of
     a <- entriesOf env ty (D.text "A")
     b <- entriesOf env ty (D.text "B")
     c <- compareCall env (Constructor "List" [TypeArgument entries]) a b
-    pure [(["A", "B"], [c])]
+    pure [(texts ["A", "B"], [c])]
   _ | Just ("Set", [at]) <- collectionArguments ty -> do
     a <- sortedItems env ty (D.text "A")
     b <- sortedItems env ty (D.text "B")
     c <- compareCall env (Constructor "List" [TypeArgument at]) a b
-    pure [(["A", "B"], [c])]
+    pure [(texts ["A", "B"], [c])]
   Constructor tn args | Just d <- M.lookup tn (envAll env) -> do
     let typeArgs = [t | TypeArgument t <- args]
         ranks = constructorRanks d
@@ -910,7 +914,7 @@ compareClauses env n ty = case ty of
     let rankOf c = conPattern env d c [D.text "_" | _ <- constructorFields c] <> D.text (") -> " ++ show (rank c))
         rankFun = D.text "Rank = fun" <> D.nest 4 (D.hardline <> D.joinWith (D.text ";" <> D.hardline)
           [D.text "(" <> rankOf c | c <- dataConstructors d]) <> D.hardline <> D.text "end"
-        others = [ (["A", "B"], [rankFun, E.remote "lawspec_beam_fast" "compare" [D.text "Rank(A)", D.text "Rank(B)"]])
+        others = [ (texts ["A", "B"], [rankFun, E.remote "lawspec_beam_fast" "compare" [D.text "Rank(A)", D.text "Rank(B)"]])
                  | length (dataConstructors d) > 1 ]
     pure (same ++ others)
   _ -> failWith ("no comparison for " ++ show ty)

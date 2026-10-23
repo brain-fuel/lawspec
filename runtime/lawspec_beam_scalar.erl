@@ -6,7 +6,8 @@
 -module(lawspec_beam_scalar).
 -export([
     literal/1, literal/2, wire/2, validate/3, convert/3,
-    binary/5, negate/1, equal/2, compare/2, helper/4, distinct_members/1,
+    binary/5, add/4, subtract/4, multiply/4, divide/4, quotient/4, remainder/4, power/4,
+    less/4, less_or_equal/4, greater/4, greater_or_equal/4, not_equal/2, negate/1, equal/2, compare/2, helper/4, distinct_members/1,
     ratio/2, decimal/2, exact/1, float_bits/2, float_from_ratio/4,
     float_from_native/2, float_to_native/1, float_class/1,
     float_binary/3, float_compare/2, integer_type/1, bounds/2,
@@ -447,6 +448,20 @@ negate({ls_ratio, N, D}) -> ratio(-N, D);
 negate({ls_decimal, C, E}) -> decimal(-C, E);
 negate({ls_float, W, B}) -> float_bits(W, B bxor (1 bsl (W - 1)));
 negate({ls_complex, W, R, I}) -> {ls_complex, W, negate(R), negate(I)}.
+
+%% Generated code names each operation; TA and TB are the operands' types.
+add(A, B, TA, TB) -> binary(<<"+">>, A, B, TA, TB).
+subtract(A, B, TA, TB) -> binary(<<"-">>, A, B, TA, TB).
+multiply(A, B, TA, TB) -> binary(<<"*">>, A, B, TA, TB).
+divide(A, B, TA, TB) -> binary(<<"/">>, A, B, TA, TB).
+quotient(A, B, TA, TB) -> binary(<<"quot">>, A, B, TA, TB).
+remainder(A, B, TA, TB) -> binary(<<"rem">>, A, B, TA, TB).
+power(A, B, TA, TB) -> binary(<<"pow">>, A, B, TA, TB).
+less(A, B, TA, TB) -> binary(<<"<">>, A, B, TA, TB).
+less_or_equal(A, B, TA, TB) -> binary(<<"<=">>, A, B, TA, TB).
+greater(A, B, TA, TB) -> binary(<<">">>, A, B, TA, TB).
+greater_or_equal(A, B, TA, TB) -> binary(<<">=">>, A, B, TA, TB).
+not_equal(A, B) -> not equal(A, B).
 
 binary(<<"==">>, A, B, _, _) -> equal(A, B);
 binary(<<"!=">>, A, B, _, _) -> not equal(A, B);

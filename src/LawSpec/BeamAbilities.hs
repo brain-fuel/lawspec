@@ -107,13 +107,13 @@ publicBody _ [] body = pure body
 publicBody units supplied body = do
   parts <- mapM (\(a,v) -> F.interfaceParts units a v) supplied
   handlers <- forM supplied $ \(a,v) -> do
-    h <- F.fromNative units a (D.text "_LsBaseSchema") (D.text "_LsSymbols") v
+    h <- F.fromNative units a (D.text "BaseSchema") (D.text "Symbols") v
     pure (E.binary (C.abilityKey a),h)
   pure (E.remote "lawspec_beam_effects" "with_native_context"
     [E.array [E.remote "erlang" "element" [D.text "1",p] | p <- parts],
-     E.lambda [D.text "_LsFreshSymbols"] (E.remote "lawspec_data" "schema" [D.text "_LsFreshSymbols"]),
-     E.lambda [D.text "_LsBaseSchema",D.text "_LsSymbols"] (E.sequenceDoc
-       [D.text "_LsSchema = " <> E.remote "lawspec_beam_effects" "install" [D.text "_LsBaseSchema",E.record handlers],body])])
+     E.lambda [D.text "FreshSymbols"] (E.remote "lawspec_data" "schema" [D.text "FreshSymbols"]),
+     E.lambda [D.text "BaseSchema",D.text "Symbols"] (E.sequenceDoc
+       [D.text "Schema = " <> E.remote "lawspec_beam_effects" "install" [D.text "BaseSchema",E.record handlers],body])])
 
 productionStub :: String -> Int -> [(C.Id,String)] -> C.Ability -> Either String [D.Doc]
 productionStub target _ _ ability | hasDefault ability = pure (concat
@@ -192,8 +192,8 @@ emit target layout bits typed declarations units boundSchema = do
         (D.render layout (E.moduleDoc "lawspec_abilities" (("with_context",1):exports ++ defaults) (contextFunction : pieces ++ specs))) "generated" "source"
   pure (shared : native ++ boundHelpers)
   where
-    schema = D.text "_LsSchema"
-    symbols = D.text "_LsSymbols"
+    schema = D.text "Schema"
+    symbols = D.text "Symbols"
     handler = D.text "_LsHandler"
     -- A typed spec handler runs typed code: its state stays in its cell's
     -- process. ref:DEC-typed-native-definitions
@@ -281,7 +281,7 @@ emit target layout bits typed declarations units boundSchema = do
                 [E.remote "lawspec_beam_effects" "native_try" [E.lambda []
                   (E.apply (D.text "(" <> E.remote "maps" "get" [E.atom (operationName target op),D.text "Handler"] <> D.text ")") values)]]))
           pure (fragment (D.text "-type " <> E.call n [] <> D.text " :: " <>
-            D.delimit 4 "#{" "}" ([E.atom key <> D.text " := " <> ty | (key,ty) <- zip fields ts] ++
+            D.delimit 4 "#{" "}" ([E.field ":=" (E.atom key) ty | (key,ty) <- zip fields ts] ++
               [E.atom "__lawspec_origin__" <> D.text " => lawspec_beam_effects:handler_origin()"]) <> D.text ".") : tries)
         "elixir" -> do
           tries <- forM (failingOperations ability) $ \(op,ty,failure) -> do
@@ -454,16 +454,16 @@ emit target layout bits typed declarations units boundSchema = do
           [D.text "{_LsOrigin, _LsOperations} = " <> E.call (name ++ "_parts") [native],
            E.remote "lawspec_beam_effects" "recover_handler" [D.text "_LsOrigin",key,symbols,D.text "_LsOperations",E.lambda [] logical]],
         E.function (name ++ "_production") ([schema,symbols] ++ [D.text "_LsResource" | not (null made)]) [production]] ++
-        [E.function (name ++ "_production") [D.text "_LsSchema",D.text "_LsSymbols"]
+        [E.function (name ++ "_production") [D.text "Schema",D.text "Symbols"]
           [E.remote "erlang" "error" [E.tuple [E.atom "lawspec",E.tuple [E.atom "resource_required",key]]]] | not (null made)] ++
         [
         E.function (name ++ "_recording") [context,native] [recorded]] ++
         [E.function (defaultEntry ability) []
-          [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
+          [D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
            D.text "_LsHandler = " <> E.remote "lawspec_beam_defaults" "handler" [key],
            D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | hasDefault ability] ++
         [E.function "default_lawspec_crypto_slh_dsa_signature_handler" []
-          [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
+          [D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
            D.text "_LsHandler = " <> E.remote "lawspec_beam_crypto" "slh_dsa_signature_handler" [],
            D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | isSignature ability]
     -- A native interface of an ability, its operations the list
@@ -519,8 +519,8 @@ emit target layout bits typed declarations units boundSchema = do
             let handlerContext = if contextual then [currentSchema,symbols] else []
             in if stateful
               then E.remote "lawspec_beam_fast" (if contextual then "update_tracked" else "update") [handler,E.lambda [D.text "_LsState"]
-                (D.text "case " <> E.remote "lawspec_typed" f (handlerContext ++ D.text "_LsState" : typedArgs) <> D.text " of " <>
-                  beamTypedPair t (D.text "_LsResult") (D.text "_LsNext") <> D.text " -> {_LsResult, _LsNext} end")]
+                (E.caseOf (E.remote "lawspec_typed" f (handlerContext ++ D.text "_LsState" : typedArgs))
+                  [(beamTypedPair t (D.text "_LsResult") (D.text "_LsNext"),D.text "{_LsResult, _LsNext}")])]
               else E.remote "lawspec_typed" f (handlerContext ++ (if null typedArgs then [unitAtom] else typedArgs))
           typedArguments crossing args prefix = unzip
             [ (D.text ("_LsTyped" ++ show i ++ " = ") <> beamTypedConvert t crossing ty (D.text (prefix ++ show i)), D.text ("_LsTyped" ++ show i))

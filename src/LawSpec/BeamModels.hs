@@ -24,8 +24,8 @@ emit target layout bits datas units = concat <$> mapM unitFiles
     entries = Definitions.entries units
     declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
     declaration identity = maybe (Left ("missing BEAM model declaration " ++ C.idText identity)) Right (lookup identity declarations)
-    schema = D.text "_LsSchema"
-    symbols = D.text "_LsSymbols"
+    schema = D.text "Schema"
+    symbols = D.text "Symbols"
     callback identity = do
       d <- declaration identity
       name <- maybe (Left ("missing checked BEAM model callback " ++ C.idText identity)) Right (lookup identity entries)
@@ -57,12 +57,12 @@ emit target layout bits datas units = concat <$> mapM unitFiles
         ds <- mapM declaration (nub (foldr (:) [] machine))
         factories <- Effects.factories units symbols [(a,C.ProductionHandler) | a <- nub (concatMap Effects.uses ds)]
         let body = E.apply (D.text "_LsBody") [E.tuple [schema,symbols]]
-            handled = if null (concatMap Effects.uses ds) then E.apply (E.lambda [schema] body) [D.text "_LsBaseSchema"]
-              else E.remote "lawspec_beam_effects" "with_scope" [D.text "_LsBaseSchema",factories,E.lambda [schema] body]
+            handled = if null (concatMap Effects.uses ds) then E.apply (E.lambda [schema] body) [D.text "BaseSchema"]
+              else E.remote "lawspec_beam_effects" "with_scope" [D.text "BaseSchema",factories,E.lambda [schema] body]
             scoped = if hasPolicies then E.remote "lawspec_beam_workflow" "with_test_runtime" [E.lambda [] handled] else handled
             context = E.lambda [D.text "_LsBody"] (E.sequenceDoc
               [symbols <> D.text " = make_ref()",
-               D.text "_LsBaseSchema = " <> E.remote "lawspec_data" "schema" [symbols],scoped])
+               D.text "BaseSchema = " <> E.remote "lawspec_data" "schema" [symbols],scoped])
             model = E.remote "maps" "put" [E.atom "context",context,
               E.remote "lawspec_beam_model" "new" [E.binary spec,start,E.array commands,abstract,E.array invariants]]
         pure (E.function name [] [model])

@@ -50,7 +50,7 @@ emitData target layout bits declarations = do
     pure (E.atom name <> D.text ("/" ++ show (length (C.dataParameters d))))) [d | d <- declarations, target == "erlang"]
   let schema = E.remote "lawspec_beam_schema" "new" [E.array metadata,
         E.array (map (E.binary . primitiveName) primitives),D.text (show bits)]
-      factory = E.function "schema" [D.text "_LsSymbols"]
+      factory = E.function "schema" [D.text "Symbols"]
         [if target == "gleam" then E.remote "lawspec_beam_schema" "with_codecs"
           [schema,E.remote "lawspec_beam_gleam" "codecs" []] else schema]
       body = [D.text "-export_type(" <> E.array exports <> D.text ")." | not (null exports)] ++ definitions ++ [factory]
@@ -64,12 +64,11 @@ emitData target layout bits declarations = do
             let fields = E.elixirFields d c
                 variables = [D.text ("_LsField" ++ show i) | (i,_) <- zip [0::Int ..] fields]
                 entries = (E.atom "__struct__", E.atom ("Elixir." ++ E.elixirDataModule tag)) : zip (map E.atom fields) variables
-                patternDoc = D.delimit 4 "#{" "}" [a <> D.text " := " <> b | (a,b) <- entries]
+                patternDoc = D.delimit 4 "#{" "}" [E.field ":=" a b | (a,b) <- entries]
             unless (all (\n -> not (null n) && length n <= 255 && n /= "__struct__") fields && length fields == length (nub fields))
               (Left "Elixir struct fields collide after snake_case conversion or exceed the atom limit")
             pure [(E.atom "encode",E.lambda [E.array variables] (E.record entries)),
-              (E.atom "decode",D.group (D.text "fun(" <> patternDoc <> D.text ") -> " <>
-                E.tuple [E.atom "ok",E.array variables] <> D.text "; (_) -> no_match end"))]
+              (E.atom "decode",E.funClauses [([patternDoc],E.tuple [E.atom "ok",E.array variables]),([D.text "_"],E.atom "no_match")])]
           _ -> Left "missing Elixir constructor metadata"
     named names identity = maybe (Left ("unresolved BEAM data name: " ++ C.idText identity)) Right (lookup identity names)
     nativeDefinition names d = do
@@ -136,10 +135,10 @@ emitData target layout bits declarations = do
             pure (E.remote "lawspec_beam_schema" "substitute" [raw,D.text "_LsKnown"])
           key ty = E.remote "lawspec_beam_schema" "type_key" . pure <$> ref ty
           render = Expr.renderExpressionWithContext (D.text (show bits)) ref key
-            (D.text "_LsSchema") (D.text "_LsSymbols") local
+            (D.text "Schema") (D.text "Symbols") local
             (\_ _ _ -> Left "external call in a BEAM constructor predicate")
       body <- build render
-      pure (E.lambda (map D.text ["_LsSchema","_LsTypes","_LsFields"])
+      pure (E.lambda (map D.text ["Schema","_LsTypes","_LsFields"])
         (E.sequenceDoc [D.text "_LsKnown = " <> E.remote "maps" "from_list"
           [E.remote "lists" "zip" [E.remote "lists" "seq"
             [D.text "0",D.text "length(_LsTypes) - 1"],D.text "_LsTypes"]],body]))

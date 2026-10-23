@@ -205,7 +205,7 @@ emitBindings target layout bindings plan = do
             let owner = E.atom ("Elixir." ++ intercalate "." parts)
                 entries = (E.atom "__struct__",owner) : zip (map E.atom fields) values
             pure (shape (E.remote "Elixir.Kernel" "struct!" [owner,E.record (zip (map E.atom fields) values)])
-              (D.delimit 4 "#{" "}" [k <> D.text " := " <> v | (k,v) <- entries]))
+              (D.delimit 4 "#{" "}" [E.field ":=" k v | (k,v) <- entries]))
         "gleam" -> pure (E.remote "lawspec_beam_schema" "constructor_shape"
           [E.lambda [E.array values] (E.remote "lawspec@native_constructors" ("make_" ++ show i) values),
            D.text (show (length fields))])

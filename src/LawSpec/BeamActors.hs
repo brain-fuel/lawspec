@@ -34,17 +34,17 @@ emit target layout bits declarations units = do
       unitValue = E.atom (if target == "gleam" then "nil" else "ok")
       bridge direction ty value = do
         ref <- E.typeReference ty
-        pure (E.remote "lawspec_beam_schema" direction [value,ref,D.text "_LsSchema"])
+        pure (E.remote "lawspec_beam_schema" direction [value,ref,D.text "Schema"])
       checked available declaration arguments finish = do
         let (types, _) = C.functionType (C.declarationType declaration)
         name <- maybe (Left "missing checked BEAM actor adapter") Right (lookup (C.declarationId declaration) entries)
         values <- sequence [bridge "from_native" ty value | (ty,value) <- zip types arguments]
         out <- finish (D.text "_LsResult")
-        let call = E.remote "lawspec_definitions" name (D.text "_LsSchema" : D.text "_LsSymbols" : values)
+        let call = E.remote "lawspec_definitions" name (D.text "Schema" : D.text "Symbols" : values)
             body = E.sequenceDoc [D.text "_LsResult = " <> call,out]
             needed = [(a,v) | (a,v) <- available, a `elem` Effects.uses declaration]
         scoped <- if null needed then pure (E.sequenceDoc
-          [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [D.text "_LsSymbols"],body])
+          [D.text "Symbols = make_ref()",D.text "Schema = " <> E.remote "lawspec_data" "schema" [D.text "Symbols"],body])
           else Abilities.publicBody units needed body
         pure (E.apply (E.lambda [] scoped) [])
       allHandlers as = nub (concatMap (concatMap Effects.uses . actorDeclarations) as)
@@ -136,8 +136,8 @@ emit target layout bits declarations units = do
             descriptor d = E.binary (unwords (map snd (reverse forms) ++ [d]))
             wire ds r = E.record [(E.atom "arguments",E.array (map descriptor ds)),(E.atom "result",descriptor r)]
             signatures' = E.record [(E.binary (handlerName h),wire ds r) | (h,ds,r) <- handlers]
-            fresh = [D.text "_LsSymbols = make_ref()",
-              D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [D.text "_LsSymbols"]]
+            fresh = [D.text "Symbols = make_ref()",
+              D.text "Schema = " <> E.remote "lawspec_data" "schema" [D.text "Symbols"]]
             remoteModule = moduleName ++ "_remote"
             connect = Function "connect" [("node",nodeType),("address",text)] remoteOwn
               [E.call "connect_with_timeout" [variable "node",variable "address",D.text "5000"]]

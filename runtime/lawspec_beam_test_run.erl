@@ -102,7 +102,7 @@ gleam_selection(Modules) ->
                 [Module] = [M || M <- Modules, atom_to_binary(M) =:= ModuleName],
                 {module, Module} = code:ensure_loaded(Module),
                 [Function] = [F || {F,0} <- Module:module_info(exports), atom_to_binary(F) =:= FunctionName,
-                    lists:prefix("benchmark_", atom_to_list(F)), lists:suffix("__case_0_test", atom_to_list(F))],
+                    lists:prefix("benchmark_", atom_to_list(F)), lists:suffix("_test", atom_to_list(F))],
                 {timeout, 60, erlang:make_fun(Module, Function, 0)}
             end || #{<<"module">> := ModuleName, <<"function">> := FunctionName} <- validated_selection(Selected)]
     end.

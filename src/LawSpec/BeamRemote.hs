@@ -98,8 +98,8 @@ emit target layout plan = do
     descriptor d = E.binary (unwords (forms ++ [d]))
 
 schema, symbols :: D.Doc
-schema = D.text "_LsSchema"
-symbols = D.text "_LsSymbols"
+schema = D.text "Schema"
+symbols = D.text "Symbols"
 variable :: String -> D.Doc
 variable = D.text . ("_Ls" ++) . E.pascal
 fresh :: [D.Doc]
