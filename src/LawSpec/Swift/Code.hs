@@ -8,12 +8,12 @@
 module LawSpec.Swift.Code
   ( Ty(..), Expr(..)
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
-  , call, pure', str, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
+  , call, pure', str, longStringLiteral, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
   , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, fileHeader, blockDoc, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
-import Control.Monad.State.Strict (State, evalState, get, put)
+import Control.Monad.State.Strict (State, evalState, get, put, modify)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Char (isAscii)
@@ -26,6 +26,8 @@ newtype Ty = Ty String deriving (Eq, Show)
 data Expr
   = Var String
   | Str String
+  -- | Text too long for a line: a multiline literal, its lines joined.
+  | LongStr String
   | IntLit Integer
   -- | A BigInt literal.
   | BigLit Integer
@@ -80,10 +82,12 @@ pure' owner name = Pure (owner ++ "." ++ name)
 str :: String -> Expr
 str = Str
 
--- | Whether an expression prints on one line, with no statement in it.
+-- | Whether an expression is an expression in Swift, with no statement in it
+-- (a closure's body is its own).
 isInline :: Expr -> Bool
 isInline e = case e of
-  Lambda {} -> False
+  -- A closure is an expression: its body is its own.
+  Lambda {} -> True
   Let {} -> False
   If {} -> False
   Do {} -> False
@@ -268,6 +272,7 @@ arguments args
     simple a = case a of
       Var _ -> True
       Str _ -> True
+      LongStr _ -> True
       IntLit _ -> True
       BigLit _ -> True
       BoolLit _ -> True
@@ -310,10 +315,11 @@ distinct e = evalState (go M.empty e) S.empty
       Invoke f args -> Invoke <$> go env f <*> mapM (go env) args
       ListOf t xs -> ListOf t <$> mapM (go env) xs
       TupleOf xs -> TupleOf <$> mapM (go env) xs
+      -- A closure's parameters are its own scope: they keep their names.
       Lambda ps r b -> do
-        names <- mapM (binder . fst) ps
-        b' <- go (foldr (uncurry M.insert) env (zip (map fst ps) names)) b
-        pure (Lambda (zip names (map snd ps)) r b')
+        modify (S.union (S.fromList (map fst ps)))
+        b' <- go (foldr M.delete env (map fst ps)) b
+        pure (Lambda ps r b')
       Let n t v b -> do
         v' <- go env v
         n' <- binder n
@@ -409,6 +415,7 @@ statement s = case s of
 inert :: Expr -> Bool
 inert v = case v of
   Pure f args | take 6 f == "Value." -> all inert args
+  LongStr _ -> True
   Var _ -> True
   Raw _ -> True
   Str _ -> True
@@ -451,6 +458,7 @@ inline :: Expr -> Fresh D.Doc
 inline e = case e of
   Var v -> pure (D.text v)
   Str s -> pure (D.text (stringLiteral s))
+  LongStr s -> pure (longStringLiteral s)
   IntLit n -> pure (D.text (intLiteral n))
   BigLit n -> pure (D.text (bigLiteral n))
   BoolLit b -> pure (D.text (if b then "true" else "false"))
@@ -588,6 +596,24 @@ bigLiteral :: Integer -> String
 bigLiteral n
   | abs n < 2 ^ (62 :: Int) = "BigInt(" ++ intLiteral n ++ ")"
   | otherwise = "BigInt(\"" ++ show n ++ "\")!"
+
+-- | A long text as a multiline literal: its words on lines of about 80
+-- columns, each ending in a backslash, which joins it to the next, so the
+-- value has no line breaks of its own. Text with a line break, a quote,
+-- a backslash or an unprintable character, or that fits, is an ordinary
+-- literal.
+longStringLiteral :: String -> D.Doc
+longStringLiteral s
+  | length s <= 80 || any (`elem` ("\n\r\"\\" :: String)) s || stringLiteral s /= "\"" ++ s ++ "\"" || ' ' `notElem` s = D.text (stringLiteral s)
+  | otherwise = D.text "\"\"\"" <> mconcat [D.hardline <> D.text l | l <- joined (chunks s)] <> D.hardline <> D.text "\"\"\""
+  where
+    -- Lines break after a space; every line but the last ends with \.
+    chunks text = case splitAt 80 text of
+      (whole, []) -> [whole]
+      (front, back) -> case break (== ' ') (reverse front) of
+        (_, []) -> let (word, rest) = break (== ' ') back in (front ++ word ++ take 1 rest) : chunks (drop 1 rest)
+        (tailPart, spaceAndHead) -> reverse spaceAndHead : chunks (reverse tailPart ++ back)
+    joined ls = [l ++ "\\" | l <- init ls] ++ [last ls]
 
 -- | A Swift string literal: printable characters as they are, Swift's own
 -- escapes, and \u{...} for the rest (LawSpec.Code.Literal).

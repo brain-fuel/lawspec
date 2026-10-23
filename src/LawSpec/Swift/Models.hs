@@ -31,9 +31,9 @@ emitModels layout bits datas units = concat <$> mapM unitFile
       d <- declaration identity
       e <- maybe (Left ("missing Swift model callback " ++ C.idText identity)) Right (lookup identity (entries units))
       let count = length (fst (C.functionType (C.declarationType d)))
-      pure ("{ (context: Model.CallbackContext, arguments: [Value]) throws -> Value in try " ++ entryOwner e ++ "." ++ entryName e ++
-        "(" ++ intercalate ", " (["context.0", "context.1"] ++ ["arguments[" ++ show i ++ "]" | i <- [0 .. count - 1]]) ++ ") }")
-    optional = maybe (pure "nil") callback
+      pure (Lambda [("context", Ty "Model.CallbackContext"), ("arguments", tValues)] tValue
+        (Call (entryOwner e ++ "." ++ entryName e) (map Raw (["context.0", "context.1"] ++ ["arguments[" ++ show i ++ "]" | i <- [0 .. count - 1]]))))
+    optional = maybe (pure (Raw "nil")) callback
     unitFile unit = do
       let names = Checks.machineNames unit
           parallel = maybe False C.harnessParallel (C.unitHarnessSettings unit)
@@ -42,13 +42,13 @@ emitModels layout bits datas units = concat <$> mapM unitFile
           (Left ("Swift eventual model " ++ machineName machine ++ " needs abstract to compare the final state"))
         spec <- machineSpec bits datas (C.unitDeclarations unit) (C.unitContracts unit) machine
         start <- case machineStart machine of
-          Just s -> (\a b -> "(" ++ a ++ ", " ++ b ++ ")") <$> callback (startRun s) <*> callback (startModel s)
+          Just s -> (\a b -> TupleOf [a, b]) <$> callback (startRun s) <*> callback (startModel s)
           Nothing -> Left "a Swift model needs a start command"
         commands <- forM (machineCommands machine) $ \c -> do
           run <- callback (commandRun c)
           reference <- callback (commandReference c)
           condition <- optional (commandWhen c)
-          pure ("(" ++ run ++ ", " ++ reference ++ ", " ++ condition ++ ")")
+          pure (TupleOf [run, reference, condition])
         abstract <- optional (machineAbstractRun machine)
         let invariant (OnModel f) = f
             invariant (OnState f) = f
@@ -57,35 +57,33 @@ emitModels layout bits datas units = concat <$> mapM unitFile
         made <- Effects.factories units (Var "symbols") [(a, C.ProductionHandler) | a <- nub (concatMap Effects.uses ds)]
         let factoryTy = Ty "[(String, (Schema) throws -> Effects.Handler)]"
             factoriesName = name ++ "Factories"
-            context = "Model.contextWith(LawSpec.Program.schema, " ++ factoriesName ++ ")"
+            context = Pure "Model.contextWith" [Raw "LawSpec.Program.schema", Var factoriesName]
             -- A program with workflow policies runs its models on the
             -- workflow test runtime, as its laws do.
             withRuntime = if Policy.usesPolicies units
-              then "{ (body: (Model.CallbackContext) throws -> Any) throws -> Any in try Workflow.withTestRuntime { try " ++ context ++ "(body) } }"
+              then Lambda [("body", Ty "(Model.CallbackContext) throws -> Any")] (Ty "Any")
+                (Call "Workflow.withTestRuntime" [Lambda [] (Ty "Any") (Invoke context [Var "body"])])
               else context
-            created = "try Model.create(" ++ stringLiteral spec ++ ",\n  " ++ start ++ ",\n  [" ++
-              intercalate ",\n   " commands ++ "],\n  " ++ abstract ++ ",\n  [" ++ intercalate ", " invariants ++ "])"
-            withContext = "Model.withContext(" ++ withRuntime ++ ",\n" ++ created ++ ")"
+            created = Call "Model.create" [LongStr spec, start, ListOf (Ty "") commands, abstract, ListOf (Ty "") invariants]
+            withContext = Pure "Model.withContext" [withRuntime, created]
             -- An actor model runs its system on the actor runtime.
-            whole = if machineActor machine then "Model.withActors(ActorHost.host, " ++ withContext ++ ")" else withContext
-        pure (D.text ("private func " ++ factoriesName ++ "(_ symbols: SymbolContext) throws -> [(String, (Schema) throws -> Effects.Handler)] {") <>
-          D.nest 2 (D.hardline <> renderBody factoryTy made) <> D.hardline <> D.text "}" <> D.hardline <> D.hardline <>
+            whole = if machineActor machine then Pure "Model.withActors" [Raw "ActorHost.host", withContext] else withContext
+        pure (signature ("private func " ++ factoriesName) ["_ symbols: SymbolContext"] " throws -> [(String, (Schema) throws -> Effects.Handler)]"
+          (renderBody factoryTy made) <> D.hardline <> D.hardline <>
           D.text ("/// The model " ++ machineName machine ++ ".") <> D.hardline <>
-          D.text ("private func " ++ name ++ "() throws -> Model.Machine {") <>
-          D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text (lines whole))) <> D.hardline <> D.text "}")
+          signature ("private func " ++ name) [] " throws -> Model.Machine" (renderBody (Ty "Model.Machine") whole))
       cases <- forM (Checks.checks unit) $ \check -> do
         action <- case Checks.checkAction check of
-          Checks.Sequential name _ -> pure ("try Model.check(try " ++ name ++ "())")
-          Checks.Parallel name _ -> pure ("try ModelParallel.check(try " ++ name ++ "())")
+          Checks.Sequential name _ -> pure (Call "Model.check" [Call name []])
+          Checks.Parallel name _ -> pure (Call "ModelParallel.check" [Call name []])
           Checks.Scenario name _ program -> do
             wire <- scenarioWire bits datas (concatMap C.unitSessions units) program
             let text = P.programSpec (program { P.programWire = wire })
-            pure ("try Scenario.check(try " ++ name ++ "(), " ++ stringLiteral text ++ ")")
-          Checks.Supervision -> pure "try Supervision.check()"
-        pure (D.text ("@Test(" ++ stringLiteral (Checks.checkLabel check) ++ ")") <> D.hardline <>
-          D.text ("func " ++ Checks.checkName check ++ "() async throws {") <> D.nest 2 (D.hardline <>
-            D.text "try await LawThread.run {" <> D.nest 2 (D.hardline <> D.text action) <> D.hardline <> D.text "}") <>
-          D.hardline <> D.text "}")
+            pure (Call "Scenario.check" [Call name [], LongStr text])
+          Checks.Supervision -> pure (Call "Supervision.check" [])
+        pure (callDoc "@Test" [D.text (stringLiteral (Checks.checkLabel check))] <> D.hardline <>
+          D.text ("func " ++ Checks.checkName check ++ "() async throws") <> blockDoc (
+            D.text "try await LawThread.run" <> blockDoc (renderStatements (Statement action))))
       let suite = testName (C.unitId unit) ++ "Models"
           suiteDoc = D.text ("/// The models of " ++ C.idText (C.unitId unit) ++ ".") <> D.hardline <>
             D.text ("@Suite(" ++ stringLiteral (C.idText (C.unitId unit) ++ " models") ++ ") struct " ++ suite ++ " {") <>

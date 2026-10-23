@@ -10,6 +10,8 @@ module LawSpec.Swift.Names
   ) where
 
 import qualified LawSpec.Naming as N
+import LawSpec.RecordNames (recordDisplayNames)
+import qualified Data.Map.Strict as M
 
 import qualified LawSpec.Core as C
 import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, toUpper, toLower)
@@ -45,11 +47,16 @@ pascal s = case concatMap capital (identifierWords s) of
   where capital (c : cs) = toUpper c : cs
         capital [] = []
 
+-- | lowerCamelCase: the first word lowercased whole, so USD is usd and
+-- HTTPServer httpServer, as Swift's API guidelines write acronyms.
 camel :: String -> String
 camel s = case pascal s of
   '_' : rest -> '_' : rest
+  _ : _ | w : rest <- identifierWords s -> map toLower w ++ concatMap capital rest
   c : cs -> toLower c : cs
   [] -> "_"
+  where capital (c : cs) = toUpper c : cs
+        capital [] = []
 
 -- | Swift's keywords, which a name escapes in backticks.
 swiftKeywords :: [String]
@@ -138,7 +145,9 @@ testName identity = concatMap pascal (splitDots (C.idText identity))
 -- code uses, and constructors named within their type.
 dataNames :: [C.DataDeclaration] -> Either String [(C.Id, String)]
 dataNames declarations = do
-  let shorts = [(C.dataId d, pascal (C.dataName d)) | d <- declarations]
+  -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames declarations
+      shorts = [(C.dataId d, pascal (M.findWithDefault (C.dataName d) (C.dataId d) display)) | d <- declarations]
       roots = nub [pascal (takeWhile (/= '.') (owner (C.idText (C.dataId d)))) | d <- declarations]
       reserved = words "Value Schema Codec Codecs Unit Null Undefined Symbol Either Nullable Undefinable Rational ExactDecimal Complex64 Complex128 BigInt SortedSet SortedMap Effects Runtime Scalar Typed Fail Recorded Regex Random Descriptors Defaults Portable LawSpec App Optional Array Dictionary Set String Int Bool Character Result Error Never Duration Double Float Any Void Sendable Hashable Equatable Comparable Task Actor Gen Tree Property Harness Generators Handler"
       types = [ (identity, if length (filter ((== n) . snd) shorts) > 1 || n `elem` reserved || n `elem` roots

@@ -139,7 +139,11 @@ emitSwiftWithBindings minify bindings plan = do
           , "import LawSpecTesting"
           , "import Testing"
           , ""
-          , "private let vectors = " ++ stringLiteral (defaultSource "vectors.txt")
+          , "private let vectors = \"\"\"" ] ++
+          -- The vectors as a multiline literal, a line of source a line.
+          [ if null l then "" else "  " ++ concatMap escapeMultiline l | l <- lines (defaultSource "vectors.txt") ] ++
+          [ "" | "\n" `isSuffixOf` defaultSource "vectors.txt" ] ++
+          [ "  \"\"\""
           , ""
           , "extension LawSpecTests {"
           , "  /// lawspec.crypto's primitives against NIST's known-answer vectors."
@@ -153,6 +157,14 @@ emitSwiftWithBindings minify bindings plan = do
     vectorKinds = ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
       "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
       "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
+
+-- | A character in a multiline string literal: a backslash or a quote
+-- escaped, so no escape or closing delimiter is formed.
+escapeMultiline :: Char -> String
+escapeMultiline c = case c of
+  '\\' -> "\\\\"
+  '"' -> "\\\""
+  _ -> [c]
 
 -- | A unit namespace and the namespaces inside it.
 data Namespace = Namespace String [Namespace]
