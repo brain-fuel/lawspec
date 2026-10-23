@@ -308,8 +308,8 @@ actorImport = [D.text "import lawspec/actors"]
 render :: String -> D.Layout -> String -> String -> String -> String -> NativeType -> Maybe NativeType -> [Function] -> [Artifact]
 render target layout moduleName path elixirModule typeName rawType handleTy functions =
   Artifact ("src/" ++ moduleName ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render layout elixir) "generated" "source"]
-    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render layout gleam) "generated" "source"]
+    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
     _ -> []
   where
     public = [f | f@(Function n _ _ _) <- functions, n /= "spec"]
@@ -328,7 +328,7 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
        [E.function "child_spec" [E.array (args startParameters)] [E.call "otp_child_spec" (args startParameters)] | lifecycle])
     elixir = X.moduleDoc elixirModule False
       ([D.text "@opaque t :: " <> maybe (exType rawType) exType handleTy] ++
-       concat [ [D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType result,
+       concat [ [X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
          X.function n (map (D.text . fst) ps)
            [X.remote (":" ++ moduleName) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- public, n /= "otp_child_spec"] ++
@@ -337,6 +337,6 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     gleam = G.fileDoc False
       (nub (concat [concatMap (imports . snd) ps ++ imports result | Function _ ps result _ <- public] ++
         maybe [] imports handleTy) ++
-       [D.text ("pub type " ++ typeName) <> maybe mempty ((D.text " = " <>) . gleamType) handleTy] ++
+       [maybe (D.text ("pub type " ++ typeName)) (G.typeAlias typeName . gleamType) handleTy] ++
        [G.external moduleName n (if n == "otp_child_spec" then "child_spec" else n)
          [D.text (p ++ ": ") <> gleamType t | (p,t) <- ps] (gleamType result) | Function n ps result _ <- public])

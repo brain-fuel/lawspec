@@ -66,6 +66,11 @@ emit target layout bindings plan = do
           allNames = names ++ map ModelChecks.checkName models ++ benchmarkNames
           allowances = zip names (map runnerAllowance properties)
           allowance n = maybe runnerGuard id (lookup n allowances)
+          -- What each test checks, linked to its source where it has one.
+          described n = maybe n id (lookup n
+            ([(n', labelled (displayLabel (C.propertyName (plannedProperty p))) (propertyLink (plannedProperty p))) | (n',p) <- zip names properties] ++
+             [(ModelChecks.checkName c, ModelChecks.checkLabel c) | c <- models] ++
+             [(n', "benchmark " ++ label) | ((label,_),n') <- zip measured benchmarkNames]))
           groups = [(C.propertyName (plannedProperty p), n) | (p,n) <- zip properties names] ++
             [(ModelChecks.checkLabel c, ModelChecks.checkName c) | c <- models] ++
             [("benchmark " ++ label, n) | ((label,_),n) <- zip measured benchmarkNames]
@@ -129,7 +134,7 @@ emit target layout bindings plan = do
       measurements <- sequence [benchmarkTest unit n label body | (n,(label,body)) <- zip benchmarkNames measured]
       pure (Artifact (testSupport ++ name ++ ".erl")
         (D.render layout (E.moduleDocFrom (unitSourceFile unit) name exports (bodies ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite))) "generated" "test" :
-        [Elixir.unitTests layout unit [(n, allowance n) | n <- allNames] | target == "elixir"] ++
+        [Elixir.unitTests layout unit [(n, allowance n, described n) | n <- allNames] | target == "elixir"] ++
         [Gleam.unitTests layout unit [(n,suffixes,n `elem` skips) | (n,suffixes) <- counts] | target == "gleam"])
     benchmarkTest unit name label expression = do
       body <- Expr.renderExpression bits schema symbols

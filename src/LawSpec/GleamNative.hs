@@ -12,6 +12,7 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.Core.Types (freeExistentials)
 import Control.Monad (forM, unless)
 import Data.List (nub)
+import LawSpec.SourceLink (unitSourceFile)
 
 emitNative :: D.Layout -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitNative layout declarations units = do
@@ -26,7 +27,7 @@ emitNative layout declarations units = do
   let fields = [C.binderType f | d <- declarations, c <- C.dataConstructors d, f <- C.constructorFields c]
       dynamic = [D.text "import gleam/dynamic" | any (not . null . C.constructorExistentials) (concatMap C.dataConstructors declarations)]
       dataFile = Artifact "src/lawspec/data.gleam"
-        (D.render layout (G.fileDoc False (G.imports True fields ++ dynamic ++ dataTypes))) "generated" "source"
+        (D.render (G.layoutFor layout) (G.fileDoc False (G.imports True fields ++ dynamic ++ dataTypes))) "generated" "source"
   pure ([dataFile | not (null declarations)] ++ adapters ++ definitions)
   where
     named names identity = maybe (Left ("missing Gleam native name: " ++ C.idText identity)) Right (lookup identity names)
@@ -50,8 +51,8 @@ emitNative layout declarations units = do
       let resourceTypes = [t | a <- Abilities.productionAbilities unit, Just t <- [C.abilityResource a]]
           body = G.fileDoc (not (Abilities.defaultUnit unit)) (imports ++ G.imports False (map C.declarationType (adapterDeclarations unit) ++ resourceTypes) ++ bodies ++ production)
           path = "src/" ++ E.gleamPath (C.unitId unit) ++ ".gleam"
-      pure (if Abilities.defaultUnit unit then Artifact path (D.render layout body) "generated" "source"
-        else AdapterArtifact path (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
+      pure (if Abilities.defaultUnit unit then Artifact path (D.render (G.layoutFor layout) body) "generated" "source"
+        else AdapterArtifact path (D.render (G.layoutFor layout) body) "user" "source" (D.render (D.Pretty 80) body))
     nativeUnit names unit = do
       let declarations' = map C.definitionDeclaration (C.unitDefinitions unit)
       bodies <- forM declarations' $ \d -> do
@@ -59,7 +60,7 @@ emitNative layout declarations units = do
         pure (G.external (E.moduleName (C.unitId unit) ++ "_definitions_ffi") (functionName d) (functionName d) args result)
       imports <- Abilities.gleamImports units (concatMap Effects.uses declarations')
       pure (Artifact ("src/" ++ E.gleamPath (C.unitId unit) ++ "/definitions.gleam")
-        (D.render layout (G.fileDoc False (imports ++ G.imports False (map C.declarationType declarations') ++ bodies))) "generated" "source")
+        (D.render (G.layoutFor layout) (G.fileDoc False (imports ++ G.imports False (map C.declarationType declarations') ++ bodies))) "generated" "source")
     dataType names d = do
       name <- E.pascal <$> named names (C.dataId d)
       let parameters = zip (C.dataParameters d) ["a" ++ show i | i <- [0::Int ..]]
@@ -82,7 +83,7 @@ emitNative layout declarations units = do
 -- gets a native Gleeunit function so a boundary or example cannot disappear.
 unitTests :: D.Layout -> C.Unit -> [(String,[String],Bool)] -> Artifact
 unitTests layout unit laws = Artifact ("test/" ++ E.moduleName (C.unitId unit) ++ "_lawspec_test.gleam")
-  (D.render layout (G.fileDoc False ([D.text "import gleam/dynamic",
+  (D.render (G.layoutFor layout) (G.fileDocFrom (unitSourceFile unit) ([D.text "import gleam/dynamic",
     G.external owner "lawspec_suite" "lawspec_suite" [] (D.text "dynamic.Dynamic"),
     G.function "lawspec_unit" [] (D.text "String") [G.string (C.idText (C.unitId unit))]] ++
     concat [if skipped then [G.external owner (name ++ "_skipped_cases") (name ++ "__skipped_test_") [] (D.text "dynamic.Dynamic")]

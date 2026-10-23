@@ -138,11 +138,11 @@ emitBeamWithBindings target minify bindings plan = do
       "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
     vectorTests = case target of
       "elixir" -> Artifact "test/lawspec_crypto_vectors_test.exs"
-        (D.render layout (X.moduleDoc "LawSpec.CryptoVectorsTest" False (D.text "use ExUnit.Case" :
+        (D.render (X.layoutFor layout) (X.moduleDoc "LawSpec.CryptoVectorsTest" False (D.text "use ExUnit.Case" :
           [D.text "test " <> X.string kind <> D.text " do" <> D.nest 2 (D.hardline <>
             X.remote ":lawspec_beam_crypto_vectors" "check" [X.string kind]) <> D.hardline <> D.text "end" | kind <- vectorKinds]))) "generated" "test"
       "gleam" -> Artifact "test/lawspec_crypto_vectors_test.gleam"
-        (D.render layout (G.fileDoc False (G.external "lawspec_beam_crypto_vectors" "check" "check" [D.text "kind: String"] (D.text "Nil") :
+        (D.render (G.layoutFor layout) (G.fileDoc False (G.external "lawspec_beam_crypto_vectors" "check" "check" [D.text "kind: String"] (D.text "Nil") :
           [G.function (E.snake kind ++ "_test") [] (D.text "Nil") [G.call "check" [G.string kind]] | kind <- vectorKinds]))) "generated" "test"
       _ -> Artifact "test/lawspec_crypto_vectors_tests.erl"
         (D.render layout (E.moduleDoc "lawspec_crypto_vectors_tests" [("crypto_vectors_test_",0)]
@@ -164,6 +164,7 @@ emitBeamWithBindings target minify bindings plan = do
         [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
         [Artifact "test/support/lawspec_beam_exunit_formatter.ex" (runtimeSource "beam-exunit-formatter") "generated" "test" | target == "elixir"] ++
         [Artifact "test/support/lawspec_beam_exunit_schedule.ex" (runtimeSource "beam-exunit-schedule") "generated" "test" | target == "elixir"] ++
+        [Artifact "test/support/lawspec_beam_exunit_cases.ex" (runtimeSource "beam-exunit-cases") "generated" "test" | target == "elixir"] ++
         [Artifact (testSupport ++ "lawspec_beam_tasks.erl") (runtimeSource "beam-tasks") "generated" "test"
           | target == "elixir" || hasCaseSupervision, "tasks" `notElem` runtimeNames,
             (testSupport ++ "lawspec_beam_tasks.erl") `notElem` map artifactPath modelRuntimes] ++

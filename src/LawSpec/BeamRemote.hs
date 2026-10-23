@@ -114,8 +114,8 @@ render target layout name path elixirName functions extraExports extraBodies = d
     all (\(Function _ ps _ _) -> length ps <= 255) functions)
     (Left "BEAM remote method names collide or exceed native limits")
   pure (Artifact ("src/" ++ name ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render layout elixir) "generated" "source"]
-    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render layout gleam) "generated" "source"]
+    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
     _ -> [])
   where
     erlType (NativeType e _ _ _) = e
@@ -126,7 +126,7 @@ render target layout name path elixirName functions extraExports extraBodies = d
       (concat [[D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
         E.function n (map (variable . fst) ps) body] | Function n ps result body <- functions] ++ extraBodies)
     elixir = X.moduleDoc elixirName False (concat
-      [[D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType result,
+      [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
         X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
         | Function n ps result _ <- functions])
     gleam = G.fileDoc False

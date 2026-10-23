@@ -98,8 +98,8 @@ nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "L
 render :: String -> D.Layout -> C.Unit -> C.Mailbox -> String -> Bool -> [Function] -> [Artifact]
 render target layout unit box typeName wired functions =
   Artifact ("src/" ++ name ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render layout elixir) "generated" "source"]
-    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render layout gleam) "generated" "source"]
+    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
     _ -> []
   where
     name = moduleName unit box
@@ -118,7 +118,7 @@ render target layout unit box typeName wired functions =
     elixir = X.moduleDoc exModule False
       ([D.text "@opaque t :: :lawspec_beam_mailbox.mailbox()"] ++
        [D.text "@opaque sender :: :lawspec_beam_mailbox.sender()" | wired] ++
-       concat [[D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType result,
+       concat [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
          X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- functions])
     gleam = G.fileDoc False

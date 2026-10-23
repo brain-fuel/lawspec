@@ -21,6 +21,8 @@ import LawSpec.Typed.Beam (BeamTyped(..), Crossing(..))
 import LawSpec.Typed.Plan (isTypedHandler)
 import Control.Monad (forM, unless)
 import Data.List (nub, intercalate)
+import Data.Char (toUpper)
+import LawSpec.Naming (typeWords)
 
 interfaceName :: C.Ability -> String
 interfaceName = E.pascal . N.interfaceName
@@ -122,11 +124,17 @@ productionStub target _ _ ability | hasDefault ability = pure (concat
     [("slh_dsa_signature_handler","default_lawspec_crypto_slh_dsa_signature_handler") | isSignature ability]])
 productionStub target bits names ability = do
   fields <- forM (C.abilityOperations ability) $ \(op,ty) -> do
-    let args = [D.text ("_argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType ty))]
+    -- A stub operation's arguments are named for their types, unused.
+    let args = [D.text (unused v) | v <- X.variables [unwords (typeWords t) | t <- fst (C.functionType ty)]]
+        unused v = if target == "erlang" then "_" ++ concatMap capital (words (map (\c -> if c == '_' then ' ' else c) v)) else "_" ++ v
+        capital (c : cs) = toUpper c : cs
+        capital [] = []
         message = "Not implemented: " ++ C.abilityKey (C.abilityInstance ability) ++ "." ++ op
     pure $ case target of
-      "gleam" -> D.text "fn" <> D.delimit 2 "(" ")" args <> D.text " { panic as " <> G.string message <> D.text " }"
-      "elixir" -> D.text "fn " <> D.joinWith (D.text ", ") args <> D.text " -> raise " <> X.string message <> D.text " end"
+      -- A stub's operations are a constructor's arguments, at column 4.
+      "gleam" -> G.lambda 4 args (D.text "panic as " <> G.string message)
+      "elixir" -> D.group (D.text "fn " <> mconcat [D.joinWith (D.text ", ") args <> D.text " " | not (null args)] <> D.text "->" <>
+        D.nest 2 (D.softline <> D.text "raise " <> X.string message) <> D.softline <> D.text "end")
       _ -> E.lambda args (E.remote "erlang" "error" [E.tuple [E.atom "not_implemented",E.binary message]])
   _ <- mapM (operationType target bits names . snd) (C.abilityOperations ability)
   resource <- traverse (case target of
@@ -139,9 +147,9 @@ productionStub target bits names ability = do
   pure $ case target of
     "gleam" -> [G.function name [D.text "_resource: " <> t | t <- resourceTypes] (D.text (alias ability ++ "." ++ interfaceName ability))
       [G.call (alias ability ++ "." ++ builderName target ability) fields]]
-    "elixir" -> [D.text "@spec " <> X.call name resourceTypes <> D.text " :: " <> X.remote (interfaceModule target ability) "t" [],
-      X.function name [D.text "_resource" | _ <- resourceTypes] [D.text ("%" ++ interfaceModule target ability ++ "{") <>
-        D.joinWith (D.text ", ") [D.text key <> D.text ": " <> f | (key,f) <- zip keys fields] <> D.text "}"]]
+    "elixir" -> [X.typeAttribute "spec" (X.call name resourceTypes) (X.remote (interfaceModule target ability) "t" []),
+      X.function name [D.text "_resource" | _ <- resourceTypes] [D.delimit 2 ("%" ++ interfaceModule target ability ++ "{") "}"
+        [D.text key <> D.text ": " <> f | (key,f) <- zip keys fields]]]
     _ -> [D.text "-spec " <> E.call name resourceTypes <> D.text " -> " <>
         E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
       E.function name [D.text "_Resource" | _ <- resourceTypes] [E.record (zip (map E.atom keys) fields)]]
@@ -150,8 +158,7 @@ defaultFactory :: String -> C.Ability -> String -> String -> [D.Doc]
 defaultFactory target ability name entry = case target of
   "gleam" -> [G.external "lawspec_abilities" entry name []
     (D.text (alias ability ++ "." ++ interfaceName ability))]
-  "elixir" -> [D.text "@spec " <> X.call name [] <> D.text " :: " <>
-    X.remote (interfaceModule target ability) "t" [],
+  "elixir" -> [X.typeAttribute "spec" (X.call name []) (X.remote (interfaceModule target ability) "t" []),
     X.function name [] [X.remote ":lawspec_abilities" entry []]]
   _ -> [D.text "-spec " <> E.call name [] <> D.text " -> " <>
     E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
@@ -165,7 +172,7 @@ operationType target bits names ty = do
   out <- native result
   pure $ case target of
     "gleam" -> D.text "fn" <> D.delimit 2 "(" ")" args <> D.text " -> " <> out
-    "elixir" -> D.text "(" <> D.joinWith (D.text ", ") args <> D.text " -> " <> out <> D.text ")"
+    "elixir" -> D.text "(" <> mconcat [D.joinWith (D.text ", ") args <> D.text " " | not (null args)] <> D.text "-> " <> out <> D.text ")"
     _ -> D.text "fun((" <> D.joinWith (D.text ", ") args <> D.text ") -> " <> out <> D.text ")"
 
 emit :: String -> D.Layout -> Int -> Maybe BeamTyped -> [C.DataDeclaration] -> [C.Unit] -> Bool -> Either String [Artifact]
@@ -248,7 +255,7 @@ emit target layout bits typed declarations units boundSchema = do
           imports <- gleamImports units [ref | h <- hs, ref <- C.handlerAbilities h,
             maybe False ((/= C.unitId unit) . C.abilityOwner) (N.abilityOf units ref)]
           pure [Artifact ("src/" ++ interfacePath (C.unitId unit) ++ ".gleam")
-            (D.render layout (G.fileDoc False (D.text "import lawspec/effects" : imports ++
+            (D.render (G.layoutFor layout) (G.fileDoc False (D.text "import lawspec/effects" : imports ++
               G.imports False operationTypes ++ map artifactDoc types ++ map artifactDoc public))) "generated" "source"
             | not (null as && null hs)]
         _ -> do
@@ -261,7 +268,11 @@ emit target layout bits typed declarations units boundSchema = do
             (D.render layout (E.moduleDoc ("lawspec_abilities_" ++ E.moduleName (C.unitId unit)) exports
               (typeExports ++ map artifactDoc types ++ map artifactDoc public))) "generated" "source" | not (null as && null hs)]
     artifactDoc = D.text . artifactContent
-    fragment doc = Artifact "" (D.render layout doc) "generated" "source"
+    fragment doc = Artifact "" (D.render targetLayout doc) "generated" "source"
+    targetLayout = case target of
+      "gleam" -> G.layoutFor layout
+      "elixir" -> X.layoutFor layout
+      _ -> layout
     interface names ability = do
       ts <- mapM (operationType target bits names . snd) (C.abilityOperations ability)
       let n = E.snake (interfaceName ability)
@@ -291,18 +302,18 @@ emit target layout bits typed declarations units boundSchema = do
             out <- X.nativeType bits names [] (snd (C.functionType ty))
             failed <- X.nativeType bits names [] failure
             let name = "try_" ++ operationName target op
-            pure (D.text "@spec " <> X.call name (D.text "t()" : inputs) <> D.text " :: " <>
-              X.tuple [X.atom "ok",out] <> D.text " | " <> X.tuple [X.atom "error",failed] <> D.hardline <>
+            pure (X.typeAttribute "spec" (X.call name (D.text "t()" : inputs))
+              (X.tuple [X.atom "ok",out] <> D.text " | " <> X.tuple [X.atom "error",failed]) <> D.hardline <>
               X.function name (D.text "handler" : values)
                 [X.remote ":lawspec_beam_effects" "native_try" [D.text "fn -> handler." <> D.text (operationName target op) <>
                   D.text "." <> D.delimit 2 "(" ")" values <> D.text " end"]])
           let body = [D.text "@enforce_keys " <> X.array (map X.atom fields),
                 D.text "defstruct " <> X.array (map X.atom fields ++ [D.text "__lawspec_origin__: :none"]),
-                D.text "@type t :: " <> D.delimit 2 "%__MODULE__{" "}"
+                X.typeAttribute "type" (D.text "t") (D.delimit 2 "%__MODULE__{" "}"
                   ([X.atom key <> D.text " => " <> ty | (key,ty) <- zip fields ts] ++
-                    [D.text "__lawspec_origin__: :lawspec_beam_effects.handler_origin()"])] ++ tries
+                    [D.text "__lawspec_origin__: :lawspec_beam_effects.handler_origin()"]))] ++ tries
           pure [Artifact ("lib/" ++ interfacePath (C.abilityOwner ability) ++ "/" ++ n ++ ".ex")
-            (D.render layout (X.moduleDoc (interfaceModule target ability) False body)) "generated" "source"]
+            (D.render (X.layoutFor layout) (X.moduleDoc (interfaceModule target ability) False body)) "generated" "source"]
         _ -> do
           let ty = D.text (interfaceName ability)
               constructor origin = G.call (interfaceName ability) (origin : names')
@@ -386,13 +397,13 @@ emit target layout bits typed declarations units boundSchema = do
           bodies = typedStates ++ map publicFunction (specBodies ++ accessors ++ recordings)
       pure $ if target == "elixir" then
         [Artifact ("lib/lawspec/handlers/" ++ E.moduleName (C.unitId unit) ++ ".ex")
-          (D.render layout (X.moduleDoc ("LawSpec.Handlers." ++ E.pascal (C.idText (C.unitId unit))) False bodies)) "generated" "source"
+          (D.render (X.layoutFor layout) (X.moduleDoc ("LawSpec.Handlers." ++ E.pascal (C.idText (C.unitId unit))) False bodies)) "generated" "source"
           | not (null bodies)] else map fragment bodies
     publicFunction (name,entry,args,result) =
       let values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
       in case target of
         "gleam" -> G.external "lawspec_abilities" entry name [v <> D.text ": " <> ty | (v,ty) <- zip values args] result
-        "elixir" -> D.text "@spec " <> X.call name args <> D.text " :: " <> result <> D.hardline <>
+        "elixir" -> X.typeAttribute "spec" (X.call name args) result <> D.hardline <>
           X.function name values [X.remote ":lawspec_abilities" entry values]
         _ -> D.text "-spec " <> E.call name args <> D.text " -> " <> result <> D.text "." <> D.hardline <>
           E.function name [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]
@@ -629,5 +640,5 @@ emit target layout bits typed declarations units boundSchema = do
             D.hardline <> operations) <>
           D.hardline <> D.text "}")
       pure [Artifact "src/lawspec/native_handlers.gleam"
-        (D.render layout (G.fileDoc False ([D.text ("import " ++ intercalate "/" ref ++ " as " ++ name) | (ref,name) <- imports] ++ interfaces ++ bodies)))
+        (D.render (G.layoutFor layout) (G.fileDoc False ([D.text ("import " ++ intercalate "/" ref ++ " as " ++ name) | (ref,name) <- imports] ++ interfaces ++ bodies)))
         "generated" "source" | not (null bound)]

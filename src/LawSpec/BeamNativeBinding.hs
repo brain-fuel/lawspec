@@ -267,7 +267,7 @@ emitBindings target layout bindings plan = do
         pure (G.function ("make_" ++ show i) (map D.text values) result [invocation])
       let imports = [D.text ("import " ++ intercalate "/" parts ++ " as " ++ alias) | (parts,alias) <- aliases]
       pure (Artifact "src/lawspec/native_constructors.gleam"
-        (D.render layout (G.fileDoc False (imports ++ bodies))) "generated" "source")
+        (D.render (G.layoutFor layout) (G.fileDoc False (imports ++ bodies))) "generated" "source")
     capitalized (first:_) = isUpper first
     capitalized [] = False
 

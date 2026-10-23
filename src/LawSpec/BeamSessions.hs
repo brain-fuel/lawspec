@@ -116,21 +116,21 @@ emit target layout bits declarations units = do
              E.function n [variable p | (p,_) <- ps] body] | Function n ps r body <- functions])
         elixir = X.moduleDoc (elixirModule unit session) False
           ([D.text ("@opaque " ++ t ++ " :: :lawspec_beam_session.session()") | t <- types] ++
-           concat [[D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType r,
+           concat [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType r),
              X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
              | Function n ps r _ <- functions])
         gleam = G.fileDoc False
           (nub (D.text "import lawspec/session_types" : concat [concatMap (imports . snd) ps ++ imports r | Function _ ps r _ <- functions]) ++
-           [D.text ("pub type " ++ E.pascal side ++ show i ++ " = session_types." ++ globalType unit session side i)
+           [G.typeAlias (E.pascal side ++ show i) (D.text ("session_types." ++ globalType unit session side i))
              | side <- ["first","second"], i <- [0..length steps]] ++
            [G.external name n n [D.text (p ++ ": ") <> gleamType t | (p,t) <- ps] (gleamType r)
              | Function n ps r _ <- functions])
     pure (Artifact ("src/" ++ name ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-      "elixir" -> [Artifact ("lib/" ++ modulePath unit session ++ ".ex") (D.render layout elixir) "generated" "source"]
-      "gleam" -> [Artifact ("src/" ++ modulePath unit session ++ ".gleam") (D.render layout gleam) "generated" "source"]
+      "elixir" -> [Artifact ("lib/" ++ modulePath unit session ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+      "gleam" -> [Artifact ("src/" ++ modulePath unit session ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
       _ -> []))
   pure (artifacts ++ [Artifact "src/lawspec/session_types.gleam"
-    (D.render layout (G.fileDoc False [D.text ("pub type " ++ n) | n <- typeNames])) "generated" "source"
+    (D.render (G.layoutFor layout) (G.fileDoc False [D.text ("pub type " ++ n) | n <- typeNames])) "generated" "source"
       | target == "gleam", not (null protocols)])
 
 moduleName :: C.Unit -> C.Session -> String
