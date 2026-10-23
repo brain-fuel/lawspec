@@ -17,522 +17,106 @@ private data class RangeCase(
 
 private fun cases(): List<RangeCase> = listOf(
     RangeCase("Int64", 32, java.math.BigInteger("1"), java.math.BigInteger("9223372036854775807"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("9223372036854775807"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("9223372036854775807")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("1")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "1", "9223372036854775807")
     ),
     RangeCase("Int64", 32, java.math.BigInteger("-9223372036854775808"), java.math.BigInteger("9223372036854775807"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(_bytes)
-              }
-          _integer
-      }.map { _integer ->
-          LawSpecRuntime.integer("Int64", _integer.toString())
-      }
+      LawSpecScalars.generator("Int64", MACHINE_BITS)
     ),
     RangeCase("Int64", 32, java.math.BigInteger("-9223372036854775808"), java.math.BigInteger("-1"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("9223372036854775807"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("9223372036854775808")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-9223372036854775808")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-9223372036854775808", "-1")
     ),
     RangeCase("Int64", 32, java.math.BigInteger("-9223372036854775800"), java.math.BigInteger("-9223372036854775795"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("6")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-9223372036854775800")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-9223372036854775800", "-9223372036854775795")
     ),
     RangeCase("Int64", 32, java.math.BigInteger("9223372036854775800"), java.math.BigInteger("9223372036854775806"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("7")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("9223372036854775800")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "9223372036854775800", "9223372036854775806")
     ),
     RangeCase("Int64", 32, java.math.BigInteger("-5000000000000000000"), java.math.BigInteger("8000000000000000000"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("18446744073709551615"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("13000000000000000001")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-5000000000000000000")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-5000000000000000000", "8000000000000000000")
     ),
     RangeCase("UInt64", 32, java.math.BigInteger("18446744073709551000"), java.math.BigInteger("18446744073709551615"),
-      lawspecList(Arb.int(0..255), 2..2).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("1023"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("616")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "UInt64",
-              _offset.add(java.math.BigInteger("18446744073709551000")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("UInt64", "18446744073709551000", "18446744073709551615")
     ),
     RangeCase("UInt64", 32, java.math.BigInteger("0"), java.math.BigInteger("18446744073709551615"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _integer ->
-          LawSpecRuntime.integer("UInt64", _integer.toString())
-      }
+      LawSpecScalars.generator("UInt64", MACHINE_BITS)
     ),
     RangeCase("Integer", 32, java.math.BigInteger("1267650600228229401496703205393"), java.math.BigInteger("1267650600228229401496703205397"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("5")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Integer",
-              _offset.add(
-                  java.math.BigInteger("1267650600228229401496703205393"),
-              ).toString(),
-          )
-      }
+      LawSpecScalars.bounded(
+          "Integer",
+          "1267650600228229401496703205393",
+          "1267650600228229401496703205397",
+      )
     ),
     RangeCase("Integer", 32, java.math.BigInteger("-1267650600228229401496703205397"), java.math.BigInteger("-1267650600228229401496703205393"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("5")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Integer",
-              _offset.add(
-                  java.math.BigInteger("-1267650600228229401496703205397"),
-              ).toString(),
-          )
-      }
+      LawSpecScalars.bounded(
+          "Integer",
+          "-1267650600228229401496703205397",
+          "-1267650600228229401496703205393",
+      )
     ),
     RangeCase("Integer", 32, java.math.BigInteger("-1267650600228229401496703205376"), java.math.BigInteger("1267650600228229401496703205376"),
-      lawspecList(Arb.int(0..255), 13..13).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("5070602400912917605986812821503"))
-      }.filter { _offset ->
-          _offset.compareTo(
-              java.math.BigInteger("2535301200456458802993406410753"),
-          ) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Integer",
-              _offset.add(
-                  java.math.BigInteger("-1267650600228229401496703205376"),
-              ).toString(),
-          )
-      }
+      LawSpecScalars.bounded(
+          "Integer",
+          "-1267650600228229401496703205376",
+          "1267650600228229401496703205376",
+      )
     ),
     RangeCase("Int64", 32, java.math.BigInteger("-9223372036854775808"), java.math.BigInteger("-9223372036854775808"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("0"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("1")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-9223372036854775808")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-9223372036854775808", "-9223372036854775808")
     ),
     RangeCase("IntSize", 32, java.math.BigInteger("1"), java.math.BigInteger("2147483647"),
-      Arb.int(1..2147483647).map { _number ->
-          LawSpecRuntime.integer("IntSize", _number.toString())
-      }
+      LawSpecScalars.small("IntSize", 1..2147483647)
     ),
     RangeCase("Int64", 64, java.math.BigInteger("1"), java.math.BigInteger("9223372036854775807"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("9223372036854775807"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("9223372036854775807")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("1")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "1", "9223372036854775807")
     ),
     RangeCase("Int64", 64, java.math.BigInteger("-9223372036854775808"), java.math.BigInteger("9223372036854775807"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(_bytes)
-              }
-          _integer
-      }.map { _integer ->
-          LawSpecRuntime.integer("Int64", _integer.toString())
-      }
+      LawSpecScalars.generator("Int64", MACHINE_BITS)
     ),
     RangeCase("Int64", 64, java.math.BigInteger("-9223372036854775808"), java.math.BigInteger("-1"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("9223372036854775807"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("9223372036854775808")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-9223372036854775808")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-9223372036854775808", "-1")
     ),
     RangeCase("Int64", 64, java.math.BigInteger("-9223372036854775800"), java.math.BigInteger("-9223372036854775795"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("6")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-9223372036854775800")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-9223372036854775800", "-9223372036854775795")
     ),
     RangeCase("Int64", 64, java.math.BigInteger("9223372036854775800"), java.math.BigInteger("9223372036854775806"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("7")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("9223372036854775800")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "9223372036854775800", "9223372036854775806")
     ),
     RangeCase("Int64", 64, java.math.BigInteger("-5000000000000000000"), java.math.BigInteger("8000000000000000000"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("18446744073709551615"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("13000000000000000001")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-5000000000000000000")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-5000000000000000000", "8000000000000000000")
     ),
     RangeCase("UInt64", 64, java.math.BigInteger("18446744073709551000"), java.math.BigInteger("18446744073709551615"),
-      lawspecList(Arb.int(0..255), 2..2).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("1023"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("616")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "UInt64",
-              _offset.add(java.math.BigInteger("18446744073709551000")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("UInt64", "18446744073709551000", "18446744073709551615")
     ),
     RangeCase("UInt64", 64, java.math.BigInteger("0"), java.math.BigInteger("18446744073709551615"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _integer ->
-          LawSpecRuntime.integer("UInt64", _integer.toString())
-      }
+      LawSpecScalars.generator("UInt64", MACHINE_BITS)
     ),
     RangeCase("Integer", 64, java.math.BigInteger("1267650600228229401496703205393"), java.math.BigInteger("1267650600228229401496703205397"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("5")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Integer",
-              _offset.add(
-                  java.math.BigInteger("1267650600228229401496703205393"),
-              ).toString(),
-          )
-      }
+      LawSpecScalars.bounded(
+          "Integer",
+          "1267650600228229401496703205393",
+          "1267650600228229401496703205397",
+      )
     ),
     RangeCase("Integer", 64, java.math.BigInteger("-1267650600228229401496703205397"), java.math.BigInteger("-1267650600228229401496703205393"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("7"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("5")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Integer",
-              _offset.add(
-                  java.math.BigInteger("-1267650600228229401496703205397"),
-              ).toString(),
-          )
-      }
+      LawSpecScalars.bounded(
+          "Integer",
+          "-1267650600228229401496703205397",
+          "-1267650600228229401496703205393",
+      )
     ),
     RangeCase("Integer", 64, java.math.BigInteger("-1267650600228229401496703205376"), java.math.BigInteger("1267650600228229401496703205376"),
-      lawspecList(Arb.int(0..255), 13..13).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("5070602400912917605986812821503"))
-      }.filter { _offset ->
-          _offset.compareTo(
-              java.math.BigInteger("2535301200456458802993406410753"),
-          ) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Integer",
-              _offset.add(
-                  java.math.BigInteger("-1267650600228229401496703205376"),
-              ).toString(),
-          )
-      }
+      LawSpecScalars.bounded(
+          "Integer",
+          "-1267650600228229401496703205376",
+          "1267650600228229401496703205376",
+      )
     ),
     RangeCase("Int64", 64, java.math.BigInteger("-9223372036854775808"), java.math.BigInteger("-9223372036854775808"),
-      lawspecList(Arb.int(0..255), 1..1).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("0"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("1")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "Int64",
-              _offset.add(java.math.BigInteger("-9223372036854775808")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("Int64", "-9223372036854775808", "-9223372036854775808")
     ),
     RangeCase("IntSize", 64, java.math.BigInteger("1"), java.math.BigInteger("9223372036854775807"),
-      lawspecList(Arb.int(0..255), 8..8).map { _raw ->
-          val _bytes = _raw.map { it.toByte() }.toByteArray()
-          val _integer =
-              if (_bytes.isEmpty()) {
-                  java.math.BigInteger.ZERO
-              } else {
-                  java.math.BigInteger(1, _bytes)
-              }
-          _integer
-      }.map { _rawInteger ->
-          _rawInteger.and(java.math.BigInteger("9223372036854775807"))
-      }.filter { _offset ->
-          _offset.compareTo(java.math.BigInteger("9223372036854775807")) < 0
-      }.map { _offset ->
-          LawSpecRuntime.integer(
-              "IntSize",
-              _offset.add(java.math.BigInteger("1")).toString(),
-          )
-      }
+      LawSpecScalars.bounded("IntSize", "1", "9223372036854775807")
     ),
 )
 

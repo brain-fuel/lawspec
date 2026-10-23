@@ -5,6 +5,7 @@ import io.kotest.property.Arb
 import io.kotest.property.PropTestConfig
 import io.kotest.property.arbitrary.bind
 import io.kotest.property.arbitrary.constant
+import io.kotest.property.arbitrary.filter
 import io.kotest.property.arbitrary.map
 import lawspec.runtime.LawSpecRuntime
 import lawspec.runtime.LawSpecSchema
@@ -66,6 +67,13 @@ object LawSpecTesting {
                 Arb.bind(prior, generator) { drawn, value -> drawn + value }
             }
             .map { drawn -> Pair(drawn, mutableMapOf<String, Any>()) }
+
+    /** The generator's values the predicate keeps. */
+    fun <T> filter(generator: Arb<T>, predicate: (T) -> Boolean): Arb<T> =
+        generator.filter(predicate)
+
+    /** The generator's values, each transformed. */
+    fun <T, R> map(generator: Arb<T>, transform: (T) -> R): Arb<R> = generator.map(transform)
 
     /**
      * A property's configuration: so many cases, from the seed LAWSPEC_SEED gives, so a run can be

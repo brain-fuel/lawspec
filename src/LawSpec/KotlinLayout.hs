@@ -5,14 +5,14 @@
 -- lines, a declaration broken after its =, and a chained call broken
 -- before its dot. Strings are Kotlin literals ($ escaped) and never split.
 module LawSpec.KotlinLayout
-  ( kotlinString, call, callWith, arguments, lambda, trailing, bind, chain, block, statements, kotlinStyle, pairTo, condition
+  ( kotlinString, call, callWith, arguments, lambda, trailing, bind, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
 
 kotlinStyle :: D.Layout
-kotlinStyle = D.Pretty 100
+kotlinStyle = D.PrettyDisplay 100
 
 -- | A string literal.
 kotlinString :: String -> D.Doc
@@ -78,3 +78,8 @@ pairTo a b = D.group (a <> D.text " to" <> D.nest 4 (D.softline <> b))
 -- does not fit.
 condition :: String -> D.Doc -> D.Doc
 condition keyword c = D.group (D.text (keyword ++ " (") <> D.nest 4 (D.softbreak <> c) <> D.softbreak <> D.text ")")
+
+-- | header = body, the body on its own line only when it does not fit after
+-- the header's last line.
+equalsBody :: D.Doc -> D.Doc -> D.Doc
+equalsBody header body = header <> D.group (D.text " =" <> D.nest 4 (D.softline <> body))

@@ -135,7 +135,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktCodecText = KotlinData.kotlinCodec dataDeclarations
     ktConstruct ty tag fields = "LawSpecKotlinCodecs.construct(_schema, " ++ ktRef ty ++ ", " ++
       q tag ++ ", listOf(" ++ intercalate ", " fields ++ "), " ++ show bits ++ ")"
-    ktDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
+    ktDocument = Doc.render (Doc.selectLayout minify (KotlinLayout.kotlinStyle))
     hsCustom = (hs &&) . HaskellData.requiresSchema dataDeclarations
     hsRef = java . HaskellData.haskellTypeReference
     hsCodec = replace "schema bits" ("_lawspecSchema " ++ show bits) . java . HaskellData.haskellCodec dataDeclarations
@@ -210,7 +210,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
            (if null adapterFunctions && null (ownAbilities u) then Doc.text "{" <> Doc.hardline <> Doc.text "}" else
              Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) ([javaStubFn n t | (n,t) <- adapterFunctions] ++
                [java (JavaAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u]))) <> Doc.hardline
-         | otherwise = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) $
+         | otherwise = Doc.render (Doc.selectLayout minify (KotlinLayout.kotlinStyle)) $
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            (if null pkg then mempty else Doc.text ("package " ++ pkg) <> Doc.hardline <> Doc.hardline) <>
            (if "LawSpecRuntime" `isInfixOf` Doc.render Doc.Compact kotlinMembers
@@ -331,10 +331,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
             (i,ty) <- zip [0::Int ..] args]
           signature = KotlinLayout.callWith (Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n)) arguments <>
-            Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else typeDoc result)
+            Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else Doc.text (Doc.render Doc.Compact (typeDoc result)))
       in Doc.lineComment 96 "// " (labelled (n ++ " :: " ++ prettyType t) (declarationLink n)) <>
-        Doc.group (signature <> Doc.text " =" <>
-          Doc.nest 4 (Doc.softline <> Doc.text ("TODO(" ++ quote n ++ ")")))
+        KotlinLayout.equalsBody signature (Doc.text ("TODO(" ++ quote n ++ ")"))
     kotlinMembers = Doc.joinWith (Doc.hardline <> Doc.hardline)
       ([kotlinStubFn n t | (n,t) <- adapterFunctions] ++
        [java (KotlinAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u])

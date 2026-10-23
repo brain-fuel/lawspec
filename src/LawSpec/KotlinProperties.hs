@@ -250,7 +250,7 @@ emitTests Config{..} unit laws = do
             ([symbols] ++ draws ++ [call "Pair" [call "listOf" [text (inputId inp) | inp <- inputs e], text "symbols"]])
           predicates = concatMap inputRefinements defaults
           bindingsDoc = [text "val symbols = inputs.second", text "val values = inputs.first", fromValues (inputs e)]
-          strategy = if null predicates then base else L.trailing (base <> text ".filter") ["inputs"]
+          strategy = if null predicates then base else L.trailing (call "LawSpecTesting.filter" [base]) ["inputs"]
             (bindingsDoc ++ [conjunction (map (truth . expr) predicates)])
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailing
         (call "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))], strategy]) ["inputs"]
@@ -431,7 +431,7 @@ emitTests Config{..} unit laws = do
                      number (maxAttempts (generation e)),text "symbols",call "listOf" (seeds ++ hints)] ++
                     [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
                     [scalar]
-                added = L.trailing (strategy <> text ".map") ["drawn"]
+                added = L.trailing (call "LawSpecTesting.map" [strategy]) ["drawn"]
                   [braced (L.condition "if" (text "drawn.error != null")) [state (text "values")] <> text " else " <>
                    L.block [state (text "values + drawn.requireValue()")]]
             pure $ L.trailing (call "lawspecFlatMap" [prior]) ["inputs"]
@@ -475,7 +475,7 @@ emitTests Config{..} unit laws = do
           base = call "LawSpecTesting.inputs" [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]
           predicates = concatMap inputRefinements (inputs e)
           bindingsDoc = [text "val symbols = inputs.second", text "val values = inputs.first", fromValues (inputs e)]
-          strategy = if null predicates then base else L.trailing (base <> text ".filter") ["inputs"]
+          strategy = if null predicates then base else L.trailing (call "LawSpecTesting.filter" [base]) ["inputs"]
             (bindingsDoc ++ [conjunction (map (truth . expr) predicates)])
       in testFunction (fn ++ "_property: " ++ label) [L.trailing
         (call "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))],strategy]) ["inputs"]

@@ -63,6 +63,7 @@ import qualified LawSpec.ArtifactEmit as ArtifactEmit
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum, isHexDigit)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf, isInfixOf)
 import qualified LawSpec.JavaTestHelpers as JavaTestHelpers
+import qualified LawSpec.KotlinLayout as KotlinLayout
 import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
@@ -414,7 +415,7 @@ emitPlanFormatted minify target Plan{..} = do
               [("test/","LawSpecDataStrategies.hs","haskell-data-strategies","test")]])
         else if target == "kotlin" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-            (KotlinData.emitKotlinDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
+            (KotlinData.emitKotlinDataWithProfile planMachineBits (layout KotlinLayout.kotlinStyle) planDataDeclarations)
         else if target == "scala" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
             (ScalaData.emitScalaDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
@@ -424,7 +425,7 @@ emitPlanFormatted minify target Plan{..} = do
       (JavaDefinitions.emitJavaDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
     else if target == "kotlin"
       then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-        (KotlinDefinitions.emitKotlinDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
+        (KotlinDefinitions.emitKotlinDefinitions (layout KotlinLayout.kotlinStyle) planMachineBits planDataDeclarations units)
     else if target == "scala"
       then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
         (ScalaDefinitions.emitScalaDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
