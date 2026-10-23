@@ -370,14 +370,17 @@ body ty sink e = do
     _ | ty == tVoid -> case sink of
           Return -> effectLine result
           Discard -> effectLine result
-          Assign name -> (\d -> hangValue (name ++ " =") (tried result d)) <$> inline result
-    _ -> finish sink result <$> inline result
+          Assign name -> hangExpr (name ++ " =") result
+    _ -> case sink of
+      Return -> hangExpr "return" result
+      Assign name -> hangExpr (name ++ " =") result
+      Discard -> finish sink result <$> inline result
   pure (D.joinWith D.hardline (docs ++ [final | final /= mempty]))
   where
     effectLine r
       | inert r = pure mempty
       | returnsVoid r = tried r <$> inline r
-      | otherwise = (\d -> hangValue "_ =" (tried r d)) <$> inline r
+      | otherwise = hangExpr "_ =" r
 
 -- | Statements in order; a binding nothing after it reads is dropped, or
 -- discarded when it has effects.
@@ -409,21 +412,23 @@ statement s = case s of
     | returnsVoid v -> do
         d <- inline v
         pure [tried v d]
-    | otherwise -> do
-        d <- inline v
-        pure [hangValue "_ =" (tried v d)]
+    | otherwise -> (: []) <$> hangExpr "_ =" v
   Bound name t (If c rt a b) -> do
     d <- conditional rt (Assign name) c a b
     pure [D.text ("let " ++ name ++ ": " ++ tyText (if t == Ty "" then rt else t)) <> D.hardline <> d]
   Bound name t (Lambda ps r b) -> do
     l <- lambda ps r b
     pure [hangValue ("let " ++ name ++ annotation t ++ " =") l]
-  Bound name t v -> do
-    d <- inline v
-    pure [hangValue ("let " ++ name ++ annotation t ++ " =") (tried v d)]
+  Bound name t v -> (: []) <$> hangExpr ("let " ++ name ++ annotation t ++ " =") v
   where tyText (Ty x) = x
         annotation (Ty "") = ""
         annotation t = ": " ++ tyText t
+
+-- | A statement's prefix and an expression's value, hung as needed.
+hangExpr :: String -> Expr -> Fresh D.Doc
+hangExpr prefix v = do
+  (d, h) <- inlineBoth v
+  pure (hangValueWith prefix (tried v d) (tried v h))
 
 -- | A value with no effect: a name, a literal, raw text, a portable value
 -- made of them.
@@ -470,7 +475,15 @@ closureDoc header inner = closureHeader header <> D.nest indentation (D.hardline
 -- | A closure's opening: { header in on one line, or the header and in on
 -- lines of their own, as swift-format breaks one that does not fit.
 closureHeader :: String -> D.Doc
-closureHeader header = D.group (D.text "{" <> D.nest indentation (D.softline <> D.text header <> D.softline <> D.text "in"))
+closureHeader header = D.group (D.text "{" <> D.nest indentation (D.softline <> headerDoc <> D.softline <> D.text "in"))
+  where
+    -- A result type's generic argument breaks inside its brackets when the
+    -- header does not fit even on a line of its own.
+    headerDoc = case break (== '<') (reverse header) of
+      (inner, '<' : front) | take 1 header' == ">" , '>' `notElem` drop 1 inner, ' ' `notElem` inner ->
+        D.group (D.text (reverse front ++ "<") <> D.nest indentation (D.softbreak <> D.text (reverse (drop 1 inner))) <> D.softbreak <> D.text ">")
+      _ -> D.text header
+    header' = reverse header
 
 -- | A closure: its signature, then its body on lines of its own.
 closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
@@ -487,8 +500,8 @@ inline e = case e of
   BigLit n -> pure (D.text (bigLiteral n))
   BoolLit b -> pure (D.text (if b then "true" else "false"))
   Raw r -> pure (D.text r)
-  Call f args -> applied (callee f) args
-  Pure f args -> applied (callee f) args
+  Call f args -> applied (callee False f) args
+  Pure f args -> applied (callee False f) args
   Invoke f args -> do
     fd <- inline f
     applied (fd <>) args
@@ -506,30 +519,57 @@ inline e = case e of
     -- A block in an inline position: a closure called at once.
     inner <- body tValue Return e
     pure (closure [] tValue inner <> D.text "()")
+
+-- | A value hung after = or return: a call whose name does not fit even
+-- there puts its last member at the hung line's own indentation, as
+-- swift-format does not stack the two continuations.
+-- Both layouts share the arguments, laid out once.
+inlineBoth :: Expr -> Fresh (D.Doc, D.Doc)
+inlineBoth e = case e of
+  Call f args -> both f args
+  Pure f args -> both f args
+  _ -> (\d -> (d, d)) <$> inline e
   where
-    -- A closure passed last is a trailing closure, as Swift writes it; a
-    -- call with closures elsewhere has one argument a line.
-    applied f args = case reverse args of
-      lastArgument@(Lambda {}) : before | not (any isLambda before), trailing (f mempty) -> do
-        ds <- mapM inline (reverse before)
-        lam <- inline lastArgument
-        pure (f ((if null ds then mempty else argumentsDoc ds) <> D.text " " <> lam))
-      _ -> do
-        ds <- mapM inline args
-        pure (f (argumentsDoc ds))
+    both f args = do
+      made <- appliedWith (trailing (D.text f)) args
+      pure (made (callee False f), made (callee True f))
+
+-- | A call: a closure passed last is a trailing closure, as Swift writes
+-- it; a call with closures elsewhere has one argument a line.
+applied :: (D.Doc -> D.Doc) -> [Expr] -> Fresh D.Doc
+applied f args = ($ f) <$> appliedWith (trailing (f mempty)) args
+
+-- | A call's arguments laid out, waiting for its callee; a closure passed
+-- last trails the call where the callee allows one.
+appliedWith :: Bool -> [Expr] -> Fresh ((D.Doc -> D.Doc) -> D.Doc)
+appliedWith allowTrailing args = case reverse args of
+  lastArgument@(Lambda {}) : before | not (any isLambda before), allowTrailing -> do
+    ds <- mapM inline (reverse before)
+    lam <- inline lastArgument
+    pure (\f -> f ((if null ds then mempty else argumentsDoc ds) <> D.text " " <> lam))
+  _ -> do
+    ds <- mapM inline args
+    pure (\f -> f (argumentsDoc ds))
 
 -- | A function by its qualified name. When the name does not fit its line,
 -- its last member goes on a line of its own, as swift-format breaks a
 -- member chain.
-callee :: String -> D.Doc -> D.Doc
-callee f rest = case break (== '.') (reverse f) of
+callee :: Bool -> String -> D.Doc -> D.Doc
+callee hung f rest = case break (== '.') (reverse f) of
   -- A method of a made codec: the codec's own calls break.
   (member@(_ : _), '.' : receiver@(')' : _)) | '(' `notElem` member, ' ' `notElem` f ->
     codecDoc (reverse receiver) <> D.text ('.' : reverse member) <> rest
   (member@(_ : _), '.' : receiver@(_ : _)) | '(' `notElem` f, ' ' `notElem` f ->
-    -- The break is soft: a layout measured flat never holds it.
-    D.prefixChoice (f ++ "(") (D.text f <> rest) (D.text (reverse receiver) <> D.nest indentation (D.softbreak <> D.text ('.' : reverse member) <> rest))
+    -- The break is soft: a layout measured flat never holds it. A
+    -- receiver that does not fit either breaks before its own last
+    -- member, at the same indentation, as far as it needs.
+    D.prefixChoice (f ++ "(") (D.text f <> rest) (chain (reverse receiver) <> D.nest step (D.softbreak <> D.text ('.' : reverse member) <> rest))
   _ -> D.text f <> rest
+  where
+    step = if hung then 0 else indentation
+    chain r = case break (== '.') (reverse r) of
+      (m@(_ : _), '.' : front@(_ : _)) -> D.prefixChoice r (D.text r) (chain (reverse front) <> D.nest step (D.softbreak <> D.text ('.' : reverse m)))
+      _ -> D.text r
 
 -- | A generic initializer takes its closure in parentheses.
 trailing :: D.Doc -> Bool
@@ -668,11 +708,17 @@ swiftLayout = D.styleLayout (D.styleFor "swift")
 -- to a line of its own only when its first line up to its first break
 -- does not fit after the prefix, as swift-format breaks after = and return.
 hangValue :: String -> D.Doc -> D.Doc
-hangValue prefix value = D.text prefix <> D.prefixChoice (" " ++ firstChunk value) (D.text " " <> value)
-  (D.nest indentation (D.hardline <> value))
+hangValue prefix value = hangValueWith prefix value value
+
+-- | As hangValue, with the value as it is laid out once hung.
+hangValueWith :: String -> D.Doc -> D.Doc -> D.Doc
+hangValueWith prefix value hung = D.text prefix <> D.prefixChoice (" " ++ firstChunk value) (D.text " " <> value)
+  (D.nest indentation (D.hardline <> hung))
   where
     -- Its opening, up to its first bracket: a qualified call's name is
     -- whole, as swift-format measures the break after = and return.
+    -- A parenthesised value moves whole, as swift-format moves one.
+    firstChunk d | take 1 (D.render D.Compact d) == "(" = takeWhile (/= '\n') (D.render D.Compact d)
     firstChunk d = case break (`elem` ("([{\n" :: String)) (D.render D.Compact d) of
       (front, c : _) | c /= '\n' -> front ++ [c]
       (front, _) -> front
