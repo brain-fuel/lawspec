@@ -800,7 +800,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         score <- traverse (render names) (harnessTarget (propertyHarness p))
         let searchItems = case descriptors of
               Nothing -> []
-              Just ds -> [Doc.text "const SEARCH_INPUTS: &[&str] = " <> Expression.slice (map string ds) <> Doc.text ";"] ++
+              Just ds -> [RL.stmt (RL.Let' "const SEARCH_INPUTS: &[&str]" (RL.prefix "&" (RL.Macro "" "[" "]" (map (RL.atom . q) ds))))] ++
                 [function "score" (parameters scored) "ls::Result<f64>" scored | Just s <- [score], let scored = statements [binding "score" s, Doc.text "Ok(ls::search_number(&score))"]] ++
                 [function "search_case" [Doc.text "values: &[ls::Value]"] "ls::Result<Option<f64>>" (statements
                   ([ Doc.text "let ctx = &mut ls::Context::testing();" ] ++
@@ -1023,7 +1023,9 @@ written link = if take 1 link == "<" then Nothing else Just link
 
 -- | A test's body on a thread with room for deep values.
 withStack :: Doc.Doc -> Doc.Doc
-withStack body = Doc.text "ls::with_stack(|| " <> block body <> Doc.text ")"
+withStack body
+  | Doc.render Doc.Compact body == "Ok(())" = Doc.text "ls::with_stack(|| Ok(()))"
+  | otherwise = Doc.text "ls::with_stack(|| " <> block body <> Doc.text ")"
 
 -- | A call whose last argument is a closure: rustfmt keeps the closure's
 -- opening on the call's line when the other arguments fit there.

@@ -402,7 +402,7 @@ arguments cap open close limit args =
     -- one's opening must be within the width limit too.
     overflowFits = maybe True (\c -> width firstLine <= c) cap &&
       maybe True (\c -> width (opening lastArg) <= c) lastCap &&
-      (null initial || width (concatMap (++ ", ") initialTexts ++ opening lastArg) <= limit)
+      width (concatMap (++ ", ") initialTexts ++ opening lastArg) <= limit
     rest
       | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
       | overflowLast, overflowFits = [D.prefixChoice firstLine overflowed vertical]
@@ -414,6 +414,10 @@ arguments cap open close limit args =
 fitsArguments :: Int -> String -> [Expr] -> [String] -> Bool
 fitsArguments limit open args texts =
   width (intercalate ", " texts) <= limit ||
+  -- An array's single literal (a string) stays whole on its line.
+  (open == "[" && case args of
+    [Atom t] -> take 1 t == "\""
+    _ -> False) ||
   (open == "(" && case (args, texts) of
     ([a], [t]) -> not (nestedCall a) || width t <= 60
     _ -> False)
@@ -599,7 +603,18 @@ ifDoc c a b = case (flat (If c a b), b) of
   (Just t, Just _) | width t <= 50 -> oneOf [D.text t, broken]
   _ -> broken
   where
-    broken = D.text "if " <> expr c <> D.text " " <> expr (asBlock a) <> case b of
+    -- A condition that breaks puts the block's brace on a line of its own.
+    -- (A condition whose last line only closes brackets keeps it there.)
+    closer = case c of
+      Infix {} -> D.hardline <> D.text "{"
+      _ -> D.text " {"
+    opened = case oneLine c of
+      Just t -> oneOf [D.text ("if " ++ t ++ " {"), D.text "if " <> expr c <> closer]
+      Nothing -> D.text "if " <> expr c <> closer
+    thenBlock = case asBlock a of
+      Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
+      _ -> D.text "}"
+    broken = opened <> thenBlock <> case b of
       Nothing -> mempty
       Just other@(If {}) -> D.text " else " <> expr other
       Just other -> D.text " else " <> expr (asBlock other)
