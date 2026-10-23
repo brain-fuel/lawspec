@@ -23,6 +23,8 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.RuntimeSources (runtimeSource)
 import qualified LawSpec.JavaData as JVM
 import qualified LawSpec.Code.Doc as D
+import qualified Data.Map.Strict as M
+import LawSpec.RecordNames (recordDisplayNames)
 
 type Names = [(C.Id, String)]
 
@@ -71,7 +73,9 @@ identifier name = unless valid (Left ("invalid Scala data identifier: " ++ name)
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let source = [(C.dataId d, C.dataName d) | d <- declarations]
+  -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames declarations
+      source = [(C.dataId d, M.findWithDefault (C.dataName d) (C.dataId d) display) | d <- declarations]
       sourceCounts = caseInsensitiveCounts source
       qualifiedCounts = caseInsensitiveCounts qualified
       qualified = [(identity, if ambiguous sourceCounts name || name `elem` scalaKeywords then qualifiedDataName (C.idText identity) else name)

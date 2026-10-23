@@ -24,6 +24,8 @@ import LawSpec.Time (isDurationType)
 import LawSpec.Common (Artifact(..))
 import LawSpec.Scalar (nativeRepresentation, primitive, primitives, primitiveName)
 import qualified LawSpec.Code.Doc as D
+import qualified Data.Map.Strict as M
+import LawSpec.RecordNames (recordDisplayNames)
 
 type Names = [(String, String)]
 
@@ -32,7 +34,9 @@ type Names = [(String, String)]
 -- itself collides, a lossless identity suffix handles case-insensitive paths.
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let sourceNames = [(C.idText (C.dataId d), C.dataName d) | d <- declarations]
+  -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames declarations
+      sourceNames = [(C.idText (C.dataId d), M.findWithDefault (C.dataName d) (C.dataId d) display) | d <- declarations]
       sourceNamesCounts = caseInsensitiveCounts sourceNames
       qualifiedCounts = caseInsensitiveCounts qualified
       qualified = [(identity, if ambiguous sourceNamesCounts name then qualifiedDataName identity else name)

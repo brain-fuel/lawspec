@@ -26,6 +26,7 @@ import qualified LawSpec.ScalaData as ScalaData
 import LawSpec.DataNames (isProduct, caseNames)
 import LawSpec.Time (isDurationType)
 import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmMethod)
+import LawSpec.RecordNames (recordDisplayNames)
 
 data JvmTyped = JvmTyped
   { jvmTypedSource :: String
@@ -228,9 +229,10 @@ emitJvmTyped style declarations units = do
 dataNames :: [DataDeclaration] -> M.Map String String
 dataNames datas = M.fromList (snd (foldl pick (reserved, []) datas))
   where
+    display = recordDisplayNames datas
     reserved = S.fromList (javaKeywords ++ words "LawSpecTyped LawSpecFast LawSpecRuntime Value Data String Long Boolean Object Integer Math Character Arrays Objects Override Number BigInteger Iterable Comparable Exception RuntimeException Unit")
     pick (taken, acc) d =
-      let base = identifier (dataName d)
+      let base = identifier (M.findWithDefault (dataName d) (dataId d) display)
           chosen = firstOf [n | n <- base : [base ++ "_" ++ show k | k <- [2 :: Int ..]], n `S.notMember` taken]
       in (S.insert chosen taken, (idText (dataId d), chosen) : acc)
 

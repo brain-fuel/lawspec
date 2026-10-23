@@ -256,6 +256,22 @@ public final class LawSpecRuntime
   }
 
   /**
+   * A native binding's error, as its bridge throws it: a value that fails to convert or validate
+   * is reported in the binding's context; any other error is unchanged.
+   */
+  public static RuntimeException nativeBindingFailure(String context, RuntimeException error)
+  {
+    if (error instanceof IllegalArgumentException
+        || error instanceof IllegalStateException
+        || error instanceof ClassCastException
+        || error instanceof ArithmeticException)
+    {
+      return new IllegalArgumentException(context + ": " + error.getMessage(), error);
+    }
+    return error;
+  }
+
+  /**
    * A law's expectation in a generated test: both sides are equal, or the failure names the law,
    * its case and both values.
    */

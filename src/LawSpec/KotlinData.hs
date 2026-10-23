@@ -1,5 +1,5 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
-module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
+module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Core.Positional (positionalLabel)
@@ -22,6 +22,8 @@ import LawSpec.RuntimeSources (runtimeSource)
 import qualified LawSpec.JavaData as JVM
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinLayout as KotlinLayout
+import qualified Data.Map.Strict as M
+import LawSpec.RecordNames (recordDisplayNames)
 
 type Names = [(C.Id, String)]
 
@@ -42,7 +44,9 @@ identifier name = unless valid (Left ("invalid Kotlin data identifier: " ++ name
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let source = [(C.dataId d, C.dataName d) | d <- declarations]
+  -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames declarations
+      source = [(C.dataId d, M.findWithDefault (C.dataName d) (C.dataId d) display) | d <- declarations]
       sourceCounts = caseInsensitiveCounts source
       qualifiedCounts = caseInsensitiveCounts qualified
       qualified = [(identity, if ambiguous sourceCounts name then qualifiedDataName (C.idText identity) else name)
@@ -164,7 +168,7 @@ emitKotlinDataWithProfile bits layout declarations = do
     -- properties and exhaustive when instead of casts.
     let cases = caseNames name variants
         generic = not (null parameters)
-        valueEquality className = D.text " " <> D.block 4 (D.joinWith D.hardline
+        valueEquality className = D.text " " <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
           [ D.text ("override fun equals(other: Any?): Boolean = other is " ++ className ++ "<*>")
           , D.text "override fun hashCode(): Int = javaClass.hashCode()"
           , D.text ("override fun toString(): String = " ++ show className) ])
@@ -188,11 +192,22 @@ emitKotlinDataWithProfile bits layout declarations = do
             pure (D.group (D.text ("val " ++ C.binderName field ++ ":") <> D.nest 4 (D.softline <> ty)))
           let fields = declared ++ [D.text ("val " ++ S.witnessFieldName (length free) k ++ ": String") | k <- [0 .. length free - 1]]
           implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
-          let inherits = maybe mempty (\owner -> D.text " : " <> applied owner (if null equations then arguments else implemented)) supertype
+          let superDoc = fmap (\owner -> applied owner (if null equations then arguments else implemented)) supertype
+              inherits = maybe mempty (\s -> D.text " : " <> s) superDoc
+              -- ktfmt keeps the fields on the line and breaks before the
+              -- supertype when that fits, and otherwise breaks the fields.
+              dataClass = KotlinLayout.callWith (applied ("data class " ++ className) own) fields
+              flatClass = D.render D.Compact dataClass
+              inheriting = case superDoc of
+                Nothing -> dataClass
+                Just s | '\n' `notElem` flatClass -> D.bestFit [D.text flatClass <> D.text " : " <> s,
+                  D.prefixChoice (flatClass ++ " :") (D.text (flatClass ++ " :") <> D.nest 4 (D.hardline <> s))
+                    (dataClass <> inherits)]
+                Just _ -> dataClass <> inherits
           pure $ case (fields, not (null own)) of
             ([], False) -> D.text ("data object " ++ className) <> inherits
             ([], True) -> applied ("class " ++ className) own <> inherits <> valueEquality className
-            _ -> KotlinLayout.callWith (applied ("data class " ++ className) own) fields <> inherits
+            _ -> inheriting
     declarationDoc <- case variants of
       [] -> pure (D.text "class " <> applied name arguments <> D.text " private constructor()")
       [only] | isProduct declaration -> declare name Nothing only
@@ -327,9 +342,13 @@ emitKotlinNativeCodecs layout declarations mappings = emitCodecs mappings "LawSp
 
 -- | As kotlinCodecDoc, for a bound native type.
 kotlinNativeCodecDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
-kotlinNativeCodecDoc declarations ty = do
+kotlinNativeCodecDoc = kotlinNativeCodecDocIn ("schema", "bits")
+
+-- | As kotlinNativeCodecDoc, with the schema and machine width named.
+kotlinNativeCodecDocIn :: (String, String) -> [C.DataDeclaration] -> C.Type -> Either String D.Doc
+kotlinNativeCodecDocIn scope declarations ty = do
   names <- namesFor declarations
-  codecDocUsingOwner ("schema", "bits") "LawSpecNativeCodecs" (Just (D.text "symbols")) names [] ty
+  codecDocUsingOwner scope "LawSpecNativeCodecs" (Just (D.text "symbols")) names [] ty
 
 emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration] -> Either String String
 emitCodecs mappings owner layout declarations = do

@@ -3,7 +3,8 @@ module LawSpec.KotlinNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
 import Data.Char (toUpper, toLower)
-import Data.List (intercalate, nub, isPrefixOf, find)
+import Data.List (intercalate, nub, isPrefixOf, isInfixOf, find)
+import LawSpec.JvmNames (javadoc)
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Backend (unitName, inputs, inputType)
@@ -80,10 +81,10 @@ emitBindings minify plan testing files = do
             Just ref = bound d
         argTypes <- mapM (K.kotlinDataTypeDoc declarations) args
         resultType <- K.kotlinDataTypeDoc declarations result
-        canonical <- mapM (K.kotlinCodecDocWithContext (D.text "symbols") declarations) args
-        native <- mapM (K.kotlinNativeCodecDoc declarations) args
-        canonicalResult <- K.kotlinCodecDocWithContext (D.text "symbols") declarations result
-        nativeResult <- K.kotlinNativeCodecDoc declarations result
+        canonical <- mapM canonicalCodec args
+        native <- mapM nativeCodec args
+        canonicalResult <- canonicalCodec result
+        nativeResult <- nativeCodec result
         nativeResultType <- K.kotlinNativeTypeDoc declarations mappings [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
             -- An adapter that uses abilities gets their handlers first, as
@@ -97,38 +98,40 @@ emitBindings minify plan testing files = do
           _ -> pure Nothing
         resultBody <- case ref of
           StaticCall r -> do
-            let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
-            pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "kotlin.Unit" else
-              D.text "val result = " <> application <> D.hardline <> returned
+            let application = KotlinLayout.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
+            pure $ if result == C.scalarType "Unit" then [application] else
+              [KotlinLayout.bind "result" application, D.text "return " <> returned]
           _ -> do
             application <- case ref of
               MethodCall name | C.declarationAsync d -> case lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args] of
                 Just i -> do
                   receiver <- javaCast (args !! i) >>= maybe (Left ("an async method binding needs a bound handle type: " ++
                     C.idText (C.declarationId d))) Right
-                  pure (D.text "(" <> converted !! i <> D.text " as " <> D.text receiver <> D.text ")" <>
-                    E.call ("." ++ name) [v | (j,v) <- zip [0..] converted, j /= i])
+                  pure (KotlinLayout.chain (D.text "(" <> converted !! i <> D.text " as " <> D.text receiver <> D.text ")")
+                    [(name, [v | (j,v) <- zip [0..] converted, j /= i])])
                 Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
               _ -> do
                 helper <- maybe (Left "unplanned native call") Right
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
-                pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
-            pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "kotlin.Unit"
+                pure (KotlinLayout.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
+            pure $ if result == C.scalarType "Unit" then [application]
               -- A method's null is Nothing; anything else is Just.
               else case maybeElement of
-                Just element -> D.text "val found: Any? = " <> application <> D.hardline <>
-                  D.text "val result: " <> nativeResultType <> D.text " = if (found == null) LawSpecRuntime.Absent() else " <>
-                    D.text "LawSpecRuntime.Present(found as " <> element <> D.text ")" <> D.hardline <> returned
-                Nothing -> D.text "val result = " <> application <> D.text " as " <> nativeResultType <> D.hardline <> returned
+                Just element ->
+                  [ D.group (D.text "val found: Any? =" <> D.nest 4 (D.softline <> application))
+                  , D.group (D.text "val result: " <> nativeResultType <> D.text " =" <> D.nest 4 (D.softline <>
+                      D.group (D.text "if (found == null) LawSpecRuntime.Absent()" <> D.softline <>
+                        D.text "else LawSpecRuntime.Present(found as " <> element <> D.text ")")))
+                  , D.text "return " <> returned ]
+                Nothing -> [KotlinLayout.bind "result" (D.group (application <> D.nest 4 (D.softline <> D.text "as " <> nativeResultType))), D.text "return " <> returned]
         -- An async adapter's bridge suspends on its native call; a constructor completes at once.
-        pure (D.text (if C.declarationAsync d then "suspend fun " else "fun ") <> E.call (C.declarationName d)
+        pure (KotlinLayout.callWith (D.text (if C.declarationAsync d then "suspend fun " ++ C.declarationName d else "fun " ++ C.declarationName d))
             ([v <> D.text ": " <> t | (t,v) <- handlerParams] ++ [v <> D.text ": " <> t | (t,v) <- zip argTypes values]) <>
-          D.text ": " <> resultType <> D.text " " <> D.block 4
-          (D.text "val symbols = mutableMapOf<String, Any>()" <> D.hardline <>
-           D.text "return try " <> D.block 4 resultBody <> D.text " catch (error: RuntimeException) " <>
-           D.block 4 (D.text "if (error !is IllegalArgumentException && error !is IllegalStateException && error !is ClassCastException && error !is ArithmeticException) throw error" <> D.hardline <>
-             D.text "throw " <> E.call "IllegalArgumentException"
-             [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.message",D.text "error"])))
+          D.text ": " <> resultType <> D.text " " <> KotlinLayout.block
+          ([D.text "val symbols = mutableMapOf<String, Any>()" | "symbols" `isInfixOf` D.render D.Compact (KotlinLayout.statements resultBody)] ++
+           [D.text "try " <> KotlinLayout.block resultBody <> D.text " catch (error: RuntimeException) " <>
+            KotlinLayout.block [D.text "throw " <> KotlinLayout.call "LawSpecRuntime.nativeBindingFailure"
+              [E.quoted ("native binding " ++ C.idText (C.declarationId d)), D.text "error"]]]))
       -- Each bound production handler, wrapped in the generated interface:
       -- its operations' values cross with the native codecs.
       wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, r) -> do
@@ -136,29 +139,33 @@ emitBindings minify plan testing files = do
           let (args, result) = C.functionType ty
           types <- mapM (K.kotlinDataTypeDoc declarations) args
           resultType <- if result == C.scalarType "Unit" then pure (D.text "kotlin.Unit") else K.kotlinDataTypeDoc declarations result
-          canonical <- mapM (K.kotlinCodecDocWithContext (D.text "symbols") declarations) args
-          native <- mapM (K.kotlinNativeCodecDoc declarations) args
-          canonicalResult <- K.kotlinCodecDocWithContext (D.text "symbols") declarations result
-          nativeResult <- K.kotlinNativeCodecDoc declarations result
+          canonical <- mapM canonicalCodec args
+          native <- mapM nativeCodec args
+          canonicalResult <- canonicalCodec result
+          nativeResult <- nativeCodec result
           let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-              invocation = E.call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
+              invocation = KotlinLayout.call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
               body = if result == C.scalarType "Unit" then invocation
                 else D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [invocation]]
-          pure (D.text "override fun " <> E.call op [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " " <>
-            D.block 4 (D.text "val symbols = mutableMapOf<String, Any>()" <> D.hardline <> body))
-        pure (D.text ("/** The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated interface. */") <> D.hardline <>
+          pure (KotlinLayout.callWith (D.text ("override fun " ++ op)) [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " " <>
+            KotlinLayout.block ([D.text "val symbols = mutableMapOf<String, Any>()" | "symbols" `isInfixOf` D.render D.Compact body] ++ [body]))
+        pure (javadoc 96 ("The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated interface.") <> D.hardline <>
           D.text ("class " ++ interfaceName a ++ "Bound : " ++ interfaceType' a ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
             (D.text ("private val inner = " ++ intercalate "." (referenceParts r) ++ "()") : operations)))
       let name = concatMap cap (split '_' (last parts))
           package = intercalate "." (init parts)
           path = "src/main/kotlin/" ++ concatMap (++ "/") (init parts) ++ name ++ ".kt"
+          members = D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers)
+          code = D.render D.Compact members
+          imports = [i | i <- ["lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecDataSchema", "lawspec.runtime.LawSpecKotlinCodecs",
+            "lawspec.runtime.LawSpecNativeCodecs", "lawspec.runtime.LawSpecRuntime"], (reverse (takeWhile (/= '.') (reverse i)) ++ ".") `isInfixOf` (code ++ " LawSpecDataSchema.")]
           header = (if null package then mempty else D.text ("package " ++ package) <> D.hardline <> D.hardline) <>
-            D.text "import lawspec.runtime.*" <> D.hardline <> D.hardline
-          source = header <> D.text ("object " ++ name ++ " ") <> D.block 4
-            (D.text "private val schema = LawSpecDataSchema.create()" <> D.hardline <>
-             D.text ("private val bits = " ++ show bits) <> D.hardline <> D.hardline <>
-             D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers))
-      pure [Artifact path (render source) "generated" "source"]
+            D.joinWith D.hardline [D.text ("import " ++ i) | i <- imports] <> D.hardline <> D.hardline
+          source = header <> D.text ("object " ++ name ++ " ") <> KotlinLayout.block
+            [ D.text "private val SCHEMA = LawSpecDataSchema.create()" <> D.hardline <>
+              D.text ("private const val MACHINE_BITS = " ++ show bits)
+            , members ]
+      pure [Artifact path (D.render kotlinLayout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> source <> D.hardline)) "generated" "source"]
   dataFiles <- if any ((== "src/main/java/lawspec/runtime/LawSpecDataSchema.java") . artifactPath) files then pure []
     else K.emitKotlinDataWithProfile bits layout declarations
   generatorFiles <- if null generators then pure [] else do
@@ -228,7 +235,10 @@ emitBindings minify plan testing files = do
     render doc = D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> doc <> D.hardline)
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
-    method value name args = value <> D.text "." <> E.call name args
+    method value name args = KotlinLayout.chain value [(name, args)]
+    canonicalCodec = K.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations
+    nativeCodec = K.kotlinNativeCodecDocIn ("SCHEMA", "MACHINE_BITS") declarations
+    kotlinLayout = D.selectLayout minify KotlinLayout.kotlinStyle
     handleDeclaration name = find (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations
     isHandle (C.Constructor name []) = handleDeclaration name /= Nothing
     isHandle _ = False
