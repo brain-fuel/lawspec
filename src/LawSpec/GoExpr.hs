@@ -57,7 +57,7 @@ textLiteral units = call "lsText" [quoted (map chr units)]
 declare :: [(String, D.Doc, Bool)] -> [D.Doc] -> [D.Doc]
 declare [] rest = rest
 declare ((name, value, droppable) : others) rest
-  | name `elem` identifiers (D.render D.Compact (D.joinWith D.hardline later)) = defined : later
+  | readsLocal name (D.render D.Compact (D.joinWith D.hardline later)) = defined : later
   | droppable = later
   | otherwise = defined : D.text ("_ = " ++ name) : later
   where
@@ -146,6 +146,53 @@ keyed ty fields = D.text (ty ++ "{") <> D.nest 8 (mconcat (map (D.hardline <>) (
 -- | A function literal whose body spans lines, so gofmt keeps it as it is.
 funcLiteral :: String -> [D.Doc] -> D.Doc
 funcLiteral signature body = D.text ("func" ++ signature ++ " ") <> D.block 8 (D.joinWith D.hardline body)
+
+-- | Whether Go code reads a local of this name: a mention that a nested
+-- declaration or function parameter of the same name hides, or a field of
+-- that name (x.name), is not a read.
+readsLocal :: String -> String -> Bool
+readsLocal name source = go (0 :: Int) [] Nothing "" (tokens source)
+  where
+    -- depth: braces open; shadows: the depths a nested name holds;
+    -- pending: a function literal's parameters hide the name in its body.
+    go _ _ _ _ [] = False
+    go depth shadows pending previous (t : rest) = case t of
+      "{" -> go (depth + 1) (maybe shadows (const (depth + 1 : shadows)) pending) Nothing t rest
+      "}" -> go (depth - 1) (filter (< depth) shadows) pending t rest
+      "func" | ("(" : more) <- rest ->
+        let (parameters, after) = paramList (0 :: Int) [] more
+        in go depth shadows (if name `elem` parameters then Just () else Nothing) ")" after
+      _ | t == name, previous /= "." -> case rest of
+            ":=" : _ -> go depth (if null shadows then depth : shadows else shadows) pending t rest
+            _ | null shadows -> True
+              | otherwise -> go depth shadows pending t rest
+        | otherwise -> go depth shadows pending t rest
+    -- The identifiers that open each parameter (after ( or ,) up to the
+    -- closing parenthesis.
+    paramList depth acc ts = case ts of
+      [] -> (acc, [])
+      ")" : rest | depth == 0 -> (acc, rest)
+                 | otherwise -> paramList (depth - 1) acc rest
+      "(" : rest -> paramList (depth + 1) acc rest
+      "," : p : rest | depth == 0 && word p -> paramList depth (p : acc) rest
+      t : rest | depth == 0 && null acc && word t -> paramList depth [t] rest
+               | otherwise -> paramList depth acc rest
+    word = all (\c -> isAlphaNum c || c == '_')
+    tokens text' = case text' of
+      [] -> []
+      '"' : rest -> tokens (quotedEnd '"' rest)
+      '\'' : rest -> tokens (quotedEnd '\'' rest)
+      '`' : rest -> tokens (drop 1 (dropWhile (/= '`') rest))
+      '/' : '/' : rest -> tokens (dropWhile (/= '\n') rest)
+      ':' : '=' : rest -> ":=" : tokens rest
+      c : rest | isAlphaNum c || c == '_' -> let (w, after) = span (\x -> isAlphaNum x || x == '_') (c : rest) in w : tokens after
+               | c `elem` ("{}().," :: String) -> [c] : tokens rest
+               | otherwise -> tokens rest
+    quotedEnd q text' = case text' of
+      [] -> []
+      '\\' : _ : more -> quotedEnd q more
+      c : more | c == q -> more
+               | otherwise -> quotedEnd q more
 
 -- | The identifiers Go code mentions, outside string, rune and raw literals
 -- and comments.
