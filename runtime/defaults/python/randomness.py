@@ -3,6 +3,7 @@
 `seeded random n` (a 64-bit linear congruential generator, the same on every
 target), started at the run's seed: LAWSPEC_SEED, or 0. SecureRandom is the
 operating system's cryptographically secure generator."""
+
 import builtins as _builtins
 import os as _os
 import secrets as _secrets

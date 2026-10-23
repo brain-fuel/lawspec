@@ -2,6 +2,7 @@
 """The default handler of lawspec.concurrent's Async: the interpreter's own
 threads. A pause yields this thread's turn. It is the runtime's NativeAsync,
 which also starts and waits for the tasks of workflows and async adapters."""
+
 import time as _time
 
 import lawspec_runtime as ls

@@ -4,6 +4,7 @@ written from the standards, for the known-answer tests only: the
 cryptography package encapsulates only with fresh randomness, loads keys only
 as seeds and signs only hedged, so the vectors that need more run here. It
 is slow and not constant-time; the default handlers never use it."""
+
 import hashlib
 
 
@@ -97,7 +98,7 @@ def _sample_ntt(seed):
     while len(out) < 256:
         if at + 3 > len(stream):
             stream = _shake128(seed, len(stream) * 2)
-        b0, b1, b2 = stream[at:at + 3]
+        b0, b1, b2 = stream[at : at + 3]
         at += 3
         d1, d2 = b0 + 256 * (b1 % 16), b1 // 16 + 16 * b2
         if d1 < _KQ:
@@ -109,8 +110,14 @@ def _sample_ntt(seed):
 
 def _cbd(data, eta):
     bits = _bits(data)
-    return [(sum(bits[2 * i * eta + j] for j in range(eta)) - sum(bits[2 * i * eta + eta + j] for j in range(eta))) % _KQ
-            for i in range(256)]
+    return [
+        (
+            sum(bits[2 * i * eta + j] for j in range(eta))
+            - sum(bits[2 * i * eta + eta + j] for j in range(eta))
+        )
+        % _KQ
+        for i in range(256)
+    ]
 
 
 def _compress(x, d):
@@ -129,8 +136,14 @@ def _pke_keygen(d):
     g = hashlib.sha3_512(d + bytes([_K])).digest()
     rho, sigma = g[:32], g[32:]
     a = _kem_matrix(rho)
-    s = [_kem_ntt(_cbd(_shake256(sigma + bytes([i]), 64 * _ETA1), _ETA1)) for i in range(_K)]
-    e = [_kem_ntt(_cbd(_shake256(sigma + bytes([_K + i]), 64 * _ETA1), _ETA1)) for i in range(_K)]
+    s = [
+        _kem_ntt(_cbd(_shake256(sigma + bytes([i]), 64 * _ETA1), _ETA1))
+        for i in range(_K)
+    ]
+    e = [
+        _kem_ntt(_cbd(_shake256(sigma + bytes([_K + i]), 64 * _ETA1), _ETA1))
+        for i in range(_K)
+    ]
     t = []
     for i in range(_K):
         acc = e[i]
@@ -142,9 +155,11 @@ def _pke_keygen(d):
 
 
 def _pke_encrypt(ek, m, r):
-    t = [_unpack(ek[384 * i:384 * (i + 1)], 12, 256) for i in range(_K)]
-    a = _kem_matrix(ek[384 * _K:])
-    y = [_kem_ntt(_cbd(_shake256(r + bytes([i]), 64 * _ETA1), _ETA1)) for i in range(_K)]
+    t = [_unpack(ek[384 * i : 384 * (i + 1)], 12, 256) for i in range(_K)]
+    a = _kem_matrix(ek[384 * _K :])
+    y = [
+        _kem_ntt(_cbd(_shake256(r + bytes([i]), 64 * _ETA1), _ETA1)) for i in range(_K)
+    ]
     e1 = [_cbd(_shake256(r + bytes([_K + i]), 64 * _ETA2), _ETA2) for i in range(_K)]
     e2 = _cbd(_shake256(r + bytes([2 * _K]), 64 * _ETA2), _ETA2)
     u = []
@@ -163,9 +178,12 @@ def _pke_encrypt(ek, m, r):
 
 
 def _pke_decrypt(dk, c):
-    u = [[_decompress(x, _DU) for x in _unpack(c[320 * i:320 * (i + 1)], _DU, 256)] for i in range(_K)]
-    v = [_decompress(x, _DV) for x in _unpack(c[320 * _K:], _DV, 256)]
-    s = [_unpack(dk[384 * i:384 * (i + 1)], 12, 256) for i in range(_K)]
+    u = [
+        [_decompress(x, _DU) for x in _unpack(c[320 * i : 320 * (i + 1)], _DU, 256)]
+        for i in range(_K)
+    ]
+    v = [_decompress(x, _DV) for x in _unpack(c[320 * _K :], _DV, 256)]
+    s = [_unpack(dk[384 * i : 384 * (i + 1)], 12, 256) for i in range(_K)]
     acc = [0] * 256
     for i in range(_K):
         acc = _add(acc, _kem_multiply(s[i], _kem_ntt(u[i])), _KQ)
@@ -188,7 +206,12 @@ def ml_kem_768_encapsulate(ek, m):
 
 def ml_kem_768_decapsulate(dk, c):
     """ML-KEM.Decaps_internal, with the expanded key."""
-    dk_pke, ek, h, z = dk[:384 * _K], dk[384 * _K:768 * _K + 32], dk[768 * _K + 32:768 * _K + 64], dk[768 * _K + 64:]
+    dk_pke, ek, h, z = (
+        dk[: 384 * _K],
+        dk[384 * _K : 768 * _K + 32],
+        dk[768 * _K + 32 : 768 * _K + 64],
+        dk[768 * _K + 64 :],
+    )
     m = _pke_decrypt(dk_pke, c)
     g = hashlib.sha3_512(m + h).digest()
     if _pke_encrypt(ek, m, g[32:]) != c:
@@ -199,7 +222,18 @@ def ml_kem_768_decapsulate(dk, c):
 # FIPS 204: ML-DSA-65 (k 6, l 5, eta 4, tau 49, lambda 192, gamma1 2^19,
 # gamma2 (q-1)/32, omega 55).
 
-_Q, _D, _TAU, _LAMBDA, _G1, _G2, _DK, _DL, _ETA, _OMEGA = 8380417, 13, 49, 192, 1 << 19, (8380417 - 1) // 32, 6, 5, 4, 55
+_Q, _D, _TAU, _LAMBDA, _G1, _G2, _DK, _DL, _ETA, _OMEGA = (
+    8380417,
+    13,
+    49,
+    192,
+    1 << 19,
+    (8380417 - 1) // 32,
+    6,
+    5,
+    4,
+    55,
+)
 _BETA = _TAU * _ETA
 _ZETAS = [pow(1753, _bitrev(i, 8), _Q) for i in range(256)]
 
@@ -250,7 +284,9 @@ def _expand_a(rho):
             while len(poly) < 256:
                 if at + 3 > len(stream):
                     stream = _shake128(rho + bytes([s, r]), len(stream) * 2)
-                value = stream[at] + 256 * stream[at + 1] + 65536 * (stream[at + 2] & 0x7F)
+                value = (
+                    stream[at] + 256 * stream[at + 1] + 65536 * (stream[at + 2] & 0x7F)
+                )
                 at += 3
                 if value < _Q:
                     poly.append(value)
@@ -309,13 +345,22 @@ def ml_dsa_65_key_pair(xi):
     a = _expand_a(rho)
     s1 = [_bounded(rho_prime + r.to_bytes(2, "little")) for r in range(_DL)]
     s2 = [_bounded(rho_prime + (r + _DL).to_bytes(2, "little")) for r in range(_DK)]
-    t = [_add(_intt(p), e, _Q) for p, e in zip(_matrix_vector(a, [_ntt(s) for s in s1]), s2)]
+    t = [
+        _add(_intt(p), e, _Q)
+        for p, e in zip(_matrix_vector(a, [_ntt(s) for s in s1]), s2)
+    ]
     t1 = [[(x - _mod_pm(x, 1 << _D)) >> _D for x in p] for p in t]
     t0 = [[_mod_pm(x, 1 << _D) % _Q for x in p] for p in t]
     pk = rho + b"".join(_pack(p, 10) for p in t1)
     tr = _shake256(pk, 64)
-    sk = (rho + key + tr + b"".join(_bitpack(s, _ETA, _ETA) for s in s1) + b"".join(_bitpack(s, _ETA, _ETA) for s in s2)
-          + b"".join(_bitpack(p, (1 << (_D - 1)) - 1, 1 << (_D - 1)) for p in t0))
+    sk = (
+        rho
+        + key
+        + tr
+        + b"".join(_bitpack(s, _ETA, _ETA) for s in s1)
+        + b"".join(_bitpack(s, _ETA, _ETA) for s in s2)
+        + b"".join(_bitpack(p, (1 << (_D - 1)) - 1, 1 << (_D - 1)) for p in t0)
+    )
     return pk, sk
 
 
@@ -337,18 +382,34 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
     """ML-DSA.Sign_internal over M' (already framed), with rnd."""
     rho, key, tr = sk[:32], sk[32:64], sk[64:128]
     at = 128
-    s1 = [_bitunpack(sk[at + 128 * i:at + 128 * (i + 1)], _ETA, _ETA) for i in range(_DL)]
+    s1 = [
+        _bitunpack(sk[at + 128 * i : at + 128 * (i + 1)], _ETA, _ETA)
+        for i in range(_DL)
+    ]
     at += 128 * _DL
-    s2 = [_bitunpack(sk[at + 128 * i:at + 128 * (i + 1)], _ETA, _ETA) for i in range(_DK)]
+    s2 = [
+        _bitunpack(sk[at + 128 * i : at + 128 * (i + 1)], _ETA, _ETA)
+        for i in range(_DK)
+    ]
     at += 128 * _DK
-    t0 = [_bitunpack(sk[at + 416 * i:at + 416 * (i + 1)], (1 << (_D - 1)) - 1, 1 << (_D - 1)) for i in range(_DK)]
+    t0 = [
+        _bitunpack(
+            sk[at + 416 * i : at + 416 * (i + 1)], (1 << (_D - 1)) - 1, 1 << (_D - 1)
+        )
+        for i in range(_DK)
+    ]
     s1h, s2h, t0h = [_ntt(p) for p in s1], [_ntt(p) for p in s2], [_ntt(p) for p in t0]
     a = _expand_a(rho)
     mu = _shake256(tr + message, 64)
     rho2 = _shake256(key + rnd + mu, 64)
     kappa = 0
     while True:
-        y = [_bitunpack(_shake256(rho2 + (kappa + r).to_bytes(2, "little"), 640), _G1 - 1, _G1) for r in range(_DL)]
+        y = [
+            _bitunpack(
+                _shake256(rho2 + (kappa + r).to_bytes(2, "little"), 640), _G1 - 1, _G1
+            )
+            for r in range(_DL)
+        ]
         w = [_intt(p) for p in _matrix_vector(a, [_ntt(p) for p in y])]
         w1 = [[_decompose(x)[0] for x in p] for p in w]
         c_tilde = _shake256(mu + b"".join(_pack(p, 4) for p in w1), _LAMBDA // 4)
@@ -356,9 +417,15 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
         cs1 = [_intt(_mul(ch, p)) for p in s1h]
         cs2 = [_intt(_mul(ch, p)) for p in s2h]
         z = [_add(p, q, _Q) for p, q in zip(y, cs1)]
-        r0 = [[_decompose(x)[1] for x in _add(p, [(-v) % _Q for v in q], _Q)] for p, q in zip(w, cs2)]
+        r0 = [
+            [_decompose(x)[1] for x in _add(p, [(-v) % _Q for v in q], _Q)]
+            for p, q in zip(w, cs2)
+        ]
         kappa += _DL
-        if _infinity(z) >= _G1 - _BETA or max(abs(x) for p in r0 for x in p) >= _G2 - _BETA:
+        if (
+            _infinity(z) >= _G1 - _BETA
+            or max(abs(x) for p in r0 for x in p) >= _G2 - _BETA
+        ):
             continue
         ct0 = [_intt(_mul(ch, p)) for p in t0h]
         hints = []
@@ -382,4 +449,6 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
 
 def ml_dsa_65_sign_deterministic(sk, message, context=b""):
     """ML-DSA.Sign, external and pure, with rnd all zero."""
-    return ml_dsa_65_sign_internal(sk, bytes([0, len(context)]) + context + message, bytes(32))
+    return ml_dsa_65_sign_internal(
+        sk, bytes([0, len(context)]) + context + message, bytes(32)
+    )

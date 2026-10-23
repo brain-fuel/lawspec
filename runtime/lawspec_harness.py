@@ -35,11 +35,12 @@ def _record(name, entry):
 
 # Strategies. Each draws through Hypothesis, so failures shrink.
 
+
 # A choice among n: a wide integer, reduced, so every example is new to
 # Hypothesis (which never repeats one) and the weights hold; it still shrinks
 # toward the first choice.
 def _choice(data, n):
-    return data.draw(st.integers(min_value=0, max_value=2 ** 32 - 1)) % n
+    return data.draw(st.integers(min_value=0, max_value=2**32 - 1)) % n
 
 
 def draw_frequency(data, alternatives):
@@ -63,7 +64,8 @@ def draw_such_that(draw, predicate, limit, strategy):
             return value
     raise HarnessError(
         f"the strategy {strategy} discarded more than {limit} values; "
-        "draw closer to what `such that` keeps, or allow more discards")
+        "draw closer to what `such that` keeps, or allow more discards"
+    )
 
 
 def check_drawn(strategy, name, holds, value):
@@ -73,15 +75,18 @@ def check_drawn(strategy, name, holds, value):
         raise HarnessError(
             f"the strategy {strategy} produced {value!r} for {name}, "
             "which is outside the input's refinement; a strategy may only "
-            "produce values of its type")
+            "produce values of its type"
+        )
     return value
 
 
 # Adequacy: what the generated cases covered.
 
+
 def target(score, law):
     """target maximize: steer generation toward cases that score higher."""
     import hypothesis
+
     hypothesis.target(float(score), label=law)
 
 
@@ -97,7 +102,9 @@ def _key(law):
 
 
 def observe(law, covers=(), classes=(), labels=()):
-    stats = _cases.setdefault(_key(law), {"cases": 0, "cover": {}, "classes": {}, "labels": {}})
+    stats = _cases.setdefault(
+        _key(law), {"cases": 0, "cover": {}, "classes": {}, "labels": {}}
+    )
     stats["cases"] += 1
     for label, holds in covers:
         stats["cover"][label] = stats["cover"].get(label, 0) + (1 if holds else 0)
@@ -110,18 +117,35 @@ def observe(law, covers=(), classes=(), labels=()):
 
 
 def _adequacy(law, covers):
-    stats = _cases.pop(_key(law), {"cases": 0, "cover": {}, "classes": {}, "labels": {}})
+    stats = _cases.pop(
+        _key(law), {"cases": 0, "cover": {}, "classes": {}, "labels": {}}
+    )
     cases = stats["cases"]
     results = []
     for percent, label in covers:
         hits = stats["cover"].get(label, 0)
         observed = 100.0 * hits / cases if cases else 0.0
-        results.append({"label": label, "required": percent, "observed": round(observed, 2), "met": cases > 0 and observed >= percent})
-    report = {"law": law, "cases": cases, "cover": results,
-              "classes": stats["classes"], "labels": stats["labels"]}
+        results.append(
+            {
+                "label": label,
+                "required": percent,
+                "observed": round(observed, 2),
+                "met": cases > 0 and observed >= percent,
+            }
+        )
+    report = {
+        "law": law,
+        "cases": cases,
+        "cover": results,
+        "classes": stats["classes"],
+        "labels": stats["labels"],
+    }
     lines = [f"{law}: {cases} generated case(s)"]
     for r in results:
-        lines.append(f"  cover {r['required']}% \"{r['label']}\": {r['observed']}%" + ("" if r["met"] else " (not met)"))
+        lines.append(
+            f'  cover {r["required"]}% "{r["label"]}": {r["observed"]}%'
+            + ("" if r["met"] else " (not met)")
+        )
     for label, count in sorted(stats["classes"].items()):
         lines.append(f"  {label}: {100.0 * count / cases if cases else 0:.1f}%")
     for label, count in sorted(stats["labels"].items(), key=lambda kv: -kv[1]):
@@ -133,6 +157,7 @@ def _adequacy(law, covers):
 
 # Run metadata.
 
+
 def _with_timeout(test, milliseconds, law):
     if milliseconds is None:
         return test()
@@ -143,6 +168,7 @@ def _with_timeout(test, milliseconds, law):
             test()
         except BaseException as error:  # noqa: BLE001 - reported below
             outcome["error"] = error
+
     context = contextvars.copy_context()
     worker = threading.Thread(target=lambda: context.run(run), daemon=True)
     worker.start()
@@ -176,18 +202,35 @@ def _run_settled(law, name, test, timeout, repeat, retries, covers, observed):
                     unmet = [r for r in report["cover"] if not r["met"]]
                     if unmet:
                         _record(name, {**report, "test": name, "outcome": "failed"})
-                        raise HarnessError("; ".join(
-                            f"{law}: cover {r['required']}% \"{r['label']}\" was not met "
-                            f"({r['observed']}% of {report['cases']} generated cases)" for r in unmet))
+                        raise HarnessError(
+                            "; ".join(
+                                f'{law}: cover {r["required"]}% "{r["label"]}" was not met '
+                                f"({r['observed']}% of {report['cases']} generated cases)"
+                                for r in unmet
+                            )
+                        )
             break
         except HarnessError:
             raise
         except BaseException:
             if attempts > retries:
-                _record(name, {"law": law, "test": name, "outcome": "failed", "attempts": attempts})
+                _record(
+                    name,
+                    {
+                        "law": law,
+                        "test": name,
+                        "outcome": "failed",
+                        "attempts": attempts,
+                    },
+                )
                 raise
             flaky = True
-    entry = {"law": law, "test": name, "outcome": "flaky" if flaky else "passed", "attempts": attempts}
+    entry = {
+        "law": law,
+        "test": name,
+        "outcome": "flaky" if flaky else "passed",
+        "attempts": attempts,
+    }
     if observed and report is not None:
         entry.update(report)
     _record(name, entry)
@@ -197,6 +240,7 @@ def _run_settled(law, name, test, timeout, repeat, retries, covers, observed):
 
 def skip(law, reason):
     import pytest
+
     _record(law, {"law": law, "outcome": "skipped", "reason": reason})
     pytest.skip(f"{law}: {reason}")
 
@@ -205,16 +249,29 @@ def known_failing(law, name, reason, tests):
     """A known-failing law's tests must fail. One that passes is reported:
     the harness should no longer say it is known to fail."""
     import pytest
+
     for test in tests:
         try:
             test()
         except BaseException as error:  # noqa: BLE001 - the expected failure
-            _record(name, {"law": law, "test": name, "outcome": "known-failing", "reason": reason})
+            _record(
+                name,
+                {
+                    "law": law,
+                    "test": name,
+                    "outcome": "known-failing",
+                    "reason": reason,
+                },
+            )
             pytest.xfail(f"{law} is known to fail ({reason}): {type(error).__name__}")
-    _record(name, {"law": law, "test": name, "outcome": "known-failing-passed", "reason": reason})
+    _record(
+        name,
+        {"law": law, "test": name, "outcome": "known-failing-passed", "reason": reason},
+    )
     raise HarnessError(
         f"{law} is marked known failing ({reason}), but it passes; "
-        "remove `known failing` from its harness")
+        "remove `known failing` from its harness"
+    )
 
 
 # Scheduling: the harness driver owns the order and parallelism of a unit's
@@ -222,11 +279,12 @@ def known_failing(law, name, reason, tests):
 # `order random` sets _LAWSPEC_ORDER_RANDOM, and `parallel` _LAWSPEC_PARALLEL;
 # the conftest beside the tests imports these hooks.
 
+
 def _order_seed():
     global _ORDER_SEED
     if _ORDER_SEED is None:
         given = os.environ.get("LAWSPEC_SEED")
-        _ORDER_SEED = int(given) if given else random.randrange(2 ** 31)
+        _ORDER_SEED = int(given) if given else random.randrange(2**31)
     return _ORDER_SEED
 
 
@@ -256,7 +314,13 @@ def pytest_collection_modifyitems(session, config, items):
         for position, item in zip(positions, chosen):
             items[position] = item
         _shuffled_modules.append(module)
-    parallel = sorted({item.module.__name__ for item in items if _module_flag(item, "_LAWSPEC_PARALLEL")})
+    parallel = sorted(
+        {
+            item.module.__name__
+            for item in items
+            if _module_flag(item, "_LAWSPEC_PARALLEL")
+        }
+    )
     if _xdist(config):
         for module in parallel:
             _parallelism(module, "processes (pytest-xdist)", config.option.numprocesses)
@@ -267,11 +331,15 @@ def pytest_collection_modifyitems(session, config, items):
 
 
 def _xdist(config):
-    return config.pluginmanager.hasplugin("xdist") and bool(getattr(config.option, "numprocesses", None))
+    return config.pluginmanager.hasplugin("xdist") and bool(
+        getattr(config.option, "numprocesses", None)
+    )
 
 
 def _parallelism(module, mode, workers):
-    _record("parallel " + module, {"parallel": module, "mode": mode, "workers": workers})
+    _record(
+        "parallel " + module, {"parallel": module, "mode": mode, "workers": workers}
+    )
     print(f"{module} runs in parallel: {mode}, {workers} worker(s)")
 
 
@@ -287,6 +355,7 @@ def pytest_pyfunc_call(pyfuncitem):
         return None
     import concurrent.futures
     import sys
+
     with _parallel_lock:
         runs = _parallel_runs.get(module)
         if runs is None:
@@ -294,9 +363,13 @@ def pytest_pyfunc_call(pyfuncitem):
             runs = {item.nodeid: pool.submit(item.obj) for item in group}
             _parallel_runs[module] = runs
             free = hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled()
-            _parallelism(module, "threads (free-threaded)" if free else
-                         "threads, interleaved under the GIL (free-threaded CPython runs them truly in parallel)",
-                         len(group))
+            _parallelism(
+                module,
+                "threads (free-threaded)"
+                if free
+                else "threads, interleaved under the GIL (free-threaded CPython runs them truly in parallel)",
+                len(group),
+            )
     runs[pyfuncitem.nodeid].result()
     return True
 
@@ -305,18 +378,28 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     if _shuffled_modules:
         terminalreporter.write_line(
             f"order random seed {_order_seed()}: LAWSPEC_SEED={_order_seed()} replays this order"
-            + ("" if exitstatus == 0 else " (the run failed)"))
+            + ("" if exitstatus == 0 else " (the run failed)")
+        )
 
 
 def benchmark(name, body, budget=0.2, limit=100000):
     """Measured, never asserted: the mean and fastest time of body."""
     times = []
     started = time.perf_counter()
-    while len(times) < limit and (time.perf_counter() - started < budget or len(times) < 3):
+    while len(times) < limit and (
+        time.perf_counter() - started < budget or len(times) < 3
+    ):
         before = time.perf_counter()
         body()
         times.append(time.perf_counter() - before)
     mean = sum(times) / len(times)
-    entry = {"benchmark": name, "iterations": len(times), "mean_ns": int(mean * 1e9), "min_ns": int(min(times) * 1e9)}
-    print(f"benchmark {name}: {len(times)} iteration(s), mean {mean * 1e6:.2f} us, fastest {min(times) * 1e6:.2f} us")
+    entry = {
+        "benchmark": name,
+        "iterations": len(times),
+        "mean_ns": int(mean * 1e9),
+        "min_ns": int(min(times) * 1e9),
+    }
+    print(
+        f"benchmark {name}: {len(times)} iteration(s), mean {mean * 1e6:.2f} us, fastest {min(times) * 1e6:.2f} us"
+    )
     _record("benchmark " + name, entry)
