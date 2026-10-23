@@ -440,8 +440,8 @@ public enum Harness {
         commit(.object([("law", .string(law)), ("test", .string(law + " skipped")), ("outcome", .string("skipped")), ("reason", .string(reason))]))
     }
 
-    /// An acknowledged discrepancy must reproduce; a passing check requires review
-    /// the run so the mark is removed.
+    /// An acknowledged discrepancy must reproduce. An unexpected pass requires
+    /// human review of the specification and implementation.
     public static func knownDiscrepancy(_ law: String, _ name: String, _ reason: String, _ checks: [() throws -> Void]) throws {
         let previous = expected.value
         let context = Expected(law: law)

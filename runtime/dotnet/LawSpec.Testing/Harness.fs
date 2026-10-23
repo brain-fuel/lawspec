@@ -361,8 +361,8 @@ let skip (law: string) (reason: string) =
     eprintfn "SKIPPED %s: %s" law reason
     commit (objectOf [ "law", box law; "test", box (law + " skipped"); "outcome", box "skipped"; "reason", box reason ])
 
-/// An acknowledged discrepancy must reproduce; a passing check requires review
-/// the run so the mark is removed.
+/// An acknowledged discrepancy must reproduce. An unexpected pass requires
+/// human review of the specification and implementation.
 [<CompiledName("KnownDiscrepancy")>]
 let knownDiscrepancy (law: string) (name: string) (reason: string) (checks: (unit -> unit) list) =
     let previous = expected.Value
