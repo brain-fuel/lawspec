@@ -169,11 +169,9 @@ emitRustSchema bits layout declarations = do
     variable (TypeVariable _) = True
     variable (Constructor _ args) = any (\arg -> case arg of TypeArgument ty -> variable ty; _ -> False) args
     variable (Arrow a b) = variable a || variable b
-    records [] = Doc.text "vec![]"
+    -- (a single record overflows the brackets)
     records [value] = Doc.text "vec![" <> value <> Doc.text "]"
-    records values = Doc.text "vec![" <> Doc.nest 4
-      (Doc.hardline <> Doc.joinWith Doc.hardline [value <> Doc.text "," | value <- values]) <>
-      Doc.hardline <> Doc.text "]"
+    records values = RL.expr (RL.vecOf (map RL.Laid values))
     record name fields = Doc.text (name ++ " ") <> Doc.block 4
       (Doc.joinWith Doc.hardline [Doc.text (key ++ ": ") <> value <> Doc.text "," | (key,value) <- fields])
     definition declaration = record "ls::DataSchema"

@@ -409,9 +409,15 @@ expression env selfCall scope e = case expressionNode e of
     item <- fresh (binderName binder)
     ok <- fresh "all"
     p <- expression env Nothing ((binderId binder, item) : scope) predicate
-    let loopDoc = D.text ("for " ++ item ++ " in ") <> L.expr (L.method xs "iter" []) <> D.text " " <> L.block
+    let iterated = L.method xs "iter" []
+        body = L.block
           [ L.Let item (L.method (L.atom item) "clone" [])
           , L.Do (L.If (L.prefix "!" p) (L.Block [L.Semi (L.atom (ok ++ " = false")), L.Semi (L.atom "break")] Nothing) Nothing) ] Nothing
+        -- A collection that breaks over lines puts the loop's brace on a
+        -- line of its own, as rustfmt does.
+        loopDoc = case L.oneLine iterated of
+          Just t -> D.bestFit [D.text ("for " ++ item ++ " in " ++ t ++ " ") <> body, D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body]
+          Nothing -> D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body
     pure (L.Block [L.Let ("mut " ++ ok) (L.atom "true"), L.Item loopDoc] (Just (L.atom ok)))
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
   Perform (Operation ref "raise") [x] | isFail ref -> do

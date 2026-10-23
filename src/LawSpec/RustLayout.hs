@@ -298,8 +298,7 @@ opening e = case e of
   -- keeps its other arguments and that opening on its line.
   Call f args
     | not (null args), blocky (last args), Just inits <- mapM oneLine (init args)
-    , let line' = concatMap (++ ", ") inits ++ opening (last args), width line' <= 60 ->
-        maybe "" id (flat f) ++ "(" ++ line'
+    , let line' = maybe "" id (flat f) ++ "(" ++ concatMap (++ ", ") inits ++ opening (last args), width line' <= 60 -> line'
     | otherwise -> maybe "" id (flat f) ++ "("
   Macro "" "(" _ args
     | not (null args), blocky (last args), Just inits <- mapM oneLine (init args)
@@ -355,7 +354,14 @@ expr e = case e of
   Paren a -> D.text "(" <> expr a <> D.text ")"
   Block ss tailExpr -> blockDoc ss tailExpr
   If c a b -> ifDoc c a b
-  Match scrutinee arms -> D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms
+  -- rustfmt measures a match's head in bytes: a scrutinee with wide
+  -- characters that fits by width puts its brace on the next line.
+  Match scrutinee arms
+    | Just t <- flat scrutinee, any (> '\x7f') t ->
+        oneOf [ D.utf8Text ("match " ++ t ++ " ") <> armsDoc arms
+              , D.text ("match " ++ t) <> D.hardline <> armsDoc arms
+              , D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms ]
+    | otherwise -> D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms
   -- A closure's body that is not a block, match or struct literal is on
   -- the closure's line or in a block of its own (rustfmt vetoes breaking
   -- it there).
