@@ -1,7 +1,7 @@
 -- | Native data declarations follow the resolved-plan/renderer separation used
 -- by Go+. Public fields retain native types; runtime Value is only the bridge
 -- for primitive domains with no faithful Java representation.
-module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
+module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaCodecDocIn, javaDataName, identifier) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
@@ -610,38 +610,44 @@ javaCodec declarations =
 -- | A structured counterpart for source emitters; the existing string API remains
 -- available to legacy property wrappers.
 javaCodecDoc :: [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
-javaCodecDoc = javaCodecDocUsing Nothing
+javaCodecDoc declarations bits = javaCodecDocUsing "lawspec.runtime.LawSpecDataCodecs" (D.text (show bits)) Nothing declarations bits
 
 -- | As javaCodec, where the symbol table comes from the caller's scope.
 javaCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
-javaCodecDocWithContext symbols = javaCodecDocUsing (Just symbols)
+javaCodecDocWithContext symbols declarations bits = javaCodecDocUsing "lawspec.runtime.LawSpecDataCodecs" (D.text (show bits)) (Just symbols) declarations bits
 
-javaCodecDocUsing :: Maybe D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
-javaCodecDocUsing context declarations =
+-- | As javaCodecDocWithContext, where generated code names the codecs'
+-- class and the machine width its own way (a test's imports and
+-- MACHINE_BITS).
+javaCodecDocIn :: String -> D.Doc -> D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
+javaCodecDocIn codecs width symbols = javaCodecDocUsing codecs width (Just symbols)
+
+javaCodecDocUsing :: String -> D.Doc -> Maybe D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
+javaCodecDocUsing codecs width context declarations =
   -- The names depend only on the declarations: a caller that applies this to
   -- them once shares them across every type.
   let prepared = namesFor declarations
-  in \bits ty -> do
+  in \_ ty -> do
   names <- prepared
   let symbols = maybe [] pure context
       go value@(C.Constructor name args) = do
         children <- mapM (\a -> case a of C.TypeArgument t -> go t; _ -> Left "indexed codec") args
         case lookup name names of
           _ | isDurationType name ->
-            pure (invoke "SCHEMA.duration" [D.text (show bits), if null symbols then D.text "new java.util.HashMap<>()" else head symbols])
+            pure (invoke "SCHEMA.duration" [width, if null symbols then D.text "new java.util.HashMap<>()" else head symbols])
           _ | Just short <- collectionContainer name ->
             pure (collectionCodec invoke "SCHEMA" short children
-              [D.text (show bits), if null symbols then D.text "new java.util.HashMap<>()" else head symbols])
-          Just native -> pure (invoke ("lawspec.runtime.LawSpecDataCodecs." ++ codecName native)
-            ([D.text "SCHEMA", D.text (show bits)] ++ symbols ++ children))
+              [width, if null symbols then D.text "new java.util.HashMap<>()" else head symbols])
+          Just native -> pure (invoke (codecs ++ "." ++ codecName native)
+            ([D.text "SCHEMA", width] ++ symbols ++ children))
           Nothing | name `elem` ["List", "Maybe", "Either"] ->
-            pure (invoke ("SCHEMA." ++ map toLower name) (children ++ [D.text (show bits)] ++ symbols))
+            pure (invoke ("SCHEMA." ++ map toLower name) (children ++ [width] ++ symbols))
           Nothing | name `elem` ["Nullable", "Optional", "Unit"] || nativeRepresentation "java" name == Nothing -> do
             ref <- reference value
-            pure (invoke "SCHEMA.supported" ([ref,D.text (show bits)] ++ symbols))
+            pure (invoke "SCHEMA.supported" ([ref,width] ++ symbols))
           Nothing -> do
             native <- typeDoc (handlesOf declarations) names [] value
-            pure (invoke "SCHEMA.scalar" [quoted name,D.text (show bits),native <> D.text ".class"])
+            pure (invoke "SCHEMA.scalar" [quoted name,width,native <> D.text ".class"])
       go _ = Left "non-concrete native data codec"
       reference (C.Constructor name args) = invoke "new lawspec.runtime.LawSpecSchema.Named" . (quoted name :) <$>
         mapM (\a -> case a of C.TypeArgument t -> reference t; _ -> Left "indexed codec") args

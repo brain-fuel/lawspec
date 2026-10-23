@@ -19,7 +19,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmPerformName)
 import qualified Data.Set as S
-import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved)
+import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved, jvmMethod)
 import LawSpec.Naming (readableDefinitionName)
 
 -- | The adapters orchestrations call, with their units.
@@ -39,17 +39,17 @@ orchestratedAdapters units =
 -- | The Kotlin bridge method through which shared JVM bodies call a Kotlin
 -- adapter.
 kotlinAdapterBridge :: Id -> String
-kotlinAdapterBridge identity = "call_" ++ map (\c -> if isAlphaNum c then c else '_') (idText identity)
+kotlinAdapterBridge identity = jvmMethod "call" (idText identity)
 
 -- The Kotlin bridge method through which shared JVM bodies perform a Kotlin
 -- handler's operation.
 kotlinOperationBridge :: Operation -> String
-kotlinOperationBridge op = "perform_" ++ map (\c -> if isAlphaNum c then c else '_') (idText (operationId op))
+kotlinOperationBridge op = jvmMethod "perform" (idText (operationId op))
 
 -- The Kotlin bridge method through which shared JVM bodies make a Kotlin
 -- spec handler, for handle ... with h end.
 kotlinHandlerBridge :: Id -> String
-kotlinHandlerBridge h = "handler_" ++ map (\c -> if isAlphaNum c then c else '_') (idText h)
+kotlinHandlerBridge h = jvmMethod "handler" (idText h)
 
 -- The spec handlers checked definitions install with handle ... with h end.
 scopedHandlers :: [Unit] -> [Id]

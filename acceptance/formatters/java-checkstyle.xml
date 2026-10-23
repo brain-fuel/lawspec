@@ -11,7 +11,8 @@
     after an arrow (a lambda's or a switch rule's), which keeps it on its line; unprintable
     characters are escaped by LawSpec's pinned Unicode tables (Google's rule),
     so Checkstyle's narrower list of escapable characters is not used; the
-    names of types, records and fields are the specification's own, so only
+    names of types, records, fields and record components are the
+    specification's own, so only
     generated names (methods, parameters, locals) are held to Google's
     camel case; a unit may be in the default package; a line holding only
     a string with no space to wrap at (an identity) may exceed the limit,
@@ -249,7 +250,6 @@
       <message key="name.invalidPattern"
              value="Type name ''{0}'' must match pattern ''{1}''."/>
     </module>
-    <module name="GoogleNonConstantFieldName"/>
     <module name="ParameterName">
       <property name="format" value="^[a-z]([a-z0-9][a-zA-Z0-9]*)?$"/>
       <message key="name.invalidPattern"
@@ -264,11 +264,6 @@
       <property name="format" value="^(_|[a-z]([a-z0-9][a-zA-Z0-9]*)?)$"/>
       <message key="name.invalidPattern"
              value="Catch parameter name ''{0}'' must match pattern ''{1}''."/>
-    </module>
-    <module name="RecordComponentName">
-      <property name="format" value="^[a-z]([a-z0-9][a-zA-Z0-9]*)?$"/>
-      <message key="name.invalidPattern"
-               value="Record component name ''{0}'' must match pattern ''{1}''."/>
     </module>
     <module name="LocalVariableName">
       <property name="format"

@@ -1,5 +1,5 @@
 -- | Java property scaffolding consumes checked propositions and generation plans.
-module LawSpec.JavaProperties (Config(..), emitTests) where
+module LawSpec.JavaProperties (Config(..), emitTests, TestCase(..), testCases) where
 
 import LawSpec.Bounds (inputRange, drawRange)
 import qualified LawSpec.Core as C
@@ -80,6 +80,34 @@ conjunction [x] = x
 conjunction xs = D.group (D.nest 4 (D.joinWith (D.softline <> text "&& ") xs))
 symbols = text "var symbols = new HashMap<String, Object>();"
 
+-- | A JUnit test of a unit's test class: its method, why it is skipped,
+-- and its law. Spock specifications run them by name.
+data TestCase = TestCase { caseMethod :: String, caseSkipped :: Maybe String, caseLaw :: Maybe Expanded }
+
+-- | The JUnit tests emitTests writes for a unit, in their order.
+testCases :: Unit -> [Expanded] -> [TestCase]
+testCases unit laws = concat (zipWith cases (unitTestNames "java" (map name laws)) laws) ++
+  [ TestCase ("benchmark" ++ concatMap capital (lawWords n)) Nothing Nothing
+  | (n, _) <- maybe [] C.harnessBenchmarks (C.unitHarnessSettings unit) ]
+  where
+    capital (c : cs) = toUpper c : cs
+    capital [] = []
+    cases base e =
+      let h = C.propertyHarness (original e)
+          boundaries = length (maybe (boundaryCases e) id (finiteCases e))
+          kinds = ["_" ++ s | s <- exampleSuffixesOf e] ++ ["_" ++ boundaryTestName i | i <- [0 .. boundaries - 1]] ++
+            ["_property" | finiteCases e == Nothing]
+      in case (C.harnessSkip h, C.harnessKnownFailing h) of
+        (Just reason, _) -> [TestCase (base ++ "_skipped") (Just (owner e ++ "::" ++ name e ++ ": " ++ reason)) (Just e)]
+        (_, Just _) -> [TestCase (base ++ "_knownFailing") Nothing (Just e)]
+        _ -> [TestCase (base ++ k) Nothing (Just e) | k <- kinds]
+
+-- | The test names of a law's examples, after its own name.
+exampleSuffixesOf :: Expanded -> [String]
+exampleSuffixesOf e = exampleTestNames ("property" : "skipped" : "knownFailing" : "replay" :
+  map boundaryTestName [0 .. boundaries - 1]) (map exampleName (examples (original e)))
+  where boundaries = length (maybe (boundaryCases e) id (finiteCases e))
+
 -- | Laws become tests in Java's own property framework, so they run with the
 -- tools the project already uses. ref:DEC-native-property-frameworks
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
@@ -102,7 +130,8 @@ emitTests Config{..} unit laws = do
       body = separate members
       rendered = D.render D.Compact body
       imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map",
-        "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value",
+        "lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecDefinitionBodies",
+        "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value", "lawspec.runtime.LawSpecSchema",
         "org.jetbrains.jetCheck.Generator", "org.jetbrains.jetCheck.PropertyChecker",
         "org.junit.jupiter.api.Test"], usesSimple (simpleName name) rendered]
   pure $ text ("// " ++ generatedHeader sourceFile) <> D.hardline <> D.hardline <>
@@ -305,9 +334,7 @@ emitTests Config{..} unit laws = do
           h = C.propertyHarness (original e)
           base = testNames !! index
           fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
-          boundaryCount = length (maybe (boundaryCases e) id (finiteCases e))
-          exampleSuffixes = exampleTestNames ("property" : "skipped" : "knownFailing" : "replay" :
-            map boundaryTestName [0 .. boundaryCount - 1]) (map exampleName (examples (original e)))
+          exampleSuffixes = exampleSuffixesOf e
       exampleDocs <- mapM (\(suffix,ex) -> pure $ D.lineComment 98 "// " (labelled ("example " ++ displayLabel (exampleName ex))
           (fmap locationLink (exampleLocation ex))) <>
         testFunction (fn ++ "_" ++ suffix) (withSymbols

@@ -1,5 +1,5 @@
 -- | Typed expression documents shared by Java tests and reusable definitions.
-module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, renderExpressionWithSchema, scalarLiteral, call, array, reference, quoted, javaDataKey) where
+module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, renderExpressionWithSchema, scalarLiteral, call, array, reference, referenceIn, quoted, javaDataKey) where
 
 import LawSpec.Core
 import qualified LawSpec.Core.Schema as Schema
@@ -27,10 +27,14 @@ array values = D.group (D.text "new Value[] {" <>
 
 -- | Runtime checks name a type by a schema reference built from Core.
 reference :: Type -> Either String D.Doc
-reference ty = render <$> Schema.typeReference [] ty
+reference = referenceIn "lawspec.runtime.LawSpecSchema.Named"
+
+-- | As reference, naming the class as the generated code imports it.
+referenceIn :: String -> Type -> Either String D.Doc
+referenceIn named ty = render <$> Schema.typeReference [] ty
   where
     render (Schema.Parameter _) = error "unbound concrete Java type reference"
-    render (Schema.Named name args) = call "new lawspec.runtime.LawSpecSchema.Named"
+    render (Schema.Named name args) = call ("new " ++ named)
       (quoted name : map render args)
 
 -- | Literals become runtime values built from their declared type and exact
@@ -102,7 +106,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
           let resultsName = "results" ++ show (length (show term))
               bindings = [D.text ("var " ++ local (binderId binder) ++ " = " ++ resultsName ++ ".get(" ++ show i ++ ");")
                 | (i,binder) <- zip [0::Int ..] binders]
-          pure (runtime "concurrently" ((D.text (resultsName ++ " -> ") <>
+          pure (runtime "concurrently" (D.multiline (D.text (resultsName ++ " -> ") <>
             D.block 2 (D.joinWith D.hardline (bindings ++ [D.text "return " <> inner <> D.text ";"]))) :
             [D.group (D.text "() ->" <> D.nest 4 (D.softline <> step)) | step <- steps]))
     render term = case expressionNode term of
@@ -129,11 +133,15 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
         expressionType term == scalarType n -> literal (expressionType term) value
       Constant value -> literal (expressionType term) value >>= checked (expressionType term)
       Local identity -> pure (D.text (local identity))
-      -- let x = e in body: e runs first, once.
-      Let binder value body -> do
-        argument <- render value
-        inner <- render body
-        pure (runtime "let" [argument, D.group (D.text (local (binderId binder) ++ " ->") <> D.nest 4 (D.softline <> inner))])
+      -- let x = e in body: e runs first, once. A chain of lets is a block
+      -- of declarations, as it reads in the law, rather than nested calls.
+      Let {} -> do
+        let (steps, final) = letChain term
+        declarations <- mapM (\(binder, value) -> do
+          argument <- render value
+          pure (D.group (D.text ("var " ++ local (binderId binder) ++ " =") <> D.nest 4 (D.softline <> argument)) <> D.text ";")) steps
+        inner <- render final
+        pure (runtime "block" [D.multiline (D.text "() -> " <> D.block 2 (D.joinWith D.hardline (declarations ++ [D.text "return " <> inner <> D.text ";"])))])
       Construct tag args -> do
         values <- mapM render args
         if custom (expressionType term) && idText tag `notElem` ["List::Nil","List::Cons"]
@@ -176,11 +184,12 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
         no <- render b
         pure (D.group (D.text "(" <> D.nest 4 (runtime "truth" [condition] <> D.softline <> D.text "? " <> yes <>
           D.softline <> D.text ": " <> no) <> D.text ")"))
-      ShortCircuit op a b -> do
-        left <- render a
-        right <- render b
-        pure (runtime "bool" [D.group (D.nest 4 (runtime "truth" [left]) <>
-          D.nest 4 (D.softline <> D.text (if op == And then "&& " else "|| ") <> runtime "truth" [right]))])
+      -- A chain of one operator is one condition, broken before each.
+      ShortCircuit op _ _ -> do
+        operands <- mapM render (shortCircuitChain op term)
+        pure (runtime "bool" [case map (\o -> runtime "truth" [o]) operands of
+          first : rest -> D.group (first <> D.nest 4 (mconcat [D.softline <> D.text (if op == And then "&& " else "|| ") <> o | o <- rest]))
+          [] -> D.text "true"])
       Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
@@ -197,7 +206,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
                   D.block 2 (D.joinWith D.hardline
                     (arms ++ [D.group (D.text "default ->" <> D.nest 4 (D.softline <> D.text "throw new IllegalArgumentException(\"invalid constructor\");"))]))
             pure (call (schemaName ++ ".match") [ref,value,bits,D.text "symbols",
-              D.text (dataName ++ " ->") <> D.nest 4 (D.hardline <> body)])
+              D.multiline (D.text (dataName ++ " ->") <> D.nest 4 (D.hardline <> body))])
           Constructor name _ -> do
             (helper,tags) <- case name of
               "List" -> pure ("matchList",["List::Nil","List::Cons"])
@@ -207,6 +216,12 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
             cases <- mapM (branch branches) tags
             pure (runtime helper (value:cases))
           _ -> Left "matching requires a data type"
+    letChain e = case expressionNode e of
+      Let binder value body -> let (steps, final) = letChain body in ((binder, value) : steps, final)
+      _ -> ([], e)
+    shortCircuitChain op e = case expressionNode e of
+      ShortCircuit op' a b | op' == op -> shortCircuitChain op a ++ shortCircuitChain op b
+      _ -> [e]
     literal ty (SPresent name payload) = do
       let inner = case ty of Constructor _ [TypeArgument t] -> t; _ -> ty
       value <- maybe (pure (D.text "null")) (literal inner) payload

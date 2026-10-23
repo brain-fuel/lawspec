@@ -22,6 +22,8 @@ import LawSpec.PythonTypes (pythonDataType)
 import LawSpec.WebTypes (webDataType)
 import LawSpec.GoData (goDataType)
 import LawSpec.JavaData (javaDataType)
+import qualified LawSpec.Code.Doc as Doc
+import LawSpec.JvmNames (jvmString)
 import LawSpec.KotlinData (kotlinDataType)
 import LawSpec.ScalaData (scalaDataType)
 import LawSpec.HaskellData (haskellDataType)
@@ -153,10 +155,15 @@ vectorTestPath target = case target of
 -- literals separated by commas, for targets whose string constants are
 -- bounded (the JVM's are at most 65535 bytes).
 fill :: String -> [C.DataDeclaration] -> String -> String -> String
-fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
+fill target _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
   where
     vectors = defaultSource "vectors.txt"
-    vectorLines = intercalate ",\n" ["    \"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
+    vectorLines = intercalate ",\n" [vectorLine l | l <- lines vectors, not (null l), take 1 l /= "#"]
+    -- Java's lines wrap at the vectors' spaces, within LawSpec's Java
+    -- profile's 100 columns.
+    vectorLine l
+      | target == "java" = Doc.render (Doc.Pretty 100) (Doc.text "    " <> Doc.nest 4 (jvmString "java" l))
+      | otherwise = "    \"" ++ l ++ "\""
 
 replace :: String -> String -> String -> String
 replace old new = go

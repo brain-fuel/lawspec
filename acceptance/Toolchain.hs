@@ -47,6 +47,13 @@ formatter target = do
     "java" -> pure (Just (Formatter "checkstyle 14.3.0 (Allman, Google)" "coursier"
       (\dir -> launch "com.puppycrawl.tools.checkstyle.Main" checkstyle ++ ["-c", root </> javaProfile, dir]) [".java"]
       [javaProfile]))
+    -- Groovy has no canonical formatter and Checkstyle cannot parse it:
+    -- CodeNarc checks the same profile, Allman braces with Google's rules.
+    "groovy" -> pure (Just (Formatter "codenarc 4.0.0 (Allman, Google)" "coursier"
+      (\dir -> ["launch", "-M", "org.codenarc.CodeNarc", "org.codenarc:CodeNarc:4.0.0", "org.apache.groovy:groovy:5.0.8", "--",
+        "-basedir=" ++ dir, "-rulesetfiles=file:" ++ (root </> groovyProfile), "-report=text:stdout",
+        "-maxPriority1Violations=0", "-maxPriority2Violations=0", "-maxPriority3Violations=0"]) [".groovy"]
+      [groovyProfile]))
     -- ktfmt's kotlinlang style, its default for Kotlin's own conventions.
     "kotlin" -> pure (Just (Formatter "ktfmt 0.64 (kotlinlang)" "coursier"
       (\dir -> launch "com.facebook.ktfmt.cli.Main" "com.facebook:ktfmt:0.64" ++ ["--kotlinlang-style", "--dry-run", "--set-exit-if-changed", dir]) [".kt"]
@@ -64,6 +71,7 @@ formatter target = do
     launch main coordinates = ["launch", "-M", main, coordinates, "--"]
     checkstyle = "com.puppycrawl.tools:checkstyle:14.3.0"
     javaProfile = "acceptance/formatters/java-checkstyle.xml"
+    groovyProfile = "acceptance/formatters/groovy-codenarc.xml"
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

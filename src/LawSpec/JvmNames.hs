@@ -7,10 +7,10 @@
 -- spaces. ref:DEC-readable-generated-names ref:DEC-native-string-literals
 module LawSpec.JvmNames
   ( jvmReserved, jvmLocal, jvmClaim, jvmClaimAll, jvmLocalTable, jvmString, jvmStringChunks
-  , exampleTestNames, boundaryTestName, contractMethod
+  , exampleTestNames, boundaryTestName, contractMethod, javadoc, jvmMethod
   ) where
 
-import Data.Char (isDigit, toUpper)
+import Data.Char (isAlphaNum, isDigit, toLower, toUpper)
 import Data.List (dropWhileEnd)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -111,11 +111,21 @@ capital [] = []
 -- lowerCamelCase, numbered from 1 when it has none or they repeat.
 exampleTestNames :: [String] -> [String] -> [String]
 exampleTestNames taken names = fst $ jvmClaimAll (S.fromList taken)
-  [ case (case filter (\w -> length w > 1 || all isDigit w) (lawWords n) of [] -> lawWords n; kept -> kept) of
+  [ case shortened (case filter (\w -> length w > 1 || all isDigit w) (lawWords n) of [] -> lawWords n; kept -> kept) of
       ["law"] -> "example" ++ show i
       w@(c : _) : more | not (isDigit c) -> w ++ concatMap capital more
       ws -> "example" ++ concatMap capital ws
   | (i, n) <- zip [1 :: Int ..] names ]
+
+-- | An example's words, at most about 32 characters: whole words, so a
+-- test's name (its law's, then its example's) stays short enough to read.
+shortened :: [String] -> [String]
+shortened = go 0
+  where
+    go _ [] = []
+    go n (w : rest)
+      | n > 0 && n + length w > 32 = []
+      | otherwise = w : go (n + length w) rest
 
 -- | Boundary cases have no names; they are numbered from 1.
 boundaryTestName :: Int -> String
@@ -124,3 +134,23 @@ boundaryTestName i = "boundary" ++ show (i + 1)
 -- | The method that checks a contract around its adapter: checkedNormalize.
 contractMethod :: String -> String
 contractMethod n = "checked" ++ capital n
+
+-- | A documentation comment: one line when it fits the width at its
+-- indentation, otherwise its words wrapped after " * ".
+javadoc :: Int -> String -> D.Doc
+javadoc width content
+  | length ("/** " ++ content ++ " */") <= width = D.text ("/** " ++ content ++ " */")
+  | otherwise = D.text "/**" <> D.hardline <>
+      mconcat [D.text (" * " ++ l) <> D.hardline | l <- wrap [] (words content)] <> D.text " */"
+  where
+    wrap current [] = [unwords current | not (null current)]
+    wrap current (w : rest)
+      | not (null current) && length (unwords (current ++ [w])) > width - 3 = unwords current : wrap [w] rest
+      | otherwise = wrap (current ++ [w]) rest
+
+-- | A generated method named by a verb and an identity's words, in
+-- lowerCamelCase: jvmMethod "call" "example.shop::charge" is
+-- callExampleShopCharge. Distinct identities give distinct names unless
+-- they differ only in punctuation.
+jvmMethod :: String -> String -> String
+jvmMethod verb identity = verb ++ concatMap capital (words (map (\c -> if isAlphaNum c then toLower c else ' ') identity))

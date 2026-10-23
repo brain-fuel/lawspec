@@ -149,7 +149,8 @@ networkSource target bits datas sessions session = do
     [ "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (unwords (map snd (reverse table))) ++ ");"
     , ""
     , "  /** Each step's descriptor and conversion, from the first end. */"
-    , "  static LawSpecRuntime.Wire wire() {"
+    , "  static LawSpecRuntime.Wire wire()"
+    , "  {"
     , "    var symbols = new java.util.HashMap<String, Object>();" ] ++
     [ "    var codec" ++ show i ++ " = " ++ c ++ ";" | not kotlin, (i, c, _) <- codecs ] ++
     [ "    return new LawSpecRuntime.Wire("
@@ -164,16 +165,21 @@ networkSource target bits datas sessions session = do
     , "   * address}/name. An end sent over it to another node moves there (a local end stays and is"
     , "   * relayed by this node)."
     , "   */"
-    , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name) {"
+    , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name)"
+    , "  {"
     , "    var w = wire();"
     , "    return new First." ++ first ++ "(new LawSpecRuntime.NativeChannel(node.listen(name, w.steps(), w.values()), w.parts()));"
     , "  }"
     , ""
     , "  /** The second end of the channel listening at address on another node. */"
-    , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address) {"
+    , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address)"
+    , "  {"
     , "    var w = wire();"
     , "    var steps = new java.util.ArrayList<LawSpecRuntime.Step>();"
-    , "    for (var s : w.steps()) steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
+    , "    for (var s : w.steps())"
+    , "    {"
+    , "      steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
+    , "    }"
     , "    return new Second." ++ second ++ "(new LawSpecRuntime.NativeChannel(node.dial(address, steps, w.values()), w.parts()));"
     , "  }" ], kotlinFile)
   where
@@ -238,14 +244,16 @@ protocolSource datas sessions network session = do
     , " * Each end class is an end before one step: taking the step returns the next end,"
     , " * and an end can be used only once."
     , " */"
-    , "public final class " ++ name ++ " {"
+    , "public final class " ++ name
+    , "{"
     , "  private " ++ name ++ "() {}"
     , ""
     , "  /** Both ends of a fresh channel. */"
     , "  public record Ends(First." ++ start True ++ " first, Second." ++ start False ++ " second) {}"
     , ""
     , "  /** Opens a fresh in-memory channel and returns its two ends. */"
-    , "  public static Ends open() {"
+    , "  public static Ends open()"
+    , "  {"
     , "    var channel = LawSpecRuntime.channel();"
     , "    return new Ends(new First." ++ start True ++ "(channel), new Second." ++ start False ++ "(channel));"
     , "  }" ] ++ network ++
@@ -263,7 +271,8 @@ protocolSource datas sessions network session = do
       positions <- mapM (position label side names) (zip3 [0 :: Int ..] (map Just ends ++ [Nothing]) names)
       pure $
         [ "  /** The " ++ label ++ " end: it " ++ summary ends ++ ". */"
-        , "  public static final class " ++ className ++ " {"
+        , "  public static final class " ++ className
+        , "  {"
         , "    private " ++ className ++ "() {}"
         ] ++ concatMap ("" :) positions ++ ["  }"]
 
@@ -272,23 +281,27 @@ protocolSource datas sessions network session = do
           moved = if index /= 0 || side /= (0 :: Int) then [] else
             [ ""
             , "      /** Hands this end, unused, to a send; this object becomes used. */"
-            , "      " ++ cls ++ " moved() {"
+            , "      " ++ cls ++ " moved()"
+            , "      {"
             , "        LawSpecRuntime.claimEnd(used);"
             , "        return new " ++ cls ++ "(channel);"
             , "      }"
             , ""
             , "      /** This unused end's channel, to send to another node; this object becomes used. */"
-            , "      LawSpecRuntime.Channel handOver() {"
+            , "      LawSpecRuntime.Channel handOver()"
+            , "      {"
             , "        LawSpecRuntime.claimEnd(used);"
             , "        return channel;"
             , "      }" ]
           header doc =
             [ "    /** " ++ doc ++ " */"
-            , "    public static final class " ++ cls ++ " {"
+            , "    public static final class " ++ cls
+            , "    {"
             , "      private final LawSpecRuntime.Channel channel;"
             , "      private final AtomicBoolean used = new AtomicBoolean();"
             , ""
-            , "      " ++ cls ++ "(LawSpecRuntime.Channel channel) {"
+            , "      " ++ cls ++ "(LawSpecRuntime.Channel channel)"
+            , "      {"
             , "        this.channel = channel;"
             , "      }" ]
       case step of
@@ -296,7 +309,8 @@ protocolSource datas sessions network session = do
         -- (a protocol with no steps) is handed over as it is.
         Nothing -> pure $
           [ "    /** The " ++ label ++ " end after its last step: the protocol is done. */"
-          , "    public static final class Done {"
+          , "    public static final class Done"
+          , "    {"
           , "      Done(LawSpecRuntime.Channel channel) {}" ] ++
           (if null moved then [] else ["", "      Done moved() {", "        return this;", "      }"]) ++
           ["    }"]
@@ -308,7 +322,8 @@ protocolSource datas sessions network session = do
                 | stepSends s =
                     [ ""
                     , "      /** Sends " ++ described ++ " and returns the next end. */"
-                    , "      public " ++ next ++ " send(" ++ parameter ++ " value) {"
+                    , "      public " ++ next ++ " send(" ++ parameter ++ " value)"
+                    , "      {"
                     , "        LawSpecRuntime.claimEnd(used);"
                     , "        channel.send(" ++ show side ++ ", " ++ sent ++ ");"
                     , "        return new " ++ next ++ "(channel);"
@@ -317,7 +332,8 @@ protocolSource datas sessions network session = do
                     [ ""
                     , "      /** Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up. */"
                     ] ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
-                    [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive() {"
+                    [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive()"
+                    , "      {"
                     , "        LawSpecRuntime.claimEnd(used);"
                     , "        var value = (" ++ boxed ++ ") channel.receive(" ++ show side ++ ");"
                     , "        return new LawSpecRuntime.Received<>(value, new " ++ next ++ "(channel));"
@@ -327,7 +343,8 @@ protocolSource datas sessions network session = do
               abandon =
                 [ ""
                 , "      /** Gives up the conversation: the other end's receives throw PeerFailed after what was sent. */"
-                , "      public void abandon() {"
+                , "      public void abandon()"
+                , "      {"
                 , "        LawSpecRuntime.claimEnd(used);"
                 , "        channel.abandon(" ++ show side ++ ");"
                 , "      }" ]

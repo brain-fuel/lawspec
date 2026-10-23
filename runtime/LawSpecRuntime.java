@@ -11576,6 +11576,12 @@ public final class LawSpecRuntime
     return body.apply(value);
   }
 
+  /** A chain of lets, as a block of declarations in a generated test. */
+  public static Value block(Supplier<Value> body)
+  {
+    return body.get();
+  }
+
   /**
    * handle e with h end: runs body with these handlers installed, then puts back the ones they
    * replaced.

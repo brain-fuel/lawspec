@@ -40,7 +40,7 @@ import qualified LawSpec.Code.Doc as Doc
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
-import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub)
+import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub, stripPrefix)
 import Data.Maybe (listToMaybe)
 import Data.Char (toLower, isAlphaNum)
 import LawSpec.Search (lawDescriptors, searchable)
@@ -382,7 +382,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktCodecDoc = KotlinExpr.codec dataDeclarations bits
     hsDataType = HaskellData.haskellDataType dataDeclarations
     goDataType = GoData.goDataType dataDeclarations
-    javaCodecDoc = JavaData.javaCodecDocWithContext (Doc.text "symbols") dataDeclarations bits
+    -- A test imports the codecs, schema and definitions it names.
+    javaCodecDoc = JavaData.javaCodecDocIn "LawSpecDataCodecs" javaBits (Doc.text "symbols") dataDeclarations bits
     ktNativeArgument ty value = java (ktCodecDoc ty) <>
       Doc.text ".decode" <> Doc.delimitTrailing 4 "(" ")" [value]
     -- The abstract Integer result is tower-polymorphic: adapters may return any
@@ -869,12 +870,12 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           Doc.text "func() LawSpecValue " <> Doc.block 8 (Doc.text "return " <> body)])
       _ -> Left "expected checked Go external call"
     javaDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
-    javaRender term = java (JavaExpr.renderExpressionWithContext dataDeclarations javaBits JavaExpr.reference
+    javaRender term = java (JavaExpr.renderExpressionWithContext dataDeclarations javaBits (JavaExpr.referenceIn "LawSpecSchema.Named")
       (pure . JavaExpr.quoted . JavaExpr.javaDataKey) localName javaExternal term)
     -- Java tests name the machine width once (MACHINE_BITS).
     javaBits = Doc.text "MACHINE_BITS"
     javaRuntime name = JavaExpr.call ("LawSpecRuntime." ++ name)
-    javaRef = java . JavaExpr.reference
+    javaRef = java . JavaExpr.referenceIn "LawSpecSchema.Named"
     javaChecked ty value
       | custom ty = JavaExpr.call "SCHEMA.validate" [javaRef ty,value,javaBits,Doc.text "symbols"]
       | otherwise = javaRuntime "convert" [JavaExpr.quoted (key ty),value,javaBits]
@@ -973,7 +974,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       where madeWith = maybe [] (\(t, local) -> [javaNativeArgument t (Doc.text local)]) (resourceOf a c)
     javaExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
-        Right (JavaExpr.call evaluator (Doc.text "symbols" : values))
+        Right (JavaExpr.call (maybe evaluator id (stripPrefix "lawspec.runtime." evaluator)) (Doc.text "symbols" : values))
       -- raise aborts to the nearest attempt of its Fail ability.
       C.Perform op [_] | C.isFail (C.operationAbility op) ->
         Right (javaRuntime "raiseFailure" (JavaExpr.quoted (C.abilityKey (C.operationAbility op)) : values))

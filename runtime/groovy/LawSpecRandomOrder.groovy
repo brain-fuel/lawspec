@@ -17,13 +17,16 @@ import org.spockframework.runtime.model.SpecInfo
 
 /** Shuffles the features by the seed LAWSPEC_SEED gives, or a new one, which it prints. */
 @groovy.transform.CompileStatic
-class LawSpecRandomOrderExtension implements IAnnotationDrivenExtension<LawSpecRandomOrder> {
+class LawSpecRandomOrderExtension implements IAnnotationDrivenExtension<LawSpecRandomOrder>
+{
   @Override
-  void visitSpecAnnotation(LawSpecRandomOrder annotation, SpecInfo spec) {
+  void visitSpecAnnotation(LawSpecRandomOrder annotation, SpecInfo spec)
+  {
     long seed = LawSpecHarness.orderSeed()
     def features = spec.features.sort(false) { it.name }
     Collections.shuffle(features, new Random(seed ^ spec.reflection.name.hashCode()))
     features.eachWithIndex { feature, index -> feature.executionOrder = index }
-    println "order random seed ${seed} (${spec.reflection.simpleName}): LAWSPEC_SEED=${seed} replays this order"
+    println "order random seed ${seed} (${spec.reflection.simpleName}): " +
+      "LAWSPEC_SEED=${seed} replays this order"
   }
 }
