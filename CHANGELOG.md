@@ -6,6 +6,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: generated Python names.** Generated Python is written to be
+  read. Locals keep their source names, checked definitions are named after
+  the definition (`_definitions.fee_model`, `lawspec_typed.settings`, with
+  `_2` only on a clash) and typed helpers after their type (`to_settings`).
+  Tests are named after the law and the example
+  (`test_normalizers_agree__spaces_become_hyphens_punctuation_is_preserved`),
+  and boundaries are numbered from 1. Anonymous records have a name from
+  where they are used (`DeclinedDetails`) instead of `Record<digest>`.
+  Adapters and native code that use the old names must be renamed.
+- Generated Python writes text and bytes as Python literals, names the
+  machine width (`MACHINE_BITS`) and the integers' draw limit once per
+  module, imports only what it uses, and makes a case's `symbols` only when
+  the case uses them. Each law's comment gives its name, source line, what it
+  says and the statement its tests check, with source names and real
+  characters; each test, definition and helper links to its source line.
+  Assertion messages name the law and example and point at the expectation's
+  line instead of repeating its text.
+- Generated Python is laid out as `ruff format` (0.17.2, default settings)
+  lays it out, at 88 columns rather than PEP 8's 79, and the Python runtimes
+  are formatted the same way. Acceptance runs `ruff format --check` on every
+  generated Python project (the formatted step). The other targets follow
+  with their language families.
+
+### Added
+
+- Shared foundations for readable output on every target: a naming service,
+  per-target string escaping tables, source links from Core origins, record
+  display names, and per-target layout profiles (brace style, indent, width,
+  trailing commas, blank lines, import order), with display widths and
+  printability from pinned Unicode 17.0.0 tables.
+
 ## [0.29.2] - 2026-10-22
 
 ### Fixed

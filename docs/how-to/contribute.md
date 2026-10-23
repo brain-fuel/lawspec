@@ -285,11 +285,13 @@ LAWSPEC_MACHINE_BITS=32 LAWSPEC_MINIFY=1 node tools/native-example-integration.m
 
 Formatting is implemented in the compiler, with `LawSpec.Code.Doc`; generation
 never runs an external formatter. Each target's output follows that language's
-usual style (Google style for Java, Kotlin, JavaScript and TypeScript, PEP 8 for
-Python, `gofmt` and `rustfmt` conventions for Go and Rust) within 80 columns,
-in a readable layout by default and a compact one with `--minify`. The Hspec
-suite checks the layout engine, and every acceptance suite compiles and runs
-the generated code in both layouts.
+usual style (Google style for Java, Kotlin, JavaScript and TypeScript, `ruff
+format` for Python, `gofmt` and `rustfmt` conventions for Go and Rust), from the
+target's profile in `LawSpec.Code.Doc.styleFor`, in a readable layout by default
+and a compact one with `--minify`. The Hspec suite checks the layout engine,
+and every acceptance suite compiles and runs the generated code in both layouts.
+For a target held to its canonical formatter (Python so far), acceptance also
+runs the formatter's check mode on the generated project; any difference fails.
 
 The runtimes in `runtime/` are reviewed sources with the same conventions.
 After editing one, run `make generate` to embed it, and `make ci` to exercise it

@@ -138,6 +138,21 @@ domain and size budget.
 
 ## Formatting
 
-Output follows PEP 8: four-space indentation, 79-column code, 72-column
-comments and docstrings, and two blank lines between top-level definitions.
-`--minify` allows a compact layout that keeps Python's required indentation.
+Output is what `ruff format` writes with its default settings: four-space
+indentation, 88 columns, double quotes unless single quotes need fewer
+escapes, and two blank lines between top-level definitions. LawSpec lays it
+out itself, so generation needs no formatter, and LawSpec's own acceptance
+checks every generated project with `ruff format --check`. `--minify` allows
+a compact layout that keeps Python's required indentation.
+
+## Names
+
+Generated code uses the specification's names. Locals keep their source
+names; a checked definition is a function named after it in snake case
+(`feeModel` is `fee_model`), with `_2` only when two would share a name. A
+test is named after its law and example:
+`test_normalizers_agree__spaces_become_hyphens_punctuation_is_preserved`, and
+`__boundary_1`, `__property`. An anonymous record is a class named from where
+it is used: the payload of a `Declined` case is `DeclinedDetails`. Each test
+and definition has a comment linking it to its source line, and text is
+written as Python string literals.

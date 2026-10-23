@@ -326,6 +326,22 @@ google-style-guides:
   kind: article
   title: Google Style Guides
   locator: https://google.github.io/styleguide/
+ruff-formatter:
+  kind: article
+  title: The Ruff Formatter
+  locator: https://docs.astral.sh/ruff/formatter/
+black-code-style:
+  kind: article
+  title: The Black code style
+  locator: https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html
+unicode-east-asian-width:
+  kind: article
+  title: Unicode Standard Annex 11, East Asian Width
+  locator: https://www.unicode.org/reports/tr11/
+python-string-literals:
+  kind: article
+  title: The Python Language Reference, String and Bytes literals
+  locator: https://docs.python.org/3/reference/lexical_analysis.html#string-and-bytes-literals
 decimal-arithmetic:
   kind: article
   title: Mike Cowlishaw, General Decimal Arithmetic Specification

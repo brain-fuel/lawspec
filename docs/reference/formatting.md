@@ -74,7 +74,7 @@ Generated native code uses highlight.js.
 | --- | --- |
 | Java | Google Java Format |
 | Kotlin | Google Android Kotlin style guide: four-space blocks and wrapped arguments, 100-column lines, ASCII-sorted imports. Java support files use Google Java Format. |
-| Python | PEP 8: four-space indentation, 79-column code, 72-column comments and docstrings, two blank lines between top-level definitions |
+| Python | `ruff format` with its default settings (88 columns), checked byte for byte by acceptance |
 | JavaScript, TypeScript | Two-space blocks, four-space continuations (Google JavaScript line wrapping), single-quoted strings, 80 columns, binary operators at the end of a wrapped line |
 | Go | `gofmt` |
 | Haskell | 80 columns, spaces for indentation |
