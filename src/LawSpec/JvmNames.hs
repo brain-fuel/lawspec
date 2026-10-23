@@ -46,10 +46,17 @@ jvmLocal target reserved source
 -- would read as an abbreviation): a single leading letter word joins the
 -- next.
 googleCase :: String -> String
-googleCase name = case name of
+googleCase name = noRuns $ case name of
   c : d : rest | d `elem` ['A' .. 'Z'] -> c : toLowerChar d : rest
   _ -> filter (/= '_') name
-  where toLowerChar x = toEnum (fromEnum x + 32)
+  where
+    toLowerChar x = toEnum (fromEnum x + 32)
+    -- No two capitals together (boundedUInt16 is boundedUint16), as
+    -- Google's names allow none.
+    noRuns (a : b : rest) | upper a && upper b = a : noRuns (toLowerChar b : rest)
+    noRuns (a : rest) = a : noRuns rest
+    noRuns [] = []
+    upper x = x `elem` ['A' .. 'Z']
 
 -- | The first free spelling: itself, then name2, name3, ...
 jvmClaim :: S.Set String -> String -> (String, S.Set String)

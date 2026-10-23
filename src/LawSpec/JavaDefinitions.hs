@@ -142,10 +142,10 @@ emitDefinitions style layout bits declarations units = do
       resultCodec <- jvmTypedCodec typed resultType
       let signature = E.call ("public static Value " ++ methodName index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0 .. length argTypes - 1]]) <> D.hardline
-          call = D.text (function ++ "(") <> D.joinWith (D.text ", ")
+          call = E.call function
             ([D.text "symbols" | isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d))] ++
-             [D.text (codec ++ ".decode(input" ++ show i ++ ")") | (i, codec) <- zip [0 :: Int ..] codecs]) <> D.text ")"
-      pure (signature <> D.block 2 (D.text ("return " ++ resultCodec ++ ".encode(") <> call <> D.text ");"))
+             [E.call (codec ++ ".decode") [D.text ("input" ++ show i)] | (i, codec) <- zip [0 :: Int ..] codecs])
+      pure (signature <> D.block 2 (D.text "return " <> E.call (resultCodec ++ ".encode") [call] <> D.text ";"))
     assign name value = D.group (D.text ("var " ++ name ++ " =") <>
       D.nest 4 (D.softline <> value) <> D.text ";")
     contextual identity body = D.text "try" <> D.hardline <> D.block 2 body <> D.hardline <>
