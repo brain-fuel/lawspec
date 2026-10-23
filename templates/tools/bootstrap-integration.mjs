@@ -114,8 +114,12 @@ async function setup(target) {
       ],
       root,
     );
-  } else if (target === "rust")
+  } else if (target === "rust") {
     await run("cargo", ["fetch"], root);
+    // Acceptance checks generated Rust with the pinned toolchain's rustfmt
+    // (acceptance/Toolchain.hs).
+    await run("rustup", ["component", "add", "--toolchain", "1.97.1", "rustfmt"], root);
+  }
   else if (target === "java")
     await run("mvn", ["-B", "-q", "test-compile"], root);
   else if (target === "go")

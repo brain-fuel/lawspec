@@ -8,7 +8,9 @@
 use crate::lawspec_runtime as ls;
 
 pub fn random_step(state: u64) -> u64 {
-    state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+    state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
 /// A draw from 0 up to bound, as lawspec.randomness's randomDraw makes it.
@@ -35,7 +37,9 @@ pub struct RandomHandler {
 
 impl Default for RandomHandler {
     fn default() -> Self {
-        RandomHandler { state: std::sync::Mutex::new(run_seed()) }
+        RandomHandler {
+            state: std::sync::Mutex::new(run_seed()),
+        }
     }
 }
 

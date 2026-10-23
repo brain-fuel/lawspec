@@ -49,7 +49,8 @@ pub fn ml_kem_768_public_key(seed: &[u8]) -> Vec<u8> {
 
 /// The ciphertext and the shared secret, for the message m (32 bytes).
 pub fn ml_kem_768_encapsulate_with(public_key: &[u8], m: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let key = ml_kem::Key::<ml_kem::EncapsulationKey768>::try_from(public_key).expect("an ML-KEM-768 public key is 1184 bytes");
+    let key = ml_kem::Key::<ml_kem::EncapsulationKey768>::try_from(public_key)
+        .expect("an ML-KEM-768 public key is 1184 bytes");
     let key = ml_kem::EncapsulationKey768::new(&key).expect("not an ML-KEM-768 public key");
     let m = ml_kem::B32::try_from(m).expect("m is 32 bytes");
     let (ciphertext, secret) = key.encapsulate_deterministic(&m);
@@ -62,7 +63,8 @@ pub fn ml_kem_768_encapsulate(public_key: &[u8]) -> (Vec<u8>, Vec<u8>) {
 }
 
 fn ml_kem_768_decapsulate_with(key: &ml_kem::DecapsulationKey768, ciphertext: &[u8]) -> Vec<u8> {
-    let ciphertext = ml_kem::Ciphertext::<ml_kem::MlKem768>::try_from(ciphertext).expect("an ML-KEM-768 ciphertext is 1088 bytes");
+    let ciphertext = ml_kem::Ciphertext::<ml_kem::MlKem768>::try_from(ciphertext)
+        .expect("an ML-KEM-768 ciphertext is 1088 bytes");
     key.decapsulate(&ciphertext).to_vec()
 }
 
@@ -73,7 +75,8 @@ pub fn ml_kem_768_decapsulate(seed: &[u8], ciphertext: &[u8]) -> Vec<u8> {
 /// Decapsulation with the expanded key (FIPS 203's 2400 bytes).
 #[allow(deprecated)]
 pub fn ml_kem_768_decapsulate_expanded(expanded: &[u8], ciphertext: &[u8]) -> Vec<u8> {
-    let expanded = ml_kem::ExpandedDecapsulationKey::<ml_kem::MlKem768>::try_from(expanded).expect("an expanded ML-KEM-768 key is 2400 bytes");
+    let expanded = ml_kem::ExpandedDecapsulationKey::<ml_kem::MlKem768>::try_from(expanded)
+        .expect("an expanded ML-KEM-768 key is 2400 bytes");
     let key = ml_kem::DecapsulationKey768::from_expanded(&expanded).expect("not an ML-KEM-768 key");
     ml_kem_768_decapsulate_with(&key, ciphertext)
 }
@@ -85,55 +88,115 @@ fn ml_dsa_65_key(seed: &[u8]) -> ml_dsa::SigningKey<ml_dsa::MlDsa65> {
 }
 
 pub fn ml_dsa_65_public_key(seed: &[u8]) -> Vec<u8> {
-    ml_dsa_65_key(seed).expanded_key().verifying_key().encode().to_vec()
+    ml_dsa_65_key(seed)
+        .expanded_key()
+        .verifying_key()
+        .encode()
+        .to_vec()
 }
 
 /// Hedged, or deterministic (rnd all zero, as FIPS 204 defines it).
 pub fn ml_dsa_65_sign(seed: &[u8], message: &[u8], context: &[u8], deterministic: bool) -> Vec<u8> {
-    let rnd = if deterministic { vec![0u8; 32] } else { random_bytes(32) };
+    let rnd = if deterministic {
+        vec![0u8; 32]
+    } else {
+        random_bytes(32)
+    };
     let rnd = ml_dsa::B32::try_from(rnd.as_slice()).expect("rnd is 32 bytes");
     let prefix = [0u8, context.len() as u8];
-    ml_dsa_65_key(seed).expanded_key().sign_internal(&[&prefix, context, message], &rnd).encode().to_vec()
+    ml_dsa_65_key(seed)
+        .expanded_key()
+        .sign_internal(&[&prefix, context, message], &rnd)
+        .encode()
+        .to_vec()
 }
 
-pub fn ml_dsa_65_verify(public_key: &[u8], message: &[u8], signature: &[u8], context: &[u8]) -> bool {
-    let Ok(key) = ml_dsa::EncodedVerifyingKey::<ml_dsa::MlDsa65>::try_from(public_key) else { return false };
-    let Ok(signature) = ml_dsa::EncodedSignature::<ml_dsa::MlDsa65>::try_from(signature) else { return false };
-    let Some(signature) = ml_dsa::Signature::<ml_dsa::MlDsa65>::decode(&signature) else { return false };
-    context.len() < 256 && ml_dsa::VerifyingKey::<ml_dsa::MlDsa65>::decode(&key).verify_with_context(message, context, &signature)
+pub fn ml_dsa_65_verify(
+    public_key: &[u8],
+    message: &[u8],
+    signature: &[u8],
+    context: &[u8],
+) -> bool {
+    let Ok(key) = ml_dsa::EncodedVerifyingKey::<ml_dsa::MlDsa65>::try_from(public_key) else {
+        return false;
+    };
+    let Ok(signature) = ml_dsa::EncodedSignature::<ml_dsa::MlDsa65>::try_from(signature) else {
+        return false;
+    };
+    let Some(signature) = ml_dsa::Signature::<ml_dsa::MlDsa65>::decode(&signature) else {
+        return false;
+    };
+    context.len() < 256
+        && ml_dsa::VerifyingKey::<ml_dsa::MlDsa65>::decode(&key)
+            .verify_with_context(message, context, &signature)
 }
 
 // FIPS 205: SLH-DSA-SHAKE-128f. A secret key is SK.seed || SK.prf || PK.seed
 // || PK.root.
 pub fn slh_dsa_key_pair(sk_seed: &[u8], sk_prf: &[u8], pk_seed: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let key = slh_dsa::SigningKey::<slh_dsa::Shake128f>::slh_keygen_internal(sk_seed, sk_prf, pk_seed);
+    let key =
+        slh_dsa::SigningKey::<slh_dsa::Shake128f>::slh_keygen_internal(sk_seed, sk_prf, pk_seed);
     let secret = key.to_vec();
     (secret[32..].to_vec(), secret)
 }
 
 /// Hedged with fresh randomness.
 pub fn slh_dsa_sign(secret_key: &[u8], message: &[u8], context: &[u8]) -> Vec<u8> {
-    let key = slh_dsa::SigningKey::<slh_dsa::Shake128f>::try_from(secret_key).expect("not an SLH-DSA-SHAKE-128f key");
+    let key = slh_dsa::SigningKey::<slh_dsa::Shake128f>::try_from(secret_key)
+        .expect("not an SLH-DSA-SHAKE-128f key");
     let randomness = random_bytes(16);
-    key.try_sign_with_context(message, context, Some(&randomness)).expect("a context is at most 255 bytes").to_vec()
+    key.try_sign_with_context(message, context, Some(&randomness))
+        .expect("a context is at most 255 bytes")
+        .to_vec()
 }
 
 pub fn slh_dsa_verify(public_key: &[u8], message: &[u8], signature: &[u8], context: &[u8]) -> bool {
-    let Ok(key) = slh_dsa::VerifyingKey::<slh_dsa::Shake128f>::try_from(public_key) else { return false };
-    let Ok(signature) = slh_dsa::Signature::<slh_dsa::Shake128f>::try_from(signature) else { return false };
-    key.try_verify_with_context(message, context, &signature).is_ok()
+    let Ok(key) = slh_dsa::VerifyingKey::<slh_dsa::Shake128f>::try_from(public_key) else {
+        return false;
+    };
+    let Ok(signature) = slh_dsa::Signature::<slh_dsa::Shake128f>::try_from(signature) else {
+        return false;
+    };
+    key.try_verify_with_context(message, context, &signature)
+        .is_ok()
 }
 
 // AES-256-GCM: a sealed message is the 12-byte nonce, the ciphertext and the
 // 16-byte tag.
-pub fn aes_256_gcm_encrypt(key: &[u8], nonce: &[u8], plaintext: &[u8], associated: &[u8]) -> Vec<u8> {
+pub fn aes_256_gcm_encrypt(
+    key: &[u8],
+    nonce: &[u8],
+    plaintext: &[u8],
+    associated: &[u8],
+) -> Vec<u8> {
     let cipher = aes_gcm::Aes256Gcm::new_from_slice(key).expect("an AES-256-GCM key is 32 bytes");
     let nonce = aes_gcm::Nonce::try_from(nonce).expect("an AES-256-GCM nonce is 12 bytes");
-    cipher.encrypt(&nonce, Payload { msg: plaintext, aad: associated }).expect("AES-256-GCM encryption failed")
+    cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad: associated,
+            },
+        )
+        .expect("AES-256-GCM encryption failed")
 }
 
-pub fn aes_256_gcm_decrypt(key: &[u8], nonce: &[u8], sealed: &[u8], associated: &[u8]) -> Option<Vec<u8>> {
+pub fn aes_256_gcm_decrypt(
+    key: &[u8],
+    nonce: &[u8],
+    sealed: &[u8],
+    associated: &[u8],
+) -> Option<Vec<u8>> {
     let cipher = aes_gcm::Aes256Gcm::new_from_slice(key).ok()?;
     let nonce = aes_gcm::Nonce::try_from(nonce).ok()?;
-    cipher.decrypt(&nonce, Payload { msg: sealed, aad: associated }).ok()
+    cipher
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: sealed,
+                aad: associated,
+            },
+        )
+        .ok()
 }

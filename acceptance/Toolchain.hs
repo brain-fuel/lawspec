@@ -40,7 +40,18 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- rustfmt's default configuration at the projects' edition (2024),
+    -- from the pinned toolchain; rustup installs its rustfmt component.
+    -- Files are checked one by one, as cargo fmt would, in a fixed order.
+    "rust" -> pure (Just (Formatter ("rustfmt " ++ rustfmtToolchain) "sh"
+      (\dir -> ["-c", "find \"$0\" -name '*.rs' | LC_ALL=C sort | xargs rustup run " ++ rustfmtToolchain ++
+        " rustfmt --check --edition 2024 2>&1 || exit 1", dir]) [".rs"] []))
     _ -> pure Nothing
+
+-- | The Rust toolchain whose rustfmt lays out generated Rust. It is part of
+-- the acceptance cache key, as this file is.
+rustfmtToolchain :: String
+rustfmtToolchain = "1.97.1"
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

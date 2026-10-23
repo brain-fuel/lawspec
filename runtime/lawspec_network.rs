@@ -26,10 +26,16 @@ pub fn install() {
 /// peers to talk to (by default those lawspec.json names, else any peer, each
 /// address keeping the first identity it shows). On the transport made for
 /// tests only, the node skips the handshake.
-pub fn node(transport: Arc<dyn Transport>, identity: Option<NodeIdentity>, trusted: Option<Vec<String>>) -> ls::Result<Node> {
+pub fn node(
+    transport: Arc<dyn Transport>,
+    identity: Option<NodeIdentity>,
+    trusted: Option<Vec<String>>,
+) -> ls::Result<Node> {
     install();
     let (identity, trusted) = settings(identity, trusted)?;
-    Ok(Node::with_secure_layer(transport, move |link| Box::new(Layer::new(link, identity, trusted)) as Box<dyn SecureLayer>))
+    Ok(Node::with_secure_layer(transport, move |link| {
+        Box::new(Layer::new(link, identity, trusted)) as Box<dyn SecureLayer>
+    }))
 }
 
 /// A node's identity; None on the transport made for tests only.
@@ -53,9 +59,18 @@ impl SecureNetwork for Provider {
 
 // The identity and trusted fingerprints a node uses: those given, else
 // lawspec-network.conf's, else a fresh identity and any peer.
-fn settings(identity: Option<NodeIdentity>, trusted: Option<Vec<String>>) -> ls::Result<(NodeIdentity, Option<HashSet<String>>)> {
-    let configured = if identity.is_none() || trusted.is_none() { network_config()? } else { (None, None) };
-    let identity = identity.or(configured.0).unwrap_or_else(NodeIdentity::generate);
+fn settings(
+    identity: Option<NodeIdentity>,
+    trusted: Option<Vec<String>>,
+) -> ls::Result<(NodeIdentity, Option<HashSet<String>>)> {
+    let configured = if identity.is_none() || trusted.is_none() {
+        network_config()?
+    } else {
+        (None, None)
+    };
+    let identity = identity
+        .or(configured.0)
+        .unwrap_or_else(NodeIdentity::generate);
     let trusted = match trusted {
         Some(trusted) => Some(trusted.iter().map(|t| t.to_lowercase()).collect()),
         None => configured.1,
@@ -89,10 +104,15 @@ fn get_len(buf: &[u8], pos: &mut usize) -> ls::Result<usize> {
     let mut shift = 0u32;
     loop {
         let Some(&byte) = buf.get(*pos) else {
-            return Err(format!("{}the bytes end in the middle of a value", ls::net::WIRE));
+            return Err(format!(
+                "{}the bytes end in the middle of a value",
+                ls::net::WIRE
+            ));
         };
         *pos += 1;
-        if shift >= usize::BITS || (shift > 0 && (usize::from(byte & 0x7F) >> (usize::BITS - shift)) != 0) {
+        if shift >= usize::BITS
+            || (shift > 0 && (usize::from(byte & 0x7F) >> (usize::BITS - shift)) != 0)
+        {
             return Err(format!("{}a length too large", ls::net::WIRE));
         }
         result |= usize::from(byte & 0x7F) << shift;
@@ -162,7 +182,12 @@ mod pq {
     }
 
     pub fn ml_kem_768_public_key(seed: &[u8]) -> Option<Vec<u8>> {
-        Some(ml_kem_768_key(seed)?.encapsulation_key().to_bytes().to_vec())
+        Some(
+            ml_kem_768_key(seed)?
+                .encapsulation_key()
+                .to_bytes()
+                .to_vec(),
+        )
     }
 
     /// The ciphertext and the shared secret, with fresh randomness.
@@ -189,7 +214,13 @@ mod pq {
     }
 
     pub fn ml_dsa_65_public_key(seed: &[u8]) -> Option<Vec<u8>> {
-        Some(ml_dsa_65_key(seed)?.expanded_key().verifying_key().encode().to_vec())
+        Some(
+            ml_dsa_65_key(seed)?
+                .expanded_key()
+                .verifying_key()
+                .encode()
+                .to_vec(),
+        )
     }
 
     /// Hedged, with an empty context.
@@ -198,27 +229,69 @@ mod pq {
         let rnd = ml_dsa::B32::try_from(rnd.as_slice()).ok()?;
         let context: &[u8] = &[];
         let prefix = [0u8, 0u8];
-        Some(ml_dsa_65_key(seed)?.expanded_key().sign_internal(&[&prefix, context, message], &rnd).encode().to_vec())
+        Some(
+            ml_dsa_65_key(seed)?
+                .expanded_key()
+                .sign_internal(&[&prefix, context, message], &rnd)
+                .encode()
+                .to_vec(),
+        )
     }
 
     pub fn ml_dsa_65_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
-        let Ok(key) = ml_dsa::EncodedVerifyingKey::<ml_dsa::MlDsa65>::try_from(public_key) else { return false };
-        let Ok(signature) = ml_dsa::EncodedSignature::<ml_dsa::MlDsa65>::try_from(signature) else { return false };
-        let Some(signature) = ml_dsa::Signature::<ml_dsa::MlDsa65>::decode(&signature) else { return false };
-        ml_dsa::VerifyingKey::<ml_dsa::MlDsa65>::decode(&key).verify_with_context(message, &[], &signature)
+        let Ok(key) = ml_dsa::EncodedVerifyingKey::<ml_dsa::MlDsa65>::try_from(public_key) else {
+            return false;
+        };
+        let Ok(signature) = ml_dsa::EncodedSignature::<ml_dsa::MlDsa65>::try_from(signature) else {
+            return false;
+        };
+        let Some(signature) = ml_dsa::Signature::<ml_dsa::MlDsa65>::decode(&signature) else {
+            return false;
+        };
+        ml_dsa::VerifyingKey::<ml_dsa::MlDsa65>::decode(&key).verify_with_context(
+            message,
+            &[],
+            &signature,
+        )
     }
 
     // AES-256-GCM: the ciphertext and the 16-byte tag.
-    pub fn aes_256_gcm_encrypt(key: &[u8], nonce: &[u8], plaintext: &[u8], associated: &[u8]) -> Option<Vec<u8>> {
+    pub fn aes_256_gcm_encrypt(
+        key: &[u8],
+        nonce: &[u8],
+        plaintext: &[u8],
+        associated: &[u8],
+    ) -> Option<Vec<u8>> {
         let cipher = aes_gcm::Aes256Gcm::new_from_slice(key).ok()?;
         let nonce = aes_gcm::Nonce::try_from(nonce).ok()?;
-        cipher.encrypt(&nonce, Payload { msg: plaintext, aad: associated }).ok()
+        cipher
+            .encrypt(
+                &nonce,
+                Payload {
+                    msg: plaintext,
+                    aad: associated,
+                },
+            )
+            .ok()
     }
 
-    pub fn aes_256_gcm_decrypt(key: &[u8], nonce: &[u8], sealed: &[u8], associated: &[u8]) -> Option<Vec<u8>> {
+    pub fn aes_256_gcm_decrypt(
+        key: &[u8],
+        nonce: &[u8],
+        sealed: &[u8],
+        associated: &[u8],
+    ) -> Option<Vec<u8>> {
         let cipher = aes_gcm::Aes256Gcm::new_from_slice(key).ok()?;
         let nonce = aes_gcm::Nonce::try_from(nonce).ok()?;
-        cipher.decrypt(&nonce, Payload { msg: sealed, aad: associated }).ok()
+        cipher
+            .decrypt(
+                &nonce,
+                Payload {
+                    msg: sealed,
+                    aad: associated,
+                },
+            )
+            .ok()
     }
 }
 
@@ -274,7 +347,10 @@ impl std::fmt::Debug for NodeIdentity {
 impl NodeIdentity {
     pub fn from_seed(seed: &[u8]) -> ls::Result<NodeIdentity> {
         match (seed.len(), pq::ml_dsa_65_public_key(seed)) {
-            (32, Some(verifying_key)) => Ok(NodeIdentity { seed: seed.to_vec(), verifying_key }),
+            (32, Some(verifying_key)) => Ok(NodeIdentity {
+                seed: seed.to_vec(),
+                verifying_key,
+            }),
             _ => Err("a node identity is a 32-byte ML-DSA-65 seed".into()),
         }
     }
@@ -320,7 +396,9 @@ pub fn network_config() -> ls::Result<(Option<NodeIdentity>, Option<HashSet<Stri
     let path = match std::env::var_os("LAWSPEC_NETWORK_CONF") {
         Some(path) => PathBuf::from(path),
         None => {
-            let Ok(mut here) = std::env::current_dir() else { return Ok((None, None)) };
+            let Ok(mut here) = std::env::current_dir() else {
+                return Ok((None, None));
+            };
             loop {
                 let candidate = here.join("lawspec-network.conf");
                 if candidate.exists() {
@@ -339,11 +417,15 @@ pub fn network_config() -> ls::Result<(Option<NodeIdentity>, Option<HashSet<Stri
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_default();
-    let read = |p: &std::path::Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
+    let read = |p: &std::path::Path| {
+        std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))
+    };
     let (mut identity, mut trusted) = (None, None);
     for line in read(&path)?.lines() {
         let line = line.trim();
-        let Some((word, rest)) = line.split_once(char::is_whitespace) else { continue };
+        let Some((word, rest)) = line.split_once(char::is_whitespace) else {
+            continue;
+        };
         let rest = rest.trim();
         if rest.is_empty() || word.starts_with('#') {
             continue;
@@ -352,33 +434,74 @@ pub fn network_config() -> ls::Result<(Option<NodeIdentity>, Option<HashSet<Stri
         let text = read(&target)?;
         match word {
             "identity" => {
-                let seed = unhex(text.trim()).ok_or_else(|| format!("{}: not a hexadecimal seed", target.display()))?;
+                let seed = unhex(text.trim())
+                    .ok_or_else(|| format!("{}: not a hexadecimal seed", target.display()))?;
                 identity = Some(NodeIdentity::from_seed(&seed)?);
             }
-            "trusted" => trusted = Some(text.split_whitespace().map(|t| t.to_lowercase()).collect()),
+            "trusted" => {
+                trusted = Some(text.split_whitespace().map(|t| t.to_lowercase()).collect())
+            }
             _ => {}
         }
     }
     Ok((identity, trusted))
 }
 
-pub fn hello_body(session: &[u8], address: &str, verifying_key: &[u8], encapsulation_key: &[u8]) -> Vec<u8> {
-    [w(session), w(address.as_bytes()), w(verifying_key), w(encapsulation_key)].concat()
+pub fn hello_body(
+    session: &[u8],
+    address: &str,
+    verifying_key: &[u8],
+    encapsulation_key: &[u8],
+) -> Vec<u8> {
+    [
+        w(session),
+        w(address.as_bytes()),
+        w(verifying_key),
+        w(encapsulation_key),
+    ]
+    .concat()
 }
 
-pub fn welcome_body(session: &[u8], address: &str, verifying_key: &[u8], ciphertext: &[u8], hello: &[u8]) -> Vec<u8> {
-    [w(session), w(address.as_bytes()), w(verifying_key), w(ciphertext), w(&pq::sha3_256(hello))].concat()
+pub fn welcome_body(
+    session: &[u8],
+    address: &str,
+    verifying_key: &[u8],
+    ciphertext: &[u8],
+    hello: &[u8],
+) -> Vec<u8> {
+    [
+        w(session),
+        w(address.as_bytes()),
+        w(verifying_key),
+        w(ciphertext),
+        w(&pq::sha3_256(hello)),
+    ]
+    .concat()
 }
 
 /// The AES-256-GCM key: SHAKE256(shared || label || SHA3(hello body) ||
 /// SHA3(welcome body)), 32 bytes.
 pub fn session_key(shared: &[u8], hello: &[u8], welcome: &[u8]) -> Vec<u8> {
-    pq::shake256(&joined_bytes(&[shared, LABEL_KEY, &pq::sha3_256(hello), &pq::sha3_256(welcome)]), 32)
+    pq::shake256(
+        &joined_bytes(&[
+            shared,
+            LABEL_KEY,
+            &pq::sha3_256(hello),
+            &pq::sha3_256(welcome),
+        ]),
+        32,
+    )
 }
 
 /// A data record sealing frame: a fresh nonce unless one is given (12
 /// bytes). The key is 32 bytes.
-pub fn seal_frame(key: &[u8], session: &[u8], direction: u8, frame: &[u8], nonce: Option<&[u8]>) -> Vec<u8> {
+pub fn seal_frame(
+    key: &[u8],
+    session: &[u8],
+    direction: u8,
+    frame: &[u8],
+    nonce: Option<&[u8]>,
+) -> Vec<u8> {
     let nonce = nonce.map_or_else(|| pq::random_bytes(12), |n| n.to_vec());
     let associated = joined_bytes(&[LABEL_FRAME, session, &[direction]]);
     let body = pq::aes_256_gcm_encrypt(key, &nonce, frame, &associated)
@@ -422,14 +545,30 @@ pub fn handshake_vector(
     let check = || -> Option<bool> {
         let first = NodeIdentity::from_seed(&unhex(initiator_seed)?).ok()?;
         let second = NodeIdentity::from_seed(&unhex(responder_seed)?).ok()?;
-        let (kem_seed, session, ciphertext) = (unhex(kem_seed)?, unhex(session)?, unhex(ciphertext)?);
+        let (kem_seed, session, ciphertext) =
+            (unhex(kem_seed)?, unhex(session)?, unhex(ciphertext)?);
         let (nonce, frame) = (unhex(nonce)?, unhex(frame)?);
         if nonce.len() != 12 {
             return None;
         }
-        let hello = hello_body(&session, initiator, first.verifying_key(), &pq::ml_kem_768_public_key(&kem_seed)?);
-        let welcome = welcome_body(&session, responder, second.verifying_key(), &ciphertext, &hello);
-        let derived = session_key(&pq::ml_kem_768_decapsulate(&kem_seed, &ciphertext)?, &hello, &welcome);
+        let hello = hello_body(
+            &session,
+            initiator,
+            first.verifying_key(),
+            &pq::ml_kem_768_public_key(&kem_seed)?,
+        );
+        let welcome = welcome_body(
+            &session,
+            responder,
+            second.verifying_key(),
+            &ciphertext,
+            &hello,
+        );
+        let derived = session_key(
+            &pq::ml_kem_768_decapsulate(&kem_seed, &ciphertext)?,
+            &hello,
+            &welcome,
+        );
         let sealed = seal_frame(&derived, &session, 0, &frame, Some(&nonce));
         Some(
             hex(&pq::sha3_256(&hello)) == hello_hash
@@ -488,7 +627,12 @@ struct LayerInner {
 
 impl Layer {
     fn new(node: NodeLink, identity: NodeIdentity, trusted: Option<HashSet<String>>) -> Layer {
-        Layer(Arc::new(LayerInner { node, identity, trusted, state: Mutex::new(SecureState::default()) }))
+        Layer(Arc::new(LayerInner {
+            node,
+            identity,
+            trusted,
+            state: Mutex::new(SecureState::default()),
+        }))
     }
 }
 
@@ -509,11 +653,19 @@ impl SecureLayer for Layer {
 impl LayerInner {
     fn accept_peer(&self, address: &str, verifying_key: &[u8]) -> bool {
         let fingerprint = hex(&pq::sha3_256(verifying_key));
-        if self.trusted.as_ref().is_some_and(|trusted| !trusted.contains(&fingerprint)) {
+        if self
+            .trusted
+            .as_ref()
+            .is_some_and(|trusted| !trusted.contains(&fingerprint))
+        {
             return false;
         }
         let mut state = lock(&self.state);
-        *state.known.entry(address.to_string()).or_insert_with(|| fingerprint.clone()) == fingerprint
+        *state
+            .known
+            .entry(address.to_string())
+            .or_insert_with(|| fingerprint.clone())
+            == fingerprint
     }
 
     fn send(this: &Arc<LayerInner>, peer: &str, frame: Vec<u8>) -> ls::Result<()> {
@@ -522,11 +674,18 @@ impl LayerInner {
             .outbound
             .get(peer)
             .and_then(|id| state.sessions.get_key_value(id))
-            .or_else(|| state.sessions.iter().find(|(_, s)| s.peer == peer && s.confirmed))
+            .or_else(|| {
+                state
+                    .sessions
+                    .iter()
+                    .find(|(_, s)| s.peer == peer && s.confirmed)
+            })
             .map(|(id, s)| (id.clone(), s.key.clone(), s.direction));
         if let Some((id, key, direction)) = found {
             drop(state);
-            return this.node.send(peer, seal_frame(&key, &id, direction, &frame, None));
+            return this
+                .node
+                .send(peer, seal_frame(&key, &id, direction, &frame, None));
         }
         let start = !state.pending.contains_key(peer);
         if start {
@@ -540,12 +699,20 @@ impl LayerInner {
         if !start {
             return Ok(());
         }
-        let (session, hello, done) = (pending.session.clone(), pending.hello.clone(), pending.done.clone());
+        let (session, hello, done) = (
+            pending.session.clone(),
+            pending.hello.clone(),
+            pending.done.clone(),
+        );
         drop(state);
         if let Err(error) = this.node.send(peer, hello.clone()) {
             if ls::net::is_unreachable(&error) {
                 let mut state = lock(&this.state);
-                if state.pending.get(peer).is_some_and(|p| p.session == session) {
+                if state
+                    .pending
+                    .get(peer)
+                    .is_some_and(|p| p.session == session)
+                {
                     state.pending.remove(peer);
                 }
             }
@@ -560,29 +727,54 @@ impl LayerInner {
         let session = pq::random_bytes(16);
         let kem_seed = pq::random_bytes(64);
         let encapsulation_key = pq::ml_kem_768_public_key(&kem_seed).expect("a 64-byte seed");
-        let body = hello_body(&session, self.node.address(), self.identity.verifying_key(), &encapsulation_key);
+        let body = hello_body(
+            &session,
+            self.node.address(),
+            self.identity.verifying_key(),
+            &encapsulation_key,
+        );
         let signature = self.identity.sign(&joined_bytes(&[LABEL_HELLO, &body]));
         let hello = joined_bytes(&[RECORD, &[HELLO], &body, &w(&signature)]);
-        Pending { session, kem_seed, body, hello, queue: Vec::new(), done: Arc::new((Mutex::new(false), Condvar::new())) }
+        Pending {
+            session,
+            kem_seed,
+            body,
+            hello,
+            queue: Vec::new(),
+            done: Arc::new((Mutex::new(false), Condvar::new())),
+        }
     }
 
     // Sends a hello again every HANDSHAKE_RETRY until its welcome comes, the
     // node closes, or HANDSHAKE_DEADLINE passes (its queued frames are then
     // dropped).
-    fn retry_hello(&self, peer: String, session: Vec<u8>, hello: Vec<u8>, done: Arc<(Mutex<bool>, Condvar)>) {
+    fn retry_hello(
+        &self,
+        peer: String,
+        session: Vec<u8>,
+        hello: Vec<u8>,
+        done: Arc<(Mutex<bool>, Condvar)>,
+    ) {
         let give_up = Instant::now() + HANDSHAKE_DEADLINE;
         loop {
             {
                 let (flag, ready) = &*done;
                 let guard = lock(flag);
-                let guard = ready.wait_timeout_while(guard, HANDSHAKE_RETRY, |finished| !*finished).unwrap_or_else(|e| e.into_inner()).0;
+                let guard = ready
+                    .wait_timeout_while(guard, HANDSHAKE_RETRY, |finished| !*finished)
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0;
                 if *guard {
                     return;
                 }
             }
             if self.node.closed() || Instant::now() >= give_up {
                 let mut state = lock(&self.state);
-                if state.pending.get(&peer).is_some_and(|p| p.session == session) {
+                if state
+                    .pending
+                    .get(&peer)
+                    .is_some_and(|p| p.session == session)
+                {
                     state.pending.remove(&peer);
                 }
                 return;
@@ -611,28 +803,51 @@ impl LayerInner {
         if end != record.len() {
             return None;
         }
-        let [session, address, verifying_key, encapsulation_key] = <[Vec<u8>; 4]>::try_from(fields).ok()?;
+        let [session, address, verifying_key, encapsulation_key] =
+            <[Vec<u8>; 4]>::try_from(fields).ok()?;
         let body = &record[4..pos];
         let address = String::from_utf8(address).ok()?;
         let answered = lock(&self.state).welcomes.get(&session).cloned();
         let (to, welcome) = match answered {
             Some(answered) => answered,
             None => {
-                if !pq::ml_dsa_65_verify(&verifying_key, &joined_bytes(&[LABEL_HELLO, body]), &signature[0]) {
+                if !pq::ml_dsa_65_verify(
+                    &verifying_key,
+                    &joined_bytes(&[LABEL_HELLO, body]),
+                    &signature[0],
+                ) {
                     return None;
                 }
                 if !self.accept_peer(&address, &verifying_key) {
                     return None;
                 }
                 let (ciphertext, shared) = pq::ml_kem_768_encapsulate(&encapsulation_key)?;
-                let welcome = welcome_body(&session, self.node.address(), self.identity.verifying_key(), &ciphertext, body);
-                let signature = self.identity.sign(&joined_bytes(&[LABEL_WELCOME, &welcome]));
+                let welcome = welcome_body(
+                    &session,
+                    self.node.address(),
+                    self.identity.verifying_key(),
+                    &ciphertext,
+                    body,
+                );
+                let signature = self
+                    .identity
+                    .sign(&joined_bytes(&[LABEL_WELCOME, &welcome]));
                 let answer = joined_bytes(&[RECORD, &[WELCOME], &welcome, &w(&signature)]);
                 let key = session_key(&shared, body, &welcome);
                 let mut state = lock(&self.state);
                 if !state.welcomes.contains_key(&session) {
-                    state.welcomes.insert(session.clone(), (address.clone(), answer));
-                    state.sessions.insert(session.clone(), Session { peer: address, key, direction: 1, confirmed: false });
+                    state
+                        .welcomes
+                        .insert(session.clone(), (address.clone(), answer));
+                    state.sessions.insert(
+                        session.clone(),
+                        Session {
+                            peer: address,
+                            key,
+                            direction: 1,
+                            confirmed: false,
+                        },
+                    );
                 }
                 state.welcomes.get(&session)?.clone()
             }
@@ -647,7 +862,8 @@ impl LayerInner {
         if end != record.len() {
             return None;
         }
-        let [session, address, verifying_key, ciphertext, hello_hash] = <[Vec<u8>; 5]>::try_from(fields).ok()?;
+        let [session, address, verifying_key, ciphertext, hello_hash] =
+            <[Vec<u8>; 5]>::try_from(fields).ok()?;
         let address = String::from_utf8(address).ok()?;
         let (kem_seed, hello) = {
             let state = lock(&self.state);
@@ -658,27 +874,49 @@ impl LayerInner {
             (pending.kem_seed.clone(), pending.body.clone())
         };
         let body = &record[4..pos];
-        if !pq::ml_dsa_65_verify(&verifying_key, &joined_bytes(&[LABEL_WELCOME, body]), &signature[0]) {
+        if !pq::ml_dsa_65_verify(
+            &verifying_key,
+            &joined_bytes(&[LABEL_WELCOME, body]),
+            &signature[0],
+        ) {
             return None;
         }
         if !self.accept_peer(&address, &verifying_key) {
             return None;
         }
-        let key = session_key(&pq::ml_kem_768_decapsulate(&kem_seed, &ciphertext)?, &hello, body);
+        let key = session_key(
+            &pq::ml_kem_768_decapsulate(&kem_seed, &ciphertext)?,
+            &hello,
+            body,
+        );
         let pending = {
             let mut state = lock(&self.state);
-            if !state.pending.get(&address).is_some_and(|p| p.session == session) {
+            if !state
+                .pending
+                .get(&address)
+                .is_some_and(|p| p.session == session)
+            {
                 return None;
             }
             let pending = state.pending.remove(&address)?;
-            state.sessions.insert(session.clone(), Session { peer: address.clone(), key: key.clone(), direction: 0, confirmed: true });
+            state.sessions.insert(
+                session.clone(),
+                Session {
+                    peer: address.clone(),
+                    key: key.clone(),
+                    direction: 0,
+                    confirmed: true,
+                },
+            );
             state.outbound.insert(address.clone(), session.clone());
             pending
         };
         *lock(&pending.done.0) = true;
         pending.done.1.notify_all();
         for frame in pending.queue {
-            let _ = self.node.send(&address, seal_frame(&key, &session, 0, &frame, None));
+            let _ = self
+                .node
+                .send(&address, seal_frame(&key, &session, 0, &frame, None));
         }
         Some(())
     }
@@ -722,7 +960,9 @@ mod tests {
             "c595a58a85aebe6fb8009a0ca6afc9eb614c7ab4711c08c4f7d34c38420c4abd",
             "4c53010310808182838485868788898a8b8c8d8e8f0040c8c9cacbcccdcecfd0d1d2d314713b317e0cd4b10f4d5b885bc8bc1fa7aae4f824a30442ed569d3eab22fcce44c274bd139e84e8a9960d14a17722544ee187c1",
         ));
-        assert!(!handshake_vector("00", "00", "00", "00", "a", "b", "00", "00", "00", "00", "00", "00", "00"));
+        assert!(!handshake_vector(
+            "00", "00", "00", "00", "a", "b", "00", "00", "00", "00", "00", "00", "00"
+        ));
     }
 
     #[test]
@@ -731,16 +971,34 @@ mod tests {
         let marker = b"plain-marker-0123456789".to_vec();
         for insecure in [false, true] {
             let net = MemoryNetwork::reliable().with_recording();
-            let make = |name: &str| if insecure { net.insecure_transport_for_tests(name) } else { net.transport(name) };
+            let make = |name: &str| {
+                if insecure {
+                    net.insecure_transport_for_tests(name)
+                } else {
+                    net.transport(name)
+                }
+            };
             let (here, there) = (Node::new(make("here")), Node::new(make("there")));
             assert_eq!(identity(&here).is_none(), insecure);
-            let box_ = there.mailbox("jobs", ls::descriptor("(text)"), ls::values_table("")).unwrap();
-            let text = String::from_utf8(marker.clone()).unwrap();
-            here.remote_mailbox(&format!("{}/jobs", there.address()), ls::descriptor("(text)"), ls::values_table(""))
-                .send(&Value::Text(text.clone()))
+            let box_ = there
+                .mailbox("jobs", ls::descriptor("(text)"), ls::values_table(""))
                 .unwrap();
-            assert_eq!(ls::render(&box_.receive(Some(Duration::from_secs(5))).unwrap()), format!("{text:?}"));
-            let seen = net.recorded().iter().any(|record| record.windows(marker.len()).any(|w| w == marker.as_slice()));
+            let text = String::from_utf8(marker.clone()).unwrap();
+            here.remote_mailbox(
+                &format!("{}/jobs", there.address()),
+                ls::descriptor("(text)"),
+                ls::values_table(""),
+            )
+            .send(&Value::Text(text.clone()))
+            .unwrap();
+            assert_eq!(
+                ls::render(&box_.receive(Some(Duration::from_secs(5))).unwrap()),
+                format!("{text:?}")
+            );
+            let seen = net
+                .recorded()
+                .iter()
+                .any(|record| record.windows(marker.len()).any(|w| w == marker.as_slice()));
             assert_eq!(seen, insecure);
             here.close();
             there.close();
@@ -751,11 +1009,23 @@ mod tests {
     fn a_trusted_set_refuses_other_peers() {
         let net = MemoryNetwork::reliable();
         let stranger = NodeIdentity::generate();
-        let here = node(net.transport("here"), None, Some(vec![stranger.fingerprint()])).unwrap();
+        let here = node(
+            net.transport("here"),
+            None,
+            Some(vec![stranger.fingerprint()]),
+        )
+        .unwrap();
         let there = node(net.transport("there"), None, Some(vec!["00".repeat(32)])).unwrap();
-        let box_ = there.mailbox("jobs", int64(), ls::values_table("")).unwrap();
+        let box_ = there
+            .mailbox("jobs", int64(), ls::values_table(""))
+            .unwrap();
         let sent = here
-            .remote_mailbox_within(&format!("{}/jobs", there.address()), int64(), ls::values_table(""), Duration::from_millis(300))
+            .remote_mailbox_within(
+                &format!("{}/jobs", there.address()),
+                int64(),
+                ls::values_table(""),
+                Duration::from_millis(300),
+            )
             .send(&Value::Integer(1.into()));
         assert!(sent.is_err());
         assert!(box_.receive(Some(Duration::from_millis(50))).is_err());
@@ -778,28 +1048,73 @@ mod tests {
         let (here, there) = (Node::new(a), Node::new(b));
         let counter = ls::actors::Actor::new(ls::BigInt::from(0));
         let served = counter.clone();
-        let handler: Arc<dyn Fn(Vec<Value>) -> ls::Result<Value> + Send + Sync> = Arc::new(move |args| {
-            let n = args[0].integer()?;
-            served.call(|s: ls::BigInt| {
-                let next = s + n;
-                Ok((Value::Integer(next.clone()), next))
-            })
-        });
-        let address = there.serve("counter", vec![("add".into(), vec![int64()], int64(), handler)], ls::values_table("")).unwrap();
-        let remote = here.remote_actor(&address, vec![("add".into(), vec![int64()], int64())], ls::values_table(""), Duration::from_secs(5));
-        let replies: Vec<String> = (1..=3).map(|n| ls::render(&remote.call("add", &[Value::Integer(n.into())]).unwrap())).collect();
+        let handler: Arc<dyn Fn(Vec<Value>) -> ls::Result<Value> + Send + Sync> =
+            Arc::new(move |args| {
+                let n = args[0].integer()?;
+                served.call(|s: ls::BigInt| {
+                    let next = s + n;
+                    Ok((Value::Integer(next.clone()), next))
+                })
+            });
+        let address = there
+            .serve(
+                "counter",
+                vec![("add".into(), vec![int64()], int64(), handler)],
+                ls::values_table(""),
+            )
+            .unwrap();
+        let remote = here.remote_actor(
+            &address,
+            vec![("add".into(), vec![int64()], int64())],
+            ls::values_table(""),
+            Duration::from_secs(5),
+        );
+        let replies: Vec<String> = (1..=3)
+            .map(|n| ls::render(&remote.call("add", &[Value::Integer(n.into())]).unwrap()))
+            .collect();
         assert_eq!(replies, vec!["1", "3", "6"]);
         let double: Arc<dyn Fn(Vec<Value>) -> ls::Result<Value> + Send + Sync> =
             Arc::new(|args| Ok(Value::Integer(args[0].integer()? * 2)));
-        there.serve_definitions(vec![("h".into(), double, vec![int64()], int64())], ls::values_table(""), "definitions").unwrap();
+        there
+            .serve_definitions(
+                vec![("h".into(), double, vec![int64()], int64())],
+                ls::values_table(""),
+                "definitions",
+            )
+            .unwrap();
         let got = here
-            .evaluate(&there.address(), "h", &[Value::Integer(21.into())], &[int64()], &int64(), &ls::values_table(""), Duration::from_secs(5), "definitions")
+            .evaluate(
+                &there.address(),
+                "h",
+                &[Value::Integer(21.into())],
+                &[int64()],
+                &int64(),
+                &ls::values_table(""),
+                Duration::from_secs(5),
+                "definitions",
+            )
             .unwrap();
         assert_eq!(ls::render(&got), "42");
-        let steps = vec![(true, int64()), (false, ls::descriptor("(text)")), (true, int64())];
-        let listener = there.listen("chat", steps.clone(), ls::values_table(""), Duration::from_secs(5)).unwrap();
+        let steps = vec![
+            (true, int64()),
+            (false, ls::descriptor("(text)")),
+            (true, int64()),
+        ];
+        let listener = there
+            .listen(
+                "chat",
+                steps.clone(),
+                ls::values_table(""),
+                Duration::from_secs(5),
+            )
+            .unwrap();
         let dialer = here
-            .dial(&format!("{}/chat", there.address()), steps.iter().map(|(s, d)| (!s, d.clone())).collect(), ls::values_table(""), Duration::from_secs(5))
+            .dial(
+                &format!("{}/chat", there.address()),
+                steps.iter().map(|(s, d)| (!s, d.clone())).collect(),
+                ls::values_table(""),
+                Duration::from_secs(5),
+            )
             .unwrap();
         let worker = std::thread::spawn(move || {
             listener.send(&Value::Integer(10.into())).unwrap();
@@ -807,9 +1122,15 @@ mod tests {
             listener.send(&Value::Integer(20.into())).unwrap();
             said
         });
-        assert_eq!(ls::render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()), "10");
+        assert_eq!(
+            ls::render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()),
+            "10"
+        );
         dialer.send(&Value::Text("hi".into())).unwrap();
-        assert_eq!(ls::render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()), "20");
+        assert_eq!(
+            ls::render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()),
+            "20"
+        );
         assert_eq!(ls::render(&worker.join().unwrap()), "\"hi\"");
         here.close();
         there.close();
@@ -819,7 +1140,13 @@ mod tests {
     fn secure_nodes_over_memory_tcp_and_http() {
         let net = MemoryNetwork::new(3, 0.2, 0.2, Duration::from_millis(10));
         exercise(net.transport("a"), net.transport("b"));
-        exercise(ls::net::TcpTransport::local().unwrap(), ls::net::TcpTransport::local().unwrap());
-        exercise(ls::net::HttpTransport::local().unwrap(), ls::net::HttpTransport::local().unwrap());
+        exercise(
+            ls::net::TcpTransport::local().unwrap(),
+            ls::net::TcpTransport::local().unwrap(),
+        );
+        exercise(
+            ls::net::HttpTransport::local().unwrap(),
+            ls::net::HttpTransport::local().unwrap(),
+        );
     }
 }

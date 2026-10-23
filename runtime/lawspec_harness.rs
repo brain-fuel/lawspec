@@ -27,13 +27,28 @@ fn quote(text: &str) -> String {
 }
 
 pub fn record(name: &str, entry: &[(&str, String)]) {
-    let Ok(directory) = std::env::var("LAWSPEC_STATS") else { return };
+    let Ok(directory) = std::env::var("LAWSPEC_STATS") else {
+        return;
+    };
     if directory.is_empty() {
         return;
     }
     let _ = std::fs::create_dir_all(&directory);
-    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
-    let body = entry.iter().map(|(k, v)| format!("{}:{}", quote(k), v)).collect::<Vec<_>>().join(",");
+    let safe: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let body = entry
+        .iter()
+        .map(|(k, v)| format!("{}:{}", quote(k), v))
+        .collect::<Vec<_>>()
+        .join(",");
     let _ = std::fs::write(format!("{directory}/{safe}.json"), format!("{{{body}}}"));
 }
 
@@ -68,9 +83,18 @@ impl Draws {
         for chunk in bytes.chunks_mut(8) {
             chunk.copy_from_slice(&self.next().to_le_bytes());
         }
-        let rng = proptest::test_runner::TestRng::from_seed(proptest::test_runner::RngAlgorithm::ChaCha, &bytes);
-        let mut runner = proptest::test_runner::TestRunner::new_with_rng(proptest::test_runner::Config::default(), rng);
-        strategy.new_tree(&mut runner).expect("the default strategy draws a value").current()
+        let rng = proptest::test_runner::TestRng::from_seed(
+            proptest::test_runner::RngAlgorithm::ChaCha,
+            &bytes,
+        );
+        let mut runner = proptest::test_runner::TestRunner::new_with_rng(
+            proptest::test_runner::Config::default(),
+            rng,
+        );
+        strategy
+            .new_tree(&mut runner)
+            .expect("the default strategy draws a value")
+            .current()
     }
 }
 
@@ -80,11 +104,15 @@ pub fn drawn(value: ls::Result<Value>) -> Value {
 }
 
 pub fn outside(strategy: &str, name: &str, value: &Value) -> String {
-    format!("the strategy {strategy} produced {value:?} for {name}, which is outside the input's refinement; a strategy may only produce values of its type")
+    format!(
+        "the strategy {strategy} produced {value:?} for {name}, which is outside the input's refinement; a strategy may only produce values of its type"
+    )
 }
 
 pub fn discarded(strategy: &str, limit: usize) -> String {
-    format!("the strategy {strategy} discarded more than {limit} values; draw closer to what `such that` keeps, or allow more discards")
+    format!(
+        "the strategy {strategy} discarded more than {limit} values; draw closer to what `such that` keeps, or allow more discards"
+    )
 }
 
 #[derive(Default, Clone)]
@@ -100,7 +128,10 @@ static STATISTICS: Mutex<BTreeMap<String, Stats>> = Mutex::new(BTreeMap::new());
 
 fn text(value: &Value) -> String {
     let rendered = format!("{value:?}");
-    match rendered.strip_prefix("Text(\"").and_then(|r| r.strip_suffix("\")")) {
+    match rendered
+        .strip_prefix("Text(\"")
+        .and_then(|r| r.strip_suffix("\")"))
+    {
         Some(inner) => inner.to_string(),
         None => rendered.trim_matches('"').to_string(),
     }
@@ -129,26 +160,49 @@ pub fn observe(law: &str, covers: &[(&str, bool)], classes: &[(&str, bool)], lab
 /// target maximize: proptest has no targeted search, so the best score is
 /// reported with the law's statistics.
 pub fn target(score: &Value, law: &str) {
-    let value: f64 = format!("{score:?}").trim_matches(|c: char| !(c.is_ascii_digit() || c == '-' || c == '.')).parse().unwrap_or(f64::NAN);
+    let value: f64 = format!("{score:?}")
+        .trim_matches(|c: char| !(c.is_ascii_digit() || c == '-' || c == '.'))
+        .parse()
+        .unwrap_or(f64::NAN);
     let mut table = STATISTICS.lock().unwrap_or_else(|e| e.into_inner());
     let stats = table.entry(law.to_string()).or_default();
     stats.best = Some(stats.best.map_or(value, |b| b.max(value)));
 }
 
 fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, Vec<String>) {
-    let stats = STATISTICS.lock().unwrap_or_else(|e| e.into_inner()).remove(law).unwrap_or_default();
+    let stats = STATISTICS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(law)
+        .unwrap_or_default();
     let n = stats.cases;
-    let percent = |k: usize| if n == 0 { 0.0 } else { (10000.0 * k as f64 / n as f64).round() / 100.0 };
+    let percent = |k: usize| {
+        if n == 0 {
+            0.0
+        } else {
+            (10000.0 * k as f64 / n as f64).round() / 100.0
+        }
+    };
     let mut lines = vec![format!("{law}: {n} generated case(s)")];
     let mut results = Vec::new();
     let mut unmet = Vec::new();
     for (required, label) in covers {
         let observed = percent(*stats.cover.get(*label).unwrap_or(&0));
         let met = n > 0 && observed >= *required as f64;
-        lines.push(format!("  cover {required}% {}: {observed}%{}", quote(label), if met { "" } else { " (not met)" }));
-        results.push(format!("{{\"label\":{},\"required\":{required},\"observed\":{observed},\"met\":{met}}}", quote(label)));
+        lines.push(format!(
+            "  cover {required}% {}: {observed}%{}",
+            quote(label),
+            if met { "" } else { " (not met)" }
+        ));
+        results.push(format!(
+            "{{\"label\":{},\"required\":{required},\"observed\":{observed},\"met\":{met}}}",
+            quote(label)
+        ));
         if !met {
-            unmet.push(format!("{law}: cover {required}% {} was not met ({observed}% of {n} generated cases)", quote(label)));
+            unmet.push(format!(
+                "{law}: cover {required}% {} was not met ({observed}% of {n} generated cases)",
+                quote(label)
+            ));
         }
     }
     for (label, count) in &stats.classes {
@@ -161,7 +215,15 @@ fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, 
         lines.push(format!("  best target score: {best}"));
     }
     println!("{}", lines.join("\n"));
-    let table = |m: &BTreeMap<String, usize>| format!("{{{}}}", m.iter().map(|(k, v)| format!("{}:{v}", quote(k))).collect::<Vec<_>>().join(","));
+    let table = |m: &BTreeMap<String, usize>| {
+        format!(
+            "{{{}}}",
+            m.iter()
+                .map(|(k, v)| format!("{}:{v}", quote(k)))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
     let report = vec![
         ("cases", n.to_string()),
         ("cover", format!("[{}]", results.join(","))),
@@ -182,25 +244,41 @@ fn once(law: &str, timeout: u64, test: fn() -> ls::Result<()>) -> Result<(), (St
     } else {
         match receiver.recv_timeout(std::time::Duration::from_millis(timeout)) {
             Ok(outcome) => outcome,
-            Err(_) => return Err((format!("{law} took longer than its timeout of {timeout} ms"), true)),
+            Err(_) => {
+                return Err((
+                    format!("{law} took longer than its timeout of {timeout} ms"),
+                    true,
+                ));
+            }
         }
     };
     match outcome {
         Ok(Ok(())) => Ok(()),
         Ok(Err(error)) => Err((error, false)),
         Err(panic) => {
-            let message = panic.downcast_ref::<String>().cloned()
+            let message = panic
+                .downcast_ref::<String>()
+                .cloned()
                 .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "the test panicked".to_string());
-            let harness = message.contains("outside the input's refinement") || message.contains("discarded more than");
+            let harness = message.contains("outside the input's refinement")
+                || message.contains("discarded more than");
             Err((message, harness))
         }
     }
 }
 
 /// Run one law's test under its harness settings.
-pub fn run(law: &str, name: &str, timeout: u64, repeat: u32, retries: u32, covers: &[(u32, &str)], observed: bool,
-    test: fn() -> ls::Result<()>) -> ls::Result<()> {
+pub fn run(
+    law: &str,
+    name: &str,
+    timeout: u64,
+    repeat: u32,
+    retries: u32,
+    covers: &[(u32, &str)],
+    observed: bool,
+    test: fn() -> ls::Result<()>,
+) -> ls::Result<()> {
     let mut attempts = 0;
     let mut flaky = false;
     let mut report = Vec::new();
@@ -208,7 +286,10 @@ pub fn run(law: &str, name: &str, timeout: u64, repeat: u32, retries: u32, cover
         attempts += 1;
         let mut failure = None;
         for _ in 0..repeat {
-            STATISTICS.lock().unwrap_or_else(|e| e.into_inner()).remove(law);
+            STATISTICS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(law);
             if let Err(error) = once(law, timeout, test) {
                 failure = Some(error);
                 break;
@@ -225,17 +306,33 @@ pub fn run(law: &str, name: &str, timeout: u64, repeat: u32, retries: u32, cover
         match failure {
             None => break,
             Some((message, harness)) => {
-                let message = if message.contains(law) { message } else { format!("{law}: {message}") };
+                let message = if message.contains(law) {
+                    message
+                } else {
+                    format!("{law}: {message}")
+                };
                 if harness || attempts > retries {
-                    record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("failed")), ("attempts", attempts.to_string())]);
+                    record(
+                        name,
+                        &[
+                            ("law", quote(law)),
+                            ("test", quote(name)),
+                            ("outcome", quote("failed")),
+                            ("attempts", attempts.to_string()),
+                        ],
+                    );
                     return Err(message);
                 }
                 flaky = true;
             }
         }
     }
-    let mut entry = vec![("law", quote(law)), ("test", quote(name)),
-        ("outcome", quote(if flaky { "flaky" } else { "passed" })), ("attempts", attempts.to_string())];
+    let mut entry = vec![
+        ("law", quote(law)),
+        ("test", quote(name)),
+        ("outcome", quote(if flaky { "flaky" } else { "passed" })),
+        ("attempts", attempts.to_string()),
+    ];
     entry.extend(report);
     record(name, &entry);
     if flaky {
@@ -246,16 +343,42 @@ pub fn run(law: &str, name: &str, timeout: u64, repeat: u32, retries: u32, cover
 
 /// A known-failing law's test must fail. One that passes is reported: the
 /// harness should no longer say it is known to fail.
-pub fn known_failing(law: &str, name: &str, reason: &str, test: fn() -> ls::Result<()>) -> ls::Result<()> {
+pub fn known_failing(
+    law: &str,
+    name: &str,
+    reason: &str,
+    test: fn() -> ls::Result<()>,
+) -> ls::Result<()> {
     match once(law, 0, test) {
         Err((message, _)) => {
-            record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("known-failing")), ("reason", quote(reason))]);
-            println!("{law} is known to fail ({reason}): {}", message.lines().next().unwrap_or(""));
+            record(
+                name,
+                &[
+                    ("law", quote(law)),
+                    ("test", quote(name)),
+                    ("outcome", quote("known-failing")),
+                    ("reason", quote(reason)),
+                ],
+            );
+            println!(
+                "{law} is known to fail ({reason}): {}",
+                message.lines().next().unwrap_or("")
+            );
             Ok(())
         }
         Ok(()) => {
-            record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("known-failing-passed")), ("reason", quote(reason))]);
-            Err(format!("{law} is marked known failing ({reason}), but it passes; remove `known failing` from its harness"))
+            record(
+                name,
+                &[
+                    ("law", quote(law)),
+                    ("test", quote(name)),
+                    ("outcome", quote("known-failing-passed")),
+                    ("reason", quote(reason)),
+                ],
+            );
+            Err(format!(
+                "{law} is marked known failing ({reason}), but it passes; remove `known failing` from its harness"
+            ))
         }
     }
 }
@@ -271,9 +394,21 @@ pub fn benchmark(name: &str, mut body: impl FnMut() -> ls::Result<()>) -> ls::Re
     }
     let mean = times.iter().sum::<u128>() / times.len() as u128;
     let fastest = *times.iter().min().unwrap_or(&0);
-    println!("benchmark {name}: {} iteration(s), mean {:.2} us, fastest {:.2} us", times.len(), mean as f64 / 1000.0, fastest as f64 / 1000.0);
-    record(&format!("benchmark {name}"), &[("benchmark", quote(name)), ("iterations", times.len().to_string()),
-        ("mean_ns", mean.to_string()), ("min_ns", fastest.to_string())]);
+    println!(
+        "benchmark {name}: {} iteration(s), mean {:.2} us, fastest {:.2} us",
+        times.len(),
+        mean as f64 / 1000.0,
+        fastest as f64 / 1000.0
+    );
+    record(
+        &format!("benchmark {name}"),
+        &[
+            ("benchmark", quote(name)),
+            ("iterations", times.len().to_string()),
+            ("mean_ns", mean.to_string()),
+            ("min_ns", fastest.to_string()),
+        ],
+    );
     Ok(())
 }
 
@@ -296,23 +431,34 @@ static TURN_FREE: std::sync::Condvar = std::sync::Condvar::new();
 fn turn_seed() -> u64 {
     static SEED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
     *SEED.get_or_init(|| {
-        std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or_else(|| {
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
-        })
+        std::env::var("LAWSPEC_SEED")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos() as u64)
+                    .unwrap_or(0)
+            })
     })
 }
 
 /// With `parallel` too, the tests start in the seeded order and then run at
 /// the same time: a test's turn ends when it starts.
 pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
-    let rank = ls::SplitMix64::new(turn_seed() ^ (index as u64).wrapping_mul(0x9E3779B97F4A7C15)).next();
+    let rank =
+        ls::SplitMix64::new(turn_seed() ^ (index as u64).wrapping_mul(0x9E3779B97F4A7C15)).next();
     let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
     {
         if !turns.contains_key(unit) {
             let seed = turn_seed();
             println!("order random seed {seed} ({unit}): LAWSPEC_SEED={seed} replays this order");
         }
-        let entry = turns.entry(unit.to_string()).or_insert_with(|| Turns { running: false, waiting: Vec::new(), arrived: std::time::Instant::now() });
+        let entry = turns.entry(unit.to_string()).or_insert_with(|| Turns {
+            running: false,
+            waiting: Vec::new(),
+            arrived: std::time::Instant::now(),
+        });
         entry.waiting.push((rank, index));
         entry.arrived = std::time::Instant::now();
     }
@@ -320,13 +466,23 @@ pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
     loop {
         let entry = turns.get_mut(unit).expect("a unit's turns");
         let first = entry.waiting.iter().min().copied();
-        if !entry.running && first == Some((rank, index)) && entry.arrived.elapsed() >= std::time::Duration::from_millis(20) {
+        if !entry.running
+            && first == Some((rank, index))
+            && entry.arrived.elapsed() >= std::time::Duration::from_millis(20)
+        {
             entry.waiting.retain(|w| *w != (rank, index));
             entry.running = !parallel;
             TURN_FREE.notify_all();
-            return Turn(if parallel { String::new() } else { unit.to_string() });
+            return Turn(if parallel {
+                String::new()
+            } else {
+                unit.to_string()
+            });
         }
-        turns = TURN_FREE.wait_timeout(turns, std::time::Duration::from_millis(5)).unwrap_or_else(|e| e.into_inner()).0;
+        turns = TURN_FREE
+            .wait_timeout(turns, std::time::Duration::from_millis(5))
+            .unwrap_or_else(|e| e.into_inner())
+            .0;
     }
 }
 
@@ -349,9 +505,22 @@ pub fn parallelism(unit: &str) {
         return;
     }
     seen.push(unit.to_string());
-    let workers = std::env::var("RUST_TEST_THREADS").ok().and_then(|n| n.parse().ok())
-        .unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
+    let workers = std::env::var("RUST_TEST_THREADS")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
+        });
     let mode = "threads (libtest)";
-    record(&format!("parallel {unit}"), &[("parallel", quote(unit)), ("mode", quote(mode)), ("workers", workers.to_string())]);
+    record(
+        &format!("parallel {unit}"),
+        &[
+            ("parallel", quote(unit)),
+            ("mode", quote(mode)),
+            ("workers", workers.to_string()),
+        ],
+    );
     println!("{unit} runs in parallel: {mode}, {workers} worker(s)");
 }

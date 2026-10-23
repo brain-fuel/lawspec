@@ -23,7 +23,9 @@ impl crate::lawspec_abilities::lawspec_host::FileSystem for FileSystemHandler {
 
     fn removePath(&self, value0: std::string::String) -> () {
         match std::fs::symlink_metadata(&value0) {
-            Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(&value0).expect("removing the directory failed"),
+            Ok(metadata) if metadata.is_dir() => {
+                std::fs::remove_dir_all(&value0).expect("removing the directory failed")
+            }
             Ok(_) => std::fs::remove_file(&value0).expect("removing the file failed"),
             Err(_) => {}
         }
@@ -47,8 +49,15 @@ pub fn valid_name(name: &str) -> bool {
 pub struct EnvironmentHandler;
 
 impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler {
-    fn environmentVariable(&self, value0: std::string::String) -> std::option::Option<std::string::String> {
-        if valid_name(&value0) { std::env::var(&value0).ok() } else { None }
+    fn environmentVariable(
+        &self,
+        value0: std::string::String,
+    ) -> std::option::Option<std::string::String> {
+        if valid_name(&value0) {
+            std::env::var(&value0).ok()
+        } else {
+            None
+        }
     }
 
     fn environmentSnapshot(&self) -> std::string::String {
@@ -67,6 +76,9 @@ pub struct PortsHandler;
 impl crate::lawspec_abilities::lawspec_host::Ports for PortsHandler {
     fn freePort(&self) -> i32 {
         let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("binding a free port failed");
-        probe.local_addr().expect("a bound socket has an address").port() as i32
+        probe
+            .local_addr()
+            .expect("a bound socket has an address")
+            .port() as i32
     }
 }
