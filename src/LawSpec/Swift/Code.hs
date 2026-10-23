@@ -463,11 +463,11 @@ inline e = case e of
   BigLit n -> pure (D.text (bigLiteral n))
   BoolLit b -> pure (D.text (if b then "true" else "false"))
   Raw r -> pure (D.text r)
-  Call f args -> applied (D.text f) args
-  Pure f args -> applied (D.text f) args
+  Call f args -> applied (callee f) args
+  Pure f args -> applied (callee f) args
   Invoke f args -> do
     fd <- inline f
-    applied fd args
+    applied (fd <>) args
   ListOf _ xs -> do
     ds <- mapM inline xs
     pure (arrayDoc ds)
@@ -484,13 +484,23 @@ inline e = case e of
     -- A closure passed last is a trailing closure, as Swift writes it; a
     -- call with closures elsewhere has one argument a line.
     applied f args = case reverse args of
-      lastArgument@(Lambda {}) : before | not (any isLambda before), trailing f -> do
+      lastArgument@(Lambda {}) : before | not (any isLambda before), trailing (f mempty) -> do
         ds <- mapM inline (reverse before)
         lam <- inline lastArgument
-        pure (f <> (if null ds then mempty else argumentsDoc ds) <> D.text " " <> lam)
+        pure (f ((if null ds then mempty else argumentsDoc ds) <> D.text " " <> lam))
       _ -> do
         ds <- mapM inline args
-        pure (f <> argumentsDoc ds)
+        pure (f (argumentsDoc ds))
+
+-- | A function by its qualified name. When the name does not fit its line,
+-- its last member goes on a line of its own, as swift-format breaks a
+-- member chain.
+callee :: String -> D.Doc -> D.Doc
+callee f rest = case break (== '.') (reverse f) of
+  (member@(_ : _), '.' : receiver@(_ : _)) | '(' `notElem` f, ' ' `notElem` f ->
+    -- The break is soft: a layout measured flat never holds it.
+    D.prefixChoice (f ++ "(") (D.text f <> rest) (D.text (reverse receiver) <> D.nest indentation (D.softbreak <> D.text ('.' : reverse member) <> rest))
+  _ -> D.text f <> rest
 
 -- | A generic initializer takes its closure in parentheses.
 trailing :: D.Doc -> Bool

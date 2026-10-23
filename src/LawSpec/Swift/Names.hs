@@ -14,7 +14,7 @@ import LawSpec.RecordNames (recordDisplayNames)
 import qualified Data.Map.Strict as M
 
 import qualified LawSpec.Core as C
-import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, toUpper, toLower)
+import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, isHexDigit, toUpper, toLower)
 import Data.List (intercalate, nub)
 
 -- | The module the program's sources compile to, and its tests.
@@ -124,9 +124,25 @@ generatedName identity = "LawSpec.Generated." ++ concatMap pascal (splitDots (C.
 apiName :: C.Id -> String
 apiName identity = "LawSpec.Definitions." ++ concatMap pascal (splitDots (C.idText identity))
 
--- | A declaration's function: lowerCamelCase, kept as written when it already is.
+-- | A declaration's function: lowerCamelCase, kept as written when it
+-- already is. A specialised copy of a definition is named for it and its
+-- argument types (countListInt32), not its digest.
+-- ref:DEC-readable-generated-names
 functionName :: C.Declaration -> String
-functionName d = escape (camelKeep (C.declarationName d))
+functionName d
+  | readable /= name || any hashed ws = escape (N.cased N.Camel (map unhashed (dropMade ws)))
+  | otherwise = escape (camelKeep name)
+  where
+    name = C.declarationName d
+    readable = N.readableDefinitionName name (fst (C.functionType (C.declarationType d)))
+    ws = N.nameWords readable
+    -- An anonymous record's digest reads as record; a clash is numbered
+    -- (LawSpec.Swift.Entries). A compiler-made definition (lawspecRecordView)
+    -- is named without the lawspec prefix.
+    hashed w = length w >= 16 && all isHexDigit w
+    unhashed w = if hashed w then "record" else w
+    dropMade ("lawspec" : rest@(_ : _)) = rest
+    dropMade other = other
 
 camelKeep :: String -> String
 camelKeep name

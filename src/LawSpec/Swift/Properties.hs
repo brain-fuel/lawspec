@@ -81,7 +81,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
     bits = planMachineBits plan
     units = map plannedUnit (plannedUnits plan)
     external = Effects.external units
-    setup inner = Let "symbols" tSymbols (Raw "SymbolContext()") (Let "schema" tSchema (Raw "LawSpec.Program.schema") inner)
+    setup inner = Let "symbols" (Ty "") (Raw "SymbolContext()") (Let "schema" (Ty "") (Raw "LawSpec.Program.schema") inner)
     testDoc n display b =
       testAttribute display <> D.hardline <>
       D.text ("func " ++ n ++ "() async throws") <> blockDoc (D.text "try await LawThread.run" <> blockDoc (renderStatements b))
@@ -136,8 +136,8 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
       let handlers = [(a, c) | (a, c) <- C.propertyHandlers law, a `notElem` [x | (x, _, _) <- late]]
           inBody s values = Call bodyName ([s, X.symbolsVar, values] ++ [ListOf tValues (map (Var . snd) resourceAliases) | not (null resources)])
           bodyDoc = function bodyName ([("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] ++ [("resources", tValues) | not (null resources)]) tValue
-            (foldr (\(i, (_, a)) rest -> Let a tValue (pure' "Runtime" "item" [IntLit i, Var "inputs"]) rest)
-              (foldr (\(i, (_, a)) rest -> Let a tValue (pure' "Runtime" "item" [IntLit i, Var "resources"]) rest) body (zip [0 ..] resourceAliases))
+            (foldr (\(i, (_, a)) rest -> Let a (Ty "") (pure' "Runtime" "item" [IntLit i, Var "inputs"]) rest)
+              (foldr (\(i, (_, a)) rest -> Let a (Ty "") (pure' "Runtime" "item" [IntLit i, Var "resources"]) rest) body (zip [0 ..] resourceAliases))
               (zip [0 ..] aliases))
           -- Acquire and release around the body; nested brackets release in
           -- reverse order. ref:REQ-law-primitives
@@ -213,7 +213,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
               config = pure' "Property" "settings" [IntLit (toInteger caseCount), IntLit (toInteger attempts), IntLit (toInteger shrinks)]
               observation = Lambda [] (Ty "Harness.Observation")
                 (pure' "Harness" "observation" [ListOf tValues covers, ListOf (Ty "[(String, Value)]") classes, ListOf tValues labels, score])
-              boundInputs inner = foldr (\(i, (_, a)) rest -> Let a tValue (pure' "Runtime" "item" [IntLit i, Var "values"]) rest) inner (zip [0 ..] aliases)
+              boundInputs inner = foldr (\(i, (_, a)) rest -> Let a (Ty "") (pure' "Runtime" "item" [IntLit i, Var "values"]) rest) inner (zip [0 ..] aliases)
               descriptors = BeamProperties.searchDescriptors plan planned
               remembered values = case descriptors of
                 Nothing -> invoke values

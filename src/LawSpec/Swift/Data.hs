@@ -364,22 +364,22 @@ emitData layout bits bound declarations
         let declaration = D.text header <> D.hardline <>
               D.text ("public struct " ++ name ++ typeParameterDeclarations declarations d ++ conformances d ++ " {") <> D.nest 2 (D.hardline <>
                 D.joinWith D.hardline [D.text ("public var " ++ f ++ ": " ++ t) | (f, t) <- fields] <> D.hardline <> D.hardline <>
-                D.text ("public init(" ++ intercalate ", " [f ++ ": " ++ t | (f, t) <- fields] ++ ") {") <> D.nest 2 (D.hardline <>
-                  D.joinWith D.hardline [D.text ("self." ++ unescaped f ++ " = " ++ f) | (f, _) <- fields]) <> D.hardline <> D.text "}") <> D.hardline <>
+                signature "public init" [f ++ ": " ++ t | (f, t) <- fields] ""
+                  (D.joinWith D.hardline [D.text ("self." ++ unescaped f ++ " = " ++ f) | (f, _) <- fields])) <> D.hardline <>
               D.text "}"
             access f = "a." ++ unescaped f
             other f = "b." ++ unescaped f
             portable = D.text ("extension " ++ name ++ ": Portable" ++ portableWhere ++ " {") <> D.nest 2 (D.hardline <>
               D.joinWith (D.hardline <> D.hardline)
-                [ D.text ("public static func portableEqual(_ a: " ++ self ++ ", _ b: " ++ self ++ ") -> Bool {") <> D.nest 2 (D.hardline <>
-                    conjunction [ D.text ("Typed.equal(" ++ access f ++ ", " ++ other f ++ ")") | (f, _) <- fields ]) <> D.hardline <> D.text "}"
-                , D.text ("public static func portableCompare(_ a: " ++ self ++ ", _ b: " ++ self ++ ") -> Int {") <> D.nest 2 (D.hardline <>
+                [ pairFunction "portableEqual" self "Bool"
+                    (conjunction [ callDoc "Typed.equal" [D.text (access f), D.text (other f)] | (f, _) <- fields ])
+                , pairFunction "portableCompare" self "Int" (
                     D.joinWith D.hardline (
-                      [ D.text ("let c" ++ show i ++ " = Typed.compare(" ++ access f ++ ", " ++ other f ++ ")") <> D.hardline <>
+                      [ hangValue ("let c" ++ show i ++ " =") (callDoc "Typed.compare" [D.text (access f), D.text (other f)]) <> D.hardline <>
                         D.text ("if c" ++ show i ++ " != 0 { return c" ++ show i ++ " }") | (i, (f, _)) <- zip [0 :: Int ..] fields ] ++
-                      [ D.text "return 0" ])) <> D.hardline <> D.text "}"
-                , D.text "public func portableHash(into hasher: inout Hasher) {" <> D.nest 2 (D.hardline <>
-                    D.joinWith D.hardline [D.text (unescaped f ++ ".portableHash(into: &hasher)") | (f, _) <- fields]) <> D.hardline <> D.text "}" ]) <>
+                      [ D.text "return 0" ]))
+                , D.text "public func portableHash(into hasher: inout Hasher)" <> blockDoc (
+                    D.joinWith D.hardline [D.text (unescaped f ++ ".portableHash(into: &hasher)") | (f, _) <- fields]) ]) <>
               D.hardline <> D.text "}"
         pure (D.joinWith (D.hardline <> D.hardline) ([declaration] ++ sendableExtension ++
           (if Set.member (C.dataId d) opaque then [] else [portable] ++ equatable name self portableWhere)))
@@ -393,7 +393,7 @@ emitData layout bits bound declarations
         let indirect = if Set.member (C.dataId d) recursive then "indirect " else ""
             declaration = D.text header <> D.hardline <>
               D.text ("public " ++ indirect ++ "enum " ++ name ++ typeParameterDeclarations declarations d ++ conformances d ++ " {") <> D.nest 2 (D.hardline <>
-                D.joinWith D.hardline [ D.text ("case " ++ caseName c ++ (if null fs then "" else "(" ++ intercalate ", " [f ++ ": " ++ t | (f, t) <- fs] ++ ")"))
+                D.joinWith D.hardline [ D.text ("case " ++ caseName c) <> (if null fs then mempty else argumentsDoc [D.text (f ++ ": " ++ t) | (f, t) <- fs])
                                       | (c, fs) <- cases ]) <> D.hardline <> D.text "}"
             binds prefix fs = if null fs then "" else "(" ++ intercalate ", " ["let " ++ prefix ++ show i | (i, _) <- zip [0 :: Int ..] fs] ++ ")"
             pattern prefix c fs = "." ++ unescaped (caseName c) ++ binds prefix fs
@@ -419,20 +419,23 @@ emitData layout bits bound declarations
                 [ D.text "/// The constructor's rank: its place among the type's constructors by identity." <> D.hardline <>
                   D.text "var lawSpecRank: Int {" <> D.nest 2 (D.hardline <> D.text "switch self {" <> D.hardline <> D.joinWith D.hardline rankArms <> D.hardline <> D.text "}") <>
                   D.hardline <> D.text "}" | not single ] ++
-                [ D.text ("public static func portableEqual(_ a: " ++ self ++ ", _ b: " ++ self ++ ") -> Bool {") <> D.nest 2 (D.hardline <>
-                    D.text "switch (a, b) {" <> D.hardline <> D.joinWith D.hardline equalArms <> D.hardline <> D.text "}") <> D.hardline <> D.text "}"
-                , D.text ("public static func portableCompare(_ a: " ++ self ++ ", _ b: " ++ self ++ ") -> Int {") <> D.nest 2 (D.hardline <>
-                    D.text "switch (a, b) {" <> D.hardline <> D.joinWith D.hardline compareArms <> D.hardline <> D.text "}") <> D.hardline <> D.text "}"
-                , D.text "public func portableHash(into hasher: inout Hasher) {" <> D.nest 2 (D.hardline <>
-                    D.text "switch self {" <> D.hardline <> D.joinWith D.hardline hashArms <> D.hardline <> D.text "}") <> D.hardline <> D.text "}" ])) <>
+                [ pairFunction "portableEqual" self "Bool"
+                    (D.text "switch (a, b) {" <> D.hardline <> D.joinWith D.hardline equalArms <> D.hardline <> D.text "}")
+                , pairFunction "portableCompare" self "Int"
+                    (D.text "switch (a, b) {" <> D.hardline <> D.joinWith D.hardline compareArms <> D.hardline <> D.text "}")
+                , D.text "public func portableHash(into hasher: inout Hasher)" <> blockDoc (
+                    D.text "switch self {" <> D.hardline <> D.joinWith D.hardline hashArms <> D.hardline <> D.text "}") ])) <>
               D.hardline <> D.text "}"
         pure (D.joinWith (D.hardline <> D.hardline) ([declaration] ++ sendableExtension ++
           (if Set.member (C.dataId d) opaque then [] else [portable] ++ equatable name self portableWhere)))
     equatable name self portableWhere =
-      [ D.text ("extension " ++ name ++ ": Equatable" ++ portableWhere ++ " {") <> D.nest 2 (D.hardline <>
-          D.text ("public static func == (a: " ++ self ++ ", b: " ++ self ++ ") -> Bool { portableEqual(a, b) }")) <> D.hardline <> D.text "}"
-      , D.text ("extension " ++ name ++ ": Hashable" ++ portableWhere ++ " {") <> D.nest 2 (D.hardline <>
-          D.text "public func hash(into hasher: inout Hasher) { portableHash(into: &hasher) }") <> D.hardline <> D.text "}" ]
+      [ D.text ("extension " ++ name ++ ": Equatable" ++ portableWhere) <> blockDoc (
+          signature "public static func == " ["a: " ++ self, "b: " ++ self] " -> Bool" (D.text "portableEqual(a, b)"))
+      , D.text ("extension " ++ name ++ ": Hashable" ++ portableWhere) <> blockDoc (
+          D.text "public func hash(into hasher: inout Hasher)" <> blockDoc (D.text "portableHash(into: &hasher)")) ]
+    -- A function of two values of a type: portableEqual(_ a: T, _ b: T).
+    pairFunction function self result body =
+      signature ("public static func " ++ function) ["_ a: " ++ self, "_ b: " ++ self] (" -> " ++ result) body
     unescaped f = filter (/= '`') f
     dataCodec names recursive d = do
       name <- named names d

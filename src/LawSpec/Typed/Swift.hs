@@ -26,6 +26,7 @@ import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc)
 import qualified LawSpec.Naming as Nm
+import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (generatedHeader)
 import LawSpec.Swift.Names (dataNames, escape, localName, pascal)
 import qualified LawSpec.Swift.Data as Data
@@ -130,9 +131,24 @@ emitSwiftTyped bits bound allDeclarations units = do
     , swiftTypedPlan = plan }
   where
     functionName d = let declaration = definitionDeclaration d in
-      escape (Nm.cased Nm.Camel (case Nm.nameWords (Nm.readableDefinitionName (declarationName declaration) (fst (functionType (declarationType declaration)))) of
+      escape (Nm.cased Nm.Camel (case concatMap shown (dropMade (Nm.nameWords (Nm.readableDefinitionName (declarationName declaration)
+          (map displayed (fst (functionType (declarationType declaration))))))) of
         [] -> ["definition"]
         ws -> ws))
+    -- A digest in a compiler-made name (lawspecRecordView<digest>) reads
+    -- as its record's display name.
+    shown w = case M.lookup (Id ("lawspec::structural::record::" ++ w)) display of
+      Just n | length w >= 16 -> Nm.nameWords n
+      _ -> [w]
+    dropMade ws = case ws of
+      "lawspec" : rest@(_ : _) -> rest
+      _ -> ws
+    -- An anonymous record reads by its display name (LawSpec.RecordNames).
+    display = recordDisplayNames allDeclarations
+    displayed ty = case ty of
+      Constructor n args -> Constructor (M.findWithDefault n (Id n) display) [case a of TypeArgument t -> TypeArgument (displayed t); _ -> a | a <- args]
+      Arrow a b -> Arrow (displayed a) (displayed b)
+      _ -> ty
 
 block :: [D.Doc] -> D.Doc
 block body = D.nest 2 (D.hardline <> D.joinWith D.hardline body)

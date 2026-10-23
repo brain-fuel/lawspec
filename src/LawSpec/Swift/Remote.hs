@@ -11,7 +11,7 @@ import LawSpec.Testing (Plan, plannedUnit, plannedUnits)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Swift.Code
 import LawSpec.SourceLink (generatedHeader)
-import LawSpec.Swift.Names
+import LawSpec.Swift.Entries (Entry(..), entries)
 
 emitRemote :: Plan -> [Artifact]
 emitRemote plan
@@ -21,8 +21,7 @@ emitRemote plan
     units = map plannedUnit (plannedUnits plan)
     (forms, remotes) = remoteManifest plan
     prefix = concatMap (++ " ") forms
-    entries = [(C.declarationId d, generatedName (C.unitId u) ++ "." ++ functionName d) | u <- units, d <- C.unitDeclarations u]
-    callable = [(r, e) | r <- remotes, Just e <- [lookup (remoteId r) entries]]
+    callable = [(r, entryOwner e ++ "." ++ entryName e) | r <- remotes, Just e <- [lookup (remoteId r) (entries units)]]
     doc = map D.text
       [ "// " ++ generatedHeader Nothing
       , ""

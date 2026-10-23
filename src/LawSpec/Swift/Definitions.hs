@@ -80,6 +80,10 @@ signatureText name params result failure async =
   (if async then " async" else "") ++ maybe "" (\e -> " throws(" ++ e ++ ")") failure ++
   (if result == "Void" then "" else " -> " ++ result)
 
+-- | A declaration's function in its unit's generated enum.
+entryFunctionIn :: [C.Unit] -> C.Declaration -> String
+entryFunctionIn units d = maybe (functionName d) entryName (lookup (C.declarationId d) (entries units))
+
 -- | Whether a unit has a generated enum: entries or handler factories.
 hasModule :: C.Unit -> Bool
 hasModule u = not (null (C.unitDeclarations u) && null (C.unitHandlers u) &&
@@ -109,6 +113,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
     pure (Artifact ("src/LawSpec/Generated/" ++ enumName ++ "Entries.swift") (D.render layout doc) "generated" "source")
   where
     definitions = [(C.declarationId (C.definitionDeclaration d), d) | u <- units, d <- C.unitDefinitions u]
+    entryFunction = entryFunctionIn units
     entry names verified unit declaration = do
       let identity = C.declarationId declaration
           (parameterTypes, resultType) = C.functionType (C.declarationType declaration)
@@ -152,7 +157,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           wrapped = call "Runtime" "contextual" [Str (C.idText identity), Lambda [] tValue inner]
           params = ["_ schema: Schema", "_ symbols: SymbolContext"] ++ ["_ " ++ a ++ ": Value" | a <- arguments]
       pure (D.text ("/// " ++ C.idText identity) <> D.hardline <>
-        signature ("public static func " ++ functionName declaration) params " throws -> Value" (renderBody tValue wrapped))
+        signature ("public static func " ++ entryFunction declaration) params " throws -> Value" (renderBody tValue wrapped))
     -- The call of an adapter: its arguments to native values, the call, a
     -- typed failure raised as the logical one, and the result back, checked.
     adapterCall names unit declaration arguments parameterTypes resultType = do
@@ -266,7 +271,7 @@ emitApi layout bits declarations units = do
             (_, _, True) -> Pure "await Embedding.runAsync" [Pure "UncheckedBox" [body]]
             _ -> Pure "Embedding.run" [body]
       pure (D.text ("/// " ++ C.idText (C.declarationId d)) <> D.hardline <>
-        signatureDoc "public static func" (functionName d) params r failure async
+        signatureDoc "public static func" (entryName e) params r failure async
           (if void then renderStatements (Statement runner) else renderBody resultTy runner))
     let enumName = last (splitDots (apiName (C.unitId u)))
         doc = fileHeader (generatedHeader (unitSourceFile u)) [["import LawSpecRuntime"]] <> D.hardline <>
