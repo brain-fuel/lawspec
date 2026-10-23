@@ -12,7 +12,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..))
-import LawSpec.Swift.Code (stringLiteral, fileHeader)
+import LawSpec.Swift.Code
 import LawSpec.SourceLink (generatedHeader, unitSourceFile)
 import LawSpec.Swift.Names
 import qualified LawSpec.Swift.Data as Data
@@ -22,6 +22,10 @@ import LawSpec.Typed.Swift (SwiftTyped(..))
 import LawSpec.Typed.Plan (isTypedHandler)
 import Control.Monad (forM)
 import Data.List (intercalate)
+
+-- | A type's documentation, wrapped to fit in its enum.
+docComment :: String -> D.Doc
+docComment = D.lineComment 96 "/// "
 
 -- | One file per unit with spec handlers.
 emitHandlers :: D.Layout -> Int -> SwiftTyped -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -52,8 +56,11 @@ emitHandlers layout bits typed declarations units = do
         pure (a, op, ty, signature)
       stateCodec <- traverse (Data.codec bits names [] . fst) (C.handlerState h)
       stateType <- traverse (Data.nativeType bits names [] . fst) (C.handlerState h)
-      let method op (ps, r, e) = "public func " ++ Effects.operationMember op ++ "(" ++ intercalate ", " ["_ " ++ p ++ ": " ++ t | (p, t) <- ps] ++ ")" ++
-            maybe "" (\x -> " throws(" ++ x ++ ")") e ++ (if r == "Void" then "" else " -> " ++ r)
+      let method op (ps, r, e) = signature ("public func " ++ Effects.operationMember op) ["_ " ++ p ++ ": " ++ t | (p, t) <- ps]
+            (maybe "" (\x -> " throws(" ++ x ++ ")") e ++ (if r == "Void" then "" else " -> " ++ r))
+          locked body = D.text "gate.lock()" <> D.hardline <> D.text "defer { gate.unlock() }" <> D.hardline <> body
+          -- A value the runtime computes, outside any law.
+          embedded ty x = renderExpr (Pure "Embedding.run" [Lambda [] (Ty ty) x])
           typedClauses = isTypedHandler (swiftTypedPlan typed) h
       if typedClauses then do
         clauses <- forM operations $ \(a, op, ty, signature@(ps, r, e)) -> do
@@ -72,42 +79,38 @@ emitHandlers layout bits typed declarations units = do
           let contextual = swiftTypedContextual typed clause
               arguments = concat [["self.schema", "self.symbols"] | contextual] ++ ["self.stateValue" | stateful] ++
                 (if null args && not stateful then ["Unit()"] else clauseArgs)
-              invoke = "try " ++ function ++ "(" ++ intercalate ", " arguments ++ ")"
-              returned value = if r == "Void" then "_ = " ++ value else "return " ++ value
+              invoke = Call function (map Raw arguments)
+              void = r == "Void"
+              resultTy = Ty (if void then "Void" else r)
               body = if stateful
-                then ["let pair = " ++ invoke, "self.stateValue = pair.second", returned "pair.first"]
-                else [returned invoke]
-              resultTy = if r == "Void" then "Void" else r
-              closure = "{ () throws -> " ++ resultTy ++ " in\n" ++ unlines (map ("  " ++) body) ++ "}"
+                then Let "pair" (Ty "") invoke (Do [Statement (Raw "self.stateValue = pair.second")] (if void then Raw "()" else Raw "pair.first"))
+                else invoke
+              closure = Lambda [] resultTy body
               run = case (failure, e) of
-                (Just (key, codec), Just _) -> "try Embedding.inlineFailing(" ++ stringLiteral key ++ ", { try " ++ codec ++ ".toNative($0) }, " ++ closure ++ ")"
-                _ -> "Embedding.inline(" ++ closure ++ ")"
-          pure (D.text ("/// " ++ op ++ ".") <> D.hardline <> D.text (method op signature ++ " {") <> D.nest 2 (D.hardline <>
-            D.text "gate.lock()" <> D.hardline <> D.text "defer { gate.unlock() }" <> D.hardline <>
-            D.joinWith D.hardline (map D.text (lines ((if r == "Void" then "" else "return ") ++ run)))) <> D.hardline <> D.text "}")
+                (Just (key, codec), Just _) -> Call "Embedding.inlineFailing" [Str key, Raw ("{ try " ++ codec ++ ".toNative($0) }"), closure]
+                _ -> Pure "Embedding.inline" [closure]
+          pure (D.text ("/// " ++ op ++ ".") <> D.hardline <> method op signature (locked
+            (if void then renderStatements (Statement run) else renderBody resultTy run)))
         let start = case swiftTypedStart typed (C.handlerId h) of
-              Just f -> "Embedding.run { try " ++ f ++ "(schema, symbols) }"
-              Nothing -> "Embedding.run { () throws -> " ++ maybe "Unit" id stateType ++ " in throw Fail.with(\"NoStartState\") }"
+              Just f -> embedded (maybe "Unit" id stateType) (Call f [Var "schema", Var "symbols"])
+              Nothing -> D.text ("Embedding.run { () throws -> " ++ maybe "Unit" id stateType ++ " in throw Fail.with(\"NoStartState\") }")
             stateMembers = case stateType of
               Just t ->
                 [ D.text ("private var stateValue: " ++ t)
                 , D.text "/// The handler's state: a snapshot to show or keep, or one to force, reset or restore." <> D.hardline <>
-                  D.text ("public var state: " ++ t ++ " {") <> D.nest 2 (D.hardline <>
-                    D.text "get {" <> D.nest 2 (D.hardline <> D.text "gate.lock()" <> D.hardline <> D.text "defer { gate.unlock() }" <> D.hardline <> D.text "return stateValue") <> D.hardline <> D.text "}" <> D.hardline <>
-                    D.text "set {" <> D.nest 2 (D.hardline <> D.text "gate.lock()" <> D.hardline <> D.text "defer { gate.unlock() }" <> D.hardline <> D.text "stateValue = newValue") <> D.hardline <> D.text "}") <>
-                  D.hardline <> D.text "}" ]
+                  D.text ("public var state: " ++ t) <> blockDoc (
+                    D.text "get" <> blockDoc (locked (D.text "return stateValue")) <> D.hardline <>
+                    D.text "set" <> blockDoc (locked (D.text "stateValue = newValue"))) ]
               Nothing -> []
             members =
               [ D.text "private let gate = NSRecursiveLock()", D.text "private let schema: Schema", D.text "private let symbols: SymbolContext" ] ++
               stateMembers ++
               [ D.text "/// Outside any law: the program's schema and fresh symbols." <> D.hardline <>
                 D.text "public convenience init() { self.init(LawSpec.Program.schema, SymbolContext()) }"
-              , D.text "public init(_ schema: Schema, _ symbols: SymbolContext) {" <> D.nest 2 (D.hardline <>
-                  D.joinWith D.hardline (map D.text (["self.schema = schema", "self.symbols = symbols"] ++ ["self.stateValue = " ++ start | stateful]))) <>
-                  D.hardline <> D.text "}" ] ++ clauses
-        pure (D.text ("/// " ++ summary ++ " It runs typed: its state is native, and shared, not copied, by a snapshot.") <> D.hardline <>
-          D.text ("public final class " ++ cls ++ ": " ++ intercalate ", " protocols ++ ", @unchecked Sendable {") <>
-          D.nest 2 (D.hardline <> D.joinWith (D.hardline <> D.hardline) members) <> D.hardline <> D.text "}")
+              , D.text "public init(_ schema: Schema, _ symbols: SymbolContext)" <> blockDoc (
+                  D.joinWith D.hardline (map D.text ["self.schema = schema", "self.symbols = symbols"] ++ [hangValue "self.stateValue =" start | stateful])) ] ++ clauses
+        pure (docComment (summary ++ " It runs typed: its state is native, and shared, not copied, by a snapshot.") <>
+          typeDeclaration ("public final class " ++ cls) (protocols ++ ["@unchecked Sendable"]) (D.joinWith (D.hardline <> D.hardline) members))
       else do
         let field a = camel (N.interfaceName a)
             members =
@@ -115,20 +118,19 @@ emitHandlers layout bits typed declarations units = do
               [ D.text ("private let " ++ field a ++ ": any " ++ Effects.protocolType a) | a <- answered ] ++
               [ D.text "/// Outside any law: the program's schema and fresh symbols." <> D.hardline <>
                 D.text "public convenience init() { self.init(LawSpec.Program.schema, SymbolContext()) }"
-              , D.text "public init(_ schema: Schema, _ symbols: SymbolContext) {" <> D.nest 2 (D.hardline <>
-                  D.text ("let made = Embedding.run { try " ++ owner ++ "." ++ factory ++ "(schema, symbols) }") <> D.hardline <>
+              , D.text "public init(_ schema: Schema, _ symbols: SymbolContext)" <> blockDoc (
+                  hangValue "let made =" (embedded "Effects.Handler" (Call (owner ++ "." ++ factory) [Var "schema", Var "symbols"])) <> D.hardline <>
                   D.text "handler = made" <> D.hardline <>
-                  D.joinWith D.hardline [ D.text (field a ++ " = Embedding.run { try LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative" ++ "(schema, symbols, made) }") | a <- answered ]) <>
-                  D.hardline <> D.text "}" ] ++
+                  D.joinWith D.hardline [ hangValue (field a ++ " =") (embedded ("any " ++ Effects.protocolType a)
+                    (Call ("LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative") [Var "schema", Var "symbols", Var "made"])) | a <- answered ]) ] ++
               [ D.text "/// The handler's state in native types: a snapshot to show or keep, or one to force, reset or restore." <> D.hardline <>
-                D.text ("public var state: " ++ t ++ " {") <> D.nest 2 (D.hardline <>
-                  D.text ("get { Embedding.run { try " ++ c ++ ".toNative(Effects.handlerState(self." ++ field first ++ ").1) } }") <> D.hardline <>
-                  D.text ("set { Embedding.run { try Effects.setHandlerState(self." ++ field first ++ ", " ++ c ++ ".fromNative(newValue)) } }")) <> D.hardline <> D.text "}"
+                D.text ("public var state: " ++ t) <> blockDoc (
+                  D.text "get" <> blockDoc (embedded t (Call (c ++ ".toNative") [Raw ("Effects.handlerState(self." ++ field first ++ ").1")])) <> D.hardline <>
+                  D.text "set" <> blockDoc (renderExpr (Pure "Embedding.run" [Lambda [] tVoid
+                    (Statement (Call "Effects.setHandlerState" [Raw ("self." ++ field first), Call (c ++ ".fromNative") [Raw "newValue"]]))])))
               | Just c <- [stateCodec], Just t <- [stateType], first : _ <- [answered] ] ++
-              [ D.text ("/// " ++ op ++ ".") <> D.hardline <> D.text (method op signature ++ " {") <> D.nest 2 (D.hardline <>
-                  D.text ((case e of Just _ -> "try "; Nothing -> "") ++ field a ++ "." ++ Effects.operationMember op ++ "(" ++ intercalate ", " (map fst ps) ++ ")")) <>
-                  D.hardline <> D.text "}"
+              [ D.text ("/// " ++ op ++ ".") <> D.hardline <> method op signature
+                  (callDoc ((case e of Just _ -> "try "; Nothing -> "") ++ field a ++ "." ++ Effects.operationMember op) (map (D.text . fst) ps))
               | (a, op, _, signature@(ps, _, e)) <- operations ]
-        pure (D.text ("/// " ++ summary ++ " A new one starts from the handler's start state.") <> D.hardline <>
-          D.text ("public final class " ++ cls ++ ": " ++ intercalate ", " protocols ++ ", @unchecked Sendable {") <>
-          D.nest 2 (D.hardline <> D.joinWith (D.hardline <> D.hardline) members) <> D.hardline <> D.text "}")
+        pure (docComment (summary ++ " A new one starts from the handler's start state.") <>
+          typeDeclaration ("public final class " ++ cls) (protocols ++ ["@unchecked Sendable"]) (D.joinWith (D.hardline <> D.hardline) members))

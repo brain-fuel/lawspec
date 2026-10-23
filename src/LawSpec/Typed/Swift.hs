@@ -27,7 +27,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc)
 import qualified LawSpec.Naming as Nm
 import LawSpec.SourceLink (generatedHeader)
-import LawSpec.Swift.Names (dataNames, escape, localName, pascal, reservedLocals)
+import LawSpec.Swift.Names (dataNames, escape, localName, pascal)
 import qualified LawSpec.Swift.Data as Data
 import qualified LawSpec.Swift.Effects as Effects
 
@@ -89,7 +89,7 @@ emitSwiftTyped bits bound allDeclarations units = do
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       -- Each function is named for its definition (a specialised copy for
       -- its definition and argument types), with _2 only on a clash.
-      (functionNames, moduleScope) = Nm.claimAll (Nm.scopeWith ("schema" : "symbols" : reservedLocals))
+      (functionNames, moduleScope) = Nm.claimAll (Nm.scopeWith ["schema", "symbols"])
         ([ functionName d | (_, d) <- typedRepresentatives plan ] ++
          [ "start" ++ pascal (handlerName h) | h <- typedHandlers, Just _ <- [handlerState h] ])
       functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
@@ -139,6 +139,26 @@ block body = D.nest 2 (D.hardline <> D.joinWith D.hardline body)
 
 paren :: D.Doc -> D.Doc
 paren x = D.text "(" <> x <> D.text ")"
+
+-- | A condition without the parentheses swift-format drops around one.
+condition :: D.Doc -> D.Doc
+condition x = case D.render D.Compact x of
+  '(' : rest | not (null rest), last rest == ')', closesAtEnd (init rest) -> D.text (init rest)
+  _ -> x
+  where
+    -- The opening parenthesis is closed only by the last one.
+    closesAtEnd = go (0 :: Int)
+      where
+        go depth (c : cs)
+          | c == '(' = go (depth + 1) cs
+          | c == ')' = depth > 0 && go (depth - 1) cs
+          | c == '"' = go depth (skipString cs)
+          | otherwise = go depth cs
+        go depth [] = depth == 0
+        skipString ('\\' : _ : cs) = skipString cs
+        skipString ('"' : cs) = cs
+        skipString (_ : cs) = skipString cs
+        skipString [] = []
 
 type Scope = [(Id, String)]
 
@@ -198,7 +218,7 @@ statements env scope resultType sink e = case expressionNode e of
     (s, x) <- cexpr env scope c
     yes <- statements env scope resultType sink a
     no <- statements env scope resultType sink b
-    pure (s ++ [D.text "if " <> x <> D.text " {" <> block yes <> D.hardline <> D.text "} else {" <> block no <> D.hardline <> D.text "}"])
+    pure (s ++ [D.text "if " <> condition x <> D.text " {" <> block yes <> D.hardline <> D.text "} else {" <> block no <> D.hardline <> D.text "}"])
   Helper Select [c, a, b] -> statements env scope resultType sink (e { expressionNode = If c a b })
   Match value cases -> matchStatements env scope resultType sink value cases
   ExternalCall i args
@@ -265,7 +285,7 @@ cexpr env scope e = case expressionNode e of
       else do
         t <- fresh "logic"
         let rest = sb ++ [D.text (t ++ " = ") <> xb]
-        pure (sa ++ [D.text ("let " ++ t ++ ": Bool"), D.text "if " <> xa <> D.text " {" <>
+        pure (sa ++ [D.text ("let " ++ t ++ ": Bool"), D.text "if " <> condition xa <> D.text " {" <>
           (if op == And then block rest <> D.hardline <> D.text "} else {" <> block [D.text (t ++ " = false")]
            else block [D.text (t ++ " = true")] <> D.hardline <> D.text "} else {" <> block rest) <> D.hardline <> D.text "}"], D.text t)
   Unary Not a -> do
@@ -347,13 +367,14 @@ cexpr env scope e = case expressionNode e of
     (s, v) <- cexpr env scope x
     c <- lift' (codecOf env (expressionType x))
     result <- lift' (nativeType env (expressionType e))
-    bindAtom s (callDoc "try Typed.raiseFailure" [D.text (stringLiteral (abilityKey ref)), callDoc (c ++ ".fromNative") [v]] <> D.text (" as " ++ result))
+    t <- fresh "result"
+    pure (s ++ [D.text ("let " ++ t ++ ": " ++ result ++ " = ") <> callDoc "try Typed.raiseFailure" [D.text (stringLiteral (abilityKey ref)), callDoc (c ++ ".fromNative") [v]]], D.text t)
   Perform op args -> do
     parts <- mapM (cexpr env scope) args
     a <- lift' (maybe (Left ("typed Swift: unknown ability " ++ abilityKey (operationAbility op))) Right (N.abilityOf (envUnits env) (operationAbility op)))
     handler <- fresh "handler"
-    let native = "try LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative" ++ "(schema, symbols, try Effects.handler(schema, " ++
-          stringLiteral (abilityKey (operationAbility op)) ++ "))"
+    let native = callDoc ("try LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative") [D.text "schema", D.text "symbols",
+          callDoc "Effects.handler" [D.text "schema", D.text (stringLiteral (abilityKey (operationAbility op)))]]
         valueArgs = [x | (x, arg) <- zip (map snd parts) args, expressionType arg /= Constructor "Unit" []]
         operationCall = callDoc (handler ++ "." ++ Effects.operationMember (operationName op)) valueArgs
         isUnit' = expressionType e == Constructor "Unit" []
@@ -366,8 +387,8 @@ cexpr env scope e = case expressionNode e of
           D.text (" { () throws(" ++ e' ++ ") -> " ++ r ++ " in") <> block [D.text "try " <> operationCall] <> D.hardline <> D.text "}")
       _ -> pure operationCall
     if isUnit'
-      then pure (concatMap fst parts ++ [D.text ("let " ++ handler ++ " = " ++ native), invocation], D.text "Unit()")
-      else bindAtom (concatMap fst parts ++ [D.text ("let " ++ handler ++ " = " ++ native)]) invocation
+      then pure (concatMap fst parts ++ [D.text ("let " ++ handler ++ " = ") <> native, invocation], D.text "Unit()")
+      else bindAtom (concatMap fst parts ++ [D.text ("let " ++ handler ++ " = ") <> native]) invocation
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, _] <- expressionType e -> do
     c <- lift' (codecOf env failure)
     bodyType <- case expressionType e of

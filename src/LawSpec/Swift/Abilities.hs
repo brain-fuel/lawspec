@@ -49,9 +49,15 @@ operationSignature bits names a (op, ty) = do
   e <- traverse (Data.nativeType bits names []) (failureOf a op)
   pure (zip ["value" ++ show i | i <- [0 :: Int ..]] ps, r, e)
 
-method :: String -> ([(String, String)], String, Maybe String) -> String
-method op (ps, r, e) = "func " ++ Effects.operationMember op ++ "(" ++ intercalate ", " ["_ " ++ p ++ ": " ++ t | (p, t) <- ps] ++ ")" ++
-  maybe "" (\x -> " throws(" ++ x ++ ")") e ++ (if r == "Void" then "" else " -> " ++ r)
+-- | An operation's method: its requirement in a protocol, or with a body.
+method :: String -> ([(String, String)], String, Maybe String) -> Maybe D.Doc -> D.Doc
+method op (ps, r, e) body = case body of
+  Nothing -> D.text opening <> argumentsDoc (map D.text parameters) <> D.text closing
+  Just b -> signature opening parameters closing b
+  where
+    opening = "func " ++ Effects.operationMember op
+    parameters = ["_ " ++ p ++ ": " ++ t | (p, t) <- ps]
+    closing = maybe "" (\x -> " throws(" ++ x ++ ")") e ++ (if r == "Void" then "" else " -> " ++ r)
 
 -- | One file of protocols, an enum for each unit's abilities.
 emitProtocols :: D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -63,7 +69,7 @@ emitProtocols layout bits declarations units
         protocols <- forM (own u) $ \a -> do
           members <- forM (C.abilityOperations a) $ \(op, ty) -> do
             signature <- operationSignature bits names a (op, ty)
-            pure (D.text ("/// " ++ op) <> D.hardline <> D.text (method op signature))
+            pure (D.text ("/// " ++ op) <> D.hardline <> method op signature Nothing)
           pure (D.text ("/// The native protocol of " ++ N.displayName a ++ " (" ++ C.abilityKey (C.abilityInstance a) ++ ").") <> D.hardline <>
             D.text ("public protocol " ++ pascal (N.interfaceName a) ++ " {") <> D.nest 2 (D.hardline <> D.joinWith D.hardline members) <>
             D.hardline <> D.text "}")
@@ -106,20 +112,18 @@ emitBridges layout bits declarations units
         out <- Data.codec bits names [] result
         let values = go codecs args (map fst ps)
               where go (c : cs) (t : ts) ns
-                      | isUnit t = "Value.unit" : go cs ts ns
-                      | (n : rest) <- ns = ("try " ++ c ++ ".fromNative(" ++ n ++ ")") : go cs ts rest
+                      | isUnit t = Raw "Value.unit" : go cs ts ns
+                      | (n : rest) <- ns = Call (c ++ ".fromNative") [Var n] : go cs ts rest
                     go _ _ _ = []
-            logical = "try Effects.invoke(self.originHandler, self.originSchema, " ++ stringLiteral op ++ ", [" ++ intercalate ", " values ++ "])"
-            converted = if r == "Void" then "_ = " ++ logical else "return try " ++ out ++ ".toNative(" ++ logical ++ ")"
-            resultTy = r
-            closure = "{ () throws -> " ++ resultTy ++ " in " ++ converted ++ " }"
-        body <- case failure of
-          Nothing -> pure ["Embedding.run(" ++ closure ++ ")"]
+            logical = Call "Effects.invoke" [Raw "self.originHandler", Raw "self.originSchema", Str op, ListOf tValues values]
+            void = r == "Void"
+            closure = Lambda [] (Ty r) (if void then logical else Call (out ++ ".toNative") [logical])
+        runner <- case failure of
+          Nothing -> pure (Pure "Embedding.run" [closure])
           Just _ -> do
             fc <- maybe (Left "missing failure") (Data.codec bits names []) (failureOf a op)
-            pure ["try Embedding.runFailing(" ++ stringLiteral (failingKey a op) ++ ", { try " ++ fc ++ ".toNative($0) }, " ++ closure ++ ")"]
-        let statements = if r == "Void" then body else map ("return " ++) body
-        pure (D.text (method op signature ++ " {") <> D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text statements)) <> D.hardline <> D.text "}")
+            pure (Call "Embedding.runFailing" [Str (failingKey a op), Raw ("{ try " ++ fc ++ ".toNative($0) }"), closure])
+        pure (method op signature (Just (if void then renderStatements (Statement runner) else renderBody (Ty r) runner)))
       clauses <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
         (_, r, failure) <- operationSignature bits names a (op, ty)
@@ -127,42 +131,42 @@ emitBridges layout bits declarations units
         out <- Data.codec bits names [] result
         ref <- X.typeRef result
         let nativeArgs = [(i, c) | (i, c, t) <- zip3 [0 :: Int ..] codecs args, not (isUnit t)]
-            bindings = ["let a" ++ show i ++ " = try " ++ c ++ ".toNative(arguments[" ++ show i ++ "])" | (i, c) <- nativeArgs]
-            callText = "box.value." ++ Effects.operationMember op ++ "(" ++ intercalate ", " ["a" ++ show i | (i, _) <- nativeArgs] ++ ")"
-            refText = D.render D.Compact (renderExpr ref)
+            argumentName i = "argument" ++ show i
+            callNative = Pure ("box.value." ++ Effects.operationMember op) [Var (argumentName i) | (i, _) <- nativeArgs]
         invoked <- case (failure, failureOf a op) of
           (Just e, Just ft) -> do
             fc <- Data.codec bits names [] ft
-            pure ("try Effects.ofThrown(" ++ stringLiteral (failingKey a op) ++ ", { (failure: " ++ e ++ ") throws -> Value in try " ++ fc ++
-              ".fromNative(failure) }, { () throws(" ++ e ++ ") -> " ++ r ++ " in try " ++ callText ++ " })")
-          _ -> pure callText
-        let resultLine = if r == "Void"
-              then [invoked, "return Value.unit"]
-              else ["return try Schema.validate(try " ++ out ++ ".fromNative(" ++ invoked ++ "), try " ++ refText ++ ", current)"]
-            lines' = bindings ++ resultLine
-        pure (D.text ("(" ++ stringLiteral op ++ ", { (current: Schema, arguments: [Value]) throws -> Value in") <>
-          D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text lines')) <> D.hardline <> D.text "}),")
-      let classDoc = D.text ("final class " ++ className ++ ": " ++ proto ++ ", Effects.Origin, @unchecked Sendable {") <> D.nest 2 (D.hardline <>
+            pure (Call "Effects.ofThrown" [Str (failingKey a op),
+              Raw ("{ (failure: " ++ e ++ ") throws -> Value in try " ++ fc ++ ".fromNative(failure) }"),
+              Raw ("{ () throws(" ++ e ++ ") -> " ++ r ++ " in try " ++ D.render D.Compact (renderExpr callNative) ++ " }")])
+          _ -> pure callNative
+        let result = if r == "Void"
+              then Do [Statement invoked] (Raw "Value.unit")
+              else call "Schema" "validate" [Call (out ++ ".fromNative") [invoked], ref, Var "current"]
+            body = foldr (\(i, c) rest -> Let (argumentName i) (Ty "") (Call (c ++ ".toNative") [Raw ("arguments[" ++ show i ++ "]")]) rest)
+              result nativeArgs
+        pure (TupleOf [Str op, Lambda [("current", tSchema), ("arguments", tValues)] tValue body])
+      let classDoc = typeDeclaration ("final class " ++ className) [proto, "Effects.Origin", "@unchecked Sendable"] (
             D.joinWith D.hardline (map D.text
               [ "let originSchema: Schema", "let originSymbols: SymbolContext", "let originHandler: Effects.Handler"
               , "var originAbility: String { " ++ stringLiteral key ++ " }", "" ]) <> D.hardline <>
             D.text "init(_ schema: Schema, _ symbols: SymbolContext, _ handler: Effects.Handler) {" <> D.nest 2 (D.hardline <>
               D.joinWith D.hardline (map D.text ["originSchema = schema", "originSymbols = symbols", "originHandler = handler"])) <> D.hardline <>
             D.text "}" <> D.hardline <> D.hardline <>
-            D.joinWith (D.hardline <> D.hardline) members) <> D.hardline <> D.text "}"
+            D.joinWith (D.hardline <> D.hardline) members)
           toNative = D.text ("/// " ++ N.displayName a ++ "'s native protocol over a logical handler.") <> D.hardline <>
-            D.text ("public static func " ++ Effects.bridgeName a "ToNative" ++ "(_ schema: Schema, _ symbols: SymbolContext, _ handler: Effects.Handler) throws -> any " ++ proto ++ " {") <>
-            D.nest 2 (D.hardline <> D.text (className ++ "(schema, symbols, handler)")) <> D.hardline <> D.text "}"
+            signature ("public static func " ++ Effects.bridgeName a "ToNative") ["_ schema: Schema", "_ symbols: SymbolContext", "_ handler: Effects.Handler"]
+              (" throws -> any " ++ proto) (D.text (className ++ "(schema, symbols, handler)"))
           fromNative = D.text ("/// The logical handler of a native " ++ N.displayName a ++ ".") <> D.hardline <>
-            D.text ("public static func " ++ Effects.bridgeName a "FromNative" ++ "(_ schema: Schema, _ symbols: SymbolContext, _ native: any " ++ proto ++ ") throws -> Effects.Handler {") <>
-            D.nest 2 (D.hardline <> D.text "let box = UncheckedBox(native)" <> D.hardline <>
+            signature ("public static func " ++ Effects.bridgeName a "FromNative") ["_ schema: Schema", "_ symbols: SymbolContext", "_ native: any " ++ proto]
+              " throws -> Effects.Handler" (D.text "let box = UncheckedBox(native)" <> D.hardline <>
               D.text ("return Effects.recover(native, " ++ stringLiteral key ++ ", symbols) {") <> D.nest 2 (D.hardline <>
-                D.text "Effects.stateless([" <> D.nest 2 (D.hardline <> D.joinWith D.hardline clauses) <> D.hardline <> D.text "])") <>
-              D.hardline <> D.text "}") <> D.hardline <> D.text "}"
+                renderExpr (Pure "Effects.stateless" [ListOf (Ty "[(String, Effects.Clause)]") clauses])) <>
+              D.hardline <> D.text "}")
           recording = D.text ("/// A recording of a native " ++ N.displayName a ++ ".") <> D.hardline <>
-            D.text ("public static func " ++ Effects.bridgeName a "Recording" ++ "(_ schema: Schema, _ symbols: SymbolContext, _ native: any " ++ proto ++ ") throws -> any " ++ proto ++ " {") <>
-            D.nest 2 (D.hardline <> D.text ("try " ++ Effects.bridgeName a "ToNative" ++ "(schema, symbols, Effects.recording(try " ++
-              Effects.bridgeName a "FromNative" ++ "(schema, symbols, native)))")) <> D.hardline <> D.text "}"
+            signature ("public static func " ++ Effects.bridgeName a "Recording") ["_ schema: Schema", "_ symbols: SymbolContext", "_ native: any " ++ proto]
+              (" throws -> any " ++ proto) (renderBody (Ty "") (Call (Effects.bridgeName a "ToNative") [Var "schema", Var "symbols",
+                Pure "Effects.recording" [Call (Effects.bridgeName a "FromNative") [Var "schema", Var "symbols", Var "native"]]]))
       pure (D.joinWith (D.hardline <> D.hardline) [classDoc, toNative, fromNative, recording])
 
 -- | A unit's handler factories, in its generated enum: its abilities'
@@ -174,13 +178,12 @@ unitFactories bits declarations units unit = do
     resourceCodec <- traverse (Data.codec bits names []) (C.abilityResource a)
     let (_, name) = Effects.productionFunction a
         made = case C.abilityNative a of
-          Just ref -> intercalate "." ref ++ "()"
-          Nothing -> unitQualified (C.unitId unit) ++ "." ++ camel (N.productionName a) ++ "(" ++ maybe "" (\c -> "try " ++ c ++ ".toNative(resource)") resourceCodec ++ ")"
-        params = "_ schema: Schema, _ symbols: SymbolContext" ++ maybe "" (const ", _ resource: Value") resourceCodec
+          Just ref -> Pure (intercalate "." ref) []
+          Nothing -> Pure (unitQualified (C.unitId unit) ++ "." ++ camel (N.productionName a)) [Call (c ++ ".toNative") [Var "resource"] | Just c <- [resourceCodec]]
+        params = ["_ schema: Schema", "_ symbols: SymbolContext"] ++ ["_ resource: Value" | Just _ <- [resourceCodec]]
     pure (D.text ("/// The production handler of " ++ N.displayName a ++ ", from the adapter.") <> D.hardline <>
-      D.text ("public static func " ++ name ++ "(" ++ params ++ ") throws -> Effects.Handler {") <>
-      D.nest 2 (D.hardline <> D.text ("try LawSpec.AbilityBridges." ++ Effects.bridgeName a "FromNative" ++ "(schema, symbols, " ++ made ++ ")")) <>
-      D.hardline <> D.text "}")
+      signature ("public static func " ++ name) params " throws -> Effects.Handler"
+        (renderBody Effects.handlerTy (call "LawSpec.AbilityBridges" (Effects.bridgeName a "FromNative") [Var "schema", Var "symbols", made])))
   specs <- forM (C.unitHandlers unit) $ \h -> do
     answered <- forM (C.handlerAbilities h) $ \ref -> maybe (Left "unknown Swift spec handler ability") Right (N.abilityOf units ref)
     let stateful = C.handlerState h /= Nothing
@@ -203,8 +206,8 @@ unitFactories bits declarations units unit = do
           Just v -> pure' "Effects" "stateful" [v, ListOf clauseTy clauses]
         (_, name) = Effects.specFunction units h
     pure (D.text ("/// The spec handler " ++ C.handlerName h ++ ".") <> D.hardline <>
-      D.text ("public static func " ++ name ++ "(_ schema: Schema, _ symbols: SymbolContext) throws -> Effects.Handler {") <>
-      D.nest 2 (D.hardline <> renderBody Effects.handlerTy made) <> D.hardline <> D.text "}")
+      signature ("public static func " ++ name) ["_ schema: Schema", "_ symbols: SymbolContext"] " throws -> Effects.Handler"
+        (renderBody Effects.handlerTy made))
   pure (productions ++ specs)
 
 -- | The native handlers a unit's adapter implements.
@@ -215,14 +218,13 @@ productionStubs bits declarations unit = do
     members <- forM (C.abilityOperations a) $ \(op, ty) -> do
       signature <- operationSignature bits names a (op, ty)
       let message = "not implemented: " ++ C.abilityKey (C.abilityInstance a) ++ "." ++ op
-      pure (D.text (method op signature ++ " {") <> D.nest 2 (D.hardline <> D.text ("fatalError(" ++ stringLiteral message ++ ")")) <> D.hardline <> D.text "}")
+      pure (method op signature (Just (callDoc "fatalError" [D.text (stringLiteral message)])))
     resource <- traverse (Data.nativeType bits names []) (C.abilityResource a)
     let proto = Effects.protocolType a
         cls = "Native" ++ pascal (N.interfaceName a)
         name = camel (N.productionName a)
     pure [ D.text ("/// The native handler of " ++ N.displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
-           D.text ("static func " ++ name ++ "(" ++ maybe "" (\t -> "_ resource: " ++ t) resource ++ ") -> any " ++ proto ++ " {") <>
-           D.nest 2 (D.hardline <> D.text (cls ++ "()")) <> D.hardline <> D.text "}"
+           signature ("static func " ++ name) ["_ resource: " ++ t | Just t <- [resource]] (" -> any " ++ proto) (D.text (cls ++ "()"))
          , D.text ("struct " ++ cls ++ ": " ++ proto ++ " {") <> D.nest 2 (D.hardline <> D.joinWith (D.hardline <> D.hardline) members) <>
            D.hardline <> D.text "}" ]
 
@@ -234,15 +236,14 @@ emitDefaults layout units
   | otherwise = do
       let functions =
             [ D.text ("/// The default handler of " ++ N.displayName a ++ ".") <> D.hardline <>
-              D.text ("public static func " ++ escape (camel (N.interfaceName a)) ++ "() -> any " ++ Effects.protocolType a ++ " {") <>
-              D.nest 2 (D.hardline <> D.text ("Embedding.run { try LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative" ++
-                "(LawSpec.Program.schema, SymbolContext(), try Defaults.handler(" ++ stringLiteral (C.abilityKey (C.abilityInstance a)) ++ ")) }")) <>
-              D.hardline <> D.text "}"
+              signature ("public static func " ++ escape (camel (N.interfaceName a))) [] (" -> any " ++ Effects.protocolType a)
+                (renderBody (Ty "") (Pure "Embedding.run" [Lambda [] (Ty (Effects.protocolType a)) (call "LawSpec.AbilityBridges" (Effects.bridgeName a "ToNative")
+                  [Raw "LawSpec.Program.schema", Raw "SymbolContext()", call "Defaults" "handler" [Str (C.abilityKey (C.abilityInstance a))]])]))
             | a <- defaults ] ++
             [ D.text "/// The SLH-DSA (FIPS 205) signature handler." <> D.hardline <>
-              D.text ("public static func slhDsaSignature() -> any " ++ Effects.protocolType a ++ " {") <>
-              D.nest 2 (D.hardline <> D.text ("Embedding.run { try LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative" ++
-                "(LawSpec.Program.schema, SymbolContext(), Crypto.slhDsaSignatureHandler()) }")) <> D.hardline <> D.text "}"
+              signature "public static func slhDsaSignature" [] (" -> any " ++ Effects.protocolType a)
+                (renderBody (Ty "") (Pure "Embedding.run" [Lambda [] (Ty (Effects.protocolType a)) (call "LawSpec.AbilityBridges" (Effects.bridgeName a "ToNative")
+                  [Raw "LawSpec.Program.schema", Raw "SymbolContext()", Pure "Crypto.slhDsaSignatureHandler" []])]))
             | a <- defaults, C.abilityKey (C.abilityInstance a) == "lawspec.crypto::ability::Signature" ]
           doc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime"]] <> D.hardline <>
 

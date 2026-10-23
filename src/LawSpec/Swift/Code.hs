@@ -9,7 +9,7 @@ module LawSpec.Swift.Code
   ( Ty(..), Expr(..)
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
-  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, fileHeader, blockDoc, comment
+  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, fileHeader, blockDoc, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -146,13 +146,62 @@ mentions n e = case e of
 -- | A statement: a binding (of anything, block or not) or an effect.
 data Stmt = Bind String Ty Expr | Effect Expr
 
-type Fresh = State Int
+-- | The names a body already uses, so a made name is new.
+type Fresh = State (S.Set String)
 
-fresh :: Fresh String
-fresh = do
-  n <- get
-  put (n + 1)
-  pure ("ls" ++ show n)
+-- | A name for a value the code makes, by what it holds: chosen (a
+-- conditional's value), argument (an argument computed before a block).
+fresh :: String -> Fresh String
+fresh prefix = do
+  used <- get
+  let name = case [c | c <- prefix : [prefix ++ show k | k <- [2 :: Int ..]], not (S.member c used)] of
+        c : _ -> c
+        [] -> prefix
+  put (S.insert name used)
+  pure name
+
+-- | Every name an expression binds or mentions.
+namesIn :: Expr -> S.Set String
+namesIn e = case e of
+  Var v -> S.singleton v
+  Raw r -> S.fromList (words (map (\c -> if isIdent c then c else ' ') r))
+  Call f args -> S.insert (takeWhile (/= '.') f) (S.unions (map namesIn args))
+  Pure f args -> S.insert (takeWhile (/= '.') f) (S.unions (map namesIn args))
+  Invoke f args -> S.unions (map namesIn (f : args))
+  ListOf _ xs -> S.unions (map namesIn xs)
+  TupleOf xs -> S.unions (map namesIn xs)
+  Lambda ps _ b -> S.union (S.fromList (map fst ps)) (namesIn b)
+  Let n _ v b -> S.insert n (S.union (namesIn v) (namesIn b))
+  If c _ a b -> S.unions (map namesIn [c, a, b])
+  Do xs v -> S.unions (map namesIn (v : xs))
+  Statement x -> namesIn x
+  _ -> S.empty
+  where isIdent c = isAscii c && (c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c == '_')
+
+-- | A call on a long made receiver (a codec of codecs) names the receiver
+-- first, so the call's line can break inside its arguments.
+nameReceivers :: Expr -> Expr
+nameReceivers e = case e of
+  Call f args | Just (receiver, method) <- longReceiver f ->
+    Let "codec" (Ty "") (Raw receiver) (Call ("codec." ++ method) (map nameReceivers args))
+  Pure f args | Just (receiver, method) <- longReceiver f ->
+    Let "codec" (Ty "") (Raw receiver) (Pure ("codec." ++ method) (map nameReceivers args))
+  Call f args -> Call f (map nameReceivers args)
+  Pure f args -> Pure f (map nameReceivers args)
+  Invoke f args -> Invoke (nameReceivers f) (map nameReceivers args)
+  ListOf t xs -> ListOf t (map nameReceivers xs)
+  TupleOf xs -> TupleOf (map nameReceivers xs)
+  Lambda ps r b -> Lambda ps r (nameReceivers b)
+  Let n t v b -> Let n t (nameReceivers v) (nameReceivers b)
+  If c t a b -> If (nameReceivers c) t (nameReceivers a) (nameReceivers b)
+  Do xs v -> Do (map nameReceivers xs) (nameReceivers v)
+  Statement x -> Statement (nameReceivers x)
+  _ -> e
+  where
+    longReceiver f = case break (== '.') (reverse f) of
+      (method, '.' : receiver) | ')' `elem` receiver, length receiver > 40, '(' `notElem` method ->
+        Just (reverse receiver, reverse method)
+      _ -> Nothing
 
 -- | Statements that compute an expression, and the inline expression left.
 -- Block constructs in argument position are bound first; when one argument
@@ -191,7 +240,7 @@ flatten ty e = case e of
   _ -> pure ([], e)
   where
     hoisted = do
-      name <- fresh
+      name <- fresh "chosen"
       let t = case e of If _ ct _ _ -> ct; _ -> ty
       pure ([Bind name t e], Var name)
     effect x = do
@@ -213,7 +262,7 @@ arguments args
     one a = do
       (ss, a') <- flatten tValue a
       if isInline a && not (simple a') then do
-        name <- fresh
+        name <- fresh "argument"
         pure (ss ++ [Bind name (Ty "") a'], Var name)
       else pure (ss, a')
     simple a = case a of
@@ -237,15 +286,15 @@ bindTo name t value = case value of
 
 -- | A function body: its statements and its result.
 renderBody :: Ty -> Expr -> D.Doc
-renderBody ty e = evalState (body ty Return (distinct e)) 0
+renderBody ty e = let e' = distinct (nameReceivers e) in evalState (body ty Return e') (namesIn e')
 
 -- | A body run for its effects (a Void function).
 renderStatements :: Expr -> D.Doc
-renderStatements e = evalState (body tVoid Discard (distinct e)) 0
+renderStatements e = let e' = distinct (nameReceivers e) in evalState (body tVoid Discard e') (namesIn e')
 
 -- | An expression that is already inline.
 renderExpr :: Expr -> D.Doc
-renderExpr e = evalState (inline (distinct e)) 0
+renderExpr e = let e' = distinct e in evalState (inline e') (namesIn e')
 
 -- | Swift refuses a constant another in the same body already names, so each
 -- binder that reuses a name bound earlier is renamed (the first keeps its
@@ -274,10 +323,13 @@ distinct e = evalState (go M.empty e) S.empty
       Do xs v -> Do <$> mapM (go env) xs <*> go env v
       Statement s -> Statement <$> go env s
       _ -> pure x
+    -- A keyword's escaped name keeps its backticks around the suffix.
+    suffixed ('`' : rest) k = '`' : takeWhile (/= '`') rest ++ "_" ++ show k ++ "`"
+    suffixed n k = n ++ "_" ++ show k
     binder :: String -> State (S.Set String) String
     binder n = do
       used <- get
-      let n' = case [c | c <- n : [n ++ "_" ++ show k | k <- [1 :: Int ..]], not (S.member c used)] of { c : _ -> c; [] -> n }
+      let n' = case [c | c <- n : [suffixed n k | k <- [2 :: Int ..]], not (S.member c used)] of { c : _ -> c; [] -> n }
       put (S.insert n' used)
       pure n'
 
@@ -410,10 +462,10 @@ inline e = case e of
     applied fd args
   ListOf _ xs -> do
     ds <- mapM inline xs
-    pure (if any isLambda xs then brokenList "[" "]" (length ds > 1) ds else arrayDoc ds)
+    pure (arrayDoc ds)
   TupleOf xs -> do
     ds <- mapM inline xs
-    pure (if any isLambda xs then brokenList "(" ")" False ds else D.delimit indentation "(" ")" ds)
+    pure (argumentsDoc ds)
   Lambda ps r b -> lambda ps r b
   Statement x -> inline x
   _ -> do
@@ -427,10 +479,10 @@ inline e = case e of
       lastArgument@(Lambda {}) : before | not (any isLambda before), trailing f -> do
         ds <- mapM inline (reverse before)
         lam <- inline lastArgument
-        pure (f <> (if null ds then mempty else D.delimit indentation "(" ")" ds) <> D.text " " <> lam)
+        pure (f <> (if null ds then mempty else argumentsDoc ds) <> D.text " " <> lam)
       _ -> do
         ds <- mapM inline args
-        pure (f <> if any isLambda args then brokenList "(" ")" False ds else D.delimit indentation "(" ")" ds)
+        pure (f <> argumentsDoc ds)
 
 -- | A generic initializer takes its closure in parentheses.
 trailing :: D.Doc -> Bool
@@ -453,13 +505,21 @@ callDoc :: String -> [D.Doc] -> D.Doc
 callDoc f ds = D.text f <> argumentsDoc ds
 
 argumentsDoc :: [D.Doc] -> D.Doc
-argumentsDoc = D.delimit indentation "(" ")"
+argumentsDoc ds
+  | any spansLines ds = brokenList "(" ")" False ds
+  | otherwise = D.delimit indentation "(" ")" ds
+
+-- | Whether a document holds a line break it must keep (a closure's body):
+-- swift-format then puts each of its list's items on a line of its own.
+spansLines :: D.Doc -> Bool
+spansLines d = '\n' `elem` D.render D.Compact d
 
 -- | An array literal: on one line, or one item a line with a trailing
 -- comma after each of several, as swift-format writes it. On one line, a
 -- literal of several items keeps a column free for that comma, as
 -- swift-format measures it.
 arrayDoc :: [D.Doc] -> D.Doc
+arrayDoc ds | any spansLines ds = brokenList "[" "]" (length ds > 1) ds
 arrayDoc [d] = D.delimit indentation "[" "]" [d]
 arrayDoc [] = D.text "[]"
 arrayDoc ds = D.group (D.text "[" <> D.nest indentation (D.softbreak <> D.commaSep ds <> D.whenBroken (D.text ",")) <>
@@ -471,6 +531,13 @@ arrayDoc ds = D.group (D.text "[" <> D.nest indentation (D.softbreak <> D.commaS
 signature :: String -> [String] -> String -> D.Doc -> D.Doc
 signature opening parameters closing body =
   D.text opening <> argumentsDoc (map D.text parameters) <> D.text closing <> blockDoc body
+
+-- | A type's declaration (final class C: P, Q): its conformances on one
+-- line, or one a line with the brace on a line of its own, then its body.
+typeDeclaration :: String -> [String] -> D.Doc -> D.Doc
+typeDeclaration opening conformances inner =
+  D.group (D.text (opening ++ ":") <> D.nest indentation (D.softline <> D.joinWith (D.text "," <> D.softline) (map D.text conformances)) <>
+    D.softline <> D.text "{") <> D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
 
 -- | A braced block's body on lines of its own.
 blockDoc :: D.Doc -> D.Doc

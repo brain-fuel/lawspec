@@ -253,8 +253,8 @@ emitApi layout bits declarations units = do
           scoped = if null handlers then converted else
             Call "Effects.withScope" [Var "schema",
               ListOf (Ty "[(String, (Schema) throws -> Effects.Handler)]")
-                [ TupleOf [Str (C.abilityKey (C.abilityInstance a)), Raw ("{ s in try LawSpec.AbilityBridges." ++
-                    Effects.bridgeName a "FromNative" ++ "(s, symbols, " ++ n ++ ") }")]
+                [ TupleOf [Str (C.abilityKey (C.abilityInstance a)), Lambda [("scope", tSchema)] Effects.handlerTy
+                    (Call ("LawSpec.AbilityBridges." ++ Effects.bridgeName a "FromNative") [Var "scope", Var "symbols", Var n])]
                 | (a, (n, _)) <- zip handlers params ],
               Lambda [("scope", tSchema)] resultTy converted]
           body = Lambda [] resultTy (Let "schema" (Ty "") (Raw "LawSpec.Program.schema")
