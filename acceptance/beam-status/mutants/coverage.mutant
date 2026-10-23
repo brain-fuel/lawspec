@@ -1,10 +1,10 @@
-expect-any: known property failure | law_known_property_failure
+expect-any: known property discrepancy | law_known_property_discrepancy
 expect-any: unmet_cover | UnmetCover
 @@ acceptance/beam-status/status.lawspec
 <<<<<<<
-for law "|known property failure|
+for law "|known property discrepancy|
     use seven for n
 =======
-for law "|known property failure|
+for law "|known property discrepancy|
     use zero for n
 >>>>>>>

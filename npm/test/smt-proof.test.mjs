@@ -67,7 +67,7 @@ test('actual Z3 establishes nonlinear and dependent laws from rebuilt-WASM tasks
   }
 });
 
-test('task planning remains separate from the ordinary proof cache and honors known-failing harnesses',requiresZ3,async()=>{
+test('task planning remains separate from the ordinary proof cache and honors known-discrepancy harnesses',requiresZ3,async()=>{
   const input=request(law('true'));
   const checked=await compiler.check(input);
   const planned=await compiler.proofTasks(input);
@@ -76,14 +76,14 @@ test('task planning remains separate from the ordinary proof cache and honors kn
   assert.equal(planned.evidence.find(row=>row.stage==='law').status,'planned');
   assert.deepEqual(repeated,checked);
   const guarded=request(square);
-  guarded.sources.push({path:'harness.lawspec',content:`harness smt.testing for smt is for law selected known failing "investigate"
+  guarded.sources.push({path:'harness.lawspec',content:`harness smt.testing for smt is for law selected known discrepancy "investigate"
 end for law
 end harness
 `});
   const result=await proveWithZ3(compiler,guarded,{binary:z3});
   assert.ok(result.diagnostics.some(row=>row.code==='harness'));
   assert.equal(result.solverEvidence[0].outcome,'unsat');
-  assert.equal(result.evidence.find(row=>row.stage==='law').status,'known-failing');
+  assert.equal(result.evidence.find(row=>row.stage==='law').status,'known-discrepancy');
 });
 
 test('a false law is refuted only at values the reference evaluator confirms',requiresZ3,async()=>{

@@ -1,7 +1,7 @@
 //! The harness plane at run time (see docs/reference/language/harness.md):
 //! how a law's tests run, never what the law means. Generated tests call it
 //! for strategies (drawn from a seed proptest chooses), adequacy (cover,
-//! classify, label), run metadata (known failing, timeout, repeat, retry
+//! classify, label), run metadata (known discrepancy, timeout, repeat, retry
 //! flaky) and benchmarks.
 //!
 //! Statistics go to standard output, and, when LAWSPEC_STATS names a
@@ -244,18 +244,18 @@ pub fn run(law: &str, name: &str, timeout: u64, repeat: u32, retries: u32, cover
     Ok(())
 }
 
-/// A known-failing law's test must fail. One that passes is reported: the
-/// harness should no longer say it is known to fail.
-pub fn known_failing(law: &str, name: &str, reason: &str, test: fn() -> ls::Result<()>) -> ls::Result<()> {
+/// A known discrepancy must reproduce. A passing run requires human review; the
+/// harness requires human review of the specification and implementation.
+pub fn known_discrepancy(law: &str, name: &str, reason: &str, test: fn() -> ls::Result<()>) -> ls::Result<()> {
     match once(law, 0, test) {
         Err((message, _)) => {
-            record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("known-failing")), ("reason", quote(reason))]);
-            println!("{law} is known to fail ({reason}): {}", message.lines().next().unwrap_or(""));
+            record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("known-discrepancy")), ("reason", quote(reason))]);
+            println!("{law} has a known discrepancy ({reason}): {}", message.lines().next().unwrap_or(""));
             Ok(())
         }
         Ok(()) => {
-            record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("known-failing-passed")), ("reason", quote(reason))]);
-            Err(format!("{law} is marked known failing ({reason}), but it passes; remove `known failing` from its harness"))
+            record(name, &[("law", quote(law)), ("test", quote(name)), ("outcome", quote("known-discrepancy-passed")), ("reason", quote(reason))]);
+            Err(format!("{law} is marked known discrepancy ({reason}), but it passes; review the specification and implementation before removing `known discrepancy` from its harness"))
         }
     }
 }

@@ -28,5 +28,5 @@ lawDescriptors bits datas p
 -- finite domain), every input has a descriptor, and its harness neither
 -- skips it nor expects it to fail.
 searchable :: Bool -> C.Property -> Bool
-searchable finite p = not finite && C.harnessSkip h == Nothing && C.harnessKnownFailing h == Nothing
+searchable finite p = not finite && C.harnessSkip h == Nothing && C.harnessKnownDiscrepancy h == Nothing
   where h = C.propertyHarness p

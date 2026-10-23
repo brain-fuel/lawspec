@@ -295,7 +295,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       _ -> []
     harnessView names h = object
       [ "unit" .= C.harnessUnit h, "tags" .= C.harnessTags h, "skip" .= C.harnessSkip h
-      , "knownFailing" .= C.harnessKnownFailing h, "timeoutMilliseconds" .= C.harnessTimeout h
+      , "knownDiscrepancy" .= C.harnessKnownDiscrepancy h, "timeoutMilliseconds" .= C.harnessTimeout h
       , "repeat" .= C.harnessRepeat h, "retries" .= C.harnessRetries h
       , "cover" .= [object ["percent" .= percent, "label" .= label, "when" .= expressionView names e] | C.Cover percent label e <- C.harnessCover h]
       , "classify" .= [object ["label" .= label, "when" .= expressionView names e] | (e, label) <- C.harnessClassify h]

@@ -238,7 +238,7 @@ export interface LawHarness {
   unit: string | null;
   tags: string[];
   skip: string | null;
-  knownFailing: string | null;
+  knownDiscrepancy: string | null;
   timeoutMilliseconds: number | null;
   repeat: number;
   retries: number;
@@ -427,7 +427,7 @@ export type DischargeStatus =
     'not-verified' |
     'incomplete' |
     'unsupported' |
-    'known-failing' |
+    'known-discrepancy' |
     'flaky' |
     'skipped' |
     'pending' |
@@ -730,7 +730,7 @@ export type NativeConformanceStatus =
     'partial' |
     'incomplete' |
     'skipped' |
-    'known-failing' |
+    'known-discrepancy' |
     'not-selected' |
     'stale' |
     'unavailable';
@@ -741,7 +741,7 @@ export type NativeOutcome =
     'skipped' |
     'incomplete' |
     'not-run' |
-    'known-failing';
+    'known-discrepancy';
 
 export interface NativeCompletedTest {
   name: string;
@@ -850,7 +850,7 @@ export interface NativeTestEntry {
   name: string;
   tags: string[];
   skip: string | null;
-  knownFailing: string | null;
+  knownDiscrepancy: string | null;
   parallel: boolean;
   kind?: 'model';
   scope?: string;

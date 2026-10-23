@@ -31,13 +31,13 @@ tests(F) -> [{Name, fun() -> with_directory(fun(Directory) -> Test(Directory) en
         {"a failed repetition stops the remaining repetitions", fun repeat_failure/1},
         {"unobserved cases retain their original process and value", fun unobserved/1},
         {"retry retains separate targeted search reports", fun search_reports/1},
-        {"known failures keep the first failed native check and stop", fun(D) -> expected_failure(F, D) end},
-        {"a passing known-failing law fails with a removal diagnostic", fun(D) -> unexpected_pass(F, D) end},
-        {"known failing cannot conceal a coverage shortfall", fun(D) -> expected_cover(F, D) end},
-        {"known failing cannot conceal an invalid strategy", fun(D) -> expected_strategy(F, D) end},
-        {"known failing cannot accept a law with no generated input", fun(D) -> expected_empty(F, D) end},
-        {"retry success does not satisfy a known-failing annotation", fun(D) -> expected_flaky(F, D) end},
-        {"known failure scopes isolate their reports", fun expected_nested/1},
+        {"known discrepancies keep the first failed native check and stop", fun(D) -> expected_failure(F, D) end},
+        {"a passing known-discrepancy law fails with a removal diagnostic", fun(D) -> unexpected_pass(F, D) end},
+        {"known discrepancy cannot conceal a coverage shortfall", fun(D) -> expected_cover(F, D) end},
+        {"known discrepancy cannot conceal an invalid strategy", fun(D) -> expected_strategy(F, D) end},
+        {"known discrepancy cannot accept a law with no generated input", fun(D) -> expected_empty(F, D) end},
+        {"retry success does not satisfy a known-discrepancy annotation", fun(D) -> expected_flaky(F, D) end},
+        {"known discrepancy scopes isolate their reports", fun expected_nested/1},
         {"supervised checks keep native shrinking and resource ownership", fun(D) -> owned_shrinks(F, D) end},
         {"supervised native timeouts remain harness failures", fun(D) -> native_timeout(F, D) end}
     ]].
@@ -357,14 +357,14 @@ search_reports(Directory) ->
 expected_failure(F, Directory) ->
     put(reached_later_check, false),
     Law = <<"expected">>,
-    lawspec_beam_harness:known_failing(Law, <<"expected known failing">>, <<"tracked bug">>, [
+    lawspec_beam_harness:known_discrepancy(Law, <<"expected known discrepancy">>, <<"tracked bug">>, [
         {"example", fun() -> lawspec_beam_harness:run(Law, <<"example">>, [], #{observed => false}, fun() -> ok end) end},
         {timeout, 60, {"property", fun() -> native(F, Law, F:integer(5, 10000), fun(_) -> false end,
             fun(_) -> {[true], [], []} end, [{100, <<"root">>}]) end}},
         {"later", fun() -> put(reached_later_check, true) end}]),
     ?assertEqual(false, erase(reached_later_check)),
     [Report] = reports(Directory),
-    ?assertMatch(#{<<"outcome">> := <<"known-failing">>, <<"reason">> := <<"tracked bug">>}, Report),
+    ?assertMatch(#{<<"outcome">> := <<"known-discrepancy">>, <<"reason">> := <<"tracked bug">>}, Report),
     [Example, Property] = maps:get(<<"checks">>, Report),
     ?assertMatch(#{<<"outcome">> := <<"passed">>}, Example),
     ?assertMatch(#{<<"outcome">> := <<"failed">>, <<"cases">> := 1}, Property),
@@ -372,18 +372,18 @@ expected_failure(F, Directory) ->
 
 unexpected_pass(F, Directory) ->
     Law = <<"fixed bug">>,
-    ?assertError({lawspec, {known_failing_passed, Law, <<"old issue">>}},
-        lawspec_beam_harness:known_failing(Law, <<"fixed bug known failing">>, <<"old issue">>, [
+    ?assertError({lawspec, {known_discrepancy_passed, Law, <<"old issue">>}},
+        lawspec_beam_harness:known_discrepancy(Law, <<"fixed bug known discrepancy">>, <<"old issue">>, [
             {"property", fun() -> native(F, Law, F:exactly(5), fun(_) -> true end,
                 fun(_) -> {[], [], []} end, []) end}])),
     [Report] = reports(Directory),
-    ?assertMatch(#{<<"outcome">> := <<"known-failing-passed">>,
+    ?assertMatch(#{<<"outcome">> := <<"known-discrepancy-passed">>,
         <<"checks">> := [#{<<"outcome">> := <<"passed">>, <<"cases">> := 60}]}, Report).
 
 expected_cover(F, Directory) ->
     Law = <<"expected cover">>,
     ?assertMatch({lawspec, {harness_failed, Law, _}}, failure(fun() ->
-        lawspec_beam_harness:known_failing(Law, <<"expected cover known failing">>, <<"not a law failure">>, [
+        lawspec_beam_harness:known_discrepancy(Law, <<"expected cover known discrepancy">>, <<"not a law failure">>, [
             {"property", fun() -> native(F, Law, F:exactly(5), fun(_) -> true end,
                 fun(_) -> {[false], [], []} end, [{1, <<"missing">>}]) end}]) end)),
     [Report] = reports(Directory),
@@ -392,7 +392,7 @@ expected_cover(F, Directory) ->
 expected_strategy(F, Directory) ->
     Law = <<"expected strategy">>,
     ?assertMatch({lawspec, _}, failure(fun() ->
-        lawspec_beam_harness:known_failing(Law, <<"expected strategy known failing">>, <<"not a law failure">>, [
+        lawspec_beam_harness:known_discrepancy(Law, <<"expected strategy known discrepancy">>, <<"not a law failure">>, [
             {"property", fun() -> native(F, Law,
                 F:map(F:exactly(0), fun(V) -> lawspec_beam_generators:check_drawn(<<"bad">>, <<"n">>, fun(_) -> false end, V) end),
                 fun(_) -> true end, fun(_) -> {[], [], []} end, []) end}]) end)),
@@ -402,7 +402,7 @@ expected_strategy(F, Directory) ->
 expected_empty(F, Directory) ->
     Law = <<"expected empty">>,
     ?assertMatch({lawspec, _}, failure(fun() ->
-        lawspec_beam_harness:known_failing(Law, <<"expected empty known failing">>, <<"not a law failure">>, [
+        lawspec_beam_harness:known_discrepancy(Law, <<"expected empty known discrepancy">>, <<"not a law failure">>, [
             {"property", fun() -> native(F, Law, F:complete(F:refine_input(F:exactly(0), fun(_) -> false end)),
                 fun(_) -> true end, fun(_) -> {[], [], []} end, []) end}]) end)),
     [Report] = reports(Directory),
@@ -411,13 +411,13 @@ expected_empty(F, Directory) ->
 expected_flaky(F, Directory) ->
     put(harness_runs, 0),
     Law = <<"expected flaky">>,
-    ?assertError({lawspec, {known_failing_passed, Law, <<"old issue">>}},
-        lawspec_beam_harness:known_failing(Law, <<"expected flaky known failing">>, <<"old issue">>, [
+    ?assertError({lawspec, {known_discrepancy_passed, Law, <<"old issue">>}},
+        lawspec_beam_harness:known_discrepancy(Law, <<"expected flaky known discrepancy">>, <<"old issue">>, [
             {"property", fun() -> controlled(F, Law, #{retries => 1}, fun(_) -> get(harness_runs) > 1 end,
                 fun(_) -> {[], [], []} end, []) end}])),
     ?assertEqual(2, erase(harness_runs)),
     [Report] = reports(Directory),
-    ?assertMatch(#{<<"outcome">> := <<"known-failing-passed">>,
+    ?assertMatch(#{<<"outcome">> := <<"known-discrepancy-passed">>,
         <<"checks">> := [#{<<"outcome">> := <<"flaky">>, <<"attempts">> := 2}]}, Report).
 
 expected_nested(Directory) ->
@@ -425,13 +425,13 @@ expected_nested(Directory) ->
     Run = fun(Name, Test) -> {Name, fun() ->
         lawspec_beam_harness:run(Law, Name, [], #{observed => false}, Test)
     end} end,
-    lawspec_beam_harness:known_failing(Law, <<"outer">>, <<"outer issue">>, [
-        {"inner", fun() -> lawspec_beam_harness:known_failing(Law, <<"inner">>, <<"inner issue">>,
+    lawspec_beam_harness:known_discrepancy(Law, <<"outer">>, <<"outer issue">>, [
+        {"inner", fun() -> lawspec_beam_harness:known_discrepancy(Law, <<"inner">>, <<"inner issue">>,
             [Run(<<"inside">>, fun() -> error(inner_error) end)]) end},
         Run(<<"outside">>, fun() -> error(outer_error) end)]),
     [Report] = reports(Directory),
-    ?assertMatch(#{<<"test">> := <<"outer">>, <<"outcome">> := <<"known-failing">>,
-        <<"checks">> := [#{<<"test">> := <<"inner">>, <<"outcome">> := <<"known-failing">>},
+    ?assertMatch(#{<<"test">> := <<"outer">>, <<"outcome">> := <<"known-discrepancy">>,
+        <<"checks">> := [#{<<"test">> := <<"inner">>, <<"outcome">> := <<"known-discrepancy">>},
             #{<<"test">> := <<"outside">>, <<"outcome">> := <<"failed">>}]}, Report),
     lawspec_beam_harness:run(Law, <<"ordinary">>, [], #{observed => false}, fun() -> ok end),
     ?assertEqual(2, length(reports(Directory))).

@@ -129,7 +129,7 @@ emitTests Config{..} unit laws = do
     propertyName index e =
       let h = C.propertyHarness (original e)
           base = unitTestNames "java" (map name laws) !! index
-      in (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
+      in (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base
     junitTest name body = text "@Test" <> D.hardline <> text ("void " ++ name ++ "() ") <> block body
     throwingTest name body = text "@Test" <> D.hardline <> text ("void " ++ name ++ "() throws Throwable ") <> block body
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
@@ -145,11 +145,11 @@ emitTests Config{..} unit laws = do
             text "new Value[] {" <> D.commaSep (map expr (C.harnessLabels h)) <> text "}"]) | observed h] ++
          [statement (call "lawspec.testing.LawSpecHarness.target" [expr score, quoted label]) | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [text "@org.junit.jupiter.api.Disabled(" <> quoted (label ++ ": " ++ reason) <> text ")" <> D.hardline <>
         junitTest (fn ++ "_skipped") mempty]
-      (_, Just reason) -> docs ++ [junitTest (fn ++ "_knownFailing") (statement (call "lawspec.testing.LawSpecHarness.knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason,
+      (_, Just reason) -> docs ++ [junitTest (fn ++ "_knownDiscrepancy") (statement (call "lawspec.testing.LawSpecHarness.knownDiscrepancy"
+        [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason,
          call "java.util.List.<lawspec.testing.LawSpecHarness.Body>of" [text ("this::lawspecHarness" ++ fn ++ k) | k <- kinds]]))]
       _ | runSettings h -> docs ++ [throwingTest (fn ++ k) (statement (call "lawspec.testing.LawSpecHarness.run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
@@ -250,7 +250,7 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           h = C.propertyHarness (original e)
           base = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++

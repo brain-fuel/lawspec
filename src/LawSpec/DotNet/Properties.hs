@@ -215,12 +215,12 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             _ -> pure []
           pure ([test (name ++ suffix "property") (label ++ " property") (observed harness) (setup check)] ++ searches)
       let ordinary = examples ++ boundary ++ random
-          tests = case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+          tests = case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
             (Just reason, _) -> [declareTest (name ++ suffix "skipped") (label ++ " skipped")
               (Do [call "Harness" "skip" [Str label, Str reason]]
                 (Raw ("Assert.Skip " ++ stringLiteral FSharp reason) ("Assert.Skip(" ++ stringLiteral CSharp reason ++ ")")))]
-            (_, Just reason) -> [declareTest (name ++ suffix "knownFailing") (label ++ " known failing")
-              (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
+            (_, Just reason) -> [declareTest (name ++ suffix "knownDiscrepancy") (label ++ " known discrepancy")
+              (call "Harness" "knownDiscrepancy" [Str label, Str (label ++ " known discrepancy"), Str reason,
                 ListOf (tFun [] tUnit) [Lambda [] tUnit (wrapHarness label d o harness b) | (_, d, o, b) <- ordinary]])]
             _ -> map (\(n, d, o, b) -> declareTest n d (wrapHarness label d o harness b)) ordinary
       -- The law's description, expansion and expectations, as every target

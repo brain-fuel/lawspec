@@ -346,7 +346,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
             (lift (Left "two strategies select the same expanded input or search binder"))
           pure cp { C.propertyHarness = C.LawHarness
             { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
-            , C.harnessSkip = S.planSkip plan, C.harnessKnownFailing = S.planKnownFailing plan
+            , C.harnessSkip = S.planSkip plan, C.harnessKnownDiscrepancy = S.planKnownDiscrepancy plan
             , C.harnessTimeout = S.planTimeout plan, C.harnessRepeat = S.planRepeat plan
             , C.harnessRetries = S.planRetries plan, C.harnessCover = covers, C.harnessClassify = classes
             , C.harnessLabels = labels, C.harnessTarget = target

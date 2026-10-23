@@ -75,8 +75,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                         obligationStage item=="law", obligationStatus item==NotVerified =
                           case [why | unit<-C.programUnits core, law<-C.unitProperties unit,
                             C.propertyId law==obligationDeclaration item,
-                            Just why<-[C.harnessKnownFailing (C.propertyHarness law)]] of
-                            why:_ -> item{obligationStatus=KnownFailing,obligationReason="marked known failing: "++why}
+                            Just why<-[C.harnessKnownDiscrepancy (C.propertyHarness law)]] of
+                            why:_ -> item{obligationStatus=KnownDiscrepancy,obligationReason="marked known discrepancy: "++why++"; human review must determine whether the specification, implementation, or both need correction"}
                             [] -> item{obligationStatus=Planned,obligationReason="an SMT proof task is requested; no solver execution has completed"}
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
@@ -298,7 +298,7 @@ withTests original verification testing entries (Object o) = Object (KM.insert "
       [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
       , "index" .= entryIndex e, "file" .= entryFile e, "key" .= entryKey e
       , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
-      , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e
+      , "skip" .= entrySkip e, "knownDiscrepancy" .= entryKnownDiscrepancy e
       , "parallel" .= entryParallel e ] ++
       ["coverage" .= coverage e] ++
       ["kind" .= kind | Just kind<-[entryKind e]] ++ ["scope" .= scope | Just scope<-[entryScope e]] ++

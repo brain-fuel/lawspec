@@ -26,7 +26,7 @@ export function recordNativeAttempts(run, tests, {keys,seed,ok,profile,output,al
     const complete=matched.length>0&&matched.every(test=>test.status==='passed')&&(ok||model);
     const outcome=matched.some(test=>test.status==='failed')?'failed':
       matched.some(test=>test.status==='incomplete')?'incomplete':
-      entry.skip?'skipped':complete?(entry.knownFailing?'known-failing':'passed'):
+      entry.skip?'skipped':complete?(entry.knownDiscrepancy?'known-discrepancy':'passed'):
       matched.length&&matched.every(test=>test.status==='skipped')?'skipped':'incomplete';
     return [entry.law,{key:keys.get(entry.law),planKey:entry.key,seed:nativeSeed(seed),at,outcome,
       profile,coverage:entry.coverage??{kind:'sampled',scopedQuantifiers:true},check:{id:entry.law,unit:entry.unit,file:entry.file,name:entry.name,label:entry.label,
@@ -170,7 +170,7 @@ export function attachNativeEvidence(evidence,observations){
     const status=failed.length?(combinedFailure?'incomplete':'failed'):
       current.length===rows.length&&current.every(row=>row.outcome==='passed')?'passed':
       current.length===rows.length&&current.every(row=>row.outcome==='skipped')?'skipped':
-      current.length===rows.length&&current.every(row=>row.outcome==='known-failing')?'known-failing':
+      current.length===rows.length&&current.every(row=>row.outcome==='known-discrepancy')?'known-discrepancy':
       current.some(row=>row.outcome==='passed')?'partial':
       current.some(row=>['incomplete','not-run'].includes(row.outcome))?'incomplete':
       rows.every(row=>row.freshness==='not-selected')?'not-selected':

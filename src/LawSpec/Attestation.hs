@@ -273,7 +273,7 @@ relied program = M.fromList
 touched :: Attestation -> M.Map Id [String] -> Obligation -> [(Dependency, [String])]
 touched attestation reliance o
   | obligationStage o /= "law" = []
-  | obligationStatus o `notElem` [ExhaustivelyChecked, PropertyTested, Measured, KnownFailing] = []
+  | obligationStatus o `notElem` [ExhaustivelyChecked, PropertyTested, Measured, KnownDiscrepancy] = []
   | otherwise =
       [ (d, matched) | d <- attestationDependencies attestation
       , let matched = filter (== dependencyName d) names, not (null matched) ]

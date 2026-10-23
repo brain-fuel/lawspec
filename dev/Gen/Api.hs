@@ -142,7 +142,7 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "HarnessSearch" (fields [("binder", "string"), ("path", "string[]"), ("strategy", "string"), ("draw", "HarnessDraw")])
   , interface "LawHarness"
       (fields [("unit", "string | null"), ("tags", "string[]"), ("skip", "string | null"),
-       ("knownFailing", "string | null"), ("timeoutMilliseconds", "number | null"), ("repeat", "number"),
+       ("knownDiscrepancy", "string | null"), ("timeoutMilliseconds", "number | null"), ("repeat", "number"),
        ("retries", "number"), ("labels", "Expr[]"), ("target", "Expr | null"), ("group", "string | null"),
        ("orderRandom", "boolean"), ("parallel", "boolean"), ("witnesses", "HarnessWitness[]"), ("searches", "HarnessSearch[]")] ++
        [("cover", array (record (fields [("percent", "number"), ("label", "string"), ("when", "Expr")]))),
@@ -206,7 +206,7 @@ declarations = joinWith (softbreak <> softbreak)
       ("names?", "NativeNameBinding[]"),
       ("handlers?", "NativeHandlerBinding[]"), ("failures?", "NativeFailureMapping[]"), ("network?", "NativeNetworkBinding"),
       ("erlangIncludes?", "NativeErlangInclude[]")])
-  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"])
+  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-discrepancy", "flaky", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++
@@ -289,8 +289,8 @@ declarations = joinWith (softbreak <> softbreak)
   , alias "NativeSeed" [text "number",text "string"]
   , alias "NativeFreshness" (map quoted ["matching-inputs","stale","not-selected","unavailable","not-run"])
   , alias "NativeConformanceStatus" (map quoted ["passed","failed","partial","incomplete",
-      "skipped","known-failing","not-selected","stale","unavailable"])
-  , alias "NativeOutcome" (map quoted ["passed","failed","skipped","incomplete","not-run","known-failing"])
+      "skipped","known-discrepancy","not-selected","stale","unavailable"])
+  , alias "NativeOutcome" (map quoted ["passed","failed","skipped","incomplete","not-run","known-discrepancy"])
   , interface "NativeCompletedTest" (fields [("name","string"),("classname?","string"),
       ("identity?","string"),("status","'passed' | 'failed' | 'skipped'"),("failure?","string"),
       ("reason?","string"),("time?","number")])
@@ -323,7 +323,7 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeTestEntry" (fields
       [("law","string"),("unit","string"),("label","string"),("index","number"),
        ("file","string"),("key","string"),("callsAdapters","boolean"),("name","string"),
-       ("tags","string[]"),("skip","string | null"),("knownFailing","string | null"),
+       ("tags","string[]"),("skip","string | null"),("knownDiscrepancy","string | null"),
        ("parallel","boolean"),("kind?","'model'"),("scope?","string"),("obligations?","NativeEvidenceTarget[]"),("coverage","NativeCheckCoverage")])
   , interface "Result"
       ([("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++

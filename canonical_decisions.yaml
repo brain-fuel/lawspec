@@ -333,6 +333,14 @@ DEC-proof-producing-index-layer:
   opened: 0.12.0
   decided: 0.16.0
 
+DEC-known-discrepancy:
+  status: decided
+  question: Does an acknowledged law mismatch establish that the implementation is wrong?
+  answer: |
+    No. The owner requested known discrepancy rather than known failure: human review must establish whether the specification, implementation, or both need correction. The harness setting is known discrepancy "reason"; current API fields use knownDiscrepancy, evidence and native observations use known-discrepancy, and generated harness entry points use the corresponding target spelling. This supersedes the current known failing vocabulary without rewriting historical receipts. Before execution it is an annotation, not evidence that a check ran. A native run must reproduce the discrepancy; an unexpected pass fails the run and asks for review before removing the annotation. Ordinary failed execution outcomes, harness failures, proof refutations, incomplete and unsupported results retain their meanings. The setting changes neither law meaning nor mandatory definition validation and cannot override a proof. Schema 5 and configuration version 2 remain; this pre-1.0 vocabulary cutover ships in 0.30.0 without a legacy syntax alias.
+  opened: 0.30.0
+  decided: 0.30.0
+
 DEC-evidence-statuses:
   status: decided
   question: How does LawSpec report what a passing suite actually establishes?

@@ -174,10 +174,10 @@ emitTests Config{..} unit laws = do
             call "Array[LawSpecRuntime.Value]" (map expr (C.harnessLabels h))] | observed h] ++
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [text "ignore(" <> quoted (fn ++ "_skipped: " ++ label) <> text ") " <> block (text ("// " ++ reason))]
-      (_, Just reason) -> docs ++ [text (register ++ "(") <> quoted (fn ++ "_knownFailing: " ++ label) <> text ") " <> block (harness "knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, call "java.util.List.of[lawspec.testing.LawSpecHarness.Body]" [body ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
+      (_, Just reason) -> docs ++ [text (register ++ "(") <> quoted (fn ++ "_knownDiscrepancy: " ++ label) <> text ") " <> block (harness "knownDiscrepancy"
+        [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason, call "java.util.List.of[lawspec.testing.LawSpecHarness.Body]" [body ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
       _ | runSettings h -> docs ++ [text (register ++ "(") <> quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text ") " <> block (harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "Array[Int]" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -271,7 +271,7 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           h = C.propertyHarness (original e)
           base' = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base'
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
@@ -293,7 +293,7 @@ emitTests Config{..} unit laws = do
           -- A registration method also has a JVM bytecode size limit. Keep
           -- the same test names and order in bounded registration methods.
           registeredBoundaries
-            | sharedBoundaries && C.harnessSkip h==Nothing && C.harnessKnownFailing h==Nothing && not (runSettings h) =
+            | sharedBoundaries && C.harnessSkip h==Nothing && C.harnessKnownDiscrepancy h==Nothing && not (runSettings h) =
                 concat [let registerPart="_lawspecBoundaries"++show index++"_"++show part in
                   [text ("def "++registerPart++"(): Unit = ")<>block (separate group),call registerPart []]
                   | (part,group)<-zip [0::Int ..] (groupsOf 64 boundaryDocs)]

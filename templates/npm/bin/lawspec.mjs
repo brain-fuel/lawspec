@@ -309,7 +309,7 @@ async function lastRuns() {
   // The outcome each law last had in each attested run, by run id; across
   // targets a failure outweighs a pass.
   const outcomes = new Map();
-  const rank = (o) => ["passed", "known-failing", "skipped", "incomplete", "failed"].indexOf(o);
+  const rank = (o) => ["passed", "known-discrepancy", "skipped", "incomplete", "failed"].indexOf(o);
   for (const name of (await readOptionalDirectory(folder)) ?? []) {
     if (!name.endsWith(".json")) continue;
     const recorded = JSON.parse((await readOptional(path.join(folder, name))) ?? "{}");
@@ -390,7 +390,7 @@ function harnessText(item) {
   if (h.repeat > 1) parts.push(`repeat ${h.repeat}`);
   if (h.retries) parts.push(`retry flaky ${h.retries}`);
   if (h.skip) parts.push(`skip "${h.skip}"`);
-  if (h.knownFailing) parts.push(`known failing "${h.knownFailing}"`);
+  if (h.knownDiscrepancy) parts.push(`known discrepancy "${h.knownDiscrepancy}"`);
   if (h.orderRandom) parts.push("order random");
   if (h.parallel) parts.push("parallel");
   const lines = [`  ${item.declaration.replace("::law::", "::")}: ${parts.join("; ") || "no harness settings"}`];
@@ -538,9 +538,9 @@ async function runTests(compiler, input, selected, roots, config) {
     if (target.language === "python" && stale.some((entry) => entry.parallel)) {
       xdist = spawnSync(target.python || "python3", ["-c", "import xdist"], { cwd: root, stdio: "ignore" }).status === 0;
     }
-    // A skipped law runs nothing. BEAM known-failing checks finish as native
+    // A skipped law runs nothing. BEAM known-discrepancy checks finish as native
     // passing tests, so their completion must appear in the native report.
-    const expected = (entry) => !entry.skip && (!entry.knownFailing || ["erlang", "elixir", "gleam"].includes(target.language));
+    const expected = (entry) => !entry.skip && (!entry.knownDiscrepancy || ["erlang", "elixir", "gleam"].includes(target.language));
     const benchmarking = options.benchmarks ? (planned.benchmarks ?? []) : [];
     if (batches.length || benchmarking.length) {
       for (const preparation of preparationInvocations(target, planned.files)) {
@@ -566,7 +566,7 @@ async function runTests(compiler, input, selected, roots, config) {
         for (const law of run.laws) seedOf.set(law.law, batch.seed);
         // A completed combined model method remains scoped to its own checks,
         // even if another selected method in this invocation failed.
-        passed.push(...run.laws.filter(entry=>['passed','known-failing'].includes(observed[entry.law]?.outcome)||!expected(entry)));
+        passed.push(...run.laws.filter(entry=>['passed','known-discrepancy'].includes(observed[entry.law]?.outcome)||!expected(entry)));
         if (report) junit.push({ target: `${target.language} (${target.root})`, xml: await junitOf(run, executed, root, since) });
         if (!ok || executed.some((test) => test.status === "failed")) { failed = true; break batches; }
         // A runner whose filter matched nothing reports success, so a law
@@ -912,9 +912,9 @@ async function main() {
     ["exempted", "EXEMPTED"],
     // A law a confirmed counterexample shows false; the build fails.
     ["refuted", "REFUTED"],
-    // The harness plane: a law it marks as known to fail, a law whose last
+    // The harness plane: an acknowledged discrepancy, a law whose last
     // run was flaky, and a law whose tests it skips.
-    ["known-failing", "KNOWN FAILING"],
+    ["known-discrepancy", "KNOWN DISCREPANCY"],
     ["flaky", "FLAKY"],
     ["skipped", "SKIPPED"],
     // A law about an open history that the entries so far do not decide.

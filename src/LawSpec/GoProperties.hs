@@ -106,9 +106,9 @@ emitTests Config{..} unit laws = do
             text "[]LawSpecValue{" <> D.joinWith (text ", ") (map expr (C.harnessLabels h)) <> text "}"] | observed h] ++
          [call "lsHarnessTarget" [text "t", expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [goTest (fn ++ "_Skipped") (call "lsHarnessSkip" [text "t", quoted label, quoted reason])]
-      (_, Just reason) -> docs ++ [goTest (fn ++ "_KnownFailing") (call "lsHarnessKnownFailing" [text "t", quoted label, quoted ("Test" ++ fn ++ "_KnownFailing"), quoted reason,
+      (_, Just reason) -> docs ++ [goTest (fn ++ "_KnownDiscrepancy") (call "lsHarnessKnownDiscrepancy" [text "t", quoted label, quoted ("Test" ++ fn ++ "_KnownDiscrepancy"), quoted reason,
         text "[]func(rapid.TB){" <> D.joinWith (text ", ") [text ("lawspecHarness" ++ fn ++ k) | k <- kinds] <> text "}"])]
       _ | runSettings h -> docs ++ [goTest (fn ++ k) (call "lsHarnessRun" [text "t", quoted label, quoted ("Test" ++ fn ++ k),
             number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
@@ -211,7 +211,7 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           h = C.propertyHarness (original e)
           base = drop 4 (testNames !! index)
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_Example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [assign n (expr v) | (n,v) <- bindings ex] ++ resourceDocs e ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++

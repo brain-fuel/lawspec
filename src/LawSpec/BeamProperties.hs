@@ -135,7 +135,7 @@ emit target layout bindings plan = do
           test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (context ++ [measure]))]
       pure (E.function (name ++ "_test_") [] [E.array
         [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
-    single h = C.harnessSkip h /= Nothing || C.harnessKnownFailing h /= Nothing
+    single h = C.harnessSkip h /= Nothing || C.harnessKnownDiscrepancy h /= Nothing
     lawTests unit name planned
       | Just reason <- C.harnessSkip (C.propertyHarness (plannedProperty planned)) =
           let label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName (plannedProperty planned)
@@ -256,9 +256,9 @@ emit target layout bindings plan = do
           pure [searchTest]
       acquired <- bracket schema (raw schema (D.text "_LsValues"))
       let -- Validate explicitly requested draws before a deterministic failure
-          -- can satisfy `known failing` and bypass strategy/coverage checks.
+          -- can satisfy `known discrepancy` and bypass strategy/coverage checks.
           ordinaryItems
-            | C.harnessKnownFailing harness /= Nothing && sampleFinite plan planned =
+            | C.harnessKnownDiscrepancy harness /= Nothing && sampleFinite plan planned =
                 randomTests ++ examples ++ boundaryTests ++ searchTests
             | otherwise = examples ++ boundaryTests ++ randomTests ++ searchTests
           -- BEAM functions cannot keep more than 1024 closure values live
@@ -269,12 +269,12 @@ emit target layout bindings plan = do
           partDocs = [E.function (partName i) [] [E.array items] | (i,items) <- zip [0::Int ..] parts]
           ordinary = if null parts then E.array ordinaryItems else E.remote "lists" "append"
             [E.array [E.call (partName i) [] | i <- [0 .. length parts - 1]]]
-          tests = case C.harnessKnownFailing harness of
+          tests = case C.harnessKnownDiscrepancy harness of
             Nothing -> ordinary
             Just reason ->
-              let expected = E.tuple [E.string (label ++ " known failing"),
-                    E.lambda [] (E.remote "lawspec_beam_harness" "known_failing"
-                      [E.binary label,E.binary (label ++ " known failing"),E.binary reason,ordinary])]
+              let expected = E.tuple [E.string (label ++ " known discrepancy"),
+                    E.lambda [] (E.remote "lawspec_beam_harness" "known_discrepancy"
+                      [E.binary label,E.binary (label ++ " known discrepancy"),E.binary reason,ordinary])]
               in E.array [nativeTimeout expected]
       pure ([metadataDocument 100 "%%" planned <>
         E.function rawName ([schema,symbols,E.array (map (D.text . snd) aliases)] ++ resourceArguments) [body],
@@ -328,7 +328,7 @@ runnerAllowance planned = runnerGuard + count * (attempts * timeout + cleanup)
     timeout = maybe 0 id (C.harnessTimeout harness)
     attempts = C.harnessRepeat harness * (1 + C.harnessRetries harness)
     cleanup = 10000 * toInteger (length (C.propertyResources law))
-    count = case C.harnessKnownFailing harness of
+    count = case C.harnessKnownDiscrepancy harness of
       Nothing -> 1
       Just _ -> 2 + toInteger (length (C.propertyExamples law) + length (maybe (boundaryCases planned) id (finiteCases planned)))
 
@@ -343,7 +343,7 @@ withHarness label kind harness resources observations body
         (E.atom "observed",E.atom (if observations then "true" else "false"))] ++
         [(E.atom "timeout",D.text (show ms)) | Just ms <- [C.harnessTimeout harness]]) | controlled] ++ [E.lambda [] body])
   where controlled = resources || C.harnessTimeout harness /= Nothing || C.harnessRepeat harness /= 1 ||
-          C.harnessRetries harness /= 0 || C.harnessKnownFailing harness /= Nothing
+          C.harnessRetries harness /= 0 || C.harnessKnownDiscrepancy harness /= Nothing
 
 -- | Acquire and release in a surviving resource owner. The case borrows its
 -- handle; nested brackets release in reverse order, including on cancellation.

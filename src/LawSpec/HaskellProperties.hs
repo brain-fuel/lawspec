@@ -157,10 +157,10 @@ emitTests Config{..} unit laws = do
             pairs [(l, c) | (c, l) <- C.harnessClassify h], E.array (map expr (C.harnessLabels h))] | observed h] ++
          [apply "LawSpecHarness.target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [example (fn ++ "_skipped: " ++ label) (apply "pendingWith" [quoted reason])]
-      (_, Just reason) -> docs ++ [example (fn ++ "_knownFailing: " ++ label) (apply "LawSpecHarness.knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, E.array [text ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
+      (_, Just reason) -> docs ++ [example (fn ++ "_knownDiscrepancy: " ++ label) (apply "LawSpecHarness.knownDiscrepancy"
+        [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason, E.array [text ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
       _ | runSettings h -> docs ++ [example (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) (apply "LawSpecHarness.run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              E.array [D.delimit 2 "(" ")" [number p, quoted l] | k == "_property", C.Cover p l _ <- C.harnessCover h],
@@ -277,7 +277,7 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           h = C.propertyHarness (original e)
           base' = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base'
           boundaryValues = maybe (boundaryCases e) id (finiteCases e)
           shareBoundaries = length boundaryValues >= 64
           boundaryName = "_lawspecBoundary" ++ show index

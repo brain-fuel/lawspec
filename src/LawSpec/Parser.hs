@@ -3191,7 +3191,7 @@ harnessSettingP = choice
   , TargetMaximize <$> (try (keyword "target" *> keyword "maximize") *> regionExpr [])
   , TagsSetting <$> (keyword "tags" *> (tagP `sepBy1` symbol ","))
   , SkipSetting <$> (keyword "skip" *> str)
-  , KnownFailingSetting <$> (try (keyword "known" *> keyword "failing") *> str)
+  , KnownDiscrepancySetting <$> (try (keyword "known" *> keyword "discrepancy") *> str)
   , TimeoutSetting <$> (keyword "timeout" *> durationP)
   , RepeatSetting <$> (keyword "repeat" *> positive "repeat" <* optional (keyword "times"))
   , RetryFlakySetting <$> (try (keyword "retry" *> keyword "flaky") *> positive "retry flaky" <* optional (keyword "times"))

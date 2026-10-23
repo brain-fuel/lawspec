@@ -255,15 +255,15 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
       Right evidence -> do
         statusOf "\"|booking succeeds| [native]" evidence `shouldBe` [Skipped]
         statusOf "\"|booking succeeds| [fakeLedger]" evidence `shouldSatisfy` all (/= Skipped)
-  it "reports skipped and known-failing laws in evidence" $
-    case compiled (harness ["  for law \"|discount is small|", "    known failing \"rounding\"", "  end for law\nfor law \"|booking succeeds|", "    skip \"offline\"\nend for law"]) >>= dischargeEvidence of
+  it "reports skipped and known-discrepancy laws in evidence" $
+    case compiled (harness ["  for law \"|discount is small|", "    known discrepancy \"rounding\"", "  end for law\nfor law \"|booking succeeds|", "    skip \"offline\"\nend for law"]) >>= dischargeEvidence of
       Left ds -> expectationFailure (show ds)
       Right evidence -> do
-        statusOf "\"|discount is small|" evidence `shouldBe` [KnownFailing]
+        statusOf "\"|discount is small|" evidence `shouldBe` [KnownDiscrepancy]
         nub (statusOf "\"|booking succeeds|" evidence) `shouldBe` [Skipped]
-  it "rejects known failing on a law the compiler proves" $
-    (compiled (harness ["  for law \"|reflexive|", "    known failing \"never\"\nend for law"]) >>= dischargeEvidence)
-      `shouldSatisfy` failsWith "cannot mark it known failing"
+  it "rejects known discrepancy on a law the compiler proves" $
+    (compiled (harness ["  for law \"|reflexive|", "    known discrepancy \"never\"\nend for law"]) >>= dischargeEvidence)
+      `shouldSatisfy` failsWith "cannot mark it as a known discrepancy"
   it "names tests after law labels, uniquely, and carries tags in the manifest" $ do
     unitTestNames "python" ["a law", "a law", "1 more"] `shouldBe` ["test_a_law", "test_a_law_2", "test_law_1_more"]
     unitTestNames "go" ["a law"] `shouldBe` ["TestALaw"]

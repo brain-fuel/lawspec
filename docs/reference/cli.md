@@ -168,7 +168,7 @@ contracts retain their own guarantees.
 Lists every obligation with its stage, identity, claim and reason, grouped by
 status. Completed evidence, `PLANNED`, `NOT VERIFIED`, `INCOMPLETE`,
 `UNSUPPORTED`, `ASSUMED / EXTERNAL`, `EXEMPTED` and `PENDING` retain their distinct meanings, alongside
-the harness plane's `KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section
+the harness plane's `KNOWN DISCREPANCY`, `FLAKY` and `SKIPPED`. A `HARNESS` section
 follows: for each
 law with a [harness](language/harness.md), how it is tested (strategies,
 `cover`, `classify`, `label`, tags, timeout, retries) and, from the last
@@ -290,7 +290,7 @@ native test run, preserving shared resource lifetimes. Law identities include
 their unit, so identical labels in different units remain independently
 selectable. EUnit and ExUnit completion events supply the execution report;
 an incomplete report or a report from an earlier invocation cannot count as
-evidence. Skipped laws run no checks. A known-failing BEAM law must complete
+evidence. Skipped laws run no checks. A known-discrepancy BEAM law must complete
 its native test to count as checked.
 
 BEAM selections also include each model's sequential check, its parallel
@@ -358,7 +358,7 @@ them.
   test runners' output goes to standard error.
 
 A law's [harness](language/harness.md) shapes the run: a skipped law has no
-test to run, a known-failing law's one test is expected to fail, flaky retries
+test to run, a known-discrepancy law's one test is expected to fail, flaky retries
 and unmet `cover` requirements are listed after the summary. Benchmarks are
 not laws, so `lawspec test` runs them only with `--benchmarks`; the target's
 own test command runs them too, and prints their measurements. The harness runtimes write their statistics to

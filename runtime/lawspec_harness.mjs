@@ -1,7 +1,7 @@
 // The harness plane at run time (see docs/reference/language/harness.md):
 // how a law's tests run, never what the law means. Generated tests call it
 // for strategies' refinement checks, adequacy (cover, classify,
-// label), run metadata (skip, known failing, timeout, repeat, retry flaky,
+// label), run metadata (skip, known discrepancy, timeout, repeat, retry flaky,
 // order random) and benchmarks.
 //
 // Statistics go to standard output, and, when LAWSPEC_STATS names a
@@ -130,19 +130,19 @@ export function skip(law, reason) {
   record(law, { law, outcome: 'skipped', reason });
 }
 
-// A known-failing law's tests must fail. One that passes is reported: the
-// harness should no longer say it is known to fail.
-export async function knownFailing(law, name, reason, tests) {
+// A known discrepancy must reproduce. A passing run requires human review; the
+// harness requires human review of the specification and implementation.
+export async function knownDiscrepancy(law, name, reason, tests) {
   for (const test of tests) {
     try { await test(); }
     catch (error) {
-      record(name, { law, test: name, outcome: 'known-failing', reason });
-      console.log(`${law} is known to fail (${reason}): ${error?.message?.split('\n')[0] ?? error}`);
+      record(name, { law, test: name, outcome: 'known-discrepancy', reason });
+      console.log(`${law} has a known discrepancy (${reason}): ${error?.message?.split('\n')[0] ?? error}`);
       return;
     }
   }
-  record(name, { law, test: name, outcome: 'known-failing-passed', reason });
-  throw new HarnessError(`${law} is marked known failing (${reason}), but it passes; remove \`known failing\` from its harness`);
+  record(name, { law, test: name, outcome: 'known-discrepancy-passed', reason });
+  throw new HarnessError(`${law} is marked known discrepancy (${reason}), but it passes; review the specification and implementation before removing \`known discrepancy\` from its harness`);
 }
 
 // order random: the tests in an order chosen by the run's seed

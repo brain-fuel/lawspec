@@ -1,4 +1,4 @@
-expect: is marked known failing
+expect: is marked known discrepancy
 @@ src/main/groovy/example/Harness.groovy
 <<<<<<<
     return (value0 + 4).intdiv(10) * 10

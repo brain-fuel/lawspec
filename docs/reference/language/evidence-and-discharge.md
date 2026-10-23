@@ -57,12 +57,19 @@ obligation under each:
 
 | Status | API value | Obligations | How |
 | --- | --- | --- | --- |
-| `KNOWN FAILING` | `known-failing` | Laws the harness marks `known failing` | Their tests must fail; a passing run fails and says so |
+| `KNOWN DISCREPANCY` | `known-discrepancy` | Laws the harness marks `known discrepancy` | Checks must reproduce the mismatch; a passing run requests human review |
 | `FLAKY` | `flaky` | Laws whose last run failed, then passed on a retry (`retry flaky`) | Read by `lawspec evidence` from the last `lawspec test` |
 | `SKIPPED` | `skipped` | Laws the harness skips, and handler variants `test with` leaves out | Not run; the reason says why |
 
 The reasoning behind these categories is in
 [evidence and discharge](../../explanation/evidence-and-discharge.md).
+
+A known discrepancy assigns no fault. Human review must establish whether the
+specification, implementation, or both need correction. The annotation is not a
+proof or a completed execution result: the reason identifies the harness
+setting, and native observations separately record execution. `failed` still
+describes a failed execution, and `refuted` still describes a law contradicted by
+a validated counterexample; neither determines which artifact should change.
 
 ## Planned and incomplete checks
 
@@ -81,7 +88,7 @@ current plan's status; this is not evidence that the current sources passed.
 
 The CLI attaches `nativeEvidence` to the same obligation in all explanation
 views. `kind` is `native-conformance`; `status` distinguishes `passed`, `failed`,
-`partial`, `incomplete`, `skipped`, `known-failing`, `stale`, `unavailable` and
+`partial`, `incomplete`, `skipped`, `known-discrepancy`, `stale`, `unavailable` and
 `not-selected`. Each observation records its target/project scope, freshness,
 coverage and actual attempt. Seeds outside JavaScript's safe integer range
 remain exact decimal strings for replay. A native framework may impose its own
@@ -285,7 +292,7 @@ A dependency's `name` matches what a law relies on:
 - an adapter or bound native function, `unit::name`, that the law calls.
 
 Each law obligation whose evidence comes from tests that ran (exhaustively
-checked by its tests, property tested, measured or known failing) and that
+checked by its tests, property tested, measured or known discrepancy) and that
 relies on an attested dependency is reported with `environment`,
 `environmentRun` and `against`, the dependencies it ran against. Its status
 stays what it was:

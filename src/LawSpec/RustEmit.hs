@@ -787,11 +787,11 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             runner = Doc.text ("|| ls::with_stack(run_" ++ show index ++ ")")
             -- The harness plane: the test is skipped, expected to fail, or
             -- run under the harness's settings.
-            testFunction = case (harnessSkip h, harnessKnownFailing h) of
+            testFunction = case (harnessSkip h, harnessKnownDiscrepancy h) of
               (Just reason, _) -> Doc.text "#[test]" <> Doc.hardline <> Doc.text ("#[ignore = " ++ q (label ++ ": " ++ reason) ++ "]") <> Doc.hardline <>
                 Doc.text ("fn " ++ testName' ++ "() {}")
               (_, Just reason) -> Doc.text "#[test]" <> Doc.hardline <> function testName' [] "ls::Result<()>"
-                (invoke "lawspec_harness::known_failing" [string label', string testName', string reason, runner])
+                (invoke "lawspec_harness::known_discrepancy" [string label', string testName', string reason, runner])
               _ | runSettings h -> Doc.text "#[test]" <> Doc.hardline <> function testName' [] "ls::Result<()>"
                     (invoke "lawspec_harness::run" [string label', string testName', Doc.text (show (maybe 0 id (harnessTimeout h))),
                       Doc.text (show (harnessRepeat h)), Doc.text (show (harnessRetries h)),

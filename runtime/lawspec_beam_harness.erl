@@ -6,7 +6,7 @@
 %% ref:REQ-harness-units ref:DEC-never-pass-vacuously
 -module(lawspec_beam_harness).
 -export([run/4, run/5, abort/1, mark_harness_failure/1, sample/2, record/1, higher/2, score_text/1,
-    known_failing/4, skip/2, erlang_cases/1, benchmark/3]).
+    known_discrepancy/4, skip/2, erlang_cases/1, benchmark/3]).
 
 -define(STATE, {?MODULE, observations}).
 -define(EXPECTED, {?MODULE, expected_failure}).
@@ -51,7 +51,7 @@ skip(Law, Reason) ->
 %% A law is expected to have a failing check, not a broken harness. Collect
 %% its checked examples/boundaries/properties/searches into one report. A
 %% satisfied expectation must not leave ordinary failed child reports behind.
-known_failing(Law, Name, Reason, Tests) ->
+known_discrepancy(Law, Name, Reason, Tests) ->
     Previous = put(?EXPECTED, #{law => Law, checks => [], aborted => none}),
     {Outcome, Reports, Aborted} = try
         Result = try lists:foreach(fun expected_case/1, Tests), passed
@@ -64,12 +64,12 @@ known_failing(Law, Name, Reason, Tests) ->
     Base = #{law => Law, test => Name, reason => Reason, checks => Reports},
     case {Outcome, Aborted} of
         {passed, none} ->
-            commit(Base#{outcome => <<"known-failing-passed">>}),
-            io:format(standard_error, "~ts is marked known failing (~ts), but it passes; remove `known failing` from its harness~n", [Law, Reason]),
-            error({lawspec, {known_failing_passed, Law, Reason}});
+            commit(Base#{outcome => <<"known-discrepancy-passed">>}),
+            io:format(standard_error, "~ts is marked known discrepancy (~ts), but it passes; review the specification and implementation before removing `known discrepancy` from its harness~n", [Law, Reason]),
+            error({lawspec, {known_discrepancy_passed, Law, Reason}});
         {{failed, Kind1, Cause1, _}, none} ->
-            commit(Base#{outcome => <<"known-failing">>, failure => exception_text(Kind1, Cause1)}),
-            io:format("~ts is known to fail (~ts): ~ts~n", [Law, Reason, exception_text(Kind1, Cause1)]),
+            commit(Base#{outcome => <<"known-discrepancy">>, failure => exception_text(Kind1, Cause1)}),
+            io:format("~ts has a known discrepancy (~ts): ~ts~n", [Law, Reason, exception_text(Kind1, Cause1)]),
             ok;
         {{failed, Kind1, Cause1, Stack1}, _} ->
             try commit(Base#{outcome => <<"failed">>, failureKind => <<"harness">>, failure => exception_text(Kind1, Cause1)})

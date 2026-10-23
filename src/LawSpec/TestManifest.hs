@@ -5,7 +5,7 @@
 -- label itself. The manifest gives each law its tests' name, its position,
 -- its unit's test file, the law's dependency key (the plan key of
 -- LawSpec.Dependencies), and its harness: tags, and whether it is skipped or
--- known to fail. A runner can tell which laws an edit affects, select their
+-- acknowledged as a discrepancy. A runner can tell which laws an edit affects, select their
 -- tests by name and by tag, and knows which tests not to expect. Selected
 -- model, scenario and supervision checks on every target have distinct
 -- evidence identities and dependency keys, even when a native method combines
@@ -32,9 +32,9 @@ import qualified LawSpec.Testing as Testing
 data TestEntry = TestEntry
   { entryLaw :: Id, entryUnit :: String, entryLabel :: String, entryIndex :: Int
   , entryFile :: FilePath, entryKey :: String, entryCallsAdapters :: Bool
-  -- The harness plane: the tests' base name, tags, skip and known failing.
+  -- The harness plane: the tests' base name, tags, skip and known discrepancy.
   , entryName :: String, entryTags :: [String], entrySkip :: Maybe String
-  , entryKnownFailing :: Maybe String
+  , entryKnownDiscrepancy :: Maybe String
   -- Whether the law's unit lets its tests run at the same time (parallel).
   , entryParallel :: Bool
   -- Exact framework slots for model checks use no law-kind suffix.
@@ -68,7 +68,7 @@ testManifestWithModelChecks modelsSelected target testDir program =
       (any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)])
-      testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
+      testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownDiscrepancy (propertyHarness p))
       (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing []
   | u <- programUnits program
   , let unit = idText (unitId u)

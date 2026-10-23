@@ -212,7 +212,7 @@ Swift's cooperative pool.
 `order random` orders its laws and cases by the run's seed. A `parallel` unit
 is a suite of its own that Swift Testing runs at once with other suites;
 other units run one at a time. Cover, classify, labels, targeted search,
-retries, timeouts, known failures and benchmarks follow the harness, and
+retries, timeouts, known discrepancies and benchmarks follow the harness, and
 their statistics go to `LAWSPEC_STATS`.
 
 `npx lawspec test` runs only the laws an edit can affect: it selects their

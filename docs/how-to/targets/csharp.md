@@ -152,7 +152,7 @@ value and the next end the same way. `TallyActor.Connect` and
 
 The tests are C# xUnit facts over the same runner as F#: LawSpec's generators
 on FsCheck, which runs, sizes, shrinks and replays the cases, the model runner, and the harness's order, parallel
-units, cover, retries, timeouts, known failures and benchmarks. `LAWSPEC_SEED`
+units, cover, retries, timeouts, known discrepancies and benchmarks. `LAWSPEC_SEED`
 replays a run.
 
 `npx lawspec test` runs only the laws an edit can affect, selecting their

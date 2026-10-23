@@ -427,8 +427,8 @@ data LawHarness = LawHarness
   , harnessTags :: [String]
   -- A skipped law runs no tests; it stays an obligation, reported skipped.
   , harnessSkip :: Maybe String
-  -- A known-failing law's tests must fail; if they pass, that is reported.
-  , harnessKnownFailing :: Maybe String
+  -- An acknowledged discrepancy must reproduce; a passing run requires review.
+  , harnessKnownDiscrepancy :: Maybe String
   , harnessTimeout :: Maybe Integer        -- milliseconds, per test
   , harnessRepeat :: Integer               -- runs of each test
   , harnessRetries :: Integer              -- reruns of a failing test (flaky)

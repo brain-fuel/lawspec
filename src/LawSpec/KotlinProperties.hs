@@ -144,10 +144,10 @@ emitTests Config{..} unit laws = do
             call "arrayOf<LawSpecRuntime.Value>" (map expr (C.harnessLabels h))] | observed h] ++
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [quoted (fn ++ "_skipped: " ++ label) <> text ".config(enabled = false) " <> block (text ("// " ++ reason))]
-      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> block (harness "knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, call "listOf" [body ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
+      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownDiscrepancy: " ++ label) <> text " " <> block (harness "knownDiscrepancy"
+        [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason, call "listOf" [body ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
       _ | runSettings h -> docs ++ [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text " " <> block (harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "intArrayOf" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -244,7 +244,7 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           h = C.propertyHarness (original e)
           base' = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base'
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
@@ -305,7 +305,7 @@ emitTests Config{..} unit laws = do
           chunks []=[]
           chunks docs=take 64 docs:chunks (drop 64 docs)
           registered
-            | length tests > 64 && not (runSettings h) && C.harnessKnownFailing h==Nothing =
+            | length tests > 64 && not (runSettings h) && C.harnessKnownDiscrepancy h==Nothing =
                 [text ("fun _lawspecChunk" ++ show i ++ "() ") <> block (separate docs) |
                   (i,docs)<-zip [0::Int ..] (chunks tests)] ++
                 [call ("_lawspecChunk" ++ show i) [] | i<-[0..length (chunks tests)-1]]

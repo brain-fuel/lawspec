@@ -6,6 +6,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-23
+
+### Changed
+
+- Acknowledged law mismatches are called **known discrepancies**. Use
+  `known discrepancy "reason"` in harnesses, `knownDiscrepancy` in API fields,
+  and `known-discrepancy` in evidence and native observations. The prior
+  `known failing` vocabulary is replaced in this pre-1.0 interface.
+- A known discrepancy assigns no fault to the specification or implementation;
+  human review determines whether either or both need correction. Unexpected
+  passing checks still fail the run and request review before removing the
+  annotation. Concrete execution failures and proof refutations retain their
+  meanings, and mandatory definition validation is unchanged.
+
 ## [0.29.2] - 2026-10-22
 
 ### Fixed
@@ -1944,7 +1958,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...v0.29.0

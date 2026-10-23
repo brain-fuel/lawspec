@@ -216,7 +216,7 @@ linearizability and scenarios run on the runtime's model runner.
 prints the seed. A unit with `order random` orders its methods
 and cases by the run's seed, and a `parallel` unit puts each law in a class of
 its own, so xUnit runs them at once; other units run one at a time. Cover,
-classify, labels, targeted search, retries, timeouts, known failures and
+classify, labels, targeted search, retries, timeouts, known discrepancies and
 benchmarks follow the harness, and their statistics go to `LAWSPEC_STATS`.
 
 `npx lawspec test` runs only the laws an edit can affect: it selects their

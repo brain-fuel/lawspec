@@ -227,10 +227,10 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
             _ -> pure []
           pure ([test (name ++ "_property") (label ++ " property") (observed harness) (setup check)] ++ searches)
       let ordinary = examples ++ boundary ++ random
-          tests = case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+          tests = case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
             (Just reason, _) -> [SkipTest (name ++ "_skipped") (label ++ " skipped") label reason]
-            (_, Just reason) -> [Test (name ++ "_knownFailing") (label ++ " known failing")
-              (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
+            (_, Just reason) -> [Test (name ++ "_knownDiscrepancy") (label ++ " known discrepancy")
+              (call "Harness" "knownDiscrepancy" [Str label, Str (label ++ " known discrepancy"), Str reason,
                 ListOf (Ty "[() throws -> Void]") [Lambda [] tVoid (wrapHarness label d o harness b) | (_, d, o, b) <- ordinary]])]
             _ -> [Test n d (wrapHarness label d o harness b) | (n, d, o, b) <- ordinary]
       let described = metadataDocument 100 "//" planned <> bodyDoc

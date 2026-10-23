@@ -119,7 +119,7 @@ returnsVoid e = case e of
 -- | The runtime functions that return nothing.
 voidFunctions :: [String]
 voidFunctions =
-  [ "Runtime.require", "Runtime.ignore", "Harness.skip", "Harness.benchmark", "Harness.run", "Harness.knownFailing"
+  [ "Runtime.require", "Runtime.ignore", "Harness.skip", "Harness.benchmark", "Harness.run", "Harness.knownDiscrepancy"
   , "Harness.recordParallel", "Search.replay", "Search.climb", "Property.boundaries", "Property.check", "Effects.setHandlerState" ]
 
 -- | Whether an expression mentions a name.

@@ -490,10 +490,10 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let label = owner e ++ "::" ++ name e
           harness = C.propertyHarness (original e)
           -- Python names a law's tests after its label (LawSpec.TestNames);
-          -- a known-failing law's tests are helpers its one test calls.
+          -- a known-discrepancy law's tests are helpers its one test calls.
           base = testNames !! index
-          wrapped = py && C.harnessSkip harness == Nothing && C.harnessKnownFailing harness == Nothing && runSettings harness
-          prefix = (if py && C.harnessKnownFailing harness /= Nothing then "_lawspec_known_" ++ drop 5 base
+          wrapped = py && C.harnessSkip harness == Nothing && C.harnessKnownDiscrepancy harness == Nothing && runSettings harness
+          prefix = (if py && C.harnessKnownDiscrepancy harness /= Nothing then "_lawspec_known_" ++ drop 5 base
             else if wrapped then "_" ++ base else base) ++ "_"
           examples' = [testBlock (label ++ " example: " ++ exampleName example)
             (prefix ++ "_example" ++ show j) (statements
@@ -566,12 +566,12 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             ["_property" | not (null properties)]
       pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++ fst searchDocs ++ (++ snd searchDocs) (
         if not py then webHarness label harness tests
-        else case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+        else case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
           -- A skipped law runs nothing; it is still an obligation.
           (Just reason, _) -> renderDocument (function (base ++ "__skipped") []
             (statement (invoke "_harness.skip" [message label, message reason])))
-          (_, Just reason) -> concatMap renderDocument tests ++ renderDocument (function (base ++ "__known_failing") []
-            (statement (invoke "_harness.known_failing" [message label, quoted (base ++ "__known_failing"), message reason,
+          (_, Just reason) -> concatMap renderDocument tests ++ renderDocument (function (base ++ "__known_discrepancy") []
+            (statement (invoke "_harness.known_discrepancy" [message label, quoted (base ++ "__known_discrepancy"), message reason,
               array [text (prefix ++ suffix) | suffix <- suffixes]])))
           _ | wrapped -> concat [renderDocument doc ++ renderDocument (harnessRun label harness (prefix ++ suffix) (base ++ "_" ++ suffix) (suffix == "_property"))
                                 | (suffix, doc) <- zip suffixes tests]
@@ -608,17 +608,17 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       [("labels", array (map render (C.harnessLabels harness))) | not (null (C.harnessLabels harness))]
     -- JavaScript and TypeScript register a law's tests through `test`; a
     -- harness redefines it in a block around them, so each registered test
-    -- runs under the harness (run settings), is collected (known failing), or
+    -- runs under the harness (run settings), is collected (known discrepancy), or
     -- is replaced by one skipped test.
     webHarness label harness tests =
       let rendered = concatMap renderDocument tests
           register = "  const _register = test;\n"
-      in case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+      in case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
         (Just reason, _) -> renderDocument (text "test(" <> message (label ++ " skipped") <> text ", {skip: " <>
           message reason <> text "}, () => " <> invoke "_harness.skip" [message label, message reason] <> text ");")
         (_, Just reason) -> "{\n" ++ register ++ "  const _known = [];\n  {\n    const test = (_name, body) => { _known.push(body); };\n" ++
-          rendered ++ "  }\n  _register(" ++ Doc.render Doc.Compact (message (label ++ " known failing")) ++ ", () => " ++
-          Doc.render Doc.Compact (invoke "_harness.knownFailing" [message label, message (label ++ " known failing"), message reason, text "_known"]) ++ ");\n}\n\n"
+          rendered ++ "  }\n  _register(" ++ Doc.render Doc.Compact (message (label ++ " known discrepancy")) ++ ", () => " ++
+          Doc.render Doc.Compact (invoke "_harness.knownDiscrepancy" [message label, message (label ++ " known discrepancy"), message reason, text "_known"]) ++ ");\n}\n\n"
         _ | runSettings harness -> "{\n" ++ register ++ "  {\n    const test = (name, body) => _register(name, () => " ++
               Doc.render Doc.Compact (invoke "_harness.run" [message label, text "name", text "body", object
                 ([("timeout", text (show ms)) | Just ms <- [C.harnessTimeout harness]] ++

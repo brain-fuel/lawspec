@@ -177,6 +177,19 @@ for byte. Integration review also adds regressions for missing induction
 obligations, bounded reachability and open-history deadlines; main's
 runtime-correlated BEAM overlap controls and stalled-hedge controls are retained.
 
+### Known discrepancies — 23 October 2026
+
+The owner's terminology is `known discrepancy "reason"`, not `known failing`.
+A mismatch does not establish whether the specification, implementation, or
+both need correction; that requires human review. Current evidence reports
+`known-discrepancy` and current API fields use `knownDiscrepancy`. The harness
+annotation is separate from completed native observations, does not establish
+the law, and does not weaken mandatory definition validation. A run must
+reproduce the discrepancy; an unexpected pass requires review before removing
+the annotation. Concrete execution failures and validated proof refutations
+retain their existing meanings. Historical execution receipts remain unchanged.
+The decision is recorded as `DEC-known-discrepancy`.
+
 ### Working-tree alignment increment — 20 October 2026
 
 LawTwin's contracts and configuration now consume 0.26 syntax, configuration
@@ -5383,7 +5396,7 @@ Earlier working defaults were 100 generated cases, 10,000 generation attempts, 1
 
 ### 11.5 Evidence vocabulary
 
-Preserve proved, exhaustively checked, property tested, runtime checked, measured, assumed or external, known failing, flaky, and skipped distinctions. Keep the existing default-handler provenance where relevant. Add explicit incomplete, unsupported, and not-verified reporting where the redesign requires them.
+Preserve proved, exhaustively checked, property tested, runtime checked, measured, assumed or external, known discrepancy, flaky, and skipped distinctions. A known discrepancy assigns no fault: human review determines whether the specification, implementation, or both need correction. Keep the existing default-handler provenance where relevant. Add explicit incomplete, unsupported, and not-verified reporting where the redesign requires them.
 
 Evidence is not a single ordered confidence score. A runtime check of a production boundary and a proof about a reference model establish different things.
 

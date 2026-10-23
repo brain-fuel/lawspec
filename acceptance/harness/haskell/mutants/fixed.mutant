@@ -1,4 +1,4 @@
-expect: is marked known failing
+expect: is marked known discrepancy
 @@ src/Example/Harness.hs
 <<<<<<<
 roundCents value0 = (value0 + 4) `P.quot` 10 * 10

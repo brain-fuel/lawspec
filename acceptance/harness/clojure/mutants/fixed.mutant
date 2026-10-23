@@ -1,4 +1,4 @@
-expect: is marked known failing
+expect: is marked known discrepancy
 @@ src/example/harness.clj
 <<<<<<<
   (* (quot (+ cents 4) 10) 10))

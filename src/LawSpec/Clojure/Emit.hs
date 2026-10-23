@@ -208,7 +208,7 @@ testNamespace ns unit casesClass title cases = unlines $
   , "  (law/run " ++ show ns ++ " lawspec-tests lawspec-schedule))" ]
 
 -- | A law case's test: the law's words, a double dash and the kind of test
--- (example-0, boundary-1, property, skipped, known-failing).
+-- (example-0, boundary-1, property, skipped, known-discrepancy).
 clojureTestTitle :: PlannedUnit -> String -> String
 clojureTestTitle pu name =
   case [ c ++ kindSuffix "clojure" kind | (j, c) <- zip (unitTestNames "java" labels) (unitTestNames "clojure" labels)

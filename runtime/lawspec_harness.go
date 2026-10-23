@@ -1,7 +1,7 @@
 // The harness plane at run time (see docs/reference/language/harness.md):
 // how a law's tests run, never what the law means. Generated tests call it
 // for strategies (frequency, one of, such that), adequacy (cover, classify,
-// label), run metadata (skip, known failing, timeout, repeat, retry flaky)
+// label), run metadata (skip, known discrepancy, timeout, repeat, retry flaky)
 // and benchmarks.
 //
 // A test the harness runs is a function of rapid.TB, so it can run under a
@@ -361,18 +361,18 @@ func lsHarnessSkip(t *testing.T, law, reason string) {
 	t.Skipf("%s: %s", law, reason)
 }
 
-// A known-failing law's tests must fail. One that passes is reported: the
-// harness should no longer say it is known to fail.
-func lsHarnessKnownFailing(t *testing.T, law, name, reason string, tests []func(rapid.TB)) {
+// A known discrepancy must reproduce. A passing run requires human review; the
+// harness requires human review of the specification and implementation.
+func lsHarnessKnownDiscrepancy(t *testing.T, law, name, reason string, tests []func(rapid.TB)) {
 	for _, test := range tests {
 		if failure, _ := lsHarnessOnce(t.Name(), 0, test); failure != "" {
-			lsHarnessRecord(name, map[string]any{"law": law, "test": name, "outcome": "known-failing", "reason": reason})
-			t.Logf("%s is known to fail (%s): %s", law, reason, strings.SplitN(failure, "\n", 2)[0])
+			lsHarnessRecord(name, map[string]any{"law": law, "test": name, "outcome": "known-discrepancy", "reason": reason})
+			t.Logf("%s has a known discrepancy (%s): %s", law, reason, strings.SplitN(failure, "\n", 2)[0])
 			return
 		}
 	}
-	lsHarnessRecord(name, map[string]any{"law": law, "test": name, "outcome": "known-failing-passed", "reason": reason})
-	t.Fatalf("%s is marked known failing (%s), but it passes; remove `known failing` from its harness", law, reason)
+	lsHarnessRecord(name, map[string]any{"law": law, "test": name, "outcome": "known-discrepancy-passed", "reason": reason})
+	t.Fatalf("%s is marked known discrepancy (%s), but it passes; review the specification and implementation before removing `known discrepancy` from its harness", law, reason)
 }
 
 // Measured, never asserted, with Go's own benchmark harness.

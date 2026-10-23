@@ -119,14 +119,14 @@ dischargeSelected selection program = do
         byHarness = maybe "its harness" ("the harness " ++) (harnessUnit harness)
         -- The harness plane decides whether the tests run, never what a
         -- static proof or the compiler's own check established.
-        tested status reason = case (harnessSkip harness, harnessKnownFailing harness) of
+        tested status reason = case (harnessSkip harness, harnessKnownDiscrepancy harness) of
           (Just why, _) -> obligation Skipped ("skipped by " ++ byHarness ++ ": " ++ why ++ "; otherwise " ++ statusName status ++ ": " ++ reason)
-          (_, Just why) -> obligation KnownFailing ("marked known failing by " ++ byHarness ++ ": " ++ why ++
-            "; its tests must fail, and a run that passes is reported")
+          (_, Just why) -> obligation KnownDiscrepancy ("marked known discrepancy by " ++ byHarness ++ ": " ++ why ++
+            "; its tests must reproduce the discrepancy; a passing run requires human review of the specification and implementation, either or both of which may need correction")
           _ -> obligation status reason
-        static status reason = case harnessKnownFailing harness of
+        static status reason = case harnessKnownDiscrepancy harness of
           Just _ -> Left [Diagnostic "harness" ("the law " ++ propertyName p ++ " is " ++ statusName status ++
-            " by the compiler, so its harness cannot mark it known failing") (Just (propertyLocation p))]
+            " by the compiler, so its harness cannot mark it as a known discrepancy") (Just (propertyLocation p))]
           Nothing -> pure (obligation status (reason ++ maybe "" (const "; its harness skips its tests") (harnessSkip harness)))
     let enabled layer = maybe True (`V.selected` layer) selection
         pending status reason = pure (tested (if selection == Nothing then status else Planned) reason)

@@ -142,8 +142,8 @@ elaborateHarness u = case unitHarness u of
       let skipped = case [ns | (TestWith ns, _) <- applicable] of
             [] -> Nothing
             lists -> let allowed = last lists in excluded allowed (pinned final) (maybe [] id (lookup final (lawAssignments u)))
-      when (planSkip plan /= Nothing && planKnownFailing plan /= Nothing)
-        (Left (Just (location l), "the law `" ++ final ++ "` is marked both skip and known failing; choose one"))
+      when (planSkip plan /= Nothing && planKnownDiscrepancy plan /= Nothing)
+        (Left (Just (location l), "the law `" ++ final ++ "` is marked both skip and known discrepancy; choose one"))
       pure (final, case (planSkip plan, skipped) of
         (Nothing, Just reason) -> plan { planSkip = Just reason }
         _ -> plan)
@@ -178,7 +178,7 @@ elaborateHarness u = case unitHarness u of
       TargetMaximize e -> pure plan { planTarget = Just e }
       TagsSetting tags -> pure plan { planTags = nub (planTags plan ++ tags) }
       SkipSetting reason -> pure plan { planSkip = Just reason }
-      KnownFailingSetting reason -> pure plan { planKnownFailing = Just reason }
+      KnownDiscrepancySetting reason -> pure plan { planKnownDiscrepancy = Just reason }
       TimeoutSetting ms -> pure plan { planTimeout = Just ms }
       RepeatSetting n -> pure plan { planRepeat = n }
       RetryFlakySetting n -> pure plan { planRetries = n }
