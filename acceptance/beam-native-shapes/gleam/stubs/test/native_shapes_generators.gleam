@@ -3,7 +3,9 @@
 import native_shapes as native_0
 import qcheck
 
-pub fn boxes(_child0: qcheck.Generator(a0)) -> qcheck.Generator(native_0.Wrapped(a0)) {
+pub fn boxes(
+  _child0: qcheck.Generator(a0),
+) -> qcheck.Generator(native_0.Wrapped(a0)) {
   panic as "Implement generator for native.shapes::type::Box"
 }
 

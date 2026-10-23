@@ -58,15 +58,29 @@ typeAttribute attribute left right
       D.text (prefix ++ l ++ " :: " ++ open) <>
       mconcat [D.hardline <> item i (if k < length items then "," else "") | (k, i) <- zip [1 :: Int ..] items] <>
       D.hardline <> D.text (replicate 6 ' ' ++ close)
-  | 2 + length (prefix ++ l ++ " ::") <= 98 || maybe False ((<= 1) . length . snd) (calledWith l) =
-      D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
+  -- mix format measures the left side without its operator.
+  | 2 + length (prefix ++ l) <= 98 = D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
+  -- A sole list argument hugs the parentheses.
+  | Just (name, [a]) <- calledWith l, Just ("[", items, "]") <- container a =
+      D.text (prefix ++ name ++ "([") <>
+      mconcat [D.hardline <> D.text (replicate 8 ' ' ++ i ++ (if k < length items then "," else "")) | (k, i) <- zip [1 :: Int ..] items] <>
+      D.hardline <> closing "])"
   | Just (name, args) <- calledWith l =
       D.text (prefix ++ name ++ "(") <>
-      mconcat [D.hardline <> D.text (replicate 8 ' ' ++ a ++ (if k < length args then "," else "")) | (k, a) <- zip [1 :: Int ..] args] <>
-      D.hardline <> (if 8 + length (") :: " ++ r) <= 98 then D.text (replicate 6 ' ' ++ ") :: " ++ r)
-        else D.text (replicate 6 ' ' ++ ") ::") <> D.hardline <> rightAlone)
+      mconcat [D.hardline <> argument a (if k < length args then "," else "") | (k, a) <- zip [1 :: Int ..] args] <>
+      D.hardline <> closing ")"
   | otherwise = D.text flat
   where
+    -- After broken arguments: ") :: R", or R on lines of its own.
+    closing bracket
+      | 8 + length (bracket ++ " :: " ++ r) <= 98 = D.text (replicate 6 ' ' ++ bracket ++ " :: " ++ r)
+      | otherwise = D.text (replicate 6 ' ' ++ bracket ++ " ::") <> D.hardline <> rightAlone
+    -- A broken argument; a union breaks into its alternatives.
+    argument a suffix = case splitTop " | " a of
+      alternative : rest@(_ : _) -> D.joinWith D.hardline
+        [D.text (replicate 8 ' ' ++ (if i == 0 then "" else "| ") ++ x ++ (if i == length rest then suffix else ""))
+        | (i, x) <- zip [0 :: Int ..] (alternative : rest)]
+      _ -> D.text (replicate 8 ' ' ++ a ++ suffix)
     -- The right side on lines of its own, from column 10.
     rightAlone
       | 10 + length r <= 98 = D.text (replicate 8 ' ' ++ r)
@@ -85,6 +99,17 @@ typeAttribute attribute left right
     item i suffix
       | 10 + length i + length suffix <= 98 = D.text (replicate 8 ' ' ++ i ++ suffix)
       -- A function type breaks after its arrow, aligned past its parenthesis.
+      -- A union result breaks before each alternative, aligned with the first.
+      | (key, '(' : value) <- breakOn " => " i, last value == ')', (arguments, result@(_ : _)) <- breakOn' (init value),
+        first : rest@(_ : _) <- splitTop " | " result =
+          let opening = replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ (if null arguments then "-> " else " -> ")
+              -- With arguments, the result starts a line of its own.
+              resultColumn = 8 + length key + 4 + 1 + 2
+              alternatives' = [(if k == 0 then "" else "| ") ++ alt ++ (if k == length rest then ")" ++ suffix else "") | (k, alt) <- zip [0 :: Int ..] (first : rest)]
+          in if null arguments
+            then D.text (opening ++ concat (take 1 alternatives')) <> mconcat [D.hardline <> D.text (replicate (length opening) ' ' ++ alt) | alt <- drop 1 alternatives']
+            else D.text (replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ " ->") <>
+              mconcat [D.hardline <> D.text (replicate resultColumn ' ' ++ alt) | alt <- alternatives']
       | (key, '(' : value) <- breakOn " => " i, last value == ')', (arguments, result@(_ : _)) <- breakOn " -> " (init value) =
           D.text (replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ " ->") <> D.hardline <>
           D.text (replicate (8 + length key + 4 + 1 + 2) ' ' ++ result ++ ")" ++ suffix)
@@ -98,6 +123,10 @@ typeAttribute attribute left right
     calledWith t = case span (/= '(') t of
       (name@(_ : _), '(' : rest) | last t == ')' -> Just (name, splitTop ", " (init rest))
       _ -> Nothing
+    -- A function type's arguments and result: "-> R" has no arguments.
+    breakOn' t = case t of
+      '-' : '>' : ' ' : r -> ("", r)
+      _ -> breakOn " -> " t
     breakOn separator t = go "" t
       where
         go acc rest@(c : cs)

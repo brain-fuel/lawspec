@@ -18,9 +18,7 @@ pub fn log_handler() -> abilities_example_shop.Log {
 
 pub fn store_int32_handler() -> abilities_example_shop.StoreInt32 {
   abilities_example_shop.store_int32(
-    fn() {
-      panic as "Not implemented: example.shop::ability::Store(Int32).load"
-    },
+    fn() { panic as "Not implemented: example.shop::ability::Store(Int32).load" },
     fn(_int32) {
       panic as "Not implemented: example.shop::ability::Store(Int32).save"
     },

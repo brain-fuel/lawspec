@@ -174,7 +174,7 @@ operationType target bits names ty = do
   args <- mapM native arguments
   out <- native result
   pure $ case target of
-    "gleam" -> D.text "fn" <> D.delimit 2 "(" ")" args <> D.text " -> " <> out
+    "gleam" -> G.fnType args out
     "elixir" -> D.text "(" <> mconcat [D.joinWith (D.text ", ") args <> D.text " " | not (null args)] <> D.text "-> " <> out <> D.text ")"
     _ -> E.funType args out
 

@@ -413,11 +413,13 @@ cexpr env scope e = case expressionNode e of
     back <- convert env FromDynamic failure (D.text caught)
     t <- fresh "Attempted"
     let (left, right) = sides (envTarget env)
-    pure ([D.text (t ++ " = try") <> sequenceBlock lines' <> D.hardline <>
-      D.text "of" <> D.nest 4 (D.hardline <> D.text (value ++ " -> ") <> E.tuple [E.atom right, D.text value]) <> D.hardline <>
+    -- try ... of ... catch ... end, each clause's body on a line of its
+    -- own, as erlfmt keeps it.
+    pure ([E.assign t (E.forceBreak <> D.text "try" <> sequenceBlock lines' <> D.hardline <>
+      D.text "of" <> D.nest 4 (D.hardline <> D.text (value ++ " ->") <> D.nest 4 (D.hardline <> E.tuple [E.atom right, D.text value])) <> D.hardline <>
       D.text "catch" <> D.nest 4 (D.hardline <> D.text "throw:" <>
-        E.tuple [E.atom "lawspec_failure", E.binary (abilityKey ref), D.text caught] <> D.text " -> " <> E.tuple [E.atom left, back]) <>
-      D.hardline <> D.text "end"], D.text t)
+        E.tuple [E.atom "lawspec_failure", E.binary (abilityKey ref), D.text caught] <> D.text " ->" <> D.nest 4 (D.hardline <> E.tuple [E.atom left, back])) <>
+      D.hardline <> D.text "end")], D.text t)
   Helper Append [a, b] -> case expressionType a of
     Constructor n [] | n `elem` ["Text", "Bytes"] -> do
       (sa, xa) <- cexpr env scope a

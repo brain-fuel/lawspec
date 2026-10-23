@@ -1,7 +1,7 @@
 -- | Native Gleam tokens and types. Shared Core expressions and runtime values
 -- are compiled once on BEAM, with checked bridges at every public function.
 -- ref:DEC-idiomatic-generated-types ref:DEC-readable-output-default
-module LawSpec.GleamCode (variableName, string, call, tuple, function, lambda, huggedLambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
+module LawSpec.GleamCode (variableName, string, call, tuple, function, fnType, lambda, huggedLambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -33,16 +33,31 @@ tuple :: [D.Doc] -> D.Doc
 tuple = D.delimitTrailing 2 "#(" ")"
 
 -- | pub fn name(args) -> Result { body }, the body on lines of its own.
+-- A top-level function's header is measured as gleam format measures it:
+-- without its opening brace.
 function :: String -> [D.Doc] -> D.Doc -> [D.Doc] -> D.Doc
-function name args result body = D.text "pub fn " <> call name args <> D.text " -> " <> result <>
+function name args result body = header <>
   D.text " {" <> D.nest 2 (D.hardline <> D.joinWith D.hardline body) <> D.hardline <> D.text "}"
+  where
+    compact = D.render D.Compact
+    flatArgs = intercalate ", " (map compact args)
+    flat = "pub fn " ++ name ++ "(" ++ flatArgs ++ ") -> " ++ compact result
+    header
+      | null args || length flat + 2 <= 80 = D.text ("pub fn " ++ name ++ "(" ++ flatArgs ++ ") -> ") <> D.text (compact result)
+      | otherwise = D.text ("pub fn " ++ name ++ "(") <> D.nest 2 (mconcat [D.hardline <> D.text (compact a ++ ",") | a <- args]) <>
+          D.hardline <> D.text ") -> " <> (if length (") -> " ++ compact result) <= 80 then D.text (compact result) else result)
+
+-- | fn(Args) -> Result, breaking after its arrow.
+fnType :: [D.Doc] -> D.Doc -> D.Doc
+fnType args result = D.group (D.text ("fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") ->") <>
+  D.nest 2 (D.softline <> result))
 
 -- | fn(args) { body }, the body on lines of its own when it does not fit.
 -- gleam format measures an item without its trailing comma, so a fun
 -- written at a known column decides its own layout.
 lambda :: Int -> [D.Doc] -> D.Doc -> D.Doc
 lambda column args body
-  | column + length flat <= 80 = D.text flat
+  | column + length flat <= 81 = D.text flat
   | otherwise = D.multiline mempty <> D.text opening <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"
   where
     opening = "fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") {"
