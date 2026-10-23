@@ -28,6 +28,7 @@ import qualified SourceGadtIndicesSpec
 import qualified SmtSpec
 import qualified GroovyBridgeSpec
 import qualified PythonBindingNamesSpec
+import qualified SwiftReadableSpec
 import qualified FieldDefinitionExpansionSpec
 import qualified SourceGadtRefinementsSpec
 import qualified SourceRecordPayloadSpec
@@ -152,6 +153,7 @@ main = hspec $ do
   SmtSpec.test_smtTasks
   GroovyBridgeSpec.test_groovyJavaBody
   PythonBindingNamesSpec.test_pythonBindingNames
+  SwiftReadableSpec.test_swiftReadableOutput
   FieldDefinitionExpansionSpec.test_fieldDefinitionExpansion
   SourceGadtRefinementsSpec.test_sourceGadtRefinements
   SourceRecordPayloadSpec.test_structuralNominalPayloads

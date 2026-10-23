@@ -173,7 +173,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
         let exampleMessage = shown ++ " example " ++ displayLabel (C.exampleName example)
             exampleLink = locationLink <$> exampleLocation example
         expectations <- mapM (\p -> X.assertion (labelled exampleMessage (maybe exampleLink Just (expectationLink p))) renderIn p) (C.exampleExpectations example)
-        lateChecks <- installLate exampleSchema (\sch -> foldr (\(a, v) rest -> Let a tValue v rest)
+        lateChecks <- installLate exampleSchema (\sch -> foldr (\(a, v) rest -> Let a (Ty "") v rest)
               (Do (require (inBody sch inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments))
         bracketed <- bracket exampleSchema lateChecks
         inScope <- Policy.withTestRuntime units tValue <$> Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketed)

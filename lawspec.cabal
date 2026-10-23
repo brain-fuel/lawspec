@@ -1065,6 +1065,7 @@ test-suite lawspec-test
       SourceTupleSpec
       StatefulModelSpec
       StructuralSpec
+      SwiftReadableSpec
       TargetNamesSpec
       TemporalSpec
       TestManifestSpec

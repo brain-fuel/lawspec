@@ -134,8 +134,8 @@ mentions :: String -> Expr -> Bool
 mentions n e = case e of
   Var v -> v == n
   Raw r -> n `elem` tokens r
-  Call _ args -> any (mentions n) args
-  Pure _ args -> any (mentions n) args
+  Call f args -> n `elem` tokens f || any (mentions n) args
+  Pure f args -> n `elem` tokens f || any (mentions n) args
   Invoke f args -> any (mentions n) (f : args)
   ListOf _ xs -> any (mentions n) xs
   TupleOf xs -> any (mentions n) xs
@@ -312,8 +312,8 @@ distinct e = evalState (go M.empty e) S.empty
     go :: M.Map String String -> Expr -> State (S.Set String) Expr
     go env x = case x of
       Var v -> pure (Var (M.findWithDefault v v env))
-      Call f args -> Call f <$> mapM (go env) args
-      Pure f args -> Pure f <$> mapM (go env) args
+      Call f args -> Call (callee' env f) <$> mapM (go env) args
+      Pure f args -> Pure (callee' env f) <$> mapM (go env) args
       Invoke f args -> Invoke <$> go env f <*> mapM (go env) args
       ListOf t xs -> ListOf t <$> mapM (go env) xs
       TupleOf xs -> TupleOf <$> mapM (go env) xs
@@ -331,6 +331,10 @@ distinct e = evalState (go M.empty e) S.empty
       Do xs v -> Do <$> mapM (go env) xs <*> go env v
       Statement s -> Statement <$> go env s
       _ -> pure x
+    -- A call on a bound value (codec.toNative) follows the value's name.
+    callee' env f = case break (== '.') f of
+      (receiver, rest@('.' : _)) | Just renamed <- M.lookup receiver env -> renamed ++ rest
+      _ -> f
     -- A keyword's escaped name keeps its backticks around the suffix.
     suffixed ('`' : rest) k = '`' : takeWhile (/= '`') rest ++ "_" ++ show k ++ "`"
     suffixed n k = n ++ "_" ++ show k
@@ -416,7 +420,7 @@ statement s = case s of
 -- made of them.
 inert :: Expr -> Bool
 inert v = case v of
-  Pure f args | take 6 f == "Value." -> all inert args
+  Pure f args | take 6 f == "Value." || f == "Runtime.item" -> all inert args
   LongStr _ -> True
   Var _ -> True
   Raw _ -> True
