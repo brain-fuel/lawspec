@@ -1,4 +1,11 @@
-{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification, RankNTypes #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
 -- | The portable scalar domain. No test framework or target runtime dependencies.
 --
 -- A law must mean the same thing on every target, so this module implements
@@ -12,126 +19,182 @@
 -- ref:DEC-typed-core-boundary
 module LawSpecRuntime where
 
-import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, toException, try)
-import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar, tryPutMVar, MVar, readMVar, newMVar, modifyMVar)
-import System.Timeout (timeout)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
-import GHC.Clock (getMonotonicTimeNSec)
-import System.IO.Unsafe (unsafePerformIO)
-import System.Environment (lookupEnv)
-import qualified System.Environment as Environment
-import qualified System.Directory as Directory
-import qualified Network.Socket as Socket
+import Control.Concurrent (Chan, MVar, forkIO, killThread, modifyMVar, newChan, newEmptyMVar, newMVar, putMVar, readChan, readMVar, takeMVar, threadDelay, tryPutMVar, writeChan, yield)
+import Control.Exception (ErrorCall (..), Exception, SomeException (..), catch, displayException, evaluate, finally, fromException, throwIO, toException, try)
 import Control.Monad (foldM, forM, forM_, replicateM)
-import Data.Unique (Unique, newUnique, hashUnique)
-import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
-import Data.Typeable (Typeable, typeRep, Proxy(..), cast)
-import Data.Char (ord, chr, isDigit, toLower)
-import Data.Int
+import Data.Bits (bit, finiteBitSize, setBit, shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import Data.Complex (Complex((:+)))
-import Data.Word
-import Data.Bits (bit, finiteBitSize, setBit, shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text.Encoding as TE
-import Data.Text (Text)
-import qualified Data.Text as T
+import Data.Char (chr, isDigit, ord, toLower)
+import Data.Complex (Complex ((:+)))
+import Data.Dynamic (Dynamic, dynTypeRep, fromDynamic, toDyn)
+import Data.IORef (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef, writeIORef)
+import Data.Int
 import Data.List (find, intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, sortBy, stripPrefix)
 import Data.Ratio
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.Typeable (Proxy (..), Typeable, cast, typeRep)
+import Data.Unique (Unique, hashUnique, newUnique)
+import Data.Word
+import GHC.Clock (getMonotonicTimeNSec)
 import GHC.Float
-  ( castFloatToWord32, castDoubleToWord64, castWord32ToFloat
-  , castWord64ToDouble, float2Double, double2Float
+  ( castDoubleToWord64,
+    castFloatToWord32,
+    castWord32ToFloat,
+    castWord64ToDouble,
+    double2Float,
+    float2Double,
   )
-import Numeric (showHex, readHex)
-import System.IO (IOMode(ReadMode), withBinaryFile)
+import qualified Network.Socket as Socket
+import Numeric (readHex, showHex)
+import qualified System.Directory as Directory
+import System.Environment (lookupEnv)
+import qualified System.Environment as Environment
+import System.IO (IOMode (ReadMode), withBinaryFile)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Timeout (timeout)
 
 data Family
-  = Boolean | IntegerFamily | Exact | Floating | Complex | Character
-  | Sequence | Identity | Absence
+  = Boolean
+  | IntegerFamily
+  | Exact
+  | Floating
+  | Complex
+  | Character
+  | Sequence
+  | Identity
+  | Absence
   deriving (Eq, Show)
 
 data Primitive = Primitive
-  { primitiveName :: String
-  , family :: Family
-  , width :: Maybe Int
-  , signed :: Bool
-  } deriving (Eq, Show)
+  { primitiveName :: String,
+    family :: Family,
+    width :: Maybe Int,
+    signed :: Bool
+  }
+  deriving (Eq, Show)
 
 primitives :: [Primitive]
-primitives = [Primitive "Bool" Boolean Nothing False]
-  ++ [Primitive (p ++ show w) IntegerFamily (Just w) s
-     | (p,s) <- [("Int",True),("UInt",False)], w <- [8,16,32,64]]
-  ++ [Primitive n IntegerFamily Nothing s
-     | (n,s) <- [("IntSize",True),("UIntSize",False),("UIntPtr",False),
-                 ("Integer",True),("BigInt",True),("BigUInt",False)]]
-  ++ [Primitive n f w False
-     | (n,f,w) <- [("Decimal",Exact,Nothing),("Rational",Exact,Nothing),
-                   ("Float32",Floating,Just 32),("Float64",Floating,Just 64),
-                   ("Complex64",Complex,Just 32),
-                   ("Complex128",Complex,Just 64)]]
-  ++ [Primitive n f Nothing False
-     | (f,ns) <- [(Character,["Char","CodePoint","CodeUnit16"]),
-                  (Sequence,["Text","CodePointText","Utf16Text","Bytes"]),
-                  (Identity,["Symbol"]),(Absence,["Unit","Null","Undefined"])],
-       n <- ns]
+primitives =
+  [Primitive "Bool" Boolean Nothing False]
+    ++ [ Primitive (p ++ show w) IntegerFamily (Just w) s
+       | (p, s) <- [("Int", True), ("UInt", False)],
+         w <- [8, 16, 32, 64]
+       ]
+    ++ [ Primitive n IntegerFamily Nothing s
+       | (n, s) <-
+           [ ("IntSize", True),
+             ("UIntSize", False),
+             ("UIntPtr", False),
+             ("Integer", True),
+             ("BigInt", True),
+             ("BigUInt", False)
+           ]
+       ]
+    ++ [ Primitive n f w False
+       | (n, f, w) <-
+           [ ("Decimal", Exact, Nothing),
+             ("Rational", Exact, Nothing),
+             ("Float32", Floating, Just 32),
+             ("Float64", Floating, Just 64),
+             ("Complex64", Complex, Just 32),
+             ("Complex128", Complex, Just 64)
+           ]
+       ]
+    ++ [ Primitive n f Nothing False
+       | (f, ns) <-
+           [ (Character, ["Char", "CodePoint", "CodeUnit16"]),
+             (Sequence, ["Text", "CodePointText", "Utf16Text", "Bytes"]),
+             (Identity, ["Symbol"]),
+             (Absence, ["Unit", "Null", "Undefined"])
+           ],
+         n <- ns
+       ]
+
 primitive :: String -> Maybe Primitive
 primitive n = find ((== n) . primitiveName) primitives
+
 isInteger, isExact, isInexact, isNumeric :: String -> Bool
 isInteger n = maybe False ((== IntegerFamily) . family) (primitive n)
-isExact n = isInteger n || n `elem` ["Decimal","Rational"]
-isInexact n = n `elem` ["Float32","Float64","Complex64","Complex128"]
+isExact n = isInteger n || n `elem` ["Decimal", "Rational"]
+isInexact n = n `elem` ["Float32", "Float64", "Complex64", "Complex128"]
 isNumeric n = isExact n || isInexact n
+
 integerBounds :: Int -> String -> Maybe (Integer, Integer)
 integerBounds machine n = do
   p <- primitive n
-  w <- if n `elem` ["IntSize","UIntSize","UIntPtr"]
-    then Just machine else width p
-  if family p /= IntegerFamily then Nothing else pure $
-    if signed p then (negate (2^(w-1)),2^(w-1)-1) else (0,2^w-1)
+  w <-
+    if n `elem` ["IntSize", "UIntSize", "UIntPtr"]
+      then Just machine
+      else width p
+  if family p /= IntegerFamily
+    then Nothing
+    else
+      pure $
+        if signed p then (negate (2 ^ (w - 1)), 2 ^ (w - 1) - 1) else (0, 2 ^ w - 1)
 
 -- | Raw strings travel as numeric code points/units,
 -- never JSON surrogate strings.
-data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
-  | SRational Integer Integer | SFloat String String
+data Scalar
+  = SInteger String Integer
+  | SBool Bool
+  | SDecimal Integer Integer
+  | SRational Integer Integer
+  | SFloat String String
   | SComplex String Scalar Scalar
-  | SSequence String [Int] | SCharacter String Int | SSymbol String String
+  | SSequence String [Int]
+  | SCharacter String Int
+  | SSymbol String String
   | SScopedSymbol SymbolContext String String
-  | SAbsent String | SPresent String (Maybe Scalar)
-  | SList [Scalar] | SData String [Scalar]
-  -- A handle: a value only adapters create, passed along unopened. Its
-  -- label is the handle type's identity; equality is the handle's identity.
-  | SHandle String Handle deriving (Eq, Show)
+  | SAbsent String
+  | SPresent String (Maybe Scalar)
+  | SList [Scalar]
+  | SData String [Scalar]
+  | -- A handle: a value only adapters create, passed along unopened. Its
+    -- label is the handle type's identity; equality is the handle's identity.
+    SHandle String Handle
+  deriving (Eq, Show)
 
 -- | A handle's value is the adapter's own, kept with a Unique that is its
 -- identity. LawSpec never builds, inspects or orders one.
 data Handle = Handle Unique Dynamic
+
 instance Eq Handle where
   Handle a _ == Handle b _ = a == b
+
 instance Show Handle where
   show h = "<handle #" ++ show (handleNumber h) ++ ">"
 
 -- | Wraps an adapter's value as a new handle, distinct from every other.
-handle :: Typeable a => a -> IO Handle
+handle :: (Typeable a) => a -> IO Handle
 handle value = do
   identity <- newUnique
   pure (Handle identity (toDyn value))
 
 -- | The value a handle wraps, at the type it was made with.
-fromHandle :: forall a. Typeable a => Handle -> a
+fromHandle :: forall a. (Typeable a) => Handle -> a
 fromHandle (Handle _ value) = case fromDynamic value of
   Just native -> native
-  Nothing -> error ("handle holds a " ++ show (dynTypeRep value) ++
-    ", not a " ++ show (typeRep (Proxy :: Proxy a)))
+  Nothing ->
+    error
+      ( "handle holds a "
+          ++ show (dynTypeRep value)
+          ++ ", not a "
+          ++ show (typeRep (Proxy :: Proxy a))
+      )
 
 -- | A new handle around a native value, for codecs of bound handle types.
-wrapHandle :: Typeable a => a -> Handle
+wrapHandle :: (Typeable a) => a -> Handle
 wrapHandle value = unsafePerformIO (value `seq` handle value)
 {-# NOINLINE wrapHandle #-}
 
 handleNumber :: Handle -> Int
 handleNumber (Handle identity _) = hashUnique identity
+
 scalarName :: Scalar -> String
 scalarName (SInteger t _) = t
 scalarName (SBool _) = "Bool"
@@ -148,162 +211,252 @@ scalarName (SPresent t _) = t
 scalarName (SList _) = "List"
 scalarName (SData tag _) = takeWhile (/= ':') tag
 scalarName (SHandle t _) = t
+
 floatScalar :: String -> Double -> Scalar
-floatScalar t x = SFloat t $ pad (if t == "Float32" then 8 else 16) $
-  if t == "Float32"
-    then showHex (castFloatToWord32 (double2Float x)) ""
-    else showHex (castDoubleToWord64 x) ""
-  where pad n s = replicate (n-length s) '0' ++ s
+floatScalar t x =
+  SFloat t
+    $ pad (if t == "Float32" then 8 else 16)
+    $ if t == "Float32"
+      then showHex (castFloatToWord32 (double2Float x)) ""
+      else showHex (castDoubleToWord64 x) ""
+  where
+    pad n s = replicate (n - length s) '0' ++ s
+
 floatValue :: Scalar -> Double
 floatValue (SFloat t bits) = case readHex bits of
-  [(n,"")] -> if t == "Float32"
-    then float2Double (castWord32ToFloat (fromInteger n))
-    else castWord64ToDouble (fromInteger n)
+  [(n, "")] ->
+    if t == "Float32"
+      then float2Double (castWord32ToFloat (fromInteger n))
+      else castWord64ToDouble (fromInteger n)
   _ -> error "invalid internal float bits"
 floatValue _ = error "not a float"
+
 exactValue :: Scalar -> Either String Rational
 exactValue (SInteger _ n) = Right (n % 1)
 exactValue (SRational n d) | d /= 0 = Right (n % d)
-exactValue (SDecimal c e) = Right (if e >= 0 then c * 10^e % 1 else c % 10^(-e))
+exactValue (SDecimal c e) = Right (if e >= 0 then c * 10 ^ e % 1 else c % 10 ^ (-e))
 exactValue _ = Left "requires an exact numeric value"
+
 reduced :: Rational -> Scalar
 reduced r = SRational (numerator r) (denominator r)
+
 decimal :: Rational -> Either String Scalar
-decimal r = go (denominator r) 0 0 where
-  go d a b | d `mod` 2 == 0 = go (d `div` 2) (a+1) b
-           | d `mod` 5 == 0 = go (d `div` 5) a (b+1)
-           | d /= 1 =
-               Left "conversion to Decimal is not finite; use prelude.round"
-           | otherwise = let scale = max a b
-                         in Right (SDecimal
-                           (numerator r * 2^(scale-a) * 5^(scale-b)) (-scale))
+decimal r = go (denominator r) 0 0
+  where
+    go d a b
+      | d `mod` 2 == 0 = go (d `div` 2) (a + 1) b
+      | d `mod` 5 == 0 = go (d `div` 5) a (b + 1)
+      | d /= 1 =
+          Left "conversion to Decimal is not finite; use prelude.round"
+      | otherwise =
+          let scale = max a b
+           in Right
+                ( SDecimal
+                    (numerator r * 2 ^ (scale - a) * 5 ^ (scale - b))
+                    (-scale)
+                )
+
 validateScalar :: Int -> Scalar -> Either String Scalar
 validateScalar machine s = case s of
-  SInteger t n | not (isInteger t) -> Left "unknown integer type"
-               | t == "BigUInt" && n < 0 -> Left "BigUInt cannot be negative"
-               | Just (lo,hi) <- integerBounds machine t,
-                 n < lo || n > hi -> Left ("integer outside " ++ t ++ " range")
-               | otherwise -> Right s
-  SRational n d | d == 0 -> Left "Rational denominator cannot be zero"
-                | otherwise -> Right (reduced (n % d))
-  SCharacter t c | validUnit t c -> Right s
-                 | otherwise -> Left ("invalid " ++ t ++ " representation")
-  SSequence t xs | t `elem` ["Text","CodePointText","Utf16Text","Bytes"],
-                  all (validUnit t) xs -> Right s
-                | otherwise -> Left ("invalid " ++ t ++ " representation")
-  SFloat t bits | t `elem` ["Float32","Float64"],
-                 length bits == (if t == "Float32" then 8 else 16),
-                 [(_,"")] <- (readHex bits :: [(Integer,String)]) -> Right s
-               | otherwise -> Left "invalid IEEE bit representation"
-  SComplex t r i | t `elem` ["Complex64","Complex128"],
-                  all ((== if t == "Complex64" then "Float32" else "Float64") .
-                    scalarName) [r,i] ->
-                    SComplex t <$> validateScalar machine r
-                      <*> validateScalar machine i
-                 | otherwise -> Left "complex component precision mismatch"
+  SInteger t n
+    | not (isInteger t) -> Left "unknown integer type"
+    | t == "BigUInt" && n < 0 -> Left "BigUInt cannot be negative"
+    | Just (lo, hi) <- integerBounds machine t,
+      n < lo || n > hi ->
+        Left ("integer outside " ++ t ++ " range")
+    | otherwise -> Right s
+  SRational n d
+    | d == 0 -> Left "Rational denominator cannot be zero"
+    | otherwise -> Right (reduced (n % d))
+  SCharacter t c
+    | validUnit t c -> Right s
+    | otherwise -> Left ("invalid " ++ t ++ " representation")
+  SSequence t xs
+    | t `elem` ["Text", "CodePointText", "Utf16Text", "Bytes"],
+      all (validUnit t) xs ->
+        Right s
+    | otherwise -> Left ("invalid " ++ t ++ " representation")
+  SFloat t bits
+    | t `elem` ["Float32", "Float64"],
+      length bits == (if t == "Float32" then 8 else 16),
+      [(_, "")] <- (readHex bits :: [(Integer, String)]) ->
+        Right s
+    | otherwise -> Left "invalid IEEE bit representation"
+  SComplex t r i
+    | t `elem` ["Complex64", "Complex128"],
+      all
+        ( (== if t == "Complex64" then "Float32" else "Float64")
+            . scalarName
+        )
+        [r, i] ->
+        SComplex t
+          <$> validateScalar machine r
+          <*> validateScalar machine i
+    | otherwise -> Left "complex component precision mismatch"
   SScopedSymbol _ i d
     | all (validUnit "Text" . ord) (i ++ d) -> Right s
-    | otherwise -> Left
-        "Symbol IDs and descriptions must contain Unicode scalars"
-  SSymbol i d | all (validUnit "Text" . ord) (i ++ d) -> Right s
-              | otherwise -> Left
-                  "Symbol IDs and descriptions must contain Unicode scalars"
-  SAbsent t | t `elem` ["Unit","Null","Undefined"] -> Right s
-            | otherwise -> Left "unknown absence value"
-  SPresent t v | t `elem` ["Nullable","Optional"] ->
-                 SPresent t <$> traverse (validateScalar machine) v
-               | otherwise -> Left "unknown presence type"
+    | otherwise ->
+        Left
+          "Symbol IDs and descriptions must contain Unicode scalars"
+  SSymbol i d
+    | all (validUnit "Text" . ord) (i ++ d) -> Right s
+    | otherwise ->
+        Left
+          "Symbol IDs and descriptions must contain Unicode scalars"
+  SAbsent t
+    | t `elem` ["Unit", "Null", "Undefined"] -> Right s
+    | otherwise -> Left "unknown absence value"
+  SPresent t v
+    | t `elem` ["Nullable", "Optional"] ->
+        SPresent t <$> traverse (validateScalar machine) v
+    | otherwise -> Left "unknown presence type"
   _ -> Right s
+
 validUnit :: String -> Int -> Bool
 validUnit t c
   | t == "Bytes" = c >= 0 && c <= 255
-  | t `elem` ["CodeUnit16","Utf16Text"] = c >= 0 && c <= 65535
-  | t `elem` ["CodePoint","CodePointText"] = c >= 0 && c <= 1114111
-  | t `elem` ["Char","Text"] =
+  | t `elem` ["CodeUnit16", "Utf16Text"] = c >= 0 && c <= 65535
+  | t `elem` ["CodePoint", "CodePointText"] = c >= 0 && c <= 1114111
+  | t `elem` ["Char", "Text"] =
       c >= 0 && c <= 1114111 && (c < 55296 || c > 57343)
   | otherwise = False
+
 promote :: String -> String -> String -> Either String String
 promote op a b
   | not (isNumeric a && isNumeric b) =
       Left "arithmetic requires numeric operands (Bool is not an integer)"
   | isExact a /= isExact b =
       Left "exact/inexact mixing requires an explicit conversion"
-  | op `elem` ["quot","rem","pow"] =
-      if isInteger a && isInteger b then Right "Integer"
-      else Left "quot/rem/pow require integer operands"
-  | isExact a = Right $
-      if op == "/" || "Rational" `elem` [a,b] then "Rational"
-      else if "Decimal" `elem` [a,b] then "Decimal" else "Integer"
-  | otherwise = Right $ if any (`elem` ["Complex64","Complex128"]) [a,b]
-      then if any (`elem` ["Float64","Complex128"]) [a,b]
-        then "Complex128" else "Complex64"
-      else if "Float64" `elem` [a,b] then "Float64" else "Float32"
+  | op `elem` ["quot", "rem", "pow"] =
+      if isInteger a && isInteger b
+        then Right "Integer"
+        else Left "quot/rem/pow require integer operands"
+  | isExact a =
+      Right $
+        if op == "/" || "Rational" `elem` [a, b]
+          then "Rational"
+          else if "Decimal" `elem` [a, b] then "Decimal" else "Integer"
+  | otherwise =
+      Right $
+        if any (`elem` ["Complex64", "Complex128"]) [a, b]
+          then
+            if any (`elem` ["Float64", "Complex128"]) [a, b]
+              then "Complex128"
+              else "Complex64"
+          else if "Float64" `elem` [a, b] then "Float64" else "Float32"
+
 convertScalar :: Int -> String -> Scalar -> Either String Scalar
 convertScalar machine t s
   | t == scalarName s = validateScalar machine s
   | isInteger t = do
       r <- exactValue s
-      if denominator r /= 1 then Left ("fractional conversion to " ++ t)
-      else validateScalar machine (SInteger t (numerator r))
+      if denominator r /= 1
+        then Left ("fractional conversion to " ++ t)
+        else validateScalar machine (SInteger t (numerator r))
   | t == "Rational" = reduced <$> exactValue s
   | t == "Decimal" = exactValue s >>= decimal
-  | t `elem` ["Float32","Float64"] = if isExact (scalarName s)
-      then (\r -> if t == "Float32"
-        then SFloat t (pad8 (showHex (castFloatToWord32 (fromRational r)) ""))
-        else floatScalar t (fromRational r)) <$> exactValue s
-      else case s of
-      SFloat _ _ -> Right (floatScalar t (floatValue s))
-      _ -> Left "conversion requires a real number"
-  | t `elem` ["Complex64","Complex128"] =
+  | t `elem` ["Float32", "Float64"] =
+      if isExact (scalarName s)
+        then
+          ( \r ->
+              if t == "Float32"
+                then SFloat t (pad8 (showHex (castFloatToWord32 (fromRational r)) ""))
+                else floatScalar t (fromRational r)
+          )
+            <$> exactValue s
+        else case s of
+          SFloat _ _ -> Right (floatScalar t (floatValue s))
+          _ -> Left "conversion requires a real number"
+  | t `elem` ["Complex64", "Complex128"] =
       let component = if t == "Complex64" then "Float32" else "Float64"
-      in case s of
-        SComplex _ r i -> SComplex t <$> convertScalar machine component r
-          <*> convertScalar machine component i
-        _ -> SComplex t <$> convertScalar machine component s
-          <*> pure (floatScalar component 0)
+       in case s of
+            SComplex _ r i ->
+              SComplex t
+                <$> convertScalar machine component r
+                <*> convertScalar machine component i
+            _ ->
+              SComplex t
+                <$> convertScalar machine component s
+                <*> pure (floatScalar component 0)
   | otherwise = Left ("cannot convert " ++ scalarName s ++ " to " ++ t)
+
 scalarBoundaries :: Int -> String -> [Scalar]
 scalarBoundaries machine t
   | isInteger t = map (SInteger t) $ case integerBounds machine t of
-      Just (lo,hi) -> [lo, max lo (-1),0,hi]
-      Nothing -> if t == "BigUInt" then [0,1,2^(128::Int)]
-        else [-2^(128::Int),-1,0,2^(128::Int)]
+      Just (lo, hi) -> [lo, max lo (-1), 0, hi]
+      Nothing ->
+        if t == "BigUInt"
+          then [0, 1, 2 ^ (128 :: Int)]
+          else [-2 ^ (128 :: Int), -1, 0, 2 ^ (128 :: Int)]
   | otherwise = case t of
-      "Bool" -> map SBool [False,True]
-      "Decimal" -> [SDecimal 0 0,SDecimal 1 (-1),SDecimal (-123) 100]
-      "Rational" -> [SRational 0 1,SRational 1 2,SRational (-2) 3]
+      "Bool" -> map SBool [False, True]
+      "Decimal" -> [SDecimal 0 0, SDecimal 1 (-1), SDecimal (-123) 100]
+      "Rational" -> [SRational 0 1, SRational 1 2, SRational (-2) 3]
       "Float32" -> floats t
       "Float64" -> floats t
-      "Complex64" -> [SComplex t x y
-        | (x,y) <- zip (floats "Float32") (reverse (floats "Float32"))]
-      "Complex128" -> [SComplex t x y
-        | (x,y) <- zip (floats "Float64") (reverse (floats "Float64"))]
+      "Complex64" ->
+        [ SComplex t x y
+        | (x, y) <- zip (floats "Float32") (reverse (floats "Float32"))
+        ]
+      "Complex128" ->
+        [ SComplex t x y
+        | (x, y) <- zip (floats "Float64") (reverse (floats "Float64"))
+        ]
       "Symbol" -> [SSymbol "a" "same", SSymbol "b" "same"]
-      _ | Just p <- primitive t, family p == Character ->
-          map (SCharacter t) (units t)
-        | Just p <- primitive t, family p == Sequence ->
-          map (SSequence t) [[],units t]
+      _
+        | Just p <- primitive t,
+          family p == Character ->
+            map (SCharacter t) (units t)
+        | Just p <- primitive t,
+          family p == Sequence ->
+            map (SSequence t) [[], units t]
         | otherwise -> [SAbsent t]
-  where floats n = map (SFloat n) $ if n == "Float32"
-          then ["00000000","80000000","3f800000","bf800000",
-                "7f800000","ff800000","7fc00000","00000001",
-                "007fffff","00800000","7f7fffff","ff7fffff"]
-          else ["0000000000000000","8000000000000000","3ff0000000000000",
-                "bff0000000000000","7ff0000000000000","fff0000000000000",
-                "7ff8000000000000","0000000000000001","000fffffffffffff",
-                "0010000000000000","7fefffffffffffff","ffefffffffffffff"]
-        units n | n == "Bytes" = [0,127,128,255]
-                | n `elem` ["Utf16Text","CodeUnit16"] = [0,55296,56320,65535]
-                | n `elem` ["CodePointText","CodePoint"] =
-                    [0,55296,128512,1114111]
-                | otherwise = [0,97,955,128512,1114111]
+  where
+    floats n =
+      map (SFloat n) $
+        if n == "Float32"
+          then
+            [ "00000000",
+              "80000000",
+              "3f800000",
+              "bf800000",
+              "7f800000",
+              "ff800000",
+              "7fc00000",
+              "00000001",
+              "007fffff",
+              "00800000",
+              "7f7fffff",
+              "ff7fffff"
+            ]
+          else
+            [ "0000000000000000",
+              "8000000000000000",
+              "3ff0000000000000",
+              "bff0000000000000",
+              "7ff0000000000000",
+              "fff0000000000000",
+              "7ff8000000000000",
+              "0000000000000001",
+              "000fffffffffffff",
+              "0010000000000000",
+              "7fefffffffffffff",
+              "ffefffffffffffff"
+            ]
+    units n
+      | n == "Bytes" = [0, 127, 128, 255]
+      | n `elem` ["Utf16Text", "CodeUnit16"] = [0, 55296, 56320, 65535]
+      | n `elem` ["CodePointText", "CodePoint"] =
+          [0, 55296, 128512, 1114111]
+      | otherwise = [0, 97, 955, 128512, 1114111]
+
 -- | The items from one index to another, clamped to the sequence.
 sliceItems :: [a] -> Integer -> Integer -> [a]
 sliceItems xs i j =
   let count = fromIntegral (length xs)
       start = max 0 (min count i)
       end = max start (min count j)
-  in take (fromIntegral (end - start)) (drop (fromIntegral start) xs)
+   in take (fromIntegral (end - start)) (drop (fromIntegral start) xs)
 
 maybeItem :: Maybe Scalar -> Scalar
 maybeItem (Just v) = SData "Maybe::Present" [v]
@@ -313,6 +466,7 @@ textScalar :: String -> Scalar
 textScalar = SSequence "Text" . map ord
 
 type Value = Scalar
+
 allElements :: Scalar -> (Scalar -> Scalar) -> Scalar
 allElements (SList values) predicate = SBool (all (truth . predicate) values)
 allElements _ _ = error "expected List in element predicate"
@@ -331,35 +485,39 @@ construct tag _ = error ("invalid constructor or arity: " ++ tag)
 eitherArguments :: String -> (String, String)
 eitherArguments t = case stripPrefix "Either " t of
   Just body -> case arguments body of
-    [a,b] | not (null a), not (null b) -> (a,b)
+    [a, b] | not (null a), not (null b) -> (a, b)
     _ -> error "invalid Either type key"
   Nothing -> error "Either type required"
   where
     arguments [] = []
-    arguments (' ':rest) = arguments rest
-    arguments ('(':rest) = let (value,remaining) = consume (1 :: Int) [] rest
-                          in value : arguments remaining
+    arguments (' ' : rest) = arguments rest
+    arguments ('(' : rest) =
+      let (value, remaining) = consume (1 :: Int) [] rest
+       in value : arguments remaining
     arguments _ = error "invalid Either type key"
-    consume 1 value (')':rest) = (reverse value,rest)
-    consume depth value ('(':rest) = consume (depth+1) ('(':value) rest
-    consume depth value (')':rest) = consume (depth-1) (')':value) rest
-    consume depth value (c:rest) = consume depth (c:value) rest
+    consume 1 value (')' : rest) = (reverse value, rest)
+    consume depth value ('(' : rest) = consume (depth + 1) ('(' : value) rest
+    consume depth value (')' : rest) = consume (depth - 1) (')' : value) rest
+    consume depth value (c : rest) = consume depth (c : value) rest
     consume _ _ [] = error "invalid Either type key"
 
 mapSumFields :: (String -> Scalar -> Scalar) -> String -> Scalar -> Scalar
 mapSumFields field t value = forceScalar result `seq` result
   where
-    result | Just inner <- stripPrefix "Maybe " t = case value of
-             SData "Maybe::Absent" [] -> value
-             SData "Maybe::Present" [payload] ->
-               SData "Maybe::Present" [field inner payload]
-             _ -> error "invalid Maybe constructor or arity"
-           | otherwise = let (left,right) = eitherArguments t in case value of
-             SData "Either::Left" [payload] ->
-               SData "Either::Left" [field left payload]
-             SData "Either::Right" [payload] ->
-               SData "Either::Right" [field right payload]
-             _ -> error "invalid Either constructor or arity"
+    result
+      | Just inner <- stripPrefix "Maybe " t = case value of
+          SData "Maybe::Absent" [] -> value
+          SData "Maybe::Present" [payload] ->
+            SData "Maybe::Present" [field inner payload]
+          _ -> error "invalid Maybe constructor or arity"
+      | otherwise =
+          let (left, right) = eitherArguments t
+           in case value of
+                SData "Either::Left" [payload] ->
+                  SData "Either::Left" [field left payload]
+                SData "Either::Right" [payload] ->
+                  SData "Either::Right" [field right payload]
+                _ -> error "invalid Either constructor or arity"
 
 -- | Moves a value into the declared type, failing instead of wrapping or rounding
 -- silently, because a bounded type is only ever reached through a checked
@@ -369,23 +527,29 @@ convert t s bits
   | take 6 t == "Maybe " || take 7 t == "Either " =
       mapSumFields (\inner value -> convert inner value bits) t s
   | Just inner <- stripPrefix "List " t = case s of
-      SList xs -> let result = SList (map (\x -> convert inner x bits) xs)
-                  in forceScalar result `seq` result
+      SList xs ->
+        let result = SList (map (\x -> convert inner x bits) xs)
+         in forceScalar result `seq` result
       _ -> error "List required"
   | Just inner <- strip "Nullable " t = presence "Nullable" "Null" inner
   | Just inner <- strip "Optional " t = presence "Optional" "Undefined" inner
-  | isExact t, SFloat _ _ <- s = let x = floatValue s
-    in if isNaN x || isInfinite x then error "non-finite exact conversion"
-       else either error id (convertScalar bits t (reduced (toRational x)))
+  | isExact t,
+    SFloat _ _ <- s =
+      let x = floatValue s
+       in if isNaN x || isInfinite x
+            then error "non-finite exact conversion"
+            else either error id (convertScalar bits t (reduced (toRational x)))
   | otherwise = either error id (convertScalar bits t s)
-  where presence n absent inner = case s of
-          SAbsent a | a == absent -> SPresent n Nothing
-          SPresent k v | k == n ->
+  where
+    presence n absent inner = case s of
+      SAbsent a | a == absent -> SPresent n Nothing
+      SPresent k v
+        | k == n ->
             SPresent n (fmap (\x -> convert inner x bits) v)
-          _ -> error "tagged presence required"
-        strip [] xs = Just xs
-        strip (a:as) (b:bs) | a == b = strip as bs
-        strip _ _ = Nothing
+      _ -> error "tagged presence required"
+    strip [] xs = Just xs
+    strip (a : as) (b : bs) | a == b = strip as bs
+    strip _ _ = Nothing
 
 -- | Checks a value an adapter produced against its declared domain: native code
 -- may return anything its own type allows, and a law quantifies only over the
@@ -395,12 +559,14 @@ validate t s bits
   | take 6 t == "Maybe " || take 7 t == "Either " =
       mapSumFields (\inner value -> validate inner value bits) t s
   | Just inner <- stripPrefix "List " t = case s of
-      SList xs -> let result = SList (map (\x -> validate inner x bits) xs)
-                  in forceScalar result `seq` result
+      SList xs ->
+        let result = SList (map (\x -> validate inner x bits) xs)
+         in forceScalar result `seq` result
       _ -> error "List required"
   | take 9 t == "Nullable " || take 9 t == "Optional " = convert t s bits
   | scalarName s /= t = error ("invalid " ++ t ++ " representation")
   | otherwise = either error id (validateScalar bits s)
+
 truth :: Scalar -> Bool
 truth (SBool b) = b
 truth _ = error "Bool required"
@@ -412,22 +578,27 @@ eqSetTag :: String
 eqSetTag = "lawspec.collections::type::EqSet::EqSetItems"
 
 sameMembers :: [Scalar] -> [Scalar] -> Bool
-sameMembers left right = all (\value -> any (equal value) right) left &&
-  all (\value -> any (equal value) left) right
+sameMembers left right =
+  all (\value -> any (equal value) right) left
+    && all (\value -> any (equal value) left) right
 
 distinctMembers :: [Scalar] -> Bool
 distinctMembers = go []
   where
     go _ [] = True
-    go previous (value:rest) = not (any (equal value) previous) && go (value:previous) rest
+    go previous (value : rest) = not (any (equal value) previous) && go (value : previous) rest
 
 equal :: Scalar -> Scalar -> Bool
 equal a b
-  | SData tag [SList xs] <- a, SData other [SList ys] <- b
-  , tag == eqSetTag && other == eqSetTag = sameMembers xs ys
-  | SData tag xs <- a, SData other ys <- b =
+  | SData tag [SList xs] <- a,
+    SData other [SList ys] <- b,
+    tag == eqSetTag && other == eqSetTag =
+      sameMembers xs ys
+  | SData tag xs <- a,
+    SData other ys <- b =
       tag == other && length xs == length ys && and (zipWith equal xs ys)
-  | SList xs <- a, SList ys <- b =
+  | SList xs <- a,
+    SList ys <- b =
       length xs == length ys && and (zipWith equal xs ys)
   | isInexact (scalarName a) && isInexact (scalarName b) =
       truth (binary "==" a b)
@@ -435,12 +606,15 @@ equal a b
       exactValue a == exactValue b
   | SFloat _ _ <- a, SFloat _ _ <- b = floatValue a == floatValue b
   | SComplex _ r i <- a, SComplex _ s j <- b = equal r s && equal i j
-  | SPresent n x <- a, SPresent m y <- b = n == m && case (x,y) of
-      (Nothing,Nothing) -> True
-      (Just p,Just q) -> equal p q
-      _ -> False
+  | SPresent n x <- a,
+    SPresent m y <- b =
+      n == m && case (x, y) of
+        (Nothing, Nothing) -> True
+        (Just p, Just q) -> equal p q
+        _ -> False
   | SSymbol i _ <- a, SSymbol j _ <- b = i == j
-  | SScopedSymbol scope i _ <- a, SScopedSymbol other j _ <- b =
+  | SScopedSymbol scope i _ <- a,
+    SScopedSymbol other j _ <- b =
       scope == other && i == j
   | otherwise = a == b
 
@@ -448,64 +622,80 @@ equal a b
 -- Prelude's, so a law computes the same result on every target.
 -- ref:DEC-portable-exact-arithmetic ref:ieee-754
 binary :: String -> Scalar -> Scalar -> Scalar
-binary op a b | op `elem` ["==","!="], not (isNumeric (scalarName a)) =
-  SBool (if op == "==" then equal a b else not (equal a b))
+binary op a b
+  | op `elem` ["==", "!="],
+    not (isNumeric (scalarName a)) =
+      SBool (if op == "==" then equal a b else not (equal a b))
 binary op a b = either error run (promote op (scalarName a) (scalarName b))
   where
-  run t
-    | isExact (scalarName a) =
-        let x = either error id (exactValue a)
-            y = either error id (exactValue b)
-            result = case op of
-              "+" -> x+y
-              "-" -> x-y
-              "*" -> x*y
-              "/" -> x/y
-              _ -> error "unknown arithmetic operator"
-        in if op `elem` ["<","<=",">",">=","==","!="]
-          then SBool (compareWith op x y)
-        else if op == "quot"
-          then SInteger "Integer" (numerator x `quot` numerator y)
-        else if op == "rem"
-          then SInteger "Integer" (numerator x `rem` numerator y)
-        else if op == "pow"
-          then if numerator y < 0 then error "negative exponent"
-            else SInteger "Integer" (numerator x ^ numerator y)
-        else convert t (reduced result) 64
-    | t `elem` ["Complex64","Complex128"] =
-        let component = if t == "Complex64" then "Float32" else "Float64"
-            pair (SComplex _ r i) = (floatValue r,floatValue i)
-            pair s = (floatValue s,0)
-            (ar,ai) = pair a; (br,bi) = pair b
-            rnd = floatValue . floatScalar component
-            d = rnd (rnd (br*br)+rnd (bi*bi))
-            (re,im) = case op of
-              "+" -> (ar+br,ai+bi)
-              "-" -> (ar-br,ai-bi)
-              "*" -> (rnd (ar*br)-rnd (ai*bi),rnd (ar*bi)+rnd (ai*br))
-              "/" ->
-                (rnd (rnd (ar*br)+rnd (ai*bi))/d,
-                 rnd (rnd (ai*br)-rnd (ar*bi))/d)
-              _ -> error "complex values are not ordered"
-        in if op == "==" then SBool (ar==br && ai==bi)
-           else if op == "!=" then SBool (ar/=br || ai/=bi)
-           else SComplex t (floatScalar component re) (floatScalar component im)
-    | otherwise = let x = floatValue a; y = floatValue b
-                      result = case op of
-                        "+" -> x+y
-                        "-" -> x-y
-                        "*" -> x*y
-                        "/" -> x/y
-                        _ -> error "unknown operator"
-                  in if op `elem` ["<","<=",">",">=","==","!="]
-                     then SBool (compareWith op x y) else floatScalar t result
-  compareWith "<" x y = x < y
-  compareWith "<=" x y = x <= y
-  compareWith ">" x y = x > y
-  compareWith ">=" x y = x >= y
-  compareWith "==" x y = x == y
-  compareWith "!=" x y = x /= y
-  compareWith _ _ _ = error "unknown comparison"
+    run t
+      | isExact (scalarName a) =
+          let x = either error id (exactValue a)
+              y = either error id (exactValue b)
+              result = case op of
+                "+" -> x + y
+                "-" -> x - y
+                "*" -> x * y
+                "/" -> x / y
+                _ -> error "unknown arithmetic operator"
+           in if op `elem` ["<", "<=", ">", ">=", "==", "!="]
+                then SBool (compareWith op x y)
+                else
+                  if op == "quot"
+                    then SInteger "Integer" (numerator x `quot` numerator y)
+                    else
+                      if op == "rem"
+                        then SInteger "Integer" (numerator x `rem` numerator y)
+                        else
+                          if op == "pow"
+                            then
+                              if numerator y < 0
+                                then error "negative exponent"
+                                else SInteger "Integer" (numerator x ^ numerator y)
+                            else convert t (reduced result) 64
+      | t `elem` ["Complex64", "Complex128"] =
+          let component = if t == "Complex64" then "Float32" else "Float64"
+              pair (SComplex _ r i) = (floatValue r, floatValue i)
+              pair s = (floatValue s, 0)
+              (ar, ai) = pair a
+              (br, bi) = pair b
+              rnd = floatValue . floatScalar component
+              d = rnd (rnd (br * br) + rnd (bi * bi))
+              (re, im) = case op of
+                "+" -> (ar + br, ai + bi)
+                "-" -> (ar - br, ai - bi)
+                "*" -> (rnd (ar * br) - rnd (ai * bi), rnd (ar * bi) + rnd (ai * br))
+                "/" ->
+                  ( rnd (rnd (ar * br) + rnd (ai * bi)) / d,
+                    rnd (rnd (ai * br) - rnd (ar * bi)) / d
+                  )
+                _ -> error "complex values are not ordered"
+           in if op == "=="
+                then SBool (ar == br && ai == bi)
+                else
+                  if op == "!="
+                    then SBool (ar /= br || ai /= bi)
+                    else SComplex t (floatScalar component re) (floatScalar component im)
+      | otherwise =
+          let x = floatValue a
+              y = floatValue b
+              result = case op of
+                "+" -> x + y
+                "-" -> x - y
+                "*" -> x * y
+                "/" -> x / y
+                _ -> error "unknown operator"
+           in if op `elem` ["<", "<=", ">", ">=", "==", "!="]
+                then SBool (compareWith op x y)
+                else floatScalar t result
+    compareWith "<" x y = x < y
+    compareWith "<=" x y = x <= y
+    compareWith ">" x y = x > y
+    compareWith ">=" x y = x >= y
+    compareWith "==" x y = x == y
+    compareWith "!=" x y = x /= y
+    compareWith _ _ _ = error "unknown comparison"
+
 -- An async adapter's IO result, awaited where it is called. Adapters are
 -- functions of their arguments, so running the action in place is safe.
 awaitTask :: IO a -> a
@@ -563,108 +753,128 @@ canonicalItems keyed values = foldr keepLast [] (sortBy order values)
       _ -> item : rest
 
 helper :: String -> [Scalar] -> Int -> Scalar
-helper n args bits = case (n,args) of
-  ("incompleteSearch",[SSequence "Text" reason]) -> error (map chr reason)
+helper n args bits = case (n, args) of
+  ("incompleteSearch", [SSequence "Text" reason]) -> error (map chr reason)
   -- Sequences: Text and Bytes hold their units, a List its values; a slice
   -- is clamped.
-  ("append",[SSequence t a,SSequence _ b]) -> SSequence t (a ++ b)
-  ("append",[SList a,SList b]) -> SList (a ++ b)
-  ("slice",[SSequence t xs,SInteger _ i,SInteger _ j]) -> SSequence t (sliceItems xs i j)
-  ("slice",[SList xs,SInteger _ i,SInteger _ j]) -> SList (sliceItems xs i j)
-  ("at",[SList xs,SInteger _ i]) -> maybeItem (if i >= 0 && i < fromIntegral (length xs) then Just (xs !! fromIntegral i) else Nothing)
-  ("at",[SSequence "Bytes" xs,SInteger _ i]) -> maybeItem (if i >= 0 && i < fromIntegral (length xs) then Just (SInteger "UInt8" (fromIntegral (xs !! fromIntegral i))) else Nothing)
-  ("range",[SInteger t lo,SInteger _ hi]) -> SList [SInteger t k | k <- [lo .. hi - 1]]
-  ("octets",[SSequence "Bytes" xs]) -> SList [SInteger "UInt8" (fromIntegral x) | x <- xs]
-  ("bytesOf",[SList xs]) -> SSequence "Bytes" [fromIntegral k | SInteger _ k <- xs]
-  ("utf8",[SSequence _ t]) -> SSequence "Bytes" (map fromIntegral (B.unpack (TE.encodeUtf8 (T.pack (map chr t)))))
-  ("textOf",[SInteger _ k]) -> textScalar (show k)
-  ("join",[SSequence _ separator,SList parts]) -> SSequence "Text" (intercalate separator [p | SSequence _ p <- parts])
-  ("startsWith",[SSequence _ t,SSequence _ p]) -> SBool (p `isPrefixOf` t)
-  ("endsWith",[SSequence _ t,SSequence _ p]) -> SBool (p `isSuffixOf` t)
-  ("textContains",[SSequence _ t,SSequence _ p]) -> SBool (p `isInfixOf` t)
-  ("regexMatches",[SSequence _ p,SSequence _ t]) -> SBool (either error id (regexMatches (map chr p) t))
-  ("recorded",[SSequence _ key,value]) -> unsafePerformIO (recorded (map chr key) value)
-  ("acquireResource",[SSequence _ kind]) -> unsafePerformIO (textScalar <$> acquireResource (map chr kind))
-  ("releaseResource",[SSequence _ kind,SSequence _ value]) ->
+  ("append", [SSequence t a, SSequence _ b]) -> SSequence t (a ++ b)
+  ("append", [SList a, SList b]) -> SList (a ++ b)
+  ("slice", [SSequence t xs, SInteger _ i, SInteger _ j]) -> SSequence t (sliceItems xs i j)
+  ("slice", [SList xs, SInteger _ i, SInteger _ j]) -> SList (sliceItems xs i j)
+  ("at", [SList xs, SInteger _ i]) -> maybeItem (if i >= 0 && i < fromIntegral (length xs) then Just (xs !! fromIntegral i) else Nothing)
+  ("at", [SSequence "Bytes" xs, SInteger _ i]) -> maybeItem (if i >= 0 && i < fromIntegral (length xs) then Just (SInteger "UInt8" (fromIntegral (xs !! fromIntegral i))) else Nothing)
+  ("range", [SInteger t lo, SInteger _ hi]) -> SList [SInteger t k | k <- [lo .. hi - 1]]
+  ("octets", [SSequence "Bytes" xs]) -> SList [SInteger "UInt8" (fromIntegral x) | x <- xs]
+  ("bytesOf", [SList xs]) -> SSequence "Bytes" [fromIntegral k | SInteger _ k <- xs]
+  ("utf8", [SSequence _ t]) -> SSequence "Bytes" (map fromIntegral (B.unpack (TE.encodeUtf8 (T.pack (map chr t)))))
+  ("textOf", [SInteger _ k]) -> textScalar (show k)
+  ("join", [SSequence _ separator, SList parts]) -> SSequence "Text" (intercalate separator [p | SSequence _ p <- parts])
+  ("startsWith", [SSequence _ t, SSequence _ p]) -> SBool (p `isPrefixOf` t)
+  ("endsWith", [SSequence _ t, SSequence _ p]) -> SBool (p `isSuffixOf` t)
+  ("textContains", [SSequence _ t, SSequence _ p]) -> SBool (p `isInfixOf` t)
+  ("regexMatches", [SSequence _ p, SSequence _ t]) -> SBool (either error id (regexMatches (map chr p) t))
+  ("recorded", [SSequence _ key, value]) -> unsafePerformIO (recorded (map chr key) value)
+  ("acquireResource", [SSequence _ kind]) -> unsafePerformIO (textScalar <$> acquireResource (map chr kind))
+  ("releaseResource", [SSequence _ kind, SSequence _ value]) ->
     unsafePerformIO (releaseResource (map chr kind) (map chr value) >> pure (SBool True))
-  ("freePort",[_]) -> unsafePerformIO (SInteger "Int32" . fromIntegral <$> freePort)
-  ("checked",[v]) -> forceScalar v `seq` SBool True
-  ("select",[c,a,b]) -> if truth c then a else b
-  ("compare",[x,y]) -> case compareValues x y of
-    Right order -> SData ("lawspec.collections::type::Ordering::" ++
-      case order of LT -> "Less"; EQ -> "Equal"; GT -> "Greater") []
+  ("freePort", [_]) -> unsafePerformIO (SInteger "Int32" . fromIntegral <$> freePort)
+  ("checked", [v]) -> forceScalar v `seq` SBool True
+  ("select", [c, a, b]) -> if truth c then a else b
+  ("compare", [x, y]) -> case compareValues x y of
+    Right order ->
+      SData
+        ( "lawspec.collections::type::Ordering::"
+            ++ case order of LT -> "Less"; EQ -> "Equal"; GT -> "Greater"
+        )
+        []
     Left message -> error message
-  ("length",[SSequence _ xs]) -> SInteger "Integer" (fromIntegral (length xs))
-  ("length",[SList xs]) -> SInteger "Integer" (fromIntegral (length xs))
-  ("isPresent",[SPresent _ v]) -> SBool (case v of Just _ -> True; _ -> False)
-  ("presentValue",[SPresent _ (Just v)]) -> v
-  ("real",[SComplex _ r _]) -> r
-  ("imag",[SComplex _ _ i]) -> i
-  ("quot",[a,b]) -> binary "quot" a b
-  ("pow",[a,b]) -> binary "pow" a b
-  ("rem",[a,b]) -> binary "rem" a b
-  ("negate",[a]) | isExact (scalarName a) -> binary "-" (SInteger "BigInt" 0) a
-  ("negate",[SComplex t r i]) ->
+  ("length", [SSequence _ xs]) -> SInteger "Integer" (fromIntegral (length xs))
+  ("length", [SList xs]) -> SInteger "Integer" (fromIntegral (length xs))
+  ("isPresent", [SPresent _ v]) -> SBool (case v of Just _ -> True; _ -> False)
+  ("presentValue", [SPresent _ (Just v)]) -> v
+  ("real", [SComplex _ r _]) -> r
+  ("imag", [SComplex _ _ i]) -> i
+  ("quot", [a, b]) -> binary "quot" a b
+  ("pow", [a, b]) -> binary "pow" a b
+  ("rem", [a, b]) -> binary "rem" a b
+  ("negate", [a]) | isExact (scalarName a) -> binary "-" (SInteger "BigInt" 0) a
+  ("negate", [SComplex t r i]) ->
     SComplex t (helper "negate" [r] bits) (helper "negate" [i] bits)
-  ("negate",[a]) -> floatScalar (scalarName a) (negate (floatValue a))
-  ("isNaN",[a]) -> SBool (isNaN (floatValue a))
-  ("isInfinite",[a]) -> SBool (isInfinite (floatValue a))
-  ("isFinite",[a]) ->
+  ("negate", [a]) -> floatScalar (scalarName a) (negate (floatValue a))
+  ("isNaN", [a]) -> SBool (isNaN (floatValue a))
+  ("isInfinite", [a]) -> SBool (isInfinite (floatValue a))
+  ("isFinite", [a]) ->
     SBool (not (isNaN (floatValue a) || isInfinite (floatValue a)))
-  ("isNegativeZero",[a]) -> SBool (isNegativeZero (floatValue a))
-  ("round",[a,b]) ->
-    let { x = either error id (exactValue a)
-        ; scale = either error numerator (exactValue (convert "Int32" b bits))
-        ; factor = if scale >= 0 then 10^scale % 1 else 1 % 10^(-scale)
-        }
-    in either error id (decimal (fromInteger (round (x*factor)) / factor))
-  (_,[a]) -> convert n a bits
+  ("isNegativeZero", [a]) -> SBool (isNegativeZero (floatValue a))
+  ("round", [a, b]) ->
+    let x = either error id (exactValue a)
+        scale = either error numerator (exactValue (convert "Int32" b bits))
+        factor = if scale >= 0 then 10 ^ scale % 1 else 1 % 10 ^ (-scale)
+     in either error id (decimal (fromInteger (round (x * factor)) / factor))
+  (_, [a]) -> convert n a bits
   _ -> error "unknown helper or wrong arity"
 
 sample :: String -> Int -> Int -> Scalar
 sample t seed bits
   | take 9 t == "Nullable " || take 9 t == "Optional " =
-      SPresent (take 8 t) (if even seed then Nothing
-        else Just (sample (drop 9 t) (seed `div` 2) bits))
+      SPresent
+        (take 8 t)
+        ( if even seed
+            then Nothing
+            else Just (sample (drop 9 t) (seed `div` 2) bits)
+        )
   | isInteger t =
-      let { bounds = integerBounds bits t
-          ; n = case bounds of
-              Just (lo,hi) -> lo + randomN `mod` (hi-lo+1)
-              Nothing -> if t == "BigUInt" then randomN
-                else randomN - 2^(255::Int)
-          }
-      in SInteger t n
+      let bounds = integerBounds bits t
+          n = case bounds of
+            Just (lo, hi) -> lo + randomN `mod` (hi - lo + 1)
+            Nothing ->
+              if t == "BigUInt"
+                then randomN
+                else randomN - 2 ^ (255 :: Int)
+       in SInteger t n
   | t == "Bool" = SBool (even seed)
   | t == "Decimal" =
-      SDecimal (randomN - 2^(255::Int)) (fromIntegral (seed `mod` 41 - 20))
+      SDecimal (randomN - 2 ^ (255 :: Int)) (fromIntegral (seed `mod` 41 - 20))
   | t == "Rational" =
-      reduced ((randomN - 2^(255::Int)) % (randomN `mod` 2^(128::Int) + 1))
-  | t == "Float32" = SFloat t (pad 8 (showHex (randomN `mod` 2^(32::Int)) ""))
-  | t == "Float64" = SFloat t (pad 16 (showHex (randomN `mod` 2^(64::Int)) ""))
+      reduced ((randomN - 2 ^ (255 :: Int)) % (randomN `mod` 2 ^ (128 :: Int) + 1))
+  | t == "Float32" = SFloat t (pad 8 (showHex (randomN `mod` 2 ^ (32 :: Int)) ""))
+  | t == "Float64" = SFloat t (pad 16 (showHex (randomN `mod` 2 ^ (64 :: Int)) ""))
   | t == "Complex64" || t == "Complex128" =
       let c = if t == "Complex64" then "Float32" else "Float64"
-      in SComplex t (sample c seed bits) (sample c (seed `div` 7) bits)
+       in SComplex t (sample c seed bits) (sample c (seed `div` 7) bits)
   | t == "Symbol" = SSymbol (show seed) "same"
-  | t `elem` ["Unit","Null","Undefined"] = SAbsent t
-  | t `elem` ["Char","CodePoint","CodeUnit16"] = SCharacter t (unit randomN)
+  | t `elem` ["Unit", "Null", "Undefined"] = SAbsent t
+  | t `elem` ["Char", "CodePoint", "CodeUnit16"] = SCharacter t (unit randomN)
   | otherwise = SSequence t (map unit (take (seed `mod` 40) stream))
-  where stream = drop 1 (iterate
-          (\n -> (n*6364136223846793005+1442695040888963407) `mod` 2^(256::Int))
-          (fromIntegral seed))
-        randomN = stream !! 7
-        maximumUnit = if t == "Bytes" then 256
-          else if t `elem` ["CodeUnit16","Utf16Text"] then 65536 else 1114112
-        unit n = let c = fromInteger (n `mod` maximumUnit)
-                 in if validUnit t c then c else 0
-        pad n s = replicate (n-length s) '0' ++ s
+  where
+    stream =
+      drop
+        1
+        ( iterate
+            (\n -> (n * 6364136223846793005 + 1442695040888963407) `mod` 2 ^ (256 :: Int))
+            (fromIntegral seed)
+        )
+    randomN = stream !! 7
+    maximumUnit =
+      if t == "Bytes"
+        then 256
+        else if t `elem` ["CodeUnit16", "Utf16Text"] then 65536 else 1114112
+    unit n =
+      let c = fromInteger (n `mod` maximumUnit)
+       in if validUnit t c then c else 0
+    pad n s = replicate (n - length s) '0' ++ s
 
 -- | Native support types preserve domains that lack a faithful Prelude type.
 newtype Decimal = Decimal Rational deriving (Eq, Ord, Show)
+
 newtype CodePointText = CodePointText [Char] deriving (Eq, Ord, Show)
+
 newtype Utf16Text = Utf16Text [Word16] deriving (Eq, Ord, Show)
+
 -- Context creation is the only effect needed for fixture Symbol identity.
 -- Equality uses Unique directly, never a potentially colliding hash or label.
 newtype SymbolContext = SymbolContext Unique deriving (Eq)
+
 instance Show SymbolContext where
   show _ = "<SymbolContext>"
 
@@ -681,14 +891,19 @@ scopeSymbols scope value = case value of
 
 data Symbol = Symbol String String | ScopedSymbol SymbolContext String String
   deriving (Show)
+
 instance Eq Symbol where
   Symbol identity _ == Symbol other _ = identity == other
   ScopedSymbol scope identity _ == ScopedSymbol otherScope other _ =
     scope == otherScope && identity == other
   _ == _ = False
+
 data Null = Null deriving (Eq, Ord, Show)
+
 data Undefined = Undefined deriving (Eq, Ord, Show)
+
 data Nullable a = NullValue | NullableValue a deriving (Eq, Ord, Show)
+
 data Optional a = UndefinedValue | OptionalValue a deriving (Eq, Ord, Show)
 
 class Native a where
@@ -700,84 +915,101 @@ checkMachineBits bits
   | bits == finiteBitSize (0 :: Int) = ()
   | otherwise = error "machineBits does not match native architecture"
 
-instance Native a => Native [a] where
+instance (Native a) => Native [a] where
   toNative t s bits = case (stripPrefix "List " t, validate t s bits) of
     (Just inner, SList xs) -> map (\x -> toNative inner x bits) xs
     _ -> error "List required"
   fromNative t xs bits = case stripPrefix "List " t of
-    Just inner -> let result = SList (map (\x -> fromNative inner x bits) xs)
-                  in forceScalar result `seq` result
+    Just inner ->
+      let result = SList (map (\x -> fromNative inner x bits) xs)
+       in forceScalar result `seq` result
     Nothing -> error "List required"
-instance Native a => Native (Maybe a) where
+
+instance (Native a) => Native (Maybe a) where
   toNative t s bits = case (stripPrefix "Maybe " t, validate t s bits) of
     (Just _, SData "Maybe::Absent" []) -> Nothing
     (Just inner, SData "Maybe::Present" [value]) ->
       Just (toNative inner value bits)
     _ -> error "Maybe required"
   fromNative t value bits = case stripPrefix "Maybe " t of
-    Just inner -> let result = case value of
-                       Nothing -> SData "Maybe::Absent" []
-                       Just payload ->
-                         SData "Maybe::Present" [fromNative inner payload bits]
-                  in forceScalar result `seq` result
+    Just inner ->
+      let result = case value of
+            Nothing -> SData "Maybe::Absent" []
+            Just payload ->
+              SData "Maybe::Present" [fromNative inner payload bits]
+       in forceScalar result `seq` result
     Nothing -> error "Maybe required"
+
 instance (Native a, Native b) => Native (Either a b) where
-  toNative t s bits = let (left,right) = eitherArguments t
-    in case validate t s bits of
-    SData "Either::Left" [value] -> Left (toNative left value bits)
-    SData "Either::Right" [value] -> Right (toNative right value bits)
-    _ -> error "Either required"
+  toNative t s bits =
+    let (left, right) = eitherArguments t
+     in case validate t s bits of
+          SData "Either::Left" [value] -> Left (toNative left value bits)
+          SData "Either::Right" [value] -> Right (toNative right value bits)
+          _ -> error "Either required"
   fromNative t value bits =
-    let (left,right) = eitherArguments t
+    let (left, right) = eitherArguments t
         result = case value of
           Left payload -> SData "Either::Left" [fromNative left payload bits]
           Right payload -> SData "Either::Right" [fromNative right payload bits]
-    in forceScalar result `seq` result
+     in forceScalar result `seq` result
+
 instance Native Scalar where
   toNative = convert
   fromNative = validate
+
 instance Native Bool where
   toNative t s bits = truth (validate t s bits)
   fromNative t x bits = validate t (SBool x) bits
+
 instance Native Text where
   toNative t s bits = case validate t s bits of
     SSequence _ xs -> T.pack (map chr xs)
     _ -> error "Text required"
   fromNative t x bits = validate t (textScalar (T.unpack x)) bits
+
 instance Native Rational where
   toNative t s bits = either error id (exactValue (convert t s bits))
   fromNative t x bits = validate t (reduced x) bits
+
 instance Native Float where
   toNative t s bits = double2Float (floatValue (convert t s bits))
   fromNative t x bits = validate t (floatScalar t (float2Double x)) bits
+
 instance Native Double where
   toNative t s bits = floatValue (convert t s bits)
   fromNative t x bits = validate t (floatScalar t x) bits
+
 instance Native Int8 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Int16 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Int32 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Int64 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Word8 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Word16 where
   toNative "CodeUnit16" s bits = case validate "CodeUnit16" s bits of
     SCharacter _ c -> fromIntegral c
@@ -788,49 +1020,63 @@ instance Native Word16 where
     _ -> error "Word16 required"
   fromNative "CodeUnit16" x bits =
     validate "CodeUnit16" (SCharacter "CodeUnit16" (fromIntegral x)) bits
-  fromNative t x bits = validate t
-    (if t == "CodeUnit16" then SCharacter t (fromIntegral x)
-     else SInteger t (toInteger x)) bits
+  fromNative t x bits =
+    validate
+      t
+      ( if t == "CodeUnit16"
+          then SCharacter t (fromIntegral x)
+          else SInteger t (toInteger x)
+      )
+      bits
+
 instance Native Word32 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Word64 where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Integer where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> fromInteger n
     _ -> error "integer required"
   fromNative t x bits = validate t (SInteger t (toInteger x)) bits
+
 instance Native Int where
-  toNative t s bits = if bits /= finiteBitSize (0 :: Int)
-    then error "machineBits does not match native architecture"
-    else case convert t s bits of
-      SInteger _ n -> fromInteger n
-      _ -> error "integer required"
-  fromNative t x bits = if bits /= finiteBitSize (0 :: Int)
-    then error "machineBits does not match native architecture"
-    else validate t (SInteger t (toInteger x)) bits
+  toNative t s bits =
+    if bits /= finiteBitSize (0 :: Int)
+      then error "machineBits does not match native architecture"
+      else case convert t s bits of
+        SInteger _ n -> fromInteger n
+        _ -> error "integer required"
+  fromNative t x bits =
+    if bits /= finiteBitSize (0 :: Int)
+      then error "machineBits does not match native architecture"
+      else validate t (SInteger t (toInteger x)) bits
+
 instance Native Word where
-  toNative t s bits = if bits /= finiteBitSize (0 :: Word)
-    then error "machineBits does not match native architecture"
-    else case convert t s bits of
-      SInteger _ n -> fromInteger n
-      _ -> error "integer required"
-  fromNative t x bits = if bits /= finiteBitSize (0 :: Word)
-    then error "machineBits does not match native architecture"
-    else validate t (SInteger t (toInteger x)) bits
+  toNative t s bits =
+    if bits /= finiteBitSize (0 :: Word)
+      then error "machineBits does not match native architecture"
+      else case convert t s bits of
+        SInteger _ n -> fromInteger n
+        _ -> error "integer required"
+  fromNative t x bits =
+    if bits /= finiteBitSize (0 :: Word)
+      then error "machineBits does not match native architecture"
+      else validate t (SInteger t (toInteger x)) bits
 
 instance Native () where
   toNative t s bits = validate t s bits `seq` ()
   fromNative t x bits = x `seq` validate t (SAbsent "Unit") bits
 
 pad8 :: String -> String
-pad8 s = replicate (8-length s) '0' ++ s
+pad8 s = replicate (8 - length s) '0' ++ s
 
 instance Native Char where
   toNative t s bits = case validate t s bits of
@@ -842,15 +1088,25 @@ instance Native (Complex Float) where
   toNative t s bits = case convert t s bits of
     SComplex _ r i -> double2Float (floatValue r) :+ double2Float (floatValue i)
     _ -> error "complex required"
-  fromNative t (r :+ i) bits = validate t
-    (SComplex t (floatScalar "Float32" (float2Double r))
-      (floatScalar "Float32" (float2Double i))) bits
+  fromNative t (r :+ i) bits =
+    validate
+      t
+      ( SComplex
+          t
+          (floatScalar "Float32" (float2Double r))
+          (floatScalar "Float32" (float2Double i))
+      )
+      bits
+
 instance Native (Complex Double) where
   toNative t s bits = case convert t s bits of
     SComplex _ r i -> floatValue r :+ floatValue i
     _ -> error "complex required"
-  fromNative t (r :+ i) bits = validate t
-    (SComplex t (floatScalar "Float64" r) (floatScalar "Float64" i)) bits
+  fromNative t (r :+ i) bits =
+    validate
+      t
+      (SComplex t (floatScalar "Float64" r) (floatScalar "Float64" i))
+      bits
 
 instance Native ByteString where
   toNative t s bits = case validate t s bits of
@@ -898,42 +1154,46 @@ instance Native Undefined where
   toNative t value bits = validate t value bits `seq` Undefined
   fromNative t value bits = value `seq` validate t (SAbsent "Undefined") bits
 
-instance Native a => Native (Nullable a) where
-  toNative t value bits = case
-      (stripPrefix "Nullable " t, validate t value bits) of
+instance (Native a) => Native (Nullable a) where
+  toNative t value bits = case (stripPrefix "Nullable " t, validate t value bits) of
     (Just _, SPresent "Nullable" Nothing) -> NullValue
     (Just inner, SPresent "Nullable" (Just payload)) ->
       NullableValue (toNative inner payload bits)
     _ -> error "Nullable required"
   fromNative t value bits = case stripPrefix "Nullable " t of
-    Just inner -> let result = case value of
-                       NullValue -> SPresent "Nullable" Nothing
-                       NullableValue payload ->
-                         SPresent "Nullable"
-                           (Just (fromNative inner payload bits))
-                  in forceScalar result `seq` result
+    Just inner ->
+      let result = case value of
+            NullValue -> SPresent "Nullable" Nothing
+            NullableValue payload ->
+              SPresent
+                "Nullable"
+                (Just (fromNative inner payload bits))
+       in forceScalar result `seq` result
     _ -> error "Nullable required"
 
-instance Native a => Native (Optional a) where
-  toNative t value bits = case
-      (stripPrefix "Optional " t, validate t value bits) of
+instance (Native a) => Native (Optional a) where
+  toNative t value bits = case (stripPrefix "Optional " t, validate t value bits) of
     (Just _, SPresent "Optional" Nothing) -> UndefinedValue
     (Just inner, SPresent "Optional" (Just payload)) ->
       OptionalValue (toNative inner payload bits)
     _ -> error "Optional required"
   fromNative t value bits = case stripPrefix "Optional " t of
-    Just inner -> let result = case value of
-                       UndefinedValue -> SPresent "Optional" Nothing
-                       OptionalValue payload ->
-                         SPresent "Optional"
-                           (Just (fromNative inner payload bits))
-                  in forceScalar result `seq` result
+    Just inner ->
+      let result = case value of
+            UndefinedValue -> SPresent "Optional" Nothing
+            OptionalValue payload ->
+              SPresent
+                "Optional"
+                (Just (fromNative inner payload bits))
+       in forceScalar result `seq` result
     _ -> error "Optional required"
 
 -- | An abstract integer result erases the native width without losing its value.
 newtype IntegerValue = IntegerValue Integer deriving (Eq, Show)
-integerValue :: Integral a => a -> IntegerValue
+
+integerValue :: (Integral a) => a -> IntegerValue
 integerValue = IntegerValue . toInteger
+
 instance Native IntegerValue where
   toNative t s bits = case convert t s bits of
     SInteger _ n -> IntegerValue n
@@ -941,104 +1201,159 @@ instance Native IntegerValue where
   fromNative t (IntegerValue n) bits = validate t (SInteger t n) bits
 
 data Domain = Domain ([Scalar] -> Int -> [Scalar]) ([Scalar] -> Bool)
-domainCandidates :: String -> Int -> Int -> [(String,Scalar)]
-                 -> [Scalar] -> [Scalar]
-domainCandidates t seed bits restrictions hints = rotate values where
-  rotate [] = []
-  rotate xs = let offset = seed `mod` length xs
-              in drop offset xs ++ take offset xs
-  values | isInteger t = case limits of
-             (Just lo,Just hi) | lo > hi -> []
-             (lo,hi) ->
-               let { lower = maybe (min 0 (maybe 0 id hi) - 2^(256::Int)) id lo
-                   ; upper = maybe (max 0 (maybe 0 id lo) + 2^(256::Int)) id hi
-                   ; ns = [lower,upper,0,1,-1,lower+1,upper-1] ++
-                       [lower + random j `mod` (upper-lower+1) | j <- [0..7]]
-                   }
-               in [SInteger t n | SInteger _ n <- hints ++ map (SInteger t) ns,
-                                   n >= lower, n <= upper]
-         | otherwise =
-             [v | hint <- hints, Right v <- [convertScalar bits t hint]] ++
-             [sample t (seed+j*7919) bits | j <- [0..7]]
-  initial = case integerBounds bits t of
-    Just (lo,hi) -> (Just lo,Just hi)
-    Nothing -> (if t == "BigUInt" then Just 0 else Nothing,Nothing)
-  limits = foldl restrict initial restrictions
-  restrict (lo,hi) (op,v) =
-    let { r = either error id (exactValue v)
-        ; lower = if op == ">" then floor r + 1 else ceiling r
-        ; upper = if op == "<" then ceiling r - 1 else floor r
-        }
-    in (if op `elem` [">",">=","=="]
-          then Just (maybe lower (max lower) lo) else lo,
-        if op `elem` ["<","<=","=="]
-          then Just (maybe upper (min upper) hi) else hi)
-  random j = (fromIntegral seed * 6364136223846793005 +
-              fromIntegral j * 1442695040888963407) ^ (8::Int)
+
+domainCandidates ::
+  String ->
+  Int ->
+  Int ->
+  [(String, Scalar)] ->
+  [Scalar] ->
+  [Scalar]
+domainCandidates t seed bits restrictions hints = rotate values
+  where
+    rotate [] = []
+    rotate xs =
+      let offset = seed `mod` length xs
+       in drop offset xs ++ take offset xs
+    values
+      | isInteger t = case limits of
+          (Just lo, Just hi) | lo > hi -> []
+          (lo, hi) ->
+            let lower = maybe (min 0 (maybe 0 id hi) - 2 ^ (256 :: Int)) id lo
+                upper = maybe (max 0 (maybe 0 id lo) + 2 ^ (256 :: Int)) id hi
+                ns =
+                  [lower, upper, 0, 1, -1, lower + 1, upper - 1]
+                    ++ [lower + random j `mod` (upper - lower + 1) | j <- [0 .. 7]]
+             in [ SInteger t n
+                | SInteger _ n <- hints ++ map (SInteger t) ns,
+                  n >= lower,
+                  n <= upper
+                ]
+      | otherwise =
+          [v | hint <- hints, Right v <- [convertScalar bits t hint]]
+            ++ [sample t (seed + j * 7919) bits | j <- [0 .. 7]]
+    initial = case integerBounds bits t of
+      Just (lo, hi) -> (Just lo, Just hi)
+      Nothing -> (if t == "BigUInt" then Just 0 else Nothing, Nothing)
+    limits = foldl restrict initial restrictions
+    restrict (lo, hi) (op, v) =
+      let r = either error id (exactValue v)
+          lower = if op == ">" then floor r + 1 else ceiling r
+          upper = if op == "<" then ceiling r - 1 else floor r
+       in ( if op `elem` [">", ">=", "=="]
+              then Just (maybe lower (max lower) lo)
+              else lo,
+            if op `elem` ["<", "<=", "=="]
+              then Just (maybe upper (min upper) hi)
+              else hi
+          )
+    random j =
+      ( fromIntegral seed * 6364136223846793005
+          + fromIntegral j * 1442695040888963407
+      )
+        ^ (8 :: Int)
 
 generateTuple :: [Domain] -> Int -> Int -> [Scalar] -> Either String [Scalar]
-generateTuple domains seed attempts prefix = retry 0 where
-  retry used
-    | used >= attempts = Left ("refinement-generation-exhausted after " ++
-        show used ++ " attempts; prefix=" ++ show prefix ++
-        "; seed=" ++ show seed)
-    | otherwise = case search used prefix of
-        (Just result,_) -> Right result
-        (Nothing,next) -> retry next
-  search used values | length values == length domains = (Just values,used)
-                     | used >= attempts = (Nothing,used)
-                     | otherwise =
-                         let Domain candidates accept = domains !! length values
-                         in walk accept (used+1) values
-                           (candidates values (seed+(used+1)*7919))
-  walk _ used _ [] = (Nothing,used)
-  walk accept used values (v:vs)
-    | used >= attempts = (Nothing,used)
-    | not (accept (values++[v])) = walk accept (used+1) values vs
-    | otherwise = case search (used+1) (values++[v]) of
-        (Just result,next) -> (Just result,next)
-        (Nothing,next) -> walk accept next values vs
+generateTuple domains seed attempts prefix = retry 0
+  where
+    retry used
+      | used >= attempts =
+          Left
+            ( "refinement-generation-exhausted after "
+                ++ show used
+                ++ " attempts; prefix="
+                ++ show prefix
+                ++ "; seed="
+                ++ show seed
+            )
+      | otherwise = case search used prefix of
+          (Just result, _) -> Right result
+          (Nothing, next) -> retry next
+    search used values
+      | length values == length domains = (Just values, used)
+      | used >= attempts = (Nothing, used)
+      | otherwise =
+          let Domain candidates accept = domains !! length values
+           in walk
+                accept
+                (used + 1)
+                values
+                (candidates values (seed + (used + 1) * 7919))
+    walk _ used _ [] = (Nothing, used)
+    walk accept used values (v : vs)
+      | used >= attempts = (Nothing, used)
+      | not (accept (values ++ [v])) = walk accept (used + 1) values vs
+      | otherwise = case search (used + 1) (values ++ [v]) of
+          (Just result, next) -> (Just result, next)
+          (Nothing, next) -> walk accept next values vs
 
 contract :: String -> Bool -> Scalar -> Scalar
 contract context condition result = if condition then result else error context
 
-refinedCase :: [Domain] -> Int -> Int -> Int
-            -> ([Scalar] -> IO ()) -> String -> IO ()
+refinedCase ::
+  [Domain] ->
+  Int ->
+  Int ->
+  Int ->
+  ([Scalar] -> IO ()) ->
+  String ->
+  IO ()
 refinedCase domains seed attempts shrinks check context = do
-  let values = either (error . ((context ++ ": ") ++)) id
-        (generateTuple domains seed attempts [])
+  let values =
+        either
+          (error . ((context ++ ": ") ++))
+          id
+          (generateTuple domains seed attempts [])
   outcome <- capture check values
   case outcome of
     Nothing -> pure ()
     Just original -> do
-      (best,_) <- foldM shrinkAt (values,shrinks) [0..length values-1]
-      ioError (userError (context ++ ": " ++ original ++
-        "; refined counterexample=" ++ show best ++ "; seed=" ++ show seed))
+      (best, _) <- foldM shrinkAt (values, shrinks) [0 .. length values - 1]
+      ioError
+        ( userError
+            ( context
+                ++ ": "
+                ++ original
+                ++ "; refined counterexample="
+                ++ show best
+                ++ "; seed="
+                ++ show seed
+            )
+        )
   where
-    capture f xs = (f xs >> pure Nothing) `catch`
-      (\e -> pure (Just (displayException (e :: SomeException))))
-    shrinkAt state@(best,_) i =
-      let { Domain candidates _ = domains !! i
-          ; additional = case best !! i of
-              SInteger t n -> map (SInteger t)
-                (0:signum n:takeWhile ((>1) . abs)
-                  (drop 1 (iterate (`quot` 2) n)))
-              _ -> []
-          }
-      in foldM (tryCandidate i) state
-        (additional ++ candidates (take i best) 0)
-    tryCandidate i state@(best,budget) candidate
+    capture f xs =
+      (f xs >> pure Nothing)
+        `catch` (\e -> pure (Just (displayException (e :: SomeException))))
+    shrinkAt state@(best, _) i =
+      let Domain candidates _ = domains !! i
+          additional = case best !! i of
+            SInteger t n ->
+              map
+                (SInteger t)
+                ( 0
+                    : signum n
+                    : takeWhile
+                      ((> 1) . abs)
+                      (drop 1 (iterate (`quot` 2) n))
+                )
+            _ -> []
+       in foldM
+            (tryCandidate i)
+            state
+            (additional ++ candidates (take i best) 0)
+    tryCandidate i state@(best, budget) candidate
       | budget <= 0 = pure state
-      | complexity candidate >= complexity (best !! i) = pure (best,budget-1)
+      | complexity candidate >= complexity (best !! i) = pure (best, budget - 1)
       | otherwise = do
           let prefix = take i best ++ [candidate]
               Domain _ accept = domains !! i
-          if not (accept prefix) then pure (best,budget-1)
-          else case generateTuple domains seed (min attempts 100) prefix of
-            Left _ -> pure (best,budget-1)
-            Right trial -> do
-              failed <- capture check trial
-              pure ((case failed of Just _ -> trial; Nothing -> best),budget-1)
+          if not (accept prefix)
+            then pure (best, budget - 1)
+            else case generateTuple domains seed (min attempts 100) prefix of
+              Left _ -> pure (best, budget - 1)
+              Right trial -> do
+                failed <- capture check trial
+                pure ((case failed of Just _ -> trial; Nothing -> best), budget - 1)
 
 complexity :: Scalar -> Integer
 complexity (SInteger _ n) = abs n
@@ -1053,8 +1368,9 @@ complexity (SAbsent _) = 0
 complexity (SSymbol _ _) = 1
 complexity (SScopedSymbol _ _ _) = 1
 complexity (SHandle _ _) = 0
-complexity v = let r = either error id (exactValue v)
-               in abs (numerator r) + denominator r - 1
+complexity v =
+  let r = either error id (exactValue v)
+   in abs (numerator r) + denominator r - 1
 
 bool :: Bool -> Scalar
 bool = SBool
@@ -1069,17 +1385,22 @@ difference actual expected = case go actual expected of
     go a b = case (a, b) of
       (SList xs, SList ys) -> case [i | (i, x, y) <- zip3 [1 :: Int ..] xs ys, renderValue x /= renderValue y] of
         i : _ -> step ("item " ++ show i) (xs !! (i - 1)) (ys !! (i - 1))
-        [] | length xs == length ys -> ([], ("", ""))
-           | otherwise -> (["length"], (show (length xs), show (length ys)))
+        []
+          | length xs == length ys -> ([], ("", ""))
+          | otherwise -> (["length"], (show (length xs), show (length ys)))
       (SData ta xs, SData tb ys) | ta == tb && length xs == length ys ->
         case [i | (i, x, y) <- zip3 [1 :: Int ..] xs ys, renderValue x /= renderValue y] of
-          i : _ -> step ("field " ++ show i ++ " of " ++ T.unpack (last (T.splitOn (T.pack "::") (T.pack ta))))
-            (xs !! (i - 1)) (ys !! (i - 1))
+          i : _ ->
+            step
+              ("field " ++ show i ++ " of " ++ T.unpack (last (T.splitOn (T.pack "::") (T.pack ta))))
+              (xs !! (i - 1))
+              (ys !! (i - 1))
           [] -> ([], ("", ""))
       _ -> ([], (renderValue a, renderValue b))
     step segment a b = case go a b of
-      (path, shown) | null path -> ([segment], (renderValue a, renderValue b))
-                    | otherwise -> (segment : path, shown)
+      (path, shown)
+        | null path -> ([segment], (renderValue a, renderValue b))
+        | otherwise -> (segment : path, shown)
 
 -- Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
 -- ECMAScript that means the same in both, matched against a whole text, code
@@ -1141,11 +1462,12 @@ regexParse source = do
             let (lowDigits, afterLow) = span (isDigit . chr) rest
             (high, afterHigh) <- case afterLow of
               close : more | close == ord '}' -> pure (Just lowDigits, more)
-              comma : more | comma == ord ',' ->
-                let (highDigits, afterDigits) = span (isDigit . chr) more
-                in case afterDigits of
-                  close : more' | close == ord '}' -> pure (if null highDigits then Nothing else Just highDigits, more')
-                  _ -> failure "a repetition is {n}, {n,} or {n,m}"
+              comma : more
+                | comma == ord ',' ->
+                    let (highDigits, afterDigits) = span (isDigit . chr) more
+                     in case afterDigits of
+                          close : more' | close == ord '}' -> pure (if null highDigits then Nothing else Just highDigits, more')
+                          _ -> failure "a repetition is {n}, {n,} or {n,m}"
               _ -> failure "a repetition is {n}, {n,} or {n,m}"
             if null lowDigits then failure "a repetition is {n}, {n,} or {n,m}" else pure ()
             let low = read (map chr lowDigits) :: Integer
@@ -1170,15 +1492,17 @@ regexParse source = do
         'r' -> pure ((False, [(13, 13)]), rest)
         'f' -> pure ((False, [(12, 12)]), rest)
         'v' -> pure ((False, [(11, 11)]), rest)
-        ch | ch `elem` "\\.^$|?*+()[]{}-/" -> pure ((False, [(c, c)]), rest)
-           | otherwise -> failure ("\\" ++ [ch] ++ " is not a portable escape")
+        ch
+          | ch `elem` "\\.^$|?*+()[]{}-/" -> pure ((False, [(c, c)]), rest)
+          | otherwise -> failure ("\\" ++ [ch] ++ " is not a portable escape")
       [] -> failure "the regex ends with a lone \\"
     single (False, [(lo, hi)]) = lo == hi
     single _ = False
     classAtom input = case input of
-      c : rest | c == ord '\\' -> escape rest
-               | c == ord '[' -> failure "write \\[ for the character inside a class"
-               | otherwise -> pure ((False, [(c, c)]), rest)
+      c : rest
+        | c == ord '\\' -> escape rest
+        | c == ord '[' -> failure "write \\[ for the character inside a class"
+        | otherwise -> pure ((False, [(c, c)]), rest)
       [] -> failure "a [ is never closed"
     characterClass input = do
       let (negated, body) = case input of
@@ -1193,8 +1517,8 @@ regexParse source = do
                 dash : next : _ | single item && dash == ord '-' && next /= ord ']' -> do
                   (high, rest') <- classAtom (drop 1 rest)
                   if not (single high) then failure "a range ends with one character" else pure ()
-                  let low = case snd item of { (c, _) : _ -> c; [] -> 0 }
-                      top = case snd high of { (c, _) : _ -> c; [] -> 0 }
+                  let low = case snd item of (c, _) : _ -> c; [] -> 0
+                      top = case snd high of (c, _) : _ -> c; [] -> 0
                   if top < low then failure "a range must run from low to high" else pure ()
                   items ((False, [(low, top)]) : acc) False rest'
                 _ -> items (item : acc) False rest
@@ -1215,8 +1539,14 @@ regexMatches pattern text = do
     at p = lookup p indexed
     normal = sort . nub
     reach node positions = case node of
-      RegexSet negated items -> normal [p + 1 | p <- positions, p < n, Just c <- [at p],
-        negated /= any (\(itemNegated, ranges) -> itemNegated /= any (\(lo, hi) -> lo <= c && c <= hi) ranges) items]
+      RegexSet negated items ->
+        normal
+          [ p + 1
+          | p <- positions,
+            p < n,
+            Just c <- [at p],
+            negated /= any (\(itemNegated, ranges) -> itemNegated /= any (\(lo, hi) -> lo <= c && c <= hi) ranges) items
+          ]
       RegexSequence rs -> foldl (flip reach) positions rs
       RegexAlternatives rs -> normal (concatMap (`reach` positions) rs)
       RegexRepeat body low high ->
@@ -1225,8 +1555,8 @@ regexMatches pattern text = do
               | null frontier || limit == Just 0 = seen
               | otherwise =
                   let next = [p | p <- reach body frontier, p `notElem` seen]
-                  in more (normal (seen ++ next)) next (subtract 1 <$> limit)
-        in more (normal required) required (subtract low <$> high)
+                   in more (normal (seen ++ next)) next (subtract 1 <$> limit)
+         in more (normal required) required (subtract low <$> high)
 
 -- Recorded values: a law compares a value's portable rendering with the
 -- text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
@@ -1245,9 +1575,12 @@ recordedRoot = do
             config <- Directory.doesFileExist (folder ++ "/lawspec.json")
             recordings <- Directory.doesDirectoryExist (folder ++ "/recorded")
             let parent = reverse (drop 1 (dropWhile (/= '/') (reverse folder)))
-            if config || recordings then pure (folder ++ "/recorded")
-              else if null parent || parent == folder then pure (start ++ "/recorded")
-              else search parent
+            if config || recordings
+              then pure (folder ++ "/recorded")
+              else
+                if null parent || parent == folder
+                  then pure (start ++ "/recorded")
+                  else search parent
       search start
 
 recorded :: String -> Scalar -> IO Scalar
@@ -1269,8 +1602,18 @@ recorded key value = do
           contents <- T.unpack . TE.decodeUtf8 <$> B.readFile path
           let stored = if not (null contents) && last contents == '\n' then init contents else contents
           if stored /= text
-            then throwIO (ErrorCall ("recorded/" ++ key ++ " differs: expected " ++ stored ++ ", actual " ++ text ++
-              " (lawspec test --update-recorded records the new value)"))
+            then
+              throwIO
+                ( ErrorCall
+                    ( "recorded/"
+                        ++ key
+                        ++ " differs: expected "
+                        ++ stored
+                        ++ ", actual "
+                        ++ text
+                        ++ " (lawspec test --update-recorded records the new value)"
+                    )
+                )
             else pure (SBool True)
 
 -- Built-in resources (see LawSpec.Resources): a law acquires them before
@@ -1316,7 +1659,7 @@ releaseResource kind value = case kind of
 -- | A TCP port on the local host that is free now.
 freePort :: IO Int
 freePort = do
-  let hints = Socket.defaultHints { Socket.addrSocketType = Socket.Stream }
+  let hints = Socket.defaultHints {Socket.addrSocketType = Socket.Stream}
   address : _ <- Socket.getAddrInfo (Just hints) (Just "127.0.0.1") (Just "0")
   socket <- Socket.openSocket address
   Socket.bind socket (Socket.addrAddress address)
@@ -1350,23 +1693,27 @@ withShared key concurrent acquire reset release body = do
   SharedEntry slot holders _ <- atomicModifyIORef' sharedResources $ \entries -> case lookup key entries of
     Just entry -> (entries, entry)
     Nothing -> let entry = SharedEntry fresh users release in (entries ++ [(key, entry)], entry)
-  if concurrent then do
-    value <- modifyMVar slot $ \held -> do
-      count <- readIORef holders
-      v <- case held of
-        Just v -> v <$ (if count == 0 then reset v else pure ())
-        Nothing -> acquire >>= \v -> evaluate (forceScalar v `seq` v)
-      atomicModifyIORef' holders (\n -> (n + 1, ()))
-      pure (Just v, v)
-    body value `finally` atomicModifyIORef' holders (\n -> (n - 1, ()))
-  else do
-   held <- takeMVar slot
-   value <- (case held of
-     Just value -> value <$ reset value
-     Nothing -> acquire >>= \value -> evaluate (forceScalar value `seq` value))
-     `onFailure` putMVar slot held
-   body value `finally` putMVar slot (Just value)
-  where onFailure action handler = action `catch` \e -> handler >> throwIO (e :: SomeException)
+  if concurrent
+    then do
+      value <- modifyMVar slot $ \held -> do
+        count <- readIORef holders
+        v <- case held of
+          Just v -> v <$ (if count == 0 then reset v else pure ())
+          Nothing -> acquire >>= \v -> evaluate (forceScalar v `seq` v)
+        atomicModifyIORef' holders (\n -> (n + 1, ()))
+        pure (Just v, v)
+      body value `finally` atomicModifyIORef' holders (\n -> (n - 1, ()))
+    else do
+      held <- takeMVar slot
+      value <-
+        ( case held of
+            Just value -> value <$ reset value
+            Nothing -> acquire >>= \value -> evaluate (forceScalar value `seq` value)
+        )
+          `onFailure` putMVar slot held
+      body value `finally` putMVar slot (Just value)
+  where
+    onFailure action handler = action `catch` \e -> handler >> throwIO (e :: SomeException)
 
 releaseShared :: IO ()
 releaseShared = do
@@ -1398,8 +1745,9 @@ forceScalar (SComplex _ r i) = forceScalar r `seq` forceScalar i
 forceScalar (SSequence _ xs) = foldr seq () xs
 forceScalar (SList xs) =
   foldr (\value rest -> forceScalar value `seq` rest) () xs
-forceScalar (SData tag xs) = foldr seq () tag `seq`
-  foldr (\value rest -> forceScalar value `seq` rest) () xs
+forceScalar (SData tag xs) =
+  foldr seq () tag `seq`
+    foldr (\value rest -> forceScalar value `seq` rest) () xs
 forceScalar (SCharacter _ c) = c `seq` ()
 forceScalar (SSymbol ident description) =
   foldr seq () ident `seq` foldr seq () description
@@ -1419,13 +1767,15 @@ forceScalar _ = ()
 -- | Tells the time and waits, in microseconds. A clock is virtual unless it
 -- is real time: on a virtual clock waits pass at once, and timeouts and
 -- hedges count only the time it reports.
-data Clock = Clock { clockNow :: IO Integer, clockSleep :: Integer -> IO (), clockVirtual :: Bool }
+data Clock = Clock {clockNow :: IO Integer, clockSleep :: Integer -> IO (), clockVirtual :: Bool}
 
 realClock :: Clock
-realClock = Clock
-  { clockNow = (`div` 1000) . toInteger <$> getMonotonicTimeNSec
-  , clockSleep = \micros -> threadDelay (fromInteger micros)
-  , clockVirtual = False }
+realClock =
+  Clock
+    { clockNow = (`div` 1000) . toInteger <$> getMonotonicTimeNSec,
+      clockSleep = \micros -> threadDelay (fromInteger micros),
+      clockVirtual = False
+    }
 
 -- | Advances when slept on and returns at once.
 virtualClock :: IO (Clock, IORef Integer)
@@ -1443,27 +1793,31 @@ splitMix64 state =
   let next = state + 0x9E3779B97F4A7C15
       z1 = (next `xor` (next `shiftR` 30)) * 0xBF58476D1CE4E5B9
       z2 = (z1 `xor` (z1 `shiftR` 27)) * 0x94D049BB133111EB
-  in (z2 `xor` (z2 `shiftR` 31), next)
+   in (z2 `xor` (z2 `shiftR` 31), next)
 
 -- | A stage starting or finishing an attempt, or a wait.
-data TraceEvent = TraceEvent { traceKind :: String, traceStage :: String, traceNumber :: Integer, traceSucceeded :: Bool }
+data TraceEvent = TraceEvent {traceKind :: String, traceStage :: String, traceNumber :: Integer, traceSucceeded :: Bool}
   deriving (Eq, Show)
 
 -- | runtimeGates: whether rate limits, breakers, bulkheads and caches apply.
 -- The runtime generated tests install has them off: a workflow law calls the
 -- workflow and its composition, which would see each other's state.
 data WorkflowRuntime = WorkflowRuntime
-  { runtimeClock :: Clock, runtimeRandom :: IORef Word64
-  , runtimeTrace :: IORef [TraceEvent], runtimeState :: IORef [(String, Scalar)]
-  , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])]
-  -- A frame per running workflow: the undos of its completed stages.
-  , runtimeFrames :: IORef [[(String, IO ())]]
-  -- The running attempt's hedge.
-  , runtimeHedge :: IORef (Maybe Hedge) }
+  { runtimeClock :: Clock,
+    runtimeRandom :: IORef Word64,
+    runtimeTrace :: IORef [TraceEvent],
+    runtimeState :: IORef [(String, Scalar)],
+    runtimeGates :: Bool,
+    runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])],
+    -- A frame per running workflow: the undos of its completed stages.
+    runtimeFrames :: IORef [[(String, IO ())]],
+    -- The running attempt's hedge.
+    runtimeHedge :: IORef (Maybe Hedge)
+  }
 
 -- | A running attempt's hedge: its stage, delay and most attempts. A
 -- virtual hedge (on a virtual clock) runs its attempts one after another.
-data Hedge = Hedge { hedgeStage :: String, hedgeDelay :: Integer, hedgeMost :: Integer, hedgeVirtual :: Bool }
+data Hedge = Hedge {hedgeStage :: String, hedgeDelay :: Integer, hedgeMost :: Integer, hedgeVirtual :: Bool}
 
 newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
 newWorkflowRuntime clock seed = do
@@ -1505,7 +1859,7 @@ useVirtualClock :: Word64 -> IO ()
 useVirtualClock seed = do
   (clock, _) <- virtualClock
   runtime <- newWorkflowRuntime clock seed
-  writeIORef defaultWorkflow (Just runtime { runtimeGates = False })
+  writeIORef defaultWorkflow (Just runtime {runtimeGates = False})
 
 -- | The runtime a context's workflows run under: the one attached to it
 -- (workflowContext), which keeps its own clock, or else the default one.
@@ -1519,14 +1873,15 @@ workflowRuntime symbols@(SymbolContext unique) = do
   case lookup unique table of
     Just runtime -> pure runtime
     Nothing -> do
-      runtime <- readIORef defaultWorkflow >>= \current -> case current of
-        Just runtime -> pure runtime
-        Nothing -> do
-          runtime <- newWorkflowRuntime realClock 0
-          writeIORef defaultWorkflow (Just runtime)
-          pure runtime
+      runtime <-
+        readIORef defaultWorkflow >>= \current -> case current of
+          Just runtime -> pure runtime
+          Nothing -> do
+            runtime <- newWorkflowRuntime realClock 0
+            writeIORef defaultWorkflow (Just runtime)
+            pure runtime
       clock <- abilityClock symbols
-      pure (maybe runtime (\c -> runtime { runtimeClock = c }) clock)
+      pure (maybe runtime (\c -> runtime {runtimeClock = c}) clock)
 
 -- The Clock ability's key, as every target names it.
 clockAbilityKey :: String
@@ -1546,7 +1901,7 @@ clockAbilityReader = unsafePerformIO (newIORef Nothing)
 -- real time is not the record's to say: it is the installation's
 -- (installedRealClock, which the generated tests use for lawspec.time's
 -- default handler). Every other Clock handler is virtual.
-registerClockAbility :: forall h. Typeable h => (h -> IO Integer) -> (h -> Integer -> IO ()) -> IO ()
+registerClockAbility :: forall h. (Typeable h) => (h -> IO Integer) -> (h -> Integer -> IO ()) -> IO ()
 registerClockAbility now sleep = writeIORef clockAbilityReader (Just reader)
   where
     reader dynamic real = case fromDynamic dynamic :: Maybe h of
@@ -1565,28 +1920,44 @@ abilityClock (SymbolContext unique) = do
 -- | retryStrategy is immediate, fixed, linear, exponential, fibonacci or
 -- custom; delay, step, factor and cap (negative for none) are its parameters.
 data Retry = Retry
-  { retryStrategy :: String, retryDelayOf :: Integer, retryStep :: Integer, retryFactor :: Integer, retryCap :: Integer
-  , retryAttempts :: Integer, retryJitter :: String
-  , retryWhen :: Maybe (Scalar -> Bool)
-  , retryDecide :: Maybe (Integer -> Scalar -> Integer -> Maybe Integer) }
+  { retryStrategy :: String,
+    retryDelayOf :: Integer,
+    retryStep :: Integer,
+    retryFactor :: Integer,
+    retryCap :: Integer,
+    retryAttempts :: Integer,
+    retryJitter :: String,
+    retryWhen :: Maybe (Scalar -> Bool),
+    retryDecide :: Maybe (Integer -> Scalar -> Integer -> Maybe Integer)
+  }
 
 -- | A stateful policy: gateStart gives its state, gateAdmit a Step of the
 -- next state and a Gate (Admit, WaitFor or Reject), and gateFinish (when
 -- set) the state after the call. gateWait is -2 to fail at once when not
 -- admitted, -1 to wait without bound, or the most it waits.
 data Gate = Gate
-  { gateKind :: String, gateStart :: Integer -> Scalar, gateAdmit :: Scalar -> Integer -> Scalar
-  , gateFinish :: Maybe (Scalar -> Integer -> Bool -> Scalar), gateWait :: Integer }
+  { gateKind :: String,
+    gateStart :: Integer -> Scalar,
+    gateAdmit :: Scalar -> Integer -> Scalar,
+    gateFinish :: Maybe (Scalar -> Integer -> Bool -> Scalar),
+    gateWait :: Integer
+  }
 
 -- | policyKey names the stage's state; policyCache is how long a success is
 -- reused (0 or less for none); policyWraps says failures are StageFailures.
 data StagePolicy = StagePolicy
-  { policyStage :: String, policyRetry :: Maybe Retry, policyTimeout :: Integer
-  , policyKey :: String, policyGates :: [Gate], policyCache :: Integer, policyWraps :: Bool
-  , policyCompensate :: Maybe (Scalar -> Scalar)
-  -- (delay, most): when an attempt has not succeeded after delay, another
-  -- starts beside it, up to most in all; the first success wins.
-  , policyHedge :: Maybe (Integer, Integer) }
+  { policyStage :: String,
+    policyRetry :: Maybe Retry,
+    policyTimeout :: Integer,
+    policyKey :: String,
+    policyGates :: [Gate],
+    policyCache :: Integer,
+    policyWraps :: Bool,
+    policyCompensate :: Maybe (Scalar -> Scalar),
+    -- (delay, most): when an attempt has not succeeded after delay, another
+    -- starts beside it, up to most in all; the first success wins.
+    policyHedge :: Maybe (Integer, Integer)
+  }
 
 -- | A policy with only a stage name and retries, as built by hand.
 retryPolicy :: String -> Maybe Retry -> StagePolicy
@@ -1606,9 +1977,13 @@ runWorkflow symbols attempt = unsafePerformIO $ do
         [] -> ([], [])
   writeIORef (runtimeFrames runtime) rest
   case result of
-    SData "Either::Left" _ -> mapM_ (\(stage, undo) -> do
-      modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "compensate" stage 0 True])
-      undo) frame
+    SData "Either::Left" _ ->
+      mapM_
+        ( \(stage, undo) -> do
+            modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "compensate" stage 0 True])
+            undo
+        )
+        frame
     _ -> pure ()
   pure result
 
@@ -1620,7 +1995,7 @@ retryDelay retry attempt = case retryStrategy retry of
   "linear" -> retryDelayOf retry + retryStep retry * (n - 1)
   "exponential" ->
     let delay = retryDelayOf retry * retryFactor retry ^ (n - 1)
-    in if retryCap retry >= 0 && delay > retryCap retry then retryCap retry else delay
+     in if retryCap retry >= 0 && delay > retryCap retry then retryCap retry else delay
   "fibonacci" -> retryDelayOf retry * fibonacci n
   other -> error ("unknown retry strategy: " ++ other)
   where
@@ -1663,7 +2038,8 @@ passGate runtime policy gate = go 0
         SData _ [next, SData decision fields] -> do
           modifyIORef' (runtimeState runtime) (((key, next) :) . filter ((/= key) . fst))
           case (decision, fields) of
-            _ | decision == gatePrefix ++ "Admit" -> pure Nothing
+            _
+              | decision == gatePrefix ++ "Admit" -> pure Nothing
               | decision == gatePrefix ++ "Reject" || gateWait gate == -2 -> pure (Just failure)
             (_, [SInteger _ delay])
               | gateWait gate >= 0 && waited + delay > gateWait gate -> pure (Just failure)
@@ -1728,7 +2104,7 @@ runStage symbols policy attempt key = unsafePerformIO $ do
         now <- clockNow (runtimeClock runtime)
         modifyIORef' (runtimeCache runtime) $ \caches ->
           let kept = [entry | entry@(entryKey, _, _) <- maybe [] id (lookup cacheKey caches), entryKey /= key]
-          in (cacheKey, kept ++ [(key, result, now + policyCache policy)]) : filter ((/= cacheKey) . fst) caches
+           in (cacheKey, kept ++ [(key, result, now + policyCache policy)]) : filter ((/= cacheKey) . fst) caches
       pure result
     when' condition action = if condition then action else pure ()
     timedOut = SData "Either::Left" [SData (stageFailurePrefix ++ "TimedOut") []]
@@ -1755,9 +2131,12 @@ runStage symbols policy attempt key = unsafePerformIO $ do
       outer <- readIORef (runtimeHedge runtime)
       began <- clockNow (runtimeClock runtime)
       writeIORef (runtimeHedge runtime) ((\(delay, most) -> Hedge (policyStage policy) delay most True) <$> policyHedge policy)
-      result <- (do
-        value <- evaluate (attempt ())
-        value <$ evaluate (deepScalar value)) `finally` writeIORef (runtimeHedge runtime) outer
+      result <-
+        ( do
+            value <- evaluate (attempt ())
+            value <$ evaluate (deepScalar value)
+        )
+          `finally` writeIORef (runtimeHedge runtime) outer
       ended <- clockNow (runtimeClock runtime)
       pure (if policyTimeout policy > 0 && ended - began > policyTimeout policy then timedOut else result)
     event runtime kind number succeeded =
@@ -1843,22 +2222,25 @@ awaitStep symbols start convert = unsafePerformIO $ do
 -- threw), and asyncAll runs actions side by side and gives their results in
 -- order. lawspec.concurrent's default handler is this one.
 data NativeAsync = NativeAsync
-  { asyncPause :: IO ()
-  , asyncSpawn :: forall a. IO a -> IO (Process a)
-  , asyncWait :: forall a. Process a -> IO a
-  -- Every action's result, in order; all finish before the first
-  -- exception (in order) is thrown.
-  , asyncAll :: forall a. [IO a] -> IO [a] }
+  { asyncPause :: IO (),
+    asyncSpawn :: forall a. IO a -> IO (Process a),
+    asyncWait :: forall a. Process a -> IO a,
+    -- Every action's result, in order; all finish before the first
+    -- exception (in order) is thrown.
+    asyncAll :: forall a. [IO a] -> IO [a]
+  }
 
 nativeAsync :: NativeAsync
-nativeAsync = NativeAsync
-  { asyncPause = yield
-  , asyncSpawn = spawn
-  , asyncWait = join
-  , asyncAll = \actions -> do
-      tasks <- mapM spawn actions
-      outcomes <- mapM (\(Process result) -> readMVar result) tasks
-      mapM (either throwIO pure) outcomes }
+nativeAsync =
+  NativeAsync
+    { asyncPause = yield,
+      asyncSpawn = spawn,
+      asyncWait = join,
+      asyncAll = \actions -> do
+        tasks <- mapM spawn actions
+        outcomes <- mapM (\(Process result) -> readMVar result) tasks
+        mapM (either throwIO pure) outcomes
+    }
 
 -- | An all group's step results, in declaration order. The steps run side
 -- by side as tasks of the Async ability's default handler (nativeAsync),
@@ -1866,8 +2248,9 @@ nativeAsync = NativeAsync
 -- (the first, in declaration order) is thrown.
 {-# NOINLINE concurrently #-}
 concurrently :: [Scalar] -> [Scalar]
-concurrently steps = unsafePerformIO $
-  asyncAll nativeAsync [step <$ evaluate (deepScalar step) | step <- steps]
+concurrently steps =
+  unsafePerformIO $
+    asyncAll nativeAsync [step <$ evaluate (deepScalar step) | step <- steps]
 
 -- | Evaluates a value in full.
 deepScalar :: Scalar -> ()
@@ -1889,7 +2272,6 @@ retryDecision decision = case decision of
   SData "lawspec.time::type::RetryDecision::RetryAfter" [SData _ [SInteger _ micros]] -> Just micros
   _ -> Nothing
 
-
 -- Portable generation for stateful models. A type descriptor is an
 -- s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
 -- (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
@@ -1902,25 +2284,30 @@ data Descriptor = DescList [Descriptor] | DescInteger Integer | DescAtom String 
 
 -- | Parses s-expressions: lists, integers, strings, symbols and _.
 readDescriptor :: String -> [Descriptor]
-readDescriptor = forms . skipBlank where
-  skipBlank = dropWhile (`elem` " \t\r\n")
-  forms "" = []
-  forms text = let (form, rest) = item text in form : forms (skipBlank rest)
-  item ('(' : rest) = list [] (skipBlank rest)
-  item ('"' : rest) = quoted [] rest
-  item text =
-    let (atom, rest) = break (`elem` " \t\r\n()") text
-        digits = dropWhile (== '-') atom
-    in (if atom == "_" then DescNone
-        else if not (null digits) && all isDigit digits
-          then DescInteger (read (if take 1 atom == "-" then '-' : digits else digits))
-          else DescAtom atom, rest)
-  list acc (')' : rest) = (DescList (reverse acc), rest)
-  list acc text = let (form, rest) = item text in list (form : acc) (skipBlank rest)
-  quoted acc ('"' : rest) = (DescAtom (reverse acc), rest)
-  quoted acc ('\\' : c : rest) = quoted (c : acc) rest
-  quoted acc (c : rest) = quoted (c : acc) rest
-  quoted _ [] = error "unterminated descriptor string"
+readDescriptor = forms . skipBlank
+  where
+    skipBlank = dropWhile (`elem` " \t\r\n")
+    forms "" = []
+    forms text = let (form, rest) = item text in form : forms (skipBlank rest)
+    item ('(' : rest) = list [] (skipBlank rest)
+    item ('"' : rest) = quoted [] rest
+    item text =
+      let (atom, rest) = break (`elem` " \t\r\n()") text
+          digits = dropWhile (== '-') atom
+       in ( if atom == "_"
+              then DescNone
+              else
+                if not (null digits) && all isDigit digits
+                  then DescInteger (read (if take 1 atom == "-" then '-' : digits else digits))
+                  else DescAtom atom,
+            rest
+          )
+    list acc (')' : rest) = (DescList (reverse acc), rest)
+    list acc text = let (form, rest) = item text in list (form : acc) (skipBlank rest)
+    quoted acc ('"' : rest) = (DescAtom (reverse acc), rest)
+    quoted acc ('\\' : c : rest) = quoted (c : acc) rest
+    quoted acc (c : rest) = quoted (c : acc) rest
+    quoted _ [] = error "unterminated descriptor string"
 
 -- | A descriptor atom's text.
 descriptorName :: Descriptor -> String
@@ -1933,12 +2320,15 @@ descriptorName (DescList _) = error "descriptor name expected"
 type DataTable = [(String, Descriptor)]
 
 -- | SplitMix64 draws threaded through a generation.
-newtype Draw a = Draw { runDraw :: Word64 -> (a, Word64) }
+newtype Draw a = Draw {runDraw :: Word64 -> (a, Word64)}
+
 instance Functor Draw where
   fmap f (Draw g) = Draw (\s -> let (a, s') = g s in (f a, s'))
+
 instance Applicative Draw where
   pure a = Draw (\s -> (a, s))
   Draw f <*> Draw g = Draw (\s -> let (h, s1) = f s; (a, s2) = g s1 in (h a, s2))
+
 instance Monad Draw where
   Draw g >>= k = Draw (\s -> let (a, s1) = g s in runDraw (k a) s1)
 
@@ -1984,7 +2374,7 @@ baseConstructors :: Descriptor -> [Descriptor]
 baseConstructors d =
   let ctors = constructorsOf d
       found = [c | c <- ctors, not (any mentionsData (snd (constructorParts c)))]
-  in if null found then ctors else found
+   in if null found then ctors else found
 
 mentionsData :: Descriptor -> Bool
 mentionsData (DescList (kind : rest)) = kind `elem` [DescAtom "ref", DescAtom "data"] || any mentionsData rest
@@ -2018,11 +2408,13 @@ generateValue table d0 size = case descriptorKind d of
     SList <$> replicateM (fromInteger n) (generateValue table (arg 1) size)
   "maybe" -> do
     r <- drawBelow 4
-    if r == 0 then pure (SData "Maybe::Absent" [])
+    if r == 0
+      then pure (SData "Maybe::Absent" [])
       else (\v -> SData "Maybe::Present" [v]) <$> generateValue table (arg 1) size
   "either" -> do
     r <- drawBelow 2
-    if r == 0 then (\v -> SData "Either::Left" [v]) <$> generateValue table (arg 1) size
+    if r == 0
+      then (\v -> SData "Either::Left" [v]) <$> generateValue table (arg 1) size
       else (\v -> SData "Either::Right" [v]) <$> generateValue table (arg 2) size
   "data" -> do
     let choices = if size <= 0 then baseConstructors d else constructorsOf d
@@ -2030,9 +2422,10 @@ generateValue table d0 size = case descriptorKind d of
     let (tag, fields) = constructorParts (choices !! fromInteger i)
     SData tag <$> mapM (\f -> generateValue table f (max (size - 1) 0)) fields
   _ -> error ("unknown descriptor " ++ show d)
-  where d = resolveDescriptor table d0
-        t = descriptorName (arg 1)
-        arg i = descriptorArgument i d
+  where
+    d = resolveDescriptor table d0
+    t = descriptorName (arg 1)
+    arg i = descriptorArgument i d
 
 minimalValue :: DataTable -> Descriptor -> Scalar
 minimalValue table d0 = case descriptorKind d of
@@ -2046,8 +2439,9 @@ minimalValue table d0 = case descriptorKind d of
   _ -> case baseConstructors d of
     ctor : _ -> let (tag, fields) = constructorParts ctor in SData tag (map (minimalValue table) fields)
     [] -> error ("data type without constructors " ++ show d)
-  where d = resolveDescriptor table d0
-        arg i = descriptorArgument i d
+  where
+    d = resolveDescriptor table d0
+    arg i = descriptorArgument i d
 
 -- | Toward zero integer division.
 towardZero :: Integer -> Integer -> Integer
@@ -2061,15 +2455,19 @@ halfAndRemovals xs = [] : take (length xs `div` 2) xs : [take i xs ++ drop (i + 
 shrinkValue :: DataTable -> Descriptor -> Scalar -> [Scalar]
 shrinkValue table d0 v = uniqueRendered $ case (descriptorKind d, v) of
   ("int", SInteger t n) -> case minimalValue table d of
-    SInteger _ target | n /= target ->
-      map (SInteger t) [target, n - towardZero (n - target) 2, n - (if n > target then 1 else -1)]
+    SInteger _ target
+      | n /= target ->
+          map (SInteger t) [target, n - towardZero (n - target) 2, n - (if n > target then 1 else -1)]
     _ -> []
   ("bool", SBool True) -> [SBool False]
   ("text", SSequence t xs) | not (null xs) -> map (SSequence t) (halfAndRemovals xs)
-  ("list", SList xs) | not (null xs) ->
-    map SList (halfAndRemovals xs)
-      ++ concat [[SList (take i xs ++ [c] ++ drop (i + 1) xs) | c <- shrinkValue table (arg 1) x]
-                | (i, x) <- zip [0 ..] xs]
+  ("list", SList xs)
+    | not (null xs) ->
+        map SList (halfAndRemovals xs)
+          ++ concat
+            [ [SList (take i xs ++ [c] ++ drop (i + 1) xs) | c <- shrinkValue table (arg 1) x]
+            | (i, x) <- zip [0 ..] xs
+            ]
   ("maybe", SData "Maybe::Present" [x]) ->
     SData "Maybe::Absent" [] : [SData "Maybe::Present" [c] | c <- shrinkValue table (arg 1) x]
   ("either", SData tag [x]) ->
@@ -2079,18 +2477,22 @@ shrinkValue table d0 v = uniqueRendered $ case (descriptorKind d, v) of
           Just (_, fs) -> fs
           Nothing -> error ("unknown constructor " ++ tag)
         pairs = zip fields ctorFields
-    in minimalValue table d
-         -- A field of the same type is a smaller value of it.
-         : [f | (f, fd) <- pairs, fd == DescList [DescAtom "ref", arg 1]]
-         ++ concat [[SData tag (take i fields ++ [c] ++ drop (i + 1) fields) | c <- shrinkValue table fd field]
-                   | (i, (field, fd)) <- zip [0 ..] pairs]
+     in minimalValue table d
+          -- A field of the same type is a smaller value of it.
+          : [f | (f, fd) <- pairs, fd == DescList [DescAtom "ref", arg 1]]
+          ++ concat
+            [ [SData tag (take i fields ++ [c] ++ drop (i + 1) fields) | c <- shrinkValue table fd field]
+            | (i, (field, fd)) <- zip [0 ..] pairs
+            ]
   _ -> []
-  where d = resolveDescriptor table d0
-        arg i = descriptorArgument i d
-        uniqueRendered candidates = go [renderValue v] candidates
-        go _ [] = []
-        go seen (c : cs) = let r = renderValue c in
-          if r `elem` seen then go seen cs else c : go (r : seen) cs
+  where
+    d = resolveDescriptor table d0
+    arg i = descriptorArgument i d
+    uniqueRendered candidates = go [renderValue v] candidates
+    go _ [] = []
+    go seen (c : cs) =
+      let r = renderValue c
+       in if r `elem` seen then go seen cs else c : go (r : seen) cs
 
 -- | A value's canonical text, the same on every target.
 renderValue :: Scalar -> String
@@ -2102,13 +2504,14 @@ renderValue value = case value of
   SList xs -> "[" ++ commas xs ++ "]"
   SData tag fields ->
     let name = T.unpack (last (T.splitOn (T.pack "::") (T.pack tag)))
-    in if null fields then name else name ++ "(" ++ commas fields ++ ")"
+     in if null fields then name else name ++ "(" ++ commas fields ++ ")"
   SHandle t h -> T.unpack (last (T.splitOn (T.pack "::") (T.pack t))) ++ "#" ++ show (handleNumber h)
   other -> show other
-  where escape c = if c == '\\' || c == '"' then ['\\', c] else [c]
-        commas xs = foldr1' (map renderValue xs)
-        foldr1' [] = ""
-        foldr1' parts = foldr1 (\a b -> a ++ ", " ++ b) parts
+  where
+    escape c = if c == '\\' || c == '"' then ['\\', c] else [c]
+    commas xs = foldr1' (map renderValue xs)
+    foldr1' [] = ""
+    foldr1' parts = foldr1 (\a b -> a ++ ", " ++ b) parts
 
 -- | Typed snapshot text; identity numbering starts again for each recording.
 -- Keep the established text/list/constructor forms, with explicit extended
@@ -2120,40 +2523,43 @@ renderRecorded value = fst (go value [])
     quote s = renderValue (SSequence "Text" (map ord s))
     short = T.unpack . last . T.splitOn (T.pack "::") . T.pack
     decimalText 0 _ = "0e0"
-    decimalText c e | c `rem` 10 == 0 = decimalText (c `quot` 10) (e + 1)
-                    | otherwise = show c ++ "e" ++ show e
+    decimalText c e
+      | c `rem` 10 == 0 = decimalText (c `quot` 10) (e + 1)
+      | otherwise = show c ++ "e" ++ show e
     floating s@(SFloat t bits)
       | isNaN (floatValue s) = prefix ++ "NaN"
       | otherwise = prefix ++ "Bits(\"" ++ map toLower bits ++ "\")"
-      where prefix = if t == "Float32" then "float32" else "float64"
+      where
+        prefix = if t == "Float32" then "float32" else "float64"
     floating _ = error "invalid recorded float"
     numbered kind v ids =
       let known = maybe [] id (lookup kind ids)
-      in case [number | (number, other) <- zip [1 :: Int ..] known, equal v other] of
-        number : _ -> (number, ids)
-        [] -> (length known + 1, (kind, known ++ [v]) : filter ((/= kind) . fst) ids)
+       in case [number | (number, other) <- zip [1 :: Int ..] known, equal v other] of
+            number : _ -> (number, ids)
+            [] -> (length known + 1, (kind, known ++ [v]) : filter ((/= kind) . fst) ids)
     parts [] ids = ([], ids)
     parts (v : vs) ids =
       let (part, next) = go v ids; (rest, final) = parts vs next
-      in (part : rest, final)
+       in (part : rest, final)
     wrapped before after vs ids =
       let (shown, next) = parts vs ids
-      in (before ++ intercalate ", " shown ++ after, next)
+       in (before ++ intercalate ", " shown ++ after, next)
     symbol v description ids =
       let (number, next) = numbered "symbol" v ids
-      in ("symbol(" ++ show number ++ ", " ++ quote description ++ ")", next)
+       in ("symbol(" ++ show number ++ ", " ++ quote description ++ ")", next)
     go v ids = case v of
       SBool b -> (if b then "true" else "false", ids)
       SInteger _ n -> (show n, ids)
       SDecimal c e -> (decimalText c e, ids)
-      SRational n d -> let r = n % d in
-        ("rational(" ++ show (numerator r) ++ ", " ++ show (denominator r) ++ ")", ids)
+      SRational n d ->
+        let r = n % d
+         in ("rational(" ++ show (numerator r) ++ ", " ++ show (denominator r) ++ ")", ids)
       SFloat _ _ -> (floating v, ids)
       SComplex t r i -> (t ++ "(" ++ floating r ++ ", " ++ floating i ++ ")", ids)
       SSequence "Text" xs -> (quote (map chr xs), ids)
       SSequence t xs ->
         let name = case t of "Bytes" -> "bytes"; "Utf16Text" -> "utf16"; _ -> "codePoints"
-        in (name ++ "([" ++ intercalate ", " (map show xs) ++ "])", ids)
+         in (name ++ "([" ++ intercalate ", " (map show xs) ++ "])", ids)
       SCharacter "Char" c -> (quote [chr c], ids)
       SCharacter _ c -> (show c, ids)
       SSymbol _ description -> symbol v description ids
@@ -2164,28 +2570,29 @@ renderRecorded value = fst (go value [])
       SList xs -> wrapped "[" "]" xs ids
       SData tag [] -> (short tag, ids)
       SData tag xs -> wrapped (short tag ++ "(") ")" xs ids
-      SHandle t _ -> let (number, next) = numbered ("handle:" ++ t) v ids
-        in (short t ++ "#" ++ show number, next)
+      SHandle t _ ->
+        let (number, next) = numbered ("handle:" ++ t) v ids
+         in (short t ++ "#" ++ show number, next)
 
 -- | A descriptor text's data types and its last form, the one generated.
 valuesFrom :: String -> (DataTable, Descriptor)
 valuesFrom text =
   let forms = readDescriptor text
       table = [(descriptorName name, f) | f@(DescList (DescAtom "data" : name : _)) <- forms]
-  in (table, last forms)
+   in (table, last forms)
 
 -- | count values generated from one SplitMix64 seed, rendered.
 generatedValues :: String -> Word64 -> Integer -> Integer -> [String]
 generatedValues text seed size count =
   let (table, d) = valuesFrom text
-  in map renderValue (fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed))
+   in map renderValue (fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed))
 
 -- | The shrink candidates of the first value generated, rendered.
 shrunkValues :: String -> Word64 -> Integer -> [String]
 shrunkValues text seed size =
   let (table, d) = valuesFrom text
       first = fst (runDraw (generateValue table d size) seed)
-  in map renderValue (shrinkValue table d first)
+   in map renderValue (shrinkValue table d first)
 
 -- Stateful models. A model's spec (see LawSpec.MachineSpec) lists its data
 -- types, start and commands; the callbacks beside it are the generated
@@ -2205,79 +2612,82 @@ type ModelCallback = SymbolContext -> [Scalar] -> Either String Scalar
 -- reference, precondition), the abstraction and the invariants, in the
 -- spec's order.
 data Model = Model
-  { modelSpec :: String
-  , modelStart :: (ModelCallback, ModelCallback)
-  , modelCommands :: [(ModelCallback, ModelCallback, Maybe ModelCallback)]
-  , modelAbstract :: Maybe ModelCallback
-  , modelInvariants :: [ModelCallback]
+  { modelSpec :: String,
+    modelStart :: (ModelCallback, ModelCallback),
+    modelCommands :: [(ModelCallback, ModelCallback, Maybe ModelCallback)],
+    modelAbstract :: Maybe ModelCallback,
+    modelInvariants :: [ModelCallback]
   }
 
 data ModelCommand = ModelCommand
-  { mcName :: String
-  , mcArguments :: [Descriptor]
-  , mcState :: Int
-  , mcUnit :: Bool
-  , mcNeeds :: [(String, Integer)]
-  , mcShifts :: [(String, Integer)]
-  -- The argument naming the key the command touches, for per-key checks.
-  , mcKey :: Maybe Int
-  , mcRun :: ModelCallback
-  , mcReference :: ModelCallback
-  , mcWhen :: Maybe ModelCallback
-  -- An actor's restart: never a generated step; injected crashes run it.
-  , mcRestart :: Bool
+  { mcName :: String,
+    mcArguments :: [Descriptor],
+    mcState :: Int,
+    mcUnit :: Bool,
+    mcNeeds :: [(String, Integer)],
+    mcShifts :: [(String, Integer)],
+    -- The argument naming the key the command touches, for per-key checks.
+    mcKey :: Maybe Int,
+    mcRun :: ModelCallback,
+    mcReference :: ModelCallback,
+    mcWhen :: Maybe ModelCallback,
+    -- An actor's restart: never a generated step; injected crashes run it.
+    mcRestart :: Bool
   }
 
 -- | An injected crash of an actor model, given the run's start arguments:
 -- restarting the system's actor, and the model state after the restart.
 data CrashStep = CrashStep
-  { crashSystem :: [Scalar] -> SymbolContext -> Scalar -> IO ()
-  , crashModel :: [Scalar] -> SymbolContext -> Scalar -> IO Scalar
+  { crashSystem :: [Scalar] -> SymbolContext -> Scalar -> IO (),
+    crashModel :: [Scalar] -> SymbolContext -> Scalar -> IO Scalar
   }
 
 data ModelPlan = ModelPlan
-  { planName :: String
-  , planShared :: Bool
-  , planTable :: DataTable
-  , planStartIndices :: [Integer]
-  , planStartArguments :: [Descriptor]
-  , planStartRun :: ModelCallback
-  , planStartModel :: ModelCallback
-  , planCommands :: [ModelCommand]
-  , planAbstract :: Maybe ModelCallback
-  , planInvariants :: [(String, ModelCallback)]
-  , planPerKey :: Bool
-  -- An actor model's crash step, numbered after the commands.
-  , planCrash :: Maybe CrashStep
-  -- linearizable, sequential, causal or eventual.
-  , planConsistency :: String
+  { planName :: String,
+    planShared :: Bool,
+    planTable :: DataTable,
+    planStartIndices :: [Integer],
+    planStartArguments :: [Descriptor],
+    planStartRun :: ModelCallback,
+    planStartModel :: ModelCallback,
+    planCommands :: [ModelCommand],
+    planAbstract :: Maybe ModelCallback,
+    planInvariants :: [(String, ModelCallback)],
+    planPerKey :: Bool,
+    -- An actor model's crash step, numbered after the commands.
+    planCrash :: Maybe CrashStep,
+    -- linearizable, sequential, causal or eventual.
+    planConsistency :: String
   }
 
 -- | Start arguments, then each step's command index and arguments.
 type ModelRun = ([Scalar], [(Int, [Scalar])])
 
 -- | A command the model does not allow here, or a callback's failure.
-data ModelStop = ModelInvalid | ModelRaised String deriving Show
+data ModelStop = ModelInvalid | ModelRaised String deriving (Show)
+
 instance Exception ModelStop
 
 modelPlan :: Model -> ModelPlan
-modelPlan model = asActor $ ModelPlan
-  { planName = name
-  , planShared = kind == "shared"
-  , planTable = [(descriptorName n, f) | f@(DescList (DescAtom "data" : n : _)) <- forms]
-  , planStartIndices = integers (field "indices" startFields)
-  , planStartArguments = field "arguments" startFields
-  , planStartRun = fst (modelStart model)
-  , planStartModel = snd (modelStart model)
-  , planCommands = filter (not . mcRestart) allCommands
-  , planAbstract = modelAbstract model
-  , planInvariants = zip kinds (modelInvariants model)
-  , planPerKey = not (null [() | DescList [DescAtom "perkey", DescAtom "true"] <- forms])
-  , planCrash = Nothing
-  , planConsistency = case [descriptorName c | DescList [DescAtom "consistency", c] <- forms] of
-      c : _ -> c
-      [] -> "linearizable"
-  }
+modelPlan model =
+  asActor $
+    ModelPlan
+      { planName = name,
+        planShared = kind == "shared",
+        planTable = [(descriptorName n, f) | f@(DescList (DescAtom "data" : n : _)) <- forms],
+        planStartIndices = integers (field "indices" startFields),
+        planStartArguments = field "arguments" startFields,
+        planStartRun = fst (modelStart model),
+        planStartModel = snd (modelStart model),
+        planCommands = filter (not . mcRestart) allCommands,
+        planAbstract = modelAbstract model,
+        planInvariants = zip kinds (modelInvariants model),
+        planPerKey = not (null [() | DescList [DescAtom "perkey", DescAtom "true"] <- forms]),
+        planCrash = Nothing,
+        planConsistency = case [descriptorName c | DescList [DescAtom "consistency", c] <- forms] of
+          c : _ -> c
+          [] -> "linearizable"
+      }
   where
     allCommands = zipWith command [rest | DescList (DescAtom "command" : rest) <- forms] (modelCommands model)
     restart = find mcRestart allCommands
@@ -2286,12 +2696,14 @@ modelPlan model = asActor $ ModelPlan
     actor = not (null [() | DescList [DescAtom "actor", DescAtom "true"] <- forms])
     asActor plan
       | not actor = plan
-      | otherwise = plan
-          { planStartRun = actorStartCallback (planStartRun plan)
-          , planCrash = Just (actorCrashStep (planStartRun plan) (planStartModel plan) restart)
-          , planCommands = [c { mcRun = actorCommandCallback (mcUnit c) (mcRun c) } | c <- planCommands plan]
-          , planAbstract = fmap actorStateCallback (planAbstract plan)
-          , planInvariants = [(k, if k == "model" then p else actorStateCallback p) | (k, p) <- planInvariants plan] }
+      | otherwise =
+          plan
+            { planStartRun = actorStartCallback (planStartRun plan),
+              planCrash = Just (actorCrashStep (planStartRun plan) (planStartModel plan) restart),
+              planCommands = [c {mcRun = actorCommandCallback (mcUnit c) (mcRun c)} | c <- planCommands plan],
+              planAbstract = fmap actorStateCallback (planAbstract plan),
+              planInvariants = [(k, if k == "model" then p else actorStateCallback p) | (k, p) <- planInvariants plan]
+            }
     forms = readDescriptor (modelSpec model)
     (name, kind) = case forms of
       DescList (_ : n : k : _) : _ -> (descriptorName n, descriptorName k)
@@ -2309,23 +2721,24 @@ modelPlan model = asActor $ ModelPlan
     pair d = case d of
       DescList [DescAtom k, DescInteger v] -> (k, v)
       _ -> error ("invalid model typestate " ++ show d)
-    command (nameForm : fs) (run, reference, precondition) = ModelCommand
-      { mcName = descriptorName nameForm
-      , mcArguments = field "arguments" fs
-      , mcState = case field "state" fs of
-          [DescInteger p] -> fromInteger p
-          _ -> error "invalid command state position"
-      , mcUnit = field "unit" fs == [DescAtom "true"]
-      , mcNeeds = map pair (field "needs" fs)
-      , mcShifts = map pair (field "shifts" fs)
-      , mcKey = case field "key" fs of
-          [DescInteger k] -> Just (fromInteger k)
-          _ -> Nothing
-      , mcRun = run
-      , mcReference = reference
-      , mcWhen = precondition
-      , mcRestart = field "restart" fs == [DescAtom "true"]
-      }
+    command (nameForm : fs) (run, reference, precondition) =
+      ModelCommand
+        { mcName = descriptorName nameForm,
+          mcArguments = field "arguments" fs,
+          mcState = case field "state" fs of
+            [DescInteger p] -> fromInteger p
+            _ -> error "invalid command state position",
+          mcUnit = field "unit" fs == [DescAtom "true"],
+          mcNeeds = map pair (field "needs" fs),
+          mcShifts = map pair (field "shifts" fs),
+          mcKey = case field "key" fs of
+            [DescInteger k] -> Just (fromInteger k)
+            _ -> Nothing,
+          mcRun = run,
+          mcReference = reference,
+          mcWhen = precondition,
+          mcRestart = field "restart" fs == [DescAtom "true"]
+        }
     command [] _ = error "invalid command form"
 
 -- | Whether a step index is an actor's injected crash.
@@ -2346,11 +2759,13 @@ crashModelState plan startArgs symbols state = case planCrash plan of
 
 admits :: ModelCommand -> [Integer] -> Bool
 admits command indices = and (zipWith needs (mcNeeds command) indices)
-  where needs (kind, k) i = if kind == "atleast" then i >= k else i == k
+  where
+    needs (kind, k) i = if kind == "atleast" then i >= k else i == k
 
 shifted :: ModelCommand -> [Integer] -> [Integer]
 shifted command = zipWith shift (mcShifts command)
-  where shift (kind, d) i = if kind == "by" then i + d else d
+  where
+    shift (kind, d) i = if kind == "by" then i + d else d
 
 -- | An exception's message, without the location or context GHC adds.
 exceptionText :: SomeException -> String
@@ -2362,9 +2777,14 @@ exceptionText e = case fromException e of
 -- a Left like any other failure.
 callModel :: ModelCallback -> SymbolContext -> [Scalar] -> IO (Either String Scalar)
 callModel f symbols args = do
-  outcome <- try (evaluate (case f symbols args of
-    Left message -> length message `seq` Left message
-    Right value -> deepScalar value `seq` Right value))
+  outcome <-
+    try
+      ( evaluate
+          ( case f symbols args of
+              Left message -> length message `seq` Left message
+              Right value -> deepScalar value `seq` Right value
+          )
+      )
   pure (either (Left . exceptionText) id outcome)
 
 -- | A callback's result, or ModelRaised.
@@ -2417,12 +2837,14 @@ simulateFinal plan symbols (startArgs, steps) = do
               Right next -> go next indices rest
           go state indices ((index, args) : rest) = do
             let command = planCommands plan !! index
-            if not (admits command indices) then pure Nothing else do
-              stepped <- try (stepModel command symbols args state)
-              case stepped of
-                Left ModelInvalid -> pure Nothing
-                Left (ModelRaised _) -> pure Nothing
-                Right (next, _) -> go next (shifted command indices) rest
+            if not (admits command indices)
+              then pure Nothing
+              else do
+                stepped <- try (stepModel command symbols args state)
+                case stepped of
+                  Left ModelInvalid -> pure Nothing
+                  Left (ModelRaised _) -> pure Nothing
+                  Right (next, _) -> go next (shifted command indices) rest
       go state0 (planStartIndices plan) steps
 
 drawIO :: IORef Word64 -> Draw a -> IO a
@@ -2448,25 +2870,28 @@ generateRunWith crashes plan source len size = do
       let go 0 _ _ acc = pure (reverse acc)
           go n state indices acc = do
             let allowed = [i | (i, c) <- zip [0 ..] (planCommands plan), admits c indices]
-            if null allowed then pure (reverse acc) else do
-              pick <- drawIO source (drawBelow (toInteger (length allowed)))
-              crash <- case planCrash plan of
-                Just _ | crashes -> (== 0) <$> drawIO source (drawBelow 8)
-                _ -> pure False
-              let index = allowed !! fromInteger pick
-                  command = planCommands plan !! index
-              if crash then do
-                stepped <- try (crashModelState plan startArgs symbols state)
-                case stepped of
-                  Left (_ :: ModelStop) -> go (n - 1) state indices acc
-                  Right next -> go (n - 1) next indices ((length (planCommands plan), []) : acc)
+            if null allowed
+              then pure (reverse acc)
               else do
-               args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
-               stepped <- try (stepModel command symbols args state)
-               case stepped of
-                 Left ModelInvalid -> go (n - 1) state indices acc
-                 Left (ModelRaised _) -> go (n - 1) state indices acc
-                 Right (next, _) -> go (n - 1) next (shifted command indices) ((index, args) : acc)
+                pick <- drawIO source (drawBelow (toInteger (length allowed)))
+                crash <- case planCrash plan of
+                  Just _ | crashes -> (== 0) <$> drawIO source (drawBelow 8)
+                  _ -> pure False
+                let index = allowed !! fromInteger pick
+                    command = planCommands plan !! index
+                if crash
+                  then do
+                    stepped <- try (crashModelState plan startArgs symbols state)
+                    case stepped of
+                      Left (_ :: ModelStop) -> go (n - 1) state indices acc
+                      Right next -> go (n - 1) next indices ((length (planCommands plan), []) : acc)
+                  else do
+                    args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
+                    stepped <- try (stepModel command symbols args state)
+                    case stepped of
+                      Left ModelInvalid -> go (n - 1) state indices acc
+                      Left (ModelRaised _) -> go (n - 1) state indices acc
+                      Right (next, _) -> go (n - 1) next (shifted command indices) ((index, args) : acc)
       steps <- go len state0 (planStartIndices plan) []
       pure (startArgs, steps)
 
@@ -2476,49 +2901,60 @@ executeRun :: ModelPlan -> ModelRun -> IO (Maybe (Int, String))
 executeRun plan (startArgs, steps) = do
   symbols <- newSymbolContext
   stepRef <- newIORef 0
-  outcome <- try (do
-    state0 <- callOrRaise (planStartRun plan) symbols startArgs
-    expected0 <- callOrRaise (planStartModel plan) symbols startArgs
-    failure0 <- checkModelState plan symbols state0 expected0
-    case failure0 of
-      Just failure -> pure (Just failure)
-      Nothing -> do
-        let go _ _ [] = pure Nothing
-            go state expected ((index, _) : rest) | isCrashStep plan index = do
-              modifyIORef' stepRef (+ 1)
-              forM_ (planCrash plan) (\crash -> crashSystem crash startArgs symbols state)
-              expected' <- crashModelState plan startArgs symbols expected
-              failure <- checkModelState plan symbols state expected'
-              case failure of
-                Just _ -> pure failure
-                Nothing -> go state expected' rest
-            go state expected ((index, args) : rest) = do
-              modifyIORef' stepRef (+ 1)
-              let command = planCommands plan !! index
-                  position = mcState command
-              out <- callOrRaise (mcRun command) symbols (take position args ++ [state] ++ drop position args)
-              let (result, state') = if planShared plan then (out, state)
-                    else (if mcUnit command then SAbsent "Unit" else productField False out, productField True out)
-              _ <- evaluate (deepScalar result `seq` deepScalar state')
-              (expected', wanted) <- stepModel command symbols args expected
-              order <- if mcUnit command then pure EQ
-                else either (throwIO . ModelRaised) pure (compareValues result wanted)
-              if order /= EQ
-                then pure (Just ("returned " ++ renderValue result ++ "; the model returns " ++ renderValue wanted))
-                else do
-                  failure <- checkModelState plan symbols state' expected'
-                  case failure of
-                    Just _ -> pure failure
-                    Nothing -> go state' expected' rest
-        go state0 expected0 steps)
+  outcome <-
+    try
+      ( do
+          state0 <- callOrRaise (planStartRun plan) symbols startArgs
+          expected0 <- callOrRaise (planStartModel plan) symbols startArgs
+          failure0 <- checkModelState plan symbols state0 expected0
+          case failure0 of
+            Just failure -> pure (Just failure)
+            Nothing -> do
+              let go _ _ [] = pure Nothing
+                  go state expected ((index, _) : rest) | isCrashStep plan index = do
+                    modifyIORef' stepRef (+ 1)
+                    forM_ (planCrash plan) (\crash -> crashSystem crash startArgs symbols state)
+                    expected' <- crashModelState plan startArgs symbols expected
+                    failure <- checkModelState plan symbols state expected'
+                    case failure of
+                      Just _ -> pure failure
+                      Nothing -> go state expected' rest
+                  go state expected ((index, args) : rest) = do
+                    modifyIORef' stepRef (+ 1)
+                    let command = planCommands plan !! index
+                        position = mcState command
+                    out <- callOrRaise (mcRun command) symbols (take position args ++ [state] ++ drop position args)
+                    let (result, state') =
+                          if planShared plan
+                            then (out, state)
+                            else (if mcUnit command then SAbsent "Unit" else productField False out, productField True out)
+                    _ <- evaluate (deepScalar result `seq` deepScalar state')
+                    (expected', wanted) <- stepModel command symbols args expected
+                    order <-
+                      if mcUnit command
+                        then pure EQ
+                        else either (throwIO . ModelRaised) pure (compareValues result wanted)
+                    if order /= EQ
+                      then pure (Just ("returned " ++ renderValue result ++ "; the model returns " ++ renderValue wanted))
+                      else do
+                        failure <- checkModelState plan symbols state' expected'
+                        case failure of
+                          Just _ -> pure failure
+                          Nothing -> go state' expected' rest
+              go state0 expected0 steps
+      )
   step <- readIORef stepRef
   pure $ case outcome of
     Right Nothing -> Nothing
     Right (Just message) -> Just (step, message)
-    Left e -> Just (step, case fromException e of
-      Just ModelInvalid -> "the model does not allow this step"
-      Just (ModelRaised message) -> "raised error: " ++ message
-      Nothing -> "raised error: " ++ exceptionText e)
+    Left e ->
+      Just
+        ( step,
+          case fromException e of
+            Just ModelInvalid -> "the model does not allow this step"
+            Just (ModelRaised message) -> "raised error: " ++ message
+            Nothing -> "raised error: " ++ exceptionText e
+        )
 
 checkModelState :: ModelPlan -> SymbolContext -> Scalar -> Scalar -> IO (Maybe String)
 checkModelState plan symbols state expected = do
@@ -2527,9 +2963,11 @@ checkModelState plan symbols state expected = do
     Just abstract -> do
       actual <- callOrRaise abstract symbols [state]
       order <- either (throwIO . ModelRaised) pure (compareValues actual expected)
-      pure (if order /= EQ
-        then Just ("the state is " ++ renderValue actual ++ "; the model is " ++ renderValue expected)
-        else Nothing)
+      pure
+        ( if order /= EQ
+            then Just ("the state is " ++ renderValue actual ++ "; the model is " ++ renderValue expected)
+            else Nothing
+        )
   case abstracted of
     Just _ -> pure abstracted
     Nothing -> invariants (planInvariants plan)
@@ -2547,16 +2985,21 @@ checkModelState plan symbols state expected = do
 runCandidates :: ModelPlan -> ModelRun -> [ModelRun]
 runCandidates plan (startArgs, steps) =
   [ (startArgs, take begin steps ++ drop (begin + size) steps)
-  | size <- takeWhile (>= 1) (iterate (`div` 2) (n `div` 2)), begin <- [0, size .. n - 1] ]
-  ++ [ (startArgs, take k steps ++ [(index, replace j c args)] ++ drop (k + 1) steps)
-     | (k, (index, args)) <- zip [0 ..] steps
-     , (j, (d, arg)) <- zip [0 ..] (zip (stepArguments plan index) args)
-     , c <- shrinkValue (planTable plan) d arg ]
-  ++ [ (replace j c startArgs, steps)
-     | (j, (d, arg)) <- zip [0 ..] (zip (planStartArguments plan) startArgs)
-     , c <- shrinkValue (planTable plan) d arg ]
-  where n = length steps
-        replace j c xs = take j xs ++ [c] ++ drop (j + 1) xs
+  | size <- takeWhile (>= 1) (iterate (`div` 2) (n `div` 2)),
+    begin <- [0, size .. n - 1]
+  ]
+    ++ [ (startArgs, take k steps ++ [(index, replace j c args)] ++ drop (k + 1) steps)
+       | (k, (index, args)) <- zip [0 ..] steps,
+         (j, (d, arg)) <- zip [0 ..] (zip (stepArguments plan index) args),
+         c <- shrinkValue (planTable plan) d arg
+       ]
+    ++ [ (replace j c startArgs, steps)
+       | (j, (d, arg)) <- zip [0 ..] (zip (planStartArguments plan) startArgs),
+         c <- shrinkValue (planTable plan) d arg
+       ]
+  where
+    n = length steps
+    replace j c xs = take j xs ++ [c] ++ drop (j + 1) xs
 
 shrinkRun :: ModelPlan -> ModelRun -> (Int, String) -> Int -> IO (ModelRun, (Int, String))
 shrinkRun plan run failure budget
@@ -2566,13 +3009,17 @@ shrinkRun plan run failure budget
     go [] _ = pure (run, failure)
     go (candidate : rest) b = do
       let b' = b - 1
-      if b' <= 0 then pure (run, failure) else do
-        valid <- simulateRun plan candidate
-        if not valid then go rest b' else do
-          found <- executeRun plan candidate
-          case found of
-            Just failure' -> shrinkRun plan candidate failure' b'
-            Nothing -> go rest b'
+      if b' <= 0
+        then pure (run, failure)
+        else do
+          valid <- simulateRun plan candidate
+          if not valid
+            then go rest b'
+            else do
+              found <- executeRun plan candidate
+              case found of
+                Just failure' -> shrinkRun plan candidate failure' b'
+                Nothing -> go rest b'
 
 describeRun :: ModelPlan -> ModelRun -> String
 describeRun plan (startArgs, steps) =
@@ -2580,7 +3027,7 @@ describeRun plan (startArgs, steps) =
       joinComma [] = ""
       joinComma texts = foldr1 (\a b -> a ++ ", " ++ b) texts
       parts = call "start" startArgs : [call (stepName plan i) args | (i, args) <- steps]
-  in foldr1 (\a b -> a ++ "; " ++ b) parts
+   in foldr1 (\a b -> a ++ "; " ++ b) parts
 
 -- | Checks the system against its model on generated runs: Nothing, or the
 -- failure naming the shortest failing run found. 100 cases of up to 20
@@ -2611,8 +3058,18 @@ checkModelWith cases maxLength maxShrinks seedOverride model = do
               Nothing -> loop (c + 1)
               Just found -> do
                 (run', (step, message)) <- shrinkRun plan run found maxShrinks
-                pure (Just ("model " ++ planName plan ++ " fails at step " ++ show step ++ " of "
-                  ++ describeRun plan run' ++ ": " ++ message))
+                pure
+                  ( Just
+                      ( "model "
+                          ++ planName plan
+                          ++ " fails at step "
+                          ++ show step
+                          ++ " of "
+                          ++ describeRun plan run'
+                          ++ ": "
+                          ++ message
+                      )
+                  )
   loop 0
 
 -- Parallel runs of a shared model. A case is a sequential prefix and one
@@ -2666,13 +3123,15 @@ parallelAllowed plan (prefix, branches) = do
             if old then pure True else allM (stepFrom positions state) (zip [0 ..] branches)
           stepFrom positions state (i, branch) = do
             let k = positions !! i
-            if k >= length branch then pure True else do
-              let (index, args) = branch !! k
-              stepped <- try (stepModel (planCommands plan !! index) symbols args state)
-              case stepped of
-                Left ModelInvalid -> pure False
-                Left (ModelRaised _) -> pure False
-                Right (next, _) -> visit (advanceAt i positions) next
+            if k >= length branch
+              then pure True
+              else do
+                let (index, args) = branch !! k
+                stepped <- try (stepModel (planCommands plan !! index) symbols args state)
+                case stepped of
+                  Left ModelInvalid -> pure False
+                  Left (ModelRaised _) -> pure False
+                  Right (next, _) -> visit (advanceAt i positions) next
       visit (map (const 0) branches) state0
 
 generateBranch :: ModelPlan -> IORef Word64 -> Scalar -> Integer -> Integer -> IO [(Int, [Scalar])]
@@ -2707,10 +3166,12 @@ generateParallel plan source size threads branchLength = do
       -- until every interleaving is allowed.
       let trim bs = do
             allowed <- parallelAllowed plan (prefix, bs)
-            if allowed then pure (prefix, bs) else do
-              let longest = maximum (map length bs)
-                  i = length (takeWhile ((/= longest) . length) bs)
-              trim [if j == i then init b else b | (j, b) <- zip [0 :: Int ..] bs]
+            if allowed
+              then pure (prefix, bs)
+              else do
+                let longest = maximum (map length bs)
+                    i = length (takeWhile ((/= longest) . length) bs)
+                trim [if j == i then init b else b | (j, b) <- zip [0 :: Int ..] bs]
       trim branches
 
 -- | Nothing, a yield, or a sleep of 10 or 100 microseconds.
@@ -2731,15 +3192,27 @@ executeParallel :: ModelPlan -> ParallelCase -> Word64 -> IO (Maybe String)
 executeParallel plan (prefix@(startArgs, steps), branches) shake = do
   symbols <- newSymbolContext
   let withState command state args = take (mcState command) args ++ [state] ++ drop (mcState command) args
-  prepared <- try (do
-    state <- callOrRaise (planStartRun plan) symbols startArgs
-    mapM_ (\(index, args) -> let command = planCommands plan !! index
-      in callOrRaise (mcRun command) symbols (withState command state args)) steps
-    pure state)
+  prepared <-
+    try
+      ( do
+          state <- callOrRaise (planStartRun plan) symbols startArgs
+          mapM_
+            ( \(index, args) ->
+                let command = planCommands plan !! index
+                 in callOrRaise (mcRun command) symbols (withState command state args)
+            )
+            steps
+          pure state
+      )
   case prepared of
-    Left e -> pure (Just ("the prefix raised error: " ++ case fromException e of
-      Just (ModelRaised message) -> message
-      _ -> exceptionText e))
+    Left e ->
+      pure
+        ( Just
+            ( "the prefix raised error: " ++ case fromException e of
+                Just (ModelRaised message) -> message
+                _ -> exceptionText e
+            )
+        )
     Right state -> do
       clock <- newIORef (0 :: Int)
       errors <- newIORef []
@@ -2781,28 +3254,50 @@ executeParallel plan (prefix@(startArgs, steps), branches) shake = do
             (_, Left message) -> pure (Just ("raised error: " ++ message))
             (Just expected, Right actual) -> do
               found <- linearizable plan symbols branches history expected actual state
-              let observed = intercalate "; "
-                    [ branchName i ++ ": " ++ mcName (planCommands plan !! fst (branches !! i !! k))
-                      ++ "() returned " ++ renderValue result
-                    | (i, h) <- zip [0 ..] history, (k, (_, _, result)) <- zip [0 ..] h ]
-              pure (if found then Nothing
-                else Just ("no order of the parallel calls agrees with the model (" ++ observed ++ ")"))
+              let observed =
+                    intercalate
+                      "; "
+                      [ branchName i
+                          ++ ": "
+                          ++ mcName (planCommands plan !! fst (branches !! i !! k))
+                          ++ "() returned "
+                          ++ renderValue result
+                      | (i, h) <- zip [0 ..] history,
+                        (k, (_, _, result)) <- zip [0 ..] h
+                      ]
+              pure
+                ( if found
+                    then Nothing
+                    else Just ("no order of the parallel calls agrees with the model (" ++ observed ++ ")")
+                )
 
 -- | Whether the history linearizes, with the final state and invariants the
 -- model gives. For a set or map whose every call touches one key, each key's
 -- calls are linearized separately (the keys are independent), one group
 -- after another; otherwise all calls at once.
-linearizable :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
-             -> Scalar -> Maybe Scalar -> Scalar -> IO Bool
+linearizable ::
+  ModelPlan ->
+  SymbolContext ->
+  [[(Int, [Scalar])]] ->
+  [[(Int, Int, Scalar)]] ->
+  Scalar ->
+  Maybe Scalar ->
+  Scalar ->
+  IO Bool
 linearizable plan symbols branches history expected0 final state
   | not (planPerKey plan) = linearize plan symbols branches history expected0 finish
   | otherwise = groups keys expected0
   where
     finish modelState =
-      if maybe False (\actual -> compareValues actual modelState /= Right EQ) final then pure False
-      else allM (\(kind, invariant) -> do
-        holds <- callModel invariant symbols [if kind == "model" then modelState else state]
-        pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
+      if maybe False (\actual -> compareValues actual modelState /= Right EQ) final
+        then pure False
+        else
+          allM
+            ( \(kind, invariant) -> do
+                holds <- callModel invariant symbols [if kind == "model" then modelState else state]
+                pure (case holds of Right (SBool True) -> True; _ -> False)
+            )
+            (planInvariants plan)
     keyOf (index, args) = case mcKey (planCommands plan !! index) of
       Just a -> renderValue (args !! a)
       Nothing -> error "per-key model command without a key"
@@ -2812,19 +3307,33 @@ linearizable plan symbols branches history expected0 final state
     groups (key : rest) modelState = do
       let parts = [[c | c@(step, _) <- branch, keyOf step == key] | branch <- calls]
       ends <- newIORef Nothing
-      found <- linearize plan symbols (map (map fst) parts) (map (map snd) parts) modelState
-        (\end -> writeIORef ends (Just end) >> pure True)
-      if not found then pure False else do
-        end <- readIORef ends
-        maybe (pure False) (groups rest) end
+      found <-
+        linearize
+          plan
+          symbols
+          (map (map fst) parts)
+          (map (map snd) parts)
+          modelState
+          (\end -> writeIORef ends (Just end) >> pure True)
+      if not found
+        then pure False
+        else do
+          end <- readIORef ends
+          maybe (pure False) (groups rest) end
 
 -- | A Wing-Gong search: linearize, next, a call no pending call on another
 -- thread returned before; memoized on positions and the model state. The
 -- last argument judges each complete order's final model state.
 --
 -- ref:wing-gong-linearizability
-linearize :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
-              -> Scalar -> (Scalar -> IO Bool) -> IO Bool
+linearize ::
+  ModelPlan ->
+  SymbolContext ->
+  [[(Int, [Scalar])]] ->
+  [[(Int, Int, Scalar)]] ->
+  Scalar ->
+  (Scalar -> IO Bool) ->
+  IO Bool
 linearize plan symbols branches history expected0 finish
   -- Threads that never message each other see only their own calls.
   | mode == "causal" = allM replay (zip branches history)
@@ -2846,8 +3355,14 @@ linearize plan symbols branches history expected0 finish
 
 -- | The Wing-Gong search itself, by the plan's consistency: sequential
 -- drops real time, eventual checks no results.
-searchOrders :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
-              -> Scalar -> (Scalar -> IO Bool) -> IO Bool
+searchOrders ::
+  ModelPlan ->
+  SymbolContext ->
+  [[(Int, [Scalar])]] ->
+  [[(Int, Int, Scalar)]] ->
+  Scalar ->
+  (Scalar -> IO Bool) ->
+  IO Bool
 searchOrders plan symbols branches history expected0 finish = do
   seen <- newIORef []
   let threads = length branches
@@ -2855,26 +3370,37 @@ searchOrders plan symbols branches history expected0 finish = do
       returnedAt j k = let (_, r, _) = history !! j !! k in r
       visit positions modelState = do
         old <- seenBefore seen (positions, renderValue modelState)
-        if old then pure False
-        else if and (zipWith (==) positions lengths) then finish modelState
-        else anyM (next positions modelState) [0 .. threads - 1]
+        if old
+          then pure False
+          else
+            if and (zipWith (==) positions lengths)
+              then finish modelState
+              else anyM (next positions modelState) [0 .. threads - 1]
       next positions modelState i = do
         let k = positions !! i
-        if k == lengths !! i then pure False else do
-          let (called, _, result) = history !! i !! k
-              blocked = planConsistency plan == "linearizable" &&
-                or [ positions !! j < lengths !! j && returnedAt j (positions !! j) < called
-                   | j <- [0 .. threads - 1], j /= i ]
-          if blocked then pure False else do
-            let (index, args) = branches !! i !! k
-                command = planCommands plan !! index
-            stepped <- try (stepModel command symbols args modelState)
-            case stepped of
-              Left ModelInvalid -> pure False
-              Left (ModelRaised _) -> pure False
-              Right (after, wanted)
-                | planConsistency plan /= "eventual" && not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
-                | otherwise -> visit (advanceAt i positions) after
+        if k == lengths !! i
+          then pure False
+          else do
+            let (called, _, result) = history !! i !! k
+                blocked =
+                  planConsistency plan == "linearizable"
+                    && or
+                      [ positions !! j < lengths !! j && returnedAt j (positions !! j) < called
+                      | j <- [0 .. threads - 1],
+                        j /= i
+                      ]
+            if blocked
+              then pure False
+              else do
+                let (index, args) = branches !! i !! k
+                    command = planCommands plan !! index
+                stepped <- try (stepModel command symbols args modelState)
+                case stepped of
+                  Left ModelInvalid -> pure False
+                  Left (ModelRaised _) -> pure False
+                  Right (after, wanted)
+                    | planConsistency plan /= "eventual" && not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
+                    | otherwise -> visit (advanceAt i positions) after
   visit (map (const 0) branches) expected0
 
 -- | How a failure names a consistency model.
@@ -2901,16 +3427,20 @@ parallelFails plan parallelCase repeats shake = go 0
 -- smaller arguments, branch by branch, step by step.
 parallelCandidates :: ModelPlan -> ParallelCase -> [ParallelCase]
 parallelCandidates plan (prefix@(startArgs, steps), branches) =
-  [ ((startArgs, dropAt k steps), branches) | k <- [0 .. length steps - 1] ]
-  ++ [ (prefix, [if j == i then dropAt k b else b | (j, b) <- zip [0 :: Int ..] branches])
-     | (i, branch) <- zip [0 ..] branches, k <- [0 .. length branch - 1] ]
-  ++ [ (prefix, [if j == i then replace k (index, replace a c args) b else b | (j, b) <- zip [0 :: Int ..] branches])
-     | (i, branch) <- zip [0 ..] branches
-     , (k, (index, args)) <- zip [0 ..] branch
-     , (a, (d, arg)) <- zip [0 ..] (zip (mcArguments (planCommands plan !! index)) args)
-     , c <- shrinkValue (planTable plan) d arg ]
-  where dropAt k xs = take k xs ++ drop (k + 1) xs
-        replace k x xs = take k xs ++ [x] ++ drop (k + 1) xs
+  [((startArgs, dropAt k steps), branches) | k <- [0 .. length steps - 1]]
+    ++ [ (prefix, [if j == i then dropAt k b else b | (j, b) <- zip [0 :: Int ..] branches])
+       | (i, branch) <- zip [0 ..] branches,
+         k <- [0 .. length branch - 1]
+       ]
+    ++ [ (prefix, [if j == i then replace k (index, replace a c args) b else b | (j, b) <- zip [0 :: Int ..] branches])
+       | (i, branch) <- zip [0 ..] branches,
+         (k, (index, args)) <- zip [0 ..] branch,
+         (a, (d, arg)) <- zip [0 ..] (zip (mcArguments (planCommands plan !! index)) args),
+         c <- shrinkValue (planTable plan) d arg
+       ]
+  where
+    dropAt k xs = take k xs ++ drop (k + 1) xs
+    replace k x xs = take k xs ++ [x] ++ drop (k + 1) xs
 
 shrinkParallel :: ModelPlan -> ParallelCase -> String -> Int -> Int -> Word64 -> IO (ParallelCase, String)
 shrinkParallel plan parallelCase failure repeats budget shake
@@ -2920,21 +3450,29 @@ shrinkParallel plan parallelCase failure repeats budget shake
     go [] _ = pure (parallelCase, failure)
     go (candidate : rest) b = do
       let b' = b - 1
-      if b' <= 0 then pure (parallelCase, failure) else do
-        allowed <- parallelAllowed plan candidate
-        if not allowed then go rest b' else do
-          found <- parallelFails plan candidate repeats shake
-          case found of
-            Just failure' -> shrinkParallel plan candidate failure' repeats b' shake
-            Nothing -> go rest b'
+      if b' <= 0
+        then pure (parallelCase, failure)
+        else do
+          allowed <- parallelAllowed plan candidate
+          if not allowed
+            then go rest b'
+            else do
+              found <- parallelFails plan candidate repeats shake
+              case found of
+                Just failure' -> shrinkParallel plan candidate failure' repeats b' shake
+                Nothing -> go rest b'
 
 describeParallel :: ModelPlan -> ParallelCase -> String
 describeParallel plan (prefix, branches) =
   let call (i, args) = mcName (planCommands plan !! i) ++ "(" ++ intercalate ", " (map renderValue args) ++ ")"
       describe steps = if null steps then "nothing" else intercalate "; " (map call steps)
       parts = [branchName i ++ ": " ++ describe b | (i, b) <- zip [0 ..] branches]
-  in describeRun plan prefix ++ ", then " ++ intercalate ", " (init parts) ++ " and " ++ last parts
-       ++ " at the same time"
+   in describeRun plan prefix
+        ++ ", then "
+        ++ intercalate ", " (init parts)
+        ++ " and "
+        ++ last parts
+        ++ " at the same time"
 
 -- | Checks a shared model's histories under concurrency: Nothing, or the
 -- failure naming the smallest failing case found. 50 cases, each run 10
@@ -2968,8 +3506,18 @@ checkModelParallelWith cases repeats maxShrinks threads branchLength seedOverrid
               Nothing -> loop (c + 1)
               Just found -> do
                 (parallelCase', message) <- shrinkParallel plan parallelCase found (max 2 (repeats `div` 2)) maxShrinks shake
-                pure (Just ("model " ++ planName plan ++ " is not " ++ consistentWord (planConsistency plan) ++ ": "
-                  ++ describeParallel plan parallelCase' ++ ": " ++ message))
+                pure
+                  ( Just
+                      ( "model "
+                          ++ planName plan
+                          ++ " is not "
+                          ++ consistentWord (planConsistency plan)
+                          ++ ": "
+                          ++ describeParallel plan parallelCase'
+                          ++ ": "
+                          ++ message
+                      )
+                  )
   loop 0
 
 -- Scenarios: processes that drive a shared model's commands at the same time
@@ -2997,11 +3545,18 @@ pushQueue (ScenarioQueue items signal) item = do
   pure ()
 
 tryPopQueue :: ScenarioQueue -> IO (Maybe ScenarioItem)
-tryPopQueue (ScenarioQueue items _) = modifyMVar items (\(front, back) -> pure (case front of
-  x : rest -> ((rest, back), Just x)
-  [] -> case reverse back of
-    x : rest -> ((rest, []), Just x)
-    [] -> (([], []), Nothing)))
+tryPopQueue (ScenarioQueue items _) =
+  modifyMVar
+    items
+    ( \(front, back) ->
+        pure
+          ( case front of
+              x : rest -> ((rest, back), Just x)
+              [] -> case reverse back of
+                x : rest -> ((rest, []), Just x)
+                [] -> (([], []), Nothing)
+          )
+    )
 
 -- | The next item, waiting up to the given microseconds.
 popQueue :: ScenarioQueue -> Int -> IO (Maybe ScenarioItem)
@@ -3021,9 +3576,9 @@ popQueue queue@(ScenarioQueue _ signal) micros = do
 -- a faulty in-memory network, with the run's channels by name (a channel end
 -- sent over the network travels as "<name>#<side>").
 data ScenarioChannel = ScenarioChannel
-  { channelNumber :: Int
-  , channelName :: String
-  , channelKind :: ChannelKind
+  { channelNumber :: Int,
+    channelName :: String,
+    channelKind :: ChannelKind
   }
 
 data ChannelKind
@@ -3037,8 +3592,14 @@ newScenarioChannel :: Int -> String -> IO ScenarioChannel
 newScenarioChannel n name = ScenarioChannel n name <$> (LocalChannel <$> newScenarioQueue <*> newScenarioQueue <*> newMVar (False, False))
 
 -- | A channel whose sides are ends on two nodes of the network.
-newNetScenarioChannel :: MemoryNetwork -> IORef [(String, ScenarioChannel)] -> DataTable -> [(Bool, Descriptor)]
-                      -> Int -> String -> IO ScenarioChannel
+newNetScenarioChannel ::
+  MemoryNetwork ->
+  IORef [(String, ScenarioChannel)] ->
+  DataTable ->
+  [(Bool, Descriptor)] ->
+  Int ->
+  String ->
+  IO ScenarioChannel
 newNetScenarioChannel network registry table steps n name = do
   let wire (sends, d) = (sends, if d == DescList [DescAtom "end"] then DescList [DescAtom "text"] else d)
   first <- newNode (insecureTransportForTests network (name ++ "-0"))
@@ -3067,9 +3628,13 @@ sideEnded (a, b) side = if side == 0 then a else b
 scenarioSend :: ScenarioChannel -> Int -> ScenarioItem -> IO ()
 scenarioSend channel side item = case channelKind channel of
   LocalChannel _ _ ended -> do
-    stranded <- modifyMVar ended (\flags -> case item of
-      ScenarioEnd end | sideEnded flags (1 - side) -> pure (flags, Just end)
-      _ -> pushQueue (scenarioQueue channel side) item >> pure (flags, Nothing))
+    stranded <-
+      modifyMVar
+        ended
+        ( \flags -> case item of
+            ScenarioEnd end | sideEnded flags (1 - side) -> pure (flags, Just end)
+            _ -> pushQueue (scenarioQueue channel side) item >> pure (flags, Nothing)
+        )
     forM_ stranded (\(c, s) -> scenarioGone c s)
   NetChannel _ ends _ _ -> case item of
     ScenarioValue v -> endpointSend (ends !! side) v
@@ -3090,16 +3655,21 @@ scenarioReceive channel side micros = case channelKind channel of
   NetChannel _ ends _ registry -> do
     got <- try (endpointReceiveValue (ends !! side) (Just micros))
     case got of
-      Left e | Just PeerFailed <- fromException e -> pure (Just ScenarioGone)
-             | otherwise -> pure Nothing
+      Left e
+        | Just PeerFailed <- fromException e -> pure (Just ScenarioGone)
+        | otherwise -> pure Nothing
       Right value@(SSequence _ cps) -> do
         let text = map chr cps
             (sideRev, rest) = break (== '#') (reverse text)
             owner = reverse (drop 1 rest)
         known <- lookup owner <$> readIORef registry
-        pure (Just (case known of
-          Just c | not (null rest), all isDigit sideRev, not (null sideRev) -> ScenarioEnd (c, read (reverse sideRev))
-          _ -> ScenarioValue value))
+        pure
+          ( Just
+              ( case known of
+                  Just c | not (null rest), all isDigit sideRev, not (null sideRev) -> ScenarioEnd (c, read (reverse sideRev))
+                  _ -> ScenarioValue value
+              )
+          )
       Right value -> pure (Just (ScenarioValue value))
 
 -- | side's process has ended: the other side's receives that find nothing
@@ -3108,21 +3678,36 @@ scenarioReceive channel side micros = case channelKind channel of
 scenarioGone :: ScenarioChannel -> Int -> IO ()
 scenarioGone channel side = case channelKind channel of
   LocalChannel _ _ ended -> do
-    stranded <- modifyMVar ended (\flags -> if sideEnded flags side then pure (flags, []) else do
-      pushQueue (scenarioQueue channel side) ScenarioGone
-      let drain acc = do
-            item <- tryPopQueue (scenarioQueue channel (1 - side))
-            case item of
-              Nothing -> pure acc
-              Just (ScenarioEnd end) -> drain (end : acc)
-              Just ScenarioGone -> pushQueue (scenarioQueue channel (1 - side)) ScenarioGone >> pure acc
-              Just _ -> drain acc
-      found <- drain []
-      pure (if side == 0 then (True, snd flags) else (fst flags, True), reverse found))
+    stranded <-
+      modifyMVar
+        ended
+        ( \flags ->
+            if sideEnded flags side
+              then pure (flags, [])
+              else do
+                pushQueue (scenarioQueue channel side) ScenarioGone
+                let drain acc = do
+                      item <- tryPopQueue (scenarioQueue channel (1 - side))
+                      case item of
+                        Nothing -> pure acc
+                        Just (ScenarioEnd end) -> drain (end : acc)
+                        Just ScenarioGone -> pushQueue (scenarioQueue channel (1 - side)) ScenarioGone >> pure acc
+                        Just _ -> drain acc
+                found <- drain []
+                pure (if side == 0 then (True, snd flags) else (fst flags, True), reverse found)
+        )
     mapM_ (\(c, s) -> scenarioGone c s) stranded
   NetChannel _ ends ended _ -> do
-    first <- modifyMVar ended (\flags -> pure (if sideEnded flags side then (flags, False)
-      else (if side == 0 then (True, snd flags) else (fst flags, True), True)))
+    first <-
+      modifyMVar
+        ended
+        ( \flags ->
+            pure
+              ( if sideEnded flags side
+                  then (flags, False)
+                  else (if side == 0 then (True, snd flags) else (fst flags, True), True)
+              )
+        )
     if first then endpointAbandon (ends !! side) else pure ()
 
 -- | A scenario's mailbox: any process sends, one receives. expected is how
@@ -3132,12 +3717,12 @@ scenarioGone channel side = case channelKind channel of
 -- receiver's node, each send waiting until it is delivered; the senders'
 -- clocks travel beside the network, in send order.
 data ScenarioMailbox = ScenarioMailbox
-  { boxExpected :: Int
-  -- (received, abandoned)
-  , boxCounts :: MVar (Int, Int)
-  , boxItems :: MVar [(ScenarioItem, VectorClock)]
-  , boxSignal :: MVar ()
-  , boxNet :: Maybe ([Node], Mailbox Scalar, RemoteMailbox, IORef [(String, ScenarioChannel)])
+  { boxExpected :: Int,
+    -- (received, abandoned)
+    boxCounts :: MVar (Int, Int),
+    boxItems :: MVar [(ScenarioItem, VectorClock)],
+    boxSignal :: MVar (),
+    boxNet :: Maybe ([Node], Mailbox Scalar, RemoteMailbox, IORef [(String, ScenarioChannel)])
   }
 
 newScenarioMailbox :: Int -> IO ScenarioMailbox
@@ -3151,7 +3736,7 @@ newNetScenarioMailbox network registry table d0 name expected = do
   inbox <- nodeMailbox owner name table d
   let remote = remoteMailboxWithin senders (nodeAddress owner ++ "/" ++ name) table d 5
   box <- newScenarioMailbox expected
-  pure box { boxNet = Just ([owner, senders], inbox, remote, registry) }
+  pure box {boxNet = Just ([owner, senders], inbox, remote, registry)}
 
 closeScenarioMailbox :: ScenarioMailbox -> IO ()
 closeScenarioMailbox box = forM_ (boxNet box) (\(nodes, _, _, _) -> mapM_ closeNode nodes)
@@ -3163,10 +3748,13 @@ mailboxSend box item clock = case boxNet box of
     () <$ tryPutMVar (boxSignal box) ()
   Just (_, _, remote, _) -> do
     modifyMVar (boxItems box) (\items -> pure (items ++ [(ScenarioGone, clock)], ()))
-    sendRemote remote (case item of
-      ScenarioEnd (c, s) -> textScalar (channelName c ++ "#" ++ show s)
-      ScenarioValue v -> v
-      ScenarioGone -> textScalar "")
+    sendRemote
+      remote
+      ( case item of
+          ScenarioEnd (c, s) -> textScalar (channelName c ++ "#" ++ show s)
+          ScenarioValue v -> v
+          ScenarioGone -> textScalar ""
+      )
     () <$ tryPutMVar (boxSignal box) ()
 
 mailboxGiveUp :: ScenarioMailbox -> Int -> IO ()
@@ -3200,25 +3788,36 @@ mailboxReceive box micros = do
                   Nothing -> again
                   Just value -> do
                     modifyMVar (boxCounts box) (\(r, a) -> pure ((r + 1, a), ()))
-                    clock <- modifyMVar (boxItems box) (\is -> pure (case is of
-                      (_, c) : rest -> (rest, c)
-                      [] -> ([], [])))
+                    clock <-
+                      modifyMVar
+                        (boxItems box)
+                        ( \is ->
+                            pure
+                              ( case is of
+                                  (_, c) : rest -> (rest, c)
+                                  [] -> ([], [])
+                              )
+                        )
                     item <- case value of
                       SSequence _ cps -> do
                         let text = map chr cps
                             (sideRev, rest) = break (== '#') (reverse text)
                             owner = reverse (drop 1 rest)
                         known <- lookup owner <$> readIORef registry
-                        pure (case known of
-                          Just c | not (null rest), all isDigit sideRev, not (null sideRev) -> ScenarioEnd (c, read (reverse sideRev))
-                          _ -> ScenarioValue value)
+                        pure
+                          ( case known of
+                              Just c | not (null rest), all isDigit sideRev, not (null sideRev) -> ScenarioEnd (c, read (reverse sideRev))
+                              _ -> ScenarioValue value
+                          )
                       _ -> pure (ScenarioValue value)
                     pure (Just (item, clock))
       wait = do
         now <- getMonotonicTimeNSec
-        if now >= deadline then pure Nothing else do
-          _ <- timeout (max 1 (min 20000 (fromIntegral ((deadline - now) `div` 1000)))) (takeMVar (boxSignal box))
-          loop
+        if now >= deadline
+          then pure Nothing
+          else do
+            _ <- timeout (max 1 (min 20000 (fromIntegral ((deadline - now) `div` 1000)))) (takeMVar (boxSignal box))
+            loop
       again = do
         now <- getMonotonicTimeNSec
         if now >= deadline then pure Nothing else loop
@@ -3242,9 +3841,10 @@ actsChannels :: [Descriptor] -> [String]
 actsChannels = concatMap names
   where
     names act = case act of
-      DescList [DescAtom "send", c, operand] -> descriptorName c : case operand of
-        DescList [DescAtom "var", x] -> [descriptorName x]
-        _ -> []
+      DescList [DescAtom "send", c, operand] ->
+        descriptorName c : case operand of
+          DescList [DescAtom "var", x] -> [descriptorName x]
+          _ -> []
       DescList (DescAtom "receive" : c : _) -> [descriptorName c]
       DescList [DescAtom "receiveor", c, _, DescList (_ : handler)] -> descriptorName c : actsChannels handler
       DescList (DescAtom "par" : branches) -> concat [actsChannels (branchActs b) | b <- branches]
@@ -3266,15 +3866,15 @@ numberBranches body = let (acts, (_, lengths)) = goActs body (0, []) in (acts, r
     goActs (act : rest) st =
       let (act', st') = goAct act st
           (rest', st'') = goActs rest st'
-      in (act' : rest', st'')
+       in (act' : rest', st'')
     goAct (DescList (DescAtom "par" : branches)) st =
       let step (acc, s) (DescList (h : acts)) =
             let (n, ls) = s
                 (acts', s') = goActs acts (n + 1, length acts : ls)
-            in (acc ++ [DescList (h : DescInteger (toInteger n) : acts')], s')
+             in (acc ++ [DescList (h : DescInteger (toInteger n) : acts')], s')
           step (acc, s) other = (acc ++ [other], s)
           (branches', st') = foldl step ([], st) branches
-      in (DescList (DescAtom "par" : branches'), st')
+       in (DescList (DescAtom "par" : branches'), st')
     goAct other st = (other, st)
 
 scenarioConstant :: Descriptor -> Scalar
@@ -3318,34 +3918,40 @@ runScenarioWith crash network model spec shake = do
       commandNamed n = case find ((== n) . mcName) (planCommands plan) of
         Just command -> command
         Nothing -> error ("unknown command " ++ n)
-  victim <- if crash && not (null lengths) then do
-      chooser <- newIORef (shake `xor` 0xC3A5C85C97CB3127)
-      branch <- drawIO chooser (drawBelow (toInteger (length lengths)))
-      at <- drawIO chooser (drawBelow (toInteger (lengths !! fromInteger branch) + 1))
-      pure (Just (fromInteger branch :: Int, fromInteger at :: Int))
-    else pure Nothing
+  victim <-
+    if crash && not (null lengths)
+      then do
+        chooser <- newIORef (shake `xor` 0xC3A5C85C97CB3127)
+        branch <- drawIO chooser (drawBelow (toInteger (length lengths)))
+        at <- drawIO chooser (drawBelow (toInteger (lengths !! fromInteger branch) + 1))
+        pure (Just (fromInteger branch :: Int, fromInteger at :: Int))
+      else pure Nothing
   let wire = concat (take 1 [rest | DescList (DescAtom "wire" : rest) <- forms])
       wireTable = [(descriptorName n, f) | f@(DescList (DescAtom "data" : n : _)) <- wire]
-      wireSteps = [ (descriptorName c, [(descriptorName k == "send", d) | DescList [k, d] <- steps])
-                  | DescList (DescAtom "channel" : c : steps) <- wire ]
+      wireSteps =
+        [ (descriptorName c, [(descriptorName k == "send", d) | DescList [k, d] <- steps])
+        | DescList (DescAtom "channel" : c : steps) <- wire
+        ]
   let boxNames = concat (take 1 [map descriptorName rest | DescList (DescAtom "mailboxes" : rest) <- forms])
       wireBoxes = [(descriptorName m, d) | DescList [DescAtom "mailbox", m, d] <- wire]
-  (channels, mailboxes) <- if network && not (null [() | DescList (DescAtom "wire" : _) <- forms])
-    then do
-      -- Loss, duplication and delay (which reorders); the channels'
-      -- numbered, acknowledged frames must hide them all.
-      net <- newMemoryNetwork (shake `xor` 0x7F4A7C159E3779B9) 0.1 0.1 0.002
-      registry <- newIORef []
-      cs <- forM (zip [0 ..] names) $ \(i, n) ->
-        (,) n <$> newNetScenarioChannel net registry wireTable (maybe [] id (lookup n wireSteps)) i n
-      bs <- forM boxNames $ \m -> (,) m <$> case lookup m wireBoxes of
-        Just d -> newNetScenarioMailbox net registry wireTable d m (allSends body m)
-        Nothing -> newScenarioMailbox (allSends body m)
-      pure (cs, bs)
-    else do
-      cs <- forM (zip [0 ..] names) $ \(i, n) -> (,) n <$> newScenarioChannel i n
-      bs <- forM boxNames $ \m -> (,) m <$> newScenarioMailbox (allSends body m)
-      pure (cs, bs)
+  (channels, mailboxes) <-
+    if network && not (null [() | DescList (DescAtom "wire" : _) <- forms])
+      then do
+        -- Loss, duplication and delay (which reorders); the channels'
+        -- numbered, acknowledged frames must hide them all.
+        net <- newMemoryNetwork (shake `xor` 0x7F4A7C159E3779B9) 0.1 0.1 0.002
+        registry <- newIORef []
+        cs <- forM (zip [0 ..] names) $ \(i, n) ->
+          (,) n <$> newNetScenarioChannel net registry wireTable (maybe [] id (lookup n wireSteps)) i n
+        bs <- forM boxNames $ \m ->
+          (,) m <$> case lookup m wireBoxes of
+            Just d -> newNetScenarioMailbox net registry wireTable d m (allSends body m)
+            Nothing -> newScenarioMailbox (allSends body m)
+        pure (cs, bs)
+      else do
+        cs <- forM (zip [0 ..] names) $ \(i, n) -> (,) n <$> newScenarioChannel i n
+        bs <- forM boxNames $ \m -> (,) m <$> newScenarioMailbox (allSends body m)
+        pure (cs, bs)
   symbols <- newSymbolContext
   let startArgs = map (minimalValue (planTable plan)) (planStartArguments plan)
   outcome <- try $ do
@@ -3371,13 +3977,22 @@ runScenarioWith crash network model spec shake = do
         -- Vector clocks: each value sent carries its sender's clock (kept
         -- here, in order per channel direction), so calls can be ordered by
         -- what happened before what.
-        stamp channel side clock = atomicModifyIORef' stamps (\st ->
-          let key = (channelNumber channel, side) in ((key, maybe [] id (lookup key st) ++ [clock]) : filter ((/= key) . fst) st, ()))
+        stamp channel side clock =
+          atomicModifyIORef'
+            stamps
+            ( \st ->
+                let key = (channelNumber channel, side) in ((key, maybe [] id (lookup key st) ++ [clock]) : filter ((/= key) . fst) st, ())
+            )
         unstamp channel side clockRef me = do
-          sent <- atomicModifyIORef' stamps (\st ->
-            let key = (channelNumber channel, 1 - side) in case lookup key st of
-              Just (c : rest) -> ((key, rest) : filter ((/= key) . fst) st, c)
-              _ -> (st, []))
+          sent <-
+            atomicModifyIORef'
+              stamps
+              ( \st ->
+                  let key = (channelNumber channel, 1 - side)
+                   in case lookup key st of
+                        Just (c : rest) -> ((key, rest) : filter ((/= key) . fst) st, c)
+                        _ -> (st, [])
+              )
           modifyIORef' clockRef (tickClock me . mergeClock sent)
         process acts env0 ends0 source identity clockRef = do
           held <- newIORef ends0
@@ -3388,9 +4003,12 @@ runScenarioWith crash network model spec shake = do
                 made <- maybe 0 id . lookup m <$> readIORef sentRef
                 let missing = scenarioSends acts m - made
                 if missing > 0 then mailboxGiveUp box missing else pure ()
-          done <- (steps acts env0 ends0 source identity held clockRef me sentRef
-            `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e))
-            `finally` (readIORef held >>= mapM_ (\(_, (c, s)) -> scenarioGone c s)) `finally` giveUp
+          done <-
+            ( steps acts env0 ends0 source identity held clockRef me sentRef
+                `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e)
+            )
+              `finally` (readIORef held >>= mapM_ (\(_, (c, s)) -> scenarioGone c s))
+              `finally` giveUp
           pure done
         steps acts env0 ends0 source identity held clockRef me sentRef = do
           own <- newSymbolContext
@@ -3401,150 +4019,188 @@ runScenarioWith crash network model spec shake = do
               go index (act : rest) env ends = do
                 writeIORef held ends
                 failed <- not . null <$> readIORef failures
-                if failed || crashesAt index then pure False else case act of
-                  DescList (DescAtom "call" : nameForm : bound : operands) -> do
-                    let command = commandNamed (descriptorName nameForm)
-                        -- An integer constant takes the argument's own type.
-                        typed d value = case (d, value) of
-                          (DescList (DescAtom "int" : t : _), SInteger _ n) -> SInteger (descriptorName t) n
-                          _ -> value
-                        args = zipWith typed (mcArguments command ++ repeat DescNone) (map (valueOf env) operands)
-                        position = mcState command
-                        full = take position args ++ [state] ++ drop position args
-                    perturb source
-                    modifyIORef' clockRef (tickClock me)
-                    atCall <- readIORef clockRef
-                    called <- tick
-                    -- The result is forced in full here, so the effect (or its
-                    -- error) happens between the call and return stamps.
-                    let run symbols' args' = case mcRun command symbols' args' of
-                          Right value -> forceScalar value `seq` Right value
-                          failure -> failure
-                    out <- callModel run own full
-                    case out of
-                      Left message -> failWith (mcName command ++ " raised error: " ++ message)
-                      Right result -> do
-                        returned <- tick
-                        modifyIORef' clockRef (tickClock me)
-                        atReturn <- readIORef clockRef
-                        atomicModifyIORef' history (\h -> (h ++ [(command, args, result, called, returned, me, atCall, atReturn)], ()))
-                        let env' = case bound of
-                              DescNone -> env
-                              DescAtom "_" -> env
-                              _ -> bind (descriptorName bound) result env
-                        go (index + 1) rest env' ends
-                  DescList [DescAtom "send", c, operand] | Just box <- lookup (descriptorName c) mailboxes -> do
-                    let (item, ends') = case operand of
-                          DescList [DescAtom "var", x] | Just end <- lookup (descriptorName x) ends ->
-                            (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
-                          _ -> (ScenarioValue (valueOf env operand), ends)
-                    perturb source
-                    writeIORef held ends'
-                    modifyIORef' clockRef (tickClock me)
-                    sentClock <- readIORef clockRef
-                    outcome <- try (mailboxSend box item sentClock)
-                    case outcome of
-                      Left (e :: SomeException) -> failWith ("a send to mailbox " ++ descriptorName c ++ " failed: " ++ exceptionText e)
-                      Right () -> do
-                        modifyIORef' sentRef (\counts -> (descriptorName c, maybe 1 (+ 1) (lookup (descriptorName c) counts))
-                          : filter ((/= descriptorName c) . fst) counts)
-                        go (index + 1) rest env ends'
-                  DescList (DescAtom kind : c : x : handler) | kind == "receive" || kind == "receiveor"
-                                                            , Just box <- lookup (descriptorName c) mailboxes -> do
-                    got <- mailboxReceive box 5000000
-                    case got of
-                      Nothing -> failWith ("a receive on mailbox " ++ descriptorName c
-                        ++ " waited too long: the processes are blocked")
-                      Just (ScenarioGone, _) -> case handler of
-                        [DescList (_ : handlerActs)] | kind == "receiveor" ->
-                          steps handlerActs env ends source Nothing held clockRef me sentRef
-                        _ -> pure False
-                      Just (item, carried) -> do
-                        modifyIORef' clockRef (tickClock me . mergeClock carried)
-                        case item of
-                          ScenarioEnd end -> go (index + 1) rest env (bind (descriptorName x) end ends)
-                          ScenarioValue value -> go (index + 1) rest (bind (descriptorName x) value env) ends
-                  DescList [DescAtom "send", c, operand] -> do
-                    let (channel, side) = endOf ends c
-                        (item, ends') = case operand of
-                          DescList [DescAtom "var", x] | Just end <- lookup (descriptorName x) ends ->
-                            (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
-                          _ -> (ScenarioValue (valueOf env operand), ends)
-                    perturb source
-                    writeIORef held ends'
-                    modifyIORef' clockRef (tickClock me)
-                    readIORef clockRef >>= stamp channel side
-                    scenarioSend channel side item
-                    go (index + 1) rest env ends'
-                  DescList (DescAtom kind : c : x : handler) | kind == "receive" || kind == "receiveor" -> do
-                    let (channel, side) = endOf ends c
-                    got <- scenarioReceive channel side 5000000
-                    case got of
-                      Nothing -> failWith ("a receive on " ++ descriptorName c
-                        ++ " waited too long: the processes are blocked")
-                      -- The other process ended: or else runs instead of the
-                      -- rest; without it, this process fails too.
-                      Just ScenarioGone ->
-                        case handler of
-                          [DescList (_ : handlerActs)] | kind == "receiveor" -> do
-                            let ends' = filter ((/= descriptorName c) . fst) ends
-                            writeIORef held ends'
-                            steps handlerActs env ends' source Nothing held clockRef me sentRef
-                          _ -> pure False
-                      Just (ScenarioEnd end) -> do
-                        unstamp channel side clockRef me
-                        go (index + 1) rest env (bind (descriptorName x) end ends)
-                      Just (ScenarioValue value) -> do
-                        unstamp channel side clockRef me
-                        go (index + 1) rest (bind (descriptorName x) value env) ends
-                  DescList (DescAtom "par" : branchForms) -> do
-                    let branches = [ case form of
-                                       DescList (_ : DescInteger n : acts) -> (Just (fromInteger n), acts)
-                                       _ -> (Nothing, branchActs form)
-                                   | form <- branchForms ]
-                        addUser owned (name, i) = case lookup name owned of
-                          Nothing -> owned ++ [(name, [i])]
-                          Just users
-                            | i `elem` users -> owned
-                            | otherwise -> [(n, if n == name then us ++ [i] else us) | (n, us) <- owned]
-                        owned = foldl addUser [] [(name, i) | (i, (_, b)) <- zip [0 :: Int ..] branches, name <- actsChannels b]
-                        mine i = [ (name, end) | (name, users) <- owned, i `elem` users
-                                 , end <- case lookup name ends of
-                                     Just held' -> [held']
-                                     Nothing -> case lookup name channels of
-                                       Just channel -> [(channel, length (takeWhile (/= i) users))]
-                                       Nothing -> [] ]
-                        -- Ends handed to the branches are theirs now.
-                        ends' = filter ((`notElem` map fst owned) . fst) ends
-                    writeIORef held ends'
-                    parent <- readIORef clockRef
-                    clocks <- mapM (const (newIORef parent)) branches
-                    dones <- forM (zip3 [0 :: Int ..] branches clocks) $ \(i, (n, b), branchClock) -> do
-                      finished <- newEmptyMVar
-                      branchSource <- newIORef (shake `xor` (fromIntegral (i + 1) * 0x9E3779B97F4A7C15))
-                      _ <- forkIO (do
-                        ok <- process b env (mine i) branchSource n branchClock `catch` \(_ :: SomeException) -> pure False
-                        putMVar finished ok)
-                      pure finished
-                    results <- mapM takeMVar dones
-                    children <- mapM readIORef clocks
-                    writeIORef clockRef (tickClock me (foldr mergeClock parent children))
-                    -- A failed branch fails the process that ran the par.
-                    if and results then go (index + 1) rest env ends' else pure False
-                  DescList [DescAtom "expect", x, c] -> do
-                    let name = descriptorName x
-                        wanted = scenarioConstant c
-                        actual = lookup name env
-                    if maybe True (\a -> compareValues a wanted /= Right EQ) actual
-                      then failWith ("expect " ++ name ++ " = " ++ renderValue wanted ++ " failed: "
-                        ++ name ++ " is " ++ maybe "None" renderValue actual)
-                      else go (index + 1) rest env ends
-                  _ -> error ("unknown scenario act " ++ show act)
+                if failed || crashesAt index
+                  then pure False
+                  else case act of
+                    DescList (DescAtom "call" : nameForm : bound : operands) -> do
+                      let command = commandNamed (descriptorName nameForm)
+                          -- An integer constant takes the argument's own type.
+                          typed d value = case (d, value) of
+                            (DescList (DescAtom "int" : t : _), SInteger _ n) -> SInteger (descriptorName t) n
+                            _ -> value
+                          args = zipWith typed (mcArguments command ++ repeat DescNone) (map (valueOf env) operands)
+                          position = mcState command
+                          full = take position args ++ [state] ++ drop position args
+                      perturb source
+                      modifyIORef' clockRef (tickClock me)
+                      atCall <- readIORef clockRef
+                      called <- tick
+                      -- The result is forced in full here, so the effect (or its
+                      -- error) happens between the call and return stamps.
+                      let run symbols' args' = case mcRun command symbols' args' of
+                            Right value -> forceScalar value `seq` Right value
+                            failure -> failure
+                      out <- callModel run own full
+                      case out of
+                        Left message -> failWith (mcName command ++ " raised error: " ++ message)
+                        Right result -> do
+                          returned <- tick
+                          modifyIORef' clockRef (tickClock me)
+                          atReturn <- readIORef clockRef
+                          atomicModifyIORef' history (\h -> (h ++ [(command, args, result, called, returned, me, atCall, atReturn)], ()))
+                          let env' = case bound of
+                                DescNone -> env
+                                DescAtom "_" -> env
+                                _ -> bind (descriptorName bound) result env
+                          go (index + 1) rest env' ends
+                    DescList [DescAtom "send", c, operand] | Just box <- lookup (descriptorName c) mailboxes -> do
+                      let (item, ends') = case operand of
+                            DescList [DescAtom "var", x]
+                              | Just end <- lookup (descriptorName x) ends ->
+                                  (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
+                            _ -> (ScenarioValue (valueOf env operand), ends)
+                      perturb source
+                      writeIORef held ends'
+                      modifyIORef' clockRef (tickClock me)
+                      sentClock <- readIORef clockRef
+                      outcome <- try (mailboxSend box item sentClock)
+                      case outcome of
+                        Left (e :: SomeException) -> failWith ("a send to mailbox " ++ descriptorName c ++ " failed: " ++ exceptionText e)
+                        Right () -> do
+                          modifyIORef'
+                            sentRef
+                            ( \counts ->
+                                (descriptorName c, maybe 1 (+ 1) (lookup (descriptorName c) counts))
+                                  : filter ((/= descriptorName c) . fst) counts
+                            )
+                          go (index + 1) rest env ends'
+                    DescList (DescAtom kind : c : x : handler)
+                      | kind == "receive" || kind == "receiveor",
+                        Just box <- lookup (descriptorName c) mailboxes -> do
+                          got <- mailboxReceive box 5000000
+                          case got of
+                            Nothing ->
+                              failWith
+                                ( "a receive on mailbox "
+                                    ++ descriptorName c
+                                    ++ " waited too long: the processes are blocked"
+                                )
+                            Just (ScenarioGone, _) -> case handler of
+                              [DescList (_ : handlerActs)]
+                                | kind == "receiveor" ->
+                                    steps handlerActs env ends source Nothing held clockRef me sentRef
+                              _ -> pure False
+                            Just (item, carried) -> do
+                              modifyIORef' clockRef (tickClock me . mergeClock carried)
+                              case item of
+                                ScenarioEnd end -> go (index + 1) rest env (bind (descriptorName x) end ends)
+                                ScenarioValue value -> go (index + 1) rest (bind (descriptorName x) value env) ends
+                    DescList [DescAtom "send", c, operand] -> do
+                      let (channel, side) = endOf ends c
+                          (item, ends') = case operand of
+                            DescList [DescAtom "var", x]
+                              | Just end <- lookup (descriptorName x) ends ->
+                                  (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
+                            _ -> (ScenarioValue (valueOf env operand), ends)
+                      perturb source
+                      writeIORef held ends'
+                      modifyIORef' clockRef (tickClock me)
+                      readIORef clockRef >>= stamp channel side
+                      scenarioSend channel side item
+                      go (index + 1) rest env ends'
+                    DescList (DescAtom kind : c : x : handler) | kind == "receive" || kind == "receiveor" -> do
+                      let (channel, side) = endOf ends c
+                      got <- scenarioReceive channel side 5000000
+                      case got of
+                        Nothing ->
+                          failWith
+                            ( "a receive on "
+                                ++ descriptorName c
+                                ++ " waited too long: the processes are blocked"
+                            )
+                        -- The other process ended: or else runs instead of the
+                        -- rest; without it, this process fails too.
+                        Just ScenarioGone ->
+                          case handler of
+                            [DescList (_ : handlerActs)] | kind == "receiveor" -> do
+                              let ends' = filter ((/= descriptorName c) . fst) ends
+                              writeIORef held ends'
+                              steps handlerActs env ends' source Nothing held clockRef me sentRef
+                            _ -> pure False
+                        Just (ScenarioEnd end) -> do
+                          unstamp channel side clockRef me
+                          go (index + 1) rest env (bind (descriptorName x) end ends)
+                        Just (ScenarioValue value) -> do
+                          unstamp channel side clockRef me
+                          go (index + 1) rest (bind (descriptorName x) value env) ends
+                    DescList (DescAtom "par" : branchForms) -> do
+                      let branches =
+                            [ case form of
+                                DescList (_ : DescInteger n : acts) -> (Just (fromInteger n), acts)
+                                _ -> (Nothing, branchActs form)
+                            | form <- branchForms
+                            ]
+                          addUser owned (name, i) = case lookup name owned of
+                            Nothing -> owned ++ [(name, [i])]
+                            Just users
+                              | i `elem` users -> owned
+                              | otherwise -> [(n, if n == name then us ++ [i] else us) | (n, us) <- owned]
+                          owned = foldl addUser [] [(name, i) | (i, (_, b)) <- zip [0 :: Int ..] branches, name <- actsChannels b]
+                          mine i =
+                            [ (name, end)
+                            | (name, users) <- owned,
+                              i `elem` users,
+                              end <- case lookup name ends of
+                                Just held' -> [held']
+                                Nothing -> case lookup name channels of
+                                  Just channel -> [(channel, length (takeWhile (/= i) users))]
+                                  Nothing -> []
+                            ]
+                          -- Ends handed to the branches are theirs now.
+                          ends' = filter ((`notElem` map fst owned) . fst) ends
+                      writeIORef held ends'
+                      parent <- readIORef clockRef
+                      clocks <- mapM (const (newIORef parent)) branches
+                      dones <- forM (zip3 [0 :: Int ..] branches clocks) $ \(i, (n, b), branchClock) -> do
+                        finished <- newEmptyMVar
+                        branchSource <- newIORef (shake `xor` (fromIntegral (i + 1) * 0x9E3779B97F4A7C15))
+                        _ <-
+                          forkIO
+                            ( do
+                                ok <- process b env (mine i) branchSource n branchClock `catch` \(_ :: SomeException) -> pure False
+                                putMVar finished ok
+                            )
+                        pure finished
+                      results <- mapM takeMVar dones
+                      children <- mapM readIORef clocks
+                      writeIORef clockRef (tickClock me (foldr mergeClock parent children))
+                      -- A failed branch fails the process that ran the par.
+                      if and results then go (index + 1) rest env ends' else pure False
+                    DescList [DescAtom "expect", x, c] -> do
+                      let name = descriptorName x
+                          wanted = scenarioConstant c
+                          actual = lookup name env
+                      if maybe True (\a -> compareValues a wanted /= Right EQ) actual
+                        then
+                          failWith
+                            ( "expect "
+                                ++ name
+                                ++ " = "
+                                ++ renderValue wanted
+                                ++ " failed: "
+                                ++ name
+                                ++ " is "
+                                ++ maybe "None" renderValue actual
+                            )
+                        else go (index + 1) rest env ends
+                    _ -> error ("unknown scenario act " ++ show act)
           go (0 :: Int) acts env0 ends0
     root <- newIORef shake
     rootClock <- newIORef []
-    finished <- process body [] [] root Nothing rootClock
-      `finally` mapM_ (closeScenarioChannel . snd) channels `finally` mapM_ (closeScenarioMailbox . snd) mailboxes
+    finished <-
+      process body [] [] root Nothing rootClock
+        `finally` mapM_ (closeScenarioChannel . snd) channels
+        `finally` mapM_ (closeScenarioMailbox . snd) mailboxes
     found <- readIORef failures
     case found of
       failure : _ -> pure (Just (failure ++ (if victim /= Nothing then " (with a process crashed)" else "")))
@@ -3556,16 +4212,28 @@ runScenarioWith crash network model spec shake = do
         calls <- readIORef history
         linearizes <- linearizesHistory plan symbols calls expected final state
         let calledAt (_, _, _, c, _, _, _, _) = c
-            observed = intercalate "; "
-              [ mcName command ++ "(" ++ intercalate ", " (map renderValue args) ++ ") returned " ++ renderValue result
-              | (command, args, result, _, _, _, _, _) <- sortBy (\a b -> compare (calledAt a) (calledAt b)) calls ]
-        pure (if linearizes then Nothing
-          else Just ("the calls are not " ++ consistentWord (planConsistency plan) ++ " with the model (" ++ observed ++ ")"))
-  pure (title, case outcome of
-    Right failure -> failure
-    Left e -> Just ("raised error: " ++ case fromException e of
-      Just (ModelRaised message) -> message
-      _ -> exceptionText e))
+            observed =
+              intercalate
+                "; "
+                [ mcName command ++ "(" ++ intercalate ", " (map renderValue args) ++ ") returned " ++ renderValue result
+                | (command, args, result, _, _, _, _, _) <- sortBy (\a b -> compare (calledAt a) (calledAt b)) calls
+                ]
+        pure
+          ( if linearizes
+              then Nothing
+              else Just ("the calls are not " ++ consistentWord (planConsistency plan) ++ " with the model (" ++ observed ++ ")")
+          )
+  pure
+    ( title,
+      case outcome of
+        Right failure -> failure
+        Left e ->
+          Just
+            ( "raised error: " ++ case fromException e of
+                Just (ModelRaised message) -> message
+                _ -> exceptionText e
+            )
+    )
 
 -- | Whether call a returned before call b began, as far as messages tell:
 -- a's return clock is at or below b's call clock everywhere.
@@ -3581,10 +4249,14 @@ happenedBefore (_, _, _, _, _, _, _, returnedA) (_, _, _, _, _, _, calledB, _) =
 -- results, only the final state.
 linearizesHistory :: ModelPlan -> SymbolContext -> [ScenarioCall] -> Scalar -> Maybe Scalar -> Scalar -> IO Bool
 linearizesHistory plan symbols calls expected final state = case mode of
-  "causal" -> allM (\process -> do
-      let own = [i | (i, c) <- indexed, processOf c == process]
-          seenBy = nub (sort (own ++ [j | (j, cj) <- indexed, i <- own, j /= i, happenedBefore cj (calls !! i)]))
-      search seenBy own False) (nub (map processOf calls))
+  "causal" ->
+    allM
+      ( \process -> do
+          let own = [i | (i, c) <- indexed, processOf c == process]
+              seenBy = nub (sort (own ++ [j | (j, cj) <- indexed, i <- own, j /= i, happenedBefore cj (calls !! i)]))
+          search seenBy own False
+      )
+      (nub (map processOf calls))
   "eventual" -> search everything [] True
   _ -> search everything everything True
   where
@@ -3593,9 +4265,10 @@ linearizesHistory plan symbols calls expected final state = case mode of
     everything = map fst indexed
     processOf (_, _, _, _, _, p, _, _) = p
     before j i
-      | mode == "linearizable" = let (_, _, _, _, returned, _, _, _) = calls !! j
-                                     (_, _, _, called, _, _, _, _) = calls !! i
-                                 in returned < called
+      | mode == "linearizable" =
+          let (_, _, _, _, returned, _, _, _) = calls !! j
+              (_, _, _, called, _, _, _, _) = calls !! i
+           in returned < called
       | otherwise = happenedBefore (calls !! j) (calls !! i)
     search members checked judgeFinal = do
       seen <- newIORef ([] :: [(Integer, String)])
@@ -3603,10 +4276,13 @@ linearizesHistory plan symbols calls expected final state = case mode of
           visit done modelState = do
             let key = (done, renderValue modelState)
             keys <- readIORef seen
-            if key `elem` keys then pure False else do
-              writeIORef seen (key : keys)
-              if done == complete then (if judgeFinal then finish modelState else pure True)
-              else anyM (next done modelState) members
+            if key `elem` keys
+              then pure False
+              else do
+                writeIORef seen (key : keys)
+                if done == complete
+                  then (if judgeFinal then finish modelState else pure True)
+                  else anyM (next done modelState) members
           next done modelState i
             | testBit done i = pure False
             | or [not (testBit done j) && before j i | j <- members, j /= i] = pure False
@@ -3621,9 +4297,13 @@ linearizesHistory plan symbols calls expected final state = case mode of
       visit 0 expected
     finish modelState
       | maybe False (\actual -> compareValues actual modelState /= Right EQ) final = pure False
-      | otherwise = allM (\(kind, invariant) -> do
-          holds <- callModel invariant symbols [if kind == "model" then modelState else state]
-          pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
+      | otherwise =
+          allM
+            ( \(kind, invariant) -> do
+                holds <- callModel invariant symbols [if kind == "model" then modelState else state]
+                pure (case holds of Right (SBool True) -> True; _ -> False)
+            )
+            (planInvariants plan)
 
 -- | Runs a scenario on 30 schedules, seeded from LAWSPEC_SEED or 0: Nothing,
 -- or the first failure.
@@ -3654,11 +4334,13 @@ checkScenario model spec = do
 -- other stops.
 
 -- | A message sent to an actor (or mailbox) that has stopped.
-data ActorStopped = ActorStopped deriving Show
+data ActorStopped = ActorStopped deriving (Show)
+
 instance Exception ActorStopped
 
 -- | A handler failed, so the actor crashed; the cause is what it threw.
-newtype ActorCrashed = ActorCrashed SomeException deriving Show
+newtype ActorCrashed = ActorCrashed SomeException deriving (Show)
+
 instance Exception ActorCrashed
 
 -- | Why an actor or supervisor exited, as its monitors hear it.
@@ -3672,14 +4354,14 @@ data Outcome s = Next s | Crash String Integer
 data Message s = Message (s -> IO (Outcome s)) (IO ())
 
 data Actor s = Actor
-  { actorRef :: IORef s
-  , actorBox :: MVar (ActorBox s)
-  , actorRestartWith :: Maybe (s -> IO s)
-  , actorSupervisor :: IORef (Maybe Supervisor)
-  , actorMonitors :: IORef [Exit -> IO ()]
-  , actorLinks :: IORef [String -> Integer -> IO ()]
-  , actorSeen :: IORef [Integer]
-  , actorKey :: Unique
+  { actorRef :: IORef s,
+    actorBox :: MVar (ActorBox s),
+    actorRestartWith :: Maybe (s -> IO s),
+    actorSupervisor :: IORef (Maybe Supervisor),
+    actorMonitors :: IORef [Exit -> IO ()],
+    actorLinks :: IORef [String -> Integer -> IO ()],
+    actorSeen :: IORef [Integer],
+    actorKey :: Unique
   }
 
 -- | Queued messages (front, then back reversed), whether a worker is
@@ -3703,14 +4385,27 @@ newRestartableActor :: (s -> IO s) -> s -> IO (Actor s)
 newRestartableActor restart = newActorWith (Just restart)
 
 newActorWith :: Maybe (s -> IO s) -> s -> IO (Actor s)
-newActorWith restart state = Actor <$> newIORef state <*> newMVar (ActorBox [] [] False False) <*> pure restart
-  <*> newIORef Nothing <*> newIORef [] <*> newIORef [] <*> newIORef [] <*> newUnique
+newActorWith restart state =
+  Actor
+    <$> newIORef state
+    <*> newMVar (ActorBox [] [] False False)
+    <*> pure restart
+    <*> newIORef Nothing
+    <*> newIORef []
+    <*> newIORef []
+    <*> newIORef []
+    <*> newUnique
 
 postActor :: Actor s -> Message s -> IO ()
 postActor actor message = do
-  start <- modifyMVar (actorBox actor) (\(ActorBox front back draining stopped) ->
-    if stopped then throwIO ActorStopped
-    else pure (ActorBox front (message : back) True stopped, not draining))
+  start <-
+    modifyMVar
+      (actorBox actor)
+      ( \(ActorBox front back draining stopped) ->
+          if stopped
+            then throwIO ActorStopped
+            else pure (ActorBox front (message : back) True stopped, not draining)
+      )
   if start then () <$ forkIO (drainActor actor) else pure ()
 
 -- | Posts a message, ignoring an actor that has stopped.
@@ -3721,11 +4416,18 @@ drainActor :: Actor s -> IO ()
 drainActor actor = loop
   where
     loop = do
-      next <- modifyMVar (actorBox actor) (\(ActorBox front back _ stopped) -> pure (case front of
-        m : rest -> (ActorBox rest back True stopped, Just m)
-        [] -> case reverse back of
-          m : rest -> (ActorBox rest [] True stopped, Just m)
-          [] -> (ActorBox [] [] False stopped, Nothing)))
+      next <-
+        modifyMVar
+          (actorBox actor)
+          ( \(ActorBox front back _ stopped) ->
+              pure
+                ( case front of
+                    m : rest -> (ActorBox rest back True stopped, Just m)
+                    [] -> case reverse back of
+                      m : rest -> (ActorBox rest [] True stopped, Just m)
+                      [] -> (ActorBox [] [] False stopped, Nothing)
+                )
+          )
       case next of
         Nothing -> pure ()
         Just (Message run _) -> do
@@ -3762,15 +4464,26 @@ restartNow actor = case actorRestartWith actor of
 restartLater :: Actor s -> IO ()
 restartLater actor = case actorRestartWith actor of
   Nothing -> pure ()
-  Just restart -> postQuietly actor (Message (\state -> do
-    outcome <- try (restart state >>= evaluate)
-    pure (either (\e -> Crash (exceptionText e) 0) Next outcome)) (pure ()))
+  Just restart ->
+    postQuietly
+      actor
+      ( Message
+          ( \state -> do
+              outcome <- try (restart state >>= evaluate)
+              pure (either (\e -> Crash (exceptionText e) 0) Next outcome)
+          )
+          (pure ())
+      )
 
 -- | Stops the actor; messages still waiting fail with ActorStopped.
 haltActor :: Actor s -> IO ()
 haltActor actor = do
-  waiting <- modifyMVar (actorBox actor) (\(ActorBox front back draining _) ->
-    pure (ActorBox [] [] draining True, front ++ reverse back))
+  waiting <-
+    modifyMVar
+      (actorBox actor)
+      ( \(ActorBox front back draining _) ->
+          pure (ActorBox [] [] draining True, front ++ reverse back)
+      )
   mapM_ (\(Message _ refuse) -> refuse) waiting
 
 -- | Runs handler state -> (reply, next state) in turn and returns the
@@ -3779,25 +4492,37 @@ haltActor actor = do
 callActor :: Actor s -> (s -> IO (r, s)) -> IO r
 callActor actor handler = do
   reply <- newEmptyMVar
-  postActor actor (Message (\state -> do
-    outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
-    case outcome of
-      Left e -> do
-        origin <- nextCrash
-        putMVar reply (Left (toException (ActorCrashed e)))
-        pure (Crash (exceptionText e) origin)
-      Right (r, next) -> putMVar reply (Right r) >> pure (Next next))
-    (putMVar reply (Left (toException ActorStopped))))
+  postActor
+    actor
+    ( Message
+        ( \state -> do
+            outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
+            case outcome of
+              Left e -> do
+                origin <- nextCrash
+                putMVar reply (Left (toException (ActorCrashed e)))
+                pure (Crash (exceptionText e) origin)
+              Right (r, next) -> putMVar reply (Right r) >> pure (Next next)
+        )
+        (putMVar reply (Left (toException ActorStopped)))
+    )
   takeMVar reply >>= either throwIO pure
 
 -- | Queues handler state -> (reply, next state) without waiting; a handler
 -- that throws crashes the actor.
 castActor :: Actor s -> (s -> IO (r, s)) -> IO ()
-castActor actor handler = postActor actor (Message (\state -> do
-  outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
-  case outcome of
-    Left e -> Crash (exceptionText (e :: SomeException)) <$> nextCrash
-    Right (_, next) -> pure (Next next)) (pure ()))
+castActor actor handler =
+  postActor
+    actor
+    ( Message
+        ( \state -> do
+            outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
+            case outcome of
+              Left e -> Crash (exceptionText (e :: SomeException)) <$> nextCrash
+              Right (_, next) -> pure (Next next)
+        )
+        (pure ())
+    )
 
 -- | Crashes the actor once the messages before this one are handled, as a
 -- failing handler would: for testing supervision.
@@ -3805,8 +4530,12 @@ crashActor :: Actor s -> String -> IO ()
 crashActor actor cause = do
   origin <- nextCrash
   reply <- newEmptyMVar
-  postActor actor (Message (\_ -> putMVar reply (Right ()) >> pure (Crash cause origin))
-    (putMVar reply (Left (toException ActorStopped))))
+  postActor
+    actor
+    ( Message
+        (\_ -> putMVar reply (Right ()) >> pure (Crash cause origin))
+        (putMVar reply (Left (toException ActorStopped)))
+    )
   takeMVar reply >>= either throwIO pure
 
 -- | Replaces the state by restart (last state) between messages, as a
@@ -3830,12 +4559,20 @@ linkActors = link
 linkCrash :: Actor s -> String -> Integer -> IO ()
 linkCrash actor cause origin = do
   seen <- readIORef (actorSeen actor)
-  if origin `elem` seen then pure ()
+  if origin `elem` seen
+    then pure ()
     -- Checked again on the actor's turn: another link may have brought the
     -- same crash first.
-    else postQuietly actor (Message (\state -> do
-      again <- readIORef (actorSeen actor)
-      pure (if origin `elem` again then Next state else Crash cause origin)) (pure ()))
+    else
+      postQuietly
+        actor
+        ( Message
+            ( \state -> do
+                again <- readIORef (actorSeen actor)
+                pure (if origin `elem` again then Next state else Crash cause origin)
+            )
+            (pure ())
+        )
 
 -- | Refuses further messages; those already queued still run. A permanent
 -- child of a supervisor restarts instead.
@@ -3843,33 +4580,52 @@ stopActor :: Actor s -> IO ()
 stopActor actor = do
   supervisor <- readIORef (actorSupervisor actor)
   restarted <- maybe (pure False) (\s -> supervisorChildStopped s (actorChild actor)) supervisor
-  if restarted then pure () else do
-    already <- modifyMVar (actorBox actor) (\(ActorBox front back draining stopped) ->
-      pure (ActorBox front back draining True, stopped))
-    if already then pure () else readIORef (actorMonitors actor) >>= mapM_ ($ Stopped)
+  if restarted
+    then pure ()
+    else do
+      already <-
+        modifyMVar
+          (actorBox actor)
+          ( \(ActorBox front back draining stopped) ->
+              pure (ActorBox front back draining True, stopped)
+          )
+      if already then pure () else readIORef (actorMonitors actor) >>= mapM_ ($ Stopped)
 
 -- Supervision.
 
 data SupervisionStrategy = OneForOne | OneForAll | RestForOne deriving (Eq, Show)
+
 data Lifetime = Permanent | Transient | Temporary deriving (Eq, Show)
 
 -- | What a supervisor needs of a child, actor or supervisor.
 data SupervisedChild = SupervisedChild
-  { childKey :: Unique
-  , childRestartNow :: IO ()
-  , childRestartLater :: IO ()
-  , childHalt :: IO ()
-  , childStop :: IO ()
-  , childAdopt :: Maybe Supervisor -> IO ()
+  { childKey :: Unique,
+    childRestartNow :: IO (),
+    childRestartLater :: IO (),
+    childHalt :: IO (),
+    childStop :: IO (),
+    childAdopt :: Maybe Supervisor -> IO ()
   }
 
 actorChild :: Actor s -> SupervisedChild
-actorChild actor = SupervisedChild (actorKey actor) (restartNow actor) (restartLater actor)
-  (haltActor actor) (stopActor actor) (writeIORef (actorSupervisor actor))
+actorChild actor =
+  SupervisedChild
+    (actorKey actor)
+    (restartNow actor)
+    (restartLater actor)
+    (haltActor actor)
+    (stopActor actor)
+    (writeIORef (actorSupervisor actor))
 
 supervisorChild :: Supervisor -> SupervisedChild
-supervisorChild s = SupervisedChild (supervisorKey s) (pure ()) (supervisorRestartLater s)
-  (stopSupervisor s) (stopSupervisor s) (writeIORef (supervisorParent s))
+supervisorChild s =
+  SupervisedChild
+    (supervisorKey s)
+    (pure ())
+    (supervisorRestartLater s)
+    (stopSupervisor s)
+    (stopSupervisor s)
+    (writeIORef (supervisorParent s))
 
 -- | Starts children (actors or supervisors) and restarts them after a
 -- crash. OneForOne restarts the child that crashed, OneForAll every child,
@@ -3883,23 +4639,30 @@ supervisorChild s = SupervisedChild (supervisorKey s) (pure ()) (supervisorResta
 -- means what an Erlang programmer expects on every target.
 -- ref:DEC-actors-otp-supervision ref:erlang-otp-supervisors
 data Supervisor = Supervisor
-  { supervisorStrategy :: SupervisionStrategy
-  , supervisorMaxRestarts :: Int
-  , supervisorPeriodMicros :: Integer
-  , supervisorLock :: MVar ()
-  , supervisorChildren :: IORef [(SupervisedChild, Lifetime)]
-  , supervisorRestarts :: IORef [Word64]
-  , supervisorParent :: IORef (Maybe Supervisor)
-  , supervisorStopped :: IORef Bool
-  , supervisorMonitors :: IORef [Exit -> IO ()]
-  , supervisorKey :: Unique
+  { supervisorStrategy :: SupervisionStrategy,
+    supervisorMaxRestarts :: Int,
+    supervisorPeriodMicros :: Integer,
+    supervisorLock :: MVar (),
+    supervisorChildren :: IORef [(SupervisedChild, Lifetime)],
+    supervisorRestarts :: IORef [Word64],
+    supervisorParent :: IORef (Maybe Supervisor),
+    supervisorStopped :: IORef Bool,
+    supervisorMonitors :: IORef [Exit -> IO ()],
+    supervisorKey :: Unique
   }
 
 -- | A supervisor with a strategy, allowing at most so many restarts within
 -- a period in microseconds.
 newSupervisor :: SupervisionStrategy -> Int -> Integer -> IO Supervisor
-newSupervisor strategy maxRestarts period = Supervisor strategy maxRestarts period <$> newMVar ()
-  <*> newIORef [] <*> newIORef [] <*> newIORef Nothing <*> newIORef False <*> newIORef [] <*> newUnique
+newSupervisor strategy maxRestarts period =
+  Supervisor strategy maxRestarts period
+    <$> newMVar ()
+    <*> newIORef []
+    <*> newIORef []
+    <*> newIORef Nothing
+    <*> newIORef False
+    <*> newIORef []
+    <*> newUnique
 
 -- | Adds a started child.
 supervise :: Supervisor -> SupervisedChild -> Lifetime -> IO ()
@@ -3933,16 +4696,22 @@ restarting :: Supervisor -> Unique -> String -> IO (Maybe [SupervisedChild])
 restarting s key cause = do
   allowed <- allowRestart s
   children <- readIORef (supervisorChildren s)
-  if allowed then pure (Just (case supervisorStrategy s of
-      OneForOne -> [c | (c, _) <- children, childKey c == key]
-      OneForAll -> map fst children
-      RestForOne -> map fst (dropWhile ((/= key) . childKey . fst) children)))
-  else do
-    parent <- readIORef (supervisorParent s)
-    escalated <- maybe (pure False) (\p -> supervisorChildFailed p (supervisorChild s) cause) parent
-    if escalated
-      then writeIORef (supervisorRestarts s) [] >> pure (Just (map fst children))
-      else failSupervisor s key cause >> pure Nothing
+  if allowed
+    then
+      pure
+        ( Just
+            ( case supervisorStrategy s of
+                OneForOne -> [c | (c, _) <- children, childKey c == key]
+                OneForAll -> map fst children
+                RestForOne -> map fst (dropWhile ((/= key) . childKey . fst) children)
+            )
+        )
+    else do
+      parent <- readIORef (supervisorParent s)
+      escalated <- maybe (pure False) (\p -> supervisorChildFailed p (supervisorChild s) cause) parent
+      if escalated
+        then writeIORef (supervisorRestarts s) [] >> pure (Just (map fst children))
+        else failSupervisor s key cause >> pure Nothing
 
 -- | The child's entry, unless the supervisor stopped; a Temporary child is
 -- dropped and gets nothing.
@@ -4031,11 +4800,13 @@ stopSupervisor :: Supervisor -> IO ()
 stopSupervisor s = do
   children <- withMVar' (supervisorLock s) $ do
     stopped <- readIORef (supervisorStopped s)
-    if stopped then pure Nothing else do
-      writeIORef (supervisorStopped s) True
-      children <- readIORef (supervisorChildren s)
-      writeIORef (supervisorChildren s) []
-      pure (Just children)
+    if stopped
+      then pure Nothing
+      else do
+        writeIORef (supervisorStopped s) True
+        children <- readIORef (supervisorChildren s)
+        writeIORef (supervisorChildren s) []
+        pure (Just children)
   case children of
     Nothing -> pure ()
     Just cs -> do
@@ -4054,7 +4825,7 @@ instance Supervisable Supervisor where
   asChild = supervisorChild
 
 -- | Adds a started child (an actor or a supervisor) to a supervisor.
-superviseChild :: Supervisable t => Supervisor -> t -> Lifetime -> IO ()
+superviseChild :: (Supervisable t) => Supervisor -> t -> Lifetime -> IO ()
 superviseChild s child = supervise s (asChild child)
 
 -- | Where a crash arrives for an actor that is linked to: its links, and
@@ -4094,9 +4865,11 @@ instance Monitorable Supervisor where
 checkSupervision :: IO (Maybe String)
 checkSupervision = do
   outcome <- try checks
-  pure (case outcome of
-    Right () -> Nothing
-    Left (ErrorCall message) -> Just message)
+  pure
+    ( case outcome of
+        Right () -> Nothing
+        Left (ErrorCall message) -> Just message
+    )
   where
     counter = newRestartableActor (\_ -> pure (0 :: Int)) 0
     bump a = callActor a (\s -> pure (s + 1, s + 1))
@@ -4111,16 +4884,19 @@ checkSupervision = do
         Left ActorStopped -> pure ()
         Right _ -> throwIO (ErrorCall (what ++ " should have stopped"))
     expect :: (Eq a, Show a) => a -> a -> String -> IO ()
-    expect actual wanted what = if actual == wanted then pure ()
-      else throwIO (ErrorCall (what ++ ": got " ++ show actual ++ ", expected " ++ show wanted))
+    expect actual wanted what =
+      if actual == wanted
+        then pure ()
+        else throwIO (ErrorCall (what ++ ": got " ++ show actual ++ ", expected " ++ show wanted))
     under s lifetime = do
       a <- counter
       superviseActor s a lifetime
       pure a
     waitFor condition = loop (100 :: Int)
-      where loop n = do
-              ok <- condition
-              if ok || n <= 0 then pure () else threadDelay 10000 >> loop (n - 1)
+      where
+        loop n = do
+          ok <- condition
+          if ok || n <= 0 then pure () else threadDelay 10000 >> loop (n - 1)
     checks = do
       a <- counter
       _ <- bump a
@@ -4217,18 +4993,29 @@ newMailbox = Mailbox <$> newMVar ([], [], False) <*> newEmptyMVar
 
 sendMailbox :: Mailbox a -> a -> IO ()
 sendMailbox (Mailbox state signal) value = do
-  sent <- modifyMVar state (\(front, back, closed) ->
-    pure (if closed then ((front, back, closed), False) else ((front, value : back, closed), True)))
+  sent <-
+    modifyMVar
+      state
+      ( \(front, back, closed) ->
+          pure (if closed then ((front, back, closed), False) else ((front, value : back, closed), True))
+      )
   if sent then () <$ tryPutMVar signal () else throwIO ActorStopped
 
 -- | The next message without waiting. Another waiting receiver is woken
 -- while messages remain (or the mailbox is closed), so no wakeup is lost.
 takeMailbox :: Mailbox a -> IO (MailTaken a)
 takeMailbox (Mailbox state signal) = do
-  (taken, more) <- modifyMVar state (\(front, back, closed) -> pure (case (front, reverse back) of
-    (x : rest, _) -> ((rest, back, closed), (MailTook x, not (null rest) || not (null back) || closed))
-    ([], x : rest) -> ((rest, [], closed), (MailTook x, not (null rest) || closed))
-    ([], []) -> ((front, back, closed), (if closed then MailClosed else MailEmpty, closed))))
+  (taken, more) <-
+    modifyMVar
+      state
+      ( \(front, back, closed) ->
+          pure
+            ( case (front, reverse back) of
+                (x : rest, _) -> ((rest, back, closed), (MailTook x, not (null rest) || not (null back) || closed))
+                ([], x : rest) -> ((rest, [], closed), (MailTook x, not (null rest) || closed))
+                ([], []) -> ((front, back, closed), (if closed then MailClosed else MailEmpty, closed))
+            )
+      )
   if more then () <$ tryPutMVar signal () else pure ()
   pure taken
 
@@ -4256,11 +5043,13 @@ receiveMailboxWithin micros mailbox@(Mailbox _ signal) = do
           MailClosed -> throwIO ActorStopped
           MailEmpty -> do
             now <- getMonotonicTimeNSec
-            if now >= deadline then pure Nothing else do
-              -- A message that arrives as this times out is found by the
-              -- take that follows.
-              _ <- timeout (max 1 (fromIntegral ((deadline - now) `div` 1000))) (takeMVar signal)
-              loop
+            if now >= deadline
+              then pure Nothing
+              else do
+                -- A message that arrives as this times out is found by the
+                -- take that follows.
+                _ <- timeout (max 1 (fromIntegral ((deadline - now) `div` 1000))) (takeMVar signal)
+                loop
   loop
 
 -- | The Mailbox ability's receive ... within d, on the Clock handler
@@ -4292,27 +5081,46 @@ closeMailbox (Mailbox state signal) = do
 actorStartCallback :: ModelCallback -> ModelCallback
 actorStartCallback run symbols args = case run symbols args of
   Left message -> Left message
-  Right state -> Right (unsafePerformIO (do
-    _ <- evaluate (deepScalar state)
-    actor <- newActor state
-    SHandle "lawspec::actor" <$> handle actor))
+  Right state ->
+    Right
+      ( unsafePerformIO
+          ( do
+              _ <- evaluate (deepScalar state)
+              actor <- newActor state
+              SHandle "lawspec::actor" <$> handle actor
+          )
+      )
 {-# NOINLINE actorStartCallback #-}
 
 actorCommandCallback :: Bool -> ModelCallback -> ModelCallback
 actorCommandCallback unit run symbols args = case args of
-  SHandle _ h : rest -> unsafePerformIO (do
-    outcome <- try (callActor (fromHandle h :: Actor Scalar) (\state -> case run symbols (state : rest) of
-      Left message -> throwIO (ModelRaised message)
-      Right out -> do
-        _ <- evaluate (deepScalar out)
-        pure (if unit then (SAbsent "Unit", out) else (productField False out, productField True out))))
-    pure (case outcome of
-      Right reply -> Right reply
-      Left e -> Left (case fromException e of
-        Just (ActorCrashed cause) -> case fromException cause of
-          Just (ModelRaised message) -> message
-          _ -> exceptionText cause
-        _ -> exceptionText e)))
+  SHandle _ h : rest ->
+    unsafePerformIO
+      ( do
+          outcome <-
+            try
+              ( callActor
+                  (fromHandle h :: Actor Scalar)
+                  ( \state -> case run symbols (state : rest) of
+                      Left message -> throwIO (ModelRaised message)
+                      Right out -> do
+                        _ <- evaluate (deepScalar out)
+                        pure (if unit then (SAbsent "Unit", out) else (productField False out, productField True out))
+                  )
+              )
+          pure
+            ( case outcome of
+                Right reply -> Right reply
+                Left e ->
+                  Left
+                    ( case fromException e of
+                        Just (ActorCrashed cause) -> case fromException cause of
+                          Just (ModelRaised message) -> message
+                          _ -> exceptionText cause
+                        _ -> exceptionText e
+                    )
+            )
+      )
   _ -> Left "an actor command needs its actor first"
 {-# NOINLINE actorCommandCallback #-}
 
@@ -4323,11 +5131,18 @@ actorCrashStep :: ModelCallback -> ModelCallback -> Maybe ModelCommand -> CrashS
 actorCrashStep startRun startModel restart = CrashStep system model
   where
     system startArgs symbols handleValue = case handleValue of
-      SHandle _ h -> restartActor (fromHandle h :: Actor Scalar) (\state ->
-        either (throwIO . ModelRaised) (\v -> evaluate (deepScalar v) >> pure v)
-          (case restart of
-            Just r -> mcRun r symbols [state]
-            Nothing -> startRun symbols startArgs))
+      SHandle _ h ->
+        restartActor
+          (fromHandle h :: Actor Scalar)
+          ( \state ->
+              either
+                (throwIO . ModelRaised)
+                (\v -> evaluate (deepScalar v) >> pure v)
+                ( case restart of
+                    Just r -> mcRun r symbols [state]
+                    Nothing -> startRun symbols startArgs
+                )
+          )
       _ -> throwIO (ModelRaised "an actor crash needs its actor")
     model startArgs symbols state = do
       out <- callModel (maybe (\s _ -> startModel s startArgs) mcReference restart) symbols [state]
@@ -4348,21 +5163,22 @@ actorStateCallback f symbols args = case args of
 -- the other side and receiving the next value from it. localChannel joins two
 -- sides in process; a network transport could implement the same record.
 data ChannelSide = ChannelSide
-  { sideSend :: Dynamic -> IO ()
-  -- The next value; throws PeerFailed once the other side has given up
-  -- and nothing it sent is left.
-  , sideReceive :: IO Dynamic
-  -- Gives up: the other side's receives fail after the values already sent.
-  , sideAbandon :: IO ()
-  -- For an unused end between nodes, the address another node takes it
-  -- over from; Nothing for a local end.
-  , sideHandOver :: IO (Maybe String)
+  { sideSend :: Dynamic -> IO (),
+    -- The next value; throws PeerFailed once the other side has given up
+    -- and nothing it sent is left.
+    sideReceive :: IO Dynamic,
+    -- Gives up: the other side's receives fail after the values already sent.
+    sideAbandon :: IO (),
+    -- For an unused end between nodes, the address another node takes it
+    -- over from; Nothing for a local end.
+    sideHandOver :: IO (Maybe String)
   }
 
 -- | A receive whose other end gave up: its process failed, or it called
 -- abandon. Catch it (or use tryReceive) to handle the failure; otherwise
 -- this process fails too.
-data PeerFailed = PeerFailed deriving Show
+data PeerFailed = PeerFailed deriving (Show)
+
 instance Exception PeerFailed
 
 -- | The mark a side that gave up leaves for the other.
@@ -4378,8 +5194,10 @@ localChannel = do
         case fromDynamic message of
           Just Abandoned -> writeChan chan message >> throwIO PeerFailed
           Nothing -> pure message
-  pure ( ChannelSide (writeChan forward) (receiving backward) (writeChan forward (toDyn Abandoned)) (pure Nothing)
-       , ChannelSide (writeChan backward) (receiving forward) (writeChan backward (toDyn Abandoned)) (pure Nothing) )
+  pure
+    ( ChannelSide (writeChan forward) (receiving backward) (writeChan forward (toDyn Abandoned)) (pure Nothing),
+      ChannelSide (writeChan backward) (receiving forward) (writeChan backward (toDyn Abandoned)) (pure Nothing)
+    )
 
 -- | A channel side at one step of a protocol, usable once: each step returns
 -- a fresh end for the next.
@@ -4408,19 +5226,30 @@ useEnd (SessionEnd side used) = do
     else pure side
 
 -- | Sends a value on an end, wrapping the side's fresh end as the next step.
-sendOn :: Typeable a => (SessionEnd -> next) -> SessionEnd -> a -> IO next
+sendOn :: (Typeable a) => (SessionEnd -> next) -> SessionEnd -> a -> IO next
 sendOn next end value = do
   side <- useEnd end
   sideSend side (toDyn value)
   next <$> sessionEnd side
 
 -- | Receives a value on an end, with the side's fresh end as the next step.
-receiveOn :: forall a next. Typeable a => (SessionEnd -> next) -> SessionEnd -> IO (a, next)
+receiveOn :: forall a next. (Typeable a) => (SessionEnd -> next) -> SessionEnd -> IO (a, next)
 receiveOn next end = do
   side <- useEnd end
   message <- sideReceive side
-  value <- maybe (throwIO (ErrorCall ("a session received " ++ show (dynTypeRep message)
-    ++ " where it expected " ++ show (typeRep (Proxy :: Proxy a))))) pure (fromDynamic message)
+  value <-
+    maybe
+      ( throwIO
+          ( ErrorCall
+              ( "a session received "
+                  ++ show (dynTypeRep message)
+                  ++ " where it expected "
+                  ++ show (typeRep (Proxy :: Proxy a))
+              )
+          )
+      )
+      pure
+      (fromDynamic message)
   (,) value . next <$> sessionEnd side
 
 -- | An end whose next step sends a message; the end type determines what it
@@ -4435,7 +5264,7 @@ class Receive end message next | end -> message next where
   receive :: end -> IO (message, next)
 
 -- | receive, with the other end's failure as a Left.
-tryReceive :: Receive end message next => end -> IO (Either PeerFailed (message, next))
+tryReceive :: (Receive end message next) => end -> IO (Either PeerFailed (message, next))
 tryReceive end = try (receive end)
 
 -- | An end that can give up its conversation: the other end's receives then
@@ -4480,18 +5309,20 @@ par actions = mapM spawn actions >>= mapM_ join
 -- an id and a payload.
 
 -- | Bytes that are not an encoding of a value of the expected type.
-newtype WireError = WireError String deriving Show
+newtype WireError = WireError String deriving (Show)
+
 instance Exception WireError
 
 -- | A node could not be reached, or did not answer in time.
-newtype Unreachable = Unreachable String deriving Show
+newtype Unreachable = Unreachable String deriving (Show)
+
 instance Exception Unreachable
 
 putVarint :: Integer -> BB.Builder
 putVarint n =
   let low = fromInteger (n .&. 0x7F) :: Word8
       rest = n `shiftR` 7
-  in if rest /= 0 then BB.word8 (low .|. 0x80) <> putVarint rest else BB.word8 low
+   in if rest /= 0 then BB.word8 (low .|. 0x80) <> putVarint rest else BB.word8 low
 
 getVarint :: ByteString -> Int -> Either String (Integer, Int)
 getVarint buf = go 0 0
@@ -4501,7 +5332,7 @@ getVarint buf = go 0 0
       | otherwise =
           let byte = B.index buf pos
               acc' = acc .|. (toInteger (byte .&. 0x7F) `shiftL` shift)
-          in if byte < 0x80 then Right (acc', pos + 1) else go acc' (shift + 7) (pos + 1)
+           in if byte < 0x80 then Right (acc', pos + 1) else go acc' (shift + 7) (pos + 1)
 
 zigzag :: Integer -> Integer
 zigzag v = if v >= 0 then v * 2 else negate v * 2 - 1
@@ -4516,13 +5347,15 @@ getBytes :: ByteString -> Int -> Either String (ByteString, Int)
 getBytes buf pos = do
   (n, pos') <- getVarint buf pos
   let end = pos' + fromInteger n
-  if end > B.length buf then Left "the bytes end in the middle of a value"
+  if end > B.length buf
+    then Left "the bytes end in the middle of a value"
     else Right (B.take (fromInteger n) (B.drop pos' buf), end)
 
 -- | An integer descriptor's declared bounds (None: no bound).
 declaredBounds :: Descriptor -> (Maybe Integer, Maybe Integer)
 declaredBounds (DescList (_ : _ : lo : hi : _)) = (bound lo, bound hi)
-  where bound b = case b of DescInteger k -> Just k; _ -> Nothing
+  where
+    bound b = case b of DescInteger k -> Just k; _ -> Nothing
 declaredBounds _ = (Nothing, Nothing)
 
 utf8Of :: [Int] -> ByteString
@@ -4533,7 +5366,8 @@ wirePut table d0 v = case (descriptorKind d, v) of
   ("int", SInteger _ n) -> do
     let (lo, hi) = declaredBounds d
     if maybe False (n <) lo || maybe False (n >) hi
-      then Left (show n ++ " is not a " ++ descriptorName (arg 1)) else Right (putVarint (zigzag n))
+      then Left (show n ++ " is not a " ++ descriptorName (arg 1))
+      else Right (putVarint (zigzag n))
   ("bool", SBool b) -> Right (BB.word8 (if b then 1 else 0))
   (kind, SSequence _ cps) | kind `elem` ["text", "end"] -> Right (putBytes (utf8Of cps))
   ("unit", _) -> Right mempty
@@ -4547,8 +5381,9 @@ wirePut table d0 v = case (descriptorKind d, v) of
       (i, fs) : _ -> (putVarint i <>) . mconcat <$> sequence (zipWith (wirePut table) fs fields)
       [] -> Left (tag ++ " is not a constructor of " ++ descriptorName (arg 1))
   (kind, _) -> Left (renderValue v ++ " is not a value of " ++ kind)
-  where d = resolveDescriptor table d0
-        arg i = descriptorArgument i d
+  where
+    d = resolveDescriptor table d0
+    arg i = descriptorArgument i d
 
 wireGet :: DataTable -> Descriptor -> ByteString -> Int -> Either String (Scalar, Int)
 wireGet table d0 buf pos = case descriptorKind d of
@@ -4586,17 +5421,20 @@ wireGet table d0 buf pos = case descriptorKind d of
   "data" -> do
     (i, pos') <- getVarint buf pos
     let ctors = constructorsOf d
-    if i >= toInteger (length ctors) then Left ("no constructor " ++ show i ++ " in " ++ descriptorName (arg 1)) else do
-      let (tag, fs) = constructorParts (ctors !! fromInteger i)
-          fields [] p acc = Right (SData tag (reverse acc), p)
-          fields (f : rest) p acc = do
-            (x, p') <- wireGet table f buf p
-            fields rest p' (x : acc)
-      fields fs pos' []
+    if i >= toInteger (length ctors)
+      then Left ("no constructor " ++ show i ++ " in " ++ descriptorName (arg 1))
+      else do
+        let (tag, fs) = constructorParts (ctors !! fromInteger i)
+            fields [] p acc = Right (SData tag (reverse acc), p)
+            fields (f : rest) p acc = do
+              (x, p') <- wireGet table f buf p
+              fields rest p' (x : acc)
+        fields fs pos' []
   kind -> Left ("unknown descriptor " ++ kind)
-  where d = resolveDescriptor table d0
-        arg i = descriptorArgument i d
-        byteAt p = if p < B.length buf then Just (B.index buf p) else Nothing
+  where
+    d = resolveDescriptor table d0
+    arg i = descriptorArgument i d
+    byteAt p = if p < B.length buf then Just (B.index buf p) else Nothing
 
 -- | The value's canonical bytes.
 --
@@ -4626,10 +5464,12 @@ hexOf = concatMap (\w -> let h = showHex w "" in if length h < 2 then '0' : h el
 searchFile :: String -> IO (Maybe FilePath)
 searchFile law = do
   directory <- lookupEnv "LAWSPEC_FAILURES"
-  let safe = map (\c -> if c `elem` (['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "-_") then c else '_') law
-  pure (case directory of
-    Just d | not (null d) -> Just (d ++ "/inputs/" ++ safe ++ ".json")
-    _ -> Nothing)
+  let safe = map (\c -> if c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "-_") then c else '_') law
+  pure
+    ( case directory of
+        Just d | not (null d) -> Just (d ++ "/inputs/" ++ safe ++ ".json")
+        _ -> Nothing
+    )
 
 searchRemember :: String -> [String] -> [Scalar] -> IO ()
 searchRemember law descriptors values = do
@@ -4639,7 +5479,8 @@ searchRemember law descriptors values = do
       Directory.createDirectoryIfMissing True (reverse (dropWhile (/= '/') (reverse path)))
       writeFile path ("{\"law\": " ++ show law ++ ", \"inputs\": [" ++ intercalate ", " (map show inputs) ++ "]}")
     _ -> pure ()
-  where encode (text, v) = let (table, d) = valuesFrom text in hexOf <$> wireEncode table d v
+  where
+    encode (text, v) = let (table, d) = valuesFrom text in hexOf <$> wireEncode table d v
 
 -- | Runs a law's check while remembering its inputs if it fails.
 searchGuard :: String -> [String] -> [Scalar] -> IO a -> IO a
@@ -4653,22 +5494,24 @@ searchReplay law descriptors check = do
     Nothing -> pure ()
     Just path -> do
       present <- Directory.doesFileExist path
-      if not present then pure () else do
-        text <- readFile path
-        length text `seq` pure ()
-        let after = snd (breakOn "\"inputs\"" text)
-            encoded = everyOther (drop 1 (splitQuotes (drop 8 after)))
-            decode (descriptor, hex) = do
-              bytes <- maybe (Left "bad hex") Right (unhex hex)
-              let (table, d) = valuesFrom descriptor
-              wireDecode table d (B.pack bytes)
-        case mapM decode (zip descriptors encoded) of
-          Right values | length values == length descriptors -> do
-            putStrLn (law ++ ": replaying the failing inputs kept in .lawspec/failures")
-            _ <- check values
-            pure ()
-          _ -> pure ()
-        Directory.removeFile path
+      if not present
+        then pure ()
+        else do
+          text <- readFile path
+          length text `seq` pure ()
+          let after = snd (breakOn "\"inputs\"" text)
+              encoded = everyOther (drop 1 (splitQuotes (drop 8 after)))
+              decode (descriptor, hex) = do
+                bytes <- maybe (Left "bad hex") Right (unhex hex)
+                let (table, d) = valuesFrom descriptor
+                wireDecode table d (B.pack bytes)
+          case mapM decode (zip descriptors encoded) of
+            Right values | length values == length descriptors -> do
+              putStrLn (law ++ ": replaying the failing inputs kept in .lawspec/failures")
+              _ <- check values
+              pure ()
+            _ -> pure ()
+          Directory.removeFile path
   where
     breakOn needle haystack = case haystack of
       [] -> ([], [])
@@ -4690,7 +5533,7 @@ searchMoves :: DataTable -> Descriptor -> Scalar -> [Scalar]
 searchMoves table d0 v = case (descriptorKind d, v) of
   ("int", SInteger t x) ->
     let (lo, hi) = descriptorBounds d
-    in [SInteger t c | c <- nub [x + 1, x - 1, x * 2, x `quot` 2, x + (hi - x) `quot` 2, x - (x - lo) `quot` 2], c /= x, c >= lo, c <= hi]
+     in [SInteger t c | c <- nub [x + 1, x - 1, x * 2, x `quot` 2, x + (hi - x) `quot` 2, x - (x - lo) `quot` 2], c /= x, c >= lo, c <= hi]
   ("list", SList xs) -> [SList (replace i m xs) | (i, item) <- zip [0 ..] xs, m <- searchMoves table (descriptorArgument 1 d) item]
   ("maybe", SData tag [inner]) -> [SData tag [m] | m <- searchMoves table (descriptorArgument 1 d) inner]
   ("either", SData tag [inner]) -> [SData tag [m] | m <- searchMoves table (descriptorArgument (if tag == "Either::Left" then 1 else 2) d) inner]
@@ -4713,26 +5556,35 @@ searchClimb law descriptors check = do
   tried <- newIORef (0 :: Int)
   let attempt values = do
         n <- readIORef tried
-        if n >= 400 then pure False else do
-          writeIORef tried (n + 1)
-          score <- check values `catch` \(e :: SomeException) -> searchRemember law descriptors values >> throwIO e
-          current <- readIORef best
-          case (score, current) of
-            (Just s, Just (b, _)) | not (s > b) -> pure False
-            (Just s, _) -> writeIORef best (Just (s, values)) >> pure True
-            (Nothing, _) -> pure False
+        if n >= 400
+          then pure False
+          else do
+            writeIORef tried (n + 1)
+            score <- check values `catch` \(e :: SomeException) -> searchRemember law descriptors values >> throwIO e
+            current <- readIORef best
+            case (score, current) of
+              (Just s, Just (b, _)) | not (s > b) -> pure False
+              (Just s, _) -> writeIORef best (Just (s, values)) >> pure True
+              (Nothing, _) -> pure False
   forM_ [0 .. 9] $ \k -> attempt (generate (base + k))
   forM_ [0 .. 59 :: Word64] $ \step -> do
     n <- readIORef tried
-    if n >= 400 then pure () else do
-      current <- readIORef best
-      rose <- case current of
-        Nothing -> pure False
-        Just (_, values) -> do
-          let moves = take 24 [ take i values ++ [m] ++ drop (i + 1) values
-                              | (i, ((table, d), v)) <- zip [0 ..] (zip tables values), m <- searchMoves table d v ]
-          or <$> mapM attempt moves
-      if rose then pure () else () <$ attempt (generate (base + 1000 + step))
+    if n >= 400
+      then pure ()
+      else do
+        current <- readIORef best
+        rose <- case current of
+          Nothing -> pure False
+          Just (_, values) -> do
+            let moves =
+                  take
+                    24
+                    [ take i values ++ [m] ++ drop (i + 1) values
+                    | (i, ((table, d), v)) <- zip [0 ..] (zip tables values),
+                      m <- searchMoves table d v
+                    ]
+            or <$> mapM attempt moves
+        if rose then pure () else () <$ attempt (generate (base + 1000 + step))
   n <- readIORef tried
   final <- readIORef best
   putStrLn (law ++ ": targeted search tried " ++ show n ++ " case(s)" ++ maybe "" (\(s, _) -> "; best score " ++ show s) final)
@@ -4750,14 +5602,14 @@ wireEncoded :: String -> Word64 -> Integer -> Integer -> [String]
 wireEncoded text seed size count =
   let (table, d) = valuesFrom text
       values = fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed)
-  in map (either error hexOf . wireEncode table d) values
+   in map (either error hexOf . wireEncode table d) values
 
 -- | Whether count generated values decode to themselves.
 wireRoundTrips :: String -> Word64 -> Integer -> Integer -> Bool
 wireRoundTrips text seed size count =
   let (table, d) = valuesFrom text
       values = fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed)
-  in all (\v -> fmap renderValue (wireEncode table d v >>= wireDecode table d) == Right (renderValue v)) values
+   in all (\v -> fmap renderValue (wireEncode table d v >>= wireDecode table d) == Right (renderValue v)) values
 
 orWire :: Either String a -> IO a
 orWire = either (throwIO . WireError) pure
@@ -4792,31 +5644,31 @@ splitAddress :: String -> IO (String, String)
 splitAddress address =
   let (nameRev, rest) = break (== '/') (reverse address)
       node = reverse (drop 1 rest)
-  in if null rest || not (T.isInfixOf (T.pack "://") (T.pack node))
-       then throwIO (ErrorCall (show address ++ " is not an address such as tcp://127.0.0.1:7000/name"))
-       else pure (node, reverse nameRev)
+   in if null rest || not (T.isInfixOf (T.pack "://") (T.pack node))
+        then throwIO (ErrorCall (show address ++ " is not an address such as tcp://127.0.0.1:7000/name"))
+        else pure (node, reverse nameRev)
 
 -- | Moves frames between nodes: start begins delivering every frame that
 -- arrives; send sends one to the node at an address, best effort (throwing
 -- Unreachable when it cannot); close stops.
 data Transport = Transport
-  { transportAddress :: String
-  , transportStart :: (ByteString -> IO ()) -> IO ()
-  , transportSend :: String -> ByteString -> IO ()
-  , transportClose :: IO ()
+  { transportAddress :: String,
+    transportStart :: (ByteString -> IO ()) -> IO (),
+    transportSend :: String -> ByteString -> IO (),
+    transportClose :: IO ()
   }
 
 -- | Nodes in one process, with faults for testing: each frame may be lost
 -- or duplicated, and is delayed by up to the delay (so frames overtake each
 -- other); partitionNetwork cuts nodes off until healNetwork.
 data MemoryNetwork = MemoryNetwork
-  { networkState :: MVar (Word64, [(String, ByteString -> IO ())], Maybe [[String]])
-  , networkLoss :: Double
-  , networkDuplicate :: Double
-  -- The longest delay, in seconds.
-  , networkDelay :: Double
-  -- Every record sent, newest first, when the network records them.
-  , networkRecording :: Maybe (IORef [ByteString])
+  { networkState :: MVar (Word64, [(String, ByteString -> IO ())], Maybe [[String]]),
+    networkLoss :: Double,
+    networkDuplicate :: Double,
+    -- The longest delay, in seconds.
+    networkDelay :: Double,
+    -- Every record sent, newest first, when the network records them.
+    networkRecording :: Maybe (IORef [ByteString])
   }
 
 newMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNetwork
@@ -4830,7 +5682,7 @@ newRecordingMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNe
 newRecordingMemoryNetwork seed loss duplicate delay = do
   network <- newMemoryNetwork seed loss duplicate delay
   recording <- newIORef []
-  pure network { networkRecording = Just recording }
+  pure network {networkRecording = Just recording}
 
 -- | Every record sent so far, in order (none when the network does not
 -- record).
@@ -4838,20 +5690,34 @@ networkRecorded :: MemoryNetwork -> IO [ByteString]
 networkRecorded network = maybe (pure []) (fmap reverse . readIORef) (networkRecording network)
 
 memoryTransport :: MemoryNetwork -> String -> Transport
-memoryTransport network name = Transport
-  { transportAddress = address
-  , transportStart = \deliver -> modifyMVar (networkState network) (\(r, nodes, groups) ->
-      pure ((r, (address, deliver) : filter ((/= address) . fst) nodes, groups), ()))
-  , transportSend = memorySend network address
-  , transportClose = modifyMVar (networkState network) (\(r, nodes, groups) ->
-      pure ((r, filter ((/= address) . fst) nodes, groups), ()))
-  }
-  where address = "mem://" ++ name
+memoryTransport network name =
+  Transport
+    { transportAddress = address,
+      transportStart = \deliver ->
+        modifyMVar
+          (networkState network)
+          ( \(r, nodes, groups) ->
+              pure ((r, (address, deliver) : filter ((/= address) . fst) nodes, groups), ())
+          ),
+      transportSend = memorySend network address,
+      transportClose =
+        modifyMVar
+          (networkState network)
+          ( \(r, nodes, groups) ->
+              pure ((r, filter ((/= address) . fst) nodes, groups), ())
+          )
+    }
+  where
+    address = "mem://" ++ name
 
 -- | Only nodes named in the same group reach each other.
 partitionNetwork :: MemoryNetwork -> [[String]] -> IO ()
-partitionNetwork network groups = modifyMVar (networkState network) (\(r, nodes, _) ->
-  pure ((r, nodes, Just (map (map ("mem://" ++)) groups)), ()))
+partitionNetwork network groups =
+  modifyMVar
+    (networkState network)
+    ( \(r, nodes, _) ->
+        pure ((r, nodes, Just (map (map ("mem://" ++)) groups)), ())
+    )
 
 healNetwork :: MemoryNetwork -> IO ()
 healNetwork network = modifyMVar (networkState network) (\(r, nodes, _) -> pure ((r, nodes, Nothing), ()))
@@ -4866,8 +5732,11 @@ memorySend network source node frame = do
         | maybe False (\gs -> not (any (\g -> source `elem` g && node `elem` g) gs)) groups -> pure ((r0, nodes, groups), Right [])
         | otherwise -> do
             let below k r = let (x, r') = splitMix64 r in (toInteger x `mod` k, r')
-                chance p r = if p <= 0 then (False, r) else
-                  let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
+                chance p r =
+                  if p <= 0
+                    then (False, r)
+                    else
+                      let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
                 (lost, r1) = chance (networkLoss network) r0
                 (twice, r2) = chance (networkDuplicate network) r1
                 copies = if twice then 2 else 1 :: Int
@@ -4875,10 +5744,13 @@ memorySend network source node frame = do
             pure ((r3, nodes, groups), Right (if lost then [] else [(deliver, k) | k <- delays]))
   case plan of
     Left () -> throwIO (Unreachable ("no node at " ++ node))
-    Right sends -> forM_ sends $ \(deliver, k) -> forkIO (do
-      let micros = round (fromInteger k * networkDelay network * 1000) :: Int
-      if micros > 0 then threadDelay micros else yield
-      deliver frame `catch` \(_ :: SomeException) -> pure ())
+    Right sends -> forM_ sends $ \(deliver, k) ->
+      forkIO
+        ( do
+            let micros = round (fromInteger k * networkDelay network * 1000) :: Int
+            if micros > 0 then threadDelay micros else yield
+            deliver frame `catch` \(_ :: SomeException) -> pure ()
+        )
 
 -- The secure network handler lives in LawSpecNetwork, which the compiler
 -- writes beside this runtime when a program imports lawspec.network: it
@@ -4892,15 +5764,17 @@ memorySend network source node frame = do
 -- (a handshake record, or one that fails to verify or open), and identity
 -- is the node's identity (a LawSpecNetwork.NodeIdentity).
 data NodeLayer = NodeLayer
-  { layerSend :: String -> ByteString -> IO ()
-  , layerReceive :: ByteString -> IO (Maybe ByteString)
-  , layerIdentity :: Dynamic }
+  { layerSend :: String -> ByteString -> IO (),
+    layerReceive :: ByteString -> IO (Maybe ByteString),
+    layerIdentity :: Dynamic
+  }
 
 -- | The secure network handler: a node's layer, from its transport and the
 -- flag closeNode sets; and one-time tokens from the secure generator.
 data SecureNetwork = SecureNetwork
-  { secureLayerFor :: Transport -> IORef Bool -> IO NodeLayer
-  , secureNetworkToken :: IO String }
+  { secureLayerFor :: Transport -> IORef Bool -> IO NodeLayer,
+    secureNetworkToken :: IO String
+  }
 
 {-# NOINLINE secureNetworkSlot #-}
 secureNetworkSlot :: IORef (Maybe SecureNetwork)
@@ -4912,26 +5786,41 @@ registerSecureNetwork = writeIORef secureNetworkSlot . Just
 
 -- | The installed secure network handler, or a clear failure.
 secureNetwork :: IO SecureNetwork
-secureNetwork = readIORef secureNetworkSlot >>= maybe (throwIO (ErrorCall
-  ("a node needs the secure network handler: add `import lawspec.network` to a unit of the program, "
-    ++ "and call LawSpecNetwork.install"))) pure
+secureNetwork =
+  readIORef secureNetworkSlot
+    >>= maybe
+      ( throwIO
+          ( ErrorCall
+              ( "a node needs the secure network handler: add `import lawspec.network` to a unit of the program, "
+                  ++ "and call LawSpecNetwork.install"
+              )
+          )
+      )
+      pure
 
 -- | A one-time token from a secure generator: 32 bytes as 64 hexadecimal
 -- digits, as SecureRandom's secureToken gives. From the secure network
 -- handler when one is installed, else from /dev/urandom (base has no secure
 -- generator of its own).
 secureToken :: IO String
-secureToken = readIORef secureNetworkSlot >>= \installed -> case installed of
-  Just network -> secureNetworkToken network
-  Nothing -> do
-    bytes <- try (withBinaryFile "/dev/urandom" ReadMode (\h -> B.hGet h 32))
-    case bytes of
-      Right raw | B.length raw == 32 -> pure (hexOf raw)
-      Right _ -> failed "it gave too few bytes"
-      Left (e :: SomeException) -> failed (displayException e)
+secureToken =
+  readIORef secureNetworkSlot >>= \installed -> case installed of
+    Just network -> secureNetworkToken network
+    Nothing -> do
+      bytes <- try (withBinaryFile "/dev/urandom" ReadMode (\h -> B.hGet h 32))
+      case bytes of
+        Right raw | B.length raw == 32 -> pure (hexOf raw)
+        Right _ -> failed "it gave too few bytes"
+        Left (e :: SomeException) -> failed (displayException e)
   where
-    failed why = throwIO (ErrorCall ("no secure generator for a one-time token: /dev/urandom failed (" ++ why
-      ++ "); add `import lawspec.network` to a unit of the program and call LawSpecNetwork.install"))
+    failed why =
+      throwIO
+        ( ErrorCall
+            ( "no secure generator for a one-time token: /dev/urandom failed ("
+                ++ why
+                ++ "); add `import lawspec.network` to a unit of the program and call LawSpecNetwork.install"
+            )
+        )
 
 -- | A transport whose node skips the handshake and sends frames in the
 -- clear: for tests of the frame layer only. Only an in-memory network makes
@@ -4964,16 +5853,16 @@ instance NodeTransport InsecureMemoryTransport where
 -- NodeLayer), unless the node is on the in-memory transport made for tests
 -- only.
 data Node = Node
-  { nodeTransport :: Transport
-  , nodeAddress :: String
-  , nodeEntities :: IORef [(String, Entity)]
-  , nodePending :: IORef [(Integer, MVar ByteString)]
-  -- Requests already seen, by sender and id, with the reply once sent.
-  , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
-  , nodeIds :: IORef Integer
-  , nodeClosed :: IORef Bool
-  -- Nothing on the insecure transport made for tests.
-  , nodeSecure :: Maybe NodeLayer
+  { nodeTransport :: Transport,
+    nodeAddress :: String,
+    nodeEntities :: IORef [(String, Entity)],
+    nodePending :: IORef [(Integer, MVar ByteString)],
+    -- Requests already seen, by sender and id, with the reply once sent.
+    nodeSeen :: IORef [((String, Integer), Maybe ByteString)],
+    nodeIds :: IORef Integer,
+    nodeClosed :: IORef Bool,
+    -- Nothing on the insecure transport made for tests.
+    nodeSecure :: Maybe NodeLayer
   }
 
 -- | What a registered name does with a frame: kind, source, id, payload.
@@ -4983,21 +5872,27 @@ newtype Entity = Entity (Node -> String -> String -> Integer -> ByteString -> IO
 -- one), talking to any peer: its layer comes from the installed secure
 -- network handler (LawSpecNetwork.install). LawSpecNetwork.newNodeWith
 -- takes an identity and trusted peers.
-newNode :: NodeTransport t => t -> IO Node
+newNode :: (NodeTransport t) => t -> IO Node
 newNode = newNodeLayered (\transport closed -> secureNetwork >>= \network -> secureLayerFor network transport closed)
 
 -- | A node whose layer the function makes from its transport and closed
 -- flag. The in-memory transport made for tests only
 -- (insecureTransportForTests) skips the layer, and so the handshake; no
 -- other transport can.
-newNodeLayered :: NodeTransport t => (Transport -> IORef Bool -> IO NodeLayer) -> t -> IO Node
+newNodeLayered :: (NodeTransport t) => (Transport -> IORef Bool -> IO NodeLayer) -> t -> IO Node
 newNodeLayered layered made = do
   closed <- newIORef False
   (transport, secure) <- case nodeLink made of
     Left (InsecureMemoryTransport network name) -> pure (memoryTransport network name, Nothing)
     Right transport -> (\layer -> (transport, Just layer)) <$> layered transport closed
-  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0
-    <*> pure closed <*> pure secure
+  node <-
+    Node transport (transportAddress transport)
+      <$> newIORef []
+      <*> newIORef []
+      <*> newIORef []
+      <*> newIORef 0
+      <*> pure closed
+      <*> pure secure
   transportStart transport (arriveRecord node)
   pure node
 
@@ -5018,10 +5913,12 @@ closeNode node = writeIORef (nodeClosed node) True >> transportClose (nodeTransp
 
 -- | Passes a frame on to address unchanged, keeping its source.
 forwardFrame :: Node -> String -> String -> String -> Integer -> ByteString -> IO ()
-forwardFrame node address kind source ident payload = (do
-  (target, name) <- splitAddress address
-  transmitFrame node target (encodeFrame kind name source ident payload))
-  `catch` \(_ :: SomeException) -> pure ()
+forwardFrame node address kind source ident payload =
+  ( do
+      (target, name) <- splitAddress address
+      transmitFrame node target (encodeFrame kind name source ident payload)
+  )
+    `catch` \(_ :: SomeException) -> pure ()
 
 nextId :: Node -> IO Integer
 nextId node = atomicModifyIORef' (nodeIds node) (\i -> (i + 1, i + 1))
@@ -5034,9 +5931,13 @@ sendFrame node address kind payload ident = do
 register :: Node -> String -> Entity -> IO String
 register node name entity = do
   if null name || '/' `elem` name then throwIO (ErrorCall (show name ++ " is not a name: use letters, digits and dashes")) else pure ()
-  taken <- atomicModifyIORef' (nodeEntities node) (\es -> case lookup name es of
-    Just _ -> (es, True)
-    Nothing -> ((name, entity) : es, False))
+  taken <-
+    atomicModifyIORef'
+      (nodeEntities node)
+      ( \es -> case lookup name es of
+          Just _ -> (es, True)
+          Nothing -> ((name, entity) : es, False)
+      )
   if taken then throwIO (ErrorCall (name ++ " is already registered on " ++ nodeAddress node)) else pure ()
   pure (nodeAddress node ++ "/" ++ name)
 
@@ -5052,16 +5953,27 @@ deliverFrame node frame = case decodeFrame frame of
         case lookup to entities of
           Nothing -> if ident /= 0 then replyTo node source ident 3 (utf8Of (map ord ("nothing is registered as " ++ to ++ " on " ++ nodeAddress node))) else pure ()
           Just (Entity receive) -> do
-            fresh <- if ident == 0 then pure True else do
-              let key = (source, ident)
-              found <- atomicModifyIORef' (nodeSeen node) (\seen -> case lookup key seen of
-                Just answer -> (seen, Just answer)
-                Nothing -> (take 4000 ((key, Nothing) : seen), Nothing))
-              case found of
-                Just (Just answer) -> forkIO (sendFrame node (source ++ "/") "reply" answer ident
-                  `catch` \(_ :: SomeException) -> pure ()) >> pure False
-                Just Nothing -> pure False
-                Nothing -> pure True
+            fresh <-
+              if ident == 0
+                then pure True
+                else do
+                  let key = (source, ident)
+                  found <-
+                    atomicModifyIORef'
+                      (nodeSeen node)
+                      ( \seen -> case lookup key seen of
+                          Just answer -> (seen, Just answer)
+                          Nothing -> (take 4000 ((key, Nothing) : seen), Nothing)
+                      )
+                  case found of
+                    Just (Just answer) ->
+                      forkIO
+                        ( sendFrame node (source ++ "/") "reply" answer ident
+                            `catch` \(_ :: SomeException) -> pure ()
+                        )
+                        >> pure False
+                    Just Nothing -> pure False
+                    Nothing -> pure True
             -- Handled off the transport's thread, so a slow handler does
             -- not hold up other frames.
             if fresh then () <$ forkIO (receive node kind source ident payload `catch` \(_ :: SomeException) -> pure ()) else pure ()
@@ -5089,10 +6001,11 @@ request node address kind payload seconds = do
           Just answer -> pure (B.head answer, B.tail answer)
           Nothing -> do
             now' <- getMonotonicTimeNSec
-            if now' >= deadline then do
-              atomicModifyIORef' (nodePending node) (\ps -> (filter ((/= ident) . fst) ps, ()))
-              throwIO (Unreachable (address ++ " did not answer within " ++ show seconds ++ "s"))
-            else loop
+            if now' >= deadline
+              then do
+                atomicModifyIORef' (nodePending node) (\ps -> (filter ((/= ident) . fst) ps, ()))
+                throwIO (Unreachable (address ++ " did not answer within " ++ show seconds ++ "s"))
+              else loop
   loop
 
 replyValue :: DataTable -> Descriptor -> (Word8, ByteString) -> IO Scalar
@@ -5101,7 +6014,8 @@ replyValue table d (status, body) = case status of
   1 -> throwIO (ActorCrashed (toException (ErrorCall message)))
   2 -> throwIO ActorStopped
   _ -> throwIO (Unreachable message)
-  where message = either (const "") T.unpack (TE.decodeUtf8' body)
+  where
+    message = either (const "") T.unpack (TE.decodeUtf8' body)
 
 encodeAll :: DataTable -> [Descriptor] -> [Scalar] -> Either String BB.Builder
 encodeAll table ds vs
@@ -5121,12 +6035,21 @@ decodeAll table ds buf pos0 = go ds pos0 []
 nodeMailbox :: Node -> String -> DataTable -> Descriptor -> IO (Mailbox Scalar)
 nodeMailbox node name table d = do
   box <- newMailbox
-  _ <- register node name (Entity (\_ kind source ident payload ->
-    if kind /= "mail" then pure () else do
-      outcome <- case wireDecode table d payload of
-        Left e -> pure (3, "not a message of this mailbox: " ++ e)
-        Right v -> (sendMailbox box v >> pure (0, "")) `catch` \ActorStopped -> pure (2, "the mailbox is closed")
-      if ident /= 0 then replyTo node source ident (fst outcome) (utf8Of (map ord (snd outcome))) else pure ()))
+  _ <-
+    register
+      node
+      name
+      ( Entity
+          ( \_ kind source ident payload ->
+              if kind /= "mail"
+                then pure ()
+                else do
+                  outcome <- case wireDecode table d payload of
+                    Left e -> pure (3, "not a message of this mailbox: " ++ e)
+                    Right v -> (sendMailbox box v >> pure (0, "")) `catch` \ActorStopped -> pure (2, "the mailbox is closed")
+                  if ident /= 0 then replyTo node source ident (fst outcome) (utf8Of (map ord (snd outcome))) else pure ()
+          )
+      )
   pure box
 
 -- | Sends to a mailbox on another node. A send waits until the mailbox has
@@ -5195,12 +6118,13 @@ serveDefinitions node table definitions = register node "definitions" (Entity re
     receive _ kind source ident payload
       | kind /= "eval" = pure ()
       | otherwise = case getText payload 0 of
-          Right (digest, pos) | ((_, f, ds, r) : _) <- [x | x@(h, _, _, _) <- definitions, h == digest]
-                              , Right args <- decodeAll table ds payload pos -> do
-            outcome <- try (f args >>= \v -> evaluate (deepScalar v) >> pure v)
-            case outcome of
-              Right value -> either (\e -> replyTo node source ident 1 (utf8Of (map ord e))) (replyTo node source ident 0) (wireEncode table r value)
-              Left e -> replyTo node source ident 1 (utf8Of (map ord (exceptionText e)))
+          Right (digest, pos)
+            | ((_, f, ds, r) : _) <- [x | x@(h, _, _, _) <- definitions, h == digest],
+              Right args <- decodeAll table ds payload pos -> do
+                outcome <- try (f args >>= \v -> evaluate (deepScalar v) >> pure v)
+                case outcome of
+                  Right value -> either (\e -> replyTo node source ident 1 (utf8Of (map ord e))) (replyTo node source ident 0) (wireEncode table r value)
+                  Left e -> replyTo node source ident 1 (utf8Of (map ord (exceptionText e)))
           _ -> replyTo node source ident 3 (utf8Of (map ord "this node has no definition with that content hash"))
 
 -- | Evaluates the definition with this content hash on another node.
@@ -5220,49 +6144,54 @@ evaluateRemote node target digest args ds r table seconds = do
 -- then on forwards every frame it gets to the new end; the new end tells
 -- the peer (a moved frame) so the peer sends to it directly.
 data NetEndpoint = NetEndpoint
-  { endpointNode :: Node
-  , endpointSteps :: [(Bool, Descriptor)]
-  , endpointTable :: DataTable
-  , endpointDeadline :: Double
-  , endpointAddress :: IORef String
-  , endpointState :: MVar EndpointState
-  , endpointInbox :: Chan (Either String ByteString)
-  , endpointStep :: IORef Int
-  , endpointTaken :: MVar ()
-  , endpointConfirmed :: MVar ()
+  { endpointNode :: Node,
+    endpointSteps :: [(Bool, Descriptor)],
+    endpointTable :: DataTable,
+    endpointDeadline :: Double,
+    endpointAddress :: IORef String,
+    endpointState :: MVar EndpointState,
+    endpointInbox :: Chan (Either String ByteString),
+    endpointStep :: IORef Int,
+    endpointTaken :: MVar (),
+    endpointConfirmed :: MVar ()
   }
 
 data EndpointState = EndpointState
-  { esPeer :: Maybe String
-  , esOut :: Integer
-  -- seq -> (payload, first sent, last sent, body), monotonic nanoseconds.
-  , esUnacked :: [(Integer, (ByteString, Word64, Word64, ByteString))]
-  , esExpected :: Integer
-  , esEarly :: [(Integer, ByteString)]
-  , esGone :: Bool
-  , esFailure :: String
-  -- Values delivered before the first receive, newest first: what an
-  -- unused end hands over when it moves.
-  , esDelivered :: [ByteString]
-  -- Moving: the addresses this end had before (oldest first), the token a
-  -- taker must show, where the end went and the state frame it was given,
-  -- and, on the new node, the token of the takeover in progress.
-  , esHistory :: [String]
-  , esToken :: Maybe String
-  , esMovedTo :: Maybe String
-  , esHanded :: ByteString
-  , esTaking :: Maybe String
-  , esTaken :: Bool
-  , esAnnouncing :: Bool
-  , esAnnouncedAt :: Word64
-  , esConfirmed :: Bool
+  { esPeer :: Maybe String,
+    esOut :: Integer,
+    -- seq -> (payload, first sent, last sent, body), monotonic nanoseconds.
+    esUnacked :: [(Integer, (ByteString, Word64, Word64, ByteString))],
+    esExpected :: Integer,
+    esEarly :: [(Integer, ByteString)],
+    esGone :: Bool,
+    esFailure :: String,
+    -- Values delivered before the first receive, newest first: what an
+    -- unused end hands over when it moves.
+    esDelivered :: [ByteString],
+    -- Moving: the addresses this end had before (oldest first), the token a
+    -- taker must show, where the end went and the state frame it was given,
+    -- and, on the new node, the token of the takeover in progress.
+    esHistory :: [String],
+    esToken :: Maybe String,
+    esMovedTo :: Maybe String,
+    esHanded :: ByteString,
+    esTaking :: Maybe String,
+    esTaken :: Bool,
+    esAnnouncing :: Bool,
+    esAnnouncedAt :: Word64,
+    esConfirmed :: Bool
   }
 
 newEndpoint :: Node -> [(Bool, Descriptor)] -> DataTable -> Double -> IO NetEndpoint
 newEndpoint node steps table deadline = do
-  endpoint <- NetEndpoint node steps table deadline <$> newIORef ""
-    <*> newMVar (EndpointState Nothing 0 [] 0 [] False "" [] [] Nothing Nothing B.empty Nothing False False 0 False)
-    <*> newChan <*> newIORef 0 <*> newEmptyMVar <*> newEmptyMVar
+  endpoint <-
+    NetEndpoint node steps table deadline
+      <$> newIORef ""
+      <*> newMVar (EndpointState Nothing 0 [] 0 [] False "" [] [] Nothing Nothing B.empty Nothing False False 0 False)
+      <*> newChan
+      <*> newIORef 0
+      <*> newEmptyMVar
+      <*> newEmptyMVar
   _ <- forkIO (resendLoop endpoint deadline)
   pure endpoint
 
@@ -5283,7 +6212,7 @@ dialTo node address steps table = do
   n <- nextId node
   own <- register node ("end-" ++ show n) (Entity (endpointReceive endpoint))
   writeIORef (endpointAddress endpoint) own
-  modifyMVar (endpointState endpoint) (\st -> pure (st { esPeer = Just address }, ()))
+  modifyMVar (endpointState endpoint) (\st -> pure (st {esPeer = Just address}, ()))
   transmit endpoint (-1) (utf8Of (map ord "hello"))
   pure endpoint
 
@@ -5299,7 +6228,7 @@ takeFrom node address steps table = do
   writeIORef (endpointAddress endpoint) own
   let (old, query) = break (== '?') address
       token = drop (length "?take=") query
-  modifyMVar (endpointState endpoint) (\st -> pure (st { esTaking = Just token }, ()))
+  modifyMVar (endpointState endpoint) (\st -> pure (st {esTaking = Just token}, ()))
   let asking = build (textOf token <> textOf own)
       micros = round (endpointDeadline endpoint * 1e6) :: Int
   start <- getMonotonicTimeNSec
@@ -5319,7 +6248,7 @@ takeFrom node address steps table = do
             wait <- left
             if wait <= 0
               then do
-                modifyMVar (endpointState endpoint) (\st -> pure (st { esTaking = Nothing }, ()))
+                modifyMVar (endpointState endpoint) (\st -> pure (st {esTaking = Nothing}, ()))
                 failEndpoint endpoint "the node the end came from did not hand it over in time (unreachable)"
               else ask
   ask
@@ -5330,9 +6259,13 @@ offerEndpoint :: NetEndpoint -> IO String
 offerEndpoint endpoint = do
   address <- readIORef (endpointAddress endpoint)
   fresh <- secureToken
-  token <- modifyMVar (endpointState endpoint) (\st -> case esToken st of
-    Just t -> pure (st, t)
-    Nothing -> pure (st { esToken = Just fresh }, fresh))
+  token <-
+    modifyMVar
+      (endpointState endpoint)
+      ( \st -> case esToken st of
+          Just t -> pure (st, t)
+          Nothing -> pure (st {esToken = Just fresh}, fresh)
+      )
   pure (address ++ "?take=" ++ token)
 
 seqBytes :: Integer -> BB.Builder
@@ -5354,13 +6287,16 @@ getMany one buf pos0 = do
 putNumbered :: [(Integer, ByteString)] -> BB.Builder
 putNumbered items =
   let sorted = sortBy (\x y -> compare (fst x) (fst y)) items
-  in putVarint (toInteger (length sorted)) <> foldMap (\(s, b) -> seqBytes s <> putBytes b) sorted
+   in putVarint (toInteger (length sorted)) <> foldMap (\(s, b) -> seqBytes s <> putBytes b) sorted
 
 getNumbered :: ByteString -> Int -> Either String ([(Integer, ByteString)], Int)
-getNumbered = getMany (\buf p -> do
-  (s, p1) <- getSeq buf p
-  (b, p2) <- getBytes buf p1
-  pure ((s, b), p2))
+getNumbered =
+  getMany
+    ( \buf p -> do
+        (s, p1) <- getSeq buf p
+        (b, p2) <- getBytes buf p1
+        pure ((s, b), p2)
+    )
 
 framePayload :: NetEndpoint -> Integer -> ByteString -> IO ByteString
 framePayload endpoint seqNo body = do
@@ -5371,8 +6307,12 @@ transmit :: NetEndpoint -> Integer -> ByteString -> IO ()
 transmit endpoint seqNo body = do
   payload <- framePayload endpoint seqNo body
   now <- getMonotonicTimeNSec
-  peer <- modifyMVar (endpointState endpoint) (\st ->
-    pure (st { esUnacked = (seqNo, (payload, now, now, body)) : filter ((/= seqNo) . fst) (esUnacked st) }, esPeer st))
+  peer <-
+    modifyMVar
+      (endpointState endpoint)
+      ( \st ->
+          pure (st {esUnacked = (seqNo, (payload, now, now, body)) : filter ((/= seqNo) . fst) (esUnacked st)}, esPeer st)
+      )
   forM_ peer (\p -> sendFrame (endpointNode endpoint) p "chan" payload 0 `catch` \(_ :: SomeException) -> pure ())
 
 resendLoop :: NetEndpoint -> Double -> IO ()
@@ -5389,22 +6329,35 @@ resendLoop endpoint deadline = do
         moved = if announce then Just (build (putTexts (esHistory st) <> textOf address)) else Nothing
         waiting = esTaking st /= Nothing && not (esTaken st)
         stop = closed || esGone st || esMovedTo st /= Nothing
-    if stop || waiting then pure (st, (stop, waiting, False, Nothing, [], Nothing))
-    else pure (st { esUnacked = touched, esAnnouncedAt = if announce then now else esAnnouncedAt st }, (False, False, stale, esPeer st, due, moved))
-  if stop then pure ()
-  else if waiting then resendLoop endpoint deadline
-  else if stale then failEndpoint endpoint "the other end did not answer in time (unreachable)"
-  else do
-    let quietly action = action `catch` \(_ :: SomeException) -> pure ()
-    forM_ peer (\p -> do
-      forM_ moved (\payload -> quietly (sendFrame (endpointNode endpoint) p "moved" payload 0))
-      forM_ due (\(_, payload) -> quietly (sendFrame (endpointNode endpoint) p "chan" payload 0)))
-    resendLoop endpoint deadline
+    if stop || waiting
+      then pure (st, (stop, waiting, False, Nothing, [], Nothing))
+      else pure (st {esUnacked = touched, esAnnouncedAt = if announce then now else esAnnouncedAt st}, (False, False, stale, esPeer st, due, moved))
+  if stop
+    then pure ()
+    else
+      if waiting
+        then resendLoop endpoint deadline
+        else
+          if stale
+            then failEndpoint endpoint "the other end did not answer in time (unreachable)"
+            else do
+              let quietly action = action `catch` \(_ :: SomeException) -> pure ()
+              forM_
+                peer
+                ( \p -> do
+                    forM_ moved (\payload -> quietly (sendFrame (endpointNode endpoint) p "moved" payload 0))
+                    forM_ due (\(_, payload) -> quietly (sendFrame (endpointNode endpoint) p "chan" payload 0))
+                )
+              resendLoop endpoint deadline
 
 failEndpoint :: NetEndpoint -> String -> IO ()
 failEndpoint endpoint reason = do
-  first <- modifyMVar (endpointState endpoint) (\st ->
-    pure (if esGone st then (st, False) else (st { esGone = True, esFailure = reason, esUnacked = [] }, True)))
+  first <-
+    modifyMVar
+      (endpointState endpoint)
+      ( \st ->
+          pure (if esGone st then (st, False) else (st {esGone = True, esFailure = reason, esUnacked = []}, True))
+      )
   if first then writeChan (endpointInbox endpoint) (Left reason) else pure ()
 
 endpointReceive :: NetEndpoint -> Node -> String -> String -> Integer -> ByteString -> IO ()
@@ -5420,15 +6373,19 @@ endpointReceive endpoint node kind source ident payload
               -- send them again.
               if kind == "state" then installEndpoint endpoint payload else pure ()
           | kind == "ack" -> case getSeq payload 0 of
-              Right (seqNo, _) -> modifyMVar (endpointState endpoint) (\st ->
-                pure (st { esUnacked = filter ((/= seqNo) . fst) (esUnacked st) }, ()))
+              Right (seqNo, _) ->
+                modifyMVar
+                  (endpointState endpoint)
+                  ( \st ->
+                      pure (st {esUnacked = filter ((/= seqNo) . fst) (esUnacked st)}, ())
+                  )
               Left _ -> pure ()
           | kind == "moved" -> peerMoved endpoint payload
           | kind == "moved-ack" -> do
               address <- readIORef (endpointAddress endpoint)
               case getText payload 0 of
                 Right (to, _) | to == address -> do
-                  modifyMVar (endpointState endpoint) (\st -> pure (st { esConfirmed = True }, ()))
+                  modifyMVar (endpointState endpoint) (\st -> pure (st {esConfirmed = True}, ()))
                   () <$ tryPutMVar (endpointConfirmed endpoint) ()
                 _ -> pure ()
           | kind /= "chan" -> pure ()
@@ -5439,7 +6396,7 @@ endpointReceive endpoint node kind source ident payload
                 forward <- modifyMVar (endpointState endpoint) $ \st -> case esMovedTo st of
                   Just to -> pure (st, Just to)
                   Nothing
-                    | seqNo == -1 -> pure (st { esPeer = maybe (Just sender) Just (esPeer st) }, Nothing)
+                    | seqNo == -1 -> pure (st {esPeer = maybe (Just sender) Just (esPeer st)}, Nothing)
                     | seqNo < esExpected st || any ((== seqNo) . fst) (esEarly st) -> pure (st, Nothing)
                     | otherwise -> do
                         let early = (seqNo, body) : esEarly st
@@ -5448,8 +6405,14 @@ endpointReceive endpoint node kind source ident payload
                               Nothing -> (expected, held, reverse acc)
                             (expected', held', out) = collect (esExpected st) early []
                         mapM_ (writeChan (endpointInbox endpoint) . Right) out
-                        pure (st { esExpected = expected', esEarly = held'
-                                 , esDelivered = if unused then reverse out ++ esDelivered st else [] }, Nothing)
+                        pure
+                          ( st
+                              { esExpected = expected',
+                                esEarly = held',
+                                esDelivered = if unused then reverse out ++ esDelivered st else []
+                              },
+                            Nothing
+                          )
                 case forward of
                   -- Moved meanwhile: the new end acknowledges it.
                   Just to -> forwardFrame node to kind source ident payload
@@ -5468,16 +6431,27 @@ giveEndpoint endpoint payload = case parsed of
   Right (token, taker) -> do
     address <- readIORef (endpointAddress endpoint)
     handed <- modifyMVar (endpointState endpoint) $ \st ->
-      if esToken st /= Just token then pure (st, Nothing) else case esMovedTo st of
-        Just to | to /= taker -> pure (st, Nothing)
-                | otherwise -> pure (st, Just (esHanded st))
-        Nothing -> do
-          let state = build (textOf token <> textOf (esFailure st) <> textOf (maybe "" id (esPeer st))
-                <> putTexts (esHistory st ++ [address]) <> seqBytes (esOut st) <> seqBytes (esExpected st)
-                <> putNumbered [(s, body) | (s, (_, _, _, body)) <- esUnacked st]
-                <> putNumbered (esEarly st)
-                <> putVarint (toInteger (length (esDelivered st))) <> foldMap putBytes (reverse (esDelivered st)))
-          pure (st { esMovedTo = Just taker, esHanded = state, esUnacked = [], esEarly = [] }, Just state)
+      if esToken st /= Just token
+        then pure (st, Nothing)
+        else case esMovedTo st of
+          Just to
+            | to /= taker -> pure (st, Nothing)
+            | otherwise -> pure (st, Just (esHanded st))
+          Nothing -> do
+            let state =
+                  build
+                    ( textOf token
+                        <> textOf (esFailure st)
+                        <> textOf (maybe "" id (esPeer st))
+                        <> putTexts (esHistory st ++ [address])
+                        <> seqBytes (esOut st)
+                        <> seqBytes (esExpected st)
+                        <> putNumbered [(s, body) | (s, (_, _, _, body)) <- esUnacked st]
+                        <> putNumbered (esEarly st)
+                        <> putVarint (toInteger (length (esDelivered st)))
+                        <> foldMap putBytes (reverse (esDelivered st))
+                    )
+            pure (st {esMovedTo = Just taker, esHanded = state, esUnacked = [], esEarly = []}, Just state)
     forM_ handed (\state -> sendFrame (endpointNode endpoint) taker "state" state 0 `catch` \(_ :: SomeException) -> pure ())
   where
     parsed = do
@@ -5492,15 +6466,29 @@ installEndpoint endpoint payload = case parsed of
     now <- getMonotonicTimeNSec
     frames <- mapM (\(s, body) -> (\p -> (s, (p, now, 0, body))) <$> framePayload endpoint s body) unacked
     installed <- modifyMVar (endpointState endpoint) $ \st ->
-      if esTaking st /= Just token || esTaken st then pure (st, False) else do
-        mapM_ (writeChan (endpointInbox endpoint) . Right) received
-        pure (st { esPeer = if null peer then Nothing else Just peer, esHistory = history, esOut = out
-                 , esExpected = expected, esUnacked = frames, esEarly = early, esDelivered = reverse received
-                 , esAnnouncing = True, esTaken = True }, True)
-    if installed then do
-      _ <- tryPutMVar (endpointTaken endpoint) ()
-      if null failure then pure () else failEndpoint endpoint failure
-    else pure ()
+      if esTaking st /= Just token || esTaken st
+        then pure (st, False)
+        else do
+          mapM_ (writeChan (endpointInbox endpoint) . Right) received
+          pure
+            ( st
+                { esPeer = if null peer then Nothing else Just peer,
+                  esHistory = history,
+                  esOut = out,
+                  esExpected = expected,
+                  esUnacked = frames,
+                  esEarly = early,
+                  esDelivered = reverse received,
+                  esAnnouncing = True,
+                  esTaken = True
+                },
+              True
+            )
+    if installed
+      then do
+        _ <- tryPutMVar (endpointTaken endpoint) ()
+        if null failure then pure () else failEndpoint endpoint failure
+      else pure ()
   where
     parsed = do
       (token, p1) <- getText payload 0
@@ -5522,9 +6510,10 @@ peerMoved endpoint payload = case parsed of
     known <- modifyMVar (endpointState endpoint) $ \st -> do
       let peer = case esPeer st of
             Nothing -> Just to
-            Just p | p `elem` history -> Just to
-                   | otherwise -> Just p
-      pure (st { esPeer = peer }, peer == Just to)
+            Just p
+              | p `elem` history -> Just to
+              | otherwise -> Just p
+      pure (st {esPeer = peer}, peer == Just to)
     if known
       then sendFrame (endpointNode endpoint) to "moved-ack" (build (textOf to)) 0 `catch` \(_ :: SomeException) -> pure ()
       else pure ()
@@ -5537,21 +6526,27 @@ peerMoved endpoint payload = case parsed of
 stepDescriptor :: NetEndpoint -> Bool -> IO Descriptor
 stepDescriptor endpoint sends = do
   k <- readIORef (endpointStep endpoint)
-  if k >= length (endpointSteps endpoint) then throwIO (ErrorCall "this channel's protocol has ended") else do
-    let (stepSends, d) = endpointSteps endpoint !! k
-    if stepSends /= sends then throwIO (ErrorCall (if stepSends then "this step sends" else "this step receives")) else do
-      writeIORef (endpointStep endpoint) (k + 1)
-      pure d
+  if k >= length (endpointSteps endpoint)
+    then throwIO (ErrorCall "this channel's protocol has ended")
+    else do
+      let (stepSends, d) = endpointSteps endpoint !! k
+      if stepSends /= sends
+        then throwIO (ErrorCall (if stepSends then "this step sends" else "this step receives"))
+        else do
+          writeIORef (endpointStep endpoint) (k + 1)
+          pure d
 
 -- | Sends the next step's value.
 endpointSend :: NetEndpoint -> Scalar -> IO ()
 endpointSend endpoint value = do
   gone <- esGone <$> readMVar (endpointState endpoint)
-  if gone then throwIO PeerFailed else do
-    d <- stepDescriptor endpoint True
-    bytes <- orWire (wireEncode (endpointTable endpoint) d value)
-    seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st { esOut = esOut st + 1 }, esOut st))
-    transmit endpoint seqNo (B.cons 0 bytes)
+  if gone
+    then throwIO PeerFailed
+    else do
+      d <- stepDescriptor endpoint True
+      bytes <- orWire (wireEncode (endpointTable endpoint) d value)
+      seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st {esOut = esOut st + 1}, esOut st))
+      transmit endpoint seqNo (B.cons 0 bytes)
 
 -- | Receives the next step's value, waiting up to the given microseconds
 -- (forever when Nothing); throws PeerFailed when the other end gave up or
@@ -5572,7 +6567,7 @@ endpointReceiveValue endpoint micros = do
 -- | Gives up: the other end's receives fail after what was sent.
 endpointAbandon :: NetEndpoint -> IO ()
 endpointAbandon endpoint = do
-  seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st { esOut = esOut st + 1 }, esOut st))
+  seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st {esOut = esOut st + 1}, esOut st))
   transmit endpoint seqNo (B.singleton 1)
 
 -- | How one step's native value crosses the network: to its logical value
@@ -5588,27 +6583,42 @@ netChannelSide endpoint conversions = do
   let conversionAt = do
         k <- atomicModifyIORef' step (\i -> (i + 1, i))
         if k < length conversions then pure (conversions !! k) else throwIO (ErrorCall "this channel's protocol has ended")
-  pure ChannelSide
-    { sideSend = \dynamic -> do
-        (toLogical, _) <- conversionAt
-        toLogical endpoint dynamic >>= endpointSend endpoint
-    , sideReceive = do
-        (_, toNative') <- conversionAt
-        value <- endpointReceiveValue endpoint Nothing
-        toNative' endpoint value
-    , sideAbandon = endpointAbandon endpoint
-    , sideHandOver = do
-        k <- readIORef step
-        if k == 0 then Just <$> offerEndpoint endpoint else pure Nothing
-    }
+  pure
+    ChannelSide
+      { sideSend = \dynamic -> do
+          (toLogical, _) <- conversionAt
+          toLogical endpoint dynamic >>= endpointSend endpoint,
+        sideReceive = do
+          (_, toNative') <- conversionAt
+          value <- endpointReceiveValue endpoint Nothing
+          toNative' endpoint value,
+        sideAbandon = endpointAbandon endpoint,
+        sideHandOver = do
+          k <- readIORef step
+          if k == 0 then Just <$> offerEndpoint endpoint else pure Nothing
+      }
 
 -- | A step's conversion for netChannelSide, from its codec's encode and
 -- decode.
-conversion :: forall a. Typeable a => (a -> Either String Scalar) -> (Scalar -> Either String a) -> Conversion
+conversion :: forall a. (Typeable a) => (a -> Either String Scalar) -> (Scalar -> Either String a) -> Conversion
 conversion toLogical fromLogical =
-  ( \_ dynamic -> either (throwIO . ErrorCall) pure (maybe (Left ("a session sent " ++ show (dynTypeRep dynamic) ++ " where it expected "
-      ++ show (typeRep (Proxy :: Proxy a)))) toLogical (fromDynamic dynamic))
-  , \_ value -> either (throwIO . ErrorCall) (pure . toDyn) (fromLogical value) )
+  ( \_ dynamic ->
+      either
+        (throwIO . ErrorCall)
+        pure
+        ( maybe
+            ( Left
+                ( "a session sent "
+                    ++ show (dynTypeRep dynamic)
+                    ++ " where it expected "
+                    ++ show (typeRep (Proxy :: Proxy a))
+                )
+            )
+            toLogical
+            (fromDynamic dynamic)
+        ),
+    \_ value -> either (throwIO . ErrorCall) (pure . toDyn) (fromLogical value)
+  )
 
 -- | A step that sends another protocol's first end between nodes. An end
 -- that is itself between nodes moves to the receiver, which takes it over
@@ -5618,27 +6628,43 @@ conversion toLogical fromLogical =
 -- failure on either side gives up the other. wire is that protocol's steps
 -- and conversions, from its first end; unwrap and wrap convert between its
 -- start type and a SessionEnd.
-endConversion :: forall end. Typeable end => (end -> SessionEnd) -> (SessionEnd -> end)
-              -> ([(Bool, Descriptor)], [Conversion]) -> Conversion
+endConversion ::
+  forall end.
+  (Typeable end) =>
+  (end -> SessionEnd) ->
+  (SessionEnd -> end) ->
+  ([(Bool, Descriptor)], [Conversion]) ->
+  Conversion
 endConversion unwrap wrap (steps, conversions) = (sending, receiving)
   where
     sending endpoint dynamic = case fromDynamic dynamic of
-      Nothing -> throwIO (ErrorCall ("a session sent " ++ show (dynTypeRep dynamic) ++ " where it expected "
-        ++ show (typeRep (Proxy :: Proxy end))))
+      Nothing ->
+        throwIO
+          ( ErrorCall
+              ( "a session sent "
+                  ++ show (dynTypeRep dynamic)
+                  ++ " where it expected "
+                  ++ show (typeRep (Proxy :: Proxy end))
+              )
+          )
       Just end -> do
         side <- useEnd (unwrap end)
         handed <- sideHandOver side
         maybe (relayFrom endpoint side) (pure . textScalar) handed
     relayFrom endpoint side = do
-        let node = endpointNode endpoint
-        n <- nextId node
-        relay <- listenOn node ("relay-" ++ show n) [(not s, d) | (s, d) <- steps] (endpointTable endpoint)
-        relayed <- netChannelSide relay conversions
-        let pump = forM_ steps (\(sends, _) ->
-              if sends then sideReceive relayed >>= sideSend side else sideReceive side >>= sideSend relayed)
-            quietly action = action `catch` \(_ :: SomeException) -> pure ()
-        _ <- forkIO (pump `catch` \(_ :: SomeException) -> quietly (sideAbandon side) >> quietly (sideAbandon relayed))
-        textScalar <$> readIORef (endpointAddress relay)
+      let node = endpointNode endpoint
+      n <- nextId node
+      relay <- listenOn node ("relay-" ++ show n) [(not s, d) | (s, d) <- steps] (endpointTable endpoint)
+      relayed <- netChannelSide relay conversions
+      let pump =
+            forM_
+              steps
+              ( \(sends, _) ->
+                  if sends then sideReceive relayed >>= sideSend side else sideReceive side >>= sideSend relayed
+              )
+          quietly action = action `catch` \(_ :: SomeException) -> pure ()
+      _ <- forkIO (pump `catch` \(_ :: SomeException) -> quietly (sideAbandon side) >> quietly (sideAbandon relayed))
+      textScalar <$> readIORef (endpointAddress relay)
     receiving endpoint value = case value of
       SSequence _ cps -> do
         let address = map chr cps
@@ -5673,15 +6699,15 @@ recordCall (Calls ref) operation arguments = atomicModifyIORef' ref (\calls -> (
 runClause :: Either String a -> IO a
 runClause = either (throwIO . ErrorCall) pure
 
-installed :: Typeable h => String -> h -> Installed
+installed :: (Typeable h) => String -> h -> Installed
 installed key handler = Installed key (toDyn handler) Nothing False
 
 -- | lawspec.time's default Clock handler, installed as the real clock: the
 -- generated tests install it so. Every other Clock handler is virtual.
-installedRealClock :: Typeable h => String -> h -> Installed
+installedRealClock :: (Typeable h) => String -> h -> Installed
 installedRealClock key handler = Installed key (toDyn handler) Nothing True
 
-installedRecording :: Typeable h => String -> (h, Calls) -> Installed
+installedRecording :: (Typeable h) => String -> (h, Calls) -> Installed
 installedRecording key (handler, calls) = Installed key (toDyn handler) (Just calls) False
 
 {-# NOINLINE handlerTable #-}
@@ -5689,8 +6715,10 @@ handlerTable :: IORef [(Unique, [Installed])]
 handlerTable = unsafePerformIO (newIORef [])
 
 installHandlers :: SymbolContext -> [Installed] -> IO ()
-installHandlers (SymbolContext unique) handlers = atomicModifyIORef' handlerTable
-  (\table -> ((unique, handlers ++ maybe [] id (lookup unique table)) : filter ((/= unique) . fst) table, ()))
+installHandlers (SymbolContext unique) handlers =
+  atomicModifyIORef'
+    handlerTable
+    (\table -> ((unique, handlers ++ maybe [] id (lookup unique table)) : filter ((/= unique) . fst) table, ()))
 
 installedFor :: SymbolContext -> String -> Installed
 installedFor (SymbolContext unique) key = unsafePerformIO $ do
@@ -5701,7 +6729,7 @@ installedFor (SymbolContext unique) key = unsafePerformIO $ do
 {-# NOINLINE installedFor #-}
 
 -- | The handler installed for an ability, at the type its operation needs.
-handlerOf :: forall h. Typeable h => SymbolContext -> String -> h
+handlerOf :: forall h. (Typeable h) => SymbolContext -> String -> h
 handlerOf symbols key = case installedFor symbols key of
   Installed _ value _ _ -> maybe (error ("the handler for " ++ key ++ " is a " ++ show (dynTypeRep value) ++ ", not a " ++ show (typeRep (Proxy :: Proxy h)))) id (fromDynamic value)
 
@@ -5711,12 +6739,14 @@ performIO = unsafePerformIO
 {-# NOINLINE performIO #-}
 
 -- | A failure raised with the Fail ability.
-data Failure = Failure String Scalar deriving Show
+data Failure = Failure String Scalar deriving (Show)
+
 instance Exception Failure
 
 raiseFailure :: String -> Scalar -> a
 raiseFailure ability value = throw' (Failure ability value)
-  where throw' failure = unsafePerformIO (throwIO failure)
+  where
+    throw' failure = unsafePerformIO (throwIO failure)
 
 -- | Right of the body, or Left of the failure it raised with this ability.
 attempt :: String -> Scalar -> (Scalar -> Scalar) -> (Scalar -> Scalar) -> Scalar
@@ -5749,30 +6779,39 @@ withHandlers symbols@(SymbolContext unique) make body = unsafePerformIO $ do
   before <- readIORef handlerTable
   handlers <- make
   installHandlers symbols handlers
-  let restore = atomicModifyIORef' handlerTable (\table ->
-        (maybe id (\previous -> ((unique, previous) :)) (lookup unique before) (filter ((/= unique) . fst) table), ()))
-  (do value <- evaluate (body ())
+  let restore =
+        atomicModifyIORef'
+          handlerTable
+          ( \table ->
+              (maybe id (\previous -> ((unique, previous) :)) (lookup unique before) (filter ((/= unique) . fst) table), ())
+          )
+  ( do
+      value <- evaluate (body ())
       _ <- evaluate (forceScalar value)
-      pure value) `finally` restore
+      pure value
+    )
+    `finally` restore
 {-# NOINLINE withHandlers #-}
 
 -- | What native code (an adapter, or a production handler) throws to fail
 -- with a value of the failure type its signature names: throwIO (LS.Fail v)
 -- for `fails with E`, v a native E.
 data Fail = forall a. (Typeable a, Show a) => Fail a
+
 instance Show Fail where
   show (Fail value) = "failed with " ++ show value
+
 instance Exception Fail
 
 -- | A native exception lawspec.json maps to a failure.
 newtype MappedFailure = MappedFailure (SomeException -> Maybe Scalar)
 
-mappedFailure :: Exception e => (e -> Scalar) -> MappedFailure
+mappedFailure :: (Exception e) => (e -> Scalar) -> MappedFailure
 mappedFailure make = MappedFailure (fmap make . fromException)
 
 -- | Native code that may fail: a Fail it throws (with a native E), or an
 -- exception lawspec.json maps, becomes a failure of the ability.
-nativeFailures :: forall e. Typeable e => String -> (e -> Scalar) -> (() -> Scalar) -> [MappedFailure] -> Scalar
+nativeFailures :: forall e. (Typeable e) => String -> (e -> Scalar) -> (() -> Scalar) -> [MappedFailure] -> Scalar
 nativeFailures ability convert body mapped = unsafePerformIO $ do
   outcome <- try (do value <- evaluate (body ()); _ <- evaluate (forceScalar value); pure value)
   case outcome of

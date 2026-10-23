@@ -6,25 +6,35 @@
 -- Statistics go to standard output, and, when LAWSPEC_STATS names a
 -- directory, to one JSON file per test there, which lawspec test reads.
 module LawSpecHarness
-  ( HarnessError(..), checkDrawn, observe, target, run, knownFailing, benchmark, record, shuffled, parallelism
-  ) where
+  ( HarnessError (..),
+    checkDrawn,
+    observe,
+    target,
+    run,
+    knownFailing,
+    benchmark,
+    record,
+    shuffled,
+    parallelism,
+  )
+where
 
+import Control.Concurrent (ThreadId, getNumCapabilities, myThreadId)
 import Control.Exception (Exception, SomeException, evaluate, finally, fromException, throwIO, try)
 import Control.Monad (forM, unless, when)
 import Data.Char (isAlphaNum)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (intercalate, sortOn)
 import qualified Data.Map.Strict as M
+import Data.Word (Word64)
 import GHC.Clock (getMonotonicTimeNSec)
+import LawSpecRuntime (Scalar (..))
+import qualified LawSpecRuntime as LS
 import Numeric (showFFloat)
 import System.Environment (lookupEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Timeout (timeout)
-import LawSpecRuntime (Scalar(..))
-import qualified LawSpecRuntime as LS
-import Data.Word (Word64)
 import Test.Hspec (SpecWith, runIO)
-import Control.Concurrent (getNumCapabilities, ThreadId, myThreadId)
 
 -- A harness requirement failed: a strategy or an adequacy check.
 newtype HarnessError = HarnessError String
@@ -58,10 +68,21 @@ record name entry = do
 -- A drawn value must satisfy its input's refinements: a strategy may only
 -- produce values the law is about.
 checkDrawn :: String -> String -> Bool -> Scalar -> IO ()
-checkDrawn strategy name holds value = unless holds $ throwIO (HarnessError ("the strategy " ++ strategy ++ " produced " ++
-  LS.renderValue value ++ " for " ++ name ++ ", which is outside the input's refinement; a strategy may only produce values of its type"))
+checkDrawn strategy name holds value =
+  unless holds $
+    throwIO
+      ( HarnessError
+          ( "the strategy "
+              ++ strategy
+              ++ " produced "
+              ++ LS.renderValue value
+              ++ " for "
+              ++ name
+              ++ ", which is outside the input's refinement; a strategy may only produce values of its type"
+          )
+      )
 
-data Stats = Stats { cases :: Int, covered :: M.Map String Int, classes :: M.Map String Int, labels :: M.Map String Int, best :: Maybe Double }
+data Stats = Stats {cases :: Int, covered :: M.Map String Int, classes :: M.Map String Int, labels :: M.Map String Int, best :: Maybe Double}
 
 emptyStats :: Stats
 emptyStats = Stats 0 M.empty M.empty M.empty Nothing
@@ -89,12 +110,18 @@ runKey law name = law ++ "\0" ++ name
 
 -- What one generated case covers, classifies and labels.
 observe :: String -> [(String, Bool)] -> [(String, Bool)] -> [Scalar] -> IO ()
-observe law covers classified labelled = statisticsKey law >>= \key -> atomicModifyIORef' statistics $ \table ->
-  let s = M.findWithDefault emptyStats key table
-      count xs m = foldr (\(l, holds) acc -> if holds then M.insertWith (+) l 1 acc else acc) m xs
-      s' = s { cases = cases s + 1, covered = count covers (covered s), classes = count classified (classes s)
-             , labels = foldr (\v acc -> M.insertWith (+) (text v) 1 acc) (labels s) labelled }
-  in (M.insert key s' table, ())
+observe law covers classified labelled =
+  statisticsKey law >>= \key -> atomicModifyIORef' statistics $ \table ->
+    let s = M.findWithDefault emptyStats key table
+        count xs m = foldr (\(l, holds) acc -> if holds then M.insertWith (+) l 1 acc else acc) m xs
+        s' =
+          s
+            { cases = cases s + 1,
+              covered = count covers (covered s),
+              classes = count classified (classes s),
+              labels = foldr (\v acc -> M.insertWith (+) (text v) 1 acc) (labels s) labelled
+            }
+     in (M.insert key s' table, ())
   where
     text v = case v of
       SSequence _ units -> map toEnum units
@@ -104,10 +131,11 @@ observe law covers classified labelled = statisticsKey law >>= \key -> atomicMod
 -- draws is reported with the law's statistics, and LawSpec's own search
 -- (LS.searchClimb) climbs after the property.
 target :: Scalar -> String -> IO ()
-target score law = statisticsKey law >>= \key -> atomicModifyIORef' statistics $ \table ->
-  let s = M.findWithDefault emptyStats key table
-      value = number score
-  in (M.insert key s { best = Just (maybe value (max value) (best s)) } table, ())
+target score law =
+  statisticsKey law >>= \key -> atomicModifyIORef' statistics $ \table ->
+    let s = M.findWithDefault emptyStats key table
+        value = number score
+     in (M.insert key s {best = Just (maybe value (max value) (best s))} table, ())
   where
     number v = case v of
       SInteger _ n -> fromIntegral n
@@ -124,18 +152,25 @@ adequacy law covers = do
       results = [(p, l, percent (M.findWithDefault 0 l (covered s))) | (p, l) <- covers]
       met (p, _, observed) = n > 0 && observed >= fromIntegral p
       shown d = showFFloat (Just 1) d ""
-  putStrLn (intercalate "\n" (
-    [law ++ ": " ++ show n ++ " generated case(s)"] ++
-    ["  cover " ++ show p ++ "% " ++ show l ++ ": " ++ shown o ++ "%" ++ (if met r then "" else " (not met)") | r@(p, l, o) <- results] ++
-    ["  " ++ l ++ ": " ++ shown (percent k) ++ "%" | (l, k) <- M.toList (classes s)] ++
-    ["  label " ++ l ++ ": " ++ shown (percent k) ++ "%" | (l, k) <- sortOn (negate . snd) (M.toList (labels s))] ++
-    ["  best target score: " ++ show b | Just b <- [best s]]))
+  putStrLn
+    ( intercalate
+        "\n"
+        ( [law ++ ": " ++ show n ++ " generated case(s)"]
+            ++ ["  cover " ++ show p ++ "% " ++ show l ++ ": " ++ shown o ++ "%" ++ (if met r then "" else " (not met)") | r@(p, l, o) <- results]
+            ++ ["  " ++ l ++ ": " ++ shown (percent k) ++ "%" | (l, k) <- M.toList (classes s)]
+            ++ ["  label " ++ l ++ ": " ++ shown (percent k) ++ "%" | (l, k) <- sortOn (negate . snd) (M.toList (labels s))]
+            ++ ["  best target score: " ++ show b | Just b <- [best s]]
+        )
+    )
   let unmet = [law ++ ": cover " ++ show p ++ "% " ++ show l ++ " was not met (" ++ shown o ++ "% of " ++ show n ++ " generated cases)" | r@(p, l, o) <- results, not (met r)]
   unless (null unmet) (throwIO (HarnessError (intercalate "; " unmet)))
-  pure [ ("law", JString law), ("cases", JInt (fromIntegral n))
-       , ("cover", JList [JObject [("label", JString l), ("required", JInt (fromIntegral p)), ("observed", JNumber o), ("met", JBool (met r))] | r@(p, l, o) <- results])
-       , ("classes", JObject [(k, JInt (fromIntegral v)) | (k, v) <- M.toList (classes s)])
-       , ("labels", JObject [(k, JInt (fromIntegral v)) | (k, v) <- M.toList (labels s)]) ]
+  pure
+    [ ("law", JString law),
+      ("cases", JInt (fromIntegral n)),
+      ("cover", JList [JObject [("label", JString l), ("required", JInt (fromIntegral p)), ("observed", JNumber o), ("met", JBool (met r))] | r@(p, l, o) <- results]),
+      ("classes", JObject [(k, JInt (fromIntegral v)) | (k, v) <- M.toList (classes s)]),
+      ("labels", JObject [(k, JInt (fromIntegral v)) | (k, v) <- M.toList (labels s)])
+    ]
 
 once :: String -> Int -> IO () -> IO ()
 once law milliseconds test
@@ -161,8 +196,15 @@ run law name milliseconds repeats retries covers observed test = do
       outcome <- try attempt
       case outcome of
         Right report -> do
-          record name ([("law", JString law), ("test", JString name), ("attempts", JInt attempts),
-            ("outcome", JString (if flaky then "flaky" else "passed"))] ++ report)
+          record
+            name
+            ( [ ("law", JString law),
+                ("test", JString name),
+                ("attempts", JInt attempts),
+                ("outcome", JString (if flaky then "flaky" else "passed"))
+              ]
+                ++ report
+            )
           when flaky (putStrLn (law ++ " is flaky: it failed, then passed on attempt " ++ show attempts))
         Left error'
           | harness error' || attempts > fromIntegral retries -> do
@@ -196,18 +238,34 @@ benchmark name body = do
   started <- getMonotonicTimeNSec
   let loop times = do
         now <- getMonotonicTimeNSec
-        if length times >= 100000 || (now - started > 200000000 && length times >= 3) then pure times else do
-          before <- getMonotonicTimeNSec
-          _ <- body >>= evaluate
-          after <- getMonotonicTimeNSec
-          loop ((after - before) : times)
+        if length times >= 100000 || (now - started > 200000000 && length times >= 3)
+          then pure times
+          else do
+            before <- getMonotonicTimeNSec
+            _ <- body >>= evaluate
+            after <- getMonotonicTimeNSec
+            loop ((after - before) : times)
   times <- loop []
   let mean = fromIntegral (sum times) / fromIntegral (length times) :: Double
       fastest = fromIntegral (minimum times) :: Double
-  putStrLn ("benchmark " ++ name ++ ": " ++ show (length times) ++ " iteration(s), mean " ++ showFFloat (Just 2) (mean / 1000) "" ++
-    " us, fastest " ++ showFFloat (Just 2) (fastest / 1000) "" ++ " us")
-  record ("benchmark " ++ name) [("benchmark", JString name), ("iterations", JInt (fromIntegral (length times))),
-    ("mean_ns", JInt (round mean)), ("min_ns", JInt (round fastest))]
+  putStrLn
+    ( "benchmark "
+        ++ name
+        ++ ": "
+        ++ show (length times)
+        ++ " iteration(s), mean "
+        ++ showFFloat (Just 2) (mean / 1000) ""
+        ++ " us, fastest "
+        ++ showFFloat (Just 2) (fastest / 1000) ""
+        ++ " us"
+    )
+  record
+    ("benchmark " ++ name)
+    [ ("benchmark", JString name),
+      ("iterations", JInt (fromIntegral (length times))),
+      ("mean_ns", JInt (round mean)),
+      ("min_ns", JInt (round fastest))
+    ]
 
 -- order random: the unit's law tests, each law's in one block, in an order
 -- the run's seed chooses (LAWSPEC_SEED, else HSPEC_SEED, else the clock).
@@ -234,7 +292,7 @@ shuffled unit items = do
       let (draw, next) = LS.splitMix64 state
           i = fromIntegral (draw `mod` fromIntegral (length xs))
           (before, chosen : after) = splitAt i xs
-      in chosen : permute next (before ++ after)
+       in chosen : permute next (before ++ after)
 
 -- | parallel: how the unit's tests run at the same time. hspec runs them on
 -- threads, which the threaded runtime (-with-rtsopts=-N) spreads over a

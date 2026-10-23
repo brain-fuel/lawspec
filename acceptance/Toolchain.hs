@@ -40,7 +40,18 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- ormolu has no configuration; its version is pinned in
+    -- test/locks/haskell/ormolu.txt and checked before it runs.
+    "haskell" -> do
+      pinned <- takeWhile (not . isSpace) . dropWhile isSpace . unwords . filter (not . ("#" `isPrefixOf'`)) . lines
+        <$> readFile' (root </> "test/locks/haskell/ormolu.txt")
+      let script = "found=$(ormolu --version | head -n 1); " ++
+            "if [ \"$found\" != \"ormolu " ++ pinned ++ "\" ]; then echo \"ormolu " ++ pinned ++ " is required; found: $found\"; exit 2; fi; " ++
+            "find \"$1\" -name '*.hs' -exec ormolu --mode check {} +"
+      pure (Just (Formatter ("ormolu " ++ pinned) "sh" (\dir -> ["-c", script, "sh", dir]) [".hs"]
+        ["test/locks/haskell/ormolu.txt"]))
     _ -> pure Nothing
+  where isPrefixOf' p s = take (length p) s == p
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

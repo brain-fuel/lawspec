@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+
 -- | Network transports for LawSpecRuntime's nodes: frames over TCP (each a
 -- 4-byte big-endian length, then the frame) and HTTP (POST /lawspec with
 -- the frame as the body). Both speak the same bytes as every other target.
@@ -7,19 +8,19 @@
 -- different languages talk to each other. ref:DEC-distribution-canonical-wire
 module LawSpecTransports (tcpTransport, httpTransport) where
 
-import Control.Concurrent (forkIO, MVar, newMVar, modifyMVar)
+import Control.Concurrent (MVar, forkIO, modifyMVar, newMVar)
 import Control.Exception (SomeException, bracket, catch, throwIO, try)
 import Control.Monad (forever, unless)
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
-import Data.ByteString (ByteString)
 import Data.Char (isDigit, toLower)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf)
+import LawSpecRuntime (Transport (..), Unreachable (..))
 import Network.Socket
 import qualified Network.Socket.ByteString as NB
-import LawSpecRuntime (Transport(..), Unreachable(..))
 
 -- | Frames over TCP on host (port 0 picks a free port); the address is
 -- tcp://host:port.
@@ -48,9 +49,12 @@ tcpTransport host port = do
       start deliver = () <$ forkIO (acceptLoop server closed (\sock -> readFrames sock deliver))
       stop = do
         stopListening server address "tcp://" closed
-        modifyMVar connections (\cached -> do
-          mapM_ (\(_, s) -> close s `catch` \(_ :: SomeException) -> pure ()) cached
-          pure ([], ()))
+        modifyMVar
+          connections
+          ( \cached -> do
+              mapM_ (\(_, s) -> close s `catch` \(_ :: SomeException) -> pure ()) cached
+              pure ([], ())
+          )
   pure (Transport address start send stop)
 
 -- | Frames as HTTP POST bodies to /lawspec; the address is http://host:port.
@@ -62,16 +66,29 @@ httpTransport host port = do
   let address = "http://" ++ host ++ ":" ++ show bound
       start deliver = () <$ forkIO (acceptLoop server closed (\sock -> serveRequest sock deliver))
       send node frame = do
-        outcome <- try (bracket (connectTo node "http://") close (\sock -> do
-          let (h, p) = hostPort (drop (length "http://") node)
-              headers = "POST /lawspec HTTP/1.1\r\nHost: " ++ h ++ ":" ++ p
-                ++ "\r\nContent-Type: application/octet-stream\r\nContent-Length: " ++ show (B.length frame)
-                ++ "\r\nConnection: close\r\n\r\n"
-          NB.sendAll sock (BC.pack headers <> frame)
-          response <- readHead sock B.empty
-          let status = words (BC.unpack (BC.takeWhile (/= '\r') response))
-          unless (take 1 (drop 1 status) `elem` [["204"], ["200"]])
-            (throwIO (userError ("the node answered " ++ unwords (take 3 status))))))
+        outcome <-
+          try
+            ( bracket
+                (connectTo node "http://")
+                close
+                ( \sock -> do
+                    let (h, p) = hostPort (drop (length "http://") node)
+                        headers =
+                          "POST /lawspec HTTP/1.1\r\nHost: "
+                            ++ h
+                            ++ ":"
+                            ++ p
+                            ++ "\r\nContent-Type: application/octet-stream\r\nContent-Length: "
+                            ++ show (B.length frame)
+                            ++ "\r\nConnection: close\r\n\r\n"
+                    NB.sendAll sock (BC.pack headers <> frame)
+                    response <- readHead sock B.empty
+                    let status = words (BC.unpack (BC.takeWhile (/= '\r') response))
+                    unless
+                      (take 1 (drop 1 status) `elem` [["204"], ["200"]])
+                      (throwIO (userError ("the node answered " ++ unwords (take 3 status))))
+                )
+            )
         case outcome of
           Right () -> pure ()
           Left (e :: SomeException) -> throwIO (Unreachable ("cannot reach " ++ node ++ ": " ++ show e))
@@ -80,7 +97,7 @@ httpTransport host port = do
 
 listening :: String -> Int -> IO Socket
 listening host port = do
-  info : _ <- getAddrInfo (Just defaultHints { addrSocketType = Stream, addrFlags = [AI_NUMERICSERV] }) (Just host) (Just (show port))
+  info : _ <- getAddrInfo (Just defaultHints {addrSocketType = Stream, addrFlags = [AI_NUMERICSERV]}) (Just host) (Just (show port))
   sock <- socket (addrFamily info) Stream defaultProtocol
   setSocketOption sock ReuseAddr 1
   bind sock (addrAddress info)
@@ -119,13 +136,14 @@ acceptLoop server closed handler = loop
 type IORefBool = IORef Bool
 
 hostPort :: String -> (String, String)
-hostPort rest = let (h, p) = break (== ':') (reverse (takeWhile (/= '/') rest))
-                in (reverse (drop 1 p), reverse h)
+hostPort rest =
+  let (h, p) = break (== ':') (reverse (takeWhile (/= '/') rest))
+   in (reverse (drop 1 p), reverse h)
 
 connectTo :: String -> String -> IO Socket
 connectTo node scheme = do
   let (h, p) = hostPort (drop (length scheme) node)
-  info : _ <- getAddrInfo (Just defaultHints { addrSocketType = Stream }) (Just h) (Just p)
+  info : _ <- getAddrInfo (Just defaultHints {addrSocketType = Stream}) (Just h) (Just p)
   sock <- socket (addrFamily info) Stream defaultProtocol
   connect sock (addrAddress info) `catch` \(e :: SomeException) -> close sock >> throwIO e
   pure sock
@@ -167,12 +185,21 @@ serveRequest sock deliver = do
       body0 = B.drop 4 rest
       ls = lines (filter (/= '\r') (BC.unpack headPart))
       requestLine = words (concat (take 1 ls))
-      lengthOf = [read (takeWhile isDigit (dropWhile (== ' ') (drop 1 (dropWhile (/= ':') l)))) :: Int
-                 | l <- drop 1 ls, "content-length" `isPrefixOf` map toLower l]
+      lengthOf =
+        [ read (takeWhile isDigit (dropWhile (== ' ') (drop 1 (dropWhile (/= ':') l)))) :: Int
+        | l <- drop 1 ls,
+          "content-length" `isPrefixOf` map toLower l
+        ]
       wanted = case lengthOf of n : _ -> n; [] -> 0
   more <- readExactly sock (max 0 (wanted - B.length body0))
   let body = B.take wanted (body0 <> maybe B.empty id more)
       ok = take 2 requestLine == ["POST", "/lawspec"]
-  NB.sendAll sock (BC.pack (if ok then "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-    else "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+  NB.sendAll
+    sock
+    ( BC.pack
+        ( if ok
+            then "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            else "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+    )
   if ok then deliver body else pure ()

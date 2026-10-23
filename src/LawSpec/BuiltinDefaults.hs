@@ -152,11 +152,16 @@ vectorTestPath target = case target of
 -- @@VECTOR_LINES@@ is the vectors without their comments, as string
 -- literals separated by commas, for targets whose string constants are
 -- bounded (the JVM's are at most 65535 bytes).
+-- @@VECTOR_LIST@@ is the same list's items laid out as ormolu lays out a
+-- list, after its opening bracket.
 fill :: String -> [C.DataDeclaration] -> String -> String -> String
 fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
+  . replace "@@VECTOR_LIST@@" vectorList
   where
     vectors = defaultSource "vectors.txt"
-    vectorLines = intercalate ",\n" ["    \"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
+    items = ["\"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
+    vectorLines = intercalate ",\n" (map ("    " ++) items)
+    vectorList = intercalate ",\n    " items
 
 replace :: String -> String -> String -> String
 replace old new = go
