@@ -25,23 +25,19 @@ import LawSpec.Scalar
 import qualified LawSpec.RustData as NativeData
 import LawSpec.RuntimeSources
 import qualified LawSpec.Code.Doc as Doc
-import Data.Char (ord, isAlphaNum, isAscii, isUpper, toLower)
+import Data.Char (isAlphaNum, isAscii, isUpper, toLower)
 import Data.List (intercalate, find, nub, sortOn, stripPrefix, tails)
 import Data.Maybe (mapMaybe)
 import LawSpec.Naming (NameKind(..), nativeIdentifier, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword)
 import LawSpec.SourceLink (sourceLink, locationLink, exampleLocation, labelled, generatedHeader, unitSourceFile)
 import LawSpec.RustExpr (mentions, unusedAs)
-import Numeric (showHex)
+import qualified LawSpec.RustLayout as RL
 import Control.Monad (forM, unless)
 import LawSpec.Search (lawDescriptors, searchable)
 import LawSpec.Bounds (inputRange)
 
 q :: String -> String
-q s = '"':concatMap escape s ++ "\"" where
-  escape '"' = "\\\""
-  escape '\\' = "\\\\"
-  escape c | ord c < 32 || ord c == 127 = "\\u{" ++ showHex (ord c) "}"
-           | otherwise = [c]
+q = Expression.quoted
 comma :: [String] -> String
 comma = intercalate ", "
 ident :: String -> String
@@ -913,15 +909,20 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               [Doc.text ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++
               [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
               [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
-          content = Doc.joinWith blank (wrappers ++ tests ++ benchmarks ++ map Doc.text modelTests)
+          content = Doc.joinWith blank (filter (not . null . Doc.render Doc.Compact) (wrappers ++ tests ++ benchmarks ++ map Doc.text modelTests))
           -- Only what the tests use: proptest's Strategy methods and the
           -- strategy type when a law has generated cases.
           strategyUsed = any (`mentions` content) ["boxed", "prop_map", "prop_flat_map", "prop_filter"]
-          testDoc = statements ([Doc.text ("// " ++ generatedHeader (unitSourceFile unit))] ++ imports ++ generatorModules ++
-            [Doc.text "use lawspec_runtime as ls;"] ++ [Doc.text "use proptest::strategy::Strategy;" | strategyUsed]) <>
+          -- Modules, then uses, each in rustfmt's order (by name).
+          ordered = sortOn fst [(sortKey (Doc.render Doc.Compact d), d) | d <- imports ++ generatorModules] ++
+            [(("2", ""), Doc.text "use lawspec_runtime as ls;")] ++ [(("2", ""), Doc.text "use proptest::strategy::Strategy;") | strategyUsed]
+          sortKey text = case [w | l <- lines text, w <- take 1 (drop 1 (words l)), take 4 l == "mod "] of
+            name : _ -> ("0", name)
+            [] -> ("1", text)
+          testDoc = statements ([Doc.text ("// " ++ generatedHeader (unitSourceFile unit))] ++ map snd ordered) <>
             (if mentions "ValueStrategy" content then blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") else mempty) <>
             (if hasNativeGenerators then blank <> generatorSupport else mempty) <>
-            blank <> content <> Doc.hardline
+            (if null (Doc.render Doc.Compact content) then mempty else blank <> content) <> Doc.hardline
       pure [Artifact ("src/" ++ modulePath ++ ".rs") (Doc.render layout adapterDoc) (if generatedAdapter then "generated" else "user") "source",
         Artifact ("tests/" ++ testName ++ "_lawspec.rs") (Doc.render layout testDoc) "generated" "test"]
 
@@ -944,8 +945,9 @@ statements :: [Doc.Doc] -> Doc.Doc
 statements = Doc.joinWith Doc.hardline
 statement :: Doc.Doc -> Doc.Doc
 statement value = value <> Doc.text ";"
+-- | A let, laid out as rustfmt lays out its value.
 binding :: String -> Doc.Doc -> Doc.Doc
-binding name value = statement (Doc.hang 4 (Doc.text ("let " ++ name ++ " =")) value)
+binding name value = RL.stmt (RL.Let name (RL.Laid value))
 borrow :: Doc.Doc -> Doc.Doc
 borrow value = Doc.text "&" <> value
 conditional :: Doc.Doc -> Doc.Doc -> Doc.Doc
@@ -955,30 +957,32 @@ function name args result body = Doc.text ("fn " ++ name) <>
   Doc.delimitTrailing 4 "(" ")" args <> Doc.text (" -> " ++ result ++ " ") <> block body
 
 valueLiteral :: V.Value -> Either String Doc.Doc
-valueLiteral (V.ScalarValue value) = Expression.scalarLiteral value
-valueLiteral value@(V.DataValue (Constructor "List" [TypeArgument _]) _ _) = do
+valueLiteral value = RL.expr <$> valueExpr value
+
+-- | A value as a Rust expression that makes it.
+valueExpr :: V.Value -> Either String RL.Expr
+valueExpr (V.ScalarValue value) = Expression.scalarExpr value
+valueExpr value@(V.DataValue (Constructor "List" [TypeArgument _]) _ _) = do
   items <- V.listItems value
-  values <- mapM valueLiteral items
+  values <- mapM valueExpr items
   let nested item = case item of
         V.DataValue (Constructor "List" _) _ _ -> True
         _ -> False
       names = ["element_" ++ show i | i <- [0 :: Int .. length values - 1]]
-      list entries = Doc.text "ls::Value::List(" <> Expression.vector entries <> Doc.text ")"
-  pure (if any nested items then Doc.block 4
-    (Doc.joinWith Doc.hardline
-      ([Doc.hang 4 (Doc.text ("let " ++ name ++ " =")) body <> Doc.text ";"
-        | (name,body) <- zip names values] ++ [list (map Doc.text names)]))
+      list entries = RL.call "ls::Value::List" [RL.vecOf entries]
+  pure (if any nested items
+    then RL.Block [RL.Let name body | (name, body) <- zip names values] (Just (list (map RL.atom names)))
     else list values)
-valueLiteral (V.DataValue _ tag fields) = do
-  values <- mapM valueLiteral fields
-  pure (invoke (if builtinConstructor tag then "ls::construct" else "ls::construct_data")
-    [string (idText tag),Expression.vector values] <> if builtinConstructor tag then Doc.text "?" else mempty)
-valueLiteral (V.PresenceValue (Constructor name [TypeArgument _]) payload) = case payload of
-  Nothing -> pure (Expression.presenceValue name Nothing)
+valueExpr (V.DataValue _ tag fields) = do
+  values <- mapM valueExpr fields
+  let made = RL.call (if builtinConstructor tag then "ls::construct" else "ls::construct_data") [RL.atom (q (idText tag)), RL.vecOf values]
+  pure (if builtinConstructor tag then RL.try' made else made)
+valueExpr (V.PresenceValue (Constructor name [TypeArgument _]) payload) = case payload of
+  Nothing -> pure (RL.call ("ls::Value::" ++ name) [RL.atom "None"])
   Just x -> do
-    value <- valueLiteral x
-    pure (Expression.presenceValue name (Just value))
-valueLiteral _ = Left "invalid structural literal for Rust"
+    value <- valueExpr x
+    pure (RL.call ("ls::Value::" ++ name) [RL.Block [RL.Let "value" value] (Just (RL.call "Some" [RL.call "Box::new" [RL.atom "value"]]))])
+valueExpr _ = Left "invalid structural literal for Rust"
 
 
 -- | Every scalar, container and data constructor consumes one structural node.
@@ -1034,3 +1038,4 @@ outerless text@('(' : rest) | not (null rest), last rest == ')', balanced (init 
       | c == ')' = n > 0 && go (n - 1) cs
       | otherwise = go n cs
 outerless text = text
+

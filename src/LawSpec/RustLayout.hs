@@ -191,12 +191,14 @@ oneLine e = case e of
   _ -> Nothing
   where
     list limit open close args = case mapM oneLine args of
-      Just xs | width (intercalate ", " xs) <= limit -> Just (open ++ intercalate ", " xs ++ close)
+      Just xs | width (intercalate ", " xs) <= limit || (length xs == 1 && open == "(") -> Just (open ++ intercalate ", " xs ++ close)
       _ -> Nothing
-    -- Each link on one line, and the whole chain within 60 columns.
+    -- Each link on one line, and a chain of several links within 60
+    -- columns (rustfmt gives a single link the whole line).
     chained = case (flat e, links) of
-      (Just t, Just _) | width t <= 60 -> Just t
+      (Just t, Just _) | width t <= 60 || linkCount == 1 -> Just t
       _ -> Nothing
+    linkCount = length (snd (unchain e))
     links = let (root, ls') = unchain e in mapM (either oneLine oneLink) root >> mapM oneLink ls'
     oneLink l = case l of
       LinkCall name args tried -> (\xs -> "." ++ name ++ xs ++ (if tried then "?" else "")) <$> list 60 "(" ")" args
@@ -296,8 +298,8 @@ expr :: Expr -> D.Doc
 expr e = case e of
   Atom s -> D.text s
   Laid d -> d
-  Call f args -> expr f <> arguments "(" ")" 60 args
-  Macro name open close args -> D.text name <> arguments open close 60 args
+  Call f args -> expr f <> arguments Nothing "(" ")" 60 args
+  Macro name open close args -> D.text name <> arguments Nothing open close 60 args
   Method {} -> chain e
   Field {} -> chain e
   Try a | isChain a -> chain e
@@ -323,11 +325,14 @@ oneOf = D.bestFit
 -- within the width limit; otherwise the last argument overflows (its
 -- opening stays on the call's line) when it cannot fit on a line of its
 -- own; otherwise one argument per line.
-arguments :: String -> String -> Int -> [Expr] -> D.Doc
-arguments open close _ [] = D.text (open ++ close)
-arguments open close limit args =
+arguments :: Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
+arguments _ open close _ [] = D.text (open ++ close)
+arguments cap open close limit args =
   case (mapM oneLine args, overflowLast) of
-    (Just texts, _) | width (intercalate ", " texts) <= limit ->
+    -- A call's single argument has the whole line; an array's does not.
+    -- An overflowing argument is on one line only within 60 columns.
+    (Just texts, _) | width (intercalate ", " texts) <= limit || (length args == 1 && open == "(")
+                    , maybe True (\c -> width (intercalate ", " texts) + 2 <= c) cap ->
       oneOf ([D.text (open ++ intercalate ", " texts ++ close)] ++ rest)
     _ -> case rest of
       [only] -> only
@@ -338,13 +343,24 @@ arguments open close limit args =
     initial = init args
     lastArg = last args
     overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial
-    overflowed = D.text open <> mconcat [D.text (t ++ ", ") | Just t <- map oneLine initial] <> expr lastArg <> D.text close
+    overflowed = D.text open <> mconcat [D.text (t ++ ", ") | Just t <- map oneLine initial] <> overflowing lastArg <> D.text close
     -- rustfmt overflows the last argument whenever the line up to its
     -- opening fits.
     firstLine = open ++ concat [t ++ ", " | Just t <- map oneLine initial] ++ opening lastArg
     rest
       | overflowLast = [D.prefixChoice firstLine overflowed vertical]
       | otherwise = [vertical]
+
+-- | A call's overflowing last argument: rustfmt lays it out within 60
+-- columns, so a call or macro there keeps its arguments on its line only
+-- when the whole fits in 60.
+overflowing :: Expr -> D.Doc
+overflowing e = case e of
+  Call f args | Just name <- flat f -> D.text name <> arguments (Just (60 - width name)) "(" ")" 60 args
+  Macro name open close args -> D.text name <> arguments (Just (60 - width name)) open close 60 args
+  Try a -> overflowing a <> D.text "?"
+  Prefix op a -> D.text op <> overflowing a
+  _ -> expr e
 
 isChain :: Expr -> Bool
 isChain e = case e of
@@ -388,14 +404,14 @@ unchain e = go e []
 
 linkDoc :: Link -> D.Doc
 linkDoc l = case l of
-  LinkCall name args tried -> D.text ("." ++ name) <> arguments "(" ")" 60 args <> (if tried then D.text "?" else mempty)
+  LinkCall name args tried -> D.text ("." ++ name) <> arguments Nothing "(" ")" 60 args <> (if tried then D.text "?" else mempty)
   LinkField name tried -> D.text ("." ++ name ++ (if tried then "?" else ""))
 
 -- | A link on one line within its call's width limit.
 oneLineLink :: Link -> Maybe String
 oneLineLink l = case l of
   LinkCall name args tried -> case mapM oneLine args of
-    Just xs | width (intercalate ", " xs) <= 60 -> Just ("." ++ name ++ "(" ++ intercalate ", " xs ++ ")" ++ (if tried then "?" else ""))
+    Just xs | width (intercalate ", " xs) <= 60 || length xs == 1 -> Just ("." ++ name ++ "(" ++ intercalate ", " xs ++ ")" ++ (if tried then "?" else ""))
     _ -> Nothing
   LinkField name tried -> Just ("." ++ name ++ (if tried then "?" else ""))
 
@@ -481,6 +497,12 @@ armsDoc arms = D.text "{" <> D.nest 4 (D.hardline <> D.joinWith D.hardline (map 
 
 armDoc :: Arm -> D.Doc
 armDoc (Arm pat guard body) = armDoc (ArmOf (Atom pat) guard body)
+armDoc (ArmOf pat (Just guard) body@(Block _ _))
+  -- A guarded arm whose head does not fit breaks before its guard, and
+  -- its block opens on a line of its own.
+  | Just p <- flat pat, Just g <- oneLine guard, Block ss tailExpr <- body =
+      oneOf [ D.text (p ++ " if " ++ g ++ " => ") <> blockDoc ss tailExpr
+            , D.text p <> D.nest 4 (D.hardline <> D.text "if " <> expr guard <> D.text " =>") <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
   Block ss tailExpr -> headDoc <> D.text " " <> blockDoc ss tailExpr
   inner ->
