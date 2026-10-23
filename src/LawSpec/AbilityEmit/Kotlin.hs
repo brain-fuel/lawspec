@@ -16,6 +16,7 @@ import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.KotlinLayout as KotlinLayout
 import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
 
@@ -72,7 +73,7 @@ emit minify bits datas units = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.kotlinDataTypeDoc datas) args
       resultType <- if result == C.scalarType "Unit" then pure (line "Unit") else Native.kotlinDataTypeDoc datas result
-      pure (line ("fun " ++ op) <> D.delimitTrailing 4 "(" ")" [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
+      pure (line ("fun " ++ op) <> KotlinLayout.arguments [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
         line ": " <> resultType)
     interface a = do
       methods <- mapM (\(op, ty) -> signature op ty) (C.abilityOperations a)
@@ -150,7 +151,7 @@ emit minify bits datas units = do
             arguments = [line "symbols" | isContextual (jvmTypedPlan typed) clause] ++ [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lawspec.runtime.LawSpecFast.Unit.UNIT"]
                else [argument i ty c t | (i, (ty, (c, t))) <- zip [0 :: Int ..] (zip args (zip argumentCodecs typedCodecs))])
-            invocation = line function <> D.delimitTrailing 4 "(" ")" arguments
+            invocation = line function <> KotlinLayout.arguments arguments
             outcome = case C.handlerState h of
               Nothing -> [line "val result = " <> invocation]
               Just _ -> [line "val pair = " <> invocation, line "state = pair.second", line "val result = pair.first"]
@@ -188,7 +189,7 @@ emit minify bits datas units = do
           let values = ["value" ++ show i | i <- [0 .. length args - 1]]
               call = op ++ "(" ++ intercalate ", " values ++ ")"
           pure (line ("/** " ++ op ++ ", with the failure it raises as an Outcome rather than an exception. */") <> D.hardline <>
-            line ("fun try" ++ capitalizeFirst op) <> D.delimitTrailing 4 "(" ")" [line (v ++ ": ") <> t | (v, t) <- zip values types] <>
+            line ("fun try" ++ capitalizeFirst op) <> KotlinLayout.arguments [line (v ++ ": ") <> t | (v, t) <- zip values types] <>
             line ": lawspec.runtime.LawSpecFast.Outcome<" <> resultType <> line ", " <> failureType <> line "> " <>
             D.block 4 (line "try " <> D.block 4 (line ("return lawspec.runtime.LawSpecFast.Outcome.success(" ++ call ++ ")")) <>
               line " catch (failure: LawSpecRuntime.Failure) " <> D.block 4 (D.joinWith D.hardline
@@ -228,7 +229,7 @@ productionStub datas u a = do
     types <- mapM (Native.kotlinDataTypeDoc datas) args
     resultType <- if result == C.scalarType "Unit" then pure (D.text "Unit") else Native.kotlinDataTypeDoc datas result
     pure (D.text ("override fun " ++ op) <>
-      D.delimitTrailing 4 "(" ")" [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
+      KotlinLayout.arguments [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
       D.text ": " <> resultType <> D.text (" = TODO(" ++ show op ++ ")"))) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   made <- traverse (Native.kotlinDataTypeDoc datas) (C.abilityResource a)

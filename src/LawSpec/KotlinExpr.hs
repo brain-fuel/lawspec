@@ -1,38 +1,22 @@
 -- | Kotlin expression documents over checked Core. Native calls are supplied by
 -- the consumer so definitions and adapter bridges retain their own ABI.
-module LawSpec.KotlinExpr (renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec) where
+module LawSpec.KotlinExpr (renderExpression, renderExpressionIn, scalarLiteral, call, array, reference, quoted, checked, checkedIn, codec, codecIn) where
 
 import LawSpec.Core
 import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.JavaData as Java
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
-import Data.Aeson (encode)
-import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy.Encoding as T
+import qualified LawSpec.KotlinLayout as L
 
--- | Strings are escaped for Kotlin here, once, so no generated literal can end
--- early or change meaning.
+-- | Strings are Kotlin literals ($ escaped), never split: ktfmt leaves a
+-- long one whole. ref:DEC-native-string-literals
 quoted :: String -> D.Doc
-quoted value
-  | length (token value) <= 26 = D.text (token value)
-  | otherwise = D.group (D.text "(" <> D.nest 4
-      (D.softbreak <> D.joinWith (D.text " +" <> D.softline)
-        (map (D.text . token) (chunks value))) <> D.softbreak <> D.text ")")
-  where
-    token = concatMap escapeDollar . T.unpack . T.decodeUtf8 . encode
-    escapeDollar '$' = "\\$"
-    escapeDollar c = [c]
-    chunks [] = []
-    chunks rest =
-      let count = max 1 (length (takeWhile
-            (\n -> length (token (take n rest)) <= 26) [1 .. length (take 24 rest)]))
-      in take count rest : chunks (drop count rest)
+quoted = L.kotlinString
 
--- | Arguments wrap when a call is too wide, in the Kotlin style LawSpec follows.
--- ref:DEC-readable-output-default
+-- | Arguments wrap as ktfmt wraps them. ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
-call name values = D.text name <> D.delimitTrailing 4 "(" ")" values
+call = L.call
 
 -- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
@@ -46,12 +30,16 @@ reference = Native.kotlinTypeReferenceDoc
 -- adapter cannot return a value outside its declared domain.
 -- ref:DEC-portable-exact-arithmetic
 checked :: [DataDeclaration] -> Int -> Type -> D.Doc -> Either String D.Doc
-checked declarations bits ty value
+checked declarations bits = checkedIn ("_schema", D.text (show bits)) declarations
+
+-- | As checked, with the schema and machine width under the caller's names.
+checkedIn :: (String, D.Doc) -> [DataDeclaration] -> Type -> D.Doc -> Either String D.Doc
+checkedIn (schema, width) declarations ty value
   | Native.requiresSchema declarations ty = do
       ref <- reference ty
-      pure (call "_schema.validate" [ref,value,D.text (show bits),D.text "symbols"])
+      pure (call (schema ++ ".validate") [ref,value,width,D.text "symbols"])
   | otherwise = pure (call "LawSpecRuntime.convert"
-      [quoted (Java.javaDataKey ty),value,D.text (show bits)])
+      [quoted (Java.javaDataKey ty),value,width])
 
 -- | A codec converts between the generated Kotlin type and the runtime value,
 -- checking the value as it goes.
@@ -64,6 +52,11 @@ codec declarations bits =
   value <- codecFor ty
   pure (D.multiline (D.text "run " <> D.block 4 (D.joinWith D.hardline
     [D.text "val schema = _schema",D.text ("val bits = " ++ show bits),value])))
+
+-- | A codec over the schema and machine width under the caller's names (a
+-- test's SCHEMA and MACHINE_BITS).
+codecIn :: (String, String) -> [DataDeclaration] -> Type -> Either String D.Doc
+codecIn scope declarations = Native.kotlinCodecDocIn scope (D.text "symbols") declarations
 
 -- | Literals become runtime values built from their declared type and exact
 -- digits, so Kotlin never reads a number at its own precision.
@@ -95,9 +88,15 @@ scalarLiteral ty value = case value of
 -- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpression declarations bits local external = render
+renderExpression declarations bits = renderExpressionIn ("_schema", D.text (show bits)) declarations
+
+-- | As renderExpression, with the schema and machine width under the
+-- caller's names.
+renderExpressionIn :: (String, D.Doc) -> [DataDeclaration] -> (Id -> String)
+  -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
+renderExpressionIn scope@(schema, width) declarations local external = render
   where
-    width = D.text (show bits)
+    checked' = checkedIn scope declarations
     key = quoted . Java.javaDataKey
     runtime name = call ("LawSpecRuntime." ++ name)
     render term
@@ -108,9 +107,7 @@ renderExpression declarations bits local external = render
           let resultsName = "group" ++ show (length (show term))
               bindings = [D.text ("val " ++ local (binderId binder) ++ " = " ++ resultsName ++ "[" ++ show i ++ "]")
                 | (i,binder) <- zip [0::Int ..] binders]
-          pure (runtime "concurrently" ((D.text ("{ " ++ resultsName ++ " ->") <>
-            D.nest 4 (D.hardline <> D.joinWith D.hardline (bindings ++ [inner])) <> D.hardline <> D.text "}") :
-            [D.text "{" <> D.nest 4 (D.softline <> step) <> D.softline <> D.text "}" | step <- steps]))
+          pure (runtime "concurrently" (L.lambda [resultsName] (bindings ++ [inner]) : [L.lambda [] [step] | step <- steps]))
     render term = case expressionNode term of
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
@@ -120,18 +117,13 @@ renderExpression declarations bits local external = render
         ref <- reference (expressionType value)
         callbacks <- mapM (\(binder,predicate) -> do
           body <- render predicate
-          pure (D.text "java.util.function.Function " <>
-            D.text "{" <> D.nest 4 (D.softline <>
-              D.text (local (binderId binder) ++ " ->") <> D.softline <> body) <>
-            D.softline <> D.text "}")) predicates
-        pure (call "_schema.allPayloads"
+          pure (D.text "java.util.function.Function " <> L.lambda [local (binderId binder)] [body])) predicates
+        pure (call (schema ++ ".allPayloads")
           [ref,argument,call "listOf" callbacks,width,D.text "symbols"])
       AllElements value binder predicate -> do
         argument <- render value
         body <- render predicate
-        pure (runtime "allElements" [argument,
-          D.text "{" <> D.nest 4 (D.softline <>
-            D.text (local (binderId binder) ++ " ->") <> D.softline <> body) <> D.softline <> D.text "}"])
+        pure (runtime "allElements" [argument, L.lambda [local (binderId binder)] [body]])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
       Let binder value body -> do
@@ -140,15 +132,14 @@ renderExpression declarations bits local external = render
         -- Kotlin's inline stdlib let expands an entire finite search into
         -- one JVM method. The shared JVM helper preserves the same strict
         -- binding while giving each callback a separate bytecode method.
-        pure (runtime "let" [argument,D.text ("{ " ++ local (binderId binder) ++ " ->") <>
-          D.nest 4 (D.softline <> inner) <> D.softline <> D.text "}"])
-      Constant value -> scalarLiteral (expressionType term) value >>= checked declarations bits (expressionType term)
+        pure (runtime "let" [argument, L.lambda [local (binderId binder)] [inner]])
+      Constant value -> scalarLiteral (expressionType term) value >>= checked' (expressionType term)
       Construct tag args -> do
         values <- mapM render args
         if Native.requiresSchema declarations (expressionType term) then do
           ref <- reference (expressionType term)
           pure (call "LawSpecKotlinCodecs.construct"
-            [D.text "_schema",ref,quoted (idText tag),call "listOf" values,width,D.text "symbols"])
+            [D.text schema,ref,quoted (idText tag),call "listOf" values,width,D.text "symbols"])
         else pure (runtime "construct" [key (expressionType term),quoted (idText tag),array values])
       ExternalCall _ args -> mapM render args >>= external term
       -- Ability nodes go to the caller, which knows where handlers are.
@@ -158,20 +149,20 @@ renderExpression declarations bits local external = render
       Convert mode target value -> do
         argument <- render value
         case mode of
-          CheckedArgument -> checked declarations bits target argument
+          CheckedArgument -> checked' target argument
           Explicit -> pure (runtime "helper" [key target,array [argument],width])
       If c a b -> do
         condition <- render c
         yes <- render a
         no <- render b
-        pure (D.group (D.text "(if (" <> runtime "truth" [condition] <> D.text ")" <> D.nest 4 (D.softline <> yes) <>
-          D.softline <> D.text "else" <> D.nest 4 (D.softline <> no) <> D.text ")"))
-      ShortCircuit op a b -> do
-        left <- render a
-        right <- render b
-        pure (runtime "bool" [D.group (runtime "truth" [left] <>
-          D.text (if op == And then " &&" else " ||") <>
-          D.nest 4 (D.softline <> runtime "truth" [right]))])
+        pure (D.group (D.group (D.text "(if (" <> D.nest 4 (D.softbreak <> runtime "truth" [condition]) <> D.softbreak <> D.text ")") <>
+          D.nest 4 (D.softline <> yes) <> D.softline <> D.group (D.text "else" <> D.nest 4 (D.softline <> no)) <> D.text ")"))
+      -- A chain of one operator is one condition, broken after each.
+      ShortCircuit op _ _ -> do
+        operands <- mapM render (chainOf op term)
+        pure (runtime "bool" [case map (\o -> runtime "truth" [o]) operands of
+          first : rest -> D.group (first <> D.nest 4 (mconcat [D.text (if op == And then " &&" else " ||") <> D.softline <> o | o <- rest]))
+          [] -> D.text "true"])
       Unary Not value -> do
         argument <- render value
         pure (runtime "bool" [D.text "!" <> runtime "truth" [argument]])
@@ -184,7 +175,7 @@ renderExpression declarations bits local external = render
         if Native.requiresSchema declarations (expressionType a) then do
           ref <- reference (expressionType a)
           pure (runtime "bool" [(if op == NotEqual then D.text "!" else mempty) <>
-            call "_schema.equal" [ref,left,right,width,D.text "symbols"]])
+            call (schema ++ ".equal") [ref,left,right,width,D.text "symbols"]])
         else pure (runtime "binary" [quoted (binaryName op),left,right])
       Helper Concurrently [value] -> render value
       Helper builtin args -> do
@@ -197,12 +188,15 @@ renderExpression declarations bits local external = render
         let fallback = D.text "else -> " <> D.block 4
               (D.text "throw " <> call "IllegalArgumentException"
                 [quoted "invalid checked match constructor"])
-            body = D.text "when (_tag) " <> D.block 4 (D.joinWith D.hardline (arms ++ [fallback]))
-        pure (D.multiline (call "LawSpecKotlinCodecs.match" [D.text "_schema",ref,value,width,D.text "symbols"] <>
-          D.text " { _tag, _fields ->" <> D.nest 4 (D.hardline <> body) <> D.hardline <> D.text "}"))
+            body = D.text "when (tag) " <> D.block 4 (D.joinWith D.hardline (arms ++ [fallback]))
+        pure (D.multiline (L.trailing (call "LawSpecKotlinCodecs.match" [D.text schema,ref,value,width,D.text "symbols"])
+          ["tag", "fields"] [body]))
+    chainOf op e = case expressionNode e of
+      ShortCircuit op' a b | op' == op -> chainOf op a ++ chainOf op b
+      _ -> [e]
     branch matched = do
       body <- render (caseBody matched)
-      let bindings = [D.text ("val " ++ local (binderId binder) ++ " = _fields[" ++ show index ++ "]")
+      let bindings = [D.text ("val " ++ local (binderId binder) ++ " = fields[" ++ show index ++ "]")
             | (index,binder) <- zip [0::Int ..] (caseBinders matched)]
       pure (quoted (idText (caseConstructor matched)) <> D.text " -> " <>
         D.block 4 (D.joinWith D.hardline (bindings ++ [body])))

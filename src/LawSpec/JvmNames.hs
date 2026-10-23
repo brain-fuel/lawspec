@@ -29,7 +29,7 @@ jvmReserved target = targetKeywords target ++ words
   "symbols values inputs captured environment seed seeds iteration sizeHint caseIndex measured error \
   \value native recorded matched fields group results raw bytes index integer number point units unit \
   \description real imaginary coefficient exponent numerator denominator positive released unused \
-  \schema bits context actual expected type LawSpecRuntime Value String Object \
+  \schema bits context actual expected type tag fields config random LawSpecRuntime Value String Object \
   \Map List HashMap Generator PropertyChecker Test MACHINE_BITS"
 
 -- | A source binder's identifier: camelCase, a keyword or reserved name

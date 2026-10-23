@@ -17,6 +17,7 @@ import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
 import LawSpec.AbilityEmit.Kotlin (abilitiesObjectOf)
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.KotlinLayout as KotlinLayout
 import LawSpec.RuntimeSources (runtimeSource)
 
 -- | Bound adapters call the user's Kotlin code directly, through generated

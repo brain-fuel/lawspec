@@ -270,10 +270,15 @@ emitTests Config{..} unit laws = do
       C.DrawSuchThat inner binder predicate limit -> do
         doc <- drawDoc inp strategy inner
         pure (call "lawspec.testing.LawSpecHarness.suchThat" [lambda "()" doc, lambda (localName (C.binderId binder)) (truth (expr predicate)), number limit, quoted strategy])
-      C.DrawBind binder from rest -> do
-        fromDoc <- drawDoc inp strategy from
-        restDoc <- drawDoc inp strategy rest
-        pure (text "((java.util.function.Function<Value, Value>) " <> lambda (localName (C.binderId binder)) restDoc <> text ").apply(" <> fromDoc <> text ")")
+      -- draw x, then the rest knowing x: a block of declarations.
+      C.DrawBind {} -> do
+        let chainOf d' = case d' of
+              C.DrawBind binder from rest -> let (steps, final) = chainOf rest in ((binder, from) : steps, final)
+              _ -> ([], d')
+            (steps, final) = chainOf d
+        declarations <- mapM (\(binder, from) -> bind (localName (C.binderId binder)) <$> drawDoc inp strategy from) steps
+        finalDoc <- drawDoc inp strategy final
+        pure (runtime "block" [D.multiline (text "() -> " <> block (statements (declarations ++ [returned finalDoc])))])
     -- LAWSPEC_SEED fixes jetCheck's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = braced (text "private static PropertyChecker.Parameters checker()") (statements

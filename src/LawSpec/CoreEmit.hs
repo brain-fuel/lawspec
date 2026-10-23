@@ -489,7 +489,10 @@ emitPlanFormatted minify target Plan{..} = do
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecKotlinStrategies.kt" (runtimeSource "kotlin-data-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
         -- TCP and HTTP transports for nodes (the network package).
         [Artifact "src/LawSpecTransports.hs" (runtimeSource "haskell-transports") "generated" "source" | needsRuntime && target == "haskell"] ++
-        [Artifact "src/test/kotlin/lawspec/testing/LawSpecStrategies.kt" (runtimeSource "kotlin-strategies") "generated" "test" | needsRuntime && target == "kotlin"]
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecStrategies.kt" (runtimeSource "kotlin-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        -- Kotlin: the scalar generators the tests draw from, in the runtime.
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecScalars.kt" (runtimeSource "kotlin-scalars") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecTesting.kt" (runtimeSource "kotlin-testing") "generated" "test" | needsRuntime && target == "kotlin"]
   unless (target `notElem` ["python","javascript","typescript"] || all
     (\u -> map toLower (head (split '.' (unitName u))) `notElem`
       ["lawspec_runtime","lawspec_schema","lawspec_data","lawspec_data_strategies","lawspec_definitions","lawspec_definition_bodies"]) units)

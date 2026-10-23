@@ -27,6 +27,7 @@ import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.KotlinExpr as KotlinExpr
 import qualified LawSpec.KotlinProperties as KotlinProperties
 import qualified LawSpec.KotlinTestHelpers as KotlinTestHelpers
+import qualified LawSpec.KotlinLayout as KotlinLayout
 import LawSpec.ScalaUnitEmit (emitScalaUnit)
 import LawSpec.Backend
 import LawSpec.Common
@@ -40,13 +41,15 @@ import qualified LawSpec.Code.Doc as Doc
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
-import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub, stripPrefix)
+import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub, nubBy, stripPrefix)
 import Data.Maybe (listToMaybe)
 import Data.Char (toLower, isAlphaNum)
 import LawSpec.Search (lawDescriptors, searchable)
 import qualified LawSpec.Backend as Backend
 import qualified Data.Map.Strict as M
-import LawSpec.JvmNames (jvmLocalTable, jvmReserved, contractMethod)
+import LawSpec.JvmNames (jvmLocalTable, jvmReserved, contractMethod, jvmClaimAll, jvmLocal)
+import qualified Data.Set as S
+import LawSpec.Naming (typeWords)
 import LawSpec.SourceLink (unitSourceFile, sourceLink, labelled)
 
 q :: String -> String
@@ -110,10 +113,19 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     localName identity
       | target `elem` ["java", "kotlin"] = M.findWithDefault (Backend.localName identity) identity jvmLocals
       | otherwise = Backend.localName identity
-    jvmLocals = M.unions (map (jvmLocalTable target (jvmReserved target) . propertyBinders . original) ls ++
+    jvmLocals = M.unions (map (\e -> jvmLocalTable target (jvmReserved target) (propertyBinders (original e) ++ planBinders e)) ls ++
       [jvmLocalTable target (jvmReserved target) (C.contractArguments c ++ [C.contractResult c]) | c <- contracts u])
     -- A declaration's source line, for the comment on its stub.
     declarationLink n = listToMaybe [l | d <- C.unitDeclarations u, C.declarationName d == n, Just l <- [sourceLink (C.declarationOrigin d)]]
+    -- The binders the generation plan's own predicates and hints introduce.
+    planBinders e = [generatorBinder r | r <- generatorRequirements e] ++
+      concat [drawBinders d | (_, _, d) <- C.harnessDraws (C.propertyHarness (original e))] ++
+      concatMap expressionBinders (concat [generatorPredicates r ++ generatorHints r ++ map snd (generatorBounds r) | r <- generatorRequirements e])
+    drawBinders d = case d of
+      C.DrawFrequency alternatives -> concatMap (drawBinders . snd) alternatives
+      C.DrawSuchThat inner binder predicate _ -> drawBinders inner ++ binder : expressionBinders predicate
+      C.DrawBind binder from rest -> binder : drawBinders from ++ drawBinders rest
+      _ -> []
     adapterFunctions = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u,
       C.declarationId d `notElem` map fst definitions]
     ktCustom = (kt &&) . KotlinData.requiresSchema dataDeclarations
@@ -124,7 +136,6 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktConstruct ty tag fields = "LawSpecKotlinCodecs.construct(_schema, " ++ ktRef ty ++ ", " ++
       q tag ++ ", listOf(" ++ intercalate ", " fields ++ "), " ++ show bits ++ ")"
     ktDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
-    ktDataHelpers = ktDocument (KotlinTestHelpers.dataHelpersDoc bits kotlinGeneratorDoc <> Doc.hardline <> Doc.hardline)
     hsCustom = (hs &&) . HaskellData.requiresSchema dataDeclarations
     hsRef = java . HaskellData.haskellTypeReference
     hsCodec = replace "schema bits" ("_lawspecSchema " ++ show bits) . java . HaskellData.haskellCodec dataDeclarations
@@ -202,11 +213,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
          | otherwise = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) $
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            (if null pkg then mempty else Doc.text ("package " ++ pkg) <> Doc.hardline <> Doc.hardline) <>
-           Doc.text "import lawspec.runtime.LawSpecRuntime" <> Doc.hardline <> Doc.hardline <>
+           (if "LawSpecRuntime" `isInfixOf` Doc.render Doc.Compact kotlinMembers
+             then Doc.text "import lawspec.runtime.LawSpecRuntime" <> Doc.hardline <> Doc.hardline else mempty) <>
            Doc.text ("object " ++ cls ++ " ") <>
-           Doc.block 4 (Doc.joinWith (Doc.hardline <> Doc.hardline)
-             ([kotlinStubFn n t | (n,t) <- adapterFunctions] ++
-              [java (KotlinAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u])) <> Doc.hardline
+           (if null adapterFunctions && null (ownAbilities u) then Doc.text "{}" else Doc.block 4 kotlinMembers) <> Doc.hardline
     native t | kt = java (KotlinData.kotlinDataType dataDeclarations t)
     native t | hs = java (hsDataType t)
     native t | goCustom t = java (goDataType t)
@@ -251,7 +261,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     awaitFor name call
       | name `notElem` asyncFunctions u = call
       | go = call <> Doc.text ".Await()"
-      | kt = Doc.text "kotlinx.coroutines.runBlocking { " <> call <> Doc.text " }"
+      | kt = KotlinLayout.trailing (Doc.text "kotlinx.coroutines.runBlocking") [] [call]
       | hs = Doc.text "LS.awaitTask (" <> call <> Doc.text ")"
       | otherwise = call <> Doc.text ".join()"
     goStubFn n t =
@@ -320,22 +330,25 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           arguments = [Doc.text (handlerParameter ability ++ ": " ++ ktInterface ability) | ability <- usesOf n] ++
             [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
             (i,ty) <- zip [0::Int ..] args]
-          signature = Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n) <> Doc.delimitTrailing 4 "(" ")" arguments <>
+          signature = KotlinLayout.callWith (Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n)) arguments <>
             Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else typeDoc result)
-      in Doc.lineComment 96 "// " (prettyType t) <>
+      in Doc.lineComment 96 "// " (labelled (n ++ " :: " ++ prettyType t) (declarationLink n)) <>
         Doc.group (signature <> Doc.text " =" <>
           Doc.nest 4 (Doc.softline <> Doc.text ("TODO(" ++ quote n ++ ")")))
+    kotlinMembers = Doc.joinWith (Doc.hardline <> Doc.hardline)
+      ([kotlinStubFn n t | (n,t) <- adapterFunctions] ++
+       [java (KotlinAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u])
     testHeader = testHeaderBase ++
       (if hs || kt || target == "java" then "" else testHelpers) ++
       (if goSchemaNeeded then goDataHelpers else "")
     testHeaderBase | go = "// Generated by LawSpec.\n" ++ header ++ (if goSchemaNeeded then "import \"fmt\"\n" else "") ++ "import (\"testing\"; \"pgregory.net/rapid\")\n"
                | hs = "-- Generated by LawSpec.\n" ++ (if null (C.unitAbilities u) then "" else "{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}\n") ++ "module " ++ intercalate "." (map hsPart parts) ++ "Spec (spec) where\nimport qualified Prelude as P\nimport Prelude\nimport Test.Hspec\nimport Control.Exception (SomeException, catch, displayException)\nimport Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)\nimport Hedgehog (forAll, evalIO, footnote)\nimport qualified Hedgehog.Gen as Gen\nimport qualified Hedgehog.Range as Range\nimport LawSpecRuntime (Scalar(..))\nimport qualified LawSpecRuntime as LS\nimport qualified " ++ intercalate "." (map hsPart parts) ++ " as Impl\n" ++
                    (if null (C.unitAbilities u) then "" else "import qualified " ++ HaskellAbilities.typesModule u ++ " as Abilities\nimport qualified " ++ HaskellAbilities.handlersModule u ++ " as Handlers\n") ++ (if null definitions then "" else "import qualified LawSpecDefinitionBodies as Definitions\n") ++ (if any (("Workflows." `isPrefixOf`) . snd) definitions then "import qualified LawSpecWorkflows as Workflows\n" else "") ++ hsSupport ++ hsDataHelpers ++ testHelpers ++ "spec :: Spec\nspec = do\n"
-               | otherwise = "// Generated by LawSpec.\n" ++ header ++ if kt then "import io.kotest.core.spec.style.StringSpec\nimport io.kotest.property.checkAll\nimport io.kotest.property.Arb\nimport io.kotest.property.arbitrary.int\nimport io.kotest.property.arbitrary.boolean\nimport io.kotest.property.arbitrary.float\nimport io.kotest.property.arbitrary.double\nimport lawspec.testing.lawspecList\nimport io.kotest.property.arbitrary.map\nimport io.kotest.property.arbitrary.bind\nimport io.kotest.property.arbitrary.filter\nimport lawspec.testing.lawspecChoice\nimport io.kotest.property.arbitrary.constant\nimport io.kotest.property.arbitrary.element\nimport lawspec.runtime.LawSpecSchema\nimport lawspec.runtime.LawSpecDataSchema\nimport lawspec.runtime.LawSpecDataCodecs\nimport lawspec.runtime.LawSpecKotlinCodecs\nimport lawspec.testing.LawSpecKotlinStrategies\n" ++ testHelpers ++ ktDataHelpers ++ "class " ++ cls ++ "LawSpecTest : StringSpec({\n" else "import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.assertTrue;\nimport java.util.*;\nimport org.jetbrains.jetCheck.Generator;\nimport org.jetbrains.jetCheck.PropertyChecker;\npublic final class " ++ cls ++ "LawSpecTest {\n"
+               | otherwise = "// Generated by LawSpec.\n" ++ header ++ if kt then "import io.kotest.core.spec.style.StringSpec\nimport io.kotest.property.checkAll\nimport io.kotest.property.Arb\nimport io.kotest.property.arbitrary.int\nimport io.kotest.property.arbitrary.boolean\nimport io.kotest.property.arbitrary.float\nimport io.kotest.property.arbitrary.double\nimport lawspec.testing.lawspecList\nimport io.kotest.property.arbitrary.map\nimport io.kotest.property.arbitrary.bind\nimport io.kotest.property.arbitrary.filter\nimport lawspec.testing.lawspecChoice\nimport io.kotest.property.arbitrary.constant\nimport io.kotest.property.arbitrary.element\nimport lawspec.runtime.LawSpecSchema\nimport lawspec.runtime.LawSpecDataSchema\nimport lawspec.runtime.LawSpecDataCodecs\nimport lawspec.runtime.LawSpecKotlinCodecs\nimport lawspec.testing.LawSpecKotlinStrategies\n" ++ testHelpers ++ "class " ++ cls ++ "LawSpecTest : StringSpec({\n" else "import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.assertTrue;\nimport java.util.*;\nimport org.jetbrains.jetCheck.Generator;\nimport org.jetbrains.jetCheck.PropertyChecker;\npublic final class " ++ cls ++ "LawSpecTest {\n"
     testHelpers
       | hs = hsDocument (HaskellTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
       | go = goDocument GoTestHelpers.assertionDoc
-      | kt = ktDocument (KotlinTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
+      | kt = ""
       | otherwise = ""
     goDataHelpers = goDocument (GoTestHelpers.dataHelpersDoc bits goGeneratorDoc)
     quote = if kt then concatMap (\c -> if c == '$' then "\\$" else [c]) . q else q
@@ -375,35 +388,54 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     render term | kt = java (ktDocument <$>
       KotlinExpr.renderExpression dataDeclarations bits localName ktExternal term)
     render term = renderLegacy term
-    ktRender = java . KotlinExpr.renderExpression dataDeclarations bits localName ktExternal
-    ktChecked ty = java . KotlinExpr.checked dataDeclarations bits ty
+    -- Kotlin tests name the schema and the machine width once (SCHEMA,
+    -- MACHINE_BITS), and lay out as ktfmt does (LawSpec.KotlinLayout).
+    ktScope = ("SCHEMA", Doc.text "MACHINE_BITS")
+    ktRender = java . KotlinExpr.renderExpressionIn ktScope dataDeclarations localName ktExternal
+    ktChecked ty = java . KotlinExpr.checkedIn ktScope dataDeclarations ty
     -- Each codec and native-type maker is applied to the declarations once
     -- per unit, so its registry and names are built once.
-    ktCodecDoc = KotlinExpr.codec dataDeclarations bits
+    ktFullCodec = KotlinExpr.codecIn ("SCHEMA", "MACHINE_BITS") dataDeclarations
+    -- A codec that needs no case's symbols is a value of the test file,
+    -- named after its type (textCodec), so a call reads as what it converts.
+    ktCodecDoc ty = maybe (ktFullCodec ty) (Right . Doc.text) (lookup (show ty) ktCodecNames)
+    ktCodecValues = [ (name, doc) | ((_, name), Right doc) <- zip ktCodecNames (map (ktFullCodec . snd) ktHoisted) ]
+    ktHoisted = [ (show t, t) | t <- nubBy (\a b -> show a == show b) ktCodecTypes
+                , Right doc <- [ktFullCodec t], "symbols" `notElem` words (map (\c -> if isAlphaNum c then c else ' ') (Doc.render Doc.Compact doc)) ]
+    ktCodecNames = zip (map fst ktHoisted) (fst (jvmClaimAll (S.fromList (jvmReserved "kotlin")) [jvmLocal "kotlin" [] (unwords (typeWords t ++ ["codec"])) | (_, t) <- ktHoisted]))
+    ktCodecTypes = C.scalarType "Text" :
+      [t | d <- C.unitDeclarations u, let (as, r) = functionType (C.declarationType d), t <- r : as] ++
+      [t | a <- ktAbilities, (_, ty) <- C.abilityOperations a, let (as, r) = functionType ty, t <- r : as] ++
+      [t | a <- ktAbilities, (_, C.AbilityRef _ failures) <- C.abilityFailures a, t <- failures]
+    ktAbilities = C.unitAbilities u ++ [x | e <- ls, (a, _) <- chosenHandlers e, Just x <- [abilityNamed a]] ++
+      [x | d <- C.unitDeclarations u, a <- C.declarationUses d, Just x <- [abilityNamed a]]
     hsDataType = HaskellData.haskellDataType dataDeclarations
     goDataType = GoData.goDataType dataDeclarations
     -- A test imports the codecs, schema and definitions it names.
     javaCodecDoc = JavaData.javaCodecDocIn "LawSpecDataCodecs" javaBits (Doc.text "symbols") dataDeclarations bits
-    ktNativeArgument ty value = java (ktCodecDoc ty) <>
-      Doc.text ".decode" <> Doc.delimitTrailing 4 "(" ")" [value]
+    ktNativeArgument ty value = ktCodecCall ty "decode" value
+    -- A named codec's call is name.decode(value), as ktfmt keeps a simple
+    -- receiver; another breaks before its dot.
+    ktCodecCall ty method value = case lookup (show ty) ktCodecNames of
+      Just n -> KotlinExpr.call (n ++ "." ++ method) [value]
+      Nothing -> KotlinLayout.chain (java (ktFullCodec ty)) [(method, [value])]
     -- The abstract Integer result is tower-polymorphic: adapters may return any
     -- integral Number, and the runtime bridge discharges the logical domain.
     ktNativeResult ty value | towerResult ty = KotlinExpr.call "LawSpecRuntime.fromNative"
-      [Doc.text (q "Integer"),value,Doc.text (show bits)]
-    ktNativeResult ty value = java (ktCodecDoc ty) <>
-      Doc.text ".encode" <> Doc.delimitTrailing 4 "(" ")" [value]
-    ktHandler ability = Doc.text ("(LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey ability) ++ ") as " ++
-      ktInterface ability ++ ")")
+      [Doc.text (q "Integer"),value,Doc.text "MACHINE_BITS"]
+    ktNativeResult ty value = ktCodecCall ty "encode" value
+    ktHandler ability = Doc.text "(" <> KotlinExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", KotlinExpr.quoted (C.abilityKey ability)] <>
+      Doc.text (" as " ++ ktInterface ability ++ ")")
     -- An ability's pieces are its owner's: the interface, the production
     -- handler (in the owner's adapter object) and the recording.
     ktInterface ability = maybe "Any" (\a -> KotlinAbilities.abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability)
     javaInterface ability = maybe "Object" (\a -> JavaAbilities.abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability)
     jvmProduction a = (if ownerName a == unitName u then cls else JavaAbilities.adapterClassOf (ownerName a)) ++ "." ++ productionName a
     ktConstruct' ty tag fields
-      | ktCustom ty = KotlinExpr.call "LawSpecKotlinCodecs.construct" [Doc.text "_schema",java (KotlinExpr.reference ty),KotlinExpr.quoted tag,KotlinExpr.call "listOf" fields,Doc.text (show bits),Doc.text "symbols"]
+      | ktCustom ty = KotlinExpr.call "LawSpecKotlinCodecs.construct" [Doc.text "SCHEMA",java (KotlinExpr.reference ty),KotlinExpr.quoted tag,KotlinExpr.call "listOf" fields,Doc.text "MACHINE_BITS",Doc.text "symbols"]
       | otherwise = KotlinExpr.call "LawSpecRuntime.construct" [KotlinExpr.quoted (key ty),KotlinExpr.quoted tag,KotlinExpr.call "arrayOf" fields]
     ktEqual ty a b
-      | ktCustom ty = KotlinExpr.call "_schema.equal" [java (KotlinExpr.reference ty),a,b,Doc.text (show bits),Doc.text "symbols"]
+      | ktCustom ty = KotlinExpr.call "SCHEMA.equal" [java (KotlinExpr.reference ty),a,b,Doc.text "MACHINE_BITS",Doc.text "symbols"]
       | otherwise = KotlinExpr.call "LawSpecRuntime.truth" [KotlinExpr.call "LawSpecRuntime.binary" [KotlinExpr.quoted "==",a,b]]
     -- An adapter that fails with E: its native code throws
     -- LawSpecRuntime.Fail with a native E, or an exception lawspec.json maps.
@@ -412,32 +444,32 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       ability@(C.AbilityRef _ [failure]) : _ ->
         let native = Doc.render Doc.Compact (Doc.text (if kt then java (KotlinData.kotlinDataType dataDeclarations failure)
               else java (JavaData.javaDataType dataDeclarations failure)))
-            close = if kt then Doc.text " }" else mempty
-            supplier = if kt then Doc.text "{ " <> call <> Doc.text " }" else Doc.text "() -> " <> call
-            mapped = [ (if kt then KotlinExpr.call "LawSpecRuntime.MappedFailure" else JavaExpr.call "new LawSpecRuntime.MappedFailure")
-                         [Doc.text (intercalate "." (C.failureNative b) ++ (if kt then "::class.java" else ".class")),
-                          Doc.text (if kt then "{ _error -> " else "error -> ") <>
-                            (if kt then ktConstruct' failure else javaConstruct' failure) (C.idText (C.failureConstructor b))
-                              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(_error.message ?: \"\")" else "java.util.Objects.toString(error.getMessage(), \"\")"))) b) <> close]
+            supplier = if kt then KotlinLayout.lambda [] [call] else Doc.text "() -> " <> call
+            made b = (if kt then ktConstruct' failure else javaConstruct' failure) (C.idText (C.failureConstructor b))
+              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(error.message ?: \"\")" else "java.util.Objects.toString(error.getMessage(), \"\")"))) b)
+            mapped = [ if kt
+                         then KotlinExpr.call "LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ "::class.java"), KotlinLayout.lambda ["error"] [made b]]
+                         else JavaExpr.call "new LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ ".class"), Doc.text "error -> " <> made b]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
+            converted = if kt then KotlinLayout.lambda ["nativeValue"] [convert failure native] else Doc.text opening <> convert failure native
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
-             ([(if kt then KotlinExpr.quoted else JavaExpr.quoted) (C.abilityKey ability), Doc.text opening <> convert failure native <> close, supplier] ++ mapped)
+             ([(if kt then KotlinExpr.quoted else JavaExpr.quoted) (C.abilityKey ability), converted, supplier] ++ mapped)
       _ -> call
-    ktInstalls e = [Doc.text ("val " ++ sharedVar h ++ " = " ++ ktConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h))) | h <- sharedOf e] ++
+    ktInstalls e = [KotlinLayout.bind (sharedVar h) (ktConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h))) | h <- sharedOf e] ++
       ktInstalling e (earlyHandlers e)
     ktLateInstalls e = ktInstalling e (lateHandlers e)
     ktInstalling e chosen = case chosen of
       [] -> []
       _ -> [KotlinExpr.call "LawSpecRuntime.installHandlers" [Doc.text "symbols", KotlinExpr.call "mapOf"
-        [KotlinExpr.quoted (C.abilityKey a) <> Doc.text (" to " ++ ktConstructHandler (lawMaking e) a c) | (a, c) <- chosen]]]
+        [KotlinLayout.pairTo (KotlinExpr.quoted (C.abilityKey a)) (ktConstructHandler (lawMaking e) a c) | (a, c) <- chosen]]]
     ktConstructHandler making@(shared, resourceOf) a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> intercalate "." parts ++ "(" ++ madeWith ++ ")"
-      C.ProductionHandler -> maybe "Unknown" jvmProduction (abilityNamed a) ++ "(" ++ madeWith ++ ")"
-      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> sharedVar x
-      C.SpecHandler h -> KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
-      C.RecordingHandler inner -> maybe "Unknown" (\x -> KotlinAbilities.abilitiesObjectOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a) ++
-        "(" ++ ktConstructHandler making a inner ++ ", symbols)"
-      where madeWith = maybe "" (\(t, local) -> Doc.render Doc.Compact (ktNativeArgument t (Doc.text local))) (resourceOf a c)
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> KotlinExpr.call (intercalate "." parts) madeWith
+      C.ProductionHandler -> KotlinExpr.call (maybe "Unknown" jvmProduction (abilityNamed a)) madeWith
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> Doc.text (sharedVar x)
+      C.SpecHandler h -> KotlinExpr.call (KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h)) [Doc.text "symbols"]
+      C.RecordingHandler inner -> KotlinExpr.call (maybe "Unknown" (\x -> KotlinAbilities.abilitiesObjectOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a))
+        [ktConstructHandler making a inner, Doc.text "symbols"]
+      where madeWith = maybe [] (\(t, local) -> [ktNativeArgument t (Doc.text local)]) (resourceOf a c)
     ktExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (KotlinExpr.call evaluator (Doc.text "symbols" : values))
@@ -446,36 +478,37 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Right (KotlinExpr.call "LawSpecRuntime.raiseFailure" (KotlinExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
-        Right (jvmFailingAs (operationFailure op) (\failure native -> ktNativeResult failure (Doc.text ("(_native as " ++ native ++ ")"))) "{ _native -> "
-          (ktNativeResult (expressionType term) (ktHandler (C.operationAbility op) <> KotlinExpr.call ("." ++ C.operationName op)
-            [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))
+        Right (jvmFailingAs (operationFailure op) (\failure native -> ktNativeResult failure (Doc.text ("(nativeValue as " ++ native ++ ")"))) "{ nativeValue -> "
+          (ktNativeResult (expressionType term) (KotlinLayout.chain (ktHandler (C.operationAbility op)) [(C.operationName op,
+            [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = Doc.text "{ _value -> " <> ktConstruct' (expressionType term) tag [ktChecked ty (Doc.text "_value")] <> Doc.text " }"
-          in Right (KotlinExpr.call "LawSpecRuntime.attempt" [KotlinExpr.quoted (C.abilityKey ability), Doc.text "{ " <> body <> Doc.text " }",
+          let side tag ty = KotlinLayout.lambda ["value"] [ktConstruct' (expressionType term) tag [ktChecked ty (Doc.text "value")]]
+          in Right (KotlinExpr.call "LawSpecRuntime.attempt" [KotlinExpr.quoted (C.abilityKey ability), KotlinLayout.lambda [] [body],
             side "Either::Right" result, side "Either::Left" failure])
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
               Nothing -> Doc.text "null"
-              Just xs -> Doc.text "{ _recorded -> " <> Doc.joinWith (Doc.text " && ")
-                [ktEqual (expressionType a) (Doc.text ("_recorded[" ++ show i ++ "]")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)] <> Doc.text " }"
-        in Right (KotlinExpr.call "LawSpecRuntime.countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey (C.operationAbility op)) ++ ")"),
+              Just xs -> KotlinLayout.lambda ["recorded"] [case [ktEqual (expressionType a) (Doc.text ("recorded[" ++ show i ++ "]")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)] of
+                first : rest -> Doc.group (first <> Doc.nest 4 (mconcat [Doc.text " &&" <> Doc.softline <> o | o <- rest]))
+                [] -> Doc.text "true"]
+        in Right (KotlinExpr.call "LawSpecRuntime.countCalls" [KotlinExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", KotlinExpr.quoted (C.abilityKey (C.operationAbility op))],
           KotlinExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
         let name = declarationName identity
             typed = zip (map expressionType args) values
         in Right $ if name `elem` map contractName (contracts u)
-          then KotlinExpr.call ("_lawspec_call_" ++ name)
+          then KotlinExpr.call (contractMethod name)
             (Doc.text "symbols" : [ktChecked ty value | (ty,value) <- typed])
-          else jvmFailing name (\failure native -> ktNativeResult failure (Doc.text ("(_native as " ++ native ++ ")"))) "{ _native -> "
+          else jvmFailing name (\failure native -> ktNativeResult failure (Doc.text ("(nativeValue as " ++ native ++ ")"))) "{ nativeValue -> "
             (ktNativeResult (expressionType term) (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
             (map ktHandler (usesOf name) ++ [ktNativeArgument ty value | (ty,value) <- typed]))))
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (KotlinExpr.call "LawSpecRuntime.withHandlers" [Doc.text "symbols",
-          KotlinExpr.call "mapOf" [KotlinExpr.quoted (C.abilityKey ability) <> Doc.text (" to " ++ ktConstructHandler plainMaking ability choice)],
-          Doc.text "{ " <> body <> Doc.text " }"])
+          KotlinExpr.call "mapOf" [KotlinLayout.pairTo (KotlinExpr.quoted (C.abilityKey ability)) (ktConstructHandler plainMaking ability choice)],
+          KotlinLayout.lambda [] [body]])
       _ -> Left "expected checked Kotlin external call"
     ktValueLiteral value = case value of
       V.ScalarValue scalarValue -> either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
@@ -483,8 +516,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       V.DataValue ty tag fields -> do
         rendered <- mapM ktValueLiteral fields
         pure (KotlinExpr.call "LawSpecKotlinCodecs.construct"
-          [Doc.text "_schema",java (KotlinExpr.reference ty),KotlinExpr.quoted (C.idText tag),
-           KotlinExpr.call "listOf" rendered,Doc.text (show bits),Doc.text "symbols"])
+          [Doc.text "SCHEMA",java (KotlinExpr.reference ty),KotlinExpr.quoted (C.idText tag),
+           KotlinExpr.call "listOf" rendered,Doc.text "MACHINE_BITS",Doc.text "symbols"])
       V.PresenceValue ty payload -> do
         rendered <- traverse ktValueLiteral payload
         pure (KotlinExpr.call "LawSpecRuntime.present" [KotlinExpr.quoted (key ty),
@@ -510,6 +543,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.handlerInstalls = ktInstalls
       , KotlinProperties.lateHandlerInstalls = ktLateInstalls
       , KotlinProperties.searchDescriptors = searchDescriptorsOf
+      , KotlinProperties.local = localName
+      , KotlinProperties.sourceFile = unitSourceFile u
+      , KotlinProperties.codecValues = ktCodecValues
       }
     hsRender = java . HaskellExpr.renderExpression dataDeclarations bits "_lawspecSchema" "symbols" localName hsExternal
     hsScope = HaskellExpr.apply "P.Just" [Doc.text "symbols"]
@@ -764,7 +800,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.RecordingHandler inner -> specsOf inner
       C.ProductionHandler -> []
     sharedVar h
-      | target == "java" = "shared" ++ cap (C.handlerName h)
+      | target `elem` ["java", "kotlin"] = "shared" ++ cap (C.handlerName h)
       | otherwise = "_lawspecShared_" ++ C.handlerName h
     -- What an operation that `fails with E` fails with (Fail E).
     operationFailure op = maybe [] pure (abilityNamed (C.operationAbility op) >>= lookup (C.operationName op) . C.abilityFailures)
