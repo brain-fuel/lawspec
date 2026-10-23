@@ -534,8 +534,21 @@ func lsFloating(t, b string) LawSpecValue {
 func lsComplex(t string, r, i LawSpecValue) LawSpecValue {
 	return LawSpecValue{t, complex(r.Data.(float64), i.Data.(float64))}
 }
-func lsSequence(t string, u []int) LawSpecValue        { return LawSpecValue{t, append([]int{}, u...)} }
-func lsCharacter(t string, c int) LawSpecValue         { return LawSpecValue{t, c} }
+func lsSequence(t string, u []int) LawSpecValue { return LawSpecValue{t, append([]int{}, u...)} }
+func lsCharacter(t string, c int) LawSpecValue  { return LawSpecValue{t, c} }
+
+// lsText is Text written as a Go string literal: its code points.
+func lsText(s string) LawSpecValue {
+	units := make([]int, 0, len(s))
+	for _, r := range s {
+		units = append(units, int(r))
+	}
+	return LawSpecValue{"Text", units}
+}
+
+// lsChar is a Char written as a Go rune literal.
+func lsChar(r rune) LawSpecValue { return LawSpecValue{"Char", int(r)} }
+
 func lsAbsent(t string) LawSpecValue                   { return LawSpecValue{t, nil} }
 func lsPresent(t string, v *LawSpecValue) LawSpecValue { return LawSpecValue{t, lawSpecPresence{v}} }
 func lsPointer(v LawSpecValue) *LawSpecValue           { return &v }
@@ -1446,7 +1459,18 @@ func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
 	}
 	return lsConvert(n, x, bits)
 }
-func (v LawSpecValue) String() string { return fmt.Sprintf("%s(%v)", v.Type, v.Data) }
+
+// String shows a value with its type; text reads as a Go string literal.
+func (v LawSpecValue) String() string {
+	if units, ok := v.Data.([]int); ok && v.Type == "Text" {
+		runes := make([]rune, len(units))
+		for i, unit := range units {
+			runes[i] = rune(unit)
+		}
+		return v.Type + "(" + strconv.Quote(string(runes)) + ")"
+	}
+	return fmt.Sprintf("%s(%v)", v.Type, v.Data)
+}
 
 func lsSample(t string, seed int, bits int) LawSpecValue {
 	r := rand.New(rand.NewSource(int64(seed)))
