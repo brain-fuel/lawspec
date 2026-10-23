@@ -110,8 +110,9 @@ async function setup(target) {
         ".[test]",
         // For the suites that import lawspec.crypto or lawspec.network.
         "cryptography",
-        // Acceptance checks generated Python with ruff format (pinned in the lock).
-        ...(target === "python" ? ["ruff"] : []),
+        // Acceptance checks generated Python, and Prolog's Python host files, with
+        // ruff format (pinned in the lock).
+        "ruff",
       ],
       root,
     );
