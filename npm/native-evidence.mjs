@@ -59,6 +59,10 @@ const subject = (entry,item) => obligationTargets(entry).some(target=>
 const runtimeStages=new Set(['law','model','linearizable','sequentially consistent','causally consistent',
   'eventually consistent','restart','scenario','supervision']);
 
+// Display archived observations in the current vocabulary; retain their raw
+// attempts and use those original values for freshness and completion checks.
+const observationOutcome=outcome=>outcome==='known-failing'?'known-discrepancy':outcome;
+
 // Only observations with matching current compiler/configuration/source/native
 // inputs are eligible for completed evidence. A stored timestamp alone is not.
 export async function readNativeObservations({compiler,input,selected,roots,configRoot,build,evidence,attestation}) {
@@ -121,7 +125,7 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
     for(const [id,baseline]of expected){
       const attempt=attempts[id];
       const row={target:target.language,root,check:{id,obligations:obligationTargets(baseline)},
-        outcome:attempt?.outcome??'not-run',coverage:baseline.coverage,attempt};
+        outcome:observationOutcome(attempt?.outcome??'not-run'),coverage:baseline.coverage,attempt};
       if(!attempt){observations.push({...row,freshness:'not-run',reason:'No completed native observation was recorded'});continue;}
       const profile=attempt.profile??{};
       if(profile.target!==target.language||profile.root!==root||profile.machineBits!==input.machineBits||profile.build!==build||
@@ -153,7 +157,7 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
         reason:attempt.outcome==='passed'?'Recorded native completion matches the current inputs':'Recorded native attempt matches the current inputs'});
     }
     for(const [id,attempt]of Object.entries(attempts))if(!expected.has(id)&&Array.isArray(attempt.check?.obligations))
-      observations.push({target:target.language,root,check:attempt.check,attempt,outcome:attempt.outcome,
+      observations.push({target:target.language,root,check:attempt.check,attempt,outcome:observationOutcome(attempt.outcome),
         coverage:attempt.coverage,freshness:'not-selected',reason:'This native check is not selected by the current configuration'});
   }
   return observations;

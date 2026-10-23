@@ -33,6 +33,11 @@ test-manifest fields and `known-discrepancy` in evidence and native outcomes.
 The reason records the need for human review of the specification and
 implementation; it does not decide which needs correction. Concrete `failed`
 execution outcomes and validated `refuted` laws retain their meanings.
+Current observation views also use the neutral name for older stored runs.
+Their `attempt` retains the original recorded outcome, represented by
+`RecordedNativeExecutionAttempt`, while newly produced attempts use
+`NativeExecutionAttempt` and the current vocabulary. Reading an older record
+does not rewrite it or promote a stale or unselected result to current evidence.
 
 The compiler exposes the following methods through `createCompiler()` in the `lawspec`
 package. Each takes a JSON request and returns a JSON result. The TypeScript

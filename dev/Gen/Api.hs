@@ -304,10 +304,13 @@ declarations = joinWith (softbreak <> softbreak)
       ("check","NativeExecutionCheck"),("coverage","NativeCheckCoverage"),("tests","NativeCompletedTest[]"),
       ("invocation","NativeInvocation"),("verification","'native-execution'"),
       ("searchCompleteness","'not-established'")])
+  , alias "RecordedNativeExecutionAttempt"
+      [text "Omit<NativeExecutionAttempt, 'outcome'> &" <> nest 2 (softline <>
+        record [("outcome",union [text "NativeOutcome",quoted "known-failing"])])]
   , interface "NativeExecutionObservation" (fields [("target","string"),("root","string"),
       ("outcome","NativeOutcome"),("freshness","NativeFreshness"),
       ("reason","string"),("check?","{id: string; obligations: NativeEvidenceTarget[]}"),
-      ("obligations?","NativeEvidenceTarget[]"),("coverage?","NativeCheckCoverage"),("attempt?","NativeExecutionAttempt"),
+      ("obligations?","NativeEvidenceTarget[]"),("coverage?","NativeCheckCoverage"),("attempt?","RecordedNativeExecutionAttempt"),
       ("harness?","{flaky?: boolean; adequacy?: NativeAdequacy[]}")])
   , interface "NativeAdequacy" (fields [("test","string"),("cases","number"),
       ("cover?","NativeCoverageObservation[]"),("classes?","Record<string, number>"),("labels?","Record<string, number>")])

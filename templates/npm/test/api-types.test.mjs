@@ -14,6 +14,11 @@ const root = path.resolve(import.meta.dirname, '../..');
 const local = path.join(root, '.integration/typescript/node_modules/.bin/tsc');
 const tsc = process.env.LAWSPEC_TSC ?? (existsSync(local) ? local : null);
 
+test('recorded native outcomes retain history without widening newly produced outcomes', {skip: tsc === null && 'tsc is not installed'}, () => {
+  execFileSync(tsc, ['--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext',
+    '--moduleResolution', 'NodeNext', 'test/fixtures/native_observation_api.ts'], {cwd: root, stdio: 'pipe'});
+});
+
 test('published expression types pass exhaustive TypeScript visitor checks', {skip: tsc === null && 'tsc is not installed'}, () => {
   execFileSync(tsc, [
     '--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext',

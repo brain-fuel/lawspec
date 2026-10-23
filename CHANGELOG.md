@@ -30,6 +30,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Current observation reports use neutral discrepancy wording for older stored
+  runs while preserving the archived receipt and its freshness status.
 - Formatting preserves trailing whitespace on the opening line of a multiline
   literal, retaining its exact text value across repeated formatting.
 

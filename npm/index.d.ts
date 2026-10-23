@@ -793,6 +793,10 @@ export interface NativeExecutionAttempt {
   searchCompleteness: 'not-established';
 }
 
+export type RecordedNativeExecutionAttempt =
+    Omit<NativeExecutionAttempt, 'outcome'> &
+      {outcome: NativeOutcome | 'known-failing';};
+
 export interface NativeExecutionObservation {
   target: string;
   root: string;
@@ -802,7 +806,7 @@ export interface NativeExecutionObservation {
   check?: {id: string; obligations: NativeEvidenceTarget[]};
   obligations?: NativeEvidenceTarget[];
   coverage?: NativeCheckCoverage;
-  attempt?: NativeExecutionAttempt;
+  attempt?: RecordedNativeExecutionAttempt;
   harness?: {flaky?: boolean; adequacy?: NativeAdequacy[]};
 }
 
