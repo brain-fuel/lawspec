@@ -17,7 +17,7 @@ module LawSpec.Explain
 import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.Char (isDigit, isLetter, isLower, isNumber, isUpper, ord)
+import Data.Char (isDigit, isLetter, isLower, isNumber, isUpper, ord, toUpper)
 import Data.List (find, findIndex, sortOn)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import qualified Data.Map.Strict as M
@@ -76,16 +76,21 @@ explainResult options result =
        [ "explanations" .= map explanationJson explanations
        , "text" .= T.intercalate "\n\n" (map explanationText explanations) ])
 
-data Explanation = Explanation { exView :: View, exLaw :: Text, exName :: Text, exSections :: [(Text, [Text])] }
+data Explanation = Explanation { exView :: View, exLaw :: Text, exName :: Text, exSections :: [Section] }
+
+-- | A titled run of lines. An eng section also names each union case it
+-- mentions with its sibling cases, for tools; the text never lists them.
+data Section = Section { sectionKind :: Text, sectionLines :: [Text], sectionCases :: [Value] }
 
 explanationJson :: Explanation -> Value
 explanationJson e = object
   [ "view" .= viewName (exView e), "law" .= exLaw e, "name" .= exName e
-  , "sections" .= [object ["kind" .= k, "lines" .= ls] | (k, ls) <- exSections e] ]
+  , "sections" .= [object (["kind" .= sectionKind x, "lines" .= sectionLines x] ++ ["cases" .= sectionCases x | not (null (sectionCases x))])
+                  | x <- exSections e] ]
 
 -- | The human text is exactly the sections' lines, in order.
 explanationText :: Explanation -> Text
-explanationText = T.intercalate "\n" . concatMap snd . exSections
+explanationText = T.intercalate "\n" . concatMap sectionLines . exSections
 
 -- * JSON access
 
@@ -416,17 +421,38 @@ negatedComparison operator = lookup operator
   [ ("==", "is not"), ("!=", "is"), ("<", "is not less than"), ("<=", "is not more than")
   , (">", "is not greater than"), (">=", "is not less than") ]
 
--- Binding strength, weakest first.
-pQuantifier, pOr, pAnd, pComparison, pAdditive, pMultiplicative, pUnary, pPhrase, pAtom :: Int
+-- Binding strength, weakest first. The dev levels follow LawSpec's own
+-- grammar (LawSpec.Parser): implies < or < and < not < = < comparisons and
+-- in < + - < * / < prefix minus < application.
+pQuantifier, pImplies, pOr, pAnd, pNot, pEquals, pComparison, pAdditive, pMultiplicative, pUnary, pCall, pPhrase, pAtom :: Int
 pQuantifier = 0
-pOr = 1
-pAnd = 2
-pComparison = 3
-pAdditive = 4
-pMultiplicative = 5
-pUnary = 6
-pPhrase = 8
-pAtom = 9
+pImplies = 1
+pOr = 2
+pAnd = 3
+pNot = 4
+pEquals = 5
+pComparison = 6
+pAdditive = 8
+pMultiplicative = 9
+pUnary = 10
+pCall = 11
+pPhrase = 12
+pAtom = 13
+
+data Associativity = LeftAssociative | NonAssociative
+
+-- | The dev operators whose precedence is known; others keep brackets.
+devOperator :: Text -> Maybe (Int, Associativity)
+devOperator operator = lookup operator
+  [ ("||", (pOr, LeftAssociative)), ("&&", (pAnd, LeftAssociative)), ("==", (pEquals, NonAssociative))
+  , ("!=", (pComparison, NonAssociative)), ("<", (pComparison, NonAssociative)), ("<=", (pComparison, NonAssociative))
+  , (">", (pComparison, NonAssociative)), (">=", (pComparison, NonAssociative))
+  , ("+", (pAdditive, LeftAssociative)), ("-", (pAdditive, LeftAssociative))
+  , ("*", (pMultiplicative, LeftAssociative)), ("/", (pMultiplicative, LeftAssociative)) ]
+
+operands :: (Int, Associativity) -> (Int, Int)
+operands (strength, LeftAssociative) = (strength, strength + 1)
+operands (strength, NonAssociative) = (strength + 1, strength + 1)
 
 operatorStrength :: Text -> Int
 operatorStrength operator
@@ -482,6 +508,28 @@ englishTypeName :: Text -> Text
 englishTypeName name = fromMaybe name (lookup name
   [("Integer", "integer"), ("Whole", "whole number"), ("Bool", "true or false value"), ("Text", "text")])
 
+-- | A function or helper name in eng: prelude names drop their unit, phrase
+-- names keep their words, and an identifier's words are split.
+englishName :: Text -> Text
+englishName name0 =
+  let name = fromMaybe name0 (T.stripPrefix "prelude." name0)
+  in case T.breakOn "\"|" name of
+       (before, rest) | not (T.null rest) -> before <> words' rest
+       _ -> let (prefix, final) = T.breakOnEnd "." name in prefix <> words' final
+
+-- | A union case: its type's words, its case's words and every sibling
+-- case. A record, or a type whose single case carries its own name, is not
+-- a union.
+unionCase :: Value -> Value -> Maybe (Text, Text, [Text])
+unionCase declaration constructor
+  | kind (field "structure" declaration) == "record" = Nothing
+  | [only] <- constructors, str "name" only == declarationName declaration = Nothing
+  | otherwise = Just (words' (declarationName declaration), words' (str "name" constructor), map (words' . str "name") constructors)
+  where constructors = arr (field "constructors" declaration)
+
+declarationName :: Value -> Text
+declarationName declaration = fromMaybe (last (T.splitOn "::type::" (str "id" declaration))) (strField "name" declaration)
+
 -- * Checked expressions
 
 data Rendered = Rendered
@@ -505,7 +553,10 @@ slot r minimum' = if strengthOf r >= minimum' then rText r else "(" <> rText r <
 argumentText :: Rendered -> Text
 argumentText r = if rAtomic r then rText r else "(" <> rText r <> ")"
 
-data Context = Term | Condition deriving Eq
+-- | A term names a value ("the flagged of this request"); a condition is a
+-- statement ("this request is flagged"); an owned value is a constructor
+-- field's value ("this request's requested amount").
+data Context = Term | Condition | Owned deriving Eq
 
 type Scope = M.Map Text Text
 type Reserved = S.Set Text
@@ -535,7 +586,11 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
       Just free ->
         let reserved = S.fromList [name | (i, name) <- M.toList free, not (M.member i scope)]
         in fromMaybe (plain (str "text" expression) False) (render (M.union scope free) reserved context expression)
-    conditions scope expression = map (rText . top Condition scope) (fromMaybe [expression] (chain "&&" expression))
+    -- One requirement per item; an alternative reads "either ... or ...".
+    conditions scope expression = map (spoken . top Condition scope) (fromMaybe [expression] (chain "&&" expression))
+    spoken r = case rConnective r of
+      Just ("||", _) | english -> "either " <> rText r
+      _ -> rText r
 
     spelling name
       | "\"|" `T.isPrefixOf` name = name
@@ -621,10 +676,16 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
               in Just (plain (T.concat lets <> "(" <> T.intercalate ", " [M.findWithDefault "" (str "name" f) names | f <- positions] <> ")"
                          <> T.replicate (length lets) " end let") False)
         Nothing
-          -- eng: a named construction reads as a description of the new value.
-          | english, not (null entries) -> do
-              name <- if kind (field "structure" declaration) == "record" then Just "record" else plainName <$> globalName tag scope
-              Just (worded (article name <> " with " <> joinEnglish [words' label <> " " <> slot value pPhrase | (label, value) <- entries] "and") 7)
+          -- eng: a record or a single-case type reads as a description of the
+          -- new value; a union case names its type and quotes the case.
+          | english -> do
+              (_, constructor) <- M.lookup tag (pConstructors p)
+              let with = joinEnglish [words' label <> " " <> slot value pPhrase | (label, value) <- entries] "and"
+                  typeWords = words' (declarationName declaration)
+              Just (flip worded pCall (case unionCase declaration constructor of
+                _ | kind (field "structure" declaration) == "record" -> if null entries then "an empty record" else "a record with " <> with
+                Nothing -> article typeWords <> (if null entries then "" else " with " <> with)
+                Just (typeName', caseName, _) -> "the " <> typeName' <> " \"" <> caseName <> "\"" <> (if null entries then "" else ", with " <> with)))
           | kind (field "structure" declaration) == "record" ->
               Just (plain ("record{" <> T.intercalate ", " [label <> " = " <> rText value | (label, value) <- entries] <> "}") True)
           | otherwise -> do
@@ -699,7 +760,7 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
                 position <- M.lookup (str "id" (field "binder" binding)) positions
                 free <- freeLocals (field "value" binding)
                 if any (`S.member` preceding) (M.keys free) then Nothing else do
-                  value <- render scope reserved Term (field "value" binding)
+                  value <- render scope reserved entryContext (field "value" binding)
                   Just (S.insert (str "id" (field "binder" binding)) preceding, entries ++ [(str "name" (fields !! position), value)])
           (_, entries) <- foldlM step (S.empty, []) bindings
           constructed (str "constructor" node) entries scope reserved False
@@ -724,21 +785,22 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
         then worded ((if universal then "∀ " else "∃ ") <> name <> " ∈ " <> slot set pAtom <> ". " <> rText predicate) pQuantifier
         else worded ("for " <> (if universal then "every " else "at least one ") <> name <> " in " <> slot set pPhrase <> ", " <> rText predicate) pQuantifier)
 
-    plainName name = case T.breakOnEnd "\"|" name of
-      (before, rest) | not (T.null before), Just inner <- T.stripSuffix "|" rest -> T.dropEnd 2 before <> unescapePhrase inner
-      _ -> name
+    -- Constructor field values read as owned values in eng.
+    entryContext = if english then Owned else Term
 
     -- The eng and math wording of one node; Nothing keeps the dev rendering.
     phrase scope reserved context expression = let node = nodeOf expression; go c = render scope reserved c in
       case fieldParts expression of
-        Just (value, entry@(declaration, _), label) | Nothing <- positionalFields declaration -> do
+        Just (value, (declaration, _), label) | Nothing <- positionalFields declaration -> do
           subject <- go Term value
-          let _ = entry
           Just (if mathematical then worded (slot subject pAtom <> "." <> label) pAtom
                 else if context == Condition && isBool expression then worded (englishProperty (slot subject pPhrase) label False) pComparison
+                else if context == Owned then worded (slot subject pPhrase <> "'s " <> words' label) pPhrase
                 else worded ("the " <> words' label <> " of " <> slot subject pPhrase) pPhrase)
         Just _ -> Nothing
         Nothing -> case kind node of
+          -- eng: a bound value, once introduced, is "this <name>".
+          "local" | english -> Just (worded ("this " <> words' (M.findWithDefault (str "text" expression) (str "id" node) scope)) pAtom)
           "let" -> do
             (element, collection) <- membership expression scope reserved
             Just (if mathematical then worded (slot element pAdditive <> " ∈ " <> slot collection pAdditive) pComparison
@@ -754,8 +816,15 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
                      in (worded (joinEnglish grouped (operatorIn Eng operator)) strength) { rConnective = Just (operator, length parts) })
             else do
               left <- go Term (field "left" node)
-              right <- go Term (field "right" node)
+              right0 <- go Term (field "right" node)
               let comparison = strength == pComparison
+                  -- eng: a second field of the same subject reads "its <field>".
+                  right = case (fieldParts (unwrap (field "left" node)), fieldParts (unwrap (field "right" node))) of
+                    (Just (a, (da, _), _), Just (b, (db, _), label))
+                      | english, comparison, Nothing <- positionalFields da, Nothing <- positionalFields db
+                      , nodeKind (unwrap a) == "local", nodeKind (unwrap b) == "local"
+                      , str "id" (nodeOf (unwrap a)) == str "id" (nodeOf (unwrap b)) -> worded ("its " <> words' label) pPhrase
+                    _ -> right0
                   l = slot left (if comparison then pAdditive else strength)
                   r = slot right (if comparison then pAdditive else strength + 1)
               Just ((worded (l <> " " <> operatorIn view operator <> " " <> r) strength)
@@ -791,10 +860,15 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
             if setOf then Nothing else do
               name <- if k == "call" then globalName (str "declaration" node) scope else Just (str "name" node)
               parts <- traverse (go Term) (arr (field "arguments" node))
+              -- eng: "the <function> for <arguments>"; a unit argument adds nothing.
+              let spoken = [r | (a, r) <- zip (arr (field "arguments" node)) parts, str "type" (field "value" (nodeOf (unwrap a))) /= "Unit"]
               Just (if mathematical
                 then worded (if null parts then name else name <> "(" <> T.intercalate ", " (map rText parts) <> ")") pAtom
-                else if null parts then worded (plainName name) pAtom
-                else worded (plainName name <> " of " <> T.intercalate " and " [slot r pPhrase | r <- parts]) 7)
+                else worded ("the " <> englishName name <> case spoken of
+                       [] -> ""
+                       -- A single argument reads on: "the atoi for the itoa for this x".
+                       [only] -> " for " <> slot only pCall
+                       _ -> " for " <> joinEnglish [slot r pPhrase | r <- spoken] "and") pCall)
           _ -> Nothing
 
     render :: Scope -> Reserved -> Context -> Value -> Maybe Rendered
@@ -830,10 +904,10 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
             (_, constructor) <- M.lookup (str "constructor" node) (pConstructors p)
             let fields = arr (field "fields" constructor); arguments = arr (field "arguments" node)
             if length fields /= length arguments then Nothing else do
-              shown <- traverse go arguments
+              shown <- traverse (render scope reserved entryContext) arguments
               constructed (str "constructor" node) (zip (map (str "name") fields) shown) scope reserved (isStored expression)
       "let" -> case membership expression scope reserved of
-        Just (element, collection) -> Just (plain ("(" <> argumentText element <> " in " <> argumentText collection <> ")") True)
+        Just (element, collection) -> Just (worded (slot element (pComparison + 1) <> " in " <> slot collection (pComparison + 1)) pComparison)
         Nothing -> case literal expression scope reserved of
           Just record -> Just record
           Nothing -> do
@@ -869,14 +943,19 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
         | otherwise -> do
             name <- globalName (str "declaration" node) scope
             shown <- args (arr (field "arguments" node))
-            Just (plain (name <> (if null (arr (field "arguments" node)) then "" else " " <> shown)) False)
+            Just (if null (arr (field "arguments" node)) then plain name True else worded (name <> " " <> shown) pCall)
       "helper" -> do
         shown <- args (arr (field "arguments" node))
-        Just (plain (str "name" node <> (if null (arr (field "arguments" node)) then "" else " " <> shown)) False)
+        Just (if null (arr (field "arguments" node)) then plain (str "name" node) True else worded (str "name" node <> " " <> shown) pCall)
+      -- Brackets only where LawSpec's precedence needs them.
       k | k `elem` ["binary", "shortCircuit"] -> do
         left <- go (field "left" node)
         right <- go (field "right" node)
-        Just (plain ("(" <> argumentText left <> " " <> operatorIn Dev (str "operator" node) <> " " <> argumentText right <> ")") True)
+        let operator = str "operator" node
+        Just (case devOperator operator of
+          Just level@(strength, _) -> let (l, r) = operands level
+            in worded (slot left l <> " " <> operatorIn Dev operator <> " " <> slot right r) strength
+          Nothing -> plain ("(" <> argumentText left <> " " <> operatorIn Dev operator <> " " <> argumentText right <> ")") True)
       "unary" -> case anyPattern node of
         Just (iteration, predicate) -> do
           let (name, inner) = bind (field "binder" iteration) scope reserved
@@ -885,7 +964,10 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
           Just (plain ("any " <> name <> " in (" <> rText collection <> ") satisfies (" <> rText body <> ")") False)
         Nothing -> do
           argument <- go (field "argument" node)
-          Just (plain ((if str "operator" node == "!" then "not" else str "operator" node) <> " (" <> rText argument <> ")") False)
+          Just (case str "operator" node of
+            "!" -> worded ("not " <> slot argument pEquals) pNot
+            "-" -> worded ("-" <> slot argument pCall) pUnary
+            operator -> plain (operator <> " (" <> rText argument <> ")") False)
       "if" -> do
         c <- go (field "condition" node); t <- go (field "then" node); e <- go (field "else" node)
         Just (plain ("if " <> rText c <> " then " <> rText t <> " else " <> rText e <> " end if") False)
@@ -997,8 +1079,13 @@ valueExpression value
 -- * Laws
 
 explainOne :: Presentation -> View -> Value -> Value -> Explanation
-explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name" law) (filter (not . null . snd) sections)
+explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name" law)
+    [Section k ls (if view == Eng then casesIn k else []) | (k, ls) <- sections, not (null ls)]
   where
+    -- The union cases each eng section mentions, in a stable order.
+    casesIn "statement" = mentionedCases p (field "assertion" law)
+    casesIn "inputs" = mentionedCases p (toJSON (concatMap (arr . field "predicates") inputs))
+    casesIn _ = []
     scope = M.fromList [(str "id" input, str "name" input) | input <- inputs]
     inputs = arr (field "inputs" law)
     evidence = [e | e <- arr evidenceRows, str "declaration" e == str "id" law]
@@ -1061,8 +1148,29 @@ explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name"
          , ("inputs", header)
          , ("statement", if null header then statement else map ("  " <>) statement)
          , ("reason", ["Reason: " <> t | Just t <- [strField "rationale" law], not (T.null t)]) ]
+    -- A statement is a sentence: capitalized, ending with a full stop.
     finish [] = []
-    finish ls = let l = last ls in init ls ++ [if T.null l || T.last l `elem` (":." :: String) then l else l <> "."]
+    finish (first : rest) =
+      let ls = capitalize first : rest; l = last ls
+      in init ls ++ [if T.null l || T.last l `elem` (":." :: String) then l else l <> "."]
+    capitalize t = case T.uncons t of
+      Just (c, more) -> T.cons (toUpper c) more
+      Nothing -> t
+
+-- | Union cases constructed anywhere in a typed term, first mention first,
+-- each with its type and sibling cases.
+mentionedCases :: Presentation -> Value -> [Value]
+mentionedCases p = dedupe . go
+  where
+    go v@(Object o) =
+      let here = case (kind (field "node" v), M.lookup (str "constructor" (field "node" v)) (pConstructors p)) of
+            ("construct", Just (declaration, constructor)) | Just (t, c, siblings) <- unionCase declaration constructor ->
+              [object ["type" .= t, "case" .= c, "cases" .= siblings]]
+            _ -> []
+      in here ++ concatMap go (KM.elems o)
+    go (Array xs) = concatMap go (toList xs)
+    go _ = []
+    dedupe = foldl (\seen x -> if x `elem` seen then seen else seen ++ [x]) []
 
 -- | JavaScript's split on newlines: an empty text is one empty line.
 splitLines :: Text -> [Text]
@@ -1119,27 +1227,34 @@ nativeEvidenceText item =
        ++ [ "Native invocation output (scoped to that invocation):\n" <> output
           | row <- rows, let output = str "output" (field "invocation" (attempt row)), not (T.null output) ]
 
--- | dev: LawSpec's keyword notation.
+-- | dev: LawSpec's keyword notation, bracketed only where its proposition
+-- grammar needs it: implies < or < and < not < a comparison or a block.
 devProposition :: Presentation -> Scope -> Value -> Text
-devProposition p = go
+devProposition p scope = fst . devFormula p scope
+
+devFormula :: Presentation -> Scope -> Value -> (Text, Int)
+devFormula p = go
   where
     ts = terms p Dev
+    wrap minimum' (t, strength) = if strength < minimum' then "(" <> t <> ")" else t
+    joined connective strength items = (T.intercalate connective (zipWith (\i item -> wrap (if i == (0 :: Int) then strength else strength + 1) item) [0 ..] items), strength)
+    implication premise conclusion = (wrap pOr premise <> " implies " <> wrap pImplies conclusion, pImplies)
     go scope a = case kind a of
-      "equal" -> termText ts scope (field "left" a) <> " = " <> termText ts scope (field "right" a)
-      "implies" -> "(" <> termText ts scope (field "guard" a) <> ") implies (" <> go scope (field "body" a) <> ")"
-      "all" -> T.intercalate " and " ["(" <> go scope i <> ")" | i <- arr (field "items" a)]
+      "equal" -> (wrap (pEquals + 1) (termStrength ts scope (field "left" a)) <> " = " <> wrap (pEquals + 1) (termStrength ts scope (field "right" a)), pEquals)
+      "implies" -> implication (termStrength ts scope (field "guard" a)) (go scope (field "body" a))
+      "all" -> joined " and " pAnd [go scope i | i <- arr (field "items" a)]
       "not" -> case notShape a of
-        Disjunction items -> T.intercalate " or " ["(" <> go scope i <> ")" | i <- items]
-        Implication premise conclusion -> "(" <> go scope premise <> ") implies (" <> go scope conclusion <> ")"
-        Negation body -> "not (" <> go scope body <> ")"
+        Disjunction items -> joined " or " pOr [go scope i | i <- items]
+        Implication premise conclusion -> implication (go scope premise) (go scope conclusion)
+        Negation body -> ("not " <> wrap pEquals (go scope body), pNot)
       k | k `elem` ["forall", "exists"] ->
         let universal = k == "forall"
             (binder, nested, restrictions) = quantifier p Dev scope a
             restricted = if null restrictions then "" else " where " <> T.intercalate " and " restrictions
-        in (if universal then "for all" else "there exists") <> " (" <> binder <> restricted <> ") "
-             <> (if universal then "=>" else "such that") <> "\n" <> go nested (field "body" a)
-             <> "\nend " <> (if universal then "for all" else "exists")
-      k -> "unsupported typed assertion " <> k
+        in ((if universal then "for all" else "there exists") <> " (" <> binder <> restricted <> ") "
+             <> (if universal then "=>" else "such that") <> "\n" <> fst (go nested (field "body" a))
+             <> "\nend " <> (if universal then "for all" else "exists"), pEquals)
+      k -> ("unsupported typed assertion " <> k, pQuantifier)
 
 -- | The compiler's negation/conjunction representation also expresses
 -- disjunction and implications with proposition premises.
