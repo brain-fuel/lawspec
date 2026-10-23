@@ -77,8 +77,21 @@ emit minify bits datas units = do
     comment indentation text = L.comment (80 - indentation) text
     -- class Name(...) extends A with B, broken before each when it does
     -- not fit, as scalafmt breaks it.
-    classHeader opening parents = D.group (line opening <> D.nest 4 (mconcat
-      [D.softline <> line (keyword ++ " " ++ p) | (keyword, p) <- zip ("extends" : repeat "with") parents])) <> line " "
+    classHeader opening parents =
+      let (name, params) = break (== '(') opening
+          parameters = splitParameters (init (drop 1 params))
+          flat = name ++ "(" ++ intercalate ", " parameters ++ ")" ++ concat [" " ++ keyword ++ " " ++ p | (keyword, p) <- zip ("extends" : repeat "with") parents]
+      in D.bestFit [line flat, L.parameters (line name) (map line parameters) <> line (" extends " ++ head parents) <>
+           D.nest 4 (mconcat [D.hardline <> line ("with " ++ p) | p <- tail parents])] <> line " "
+    splitParameters s = case breakOn ", " s of
+      Just (a, b) -> a : splitParameters b
+      Nothing -> [s]
+    breakOn needle = go ""
+      where
+        go acc hay@(c : rest)
+          | take (length needle) hay == needle = Just (reverse acc, drop (length needle) hay)
+          | otherwise = go (c : acc) rest
+        go _ [] = Nothing
     identifiers = words . map (\c -> if isAlphaNum c || c == '_' then c else ' ')
     calls = Definitions.definitionCalls units
     line = D.text
@@ -225,7 +238,7 @@ emit minify bits datas units = do
                , comment 4 "Replaces the handler's state: to force it, reset it or restore a snapshot." <>
                  L.parameters (line "def setState") [line "state: " <> native] <> line ": Unit = synchronized " <> block write'
                , comment 4 "The typed state, shared rather than copied." <>
-                 line ("def typedState: " ++ typedType ++ " = synchronized { state }")
+                 L.equalsBody (line ("def typedState: " ++ typedType)) (line "synchronized { state }")
                , comment 4 "Replaces the typed state." <>
                  L.parameters (line "def setTypedState") [line ("state: " ++ typedType)] <> line ": Unit = synchronized " <> block (line "this.state = state") ]
         _ -> pure []

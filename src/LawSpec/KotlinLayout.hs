@@ -141,6 +141,7 @@ chain receiver methods = D.group (D.nest 4 (receiver' <> mconcat [D.softbreak <>
             rebuilt tree = case tree of
               Atom t -> D.text t
               Apply n as -> call n (map rebuilt as)
+              Select r m as -> chain (rebuilt r) [(m, map rebuilt as)]
         in if take 1 owner `elem` map pure ['a' .. 'z'] && '.' `notElem` owner then broken
            -- A constant (SCHEMA) is a value, not a class: its call keeps its dot.
            else if all (\c -> c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c == '_') owner then receiver

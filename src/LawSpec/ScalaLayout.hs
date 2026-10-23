@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, call, callWith, parameters, lambda, trailing, trailingCall, bind, chain, block, statements
+  ( scalaStyle, scalaString, call, callWith, trailingChain, parameters, lambda, trailing, trailingCall, bind, chain, block, statements
   , condition, conjunction, equalsBody, comment
   ) where
 
@@ -23,11 +23,12 @@ scalaString = D.text . literalFor "scala"
 
 -- | name(a, b), or broken one argument a line.
 call :: String -> [D.Doc] -> D.Doc
-call name values = case break (== '.') (reverse name) of
-  -- A method with type arguments (Codecs.scalar[T]) is a chain to scalafmt:
-  -- it breaks before the method when the call does not fit.
-  (method@(_ : _), '.' : owner@(_ : _)) | '[' `elem` method, '[' `notElem` owner, not (null values) ->
-    D.group (D.text (reverse owner) <> D.nest 2 (D.softbreak <> callWith (D.text ('.' : reverse method)) values))
+call name values = case break (== '[') name of
+  -- A method with type arguments (Scala.handler[T]) breaks before its dot
+  -- when its opening does not fit, as scalafmt breaks a chain.
+  (path, typeArgs@('[' : _)) | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse path), not (null values) ->
+    D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
+      (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method ++ typeArgs)) values))]
   _ -> callWith (D.text name) values
 
 callWith :: D.Doc -> [D.Doc] -> D.Doc
@@ -59,30 +60,51 @@ trailing invocation names body = invocation <> D.text " " <> lambda names body
 trailingCall :: String -> [D.Doc] -> [String] -> [D.Doc] -> D.Doc
 trailingCall name args = trailing (call name args)
 
--- | val name = value; a value that is not a call breaks after the =.
+-- | val name = value: a call stays after the = when its opening fits there,
+-- and breaks its arguments; otherwise the value goes on the next line.
 bind :: String -> D.Doc -> D.Doc
-bind name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value))
+bind name value = case break (== '(') flat of
+  (opening, '(' : _) | '\n' `notElem` flat, all (`notElem` (" {" :: String)) opening ->
+    D.bestFit [D.text (prefix ++ flat), D.prefixChoice (prefix ++ opening ++ "(") (D.text prefix <> value) broken]
+  _ -> D.group broken
+  where
+    prefix = "val " ++ name ++ " = "
+    flat = D.render D.Compact value
+    broken = D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value)
 
 -- | receiver.a(...).b(...): a chain of two or more calls is broken before
 -- each call's dot when it does not fit, the receiver's own call included
 -- (Codecs.stackCodec(...).encode(...)), as scalafmt breaks select chains. A
 -- single call keeps its dot and breaks its arguments.
 chain :: D.Doc -> [(String, [D.Doc])] -> D.Doc
-chain receiver methods
-  | calls <= 1 = receiver <> mconcat [call ("." ++ m) args | (m, args) <- methods]
-  | otherwise = D.group (start <> D.nest 2 (mconcat [D.softbreak <> call ("." ++ m) args | (m, args) <- methods]))
+chain receiver methods = chainWith receiver methods Nothing
+
+-- | receiver.a(...).name { params => body }: a chain ending in a trailing
+-- lambda, broken before each dot as chain breaks.
+trailingChain :: D.Doc -> [(String, [D.Doc])] -> String -> [String] -> [D.Doc] -> D.Doc
+trailingChain receiver methods name params body = chainWith receiver methods (Just (D.text ("." ++ name ++ " ") <> lambda params body))
+
+chainWith :: D.Doc -> [(String, [D.Doc])] -> Maybe D.Doc -> D.Doc
+chainWith receiver methods final
+  | calls <= 1 = receiver <> mconcat [call ("." ++ m) args | (m, args) <- methods] <> maybe mempty id final
+  | otherwise = D.group (start <> D.nest 2 (mconcat [D.softbreak <> call ("." ++ m) args | (m, args) <- methods] <>
+      maybe mempty (D.softbreak <>) final))
   where
     flat = D.render D.Compact receiver
     (path, applied) = break (== '(') flat
-    qualified = not (null applied) && '\n' `notElem` flat && last flat == ')' && all (\c -> c `elem` ("._" :: String) || c `elem` ['a'..'z'] || c `elem` ['A'..'Z'] || c `elem` ['0'..'9']) path
-    calls = length methods + (if not (null applied) then 1 else 0)
-    start = case (break (== '.') (reverse path), parseCall flat) of
+    qualified = not (null applied) && '\n' `notElem` flat && last flat == ')' && all (\c -> c `elem` ("._[], " :: String) || c `elem` ['a'..'z'] || c `elem` ['A'..'Z'] || c `elem` ['0'..'9']) path
+    calls = length methods + (if not (null applied) then 1 else 0) + maybe 0 (const 1) final
+    -- The receiver's own method, split from its owner before any type
+    -- arguments (Codecs.scalar[T]).
+    (bare, typeArgs) = break (== '[') path
+    start = case (break (== '.') (reverse bare), parseCall flat) of
       ((method@(_ : _), '.' : owner@(_ : _)), Just (Apply _ args)) | qualified ->
-        D.text (reverse owner) <> D.nest 2 (D.softbreak <> call ('.' : reverse method) (map rebuilt args))
+        D.text (reverse owner) <> D.nest 2 (D.softbreak <> call ('.' : reverse method ++ typeArgs) (map rebuilt args))
       _ -> receiver
     rebuilt tree = case tree of
       Atom t -> D.text t
       Apply n args -> call n (map rebuilt args)
+      Select r m args -> chain (rebuilt r) [(m, map rebuilt args)]
 
 -- | { ... } over statements.
 block :: [D.Doc] -> D.Doc

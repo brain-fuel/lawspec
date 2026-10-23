@@ -5,7 +5,7 @@
 module LawSpec.CallText (CallTree(..), parseCall) where
 
 -- | A call (name and arguments) or a token kept whole.
-data CallTree = Atom String | Apply String [CallTree] deriving (Eq, Show)
+data CallTree = Atom String | Apply String [CallTree] | Select CallTree String [CallTree] deriving (Eq, Show)
 
 -- | The text as calls, when it is one.
 parseCall :: String -> Maybe CallTree
@@ -20,8 +20,15 @@ expression s = do
   case rest of
     '(' : more -> do
       (args, after) <- arguments more
-      pure (Apply name args, after)
+      selects (Apply name args) after
     _ -> pure (Atom name, rest)
+  where
+    -- receiver.method(args), after a call.
+    selects tree after = case after of
+      '.' : more | (m@(_ : _), '(' : rest') <- span (\c -> c `notElem` ("().,\" " :: String)) more -> do
+        (args, after') <- arguments rest'
+        selects (Select tree m args) after'
+      _ -> pure (tree, after)
 
 -- A name with its generic arguments ([..] or <..>), or a string literal, up to
 -- an argument list, a comma or a closing parenthesis.

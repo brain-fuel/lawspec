@@ -254,7 +254,7 @@ emitTests Config{..} unit laws = do
           strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunction (map (truth . expr) predicates)])
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
-    filtered generator predicate = L.trailing (generator <> text ".filter") ["inputs"] predicate
+    filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
     chooser = text "((count: Int) => random.nextInt(count)): java.util.function.IntUnaryOperator"
     supplier doc = text "(() => " <> doc <> text "): java.util.function.Supplier[LawSpecRuntime.Value]"
     drawDoc inp strategy d = case d of
@@ -481,7 +481,7 @@ emitTests Config{..} unit laws = do
           bounds = call "Array[LawSpecRuntime.Bound]" [call "LawSpecRuntime.Bound" [quoted op,expr v] | (op,v) <- domainBounds plan]
           candidates = runtime "domainCandidates" [quoted (typeKey (inputType inp)),text "caseSeed",text "MachineBits",
             bounds,E.array (seeds ++ map expr (generatorHints plan))]
-          seedFn = text "(javaValues: java.util.List[LawSpecRuntime.Value], caseSeed: Integer) => " <>
+          seedFn = L.parameters mempty [text "javaValues: java.util.List[LawSpecRuntime.Value]", text "caseSeed: Integer"] <> text " => " <>
             L.block ([valuesOf | not (null prior)] ++ (if null prior then [] else fromValues prior) ++ [candidates])
           predicate = text "(javaValues: java.util.List[LawSpecRuntime.Value]) => " <> L.block
             ([valuesOf] ++ fromValues (prior ++ [inp]) ++ [L.conjunction (map (truth . expr) (inputRefinements inp))])
