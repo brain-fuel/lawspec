@@ -351,8 +351,8 @@ typeName p view = go M.empty S.empty
                 restrictions = map (restrictionText p view locals) predicates
                 refined | null predicates = base
                         | otherwise = case view of
-                            Eng -> base <> " where " <> joinEnglish restrictions "and"
-                            Math -> "{" <> name <> " ∈ " <> base <> " | " <> T.intercalate " ∧ " restrictions <> "}"
+                            Eng -> base <> " where " <> joinEnglish (map unbracket restrictions) "and"
+                            Math -> "{" <> name <> " ∈ " <> base <> " | " <> T.intercalate " ∧ " (map unbracket restrictions) <> "}"
                             Dev -> "(" <> name <> " of type " <> base <> " where " <> T.intercalate " and " restrictions <> ")"
             in if isJust positions then refined else case view of
                  Eng -> words' (str "name" f) <> " (" <> refined <> ")"
@@ -508,6 +508,19 @@ englishTypeName :: Text -> Text
 englishTypeName name = fromMaybe name (lookup name
   [("Integer", "integer"), ("Whole", "whole number"), ("Bool", "true or false value"), ("Text", "text")])
 
+-- | A whole restriction needs no enclosing brackets in eng.
+unbracket :: Text -> Text
+unbracket t = case T.stripPrefix "(" t >>= T.stripSuffix ")" of
+  Just inner | balanced inner -> inner
+  _ -> t
+  where
+    balanced = go (0 :: Int) . T.unpack
+    go depth [] = depth == 0
+    go depth (c : rest)
+      | c == '(' = go (depth + 1) rest
+      | c == ')' = depth > 0 && go (depth - 1) rest
+      | otherwise = go depth rest
+
 -- | A function or helper name in eng: prelude names drop their unit, phrase
 -- names keep their words, and an identifier's words are split.
 englishName :: Text -> Text
@@ -567,11 +580,12 @@ data Terms = Terms
   { termText :: Scope -> Value -> Text
   , termCondition :: Scope -> Value -> Text
   , termConditions :: Scope -> Value -> [Text]
-  , termStrength :: Scope -> Value -> (Text, Int) }
+  , termStrength :: Scope -> Value -> (Text, Int)
+  , termComparison :: Scope -> Value -> Maybe (Text, Text, Text) }
 
 terms :: Presentation -> View -> Terms
 terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) conditions
-  (\s e -> let r = top Condition s e in (rText r, strengthOf r))
+  (\s e -> let r = top Condition s e in (rText r, strengthOf r)) (\s -> rComparison . top Condition s)
   where
     english = view == Eng
     mathematical = view == Math
@@ -861,14 +875,16 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
               name <- if k == "call" then globalName (str "declaration" node) scope else Just (str "name" node)
               parts <- traverse (go Term) (arr (field "arguments" node))
               -- eng: "the <function> for <arguments>"; a unit argument adds nothing.
-              let spoken = [r | (a, r) <- zip (arr (field "arguments" node)) parts, str "type" (field "value" (nodeOf (unwrap a))) /= "Unit"]
+              let given = [r | (a, r) <- zip (arr (field "arguments" node)) parts, str "type" (field "value" (nodeOf (unwrap a))) /= "Unit"]
               Just (if mathematical
                 then worded (if null parts then name else name <> "(" <> T.intercalate ", " (map rText parts) <> ")") pAtom
-                else worded ("the " <> englishName name <> case spoken of
+                else worded ("the " <> englishName name <> case given of
                        [] -> ""
                        -- A single argument reads on: "the atoi for the itoa for this x".
+                       -- A name ending "of" or "for" takes its argument directly.
+                       [only] | any (`T.isSuffixOf` englishName name) [" of", " for"] -> " " <> slot only pCall
                        [only] -> " for " <> slot only pCall
-                       _ -> " for " <> joinEnglish [slot r pPhrase | r <- spoken] "and") pCall)
+                       _ -> " for " <> joinEnglish [slot r pPhrase | r <- given] "and") pCall)
           _ -> Nothing
 
     render :: Scope -> Reserved -> Context -> Value -> Maybe Rendered
@@ -1300,6 +1316,8 @@ mathProposition p = go
     condition scope e = let (t, s) = termStrength ts scope e in if s < pComparison then "(" <> t <> ")" else t
     implication premise conclusion = (wrap mOr premise <> " ⇒ " <> wrap mOr conclusion, mImplies)
     go scope a = case kind a of
+      -- A comparison required to be true is the formula itself.
+      "equal" | isTrue (field "right" a), Just _ <- termComparison ts scope (field "left" a) -> (termText ts scope (field "left" a), mAtom)
       "equal" -> (termText ts scope (field "left" a) <> " = " <> termText ts scope (field "right" a), mAtom)
       "implies" -> implication (condition scope (field "guard" a), mAtom) (go scope (field "body" a))
       "all" -> (T.intercalate " ∧ " [wrap mAnd (go scope i) | i <- arr (field "items" a)], mAnd)
@@ -1319,6 +1337,14 @@ mathProposition p = go
         in ((if universal then "∀ " else "∃ ") <> binder <> ". " <> formula, mQuantifier)
       k -> ("unsupported typed assertion " <> k, mAtom)
 
+modalComparisons :: [(Text, Text)]
+modalComparisons =
+  [ ("==", "must be"), ("!=", "must not be"), ("<", "must be less than"), ("<=", "must be at most")
+  , (">", "must be greater than"), (">=", "must be at least") ]
+
+isTrue :: Value -> Bool
+isTrue e = nodeKind e == "constant" && str "type" (field "value" (nodeOf e)) == "Bool" && field "value" (field "value" (nodeOf e)) == Bool True
+
 -- | eng: short lines, keywords first, one requirement per line. A modal
 -- statement is an obligation ("must be"); inside a premise, a negation or an
 -- existence it is a plain statement ("is").
@@ -1335,6 +1361,10 @@ engProposition p = go
         [b] -> ["then " <> b]
         _ -> "then:" : indent body
     go scope modal a = case kind a of
+      -- A comparison required to be true is itself the obligation:
+      -- "the weight of this parcel must be greater than 0".
+      "equal" | isTrue (field "right" a), Just (operator, l, r) <- termComparison ts scope (field "left" a) ->
+        [l <> " " <> (if modal then fromMaybe (operatorIn Eng operator) (lookup operator modalComparisons) else operatorIn Eng operator) <> " " <> r]
       "equal" -> [termText ts scope (field "left" a) <> (if modal then " must be " else " is ") <> termText ts scope (field "right" a)]
       "implies" -> conditional (termConditions ts scope (field "guard" a)) (go scope modal (field "body" a))
       "all" -> (if modal then "All of these must be true:" else "All of these are true:") : bullets [go scope modal i | i <- arr (field "items" a)]

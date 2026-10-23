@@ -244,7 +244,7 @@ test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref
           [ object ["id" .= s "shop::type::RefundDecision::PartlyApproved", "name" .= s "PartlyApproved", "fields" .= [binder "amount" "amount"]]
           , object ["id" .= s "shop::type::RefundDecision::Rejected", "name" .= s "Rejected", "fields" .= ([] :: [Value])] ]]
         request' = record "request" ["requestedAmount", "capturedAmount"]
-        types = ["dataTypes" .= [decision, request'], "units" .= functions ["refund", "sampleParcel"]]
+        types = ["dataTypes" .= [decision, request'], "units" .= functions ["refund", "sampleParcel", "weightOf"]]
         subject = local "r" "request"
         fieldOf i = expr (node "field" ["constructor" .= s "request::Record", "index" .= (i :: Int), "value" .= subject]) "r.x" integer
         partly = construct "shop::type::RefundDecision::PartlyApproved" [fieldOf 0]
@@ -255,6 +255,11 @@ test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref
     it "names a function as \"the <function> for <arguments>\" and a bound input as \"this <input>\"" $ do
       statementOf Eng (equal (call "refund" [subject]) rejected) `shouldBe` ["  The refund for this request must be the refund decision \"rejected\"."]
       statementOf Eng (equal (call "sampleParcel" [unitValue]) (number 1)) `shouldBe` ["  The sample parcel must be 1."]
+    it "states a comparison required to be true as the obligation itself" $ do
+      let positive = equal (binary ">" (fieldOf 0) (number 0)) (expr (node "constant" ["value" .= object ["type" .= s "Bool", "value" .= True]]) "true" bool)
+      statementOf Eng positive `shouldBe` ["  The requested amount of this request must be greater than 0."]
+      section "formula" Math types (law positive) `shouldBe` ["  request.requestedAmount > 0"]
+      statementOf Eng (equal (call "weightOf" [subject]) (number 1)) `shouldBe` ["  The weight of this request must be 1."]
     it "quotes a union case after its type's words and gives payload fields as owned values" $
       statementOf Eng (equal (call "refund" [subject]) partly) `shouldBe`
         ["  The refund for this request must be the refund decision \"partly approved\", with amount this request's requested amount."]
