@@ -1,5 +1,6 @@
--- | Native Hypothesis/fast-check generators from resolved scalar/container types.
+-- | Native Hypothesis generators from resolved scalar/container types.
 -- Documents retain legal call, object, and collection breaks for test emitters.
+-- (JavaScript's fast-check generators are LawSpec.WebTests'.)
 module LawSpec.PortableGenerator (generatorDoc, generatorDocWithin) where
 
 import LawSpec.Backend
@@ -7,114 +8,80 @@ import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.PythonExpr as Python
-import qualified LawSpec.WebLegacy as Web
-import Data.Aeson (encode, toJSON)
+import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
--- | Python and JavaScript draw values with their own frameworks, Hypothesis and
--- fast-check, from the same plan. ref:DEC-native-property-frameworks
-generatorDoc :: Bool -> Int -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
-generatorDoc py bits structural reference = generatorDocWithin py bits structural reference Nothing
+-- | Python draws values with Hypothesis, from the same plan as every
+-- target's framework. ref:DEC-native-property-frameworks
+generatorDoc :: Int -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
+generatorDoc bits structural reference = generatorDocWithin bits structural reference Nothing
 
 -- | The generator, with an integer drawn from a refinement's range when one
 -- is given.
-generatorDocWithin :: Bool -> Int -> (Type -> Bool) -> (Type -> D.Doc) -> Maybe (Integer, Integer) -> Type -> D.Doc
-generatorDocWithin py bits structural reference within = generate
+generatorDocWithin :: Int -> (Type -> Bool) -> (Type -> D.Doc) -> Maybe (Integer, Integer) -> Type -> D.Doc
+generatorDocWithin bits structural reference within = generate
   where
-    quote = if py then Python.quoted else Web.quoted
+    quote = Python.quoted
     number :: Show a => a -> D.Doc
     number = D.text . show
     text = D.text
-    call = if py then Python.call else Web.call
-    indentation = if py then 4 else 2
-    array = D.delimitTrailing indentation "[" "]"
-    object fields = D.delimitTrailing indentation "{" "}"
-      [text key <> text ": " <> value | (key,value) <- fields]
-    lambda name body = D.group (text (if py then "lambda " ++ name ++ ": " else "(" ++ name ++ ") => ") <> body)
+    call = Python.call
+    array = D.delimitTrailing 4 "[" "]"
+    lambda name body = D.group (text ("lambda " ++ name ++ ": ") <> body)
     method source name args = source <> text ("." ++ name) <> D.delimitTrailing 4 "(" ")" args
     mapped source name body = method source "map" [lambda name body]
-    construct name = call ((if py then "" else "new ") ++ "ls." ++ name)
+    construct name = call ("ls." ++ name)
     integerRange :: Integer -> Integer -> D.Doc
-    integerRange low high = if py
-      then call "st.integers" [text "min_value=" <> number low, text "max_value=" <> number high]
-      else call "fc.integer" [object [("min",number low),("max",number high)]]
-    list source = if py then call "st.lists" [source,text "max_size=100"]
-      else call "fc.array" [source,object [("maxLength",text "100")]]
-    scalarCodePoint = method (integerRange 0 1114111) "filter"
-      [lambda "x" (text "x < 55296 || x > 57343")]
+    integerRange low high = call "st.integers" [text "min_value=" <> number low, text "max_value=" <> number high]
+    list source = call "st.lists" [source,text "max_size=100"]
     scalarLiteral value = call "ls.literal"
-      [if py then call "json.loads" [quote (T.unpack (T.decodeUtf8 (encode value)))]
-       else Web.literalValue (toJSON value)]
+      [call "json.loads" [quote (T.unpack (T.decodeUtf8 (encode value)))]]
     boundaries (Applied n t) = SPresent n Nothing : map (SPresent n . Just) (boundaries t)
     boundaries (Named n) = scalarBoundaries bits n
     boundaries _ = []
-    bound :: Integer -> String -> D.Doc
     -- Python names the unbounded integers' draw limit once per test module.
-    bound value _
-      | py && value == 2^(256::Int) = text "INTEGER_DRAW_LIMIT"
-      | py && value == -2^(256::Int) = text "-INTEGER_DRAW_LIMIT"
-    bound value suffix
-      | value == 2^(256::Int) = text ("2" ++ suffix ++ " ** 256" ++ suffix)
-      | value == -2^(256::Int) = text ("-(2" ++ suffix ++ " ** 256" ++ suffix ++ ")")
-      | otherwise = text (show value ++ suffix)
+    bound :: Integer -> D.Doc
+    bound value
+      | value == 2^(256::Int) = text "INTEGER_DRAW_LIMIT"
+      | value == -2^(256::Int) = text "-INTEGER_DRAW_LIMIT"
+      | otherwise = text (show value)
     generate ty | structural ty = call "_lawspec_data_generator" [reference ty]
     generate (Applied "Maybe" inner) =
       let absent = call "ls.construct" [quote ("Maybe::Absent" :: String),array []]
           present = call "ls.construct" [quote ("Maybe::Present" :: String),array [text "value"]]
-      in call (if py then "st.one_of" else "fc.oneof")
-        [call (if py then "st.just" else "fc.constant") [absent],mapped (generate inner) "value" present]
+      in call "st.one_of" [call "st.just" [absent],mapped (generate inner) "value" present]
     generate (C.Constructor "Either" [C.TypeArgument left,C.TypeArgument right]) =
       let branch tag inner = mapped (generate inner) "value"
             (call "ls.construct" [quote tag,array [text "value"]])
-      in call (if py then "st.one_of" else "fc.oneof")
-        [branch "Either::Left" left,branch "Either::Right" right]
-    generate (Applied "List" inner) = if py
-      then call "st.lists" [generate inner,text "max_size=64"]
-      else call "fc.array" [generate inner,object [("maxLength",text "64")]]
-    generate (Applied n inner) = call (if py then "st.one_of" else "fc.oneof")
-      [call (if py then "st.just" else "fc.constant")
-        [construct "Presence" [quote n,text (if py then "False" else "false")]],
-       mapped (generate inner) "x" (construct "Presence"
-        [quote n,text (if py then "True" else "true"),text "x"])]
+      in call "st.one_of" [branch "Either::Left" left,branch "Either::Right" right]
+    generate (Applied "List" inner) = call "st.lists" [generate inner,text "max_size=64"]
+    generate (Applied n inner) = call "st.one_of"
+      [call "st.just" [construct "Presence" [quote n,text "False"]],
+       mapped (generate inner) "x" (construct "Presence" [quote n,text "True",text "x"])]
     generate t@(Named n)
       | isInteger n =
           let bounds = maybe (integerBounds bits n) Just within
               low = maybe (if n == "BigUInt" then 0 else -2^(256::Int)) fst bounds
               high = maybe (2^(256::Int)) snd bounds
-          in if py then call "st.integers"
-            [text "min_value=" <> bound low "",text "max_value=" <> bound high ""] else
-            mapped (call "fc.bigInt" [object [("min",bound low "n"),("max",bound high "n")]]) "x"
-              (call "ls.convert" [text "x",quote n,number bits])
-      | n == "Bool" = call (if py then "st.booleans" else "fc.boolean") []
-      | n == "Text" = if py then call "st.text" [] else
-          mapped (list scalarCodePoint) "xs"
-            (method (mapped (text "xs") "x" (call "String.fromCodePoint" [text "x"])) "join" [quote ("" :: String)])
-      | n `elem` ["Float32","Float64"] = if py
-          then call "st.floats" [text ("width=" ++ if n == "Float32" then "32" else "64")]
-          else call (if n == "Float32" then "fc.float" else "fc.double") []
-      | n == "Decimal" = mapped (call (if py then "st.tuples" else "fc.tuple")
-          [call (if py then "st.integers" else "fc.bigInt") [],integerRange (-20) 20]) "v"
-          (call (if py then "ls.make_decimal" else "new ls.Decimal") [text "v[0]",text "v[1]"])
-      | n == "Rational" = mapped (call (if py then "st.tuples" else "fc.tuple")
-          [call (if py then "st.integers" else "fc.bigInt") [],
-           if py then call "st.integers" [text "min_value=1"] else call "fc.bigInt" [object [("min",text "1n")]]]) "v"
-          (call (if py then "ls.Fraction" else "new ls.Rational") [text "v[0]",text "v[1]"])
+          in call "st.integers" [text "min_value=" <> bound low,text "max_value=" <> bound high]
+      | n == "Bool" = call "st.booleans" []
+      | n == "Text" = call "st.text" []
+      | n `elem` ["Float32","Float64"] = call "st.floats" [text ("width=" ++ if n == "Float32" then "32" else "64")]
+      | n == "Decimal" = mapped (call "st.tuples" [call "st.integers" [],integerRange (-20) 20]) "v"
+          (call "ls.make_decimal" [text "v[0]",text "v[1]"])
+      | n == "Rational" = mapped (call "st.tuples" [call "st.integers" [],call "st.integers" [text "min_value=1"]]) "v"
+          (call "ls.Fraction" [text "v[0]",text "v[1]"])
       | n `elem` ["Complex64","Complex128"] =
           let component = generate (Named (if n == "Complex64" then "Float32" else "Float64"))
-          in mapped (call (if py then "st.tuples" else "fc.tuple") [component,component]) "v"
-            (call (if py then "complex" else "new ls.Complex") [text "v[0]",text "v[1]"])
-      | n == "Char" = if py then call "st.characters" [text "blacklist_categories=(\"Cs\",)"]
-          else mapped scalarCodePoint "x" (call "String.fromCodePoint" [text "x"])
+          in mapped (call "st.tuples" [component,component]) "v" (call "complex" [text "v[0]",text "v[1]"])
+      | n == "Char" = call "st.characters" [text "blacklist_categories=(\"Cs\",)"]
       | n `elem` ["CodePoint","CodeUnit16"] = integerRange 0 (maximumUnit n)
-      | n == "Bytes" = if py then call "st.binary" [text "max_size=100"]
-          else mapped (list (integerRange 0 255)) "v" (call "new Uint8Array" [text "v"])
+      | n == "Bytes" = call "st.binary" [text "max_size=100"]
       | n `elem` ["CodePointText","Utf16Text"] = mapped (list (integerRange 0 (maximumUnit n))) "v"
-          (construct "Raw" [quote n,if py then call "tuple" [text "v"] else text "v"])
-      | n == "Symbol" = if py then method (call "st.text" []) "map" [text "ls.Symbol"]
-          else mapped (call "fc.string" []) "x" (call "Symbol" [text "x"])
-      | otherwise = if py then call "st.sampled_from" [array (map scalarLiteral (boundaries t))]
-          else call "fc.constantFrom" (map scalarLiteral (boundaries t))
+          (construct "Raw" [quote n,call "tuple" [text "v"]])
+      | n == "Symbol" = method (call "st.text" []) "map" [text "ls.Symbol"]
+      | otherwise = call "st.sampled_from" [array (map scalarLiteral (boundaries t))]
     generate _ = error "unsupported portable generator type"
     maximumUnit :: String -> Integer
     maximumUnit n = if n == "Bytes" then 255 else if n `elem` ["CodeUnit16","Utf16Text"] then 65535 else 1114111

@@ -98,6 +98,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     stubPath = "src/" ++ slash ++ ext
     testPath = "test/" ++ intercalate "_" parts ++ ".lawspec.test" ++ ext
     laws = filter ((== unitName u) . owner) allLaws
+    unitParallel = maybe False C.harnessParallel (C.unitHarnessSettings u)
     hasHarness = C.unitHarnessSettings u /= Nothing || any ((/= Nothing) . C.harnessUnit . C.propertyHarness . original) laws
     namespace alias path' = (alias, E.ImportDecl False (E.ImportNamespace alias) path')
     up = concat (replicate (length parts - 1) "../")
@@ -107,8 +108,8 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
       [namespace "_definitions" ("../src/lawspec_definition_bodies." ++ dialectExt) | not (null definitions)] ++
       [namespace "data" ("../src/lawspec_data." ++ dialectExt) | hasData] ++
       [namespace "schema" ("../src/lawspec_schema." ++ dialectExt) | hasData] ++
-      [("describe", E.ImportDecl False (E.ImportNamed [("describe", Nothing), ("test", Nothing)]) "node:test")] ++
-      [("test", E.ImportDecl False (E.ImportNamed [("test", Nothing)]) "node:test")] ++
+      -- A parallel unit's laws run in one describe block.
+      [("test", E.ImportDecl False (E.ImportNamed ([("describe", Nothing) | unitParallel] ++ [("test", Nothing)])) "node:test")] ++
       [("fc", E.ImportDecl False (E.ImportDefault "fc") "fast-check")] ++
       [namespace "impl" ("../src/" ++ slash ++ "." ++ dialectExt)] ++
       [namespace "_abilities" ("../src/lawspec_abilities/" ++ slash ++ "." ++ dialectExt) | unitAbilityPieces u] ++

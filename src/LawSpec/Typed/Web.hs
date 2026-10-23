@@ -160,7 +160,8 @@ emitWebTyped ts bits declarations units = do
   let plan = typedPlanPerforming scalarTypes declarations units
       datas = typedData plan
   names <- namesFor [d | d <- declarations, collectionContainer (idText (dataId d)) == Nothing, not (isDurationType (idText (dataId d))), not (dataHandle d)]
-  let (classTable, classScope) = classNames (scopeWith (reservedFor "javascript" ++ moduleReserved)) datas
+  let shownName d = maybe (dataName d) id (lookup (dataId d) names)
+      (classTable, classScope) = classNames shownName (scopeWith (reservedFor "javascript" ++ moduleReserved)) datas
       -- Each typed function is named after its definition.
       (functionNames, moduleScope) = claimAll classScope
         [ nativeIdentifier "javascript" FunctionName (readableDefinitionName (declarationName (definitionDeclaration d))
@@ -223,11 +224,11 @@ emitWebTyped ts bits declarations units = do
     usedNames text = S.fromList (words (map (\c -> if c `elem` ('_' : '$' : ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']) then c else ' ') text))
 
 -- | The class of each typed constructor, and the union of a sum's.
-classNames :: N.Scope -> [DataDeclaration] -> (M.Map Id String, N.Scope)
-classNames scope0 datas = let (scope, acc) = foldl pick (scope0, []) datas in (M.fromList acc, scope)
+classNames :: (DataDeclaration -> String) -> N.Scope -> [DataDeclaration] -> (M.Map Id String, N.Scope)
+classNames shownName scope0 datas = let (scope, acc) = foldl pick (scope0, []) datas in (M.fromList acc, scope)
   where
     pick (scope, acc) d =
-      let (chosen, scope') = claim scope (nativeIdentifier "javascript" TypeName (dataName d))
+      let (chosen, scope') = claim scope (nativeIdentifier "javascript" TypeName (shownName d))
           (variantNames, scope'') = claimAll scope'
             [chosen ++ nativeIdentifier "javascript" TypeName (constructorName c) | length (dataConstructors d) > 1, c <- dataConstructors d]
           variants = zip [constructorId c | length (dataConstructors d) > 1, c <- dataConstructors d] variantNames
@@ -309,7 +310,7 @@ classDoc env d
                   else []
                 assignments = [E.ExprStmt (E.Assign "=" (E.member E.This "k") (E.num (toInteger (rankOf d c)))) | not (isProductType d)] ++
                   [E.ExprStmt (E.Assign "=" (E.member E.This (property f)) (E.Ident (property f))) | f <- fields]
-            in [ E.Comment (commentLines (labelled (constructorName c) Nothing))
+            in [ E.Comment (commentLines (labelled (envClasses env M.! dataId d ++ (if isProductType d then "" else "." ++ constructorName c)) (sourceLink (dataOrigin d))))
                , E.ClassDecl True name generics Nothing [] (declarations ++ [E.Method False False "method" "constructor" params Nothing assignments]) ]
           union = [ [E.TypeAlias True (envClasses env M.! dataId d) generics
                       (if null (dataConstructors d) then E.TKeyword "never"

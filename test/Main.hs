@@ -79,6 +79,7 @@ import qualified LawPrimitivesSpec
 import qualified HarnessSpec
 import qualified BuiltinsSpec
 import qualified BoundsSpec
+import qualified ECMAScriptSpec
 import qualified ConditionalSpec
 import qualified IncrementalSpec
 import qualified TestManifestSpec
@@ -200,6 +201,7 @@ main = hspec $ do
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers
   BoundsSpec.test_generationStaysWithinRefinedBoundsOnEveryTarget
+  ECMAScriptSpec.test_javascriptIsLaidOutAsPrettierLaysItOut
   ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
   IncrementalSpec.test_incrementalCompilationGivesTheSameResultAsAFreshOne
   TestManifestSpec.test_testManifestNamesEveryLawsTestOnEachTarget

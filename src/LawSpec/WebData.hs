@@ -17,6 +17,8 @@ import LawSpec.DataNames (isProduct, nativeConstructorFieldType)
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.WebExpr as X
 import qualified LawSpec.Code.ECMAScript as E
+import LawSpec.WebModule (linkComment)
+import LawSpec.SourceLink (sourceLink)
 
 -- | Target imports and a known TypeScript signature slot are substituted. Runtime
 -- expressions and literals stay opaque; no whitespace rewriting is performed.
@@ -159,9 +161,10 @@ emitWebDataWithProfile ts bits layout declarations = do
             pure (maybe "never" id (lookup p parameters), E.printType pattern)) equations
           pure (E.TRaw ("([" ++ intercalate ", " (map fst patterns) ++ "] extends [" ++ intercalate ", " (map snd patterns) ++
             "] ? " ++ E.printType (application native [E.TRef a [] | a <- classArgs]) ++ " : never)"))
-        pure (member,nativeClass native classArgs fields')
+        pure (member,linkComment (name ++ (if isProduct declaration then "" else "." ++ C.constructorName constructor)) (sourceLink (C.dataOrigin declaration)) : nativeClass native classArgs fields')
       -- A product's class is the type itself; only sums need a union alias.
-      pure ([alias name args (if null variants then [E.TKeyword "never"] else map fst variants) | not (isProduct declaration)] ++ concatMap snd variants)
+      pure ([stmt | not (isProduct declaration), stmt <- [linkComment name (sourceLink (C.dataOrigin declaration)),
+               alias name args (if null variants then [E.TKeyword "never"] else map fst variants)]] ++ concatMap snd variants)
     -- Optional trailing arguments up to the last one that is needed.
     trimmed values needed = take (length needed - length (takeWhile not (reverse needed))) values
     definitionSchema names bindings schema = do
