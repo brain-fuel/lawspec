@@ -175,11 +175,11 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           nativeNames = handlerNames ++ valueNames
           bindings = zip nativeNames (handlers ++ [Call (c ++ ".toNative") [Var a] | (c, a) <- valueNatives])
           adapter = unitQualified (C.unitId unit) ++ "." ++ functionName declaration
-          callText = adapter ++ "(" ++ intercalate ", " nativeNames ++ ")"
           voidResult = nativeResult == "Void"
           resultTy = if voidResult then "Void" else nativeResult
           key = failureKey declaration
-          convert fc = "{ (failure: " ++ maybe "" id failure ++ ") throws -> Value in try " ++ fc ++ ".fromNative(failure) }"
+          convert fc = Code (closureDoc ("(failure: " ++ maybe "" id failure ++ ") throws -> Value") (callDoc ("try " ++ fc ++ ".fromNative") [D.text "failure"]))
+          adapterInvocation = callDoc adapter (map D.text nativeNames)
           bound = lookup (C.declarationId declaration) calls
           refText = intercalate "." . referenceParts
           -- Application code bound in lawspec.json: a function, a type's
@@ -194,14 +194,15 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           invocation = case (boundCallee, failure, failureCodec, async) of
             (Just (callee, args), _, _, False) -> Call "Effects.bound" (Raw callee : map Var args)
             (Just (callee, args), _, _, True) ->
-              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in try await Effects.boundAsync(" ++
-                intercalate ", " (callee : args) ++ ") }")]]
+              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy)
+                (callDoc "try await Effects.boundAsync" (map D.text (callee : args))))]]
             (Nothing, Just e, Just fc, False) ->
-              Call "Effects.ofThrown" [Str key, Raw (convert fc), Raw ("{ () throws(" ++ e ++ ") -> " ++ resultTy ++ " in try " ++ callText ++ " }")]
+              Call "Effects.ofThrown" [Str key, convert fc, Code (closureDoc ("() throws(" ++ e ++ ") -> " ++ resultTy) (D.text "try " <> adapterInvocation))]
             (Nothing, Just e, Just fc, True) ->
-              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in\n  do throws(" ++ e ++ ") {\n    return try await " ++ callText ++
-                "\n  } catch {\n    throw RaisedFailure(" ++ stringLiteral key ++ ", try " ++ fc ++ ".fromNative(error))\n  }\n}")]]
-            (Nothing, _, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in await " ++ callText ++ " }")]]
+              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy)
+                (D.text ("do throws(" ++ e ++ ")") <> blockDoc (hangValue "return" (D.text "try await " <> adapterInvocation)) <>
+                 D.text " catch" <> blockDoc (callDoc "throw RaisedFailure" [D.text (stringLiteral key), callDoc ("try " ++ fc ++ ".fromNative") [D.text "error"]])))]]
+            (Nothing, _, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy) (D.text "await " <> adapterInvocation))]]
             _ -> Pure adapter (map Var nativeNames)
           converted = if voidResult then Do [Statement invocation] (Raw "Value.unit") else Call (resultCodec ++ ".fromNative") [invocation]
       -- A bound function fails by throwing: its declared failure type, or
@@ -209,16 +210,19 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
       mapped <- case (bound, declarationFailure declaration, failure, failureCodec) of
         (Just _, Just failureTy, Just e, Just fc) -> do
           ref <- X.typeRef failureTy
-          let own = Raw ("Effects.mapError(" ++ e ++ ".self, { (failure: " ++ e ++ ") throws -> Value in try " ++ fc ++ ".fromNative(failure) })")
+          let own = Code (callDoc "Effects.mapError" [D.text (e ++ ".self")] <> D.text " " <>
+                closureDoc ("(failure: " ++ e ++ ") throws -> Value") (callDoc ("try " ++ fc ++ ".fromNative") [D.text "failure"]))
               mapping (k, fb) =
                 let native = intercalate "." (C.failureNative fb)
                     caught = "caught" ++ show (k :: Int)
-                    fields = "[" ++ intercalate ", " (C.mapFailureFields
-                      (\ty tag values -> "try Schema.construct(" ++ stringLiteral (C.idText tag) ++ ", [" ++ intercalate ", " values ++
-                        "], try " ++ D.render D.Compact (renderExpr (either error id (X.typeRef ty))) ++ ", schema)")
-                      ("Value.text(String(describing: " ++ caught ++ "))") fb) ++ "]"
-                in Raw ("Effects.mapError(" ++ native ++ ".self, { (" ++ caught ++ ": " ++ native ++ ") throws -> Value in try Schema.construct(" ++
-                     stringLiteral (C.idText (C.failureConstructor fb)) ++ ", " ++ fields ++ ", try " ++ D.render D.Compact (renderExpr ref) ++ ", schema) })")
+                    fields = arrayDoc (C.mapFailureFields
+                      (\ty tag values -> callDoc "try Schema.construct" [D.text (stringLiteral (C.idText tag)), arrayDoc values,
+                        D.text (D.render D.Compact (renderExpr (either error id (X.typeRef ty)))), D.text "schema"])
+                      (D.text ("Value.text(String(describing: " ++ caught ++ "))")) fb)
+                in Code (callDoc "Effects.mapError" [D.text (native ++ ".self")] <> D.text " " <>
+                     closureDoc ("(" ++ caught ++ ": " ++ native ++ ") throws -> Value")
+                       (callDoc "try Schema.construct" [D.text (stringLiteral (C.idText (C.failureConstructor fb))), fields,
+                         D.text (D.render D.Compact (renderExpr ref)), D.text "schema"]))
               mappings = map mapping (zip [0 ..] [fb | fb <- C.unitFailureBindings unit, C.failureType fb == failureTy])
           pure (call "Effects" "nativeFailures" [Str key, Lambda [] tValue converted, ListOf (Ty "[(any Error) throws -> Value?]") (mappings ++ [own])])
         _ -> pure converted

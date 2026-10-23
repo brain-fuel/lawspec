@@ -8,7 +8,7 @@
 module LawSpec.Swift.Code
   ( Ty(..), Expr(..)
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
-  , call, pure', str, longStringLiteral, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
+  , call, pure', str, longStringLiteral, closureDoc, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
   , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, fileHeader, blockDoc, comment
   ) where
 
@@ -30,6 +30,9 @@ data Expr
   | Str String
   -- | Text too long for a line: a multiline literal, its lines joined.
   | LongStr String
+  -- | Swift laid out already (a closure with a statement of its own),
+  -- which neither throws as an expression nor needs hoisting.
+  | Code D.Doc
   | IntLit Integer
   -- | A BigInt literal.
   | BigLit Integer
@@ -134,6 +137,7 @@ mentions :: String -> Expr -> Bool
 mentions n e = case e of
   Var v -> v == n
   Raw r -> n `elem` tokens r
+  Code d -> n `elem` tokens (D.render D.Compact d)
   Call f args -> n `elem` tokens f || any (mentions n) args
   Pure f args -> n `elem` tokens f || any (mentions n) args
   Invoke f args -> any (mentions n) (f : args)
@@ -279,6 +283,7 @@ arguments args
       BigLit _ -> True
       BoolLit _ -> True
       Raw _ -> True
+      Code _ -> True
       Lambda {} -> True
       _ -> False
 
@@ -454,6 +459,10 @@ lambda ps r b = do
   inner <- body r Return b
   pure (closure ps r inner)
 
+-- | A closure from its header (() throws -> T) and its body's lines.
+closureDoc :: String -> D.Doc -> D.Doc
+closureDoc header inner = D.text ("{ " ++ header ++ " in") <> D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
+
 -- | A closure: its signature, then its body on lines of its own.
 closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
 closure ps (Ty rt) inner =
@@ -465,6 +474,7 @@ inline e = case e of
   Var v -> pure (D.text v)
   Str s -> pure (D.text (stringLiteral s))
   LongStr s -> pure (longStringLiteral s)
+  Code d -> pure d
   IntLit n -> pure (D.text (intLiteral n))
   BigLit n -> pure (D.text (bigLiteral n))
   BoolLit b -> pure (D.text (if b then "true" else "false"))

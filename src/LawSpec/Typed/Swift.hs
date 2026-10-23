@@ -29,7 +29,7 @@ import qualified LawSpec.Naming as Nm
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (generatedHeader)
 import LawSpec.Swift.Names (dataNames, escape, localName, pascal, splitDigest)
-import Data.Char (isHexDigit)
+import Data.Char (isAlphaNum, isDigit, isHexDigit)
 import qualified LawSpec.Swift.Data as Data
 import qualified LawSpec.Swift.Effects as Effects
 
@@ -158,6 +158,13 @@ block body = D.nest 2 (D.hardline <> D.joinWith D.hardline body)
 paren :: D.Doc -> D.Doc
 paren x = D.text "(" <> x <> D.text ")"
 
+-- | A value a member is taken of: a name as it is, anything else in
+-- parentheses.
+receiver :: D.Doc -> D.Doc
+receiver x = case D.render D.Compact x of
+  name@(c : _) | all (\ch -> isAlphaNum ch || ch == '_') name, not (isDigit c) -> x
+  _ -> paren x
+
 -- | A condition without the parentheses swift-format drops around one.
 condition :: D.Doc -> D.Doc
 condition x = case D.render D.Compact x of
@@ -256,8 +263,8 @@ statements env scope resultType sink e = case expressionNode e of
     pure (s ++ [finish x])
   where
     finish x = case sink of
-      Return -> D.text "return " <> x
-      Assign name -> D.text (name ++ " = ") <> x
+      Return -> D.text "return " <> condition x
+      Assign name -> D.text (name ++ " = ") <> condition x
     -- A value computed for its effects only.
     discard value x = case expressionNode value of
       Local _ -> []
@@ -543,7 +550,7 @@ construct env ty tag values = do
   typeText <- lift' (nativeType env ty)
   case (idText tag, values) of
     ("List::Nil", []) -> pure (D.text (typeText ++ "()"))
-    ("List::Cons", [h, t]) -> pure (paren t <> D.text ".prepending(" <> h <> D.text ")")
+    ("List::Cons", [h, t]) -> pure (receiver t <> D.text ".prepending(" <> h <> D.text ")")
     ("Maybe::Absent", []) -> pure (D.text ("(nil as " ++ typeText ++ ")"))
     ("Maybe::Present", [x]) -> pure (paren (callDoc (typeText ++ ".some") [x]))
     ("Either::Left", [x]) -> pure (callDoc (typeText ++ ".left") [x])

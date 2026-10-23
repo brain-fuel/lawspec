@@ -137,8 +137,8 @@ emitBridges layout bits declarations units
           (Just e, Just ft) -> do
             fc <- Data.codec bits names [] ft
             pure (Call "Effects.ofThrown" [Str (failingKey a op),
-              Raw ("{ (failure: " ++ e ++ ") throws -> Value in try " ++ fc ++ ".fromNative(failure) }"),
-              Raw ("{ () throws(" ++ e ++ ") -> " ++ r ++ " in try " ++ D.render D.Compact (renderExpr callNative) ++ " }")])
+              Code (closureDoc ("(failure: " ++ e ++ ") throws -> Value") (callDoc ("try " ++ fc ++ ".fromNative") [D.text "failure"])),
+              Code (closureDoc ("() throws(" ++ e ++ ") -> " ++ r) (D.text "try " <> renderExpr callNative))])
           _ -> pure callNative
         let result = if r == "Void"
               then Do [Statement invoked] (Raw "Value.unit")
