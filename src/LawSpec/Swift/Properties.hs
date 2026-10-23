@@ -334,7 +334,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       boundariesWithRegistry registry (planMachineBits plan) ty
     strategyDraw names requirement strategy path draw = case draw of
       C.DrawAny ty (Just aim) -> do
-        let name = "aim"
+        let name = "aim" ++ shortPath path
             aliases = bindName (C.quantifiedBinder aim) name names
         witnesses <- if ty == C.binderType (generatorBinder requirement)
           then pure (generatorBoundaries requirement) else witnessesFor ty
@@ -355,18 +355,27 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
         pure (choose path selector branches)
       C.DrawSuchThat inner binder predicate limit -> do
         generator <- strategyDraw names requirement strategy (path ++ "s") inner
-        let name = "keep"
+        let name = "keep" ++ shortPath path
         condition <- renderWith (bindName binder name names) predicate
         pure (pure' "Property" "suchThat" [Str strategy, Lambda [(name, tValue)] tBool (X.truth condition), IntLit limit, generator])
       C.DrawBind binder from rest -> do
         generator <- strategyDraw names requirement strategy (path ++ "from") from
-        let name = "draw"
+        let name = "draw" ++ shortPath path
         remaining <- strategyDraw (bindName binder name names) requirement strategy (path ++ "rest") rest
         pure (bind generator name remaining genTy)
     choose path selector branches =
-      let name = "choice"
+      let name = "choice" ++ shortPath path
       in pure' "Gens" "bind" [selector, Lambda [(name, tInt)] genTy
            (Invoke (pure' "Gens" "nth" [Var name, ListOf (Ty "[() throws -> Gen<Value>]") branches]) [])]
+
+-- | A strategy draw's place, written short (from is b, rest r, such that
+-- s): unique within its law, so a nested draw never hides an outer one.
+shortPath :: String -> String
+shortPath p = case p of
+  'f' : 'r' : 'o' : 'm' : rest -> 'b' : shortPath rest
+  'r' : 'e' : 's' : 't' : rest -> 'r' : shortPath rest
+  c : rest -> c : shortPath rest
+  [] -> []
 
 -- | The application's generators bound in lawspec.json, by type: each
 -- factory gives a generator of native values, which its type's codec makes

@@ -275,7 +275,12 @@ arguments args
         name <- fresh (case a' of
           Call "Scalar.typeOf" _ -> "typeRef"
           _ -> "argument")
-        pure (ss ++ [Bind name (Ty "") a'], Var name)
+        -- A list keeps its element type, which its closures are inferred
+        -- from (@Sendable clauses).
+        let annotation = case a' of
+              ListOf (Ty t) xs | not (null t), any holdsLambda xs -> Ty t
+              _ -> Ty ""
+        pure (ss ++ [Bind name annotation a'], Var name)
       else pure (ss, a')
     simple a = case a of
       Var _ -> True
@@ -327,9 +332,12 @@ distinct e = evalState (go M.empty e) S.empty
       -- A closure's parameters are its own scope: they keep their names,
       -- unless one would hide a name the closure is inside, which is
       -- renamed so the closure's body still reaches both.
+      -- Names bound inside a closure do not reach its siblings.
       Lambda ps r b -> do
+        outside <- get
         names <- mapM (\p -> if M.member p env then binder p else modify (S.insert p) >> pure p) (map fst ps)
         b' <- go (foldr (uncurry M.insert) env (zip (map fst ps) names)) b
+        put outside
         pure (Lambda (zip names (map snd ps)) r b')
       Let n t v b -> do
         v' <- go env v
@@ -479,11 +487,37 @@ closureHeader header = D.group (D.text "{" <> D.nest indentation (D.softline <> 
   where
     -- A result type's generic argument breaks inside its brackets when the
     -- header does not fit even on a line of its own.
-    headerDoc = case break (== '<') (reverse header) of
-      (inner, '<' : front) | take 1 header' == ">" , '>' `notElem` drop 1 inner, ' ' `notElem` inner ->
-        D.group (D.text (reverse front ++ "<") <> D.nest indentation (D.softbreak <> D.text (reverse (drop 1 inner))) <> D.softbreak <> D.text ">")
+    headerDoc = case (break (== '<') (reverse header), splitArrow header) of
+      ((inner, '<' : front), Just (params, result)) | take 1 (reverse header) == ">", '>' `notElem` drop 1 inner, ' ' `notElem` inner ->
+        let generic = D.text (reverse front ++ "<")
+            argument = D.nest indentation (D.softbreak <> D.text (reverse (drop 1 inner))) <> D.softbreak <> D.text ">"
+            resultHead = takeWhile (/= '<') result ++ "<"
+            broken = D.text (resultHead) <> argument
+            -- Before ->, then before throws, as far as it must.
+            (bare, effects) = splitEffects params
+        in D.prefixChoice (reverse front ++ "<") (D.group (generic <> argument))
+             (D.prefixChoice params (D.text params <> D.nest indentation (D.softline <> D.text "-> " <> broken))
+               (D.text bare <> D.nest indentation (D.softline <> D.text (effects ++ " -> ") <> broken)))
+      (_, Just (params, result)) ->
+        let (bare, effects) = splitEffects params
+        in D.prefixChoice header (D.text header)
+             (D.prefixChoice params (D.text params <> D.nest indentation (D.softline <> D.text ("-> " ++ result)))
+               (D.text bare <> D.nest indentation (D.softline <> D.text (effects ++ " -> " ++ result))))
       _ -> D.text header
-    header' = reverse header
+    -- (x: T) throws and -> R
+    splitArrow h = case breakOn " -> " h of
+      Just (a, b) -> Just (a, b)
+      Nothing -> Nothing
+    breakOn needle hay = go "" hay
+      where
+        go _ [] = Nothing
+        go acc rest@(c : cs)
+          | take (length needle) rest == needle = Just (reverse acc, drop (length needle) rest)
+          | otherwise = go (c : acc) cs
+    -- (x: T) and throws, at the last parenthesis.
+    splitEffects ps = case break (== ')') (reverse ps) of
+      (effects, ')' : front) -> (reverse (')' : front), dropWhile (== ' ') (reverse effects))
+      _ -> (ps, "")
 
 -- | A closure: its signature, then its body on lines of its own.
 closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
@@ -574,6 +608,14 @@ callee hung f rest = case break (== '.') (reverse f) of
 -- | A generic initializer takes its closure in parentheses.
 trailing :: D.Doc -> Bool
 trailing f = D.render D.Compact f `notElem` ["UncheckedBox"]
+
+-- | Whether a value holds a closure.
+holdsLambda :: Expr -> Bool
+holdsLambda e = case e of
+  Lambda {} -> True
+  TupleOf xs -> any holdsLambda xs
+  ListOf _ xs -> any holdsLambda xs
+  _ -> False
 
 -- | A value written as one short token.
 atomic :: Expr -> Bool
