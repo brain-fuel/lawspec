@@ -63,8 +63,8 @@ modelTestArtifacts target bits datas calls u
     ktCallback body = D.text "LawSpecRuntime.ModelCallback " <> KotlinLayout.lambda ["s", "a"] [KotlinLayout.call (takeWhile (/= '(') body)
       (map D.text (splitArguments (takeWhile (/= ')') (drop 1 (dropWhile (/= '(') body)))))]
     -- A Scala callback: ((s, a) => name(args)) as the runtime's interface.
-    scCallback body = D.group (D.text "((s, a) =>" <> D.nest 2 (D.softline <> ScalaLayout.call (takeWhile (/= '(') body)
-      (map D.text (splitArguments (init (drop 1 (dropWhile (/= '(') body)))))) <> D.text "): LawSpecRuntime.ModelCallback")
+    scCallback body = D.group (D.text "(s, a) =>" <> D.nest 2 (D.softline <> ScalaLayout.call (takeWhile (/= '(') body)
+      (map D.text (splitArguments (init (drop 1 (dropWhile (/= '(') body)))))))
     scString = ScalaLayout.scalaString
     -- A Java callback: (s, a) -> name(args), broken after the arrow.
     jCallback body = case break (== '>') body of
