@@ -171,7 +171,10 @@ bare e = case e of
   App f args -> function f <> D.nest 2 (mconcat [D.softline <> argument a | a <- args])
   Op d [f, x] | isDollar d -> if hangs x && not (multi f)
     then flat f <> text (" " ++ d ++ " ") <> hanging x
-    else operand f <> text (" " ++ d) <> D.nest 2 (D.softline <> expression x)
+    -- After an operand over several lines, $ leads the next line.
+    else if hangs x
+    then operand f <> D.nest 2 (D.hardline <> text (d ++ " ") <> hanging x)
+    else operand f <> text (" " ++ d) <> D.nest 2 (D.softline <> rhs x)
   Op name (first : rest) -> operand first <> D.nest 2 (mconcat [D.softline <> text (name ++ " ") <> after name x | x <- rest])
   Op _ [] -> mempty
   Lam params body
@@ -214,6 +217,7 @@ bare e = case e of
     -- indented from the line, anything else from where it starts.
     from width x = case x of
       App _ _ -> expression x
+      Op _ _ -> expression x
       _ -> D.nest width (expression x)
     bracketing x = case x of
       List _ -> True
@@ -221,6 +225,9 @@ bare e = case e of
       Paren _ -> True
       Record _ _ -> True
       _ -> False
+    rhs x = case x of
+      Typed _ _ -> parenthesised x
+      _ -> expression x
     annotated x = case x of
       App _ _ -> bare x
       _ | atomic x -> expression x

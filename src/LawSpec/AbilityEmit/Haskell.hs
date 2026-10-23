@@ -153,10 +153,11 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
         [ H.comment [op ++ ", with the failure it raises as Left rather than an exception."]
         , H.signature name ([interfaceName a] ++ map parenthesized types ++ ["P.IO (P.Either " ++ parenthesized failureType ++ " " ++ parenthesized resultType ++ ")"])
         , H.declaration (unwords (name : "handler" : values)) (H.Do
-            [ Bind "outcome" (call "Exception.try" [operator "P.>>=" [call (fieldName a op) (map var ("handler" : values)), var "Exception.evaluate"]])
+            [ H.Let "failing" (H.string (C.abilityKey failing))
+            , Bind "outcome" (call "Exception.try" [operator "P.>>=" [call (fieldName a op) (map var ("handler" : values)), var "Exception.evaluate"]])
             , Run (H.Case (var "outcome")
                 [ ("P.Right result", call "P.pure" [call "P.Right" [var "result"]])
-                , ("P.Left failure@(LS.Failure ability value)", H.If (operator "P.==" [var "ability", H.string (C.abilityKey failing)])
+                , ("P.Left failure@(LS.Failure ability value)", H.If (operator "P.==" [var "ability", var "failing"])
                     (call "P.fmap" [var "P.Left", call "LS.runClause" [call "Codec.decode" [failureCodec, var "value"]]])
                     (call "Exception.throwIO" [var "failure"])) ]) ]) ])
     recording a = do
