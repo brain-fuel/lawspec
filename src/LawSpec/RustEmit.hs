@@ -139,9 +139,9 @@ emitRustSchema bits layout declarations = do
         Doc.hardline <> Doc.text "accepted.boolean()"))
   let refined = [c | s <- schemas, c <- Schema.constructors s,
         not (null (Schema.constructorRefinements c)) || Schema.constructorExistentials c > 0]
-      refinementTable = [Doc.text "(" <> Doc.text (q (Schema.constructorTag c)) <> Doc.text ", " <>
-        records [Doc.text ("(" ++ show index ++ ", ") <> typeReference pattern <> Doc.text ")" | (index, pattern) <- Schema.constructorRefinements c] <>
-        Doc.text (", " ++ show (Schema.constructorExistentials c) ++ ")") | c <- refined]
+      refinementTable = [RL.expr (RL.Macro "" "(" ")" [RL.atom (q (Schema.constructorTag c)),
+        RL.vecOf [RL.Macro "" "(" ")" [RL.atom (show index), RL.Laid (typeReference pattern)] | (index, pattern) <- Schema.constructorRefinements c],
+        RL.atom (show (Schema.constructorExistentials c))]) | c <- refined]
       base = if not (null refined)
         then Expression.call "ls::Schema::with_refinements" [records definitions, records metadata, records refinementTable]
         else if null contracts

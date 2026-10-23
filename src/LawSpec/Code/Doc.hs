@@ -556,6 +556,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
                   | nextFits && preferNext -> nextLayout
                   | extend && firstFits -> sameLayout
                   | '\n' `elem` sameText -> nextLayout
+                  | not sameFits -> nextLayout
                   | otherwise -> sameLayout
         in layoutWork column ((indentation, mode, margin, chosen):rest)
       FitsIndented offset width first second ->

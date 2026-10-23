@@ -459,8 +459,9 @@ castType t = case break (== '<') t of
 -- fits.
 overflowing :: Maybe Int -> Expr -> D.Doc
 overflowing cap e = case e of
-  Call f args | Just name <- flat f -> D.text name <> arguments (subtract (width name) <$> cap) "(" ")" 60 args
-  Macro name open close args -> D.text name <> arguments (subtract (width name) <$> cap) open close 60 args
+  -- Its closing delimiter is counted too.
+  Call f args | Just name <- flat f -> D.text name <> arguments (subtract (width name + 1) <$> cap) "(" ")" 60 args
+  Macro name open close args -> D.text name <> arguments (subtract (width name + 1) <$> cap) open close 60 args
   Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
   Try a@(Call {}) -> overflowing (subtract 1 <$> cap) a <> D.text "?"
   -- An overflowing cast breaks inside its value, then before as.
@@ -646,7 +647,7 @@ armDoc (Arm pat guard body) = armDoc (ArmOf (Atom pat) guard body)
 armDoc (ArmOf pat (Just guard) body)
   | Just p <- flat pat, Just g <- oneLine guard, not (isBlock body) =
       D.prefixChoice (p ++ " if " ++ g ++ " => {") (armDoc (ArmOf (Atom (p ++ " if " ++ g)) Nothing body))
-            ( D.text p <> D.nest 4 (D.hardline <> D.text "if " <> expr guard <> D.text " =>") <> D.hardline <> blockDoc [] (Just body) )
+            ( D.text p <> D.nest 4 (D.hardline <> D.narrow 1 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc [] (Just body) )
   where isBlock b = case b of
           Block _ _ -> True
           _ -> False
@@ -655,7 +656,7 @@ armDoc (ArmOf pat (Just guard) body@(Block _ _))
   -- its block opens on a line of its own.
   | Just p <- flat pat, Just g <- oneLine guard, Block ss tailExpr <- body =
       oneOf [ D.text (p ++ " if " ++ g ++ " => ") <> blockDoc ss tailExpr
-            , D.text p <> D.nest 4 (D.hardline <> D.text "if " <> expr guard <> D.text " =>") <> D.hardline <> blockDoc ss tailExpr ]
+            , D.text p <> D.nest 4 (D.hardline <> D.narrow 1 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
   -- A block opens on the next line when the arm's line has no room for it.
   Block ss tailExpr -> headDoc <> oneOf [D.text " " <> blockDoc ss tailExpr, D.hardline <> blockDoc ss tailExpr]
@@ -671,11 +672,8 @@ armDoc (ArmOf pat guard body) = case unblocked body of
     headDoc = expr pat <> maybe mempty (\g -> D.text " if " <> maybe (expr g) D.text (oneLine g)) guard <> D.text " =>"
     -- A block that only holds a value is that value.
     unblocked b = case b of
-      Block [] (Just inner) | not (blockLike inner) -> unblocked inner
+      Block [] (Just inner) -> unblocked inner
       _ -> b
-    blockLike x = case x of
-      Block _ _ -> True
-      _ -> False
     comma x = if endsInBlock x then mempty else D.text ","
     endsInBlock x = case x of
       Match {} -> True
