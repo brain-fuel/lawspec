@@ -14,6 +14,7 @@ import qualified LawSpec.Core.Schema as S
 import LawSpec.Scalar (nativeRepresentation)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.RustExpr as E
+import qualified LawSpec.RustLayout as L
 import qualified Data.Map.Strict as M
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.Naming (NameKind(..), claimAll, scopeWith, nativeIdentifier)
@@ -225,17 +226,15 @@ emitRustData layout declarations = do
             decoded = [if local == f then f else f ++ ": " ++ local | ((f,_), local) <- zip fields locals] ++ ["_lawspec_marker: std::marker::PhantomData" | not (null phantom)]
             resultRecord = if null phantom then record 18 (path tag) decoded else
               D.text (path tag ++ " ") <> D.block 4 (D.joinWith D.hardline [D.text (f ++ ",") | f <- decoded])
-            -- An arm whose pattern and guard do not fit on a line breaks
-            -- before its guard and its body's brace, as rustfmt breaks it.
-            armHead = D.group (D.text (show (C.idText (C.constructorId variant))) <>
-              D.nest 4 (D.softline <> D.text ("if fields.len() == " ++ show (length fields) ++ " =>")) <> D.softline <> D.text "{")
-            armBlock body = armHead <> D.nest 4 (D.hardline <> body) <> D.hardline <> D.text "}"
-            decode = if null fields then D.text (show (C.idText (C.constructorId variant)) ++ " if fields.len() == " ++ show (length fields) ++ " => ") <>
-              D.text "Ok(" <> resultRecord <> D.text ")," else armBlock (D.text "let mut fields = fields.into_iter();" <> D.hardline <>
-                D.joinWith D.hardline [D.group (D.text ("let " ++ local ++ ": " ++ t ++ " =") <>
-                  D.nest 4 (D.softline <> D.text "ls::FromValue::from_value(fields.next().unwrap())?;")) | (local,(_,t)) <- zip locals fields] <>
-                (if null fields then mempty else D.hardline) <>
-                D.text "Ok(" <> resultRecord <> D.text ")")
+            -- The arm reads each field into its local, then makes the value.
+            decode = L.armDoc (L.ArmOf (L.atom (show (C.idText (C.constructorId variant))))
+              (Just (L.infixOp "==" (L.method (L.atom "fields") "len" []) (L.atom (show (length fields)))))
+              (L.letIn ([L.Let "mut fields" (L.method (L.atom "fields") "into_iter" []) | not (null fields)] ++
+                        [L.Let (local ++ ": " ++ t) (L.try' (L.call "ls::FromValue::from_value" [L.method (L.method (L.atom "fields") "next" []) "unwrap" []]))
+                        | (local,(_,t)) <- zip locals fields])
+                (L.call "Ok" [resultValue])))
+            resultValue = L.struct (path tag) ([(f, L.atom local) | ((f,_), local) <- zip fields locals] ++
+              [("_lawspec_marker", L.atom "std::marker::PhantomData") | not (null phantom)])
         pure (variantDoc,encode,decode,recordFields)
       let structFields = [D.text ((if f == "_lawspec_marker" then "" else "pub ") ++ f ++ ": " ++ t ++ ",") | (_,_,_,fs) <- rendered, (f,t) <- fs]
           -- Fields keep their LawSpec names, which Rust's lint may not call
@@ -259,7 +258,7 @@ emitRustData layout declarations = do
               (D.text "let ls::Value::Data(tag, fields) = value else {" <> D.nest 4
                 (D.hardline <> D.text ("return Err(" ++ show ("expected " ++ owner) ++ ".into());")) <> D.hardline <> D.text "};" <> D.hardline <>
                 D.text "match tag.as_str() " <> D.block 4 (D.joinWith D.hardline
-                  ([a | (_,_,a,_) <- rendered] ++ [D.text "_ => " <> D.block 4
-                    (D.hang 4 (D.text "let message =") (D.text (show ("invalid constructor or fields for " ++ owner))) <> D.text ";" <>
-                    D.hardline <> D.text "Err(message.into())")]))))
+                  ([a | (_,_,a,_) <- rendered] ++ [L.armDoc (L.Arm "_" Nothing (L.Block
+                    [L.Let "message" (L.atom (show ("invalid constructor or fields for " ++ owner)))]
+                    (Just (L.call "Err" [L.method (L.atom "message") "into" []]))))]))))
       pure (D.joinWith (D.hardline <> D.hardline) [declarationDoc,encodeDoc,decodeDoc])

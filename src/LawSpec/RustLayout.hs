@@ -6,7 +6,7 @@
 -- if-else. Nothing here reads generated text back. ref:DEC-readable-output-default
 module LawSpec.RustLayout
   ( Expr(..), Stmt(..), Arm(..)
-  , expr, stmt, stmts, block, flat, oneLine, function
+  , expr, stmt, stmts, block, flat, oneLine, function, armDoc
   , atom, call, method, try', prefix, infixOp, cast, paren, struct, closure, macroCall, vecOf, letIn
   , precedence
   ) where
@@ -606,7 +606,7 @@ armDoc (ArmOf pat guard body) = case unblocked body of
         (D.text " " <> expr inner <> comma inner) (D.text " {" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}")
       else if extend then sameLine else blocked
   where
-    headDoc = expr pat <> maybe mempty (\g -> D.text " if " <> expr g) guard <> D.text " =>"
+    headDoc = expr pat <> maybe mempty (\g -> D.text " if " <> maybe (expr g) D.text (oneLine g)) guard <> D.text " =>"
     -- A block that only holds a value is that value.
     unblocked b = case b of
       Block [] (Just inner) | not (blockLike inner) -> unblocked inner

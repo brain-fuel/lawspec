@@ -416,8 +416,8 @@ expression env selfCall scope e = case expressionNode e of
     types <- lift (mapM (rustType env . expressionType) args)
     resultType <- lift (rustType env (expressionType e))
     pure (L.Block ([L.Let (t ++ ": " ++ ty) v | (t, (ty, v)) <- zip temporaries (zip types values)] ++
-       [ L.Let "performed" (L.try' (L.method (L.call bridge [L.atom "&mut *ctx", L.vecOf [L.call "ls::fast::Dyn::to_dyn" [L.atom ("&" ++ t)] | t <- temporaries]])
-           "map_err" [L.closure "|error|" (L.macroCall "format" [L.atom "\"{}: {error}\"", L.atom (E.quoted (operationName op))])])) ])
+       [ L.Let "performed" (L.try' (L.call "ls::called" [L.atom (E.quoted (operationName op)),
+           L.call bridge [L.atom "&mut *ctx", L.vecOf [L.call "ls::fast::Dyn::to_dyn" [L.atom ("&" ++ t)] | t <- temporaries]]])) ])
        (Just (L.try' (L.call ("<" ++ resultType ++ " as ls::fast::Dyn>::from_dyn") [L.atom "performed"]))))
   -- attempt e: Right of e's value, or Left of the failure it raised.
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
@@ -813,8 +813,13 @@ publicDoc env declarations d = do
         else node ++ "::" ++ variantName c ++ (if count c == 0 then "" else "(" ++ intercalate ", " ["f" ++ show k | k <- [0 .. count c - 1]] ++ ")")
       toArm c = Arm (typedPattern c) Nothing (nativeRecord c [L.method (L.atom ("f" ++ show k)) "to_native" [] | k <- [0 .. count c - 1]])
       -- The native record's pattern binds each field to f0, f1, ...
-      fromPattern c = nativeRecord c [L.atom ("f" ++ show k) | k <- [0 .. count c - 1]]
-      fromArm c = ArmOf (fromPattern c) Nothing (typedOf c [L.call "ls::fast::Public::from_native" [L.atom ("f" ++ show k)] | k <- [0 .. count c - 1]])
+      -- The native record's fields are bound by name, converted one a
+      -- statement, then made the typed value.
+      fieldLocals c = E.sourceLocals [] (constructorFields c)
+      fromPattern c = nativeRecord c (map L.atom (fieldLocals c))
+      fromArm c = ArmOf (fromPattern c) Nothing (L.letIn
+        [L.Let l (L.call "ls::fast::Public::from_native" [L.atom l]) | l <- fieldLocals c]
+        (typedOf c (map L.atom (fieldLocals c))))
       scrutinee = if null variants then "*self" else if fieldless d then "self" else "&*self.0"
   pure (line ("impl" ++ bounded ++ " ls::fast::Public for " ++ name ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
     [ line ("type Native = " ++ native ++ ";")

@@ -511,6 +511,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
             fitsAll startColumn t = and [ (if i == (0 :: Int) then startColumn else 0) + measure l <= margin | (i, l) <- zip [0 ..] (linesOf t) ]
             sameFits = fitsAll column sameText
             nextFits = fitsAll 0 nextText
+            nextFitsNarrow = and [ measure l < margin | l <- linesOf nextText ]
             newlines t = length (filter (== '\n') t)
             firstEnds c t = case linesOf t of
               l : _ -> not (null l) && last l == c
@@ -524,9 +525,11 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               Compact -> sameLayout
               CompactTabs -> sameLayout
               _ -> case preference of
+                -- rustfmt keeps a column back for a value moved to the
+                -- next line.
                 NextLineValue
                   | '\n' `notElem` sameText && sameFits -> sameLayout
-                  | nextFits && (not sameFits || preferNext) -> nextLayout
+                  | nextFitsNarrow && (not sameFits || preferNext) -> nextLayout
                   | otherwise -> sameLayout
                 -- A chain's last call stays on the chain's line when its
                 -- first line fits (within the chain's budget) and it then

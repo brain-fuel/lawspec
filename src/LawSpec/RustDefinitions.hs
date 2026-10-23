@@ -104,7 +104,7 @@ emitRustDefinitions layout bits declarations units = do
               next = L.try' (L.method (L.method (L.atom "arguments") "next" []) "ok_or" [L.Laid (E.stringLiteral "definition argument count mismatch")])
           pure (L.function header ["ctx: &mut ls::Context", (if null types then "_arguments" else "arguments") ++ ": Vec<ls::Value>"] "ls::Result<ls::Value>"
             (L.stmts ([L.Let "mut arguments" (L.method (L.atom "arguments") "into_iter" []) | not (null types)] ++
-               [L.Let l (L.try' (L.call ("<" ++ t ++ " as ls::fast::Dyn>::from_dyn") [next])) | (l, t) <- zip locals types])
+               concat [[L.Let "value" next, L.Let l (L.try' (L.call ("<" ++ t ++ " as ls::fast::Dyn>::from_dyn") [L.atom "value"]))] | (l, t) <- zip locals types])
               (Just (L.call "Ok" [L.call "ls::fast::Dyn::to_dyn" [L.prefix "&" (L.try' (L.call function (L.atom "ctx" : map L.atom locals)))]]))))
         else pure (L.function header ["_ctx: &mut ls::Context", "arguments: Vec<ls::Value>"] "ls::Result<ls::Value>"
           (L.expr (L.call ("ls::fast::call" ++ show arity) [L.atom "arguments", L.atom function])))
