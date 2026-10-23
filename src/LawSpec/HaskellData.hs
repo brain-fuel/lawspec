@@ -213,7 +213,6 @@ emitHaskellData layout declarations = do
             variable `elem` requirements]
           showContext = case ["P.Show "++variable | (parameter,variable)<-parameters,parameter `elem` needed] of
             [] -> ""
-            [constraint] -> constraint ++ " => "
             constraints -> "("++intercalate ", " constraints++") => "
           existential = any (not . null . C.constructorExistentials) (C.dataConstructors declaration)
           -- A field-only existential's value has no Show instance to use:
@@ -255,7 +254,7 @@ moduleImports rendered candidates = sortedImports [c | c <- candidates, used c]
 sortedImports :: [(String, Maybe String, Maybe [String])] -> [String]
 sortedImports = map line . sortOn key . nub
   where
-    key (m, alias, _) = (m == "Prelude", m, alias /= Nothing)
+    key (m, alias, _) = (m == "Prelude", m, alias /= Nothing, alias /= Nothing && alias /= Just m)
     line (m, alias, names) = "import " ++ maybe "" (const "qualified ") alias ++ m ++
       maybe "" (\a -> if a == m then "" else " as " ++ a) alias ++
       maybe "" (\ns -> " (" ++ intercalate ", " ns ++ ")") names
@@ -285,7 +284,7 @@ emitHaskellSchemaWithProfile bits layout declarations = do
   callbacks <- forM contracts $ \contract -> do
     predicates <- forM (S.contractPredicates contract) $ \predicate -> do
       let fields = zip (map C.binderId (S.contractFields contract))
-            ["fields P.!! " ++ show i | i <- [0 :: Int ..]]
+            ["(fields P.!! " ++ show i ++ ")" | i <- [0 :: Int ..]]
           nested = zip (nub (nestedIds predicate)) ["local" ++ show i | i <- [0 :: Int ..]]
           local identity = maybe "invalidField" id (lookup identity (fields ++ nested))
           ref ty = do

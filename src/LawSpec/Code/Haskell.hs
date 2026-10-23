@@ -16,12 +16,13 @@ module LawSpec.Code.Haskell
   ( Expr(..), Stmt(..)
   , var, string, renderString, integer, call, (<+), lambda, operator, dollar, dollarIn
   , expression, statements, declaration, signature, comment, recordDeclaration
-  , layout, camelName, uniqueArguments, uniqueValues
+  , layout, camelName, uniqueArguments, uniqueValues, localName
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
-import LawSpec.Naming (Casing(..), cased, nameWords)
+import Data.Char (isHexDigit)
+import LawSpec.Naming (Casing(..), cased, nameWords, localIdentifier)
 
 data Expr
   = Var String  -- a name, a qualified name or an operator section such as (P.==)
@@ -96,7 +97,7 @@ dollarIn :: String -> Expr -> Expr -> Expr
 dollarIn qualifier f x = Op (qualifier ++ "$") [f, x]
 
 isDollar :: String -> Bool
-isDollar name = name == "$" || name == "P.$"
+isDollar name = name `elem` ["$", "P.$", "$!", "P.$!"]
 
 -- | Whether a node is always laid out over several lines.
 multi :: Expr -> Bool
@@ -120,6 +121,7 @@ multi e = case e of
 hangs :: Expr -> Bool
 hangs e = case e of
   Do _ -> True
+  Case scrutinee _ -> atomic scrutinee
   Lam _ body -> hangs body
   Op d [f, x] | isDollar d -> not (multi f) && hangs x
   _ -> False
@@ -170,7 +172,7 @@ bare e = case e of
   Op d [f, x] | isDollar d -> if hangs x && not (multi f)
     then flat f <> text (" " ++ d ++ " ") <> hanging x
     else operand f <> text (" " ++ d) <> D.nest 2 (D.softline <> expression x)
-  Op name (first : rest) -> operand first <> D.nest 2 (mconcat [D.softline <> text (name ++ " ") <> operand x | x <- rest])
+  Op name (first : rest) -> operand first <> D.nest 2 (mconcat [D.softline <> text (name ++ " ") <> after name x | x <- rest])
   Op _ [] -> mempty
   Lam params body
     | hangs body -> text (lambdaHead params ++ " ") <> hanging body
@@ -178,20 +180,20 @@ bare e = case e of
   Do stmts -> text "do" <> D.nest 2 (D.hardline <> statements stmts)
   List xs -> bracketed "[" "]" xs
   Tuple xs -> bracketed "(" ")" xs
-  If c a b -> text "if " <> expression c <> D.nest 2
+  If c a b -> text "if " <> from 3 c <> D.nest 2
     (D.softline <> text "then" <> branch a <> D.softline <> text "else" <> branch b)
   -- let x = v\n in body: the bindings past "let ", the body past " in ".
   LetIn bindings body -> text "let " <> D.nest 4 (D.joinWith D.hardline
-    [node value (text (lhs ++ " =") <> D.nest 2 (D.softline <> expression value)) | (lhs, value) <- bindings]) <>
+    [if hangs value then text (lhs ++ " = ") <> hanging value else node value (text (lhs ++ " =") <> D.nest 2 (D.softline <> expression value))
+    | (lhs, value) <- bindings]) <>
     D.nest 1 (D.softline <> text "in " <> D.nest 3 (expression body))
-  -- e :: t, the type below its expression when it breaks, which breaks with
-  -- it.
-  Typed x t -> annotated x <> text " ::" <> D.nest 2 (D.softline <> text t)
+  -- e :: t, on one line: ormolu keeps it so, however long.
+  Typed x t -> text (D.render D.Compact (annotated x)) <> text (" :: " ++ t)
   -- Constructor {f = v}, or the fields one per line in braces below it.
   Record con [] -> text (con ++ " {}")
   Record con fields -> text con <> D.nest 2 (D.softline <> text "{" <> D.whenBroken (text " ") <>
     D.nest 2 (D.joinWith (text "," <> D.softline) [field n v | (n, v) <- fields]) <> D.softbreak <> text "}")
-  Case scrutinee alternatives -> text "case " <> expression scrutinee <> text " of" <> D.nest 2
+  Case scrutinee alternatives -> text "case " <> from 5 scrutinee <> text " of" <> D.nest 2
     (mconcat [D.hardline <> alternative p body | (p, body) <- alternatives])
   where
     branch x = if hangs x then text " " <> hanging x else node x (D.nest 2 (D.softline <> expression x))
@@ -201,6 +203,24 @@ bare e = case e of
     field n v
       | hangs v = text (n ++ " = ") <> hanging v
       | otherwise = node v (text (n ++ " =") <> D.nest 2 (D.softline <> expression v))
+    -- An operand after its operator: what it holds is laid out from where
+    -- it starts, as ormolu lays out brackets and blocks, except an
+    -- application, whose arguments are indented from the line.
+    after name x = case x of
+      App _ _ -> operand x
+      _ | atomic x && not (bracketing x) -> operand x
+        | otherwise -> D.nest (length name + 1) (operand x)
+    -- An expression after a keyword: an application's arguments are
+    -- indented from the line, anything else from where it starts.
+    from width x = case x of
+      App _ _ -> expression x
+      _ -> D.nest width (expression x)
+    bracketing x = case x of
+      List _ -> True
+      Tuple _ -> True
+      Paren _ -> True
+      Record _ _ -> True
+      _ -> False
     annotated x = case x of
       App _ _ -> bare x
       _ | atomic x -> expression x
@@ -241,6 +261,7 @@ parenthesised :: Expr -> D.Doc
 -- The parentheses and what they hold break together.
 parenthesised x = case x of
   Negative n -> text ("(" ++ n ++ ")")
+  Typed _ _ -> text ("(" ++ D.render D.Compact (expression x) ++ ")")
   _ -> node x (text "(" <> D.whenBroken (text " ") <> D.nest 2 (bare x) <> D.softbreak <> text ")")
 
 -- | [a, b] or, over several lines, [ a,\n  b\n].
@@ -306,3 +327,12 @@ uniqueValues n = ["value" ++ show i | i <- [1 .. n]]
 uniqueArguments :: Int -> [String]
 uniqueArguments 1 = ["argument"]
 uniqueArguments n = ["argument" ++ show i | i <- [1 .. n]]
+
+-- | A binder's name as a Haskell local: its source name, or for a binder
+-- the compiler made (recordView<digest>), what it holds.
+localName :: String -> String
+localName = localIdentifier "haskell" . withoutDigest
+  where
+    withoutDigest name = case span isHexDigit (reverse name) of
+      (digits, rest@(_ : _)) | length digits >= 8 -> reverse (dropWhile (== '_') rest)
+      _ -> name

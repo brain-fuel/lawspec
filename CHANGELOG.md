@@ -30,6 +30,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are formatted the same way. Acceptance runs `ruff format --check` on every
   generated Python project (the formatted step). The other targets follow
   with their language families.
+- **Breaking: generated Haskell names.** Generated Haskell is written to be
+  read. Binders keep their source names, checked definitions are named after
+  the definition (`Definitions.feeModel`, `Typed.feeModel`, with `_2` only on
+  a clash), spec handlers after the handler (`fakeGatewayHandler`), typed
+  conversions after their type (`toPayment`, `fromNativeListInt32`), and
+  model and remote definitions take their arguments through `LS.uncurried`.
+  Tests are named after the law and the example
+  (`lawNormalizersAgree_spacesBecomeHyphensPunctuationIsPreserved`), and
+  boundaries are numbered from 1 (`_boundary1`). Anonymous records have a
+  name from where they are used (`PushDetails`) instead of `Record<digest>`.
+  Adapters and native code that use the old names must be renamed.
+- Generated Haskell is printed by precedence, with no parentheses around
+  atoms, and laid out as `ormolu` (0.9.0.0) lays it out; the Haskell runtimes
+  and default handlers are formatted the same way. Acceptance runs
+  `ormolu --mode check` on every generated Haskell project (the formatted
+  step), remembering files it has passed by their content. Text is a Haskell
+  string literal (`LS.textScalar "café"`), never one code point per line.
+- Generated Haskell tests hold only their laws: the assertion, the seeded
+  Hedgehog check (`LawSpecTesting.holds`), checked values
+  (`Schema.checked`, `Schema.literal`, `Schema.built`, `Schema.same`) and
+  adapter calls (`Codec.call1` to `call8`, `perform1` to `perform8`) are in
+  the runtime. A test module names its machine width, schema, scalar codecs
+  and the integers' draw limit once, imports only what it uses, and each
+  law's comment, test, definition and handler links to its source line.
 
 ### Added
 

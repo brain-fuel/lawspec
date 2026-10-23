@@ -676,9 +676,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     haskellLocals = M.fromList (concatMap (hsAllocate . propertyBinders . original) ls ++
       concatMap (\c -> hsAllocate (C.contractArguments c ++ [C.contractResult c])) (contracts u))
     hsAllocate binders = snd (foldl (\(scope, named) b -> if any ((== C.binderId b) . fst) named then (scope, named) else
-      let (chosen, scope') = Naming.claim scope (Naming.localIdentifier "haskell" (C.binderName b))
+      let (chosen, scope') = Naming.claim scope (H.localName (C.binderName b))
       in (scope', named ++ [(C.binderId b, chosen)])) (Naming.scopeWith (HaskellProperties.haskellReserved ++ hsCaseNames), []) binders)
-    hsCaseNames = "argument" : ["argument" ++ show i | i <- [1 .. 9 :: Int]] ++ words "exception failure value recorded scalarName" ++
+    hsCaseNames = "argument" : ["argument" ++ show i | i <- [1 .. 9 :: Int]] ++ words "exception failure value recorded scalarName subject steps" ++
       [n | (n, _, _) <- hsScalarCodecs]
     hsGeneratorWithinH within = HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom hsRef key
     haskellProperties = HaskellProperties.Config

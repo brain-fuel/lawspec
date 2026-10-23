@@ -83,8 +83,8 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
       in Artifact ("src/" ++ map (\c -> if c == '.' then '/' else c) name ++ ".hs")
       (D.render layout (D.joinWith D.hardline (map D.text
         (["-- " ++ generatedHeader (sourceFile u), "-- " ++ description, "", "module " ++ name ++ exports ++ " where", ""] ++
-         (if null imports then [] else imports ++ [""]))) <>
-        D.hardline <> D.joinWith (D.hardline <> D.hardline) (environment' ++ bodies) <> D.hardline)) "generated" "source"
+         imports)) <>
+        mconcat [D.hardline <> D.hardline <> d | d <- environment' ++ bodies] <> D.hardline)) "generated" "source"
     -- The modules of the abilities a unit imports, by their owners.
     ownerOf a = [v | v <- units, C.unitId v == C.abilityOwner a]
     imported u = [(v, a) | a <- C.unitAbilities u, C.abilityOwner a /= C.unitId u, v <- take 1 (ownerOf a)]
@@ -156,9 +156,9 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
             [ Bind "outcome" (call "Exception.try" [operator "P.>>=" [call (fieldName a op) (map var ("handler" : values)), var "Exception.evaluate"]])
             , Run (H.Case (var "outcome")
                 [ ("P.Right result", call "P.pure" [call "P.Right" [var "result"]])
-                , ("P.Left (LS.Failure ability value) | ability P.== " ++ H.renderString (C.abilityKey failing),
-                    call "P.fmap" [var "P.Left", call "LS.runClause" [call "Codec.decode" [failureCodec, var "value"]]])
-                , ("P.Left failure", call "Exception.throwIO" [var "failure"]) ]) ]) ])
+                , ("P.Left failure@(LS.Failure ability value)", H.If (operator "P.==" [var "ability", H.string (C.abilityKey failing)])
+                    (call "P.fmap" [var "P.Left", call "LS.runClause" [call "Codec.decode" [failureCodec, var "value"]]])
+                    (call "Exception.throwIO" [var "failure"])) ]) ]) ])
     recording a = do
       fields <- mapM (\(op, ty) -> do
         let (args, _) = C.functionType ty

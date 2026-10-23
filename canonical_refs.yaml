@@ -330,6 +330,10 @@ ruff-formatter:
   kind: article
   title: The Ruff Formatter
   locator: https://docs.astral.sh/ruff/formatter/
+ormolu:
+  kind: article
+  title: Ormolu, a formatter for Haskell source code
+  locator: https://github.com/tweag/ormolu
 black-code-style:
   kind: article
   title: The Black code style

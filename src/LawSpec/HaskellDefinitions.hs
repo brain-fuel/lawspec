@@ -20,11 +20,11 @@ import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.Code.Haskell (Stmt(Bind, Run), call, var, string, integer, lambda, operator)
-import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink, generatedHeader, unitSourceFile)
 import LawSpec.TargetNames (targetKeywords)
 import Data.Char (isAlphaNum, toUpper)
-import Data.List (nub, intercalate, isInfixOf, sortOn)
+import Data.List (nub, intercalate)
 import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Data.Map.Strict as M
 import LawSpec.RuntimeSources (runtimeSource)
@@ -36,7 +36,7 @@ import LawSpec.Typed.Plan (TypedPlan(..), isTypedHandler, isContextual)
 moduleNames :: [String]
 moduleNames = targetKeywords "haskell" ++ words
   "schema machineBits symbols state start current result checkedResult pair next nativeResult value \
-  \typed native inner failure"
+  \typed native inner failure subject steps"
 
 -- | Each definition's and spec handler's function, named after it, unique
 -- across the bodies and workflows modules.
@@ -108,7 +108,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
     definitionLink d = linked (declarationName (definitionDeclaration d)) (declarationOrigin (definitionDeclaration d))
     -- A definition's argument names, from the source.
     argumentNames d = fst (claimAll (scopeWith (moduleNames ++ map snd handlerNames ++ map (unqualified . snd) names))
-      [localIdentifier "haskell" (binderName b) | b <- definitionArguments d])
+      [H.localName (binderName b) | b <- definitionArguments d])
     unqualified n = drop 1 (dropWhile (/= '.') n)
     -- A typed definition's dynamic entry converts its arguments and result.
     bridge typed d function = do
@@ -279,7 +279,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
           pure [Bind "state" (operator "P.=<<" [var "IORef.newIORef", call "LS.runClause" [call (unqualified evaluate) [symbolsArg, unitValue]]])]
         Just (_, value) -> do
           let startLocals = zip (map binderId (nestedBinders value))
-                (fst (claimAll (scopeWith moduleNames) [localIdentifier "haskell" (binderName b) | b <- nestedBinders value]))
+                (fst (claimAll (scopeWith moduleNames) [H.localName (binderName b) | b <- nestedBinders value]))
           rendered <- E.renderExpression declarations bits "schema" "symbols" (\i -> maybe "start" id (lookup i startLocals))
             (\_ _ -> Left "a handler's start value calls nothing") value
           pure [Bind "state" (call "IORef.newIORef" [rendered])]
@@ -410,7 +410,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
     implementation contracts home (_,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
           locals = zip (nub (map binderId binders)) (fst (claimAll (scopeWith (moduleNames ++ map snd handlerNames ++ map (unqualified . snd) names))
-            [localIdentifier "haskell" (binderName b) | b <- nubOn binderId binders]))
+            [H.localName (binderName b) | b <- nubOn binderId binders]))
           local identity = maybe (error "unresolved Haskell local") id (lookup identity locals)
           arguments = map (local . binderId) (definitionArguments d)
           name = functionName d

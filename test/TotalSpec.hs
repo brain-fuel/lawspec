@@ -341,8 +341,8 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         map ownership native `shouldBe` ["generated"]
         map artifactPlacement native `shouldBe` ["source"]
         concatMap artifactContent native `shouldSatisfy` isInfixOf "LS.SymbolContext"
-        concatMap artifactContent native `shouldSatisfy` isInfixOf "P.Either P.String (I.Int8)"
-        concatMap artifactContent native `shouldSatisfy` isInfixOf "_lawspecSchema"
+        concatMap artifactContent native `shouldSatisfy` isInfixOf "P.Either P.String I.Int8"
+        concatMap artifactContent native `shouldSatisfy` isInfixOf "schema = P.either P.error P.id DataSchema.schema"
   it "accepts list-tail recursion and arbitrary definition order" $ do
     let size = lengthDef (call "length" [local "tail" list])
         caller = definition "size" [("value",list)] (call "length" [local "value" list])

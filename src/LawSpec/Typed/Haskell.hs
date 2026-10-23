@@ -30,7 +30,7 @@ import LawSpec.AbilityNames (interfaceName, fieldName)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.Code.Haskell (Stmt(Bind, Run), call, var, string, integer, lambda, operator)
-import LawSpec.Naming (Scope, claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, NameKind(..), readableDefinitionName, nameWords)
+import LawSpec.Naming (Scope, claim, claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName, nameWords)
 import LawSpec.SourceLink (labelled, sourceLink, generatedHeader, unitSourceFile)
 import LawSpec.TargetNames (targetKeywords)
 
@@ -81,7 +81,7 @@ lift' = lift
 fresh :: String -> M String
 fresh base = do
   s <- get
-  let (chosen, scope) = claim (stLocals s) (localIdentifier "haskell" base)
+  let (chosen, scope) = claim (stLocals s) (H.localName base)
   put s { stLocals = scope }
   pure chosen
 

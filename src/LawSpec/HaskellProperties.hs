@@ -178,7 +178,10 @@ emitTests Config{..} unit laws = do
       Just rest -> Let ("lawspecHarness" ++ takeWhile (/= ':') rest) (H.Do (doBody body))
       Nothing -> example testName (H.Do (doBody body))
     doBody body = if null body then [Run (call "pure" [var "()"])] else body
-    example testName action = Run ((if parallel then dollar (var "parallel") else id) (dollar (call "it" [string testName]) action))
+    -- Under parallel, the action is a block, so the chain of $ hangs.
+    example testName action = Run (if parallel
+      then dollar (var "parallel") (dollar (call "it" [string testName]) (case action of H.Do _ -> action; _ -> H.Do [Run action]))
+      else dollar (call "it" [string testName]) action)
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
     observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing
     observations e =

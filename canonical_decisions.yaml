@@ -327,6 +327,15 @@ DEC-native-string-literals:
   decided: 0.30.0
   refs: [python-string-literals, unicode-east-asian-width]
 
+DEC-haskell-ormolu-layout:
+  status: decided
+  question: How does LawSpec print Haskell that ormolu leaves unchanged?
+  answer: |
+    Over a small Haskell syntax tree (LawSpec.Code.Haskell), printed by precedence: an argument is parenthesised only when it is not an atom, an operator's operand only when it binds more loosely than application. ormolu has no line width: it keeps a construct written on one line on one line, and gives one written over several lines its single multi-line layout. So each node is a Wadler group that is flat when it fits 80 columns and otherwise takes ormolu's multi-line layout (an application's arguments one per line, brackets with a leading opener and trailing commas, operators leading their lines, $ trailing), while its children choose for themselves; a do block or a case is always multi-line, as is all around it, except where ormolu lets it hang (after $, <-, =, ->, then and else). Imports are sorted as ormolu sorts them, Prelude last, and only those a module uses are written. What every test shares moved to the runtime (LawSpecTesting, Schema.checked and its kin, Codec.callN), so a test module holds only its laws. The acceptance formatted step runs the pinned ormolu (0.9.0.0, test/locks/haskell/ormolu.txt) in check mode on every generated Haskell project. Decided with the readable-output milestone, 0.30.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [ormolu]
+
 DEC-adapter-ownership:
   status: decided
   question: Which files does generation own, and how does it avoid overwriting user code?

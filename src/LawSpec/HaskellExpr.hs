@@ -134,7 +134,7 @@ renderExpressionWith declarations Context{..} = render
       | Just (fields,binders,body) <- concurrentGroup term = do
           steps <- mapM render fields
           inner <- render body
-          pure (H.Case (H.call "LS.concurrently" [H.List steps])
+          pure (H.LetIn [("steps", H.call "LS.concurrently" [H.List steps])] $ H.Case (H.var "steps")
             [ ("[" ++ commaList (map (contextLocal . binderId) binders) ++ "]", inner)
             , ("_", H.call "P.error" [H.string "invalid all group"]) ])
     render term = case expressionNode term of
@@ -205,7 +205,11 @@ renderExpressionWith declarations Context{..} = render
         -- Values are checked where they are built, decoded or drawn.
         argument <- render value
         arms <- mapM branch branches
-        pure (H.Case argument (arms ++ [("_", H.call "P.error" [H.string "invalid checked match constructor"])]))
+        let alternatives = arms ++ [("_", H.call "P.error" [H.string "invalid checked match constructor"])]
+        -- A computed subject is named first, so the case reads from it.
+        pure (case argument of
+          H.Var _ -> H.Case argument alternatives
+          _ -> H.LetIn [("subject", argument)] (H.Case (H.var "subject") alternatives))
     branch matched = do
       body <- render (caseBody matched)
       let names = map (contextLocal . binderId) (caseBinders matched)
