@@ -1,6 +1,6 @@
 @@ src/Example/Gadt.hs
 <<<<<<<
-evalPair (Data.ExprBoth (Data.Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e first second)) = Data.Pair (evalNumber first) (evalTruth second)
+evalPair (Data.ExprBoth (Data.BothDetails first second)) = Data.Pair (evalNumber first) (evalTruth second)
 =======
-evalPair (Data.ExprBoth (Data.Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e first second)) = Data.Pair (evalNumber first) (not (evalTruth second))
+evalPair (Data.ExprBoth (Data.BothDetails first second)) = Data.Pair (evalNumber first) (not (evalTruth second))
 >>>>>>>

@@ -2,5 +2,5 @@
 <<<<<<<
 countPairs = Data.Pairs
 =======
-countPairs row = Data.Pairs (Data.RowCell (Data.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f 0 row))
+countPairs row = Data.Pairs (Data.RowCell (Data.CellDetails 0 row))
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ src/Example/Indexed.hs
 <<<<<<<
-replicate n x = if n <= 0 then Data.VecVNil else Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec x (replicate (n - 1) x))
+replicate n x = if n <= 0 then Data.VecVNil else Data.VecVCons (Data.VConsDetails x (replicate (n - 1) x))
 =======
-replicate n x = if n < 0 then Data.VecVNil else Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec x (replicate (n - 1) x))
+replicate n x = if n < 0 then Data.VecVNil else Data.VecVCons (Data.VConsDetails x (replicate (n - 1) x))
 >>>>>>>

@@ -245,7 +245,8 @@ moduleImports rendered candidates = sortedImports [c | c <- candidates, used c]
     used (_, Just alias, _) = (alias ++ ".") `isInfixOf` rendered
     -- import M () imports nothing; it is kept as written.
     used (_, Nothing, Just []) = True
-    used (_, Nothing, Just names) = any (`elem` identifiers) [takeWhile isAlphaNum n | n <- names]
+    used (_, Nothing, Just names) = any (`elem` identifiers) (concat [takeWhile isAlphaNum n : constructorsOf n | n <- names])
+    constructorsOf n = if n == "Scalar (..)" then words "SInteger SBool SDecimal SRational SFloat SComplex SSequence SCharacter SSymbol SScopedSymbol SAbsent SPresent SList SData SHandle" else []
     used (_, Nothing, Nothing) = True
     identifiers = words (map (\c -> if isAlphaNum c || c `elem` ("_'" :: String) then c else ' ') rendered)
 
