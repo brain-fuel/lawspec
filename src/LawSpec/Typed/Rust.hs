@@ -216,8 +216,8 @@ dataDoc env d = do
         pairPattern c body = let flatPair = "(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ")"
                                  broken = D.text "(" <> D.nest 4 (D.hardline <> D.text (patternOf "a" c ++ ",") <> D.hardline <> D.text (patternOf "b" c ++ ",")) <> D.hardline <> D.text ")"
           in L.Laid (case L.oneLine body of
-            Just t -> D.fitsIndented 0 (length (flatPair ++ " => " ++ t ++ ",")) (D.text flatPair) broken
-            Nothing -> D.fitsIndented 0 (length flatPair + 3) (D.text flatPair) broken)
+            Just t | length flatPair - 2 > 60 -> D.fitsIndented 0 (length (flatPair ++ " => " ++ t ++ ",")) (D.text flatPair) broken
+            _ -> D.fitsIndented 0 (length flatPair + 3) (D.text flatPair) broken)
         compareArm c = let body = compareBody c in ArmOf (pairPattern c body) Nothing body
         compareBody c =
           (if null (constructorFields c) then L.atom "std::cmp::Ordering::Equal" else
