@@ -13,12 +13,18 @@ import qualified LawSpec.BeamModelChecks as Checks
 import LawSpec.MachineSpec (machineSpec, scenarioWire)
 import LawSpec.Common (Artifact(..))
 import LawSpec.DotNet.Code
+import qualified LawSpec.DotNet.Layout as L
 import LawSpec.DotNet.Names
 import LawSpec.DotNet.Entries
 import qualified LawSpec.DotNet.Effects as Effects
 import qualified LawSpec.DotNet.Policy as Policy
 import Control.Monad (forM, unless)
 import Data.List (nub, intercalate)
+
+-- | An application with one more argument.
+withText :: L.F -> String -> L.F
+withText (L.App f args) x = L.App f (args ++ [L.A x])
+withText e _ = e
 
 emitModels :: Lang -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitModels lang layout bits datas units = concat <$> mapM unitFile
@@ -36,6 +42,17 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
           " (fst context) (snd context)" ++ concat [" (Runtime.item " ++ show i ++ " arguments)" | i <- [0 .. count - 1]] ++ ")"
         else "Fn.F2((Tuple<Schema.Schema, Scalar.SymbolContext> context, FSharpList<Value> arguments) => " ++ entryModule e ++ "." ++ entryCs e ++
           "(" ++ intercalate ", " (["context.Item1", "context.Item2"] ++ ["Runtime.Item(" ++ show i ++ ", arguments)" | i <- [0 .. count - 1]]) ++ "))"
+    -- An entry as an F# callback: Model.callN of its arity, or a function
+    -- of the context and arguments.
+    fsCallback identity = do
+      d <- declaration identity
+      e <- maybe (Left ("missing .NET model callback " ++ C.idText identity)) Right (lookup identity (entries units))
+      let count = length (fst (C.functionType (C.declarationType d)))
+          entry = entryModule e ++ "." ++ entryFs e
+      pure $ if count <= 4 then L.App ("Model.call" ++ show count) [L.A entry]
+        else L.Fun "(context: Model.CallbackContext) (arguments: Value list)" (L.App entry
+          ([L.App "fst" [L.A "context"], L.App "snd" [L.A "context"]] ++ [L.App "Runtime.item" [L.A (show i), L.A "arguments"] | i <- [0 .. count - 1]]))
+    fsOptional = maybe (pure (L.A "None")) (fmap (\c -> L.App "Some" [c]) . fsCallback)
     none = if fs then "None" else "FSharpOption<FSharpFunc<Tuple<Schema.Schema, Scalar.SymbolContext>, FSharpFunc<FSharpList<Value>, Value>>>.None"
     some c = if fs then "(Some " ++ c ++ ")" else "Fn.Some(" ++ c ++ ")"
     tuple xs = if fs then "(" ++ intercalate ", " xs ++ ")" else "Fn.Tuple(" ++ intercalate ", " xs ++ ")"
@@ -65,24 +82,32 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
         let factoryTy = Ty "(string * (Schema.Schema -> Effects.Handler)) list" "FSharpList<Tuple<string, FSharpFunc<Schema.Schema, Effects.Handler>>>"
             factoriesName = name ++ "Factories"
             policies = Policy.usesPolicies units
-        pure $ if fs
-          then
-            let context = "Model.contextWith LawSpec.Generated.Program.schema " ++ factoriesName
+        fsModel <- if not fs then pure Nothing else do
+          fsStart <- case machineStart machine of
+            Just st -> (\a b -> L.Tuple [a, b]) <$> fsCallback (startRun st) <*> fsCallback (startModel st)
+            Nothing -> Left "a .NET model needs a start command"
+          fsCommands <- forM (machineCommands machine) $ \c -> do
+            run <- fsCallback (commandRun c)
+            reference <- fsCallback (commandReference c)
+            condition <- fsOptional (commandWhen c)
+            pure (L.Tuple [run, reference, condition])
+          fsAbstract <- fsOptional (machineAbstractRun machine)
+          fsInvariants <- mapM (fsCallback . invariant) (machineInvariants machine)
+          pure (Just (fsStart, fsCommands, fsAbstract, fsInvariants))
+        pure $ case fsModel of
+          Just (fsStart, fsCommands, fsAbstract, fsInvariants) ->
+            let context = L.App "Model.contextWith" [L.A "LawSpec.Generated.Program.schema", L.A factoriesName]
                 withRuntime = if policies
-                  then "(fun body -> Workflow.withTestRuntime (fun () -> (" ++ context ++ ") body))"
-                  else "(" ++ context ++ ")"
-            in D.text ("let private " ++ factoriesName ++ " : Scalar.SymbolContext -> " ++ tyText FSharp factoryTy ++ " =") <>
+                  then L.Fun "body" (L.App "Workflow.withTestRuntime" [L.Fun "()" (L.App ("(" ++ maybe "" id (L.flat context) ++ ")") [L.A "body"])])
+                  else context
+                created = L.App "Model.create" [L.A (stringLiteral FSharp spec), fsStart, L.List fsCommands, fsAbstract, L.List fsInvariants]
+                piped = foldl (L.Infix "|>") created
+                  ([L.App "Model.withContextFactory" [withRuntime]] ++ [L.App "Model.withActors" [L.A "ActorHost.host"] | machineActor machine])
+            in D.text ("let private " ++ factoriesName ++ ": Scalar.SymbolContext -> " ++ tyText FSharp factoryTy ++ " =") <>
               D.nest 4 (D.hardline <> renderBody FSharp 4 (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
               D.hardline <> D.hardline <> D.text ("/// The model " ++ machineName machine ++ ".") <> D.hardline <>
-              D.text ("let private " ++ name ++ " () : Model.Model =") <> D.nest 4 (D.hardline <>
-                D.text ("Model.create " ++ stringLiteral FSharp spec) <> D.nest 4 (D.hardline <>
-                  D.text start <> D.hardline <>
-                  D.text "[ " <> D.joinWith (D.hardline <> D.text "  ") (map D.text commands) <> D.text " ]" <> D.hardline <>
-                  D.text abstract <> D.hardline <>
-                  D.text (list invariants)) <> D.hardline <>
-                D.text ("|> Model.withContextFactory " ++ withRuntime) <>
-                (if machineActor machine then D.hardline <> D.text "|> Model.withActors ActorHost.host" else mempty))
-          else
+              L.linesDoc 0 (L.function 0 ("let private " ++ name) ["()"] (Just "Model.Model") piped)
+          Nothing ->
             let context = "LawSpec.Testing.Model.ContextWith(LawSpec.Generated.Program.Schema, " ++ pascal factoriesName ++ "())"
                 withRuntime = if policies
                   then "Fn.F1((FSharpFunc<Tuple<Schema.Schema, Scalar.SymbolContext>, object> body) => Workflow.WithTestRuntime(Fn.F0(() => " ++ context ++ ".Invoke(body))))"
@@ -98,19 +123,19 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
       cases <- forM (Checks.checks unit) $ \check -> do
         let model n = if fs then "(" ++ n ++ " ())" else pascal n ++ "()"
         action <- case Checks.checkAction check of
-          Checks.Sequential name _ -> pure (if fs then "Model.check " ++ model name else "LawSpec.Testing.Model.Check(" ++ model name ++ ");")
-          Checks.Parallel name _ -> pure (if fs then "ModelParallel.check " ++ model name else "LawSpec.Testing.ModelParallel.Check(" ++ model name ++ ");")
+          Checks.Sequential name _ -> pure (if fs then L.A ("Model.check " ++ model name) else L.A ("LawSpec.Testing.Model.Check(" ++ model name ++ ");"))
+          Checks.Parallel name _ -> pure (if fs then L.A ("ModelParallel.check " ++ model name) else L.A ("LawSpec.Testing.ModelParallel.Check(" ++ model name ++ ");"))
           Checks.Scenario name _ program -> do
             wire <- scenarioWire bits datas (concatMap C.unitSessions units) program
             let text = P.programSpec (program { P.programWire = wire })
-            pure (if fs then "Scenario.check " ++ model name ++ " " ++ stringLiteral FSharp text
-              else "LawSpec.Testing.Scenario.Check(" ++ model name ++ ", " ++ stringLiteral CSharp text ++ ");")
-          Checks.Supervision -> pure (if fs then "Supervision.check ()" else "LawSpec.Testing.Supervision.Check();")
+            pure (if fs then L.App "Scenario.check" [L.A model' | let model' = model name] `withText` stringLiteral FSharp text
+              else L.A ("LawSpec.Testing.Scenario.Check(" ++ model name ++ ", " ++ stringLiteral CSharp text ++ ");"))
+          Checks.Supervision -> pure (if fs then L.A "Supervision.check ()" else L.A "LawSpec.Testing.Supervision.Check();")
         pure $ if fs
           then D.text ("[<Fact(DisplayName = " ++ stringLiteral FSharp (Checks.checkLabel check) ++ ")>]") <> D.hardline <>
-            D.text ("let " ++ Checks.checkName check ++ " () : unit =") <> D.nest 4 (D.hardline <> D.text action)
+            L.linesDoc 0 (L.function 0 ("let " ++ Checks.checkName check) ["()"] (Just "unit") action)
           else D.text ("[Fact(DisplayName = " ++ stringLiteral CSharp (Checks.checkLabel check) ++ ")]") <> D.hardline <>
-            D.text ("public void " ++ pascal (Checks.checkName check) ++ "() => " ++ action)
+            D.text ("public void " ++ pascal (Checks.checkName check) ++ "() => " ++ maybe "" id (L.flat action))
       let moduleName = testModule (C.unitId unit) ++ "Models"
           doc = if fs
             then D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>

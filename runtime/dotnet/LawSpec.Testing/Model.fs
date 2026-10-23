@@ -19,6 +19,32 @@ type CallbackContext = Schema.Schema * Scalar.SymbolContext
 /// A checked entry of the program: the case's context and its arguments.
 type Callback = CallbackContext -> Value list -> Value
 
+/// A checked entry as a callback: the context's schema and symbols, then
+/// its arguments in order. Generated models name each entry with the call
+/// of its arity.
+let call0 (entry: Schema.Schema -> Scalar.SymbolContext -> Value) : Callback =
+    fun (schema, symbols) _ -> entry schema symbols
+
+let call1 (entry: Schema.Schema -> Scalar.SymbolContext -> Value -> Value) : Callback =
+    fun (schema, symbols) arguments -> entry schema symbols (Runtime.item 0 arguments)
+
+let call2 (entry: Schema.Schema -> Scalar.SymbolContext -> Value -> Value -> Value) : Callback =
+    fun (schema, symbols) arguments -> entry schema symbols (Runtime.item 0 arguments) (Runtime.item 1 arguments)
+
+let call3 (entry: Schema.Schema -> Scalar.SymbolContext -> Value -> Value -> Value -> Value) : Callback =
+    fun (schema, symbols) arguments ->
+        entry schema symbols (Runtime.item 0 arguments) (Runtime.item 1 arguments) (Runtime.item 2 arguments)
+
+let call4 (entry: Schema.Schema -> Scalar.SymbolContext -> Value -> Value -> Value -> Value -> Value) : Callback =
+    fun (schema, symbols) arguments ->
+        entry
+            schema
+            symbols
+            (Runtime.item 0 arguments)
+            (Runtime.item 1 arguments)
+            (Runtime.item 2 arguments)
+            (Runtime.item 3 arguments)
+
 /// Runs a body in a fresh case context: generated code makes a symbol
 /// context, takes the program's schema and installs production handlers
 /// (Effects.withScope) around the body.

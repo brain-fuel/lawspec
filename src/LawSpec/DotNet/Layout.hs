@@ -190,12 +190,16 @@ item j x = opening (pad j "") (expr j j x)
 broken :: Int -> Int -> F -> Lines
 broken i c e = case e of
   App f args -> application f args
+  -- A method given only a function keeps it on its line, as a callback.
+  Method f [Fun ps b] | c + columns (f ++ "(fun " ++ ps ++ " ->") <= pageWidth -> closing ")" ((f ++ "(fun " ++ ps ++ " ->") : body (i + 4) b)
   Method f args -> commaList (f ++ "(") ")" args
   List xs -> ["["] ++ concatMap (item (i + 4)) xs ++ [pad i "]"]
+  -- A tuple too long for its line has an item on each line, aligned after
+  -- its opening parenthesis.
   Tuple xs ->
-    let items = map (expr (c + 1) (c + 1)) xs
+    let items = [ (if k == 1 then id else opening (pad (c + 1) "")) (expr (c + 1) (c + 1) x) | (k, x) <- zip [1 :: Int ..] xs ]
         joined = concat [if k == length items then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] items]
-    in closing ")" (opening "(" (take 1 joined ++ [pad (c + 1) l | l <- drop 1 joined]))
+    in closing ")" (opening "(" joined)
   Record fields -> ["{"] ++ concat [field (i + 4) n v | (n, v) <- fields] ++ [pad i "}"]
   Fun ps b -> ("fun " ++ ps ++ " ->") : body (i + 4) b
   Match subject cases -> matchLines i subject cases
@@ -273,10 +277,28 @@ matchLines i subject cases = header ++ concatMap arm cases
       Just s | i + columns ("match " ++ s ++ " with") <= pageWidth -> ["match " ++ s ++ " with"]
       _ -> ["match"] ++ item (i + 4) subject ++ [pad i "with"]
     arm (pattern, b) = case b of
-      Block (_ : _) _ -> pad i ("| " ++ pattern ++ " ->") : body (i + 4) b
+      Block (_ : _) _ -> patternLines pattern ++ body (i + 4) b
       _ -> case flat b of
         Just s | i + columns ("| " ++ pattern ++ " -> " ++ s) <= pageWidth -> [pad i ("| " ++ pattern ++ " -> " ++ s)]
-        _ -> pad i ("| " ++ pattern ++ " ->") : body (i + 4) b
+        _ -> patternLines pattern ++ body (i + 4) b
+    -- A case's pattern too long for its line breaks after its constructor's
+    -- first argument, the rest aligned after the parenthesis.
+    patternLines pattern
+      | i + columns ("| " ++ pattern ++ " ->") <= pageWidth = [pad i ("| " ++ pattern ++ " ->")]
+      | (constructor, '(' : arguments) <- break (== '(') pattern, (first, ',' : ' ' : rest) <- topLevel arguments =
+          [pad i ("| " ++ constructor ++ "(" ++ first ++ ","), pad (i + 2 + length constructor + 1) (rest ++ " ->")]
+      | otherwise = [pad i ("| " ++ pattern ++ " ->")]
+    -- Split at the first comma outside brackets and string literals.
+    topLevel = go (0 :: Int) False ""
+      where
+        go _ _ acc [] = (reverse acc, [])
+        go depth quoted acc (c : rest)
+          | quoted = go depth (c /= '"' || take 1 acc == "\\") (c : acc) rest
+          | c == '"' = go depth True (c : acc) rest
+          | c `elem` ("([{" :: String) = go (depth + 1) False (c : acc) rest
+          | c `elem` (")]}" :: String) = go (depth - 1) False (c : acc) rest
+          | c == ',' && depth == 0 = (reverse acc, c : rest)
+          | otherwise = go depth False (c : acc) rest
 
 -- | Statements and a result, at an indentation.
 block :: Int -> [Stmt] -> F -> Lines

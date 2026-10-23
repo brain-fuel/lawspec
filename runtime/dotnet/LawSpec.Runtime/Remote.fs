@@ -147,3 +147,88 @@ module Remote =
         | 2, message -> fail ("stopped " + Encoding.UTF8.GetString message)
         | 3, message -> fail ("rejected " + Encoding.UTF8.GetString message)
         | status, _ -> fail ("invalid_reply_status " + string status)
+
+    /// A program's remotely evaluable definitions: each one's qualified name,
+    /// content hash, argument wire forms and result wire form.
+    type DefinitionSignature = string * string * string list * string
+
+    /// The functions that evaluate each definition, by name: the generated
+    /// LawSpec.Generated.RemoteInvoke, which compiles after the entries, is
+    /// found once, by name.
+    [<CompiledName("DefinitionInvokers")>]
+    let definitionInvokers () : Lazy<Map<string, Value list -> Value>> =
+        lazy
+            let owner =
+                System.AppDomain.CurrentDomain.GetAssemblies()
+                |> Array.pick (fun assembly -> Option.ofObj (assembly.GetType "LawSpec.Generated.RemoteInvoke"))
+
+            let property =
+                match owner.GetProperty "invokers" with
+                | null -> owner.GetProperty "Invokers"
+                | p -> p
+
+            let table = property.GetValue(null)
+            Map.ofList (table :?> (string * (Value list -> Value)) list)
+
+    let private signatureOf (signatures: DefinitionSignature list) (name: string) =
+        match signatures |> List.tryFind (fun (n, _, _, _) -> n = name) with
+        | Some signature -> signature
+        | None -> fail ("unknown definition " + name)
+
+    /// The content hash of the definition with this qualified name.
+    [<CompiledName("DefinitionDigest")>]
+    let definitionDigest (signatures: DefinitionSignature list) (name: string) : string =
+        let _, hash, _, _ = signatureOf signatures name
+        hash
+
+    /// Lets other nodes evaluate the definitions on node; the address they
+    /// are served at.
+    [<CompiledName("ServeDefinitions")>]
+    let serveDefinitions
+        (node: Node)
+        (signatures: DefinitionSignature list)
+        (invokers: Lazy<Map<string, Value list -> Value>>)
+        : string =
+        serve
+            node
+            "definitions"
+            "eval"
+            [
+                for name, hash, arguments, result in signatures ->
+                    hash,
+                    {
+                        Arguments = arguments
+                        Result = result
+                        Invoke = Some invokers.Value.[name]
+                    }
+            ]
+
+    /// Evaluates the named definition on the node at address, by its content
+    /// hash; fails when that node does not answer within timeout.
+    [<CompiledName("EvaluateDefinition")>]
+    let evaluateDefinition
+        (node: Node)
+        (signatures: DefinitionSignature list)
+        (address: string)
+        (name: string)
+        (timeout: System.TimeSpan)
+        (arguments: Value list)
+        : Value =
+        let _, hash, types, result = signatureOf signatures name
+
+        let client =
+            connect
+                node
+                (address + "/definitions")
+                "eval"
+                [
+                    hash,
+                    {
+                        Arguments = types
+                        Result = result
+                        Invoke = None
+                    }
+                ]
+                (int timeout.TotalMilliseconds)
+
+        call client hash arguments
