@@ -275,7 +275,7 @@ emit minify bits datas units = do
       let keepsContext = or [isContextual (rustTypedPlan typed) clause | answer <- answered', (op, _) <- C.abilityOperations answer, Just clause <- [lookup op (C.handlerClauses h)]] ||
             not (null attempts) || maybe False (not . rustTypedNative typed . fst) (C.handlerState h)
           startValue = maybe (L.atom "()") (\v -> answered (L.Call (L.Paren (L.closure "|| -> ls::Result<_>"
-            (L.Block [L.Let (if E.mentions "ctx" v then "ctx" else "_ctx") (L.atom "&mut ctx")] (Just (L.call "Ok" [L.Laid v]))))) [])) start
+            (L.Block [L.Let (if E.mentions "ctx" (L.expr v) then "ctx" else "_ctx") (L.atom "&mut ctx")] (Just (L.call "Ok" [v]))))) [])) start
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
         structDoc name keepsContext stateType <> D.hardline <> D.hardline <>
         impl ("impl " ++ name) ([construction keepsContext (startValue <$ C.handlerState h), starting] ++ accessors ++ attempts) <> D.hardline <> D.hardline <>

@@ -35,7 +35,7 @@ data RustTyped = RustTyped
     -- A type's typed form, qualified for use outside the typed module.
   , rustTypedType :: Type -> Either String String
     -- A closed expression (a handler's start value), qualified likewise.
-  , rustTypedValue :: Expr -> Either String D.Doc
+  , rustTypedValue :: Expr -> Either String L.Expr
     -- The two fields of a typed Pair, as a qualified function.
   , rustPairFields :: String
     -- Whether a type converts to and from its public form directly (Public).
@@ -105,7 +105,7 @@ emitRustTyped declarations units = do
         D.text "pub mod typed " <> D.block 4 body
     , rustTypedFunction = lookupFunction
     , rustTypedType = rustType outside
-    , rustTypedValue = \e -> L.expr <$> evalStateT (expression outside Nothing [] e) (moduleReserved ++ functionNames)
+    , rustTypedValue = \e -> evalStateT (expression outside Nothing [] e) (moduleReserved ++ functionNames)
     , rustPairFields = modulePath ++ "pair_fields"
     , rustTypedNative = directType directData
     , rustTypedPlan = plan }

@@ -361,6 +361,10 @@ arguments cap open close limit args =
     Just texts | fitsArguments limit open args texts
                , maybe True (\c -> width (open ++ intercalate ", " texts ++ close) <= c) cap ->
       oneOf ([D.text (open ++ intercalate ", " texts ++ close)] ++ rest)
+    -- A call's single argument that is a call it cannot overflow within
+    -- its budget is still on the call's line when the whole line fits.
+    Just [t] | open == "(", nestedCall (head args), not overflowFits, isNothing cap ->
+      oneOf [D.text (open ++ t ++ close), vertical]
     _ -> case rest of
       [only] -> only
       _ -> oneOf rest
@@ -624,6 +628,13 @@ armsDoc arms = D.text "{" <> D.nest 4 (D.hardline <> D.joinWith D.hardline (map 
 
 armDoc :: Arm -> D.Doc
 armDoc (Arm pat guard body) = armDoc (ArmOf (Atom pat) guard body)
+armDoc (ArmOf pat (Just guard) body)
+  | Just p <- flat pat, Just g <- oneLine guard, not (isBlock body) =
+      D.prefixChoice (p ++ " if " ++ g ++ " => {") (armDoc (ArmOf (Atom (p ++ " if " ++ g)) Nothing body))
+            ( D.text p <> D.nest 4 (D.hardline <> D.text "if " <> expr guard <> D.text " =>") <> D.hardline <> blockDoc [] (Just body) )
+  where isBlock b = case b of
+          Block _ _ -> True
+          _ -> False
 armDoc (ArmOf pat (Just guard) body@(Block _ _))
   -- A guarded arm whose head does not fit breaks before its guard, and
   -- its block opens on a line of its own.
@@ -631,7 +642,8 @@ armDoc (ArmOf pat (Just guard) body@(Block _ _))
       oneOf [ D.text (p ++ " if " ++ g ++ " => ") <> blockDoc ss tailExpr
             , D.text p <> D.nest 4 (D.hardline <> D.text "if " <> expr guard <> D.text " =>") <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
-  Block ss tailExpr -> headDoc <> D.text " " <> blockDoc ss tailExpr
+  -- A block opens on the next line when the arm's line has no room for it.
+  Block ss tailExpr -> headDoc <> oneOf [D.text " " <> blockDoc ss tailExpr, D.hardline <> blockDoc ss tailExpr]
   inner ->
     let blocked = headDoc <> D.text " {" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}"
         sameLine = headDoc <> D.text " " <> expr inner <> (if endsInBlock inner then mempty else D.text ",")
