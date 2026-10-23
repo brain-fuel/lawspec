@@ -238,7 +238,8 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "\nend unit" ])
         >>= planTesting >>= emitPlan "python")
       let tests = [artifactContent f | f <- files, "test_gaps_regex_lawspec.py" `isSuffixOf` artifactPath f]
-      tests `shouldSatisfy` any ("\"type\": \"Text\", \"units\": [" `isInfixOf`)
+      -- Regex samples are boundary values, written as Python string literals.
+      tests `shouldSatisfy` any ("    t = \"a\"\n" `isInfixOf`)
     it "mixes regex hints into laws that also draw records" $ do
       let source = unlines
             [ "unit gaps.mixed"

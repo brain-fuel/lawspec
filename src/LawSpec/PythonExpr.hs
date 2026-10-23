@@ -1,5 +1,5 @@
 -- | Typed expression documents shared by Python properties and source definitions.
-module LawSpec.PythonExpr (renderExpression, renderExpressionBody, renderExpressionWithContext, renderExpressionWithContextAt, literalValue, call, array, quoted, typeKey, suite, lambdaExpression, appliedLambda, scalarLiteral, optionalParentheses, bytesLiteral, pythonReserved, handlerSchemaCall) where
+module LawSpec.PythonExpr (renderExpression, renderExpressionBody, renderExpressionWithContext, renderExpressionWithContextAt, literalValue, call, array, quoted, typeKey, suite, lambdaExpression, appliedLambda, scalarLiteral, optionalParentheses, bytesLiteral, pythonReserved, handlerSchemaCall, tuple) where
 
 import LawSpec.Core
 import LawSpec.Scalar (Scalar(..))
@@ -43,6 +43,12 @@ bytesLiteral values = D.text ("b" ++ [quote] ++ concatMap escape values ++ [quot
 -- | A call through the handler schema: ls.handler_schema(_lawspec_schema).name(...).
 handlerSchemaCall :: String -> [D.Doc] -> D.Doc
 handlerSchemaCall name args = call "ls.handler_schema" [D.text "_lawspec_schema"] <> D.text "." <> call name args
+
+-- | A tuple; a one-tuple keeps its comma however it breaks.
+tuple :: [D.Doc] -> D.Doc
+tuple [] = D.text "()"
+tuple [x] = D.group (D.text "(" <> D.nest 4 (D.softbreak <> x <> D.text ",") <> D.softbreak <> D.text ")")
+tuple xs = D.delimitTrailing 4 "(" ")" xs
 
 -- | Names generated Python code keeps for itself.
 pythonReserved :: [String]

@@ -16,7 +16,7 @@ import LawSpec.AbilityNames (specName, interfaceName)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
 import LawSpec.Typed.Plan (TypedPlan(..))
-import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.Naming (escapeKeyword, claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink)
 import qualified Data.Map.Strict as M
 
@@ -304,7 +304,11 @@ emitPythonDefinitions layout bits declarations units = do
     native d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
-          values = ["value_" ++ show i | i <- [0 .. length args - 1]]
+          -- Parameters keep their source names; each is replaced by its
+          -- checked logical value before the call.
+          values = fst (claimAll (scopeWith (E.pythonReserved ++ ["result", "checked_result"] ++
+              [n | (_, n, _, _) <- handlerParameters declaration]))
+            [localIdentifier "python" (binderName b) | b <- definitionArguments d])
       types <- mapM (Native.pythonDataTypeDoc declarations) args
       resultType <- Native.pythonDataTypeDoc declarations result
       arguments <- sequence [schemaCall "from_native" ty (D.text value) | (ty,value) <- zip args values]
@@ -318,16 +322,16 @@ emitPythonDefinitions layout bits declarations units = do
           -- installed in symbols, where the operations it performs find them.
           installs = [E.call "ls.install_handlers" [D.text "symbols", D.delimitTrailing 4 "{" "}"
             [E.quoted (abilityKey ability) <> D.text (": " ++ name) | (ability, name, _, _) <- handlers]] | not (null handlers)]
-          inputs = installs ++ [assign ("argument_" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
-          invocation = E.call name (D.text "symbols" : [D.text ("argument_" ++ show i) | i <- [0 .. length args - 1]])
-      pure (E.suite (D.text ("def " ++ declarationName declaration) <>
-        D.delimitTrailing 4 "(" ")" parameters <> D.text " -> " <> resultType)
+          inputs = installs ++ [assign value checked | (value, checked) <- zip values arguments]
+          invocation = E.call name (D.text "symbols" : map D.text values)
+      pure (linkComment d <> E.suite (D.text ("def " ++ declarationName declaration) <>
+        D.delimitTrailing 4 "(" ")" parameters <> D.text " -> " <> D.text (D.render D.Compact resultType))
         (contextual (declarationId declaration) (D.joinWith D.hardline
           (inputs ++ [assign "result" invocation,D.text "return " <> output]))))
     -- The handlers a definition's native wrapper takes, first: one per
     -- ability in its row (Fail aborts, so it has none).
     handlerParameters declaration =
-      [ (ability, lowerFirst (interfaceName a), owner, a)
+      [ (ability, escapeKeyword "python" (lowerFirst (interfaceName a)), owner, a)
       | ability <- declarationUses declaration, not (isFail ability)
       , Just (owner, a) <- [findAbility units ability] ]
     -- A spec handler, made with its unit's class.

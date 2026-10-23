@@ -40,13 +40,13 @@ emitBindings minify bindings plan files = do
   entries <- forM (concatMap resolvedConstructors mappings) $ \constructor -> do
     mapM_ (P.identifier . snd) (resolvedFields constructor)
     pure (D.text (P.q (C.idText (C.constructorId (resolvedConstructor constructor)))) <>
-      D.text ": " <> D.delimit 4 "(" ")"
+      D.text ": " <> D.delimitTrailing 4 "(" ")"
         ([reference (resolvedNativeConstructor constructor),
          P.array [D.text (P.q name) | (_,name) <- resolvedFields constructor]] ++
          [P.array [P.array (map (D.text . P.q) path) | path<-paths] |
           Just paths<-[resolvedFieldPaths constructor]]))
   let hooks = [D.text (P.q (C.idText (C.dataId (resolvedDeclaration mapping)))) <>
-        D.text ": " <> D.delimit 4 "(" ")"
+        D.text ": " <> D.delimitTrailing 4 "(" ")"
           (map reference [resolvedNativeType mapping, codecToNative hook, codecFromNative hook]) |
         mapping <- mappings, Just hook <- [resolvedCodec mapping]]
       common = map D.text
@@ -55,7 +55,7 @@ emitBindings minify bindings plan files = do
          "import lawspec_data as data", "import lawspec_schema as _schema"]
       schemas = [D.text "_canonical = data.make_schema()",
         D.text "_native = _canonical.with_native_bindings" <>
-          D.delimit 4 "(" ")" [D.delimit 4 "{" "}" entries, D.delimit 4 "{" "}" hooks],
+          D.delimitTrailing 4 "(" ")" [D.delimitTrailing 4 "{" "}" entries, D.delimitTrailing 4 "{" "}" hooks],
         -- Handlers are application code: their values are the bound types.
         D.text "ls.set_handler_schema(_native)"]
       support = Artifact "src/lawspec_native.py"
@@ -97,7 +97,7 @@ emitBindings minify bindings plan files = do
           StaticCall ref -> pure (reference ref <> D.delimitTrailing 4 "(" ")" (handlerNames ++ converted))
           -- A method of the first handle argument, given the others.
           MethodCall name -> case handleAt of
-            h : _ -> pure (D.text "(" <> converted !! h <> D.text (")." ++ name) <>
+            h : _ -> pure (D.parens (converted !! h) <> D.text ("." ++ name) <>
               D.delimitTrailing 4 "(" ")" [value | (i,value) <- zip [0..] converted, i /= h])
             [] -> Left ("method binding " ++ C.idText (C.declarationId decl) ++ " has no handle argument")
           -- A native constructor, given the arguments that are not Unit.
@@ -129,8 +129,8 @@ emitBindings minify bindings plan files = do
           P.suite (D.text "try") (D.joinWith D.hardline resultBody) <> D.hardline <>
           P.suite (D.text "except (ValueError, TypeError, ArithmeticError, AttributeError) as error")
             (D.text "raise ValueError" <> D.delimitTrailing 4 "(" ")"
-              [D.text (P.q ("native binding " ++ C.idText (C.declarationId decl) ++ ": ")) <>
-                D.text " + str(error)"] <> D.text " from error")))
+              [D.argument (D.operation [D.text (P.q ("native binding " ++ C.idText (C.declarationId decl) ++ ": ")),
+                D.text "str(error)"] ["+"])] <> D.text " from error")))
       let pathname = "src/" ++ pythonUnitFile (map (unitName . plannedUnit) (plannedUnits plan)) (unitName unit)
           header = common ++ [D.text "import lawspec_native as bridge"] ++ imports
       pure [Artifact pathname (render (D.joinWith D.hardline header <>

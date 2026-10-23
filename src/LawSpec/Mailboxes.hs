@@ -13,7 +13,9 @@ import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.MachineSpec (describe)
 import LawSpec.PythonData (pythonTypeReferenceDoc, requiresSchema)
-import LawSpec.PythonTypes (pythonDataTypeDoc)
+import LawSpec.PythonTypes (pythonDataTypeDoc, pythonLayout)
+import qualified LawSpec.PythonExpr as E
+import LawSpec.Code.Literal (literalFor)
 import LawSpec.RustData (rustDataType)
 import LawSpec.HaskellData (haskellNativeTypeWithParameters, haskellCodecDoc)
 import LawSpec.JavaData (javaDataType, javaCodecDocWithContext)
@@ -50,6 +52,13 @@ mailboxArtifacts target plan = case concatMap C.unitMailboxes units of
     datas = planDataDeclarations plan
     bits = planMachineBits plan
 
+-- | A line of Python at an indentation, laid out as ruff lays it out.
+pyLine :: Int -> D.Doc -> String
+pyLine indent doc = D.render pythonLayout (D.text (replicate indent ' ') <> D.nest indent doc)
+
+params :: [String] -> D.Doc
+params = D.delimitTrailing 4 "(" ")" . map D.text
+
 python :: Int -> [C.DataDeclaration] -> [C.Mailbox] -> Either String [Artifact]
 python bits datas boxes = do
   let names = map C.mailboxName boxes
@@ -69,18 +78,22 @@ python bits datas boxes = do
         , "nodes, and connect(node, address) sends to one from another node: such a"
         , "send waits until the mailbox has the message, and it is delivered once."
         , "\"\"\""
+        , ""
         , "from __future__ import annotations"
         , ""
         , "import builtins as _builtins"
         , "import lawspec_runtime as ls"
+        , ""
         , "try:"
         , "    import lawspec_data as data"
         , "    import lawspec_schema as _schema"
+        , ""
         , "    _SCHEMA = data.make_schema()"
         , "except ImportError:"
         , "    _SCHEMA = None"
         , ""
-        , "_TYPES = ls.Values({str(f[1]): f for f in ls.read_descriptor(" ++ show (unwords (map snd (reverse table))) ++ ")})"
+        , "_FORMS = " ++ literalFor "python" (unwords (map snd (reverse table)))
+        , "_TYPES = ls.Values({str(form[1]): form for form in ls.read_descriptor(_FORMS)})"
         , ""
         , ""
         , "def _native(reference, value):"
@@ -91,7 +104,7 @@ python bits datas boxes = do
         , "    return value if reference is None else _SCHEMA.from_native(reference, value)" ]
   pure [Artifact "src/lawspec_mailboxes.py" (unlines header ++ concatMap ("\n\n" ++) classes) "generated" "source"]
   where
-    reference ty = if requiresSchema datas ty then either (const "None") (D.render (D.Pretty 1000)) (pythonTypeReferenceDoc ty) else "None"
+    reference ty = if requiresSchema datas ty then either (const "None") (D.render D.Compact) (pythonTypeReferenceDoc ty) else "None"
     cls b native wire = unlines $
       [ "class " ++ name ++ ":"
       , "    \"\"\"Mailbox " ++ C.mailboxName b ++ ": messages of " ++ native ++ " from any number of senders,"
@@ -103,22 +116,26 @@ python bits datas boxes = do
       , ""
       , "    def send(self, value: " ++ native ++ ") -> None:"
       , "        \"\"\"Queues value without waiting.\"\"\""
-      , "        self._mailbox.send(_logical(" ++ ref ++ ", value) if self._logical else value)"
+      , pyLine 8 (E.call "self._mailbox.send" [D.group (E.call "_logical" [D.text ref, D.text "value"] <> D.softline <>
+          D.text "if self._logical" <> D.softline <> D.text "else value")])
       , ""
-      , "    def receive(self, timeout: float | None = None) -> " ++ native ++ ":"
+      , pyLine 4 (D.text "def receive" <> params ["self", "timeout: float | None = None"] <> D.text (" -> " ++ native ++ ":"))
       , "        \"\"\"The next message; waits up to timeout seconds (forever when None),"
       , "        then raises TimeoutError; raises ls.ActorStopped once closed and empty.\"\"\""
       , "        value = self._mailbox.receive(timeout)"
-      , "        return _native(" ++ ref ++ ", value) if self._logical else value"
+      , pyLine 8 (D.text "return " <> D.unparen (D.parens (E.call "_native" [D.text ref, D.text "value"] <> D.softline <>
+          D.text "if self._logical" <> D.softline <> D.text "else value")))
       , ""
-      , "    def receive_within(self, within: ls.timedelta, clock=None) -> " ++ native ++ " | None:"
+      , pyLine 4 (D.text "def receive_within" <> params ["self", "within: ls.timedelta", "clock=None"] <> D.text (" -> " ++ native ++ " | None:"))
       , "        \"\"\"The next message, or None when none arrives within the duration: the"
       , "        Mailbox ability's receive ... within d, on clock (a Clock handler; the"
       , "        real clock when None). Raises ls.ActorStopped once closed and empty.\"\"\""
-      , "        value = self._mailbox.receive_within(within // ls.timedelta(microseconds=1), clock)"
+      , "        micros = within // ls.timedelta(microseconds=1)"
+      , "        value = self._mailbox.receive_within(micros, clock)"
       , "        if value is None:"
       , "            return None"
-      , "        return _native(" ++ ref ++ ", value) if self._logical else value"
+      , pyLine 8 (D.text "return " <> D.unparen (D.parens (E.call "_native" [D.text ref, D.text "value"] <> D.softline <>
+          D.text "if self._logical" <> D.softline <> D.text "else value")))
       , ""
       , "    def close(self) -> None:"
       , "        \"\"\"Refuses later sends; messages already sent can still be received.\"\"\""
@@ -130,12 +147,14 @@ python bits datas boxes = do
           , "    @staticmethod"
           , "    def serve(node: ls.Node, name: str) -> " ++ name ++ ":"
           , "        \"\"\"A mailbox on node that other nodes send to at <node address>/name.\"\"\""
-          , "        return " ++ name ++ "(node.mailbox(name, ls.read_descriptor(" ++ show d ++ ")[0], _TYPES), logical=True)"
+          , pyLine 8 (D.text "wire = " <> E.call "ls.read_descriptor" [E.quoted d] <> D.text "[0]")
+          , pyLine 8 (D.text "return " <> E.call name [E.call "node.mailbox" [D.text "name", D.text "wire", D.text "_TYPES"], D.text "logical=True"])
           , ""
           , "    @staticmethod"
-          , "    def connect(node: ls.Node, address: str, timeout: float = 5.0) -> " ++ name ++ "Sender:"
+          , pyLine 4 (D.text "def connect" <> params ["node: ls.Node", "address: str", "timeout: float = 5.0"] <> D.text (" -> " ++ name ++ "Sender:"))
           , "        \"\"\"Sends to the mailbox served at address on another node.\"\"\""
-          , "        return " ++ name ++ "Sender(node.remote_mailbox(address, ls.read_descriptor(" ++ show d ++ ")[0], _TYPES, timeout))"
+          , pyLine 8 (D.text "wire = " <> E.call "ls.read_descriptor" [E.quoted d] <> D.text "[0]")
+          , pyLine 8 (D.text "return " <> E.call (name ++ "Sender") [E.call "node.remote_mailbox" [D.text "address", D.text "wire", D.text "_TYPES", D.text "timeout"]])
           , ""
           , ""
           , "class " ++ name ++ "Sender:"
@@ -146,7 +165,7 @@ python bits datas boxes = do
           , ""
           , "    def send(self, value: " ++ native ++ ") -> None:"
           , "        \"\"\"Sends value; waits until the mailbox has it, or raises ls.Unreachable.\"\"\""
-          , "        self._remote.send(_logical(" ++ ref ++ ", value))" ]
+          , pyLine 8 (E.call "self._remote.send" [E.call "_logical" [D.text ref, D.text "value"]]) ]
       where
         name = mailboxClassName (C.mailboxName b)
         ref = reference (C.mailboxType b)

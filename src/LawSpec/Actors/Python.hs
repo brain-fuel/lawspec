@@ -16,6 +16,9 @@ import LawSpec.PythonData (pythonTypeReferenceDoc, requiresSchema)
 import LawSpec.MachineSpec (describe)
 import Control.Monad (foldM)
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.PythonExpr as E
+import LawSpec.PythonTypes (pythonLayout)
+import LawSpec.Code.Literal (literalFor)
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
@@ -47,6 +50,7 @@ emit _ _ bits datas actors supervisions = do
         , "Each supervisor class starts its children and restarts them after a"
         , "crash; its children are attributes named as in the specification."
         , "\"\"\""
+        , ""
         , "from __future__ import annotations"
         , ""
         , "import builtins as _builtins"
@@ -62,8 +66,9 @@ emit _ _ bits datas actors supervisions = do
         , ""
         , "# Values crossing the network are logical; handlers and callers use"
         , "# native ones."
-        , "_TYPES = ls.Values({str(f[1]): f for f in ls.read_descriptor(" ++ show (unwords (map snd (reverse types))) ++ ")})"
-        , "_SCHEMA = data.make_schema() if hasattr(data, 'make_schema') else None"
+        , "_FORMS = " ++ literalFor "python" (unwords (map snd (reverse types)))
+        , "_TYPES = ls.Values({str(form[1]): form for form in ls.read_descriptor(_FORMS)})"
+        , "_SCHEMA = data.make_schema() if hasattr(data, \"make_schema\") else None"
         , ""
         , ""
         , "def _native(reference, value):"
@@ -103,11 +108,11 @@ actorClassText datas wire a = do
       impl d = alias (unitName (actorUnit a)) ++ "." ++ adapterName (actorUnit a) (C.declarationId d)
       startParams = [arg | arg@(_, (t, _)) <- startArgs, not (unit t)]
       startValues = [if unit t then "ls.UNIT" else p | (p, (t, _)) <- startArgs]
-      startCall = awaited (actorStart a) (impl (actorStart a) ++ "(" ++ intercalate ", " startValues ++ ")")
+      startCall = awaited (actorStart a) (E.call (impl (actorStart a)) (map D.text startValues))
       restartCall = case actorRestart a of
-        Just d -> "lambda s: " ++ awaited d (impl d ++ "(s)")
-        Nothing -> "lambda s: " ++ startCall
-      keywords = ["*", "supervisor: ls.Supervisor | None = None", "lifetime: str = 'permanent'"]
+        Just d -> E.lambdaExpression [D.text "s"] (awaited d (E.call (impl d) [D.text "s"]))
+        Nothing -> E.lambdaExpression [D.text "s"] startCall
+      keywords = ["*", "supervisor: ls.Supervisor | None = None", "lifetime: str = \"permanent\""]
   pure $ unlines $
     [ "class " ++ cls ++ ":"
     , "    \"\"\"Actor " ++ actorName a ++ ": owns its state and handles one message at a time.\"\"\""
@@ -116,10 +121,10 @@ actorClassText datas wire a = do
     , "        self._actor = actor"
     , ""
     , "    @staticmethod"
-    , "    def start(" ++ intercalate ", " (map typed startParams ++ keywords) ++ ") -> " ++ cls ++ ":"
+    , pyLine 4 (D.text "def start" <> parameters (map typed startParams ++ keywords) <> D.text (" -> " ++ cls ++ ":"))
     , "        \"\"\"Makes the actor's state with " ++ C.declarationName (actorStart a) ++ " and starts the actor,"
     , "        under supervisor when given.\"\"\""
-    , "        actor = ls.Actor(" ++ startCall ++ ", restart=" ++ restartCall ++ ")"
+    , pyLine 8 (D.text "actor = " <> E.call "ls.Actor" [startCall, D.text "restart=" <> restartCall])
     , "        if supervisor is not None:"
     , "            supervisor.supervise(actor, lifetime)"
     , "        return " ++ cls ++ "(actor)"
@@ -143,9 +148,10 @@ actorClassText datas wire a = do
     , "        \"\"\"Refuses further messages; those already sent are still handled.\"\"\""
     , "        self._actor.stop()" ] ++ remote
   where
-    reference ty = if requiresSchema datas ty then either (const "None") (D.render (D.Pretty 1000)) (pythonTypeReferenceDoc ty) else "None"
+    reference ty = if requiresSchema datas ty then either (const "None") (D.render D.Compact) (pythonTypeReferenceDoc ty) else "None"
     replyType h = maybe (C.Constructor "Unit" []) id (handlerReply h)
     implName d = alias (unitName (actorUnit a)) ++ "." ++ adapterName (actorUnit a) (C.declarationId d)
+    descriptor d = E.call "_d" [E.quoted d]
     remote = case wire of
       Nothing -> []
       Just hs ->
@@ -153,24 +159,25 @@ actorClassText datas wire a = do
         , "    def serve(self, node: ls.Node, name: str) -> str:"
         , "        \"\"\"Lets other nodes call this actor at <node address>/name; returns"
         , "        that address.\"\"\""
-        , "        return node.serve(name, self._actor, {" ] ++
-        [ "            " ++ show (handlerName h) ++ ": (lambda s" ++ concatMap (\(p, _) -> ", " ++ p) (handlerArguments h) ++ ": " ++
-            (let call = awaited (handlerDeclaration h) (implName (handlerDeclaration h) ++ "(" ++ intercalate ", " ("s" : [ "_native(" ++ reference ty ++ ", " ++ p ++ ")" | (p, ty) <- handlerArguments h]) ++ ")")
-             in case handlerReply h of
-                  Just r -> "_served(" ++ reference r ++ ", " ++ call ++ ")"
-                  Nothing -> "(ls.UNIT, " ++ call ++ ")") ++
-            ", [" ++ intercalate ", " ["_d(" ++ show d ++ ")" | d <- ds] ++ "], _d(" ++ show r ++ ")),"
-        | (h, ds, r) <- hs ] ++
-        [ "        }, _TYPES)"
+        , pyLine 8 (D.text "return " <> E.call "node.serve" [D.text "name", D.text "self._actor", D.delimitTrailing 4 "{" "}"
+            [ E.quoted (handlerName h) <> D.text ": " <> D.delimitTrailing 4 "(" ")"
+                [ E.lambdaExpression (D.text "s" : map (D.text . fst) (handlerArguments h))
+                    (let call = awaited (handlerDeclaration h) (E.call (implName (handlerDeclaration h))
+                           (D.text "s" : [E.call "_native" [D.text (reference ty), D.text p] | (p, ty) <- handlerArguments h]))
+                     in case handlerReply h of
+                          Just r -> E.call "_served" [D.text (reference r), call]
+                          Nothing -> D.delimitTrailing 4 "(" ")" [D.text "ls.UNIT", call])
+                , D.delimitTrailing 4 "[" "]" (map descriptor ds), descriptor r ]
+            | (h, ds, r) <- hs ], D.text "_TYPES"])
         , ""
         , "    @staticmethod"
-        , "    def connect(node: ls.Node, address: str, timeout: float = 5.0) -> " ++ actorClass a ++ "Remote:"
+        , pyLine 4 (D.text "def connect" <> parameters ["node: ls.Node", "address: str", "timeout: float = 5.0"] <>
+            D.text (" -> " ++ actorClass a ++ "Remote:"))
         , "        \"\"\"The actor served at address on another node; each call waits up"
         , "        to timeout seconds, then raises ls.Unreachable.\"\"\""
-        , "        return " ++ actorClass a ++ "Remote(node.remote_actor(address, {" ] ++
-        [ "            " ++ show (handlerName h) ++ ": ([" ++ intercalate ", " ["_d(" ++ show d ++ ")" | d <- ds] ++ "], _d(" ++ show r ++ ")),"
-        | (h, ds, r) <- hs ] ++
-        [ "        }, _TYPES, timeout))"
+        , pyLine 8 (D.text "return " <> E.call (actorClass a ++ "Remote") [E.call "node.remote_actor" [D.text "address", D.delimitTrailing 4 "{" "}"
+            [ E.quoted (handlerName h) <> D.text ": " <> D.delimitTrailing 4 "(" ")" [D.delimitTrailing 4 "[" "]" (map descriptor ds), descriptor r]
+            | (h, ds, r) <- hs ], D.text "_TYPES", D.text "timeout"]])
         , ""
         , ""
         , "class " ++ actorClass a ++ "Remote:"
@@ -181,35 +188,43 @@ actorClassText datas wire a = do
         , "        self._remote = remote" ] ++
         concat
         [ [ ""
-          , "    def " ++ handlerName h ++ "(" ++ intercalate ", " ("self" : map fst (handlerArguments h)) ++ "):"
-          , "        return _native(" ++ reference (replyType h) ++ ", self._remote.call(" ++ show (handlerName h) ++
-              concatMap (\(p, ty) -> ", _logical(" ++ reference ty ++ ", " ++ p ++ ")") (handlerArguments h) ++ "))" ]
+          , pyLine 4 (D.text ("def " ++ handlerName h) <> parameters ("self" : map fst (handlerArguments h)) <> D.text ":")
+          , pyLine 8 (D.text "return " <> E.call "_native" [D.text (reference (replyType h)), E.call "self._remote.call"
+              (E.quoted (handlerName h) : [E.call "_logical" [D.text (reference ty), D.text p] | (p, ty) <- handlerArguments h])]) ]
         | (h, _, _) <- hs ]
     unit t = t == C.Constructor "Unit" []
     typed (p, (_, native)) = p ++ ": " ++ native
     argument (p, t) = do
       native <- nativeType t
       pure (p, (t, native))
-    nativeType t = D.render (D.Pretty 1000) <$> pythonDataTypeDoc datas t
-    awaited d call = if C.declarationAsync d then "ls.await_task(" ++ call ++ ")" else call
+    nativeType t = D.render D.Compact <$> pythonDataTypeDoc datas t
+    awaited d call = if C.declarationAsync d then E.call "ls.await_task" [call] else call
     handler h = do
       args <- mapM argument (handlerArguments h)
       reply <- traverse nativeType (handlerReply h)
       let params = "self" : map (\(p, (_, n)) -> p ++ ": " ++ n) args
-          call = awaited (handlerDeclaration h) (alias (unitName (actorUnit a)) ++ "." ++
-            adapterName (actorUnit a) (C.declarationId (handlerDeclaration h)) ++ "(" ++ intercalate ", " ("s" : map fst args) ++ ")")
-          step = case reply of
-            Just _ -> "lambda s: _split(" ++ call ++ ")"
-            Nothing -> "lambda s: (None, " ++ call ++ ")"
+          call = awaited (handlerDeclaration h) (E.call (alias (unitName (actorUnit a)) ++ "." ++
+            adapterName (actorUnit a) (C.declarationId (handlerDeclaration h))) (D.text "s" : map (D.text . fst) args))
+          step = E.lambdaExpression [D.text "s"] (case reply of
+            Just _ -> E.call "_split" [call]
+            Nothing -> D.delimitTrailing 4 "(" ")" [D.text "None", call])
           name = handlerName h
       pure
-        [ "    def " ++ name ++ "(" ++ intercalate ", " params ++ ") -> " ++ maybe "None" id reply ++ ":"
+        [ pyLine 4 (D.text ("def " ++ name) <> parameters params <> D.text (" -> " ++ maybe "None" id reply ++ ":"))
         , "        \"\"\"Sends " ++ name ++ " and waits for the reply.\"\"\""
-        , "        return self._actor.call(" ++ step ++ ")"
+        , pyLine 8 (D.text "return " <> E.call "self._actor.call" [step])
         , ""
-        , "    def tell_" ++ name ++ "(" ++ intercalate ", " params ++ ") -> None:"
+        , pyLine 4 (D.text ("def tell_" ++ name) <> parameters params <> D.text " -> None:")
         , "        \"\"\"Sends " ++ name ++ " without waiting for the reply.\"\"\""
-        , "        self._actor.cast(" ++ step ++ ")" ]
+        , pyLine 8 (E.call "self._actor.cast" [step]) ]
+
+-- | A function's parameters, wrapped as ruff wraps them.
+parameters :: [String] -> D.Doc
+parameters = D.delimitTrailing 4 "(" ")" . map D.text
+
+-- | A line of Python at an indentation, laid out as ruff lays it out.
+pyLine :: Int -> D.Doc -> String
+pyLine indent doc = D.render pythonLayout (D.text (replicate indent ' ') <> D.nest indent doc)
 
 -- | A supervisor's class: start() makes the runtime supervisor and starts each
 -- child under it, in order; each child is an attribute.
@@ -221,19 +236,19 @@ supervisorClassText s = unlines $
   , "" ] ++
   [ "    " ++ name ++ ": " ++ childClass child | (_, name, child) <- supervisionChildren s ] ++
   [ ""
-  , "    def __init__(self, supervisor: ls.Supervisor" ++ concatMap (\(_, name, child) -> ", " ++ name ++ ": " ++ childClass child) (supervisionChildren s) ++ "):"
+  , pyLine 4 (D.text "def __init__" <> parameters ("self" : "supervisor: ls.Supervisor" : [name ++ ": " ++ childClass child | (_, name, child) <- supervisionChildren s]) <> D.text ":")
   , "        self._supervisor = supervisor" ] ++
   [ "        self." ++ name ++ " = " ++ name | (_, name, _) <- supervisionChildren s ] ++
   [ ""
   , "    @staticmethod"
-  , "    def start(*, supervisor: ls.Supervisor | None = None, lifetime: str = 'permanent') -> " ++ cls ++ ":"
+  , pyLine 4 (D.text "def start" <> parameters ["*", "supervisor: ls.Supervisor | None = None", "lifetime: str = \"permanent\""] <> D.text (" -> " ++ cls ++ ":"))
   , "        \"\"\"Starts the supervisor and its children, under supervisor when given.\"\"\""
-  , "        own = ls.Supervisor(" ++ show strategyName ++ ", max_restarts=" ++ show (supervisionRestarts s) ++ ", period=" ++ seconds ++ ")" ] ++
-  [ "        " ++ name ++ " = " ++ childClass child ++ ".start(supervisor=own, lifetime=" ++ show (lifetimeName l) ++ ")"
+  , pyLine 8 (D.text "own = " <> E.call "ls.Supervisor" [E.quoted strategyName, D.text ("max_restarts=" ++ show (supervisionRestarts s)), D.text ("period=" ++ seconds)]) ] ++
+  [ pyLine 8 (D.text (name ++ " = ") <> E.call (childClass child ++ ".start") [D.text "supervisor=own", D.text "lifetime=" <> E.quoted (lifetimeName l)])
   | (l, name, child) <- supervisionChildren s ] ++
   [ "        if supervisor is not None:"
   , "            supervisor.supervise(own, lifetime)"
-  , "        return " ++ cls ++ "(own" ++ concatMap (\(_, name, _) -> ", " ++ name) (supervisionChildren s) ++ ")"
+  , pyLine 8 (D.text "return " <> E.call cls (D.text "own" : [D.text name | (_, name, _) <- supervisionChildren s]))
   , ""
   , "    def monitor(self, notify) -> None:"
   , "        \"\"\"notify(('crashed', cause)) when it passes its restart limit, and"

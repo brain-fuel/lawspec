@@ -34,6 +34,8 @@ test_pythonSessionEndsFollowTheirProtocol = describe "Python sessions" $ do
   it "returns the next end from each step and opens both start ends" $ do
     has "def receive(self) -> tuple[int, Serve.First.ReceiveInt32Step2]:"
     has "def send(self, value: int) -> Serve.First.Done:"
-    has "return Serve.First.ReceiveInt32Step1(channel, 0), Serve.Second.SendInt32Step1(channel, 1)"
+    has "first = Serve.First.ReceiveInt32Step1(channel, 0)"
+    has "second = Serve.Second.SendInt32Step1(channel, 1)"
+    has "return first, second"
   it "sends a delegated protocol's first end" $
-    has "return self._send_end(value, Serve.First.ReceiveInt32Step1, Hire.First.Done)"
+    mapM_ has ["return self._send_end(", "Serve.First.ReceiveInt32Step1,", "Hire.First.Done"]

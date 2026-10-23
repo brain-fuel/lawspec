@@ -178,22 +178,22 @@ protocol datas sessions wire session = do
                    , "            send(value) returns the end for the next step."
                    , "            \"\"\""
                    , ""
-                   , "            def send(self, value: " ++ native ++ ") -> " ++ qualified ++ ":"
+                   , pyLine 12 (D.text "def send" <> D.delimitTrailing 4 "(" ")" [D.text "self", D.text ("value: " ++ native)] <> D.text (" -> " ++ qualified ++ ":"))
                    , "                \"\"\"Sends value; returns the end for the next step.\"\"\""
-                   , "                return " ++ sendCall ty qualified ]
+                   , pyLine 16 (D.text "return " <> sendCall ty qualified) ]
               else [ "            \"\"\"" ++ doc ++ "receive " ++ article ty ++ "."
                    , ""
                    , "            receive() returns the value and the end for the next step."
                    , "            \"\"\""
                    , ""
-                   , "            def receive(self) -> tuple[" ++ native ++ ", " ++ qualified ++ "]:"
+                   , pyLine 12 (D.text "def receive" <> D.delimitTrailing 4 "(" ")" [D.text "self"] <> D.text (" -> tuple[" ++ native ++ ", " ++ qualified ++ "]:"))
                    , "                \"\"\"Waits for the value; returns it and the end for the next step.\"\"\""
-                   , "                return self._receive(" ++ qualified ++ ")" ]
+                   , pyLine 16 (D.text "return " <> E.call "self._receive" [D.text qualified]) ]
     sendCall ty after = case delegated ty of
-      Just q -> "self._send_end(value, " ++ startOf q ++ ", " ++ after ++ ")"
+      Just q -> E.call "self._send_end" [D.text "value", D.text (startOf q), D.text after]
       Nothing -> case ty of
-        C.Constructor n [] | checked n -> "self._send(ls.check_send(value, " ++ literalFor "python" n ++ "), " ++ after ++ ")"
-        _ -> "self._send(value, " ++ after ++ ")"
+        C.Constructor n [] | checked n -> E.call "self._send" [E.call "ls.check_send" [D.text "value", E.quoted n], D.text after]
+        _ -> E.call "self._send" [D.text "value", D.text after]
     checked n = isInteger n || n `elem` ["Bool", "Text", "Char", "Bytes"]
     nativeType ty = case delegated ty of
       Just q -> pure (startOf q)

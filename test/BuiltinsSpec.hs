@@ -183,4 +183,4 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
       let bound = emptyBindingPlan { bindingHandlers = [(C.Id "lawspec.crypto::ability::Signature", NativeRef ["app", "signers", "Signer"])] }
           Right emitted = program crypto >>= planTesting >>= emitPlanWithNativeOptions False "python" Nothing Nothing bound
       concat [artifactContent f | f <- emitted, "test_lawspec_crypto_lawspec" `isInfixOf` artifactPath f]
-        `shouldSatisfy` ("ls.native_handler(\"app.signers\", \"Signer\")" `isInfixOf`)
+        `shouldSatisfy` (\t -> all (`isInfixOf` t) ["ls.native_handler(", "\"app.signers\"", "\"Signer\""])

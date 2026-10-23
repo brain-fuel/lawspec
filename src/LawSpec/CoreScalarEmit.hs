@@ -580,7 +580,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           linked context link test = if py then Doc.lineComment 88 "# " (labelled context link) <> test else test
           lawLink = if null (file (location (original e))) then Nothing else Just (locationLink (location (original e)))
           short = displayLabel (name e)
-          examples' = [linked (short ++ " example " ++ displayLabel (exampleName example)) (locationLink <$> exampleLocation example) $
+          examples' = [linked ("example " ++ displayLabel (exampleName example)) (locationLink <$> exampleLocation example) $
             testBlock (label ++ " example: " ++ exampleName example)
             (prefix ++ suffix) (
               (withSymbols e ([assign name (render value) | (name,value) <- bindings example] ++
@@ -591,7 +591,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           cases' = maybe (boundaryCases e) id finite
       boundaries' <- mapM (\(j,values) -> do
         literals <- mapM valueLit values
-        pure (linked (short ++ " boundary " ++ show (j + 1)) lawLink $ testBlock label (prefix ++ boundarySuffix j) (
+        pure (linked (short ++ ", boundary " ++ show (j + 1)) lawLink $ testBlock label (prefix ++ boundarySuffix j) (
           (withSymbols e ([assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
            [bracket e (assertionDocLinked lawLink (shown ++ " boundary " ++ (if py then show (j + 1) else show j)) (assertion e))]))))) (zip [0 :: Int ..] cases')
       -- LawSpec's own search (LawSpec.Search): a failing generated case's
@@ -646,7 +646,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let properties = if maybe False (const True) finite then [] else
             if not (null drawn) then drawn else
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
-          tests = examples' ++ boundaries' ++ map (linked (short ++ " property") lawLink) properties
+          tests = examples' ++ boundaries' ++ map (linked (short ++ ", property") lawLink) properties
           suffixes = exampleSuffixes ++
             map boundarySuffix [0 .. length boundaries' - 1] ++
             ["_property" | not (null properties)]
@@ -851,7 +851,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           (resultName,resultType) = contractResult contract
           require label predicates = statement (runtime (if py then "require_contract" else "requireContract")
             [conjunction (map render predicates),message (contractName contract ++ " " ++ label ++ ": " ++
-              intercalate " && " (map prettyExpr predicates))])
+              intercalate " && " (map (if py then prettyExprWith True localName else prettyExpr) predicates))])
           invocation = awaited (adapterName u (C.contractDeclaration contract)) (invoke ("impl." ++ adapterName u (C.contractDeclaration contract))
             [nativeInput ty (converted ty (text name)) | (name,ty) <- arguments])
           body = statements
@@ -944,7 +944,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- Index-directed generation: the target is evaluated from earlier draws.
     indexDoc indexed =
       let equation (tag,texts) = (quoted (C.idText tag),
-            if py then Doc.delimitTrailing 4 "(" ")" (map quoted texts ++ [mempty | length texts == 1])
+            if py then PythonExpr.tuple (map quoted texts)
             else array (map quoted texts))
           table = Doc.delimitTrailing 4 "{" "}"
             [key <> text ": " <> value | (key,value) <- map equation (indexedEquations indexed)]
@@ -1046,7 +1046,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             else assign "_check" (callback [text "_values"] checkBody)
           run = statement ((if asyncMode then text "await " else mempty) <> runtime (if py then "refined_case" else if asyncMode then "refinedCaseAsync" else "refinedCase")
             [array domains,text "_seed",text (show (maxAttempts cfg)),text (show (maxShrinks cfg)),text "_check",
-             message (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))])
+             message (label ++ " | " ++ intercalate "; " (map (if py then prettyExprWith True (sourceNames (original e)) else prettyExpr)
+               (concatMap inputRefinements (inputs e))))])
           seededBody = statements [freshSymbols, (if py then Doc.hardline else mempty) <> check, (if py then Doc.hardline else mempty) <> run]
       pure $ if py then pythonProperty prefix
         [pythonSettings (cases cfg),

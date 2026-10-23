@@ -10,18 +10,19 @@ import LawSpec.Scalar (Scalar(..))
 test_pythonBindingNames :: Spec
 test_pythonBindingNames = describe "Python binding hygiene" $ do
   it "keeps an outer name free inside a generated lambda" $ do
-    let output = emitted (binding "bound" (constant False) (local "_m0"))
-    output `shouldSatisfy` isInfixOf "lambda _m1: (_m0)"
-    output `shouldNotSatisfy` isInfixOf "lambda _m0:"
-  it "keeps first-assigned names and allocator gaps across repeated finite-search binders" $ do
-    let output = emitted (expression (C.If (local "_m0")
+    -- The binder's source name is taken by a free name, so it gets _2.
+    let output = emitted (expression (C.Let (C.Binder (C.Id "bound") "outer" (C.scalarType "Bool")) (constant False)
+          (expression (C.ShortCircuit C.And (local "outer") (local "bound")))))
+    output `shouldSatisfy` isInfixOf "lambda outer_2: outer and outer_2"
+    output `shouldNotSatisfy` isInfixOf "lambda outer:"
+  it "keeps first-assigned names across repeated finite-search binders" $ do
+    let output = emitted (expression (C.If (local "flag")
           (binding "repeated" (constant True) (local "repeated"))
           (binding "repeated" (constant False)
             (binding "nested" (constant True) (local "nested")))))
-    length (filter (isPrefixOf "lambda _m1:") (tails output)) `shouldBe` 2
-    output `shouldSatisfy` isInfixOf "lambda _m3: (_m3)"
-    output `shouldSatisfy` isInfixOf "if _m0 else"
-    output `shouldNotSatisfy` isInfixOf "lambda _m2:"
+    length (filter (isPrefixOf "lambda repeated:") (tails output)) `shouldBe` 2
+    output `shouldSatisfy` isInfixOf "lambda nested: nested"
+    output `shouldSatisfy` isInfixOf "if flag else"
   where
     expression node = C.Expr (C.scalarType "Bool") node (C.GeneratedFrom (C.Id "binding-hygiene"))
     local name = expression (C.Local (C.Id name))
