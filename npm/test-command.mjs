@@ -412,13 +412,16 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
       ran: (test) => entries.filter((e) => test.classname === (e.scope??name(e)) &&
         (model(e)?test.name===e.name:test.name.startsWith(`${e.name}: `))) }];
   }
+  // A law's tests are a module of its name (LawSpec.TestNames), selected
+  // by the module's path; a model's test is selected by its exact name.
   if (language === "rust")
-    return groupBy(entries, (e) => e.file).map(([file, laws]) => ({
-      laws, command: "cargo",
-      args: [...(coverage ? ["llvm-cov", "--no-report"] : []), "test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact",
-        ...new Set(laws.map((e) => e.name))],
-      report: { kind: "lines", pattern: /^test (\S+) \.\.\. (ok|FAILED|ignored)/ },
-      ran: (test) => laws.filter((e) => test.name === e.name) }));
+    return groupBy(entries, (e) => e.file).flatMap(([file, entries]) =>
+      [entries.filter((e) => !model(e)), entries.filter(model)].filter((laws) => laws.length).map((laws) => ({
+        laws, command: "cargo",
+        args: [...(coverage ? ["llvm-cov", "--no-report"] : []), "test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--",
+          ...(model(laws[0]) ? ["--exact", ...new Set(laws.map((e) => e.name))] : [...new Set(laws.map((e) => `${e.name}::`))])],
+        report: { kind: "lines", pattern: /^test (\S+) \.\.\. (ok|FAILED|ignored)/ },
+        ran: (test) => laws.filter((e) => model(e) ? test.name === e.name : test.name.startsWith(`${e.name}::`)) })));
   // xUnit v3 on Microsoft.Testing.Platform selects test methods with its
   // query filter (assembly/namespace/class/method, one per law, OR'd), and
   // reports each test by its display name: the law's label, then its kind.
