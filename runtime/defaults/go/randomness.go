@@ -93,4 +93,3 @@ func (handler *SecureRandomHandler) SecureToken() string {
 	}
 	return hex.EncodeToString(raw[:])
 }
-

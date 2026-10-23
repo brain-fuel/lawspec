@@ -236,13 +236,18 @@ type lsHarnessT struct {
 
 type lsHarnessStop struct{}
 
-func (r *lsHarnessT) Helper()                         {}
-func (r *lsHarnessT) Name() string                    { return r.name }
-func (r *lsHarnessT) Logf(format string, args ...any) { r.messages = append(r.messages, fmt.Sprintf(format, args...)) }
-func (r *lsHarnessT) Log(args ...any)                 { r.messages = append(r.messages, fmt.Sprint(args...)) }
-func (r *lsHarnessT) Skipf(format string, args ...any) { r.Logf(format, args...); panic(lsHarnessStop{}) }
-func (r *lsHarnessT) Skip(args ...any)                { r.Log(args...); panic(lsHarnessStop{}) }
-func (r *lsHarnessT) SkipNow()                        { panic(lsHarnessStop{}) }
+func (r *lsHarnessT) Helper()      {}
+func (r *lsHarnessT) Name() string { return r.name }
+func (r *lsHarnessT) Logf(format string, args ...any) {
+	r.messages = append(r.messages, fmt.Sprintf(format, args...))
+}
+func (r *lsHarnessT) Log(args ...any) { r.messages = append(r.messages, fmt.Sprint(args...)) }
+func (r *lsHarnessT) Skipf(format string, args ...any) {
+	r.Logf(format, args...)
+	panic(lsHarnessStop{})
+}
+func (r *lsHarnessT) Skip(args ...any) { r.Log(args...); panic(lsHarnessStop{}) }
+func (r *lsHarnessT) SkipNow()         { panic(lsHarnessStop{}) }
 func (r *lsHarnessT) Errorf(format string, args ...any) {
 	r.failed = true
 	r.Logf(format, args...)

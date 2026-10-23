@@ -155,9 +155,9 @@ type LawSpecMaybe[T any] struct {
 	value   T
 }
 
-func LawSpecAbsent[T any]() LawSpecMaybe[T]     { return LawSpecMaybe[T]{} }
+func LawSpecAbsent[T any]() LawSpecMaybe[T]         { return LawSpecMaybe[T]{} }
 func LawSpecPresent[T any](value T) LawSpecMaybe[T] { return LawSpecMaybe[T]{true, value} }
-func (m LawSpecMaybe[T]) Value() (T, bool)       { return m.value, m.present }
+func (m LawSpecMaybe[T]) Value() (T, bool)          { return m.value, m.present }
 func (m LawSpecMaybe[T]) lawSpecTag() string {
 	if m.present {
 		return "Maybe::Present"

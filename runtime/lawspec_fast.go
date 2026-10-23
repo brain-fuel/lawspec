@@ -224,7 +224,7 @@ type lsfMaybe[T any] struct {
 }
 
 func lsfPresent[T any](v T) lsfMaybe[T] { return lsfMaybe[T]{true, v} }
-func lsfAbsent[T any]() lsfMaybe[T] { return lsfMaybe[T]{} }
+func lsfAbsent[T any]() lsfMaybe[T]     { return lsfMaybe[T]{} }
 
 // lsfEither is Either: Left before Right.
 type lsfEither[L any, R any] struct {
@@ -499,7 +499,7 @@ func lsfCmpMap[K any, V any](a, b *lsfMap[K, V], ck func(K, K) int, cv func(V, V
 }
 
 func lsfEqUnit(lsfUnit, lsfUnit) bool { return true }
-func lsfCmpUnit(lsfUnit, lsfUnit) int  { return 0 }
+func lsfCmpUnit(lsfUnit, lsfUnit) int { return 0 }
 
 // Sets are maps to lsfUnit.
 
