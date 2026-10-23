@@ -1,7 +1,7 @@
 /** <module> Native sleep intervals observed by the shared scheduling oracle.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_23b77ad90140d241, [ls_nap/2]).
+:- module(example_overlap, [ls_nap/2]).
 
 ls_nap(Number, true) :-
     note(start, Number), sleep(0.3), note(end, Number).

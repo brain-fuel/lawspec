@@ -3,7 +3,7 @@
 Known-answer vectors validate the underlying provider independently. These
 application adapters must forward each operation and preserve its typed data.
 */
-:- module(lawspec_222d224c5b274737, [ls_fingerprint/3, ls_roundTrip/3]).
+:- module(example_crypto, [ls_fingerprint/3, ls_roundTrip/3]).
 
 ls_fingerprint(Hash, Input, bytes(Prefix)) :-
     lawspec_prolog:operation(Hash, sha3, [Input], value(_, [bytes(Digest)])),

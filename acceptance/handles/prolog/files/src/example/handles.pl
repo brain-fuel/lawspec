@@ -4,7 +4,7 @@ The Python RLock protects each complete operation and follows Janus's documented
 GIL/mutex ordering. Queue algorithms and state belong to this adapter.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_787acd1e033f6223,
+:- module(example_handles,
           [ls_newJobs/2, ls_submit/3, ls_take/2, ls_pending/2]).
 :- use_module(library(janus)).
 

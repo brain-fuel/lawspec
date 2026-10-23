@@ -1,7 +1,7 @@
 /** <module> Native Logs, Reader and Writer share each case's resource.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_dab7bcf1632b0da3, [ls_openStore/2, ls_closeStore/2,
+:- module(example_composition, [ls_openStore/2, ls_closeStore/2,
     handler_LogsHandler_new/2, handler_LogsHandler_create/3, handler_LogsHandler_append/4,
     handler_ReaderHandler_new/2, handler_ReaderHandler_size/3,
     handler_WriterHandler_new/2, handler_WriterHandler_write/4,

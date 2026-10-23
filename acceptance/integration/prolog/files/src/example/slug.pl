@@ -1,7 +1,7 @@
 /** <module> Native slug implementation for integration laws.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_16335244f540f937, [ls_normalize/2, ls_referenceNormalize/2]).
+:- module(example_slug, [ls_normalize/2, ls_referenceNormalize/2]).
 
 ls_normalize(X, R) :- string_codes(X, Codes), maplist(slug_code, Codes, Changed), string_codes(R, Changed).
 slug_code(Code, R) :- ( Code =:= 32 -> R = 45 ; R = Code ).

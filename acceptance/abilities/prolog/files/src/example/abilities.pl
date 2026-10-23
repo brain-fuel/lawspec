@@ -1,7 +1,7 @@
 /** <module> Native capabilities and calls through explicit handler arguments.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_af323b38be780e60,
+:- module(example_abilities,
           [ls_charge/3, handler_GatewayHandler_new/1,
            handler_GatewayHandler_authorize/3, handler_GatewayHandler_capture/3,
            handler_GatewayHandler_fee/2]).

@@ -1,7 +1,7 @@
 /** <module> Native balanced trees and arithmetic index witnesses.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_f088f7872c35582a,
+:- module(example_arithmetic,
           [ls_mirror/2, ls_area/2, ls_duplicate/2, ls_countPairs/2, ls_dropFirst/2]).
 
 ls_mirror(value(Tag, Fields), R) :-

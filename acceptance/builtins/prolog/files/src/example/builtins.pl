@@ -1,7 +1,7 @@
 /** <module> Native code calls its declared built-in capability arguments.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_da5fc6b71bb21631, [ls_elapsed/3, ls_token/3, ls_listening/3, ls_charge/3]).
+:- module(example_builtins, [ls_elapsed/3, ls_token/3, ls_listening/3, ls_charge/3]).
 :- use_module(library(socket)).
 
 ls_elapsed(Clock, Count, value('lawspec.time::type::Duration::Duration', [Elapsed])) :-

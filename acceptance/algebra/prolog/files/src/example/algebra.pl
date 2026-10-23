@@ -1,7 +1,7 @@
 /** <module> Exact arithmetic for the shared algebra laws.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_32e025d9ea2fcfed,
+:- module(example_algebra,
           [ls_add/3, ls_multiply/3, ls_negateValue/2, ls_maximumValue/3,
            ls_subtractValue/3, ls_divideLeft/3, ls_divideRight/3]).
 

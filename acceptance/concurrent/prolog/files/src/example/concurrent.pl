@@ -4,7 +4,7 @@ Janus retains the native collections and locks. The checked Core histories
 provide the independent queue/set/map semantics and linearizability oracle.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_3975de17dcbd2ef5, [ls_newQueue/2, ls_offer/3, ls_poll/2, ls_queueSize/2,
+:- module(example_concurrent, [ls_newQueue/2, ls_offer/3, ls_poll/2, ls_queueSize/2,
     ls_newTags/2, ls_tag/3, ls_untag/3, ls_tagged/3,
     ls_newCache/2, ls_store/4, ls_fetch/3, ls_evict/3]).
 :- use_module(library(janus)).

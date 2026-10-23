@@ -1,7 +1,7 @@
 /** <module> Native workflow steps, with independently timed concurrent checks.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_cfb6be83143715a5, [ls_audit/2, ls_waitlist/2,
+:- module(example_workflows, [ls_audit/2, ls_waitlist/2,
     ls_checkName/2, ls_checkAge/2, ls_openAccount/2,
     ls_checkStock/2, ls_checkCredit/2, reset_finished/0, finished/1]).
 :- dynamic completed/1.

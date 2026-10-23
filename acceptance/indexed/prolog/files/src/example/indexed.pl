@@ -1,7 +1,7 @@
 /** <module> Native vector and tree algorithms checked against index contracts.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_4bb581caa80bdbab,
+:- module(example_indexed,
           [ls_replicate/3, ls_append/3, ls_zip/3, ls_flatten/2]).
 
 ls_replicate(Count, Item, R) :-

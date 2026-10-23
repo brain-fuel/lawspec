@@ -4,7 +4,7 @@ SWI sorting and run-length counting operate on ground integer, string and list
 values; the bridge validates the declared collection constructors and order.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_414634f918a7f748,
+:- module(example_collections,
           [ls_dedupe/2, ls_wordCounts/2, ls_fifo/2, ls_lifo/2,
            ls_rotate/2, ls_distinctRows/2]).
 :- use_module(library(lists)).

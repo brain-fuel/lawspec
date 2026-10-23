@@ -1,7 +1,7 @@
 /** <module> Native discount, expected failure and handler recording controls.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_082e2c3c36a47a8c,
+:- module(example_harness,
           [ls_discount/2, ls_roundCents/2, ls_book/3,
            handler_LedgerHandler_new/1, handler_LedgerHandler_accept/3]).
 

@@ -1,7 +1,7 @@
 /** <module> Native account handlers exercised by generated actors and supervisors.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_cc7a7fd02ba9ed31, [ls_openAccount/2, ls_deposit/3,
+:- module(example_actors, [ls_openAccount/2, ls_deposit/3,
     ls_withdrawAll/2, ls_balance/2, ls_close/2, ls_reopen/2,
     ls_depositTwice/2, ls_survivesCrash/2]).
 :- use_module(library(janus)).

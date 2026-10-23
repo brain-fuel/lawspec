@@ -4,7 +4,7 @@ The checked reference definitions remain independent. These adapters call the
 runtime under test, including its clocks, retry policy, traces and RNG.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_05af50e18aa4956b, [ls_runtimeExponentialDelay/4,
+:- module(example_resilience, [ls_runtimeExponentialDelay/4,
     ls_runtimeLinearDelay/4, ls_runtimeFibonacciDelay/3, ls_splitMix/3,
     ls_fullJitter/3, ls_retriedWaits/2, ls_rejectedWaits/2, ls_limitedAt/2,
     ls_compensationsFor/2, ls_quoteTimedOut/2, ls_quoteHedged/2]).
@@ -68,7 +68,7 @@ ls_quoteTimedOut(Number, TimedOut) :-
     ; TimedOut = false
     ).
 ls_quoteHedged(Number, Quick) :-
-    lawspec_048b9363a7f94414:reset_quotes,
+    example_limits:reset_quotes,
     real_runtime(Runtime, Symbols), py_call(time:monotonic(), Started),
     run_model(Symbols, 'example.limits::hedged', Number, Result),
     py_call(time:monotonic(), Finished), trace(Runtime, Events),

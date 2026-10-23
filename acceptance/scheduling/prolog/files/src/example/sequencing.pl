@@ -1,7 +1,7 @@
 /** <module> Native sleep intervals observed by the shared scheduling oracle.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_bdc97732b4216a47, [ls_pause/2]).
+:- module(example_sequencing, [ls_pause/2]).
 
 ls_pause(Number, true) :-
     note(start, Number), sleep(0.005), note(end, Number).

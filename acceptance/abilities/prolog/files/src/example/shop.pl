@@ -1,7 +1,7 @@
 /** <module> Per-instance native handler state and typed refund failures.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_99c20d706948246d,
+:- module(example_shop,
           [ls_refund/3, handler_LogHandler_new/1, handler_LogHandler_note/3,
            handler_StoreInt32Handler_new/1, handler_StoreInt32Handler_load/2,
            handler_StoreInt32Handler_save/3, handler_StoreTextHandler_new/1,

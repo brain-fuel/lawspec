@@ -1,7 +1,7 @@
 /** <module> Native multi-argument functions for the currying laws.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_6cb5090aff17772c,
+:- module(example_currying,
           [ls_sumFour/5, ls_format/5, ls_referenceFormat/5, ls_trim/2]).
 
 ls_sumFour(A, B, C, D, R) :- R is A+B+C+D.

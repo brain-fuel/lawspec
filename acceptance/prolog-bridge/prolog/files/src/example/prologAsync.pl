@@ -3,7 +3,7 @@
 The application lock belongs to Python so callbacks do not invert the Janus
 GIL and Prolog mutex order. A logical handle preserves the counter's identity.
 */
-:- module(lawspec_b860d0cd544858e5, [ls_newCounter/2, ls_increment/2, ls_read/2]).
+:- module(example_prolog_async, [ls_newCounter/2, ls_increment/2, ls_read/2]).
 :- use_module(library(janus)).
 
 ls_newCounter(_, opaque(State)) :-
