@@ -132,5 +132,20 @@ the smallest counterexample.
 
 ## Formatting
 
-Readable output follows Google Java Format. See
-[formatting](../../reference/formatting.md).
+Output uses Allman braces with Google Java Style's other rules: two-space
+blocks and 100-column lines. LawSpec lays it out itself, and its acceptance
+checks every generated project with Checkstyle 14.3.0 and the profile in
+`acceptance/formatters/java-checkstyle.xml` (Google's checks with braces on
+their own lines). See [formatting](../../reference/formatting.md).
+
+## Names
+
+Generated code uses the specification's names. Locals keep their source
+names in Java's camel case, checked definitions are named after the
+definition, and an anonymous record has a name from where it is used
+(`DeclinedDetails`) instead of `Record<digest>`. A test is named after its
+law and example, for instance `normalizersAgree_spacesBecomeHyphensPunctuationIs`, and boundaries are numbered from
+1. Each law's comment gives its name, source line, what it says and the
+statement its tests check; assertion messages name the law and example and
+link to the expectation's line. Text is written as the language's own string
+literal.

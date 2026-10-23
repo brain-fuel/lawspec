@@ -20,6 +20,10 @@ import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as Doc
+import qualified LawSpec.ScalaLayout as ScalaLayout
+import qualified Data.Map.Strict as M
+import LawSpec.JvmNames (jvmLocalTable, jvmReserved, contractMethod)
+import LawSpec.SourceLink (sourceLink, unitSourceFile)
 import Data.List (intercalate, nub)
 import Data.Maybe (listToMaybe)
 import Data.Char (toLower)
@@ -33,7 +37,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
   models <- modelTestArtifacts "scala" bits dataDeclarations definitions u
   pure (models ++ [Artifact stubPath stub "user" "source", Artifact testPath tests "generated" "test"])
   where
-    document = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
+    document = Doc.render (Doc.selectLayout minify ScalaLayout.scalaStyle)
     java = either error id
     ls = filter ((== unitName u) . owner) allLaws
     parts = splitOn '.' (unitName u)
@@ -56,7 +60,8 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
         (if null pkg then mempty else Doc.text ("package " ++ pkg) <> Doc.hardline <> Doc.hardline) <>
         Doc.text ("object " ++ cls ++ " ") <>
-        Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) (functions' ++ handlers)) <> Doc.hardline
+        (if null (functions' ++ handlers) then Doc.text "{}" else
+          Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) (functions' ++ handlers))) <> Doc.hardline
     stubFn d = do
       let (args, _) = functionType (C.declarationType d)
           n = C.declarationName d
@@ -64,28 +69,28 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       result <- adapterResult dataDeclarations d
       let arguments = [Doc.text (handlerParameter ability ++ ": " ++ scInterface ability) | ability <- usesOf n] ++
             [Doc.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
-          signature = Doc.text ("def " ++ ScalaData.escaped (adapterName u (C.declarationId d))) <> Doc.delimitTrailing 2 "(" ")" arguments <>
+          signature = ScalaLayout.parameters (Doc.text ("def " ++ ScalaData.escaped (adapterName u (C.declarationId d)))) arguments <>
             Doc.text ": " <> result
-      pure (Doc.lineComment 98 "// " (prettyType (C.declarationType d)) <>
+      pure (Doc.lineComment 78 "// " (n ++ " :: " ++ prettyType (C.declarationType d) ++ maybe "" (" — " ++) (sourceLink (C.declarationOrigin d))) <>
         Doc.group (signature <> Doc.text " =" <>
           Doc.nest 2 (Doc.softline <> Doc.text ("throw NotImplementedError(" ++ quote n ++ ")"))))
     -- An async adapter's Future is awaited where it is called.
     awaitFor adapter call
       | adapter `notElem` asyncFunctions u = call
       | otherwise = Doc.text "scala.concurrent.Await.result(" <> call <> Doc.text ", scala.concurrent.duration.Duration.Inf)"
-    render = java . ScalaExpr.renderExpression dataDeclarations bits localName scExternal
+    render = java . ScalaExpr.renderExpression dataDeclarations bits localName' scExternal
     scChecked ty = java . ScalaExpr.checked dataDeclarations bits ty
     -- Each codec maker is applied to the declarations once per unit, so its
     -- registry and names are built once.
     scCodecDoc = ScalaExpr.codec dataDeclarations bits
-    scNativeArgument ty value = java (scCodecDoc ty) <>
-      Doc.text ".decode" <> Doc.delimitTrailing 2 "(" ")" [value]
+    -- A codec the file names as a value is used by its name (textCodec).
+    codecOf ty = let doc = java (scCodecDoc ty) in maybe doc Doc.text (lookup (Doc.render Doc.Compact doc) [(Doc.render Doc.Compact c, n) | (n, c) <- codecValues])
+    scNativeArgument ty value = ScalaLayout.chain (codecOf ty) [("decode", [value])]
     -- The abstract Integer result is tower-polymorphic: adapters may return
     -- any of Int, Long and BigInt, and the runtime bridge discharges the
     -- logical domain.
-    scNativeResult ty value | ty == Named "Integer" = ScalaExpr.call "LawSpecScalaCodecs.integer" [value, Doc.text (show bits)]
-    scNativeResult ty value = java (scCodecDoc ty) <>
-      Doc.text ".encode" <> Doc.delimitTrailing 2 "(" ")" [value]
+    scNativeResult ty value | ty == Named "Integer" = ScalaExpr.call "LawSpecScalaCodecs.integer" [value, Doc.text "MachineBits"]
+    scNativeResult ty value = ScalaLayout.chain (codecOf ty) [("encode", [value])]
     scHandler ability = Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey ability) ++ ").asInstanceOf[" ++
       scInterface ability ++ "]")
     -- An ability's pieces are its owner's: the trait, the production handler
@@ -94,10 +99,10 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     production a = (if ownerName a == unitName u then qualifiedCls else adapterObjectOf (ownerName a)) ++ "." ++ productionName a
     adapterObjectOf unit = let ps = splitOn '.' unit in intercalate "." (init ps ++ [concatMap cap (splitOn '_' (last ps))])
     scConstruct ty tag fields
-      | custom ty = ScalaExpr.call "LawSpecScalaCodecs.construct" [Doc.text "_schema",java (ScalaExpr.reference ty),ScalaExpr.quoted tag,ScalaExpr.call "List" fields,Doc.text (show bits),Doc.text "symbols"]
+      | custom ty = ScalaExpr.call "LawSpecScalaCodecs.construct" [Doc.text "Schema",java (ScalaExpr.reference ty),ScalaExpr.quoted tag,ScalaExpr.call "List" fields,Doc.text "MachineBits",Doc.text "symbols"]
       | otherwise = ScalaExpr.call "LawSpecRuntime.construct" [ScalaExpr.quoted (key ty),ScalaExpr.quoted tag,ScalaExpr.array fields]
     scEqual ty a b
-      | custom ty = ScalaExpr.call "_schema.equal" [java (ScalaExpr.reference ty),a,b,Doc.text (show bits),Doc.text "symbols"]
+      | custom ty = ScalaExpr.call "Schema.equal" [java (ScalaExpr.reference ty),a,b,Doc.text "MachineBits",Doc.text "symbols"]
       | otherwise = ScalaExpr.call "LawSpecRuntime.truth" [ScalaExpr.call "LawSpecRuntime.binary" [ScalaExpr.quoted "==",a,b]]
     -- An adapter that fails with E answers Either[E, R]: a Left, or an
     -- exception lawspec.json maps, becomes the failure.
@@ -106,12 +111,12 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         let native = java (ScalaData.scalaDataType dataDeclarations failure)
             mapped = [ ScalaExpr.call "LawSpecRuntime.MappedFailure"
                          [Doc.text ("classOf[" ++ intercalate "." (C.failureNative b) ++ "]"),
-                          Doc.text "(_error: Throwable) => " <>
+                          Doc.text "(error: Throwable) => " <>
                             scConstruct failure (C.idText (C.failureConstructor b))
-                              (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (Doc.text "java.util.Objects.toString(_error.getMessage, \"\")")) b)]
+                              (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (Doc.text "java.util.Objects.toString(error.getMessage, \"\")")) b)]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in ScalaExpr.call "LawSpecRuntime.nativeFailures"
-             ([ScalaExpr.quoted (C.abilityKey ability), Doc.text "(_native: Object) => " <> scNativeResult failure (Doc.text ("_native.asInstanceOf[" ++ native ++ "]")),
+             ([ScalaExpr.quoted (C.abilityKey ability), Doc.text "(nativeValue: Object) => " <> scNativeResult failure (Doc.text ("nativeValue.asInstanceOf[" ++ native ++ "]")),
                Doc.text "() => " <> call] ++ mapped)
       _ -> call
     orFail failing value = if null failing then value else ScalaExpr.call "LawSpecScala.orFail" [value]
@@ -145,15 +150,15 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
             [scNativeArgument ty v | (ty,v) <- zip (map expressionType args) values]))))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = Doc.text "(_value: LawSpecRuntime.Value) => " <> scConstruct (expressionType term) tag [scChecked ty (Doc.text "_value")]
+          let side tag ty = Doc.text "(value: LawSpecRuntime.Value) => " <> scConstruct (expressionType term) tag [scChecked ty (Doc.text "value")]
           in Right (ScalaExpr.call "LawSpecRuntime.attempt" [ScalaExpr.quoted (C.abilityKey ability), Doc.text "() => " <> body,
             side "Either::Right" result, side "Either::Left" failure])
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
               Nothing -> Doc.text "null"
-              Just xs -> Doc.text "(_recorded: java.util.List[LawSpecRuntime.Value]) => " <> Doc.joinWith (Doc.text " && ")
-                [scEqual (expressionType a) (Doc.text ("_recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
+              Just xs -> Doc.text "(recorded: java.util.List[LawSpecRuntime.Value]) => " <> Doc.joinWith (Doc.text " && ")
+                [scEqual (expressionType a) (Doc.text ("recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
         in Right (ScalaExpr.call "LawSpecRuntime.countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey (C.operationAbility op)) ++ ")"),
           ScalaExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
@@ -161,7 +166,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
             typed = zip (map expressionType args) values
             failing = [a | a@(C.AbilityRef _ [_]) <- failuresOf callee]
         in Right $ if callee `elem` map contractName (contracts u)
-          then ScalaExpr.call ("_lawspec_call_" ++ callee)
+          then ScalaExpr.call (contractMethod callee)
             (Doc.text "symbols" : [scChecked ty value | (ty,value) <- typed])
           else failingAs failing
             (scNativeResult (expressionType term) (orFail failing (awaitFor (adapterName u identity) (ScalaExpr.call (qualifiedCls ++ "." ++ ScalaData.escaped (adapterName u identity))
@@ -177,8 +182,8 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       V.DataValue ty tag fields -> do
         rendered <- mapM valueLiteral fields
         pure (ScalaExpr.call "LawSpecScalaCodecs.construct"
-          [Doc.text "_schema",java (ScalaExpr.reference ty),ScalaExpr.quoted (C.idText tag),
-           ScalaExpr.call "List" rendered,Doc.text (show bits),Doc.text "symbols"])
+          [Doc.text "Schema",java (ScalaExpr.reference ty),ScalaExpr.quoted (C.idText tag),
+           ScalaExpr.call "List" rendered,Doc.text "MachineBits",Doc.text "symbols"])
       V.PresenceValue ty payload -> do
         rendered <- traverse valueLiteral payload
         pure (ScalaExpr.call "LawSpecRuntime.present" [ScalaExpr.quoted (key ty),
@@ -206,7 +211,30 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       , ScalaProperties.lateHandlerInstalls = lateInstalls
       , ScalaProperties.searchDescriptors = searchDescriptorsOf
       , ScalaProperties.extraImports = []
+      , ScalaProperties.local = localName'
+      , ScalaProperties.sourceFile = unitSourceFile u
+      , ScalaProperties.codecValues = codecValues
       }
+    -- Binders keep their source names (LawSpec.JvmNames).
+    localName' identity = M.findWithDefault (localName identity) identity jvmLocals
+    jvmLocals = M.unions (map (\e -> jvmLocalTable "scala" (jvmReserved "scala") (propertyBinders (original e) ++ planBinders e)) ls ++
+      [jvmLocalTable "scala" (jvmReserved "scala") (C.contractArguments c ++ [C.contractResult c]) | c <- contracts u] ++
+      [jvmLocalTable "scala" (jvmReserved "scala") (concatMap (expressionBinders . snd) (maybe [] C.harnessBenchmarks (C.unitHarnessSettings u)))])
+    planBinders e = [generatorBinder r | r <- generatorRequirements e] ++
+      concat [drawBinders d | (_, _, d) <- C.harnessDraws (C.propertyHarness (original e))] ++
+      concatMap expressionBinders (concat [generatorPredicates r ++ generatorHints r ++ map snd (generatorBounds r) | r <- generatorRequirements e])
+    drawBinders d = case d of
+      C.DrawFrequency alternatives -> concatMap (drawBinders . snd) alternatives
+      C.DrawSuchThat inner binder predicate _ -> drawBinders inner ++ binder : expressionBinders predicate
+      C.DrawBind binder from rest -> binder : drawBinders from ++ drawBinders rest
+      _ -> []
+    -- The codecs of the unit's scalar types, named as values (textCodec), so
+    -- a call reads as what it converts.
+    codecValues = [ (codecValueName t, java (scCodecDoc t)) | t <- scalarTypes ]
+    scalarTypes = [C.scalarType (primitiveName p) | p <- primitives, primitiveName p `elem` map fst ScalaData.scalaScalars, not (custom (C.scalarType (primitiveName p)))]
+    codecValueName t = case prettyType t of
+      c : rest -> toLower c : rest ++ "Codec"
+      [] -> "codec"
     -- Abilities: the unit's own, its spec handlers, and the handlers a law
     -- installs (Fail's are built in, so none is installed for it).
     abilityNamed = unitAbility u
@@ -220,7 +248,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       C.SpecHandler h -> maybe [] pure (specNamed h)
       C.RecordingHandler inner -> specsOf inner
       C.ProductionHandler -> []
-    sharedVar h = "_lawspecShared_" ++ C.handlerName h
+    sharedVar h = "shared" ++ cap (C.handlerName h)
     -- What an operation that `fails with E` fails with (Fail E).
     operationFailure op = maybe [] pure (abilityNamed (C.operationAbility op) >>= lookup (C.operationName op) . C.abilityFailures)
     resourceFor e a c = case c of
@@ -228,7 +256,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         x <- abilityNamed a
         t <- C.abilityResource x
         r <- listToMaybe [r | r <- C.propertyResources (original e), C.binderType (C.resourceBinder r) == t]
-        pure (t, localName (C.binderId (C.resourceBinder r)))
+        pure (t, localName' (C.binderId (C.resourceBinder r)))
       C.RecordingHandler inner -> resourceFor e a inner
       C.SpecHandler _ -> Nothing
     earlyHandlers e = [(a, c) | (a, c) <- chosenHandlers e, resourceFor e a c == Nothing]

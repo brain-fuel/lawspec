@@ -73,6 +73,9 @@ scalarLiteral ty value = case value of
     imaginary <- scalarLiteral (scalarType (scalarName i)) i
     pure (runtime "complex" [quoted name,real,imaginary])
   SCharacter name c -> pure (runtime "character" [quoted name,D.text (show c)])
+  -- Text is written as the string it is.
+  SSequence name units | name `elem` ["Text", "Utf16Text", "CodePointText"] ->
+    pure (runtime "text" [quoted name, quoted (map toEnum units)])
   SSequence name units -> pure (runtime "sequence" [quoted name,
     call "intArrayOf" (map (D.text . show) units)])
   SSymbol identity description -> pure (runtime "symbol" [quoted identity,quoted description,D.text "symbols"])
@@ -133,6 +136,9 @@ renderExpressionIn scope@(schema, width) declarations local external = render
         -- one JVM method. The shared JVM helper preserves the same strict
         -- binding while giving each callback a separate bytecode method.
         pure (runtime "let" [argument, L.lambda [local (binderId binder)] [inner]])
+      -- A text literal is already its type's value.
+      Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
+        expressionType term == scalarType n -> scalarLiteral (expressionType term) value
       Constant value -> scalarLiteral (expressionType term) value >>= checked' (expressionType term)
       Construct tag args -> do
         values <- mapM render args
@@ -148,7 +154,8 @@ renderExpressionIn scope@(schema, width) declarations local external = render
       Calls _ args -> mapM render (maybe [] id args) >>= external term
       Convert mode target value -> do
         argument <- render value
-        case mode of
+        -- A value already of its target type needs no conversion.
+        if target == expressionType value then pure argument else case mode of
           CheckedArgument -> checked' target argument
           Explicit -> pure (runtime "helper" [key target,array [argument],width])
       If c a b -> do
@@ -160,9 +167,7 @@ renderExpressionIn scope@(schema, width) declarations local external = render
       -- A chain of one operator is one condition, broken after each.
       ShortCircuit op _ _ -> do
         operands <- mapM render (chainOf op term)
-        pure (runtime "bool" [case map (\o -> runtime "truth" [o]) operands of
-          first : rest -> D.group (first <> D.nest 4 (mconcat [D.text (if op == And then " &&" else " ||") <> D.softline <> o | o <- rest]))
-          [] -> D.text "true"])
+        pure (runtime "bool" [L.operators (if op == And then "&&" else "||") (map (\o -> runtime "truth" [o]) operands)])
       Unary Not value -> do
         argument <- render value
         pure (runtime "bool" [D.text "!" <> runtime "truth" [argument]])
@@ -189,8 +194,8 @@ renderExpressionIn scope@(schema, width) declarations local external = render
               (D.text "throw " <> call "IllegalArgumentException"
                 [quoted "invalid checked match constructor"])
             body = D.text "when (tag) " <> D.block 4 (D.joinWith D.hardline (arms ++ [fallback]))
-        pure (D.multiline (L.trailing (call "LawSpecKotlinCodecs.match" [D.text schema,ref,value,width,D.text "symbols"])
-          ["tag", "fields"] [body]))
+        pure (D.multiline (L.callThen "LawSpecKotlinCodecs.match" [D.text schema,ref,value,width,D.text "symbols"]
+          (D.text " " <> L.lambda ["tag", "fields"] [body])))
     chainOf op e = case expressionNode e of
       ShortCircuit op' a b | op' == op -> chainOf op a ++ chainOf op b
       _ -> [e]

@@ -320,8 +320,8 @@ object Crypto {
 
   /** SHA3-256 and SHAKE256. */
   class HashHandler extends lawspec.abilities.lawspec.Crypto.Hash {
-    override def sha3(value0: scala.IArray[scala.Byte]): @@ Digest @@ =
-      @@ Digest @@(immutable(sha3_256(bytes(value0))))
+    override def sha3(value0: scala.IArray[scala.Byte]): @@Digest@@ =
+      @@Digest@@(immutable(sha3_256(bytes(value0))))
 
     override def shake(
         value0: scala.IArray[scala.Byte],
@@ -332,55 +332,54 @@ object Crypto {
   /** ML-KEM-768. */
   class KeyExchangeHandler
       extends lawspec.abilities.lawspec.Crypto.KeyExchange {
-    override def exchangeKeyPair(): @@ ExchangeKeyPair @@ = {
+    override def exchangeKeyPair(): @@ExchangeKeyPair@@ = {
       val seed = randomBytes(64)
-      @@ ExchangeKeyPair @@(
-        @@ ExchangePublicKey @@(immutable(mlKem768PublicKey(seed))),
-        @@ ExchangeSecretKey @@(immutable(seed))
+      @@ExchangeKeyPair@@(
+        @@ExchangePublicKey@@(immutable(mlKem768PublicKey(seed))),
+        @@ExchangeSecretKey@@(immutable(seed))
       )
     }
 
-    override def encapsulate(value0: @@ ExchangePublicKey @@): @@ Encapsulated
-      @@ = {
+    override def encapsulate(value0: @@ExchangePublicKey@@): @@Encapsulated@@ = {
       val (ciphertext, secret) =
         mlKem768Encapsulate(bytes(value0.value), secure)
-      @@ Encapsulated @@(
-        @@ Ciphertext @@(immutable(ciphertext)),
-        @@ SharedSecret @@(immutable(secret))
+      @@Encapsulated@@(
+        @@Ciphertext@@(immutable(ciphertext)),
+        @@SharedSecret@@(immutable(secret))
       )
     }
 
     override def decapsulate(
-        value0: @@ ExchangeSecretKey @@,
-        value1: @@ Ciphertext @@
-    ): @@ SharedSecret @@ =
-      @@ SharedSecret @@(
+        value0: @@ExchangeSecretKey@@,
+        value1: @@Ciphertext@@
+    ): @@SharedSecret@@ =
+      @@SharedSecret@@(
         immutable(mlKem768Decapsulate(bytes(value0.value), bytes(value1.value)))
       )
   }
 
   /** ML-DSA-65, hedged. */
   class SignatureHandler extends lawspec.abilities.lawspec.Crypto.Signature {
-    override def signingKeyPair(): @@ SigningKeyPair @@ = {
+    override def signingKeyPair(): @@SigningKeyPair@@ = {
       val seed = randomBytes(32)
-      @@ SigningKeyPair @@(
-        @@ VerifyingKey @@(immutable(mlDsa65PublicKey(seed))),
-        @@ SigningKey @@(immutable(seed))
+      @@SigningKeyPair@@(
+        @@VerifyingKey@@(immutable(mlDsa65PublicKey(seed))),
+        @@SigningKey@@(immutable(seed))
       )
     }
 
     override def sign(
-        value0: @@ SigningKey @@,
+        value0: @@SigningKey@@,
         value1: scala.IArray[scala.Byte]
-    ): @@ SignatureBytes @@ =
-      @@ SignatureBytes @@(
+    ): @@SignatureBytes@@ =
+      @@SignatureBytes@@(
         immutable(mlDsa65Sign(bytes(value0.value), bytes(value1), false))
       )
 
     override def verify(
-        value0: @@ VerifyingKey @@,
+        value0: @@VerifyingKey@@,
         value1: scala.IArray[scala.Byte],
-        value2: @@ SignatureBytes @@
+        value2: @@SignatureBytes@@
     ): scala.Boolean =
       mlDsa65Verify(bytes(value0.value), bytes(value1), bytes(value2.value))
   }
@@ -391,29 +390,29 @@ object Crypto {
     */
   class SlhDsaSignatureHandler
       extends lawspec.abilities.lawspec.Crypto.Signature {
-    override def signingKeyPair(): @@ SigningKeyPair @@ = {
+    override def signingKeyPair(): @@SigningKeyPair@@ = {
       val (verifying, signing) =
         slhDsaKeyPair(randomBytes(16), randomBytes(16), randomBytes(16))
-      @@ SigningKeyPair @@(
-        @@ VerifyingKey @@(immutable(verifying)),
-        @@ SigningKey @@(immutable(signing))
+      @@SigningKeyPair@@(
+        @@VerifyingKey@@(immutable(verifying)),
+        @@SigningKey@@(immutable(signing))
       )
     }
 
     override def sign(
-        value0: @@ SigningKey @@,
+        value0: @@SigningKey@@,
         value1: scala.IArray[scala.Byte]
-    ): @@ SignatureBytes @@ =
-      @@ SignatureBytes @@(
+    ): @@SignatureBytes@@ =
+      @@SignatureBytes@@(
         immutable(
           slhDsaSign(bytes(value0.value), bytes(value1), new Array[Byte](0))
         )
       )
 
     override def verify(
-        value0: @@ VerifyingKey @@,
+        value0: @@VerifyingKey@@,
         value1: scala.IArray[scala.Byte],
-        value2: @@ SignatureBytes @@
+        value2: @@SignatureBytes@@
     ): scala.Boolean =
       slhDsaVerify(
         bytes(value0.value),
@@ -425,24 +424,24 @@ object Crypto {
 
   /** AES-256-GCM, a fresh random nonce per message. */
   class AeadHandler extends lawspec.abilities.lawspec.Crypto.Aead {
-    override def aeadKey(): @@ AeadKey @@ =
-      @@ AeadKey @@(immutable(randomBytes(32)))
+    override def aeadKey(): @@AeadKey@@ =
+      @@AeadKey@@(immutable(randomBytes(32)))
 
     override def deriveAeadKey(
-        value0: @@ SharedSecret @@,
+        value0: @@SharedSecret@@,
         value1: scala.IArray[scala.Byte]
-    ): @@ AeadKey @@ =
-      @@ AeadKey @@(
+    ): @@AeadKey@@ =
+      @@AeadKey@@(
         immutable(shake256(bytes(value0.value) ++ bytes(value1), 32))
       )
 
     override def seal(
-        value0: @@ AeadKey @@,
+        value0: @@AeadKey@@,
         value1: scala.IArray[scala.Byte],
         value2: scala.IArray[scala.Byte]
-    ): @@ Sealed @@ = {
+    ): @@Sealed@@ = {
       val nonce = randomBytes(12)
-      @@ Sealed @@(
+      @@Sealed@@(
         immutable(
           nonce ++ aes256GcmEncrypt(
             bytes(value0.value),
@@ -455,8 +454,8 @@ object Crypto {
     }
 
     override def unseal(
-        value0: @@ AeadKey @@,
-        value1: @@ Sealed @@,
+        value0: @@AeadKey@@,
+        value1: @@Sealed@@,
         value2: scala.IArray[scala.Byte]
     ): scala.Option[scala.IArray[scala.Byte]] = {
       val boxed = bytes(value1.value)

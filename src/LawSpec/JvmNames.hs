@@ -30,7 +30,7 @@ jvmReserved target = targetKeywords target ++ words
   \value native recorded matched fields group results raw bytes index integer number point units unit \
   \description real imaginary coefficient exponent numerator denominator positive released unused \
   \schema bits context actual expected type tag fields config random LawSpecRuntime Value String Object \
-  \Map List HashMap Generator PropertyChecker Test MACHINE_BITS"
+  \Map List HashMap Generator PropertyChecker Test MACHINE_BITS Schema MachineBits Symbols drawn"
 
 -- | A source binder's identifier: camelCase, a keyword or reserved name
 -- followed by Value.

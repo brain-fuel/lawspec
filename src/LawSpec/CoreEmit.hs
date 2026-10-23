@@ -493,7 +493,10 @@ emitPlanFormatted minify target Plan{..} = do
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecStrategies.kt" (runtimeSource "kotlin-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
         -- Kotlin: the scalar generators the tests draw from, in the runtime.
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecScalars.kt" (runtimeSource "kotlin-scalars") "generated" "test" | needsRuntime && target == "kotlin"] ++
-        [Artifact "src/test/kotlin/lawspec/testing/LawSpecTesting.kt" (runtimeSource "kotlin-testing") "generated" "test" | needsRuntime && target == "kotlin"]
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecTesting.kt" (runtimeSource "kotlin-testing") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        -- Scala: the scalar generators and checks the tests use, in the runtime.
+        [Artifact "src/test/scala/lawspec/testing/LawSpecScalars.scala" (runtimeSource "scala-scalars") "generated" "test" | needsRuntime && target == "scala"] ++
+        [Artifact "src/test/scala/lawspec/testing/LawSpecTesting.scala" (runtimeSource "scala-testing") "generated" "test" | needsRuntime && target == "scala"]
   unless (target `notElem` ["python","javascript","typescript"] || all
     (\u -> map toLower (head (split '.' (unitName u))) `notElem`
       ["lawspec_runtime","lawspec_schema","lawspec_data","lawspec_data_strategies","lawspec_definitions","lawspec_definition_bodies"]) units)

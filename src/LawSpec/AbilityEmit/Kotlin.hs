@@ -135,7 +135,7 @@ emit minify bits datas units = do
       pure (kdoc 96 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
         classHeader ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>)") (intercalate ", " [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered]) <>
         D.block 4 (D.joinWith (D.hardline <> D.hardline)
-          (line "private var state: LawSpecRuntime.Value? = " <> initialState : methods)))
+          (D.group (line "private var state: LawSpecRuntime.Value? =" <> D.nest 4 (D.softline <> initialState)) : methods)))
     -- A typed spec handler keeps its state typed (in the shared JVM typed
     -- code): each operation converts its arguments, runs the typed clause and
     -- keeps the next state, which shares all it did not change with the
@@ -192,9 +192,11 @@ emit minify bits datas units = do
                , kdoc 92 "Replaces the handler's state: to force it, reset it or restore a snapshot." <> D.hardline <>
                  line "@Synchronized" <> D.hardline <> line "fun setState(state: " <> native <> line ") " <> D.block 4 write'
                , kdoc 92 "The typed state, shared rather than copied." <> D.hardline <>
-                 line ("@Synchronized fun typedState(): " ++ typedType ++ " = state")
+                 D.group (line "@Synchronized" <> D.softline <>
+                   KotlinLayout.equalsBody (D.group (line "fun typedState():" <> D.nest 4 (D.softline <> line typedType))) (line "state"))
                , kdoc 92 "Replaces the typed state." <> D.hardline <>
-                 line "@Synchronized" <> D.hardline <> line ("fun setTypedState(state: " ++ typedType ++ ") ") <> D.block 4 (line "this.state = state") ]
+                 line "@Synchronized" <> D.hardline <> KotlinLayout.callWith (line "fun setTypedState") [line ("state: " ++ typedType)] <> line " " <>
+                 D.block 4 (line "this.state = state") ]
         _ -> pure []
       -- Each operation that fails with E, with its failure as an Outcome.
       attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
@@ -210,13 +212,13 @@ emit minify bits datas units = do
             line ": lawspec.runtime.LawSpecFast.Outcome<" <> resultType <> line ", " <> failureType <> line "> " <>
             D.block 4 (line "try " <> D.block 4 (line ("return lawspec.runtime.LawSpecFast.Outcome.success(" ++ call ++ ")")) <>
               line " catch (failure: LawSpecRuntime.Failure) " <> D.block 4 (D.joinWith D.hardline
-                [ line ("if (failure.ability != " ++ show (C.abilityKey failing) ++ ") throw failure")
+                [ D.group (line ("if (failure.ability != " ++ show (C.abilityKey failing) ++ ")") <> D.nest 4 (D.softline <> line "throw failure"))
                 , line "return " <> E.call "lawspec.runtime.LawSpecFast.Outcome.failure" [KotlinLayout.chain failureCodec [("decode", [line "failure.value"])]] ])))
         ) [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a, Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ]) answered
       pure (kdoc 96 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
         classHeader ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>)") (intercalate ", " [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered]) <>
         D.block 4 (D.joinWith (D.hardline <> D.hardline)
-          ([D.group (line ("private var state: " ++ t ++ " =") <> D.nest 4 (D.softline <> line v)) | Just t <- [stateType], Just v <- [start]] ++
+          ([D.group (D.group (line "private var state:" <> D.nest 4 (D.softline <> line t)) <> line " =" <> D.nest 4 (D.softline <> line v)) | Just t <- [stateType], Just v <- [start]] ++
            [ kdoc 92 "The handler on its own, outside any law: the embedding entry point." <> D.hardline <>
              line "constructor() : this(mutableMapOf())" ] ++ methods ++ accessors ++ attempts)))
     recording a = do

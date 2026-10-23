@@ -158,11 +158,14 @@ fill :: String -> [C.DataDeclaration] -> String -> String -> String
 fill target _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
   where
     vectors = defaultSource "vectors.txt"
-    vectorLines = intercalate ",\n" [vectorLine l | l <- lines vectors, not (null l), take 1 l /= "#"]
+    vectorLines = intercalate ",\n" [vectorLine l | l <- lines vectors, not (null l), take 1 l /= "#"] ++
+      -- ktfmt ends a broken argument list with a comma.
+      (if target == "kotlin" then "," else "")
     -- Java's lines wrap at the vectors' spaces, within LawSpec's Java
     -- profile's 100 columns.
     vectorLine l
       | target == "java" = Doc.render (Doc.Pretty 100) (Doc.text "    " <> Doc.nest 4 (jvmString "java" l))
+      | target == "kotlin" = "                \"" ++ l ++ "\""
       | otherwise = "    \"" ++ l ++ "\""
 
 replace :: String -> String -> String -> String

@@ -1,23 +1,30 @@
 -- | Scala expression documents over checked Core. Native calls are supplied by
--- the consumer so definitions and adapter bridges retain their own ABI.
-module LawSpec.ScalaExpr (renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec, lambda, valueType) where
+-- the consumer so definitions and adapter bridges retain their own ABI. The
+-- generated object names its schema Schema and its machine width
+-- MachineBits; layout is scalafmt's (LawSpec.ScalaLayout).
+module LawSpec.ScalaExpr (renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec, lambda, valueType, schemaName, bitsName) where
 
 import LawSpec.Core
 import qualified LawSpec.ScalaData as Native
 import qualified LawSpec.JavaData as Java
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.ScalaLayout as L
 
 -- | Strings are escaped for Scala here, once, so no generated literal can end
 -- early or change meaning.
 quoted :: String -> D.Doc
-quoted = D.text . Native.scalaQuoted
+quoted = L.scalaString
 
--- | Arguments wrap when a call is too wide, with a trailing comma, which Scala
--- allows before a closing parenthesis on its own line.
--- ref:DEC-readable-output-default
+-- | The generated object's schema and machine width.
+schemaName, bitsName :: String
+schemaName = "Schema"
+bitsName = "MachineBits"
+
+-- | Arguments wrap one a line when a call is too wide, as scalafmt wraps
+-- them. ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
-call name values = D.text name <> D.delimitTrailing 2 "(" ")" values
+call = L.call
 
 -- | The runtime's dynamic value.
 valueType :: String
@@ -31,7 +38,7 @@ array = call ("Array[" ++ valueType ++ "]")
 -- functional interface a runtime method expects.
 -- A space before ':' keeps it separate from identifiers ending in '_'.
 lambda :: [(String, String)] -> D.Doc -> D.Doc
-lambda parameters body = D.group (D.text ("(" ++ commaList [n ++ " : " ++ t | (n, t) <- parameters] ++ ") =>") <>
+lambda parameters body = D.group (D.text ("(" ++ commaList [n ++ (if last n == '_' then " : " else ": ") ++ t | (n, t) <- parameters] ++ ") =>") <>
   D.nest 2 (D.softline <> body))
   where commaList = foldr1' (\a b -> a ++ ", " ++ b)
         foldr1' _ [] = ""
@@ -48,9 +55,9 @@ checked :: [DataDeclaration] -> Int -> Type -> D.Doc -> Either String D.Doc
 checked declarations bits ty value
   | Native.requiresSchema declarations ty = do
       ref <- reference ty
-      pure (call "_schema.validate" [ref,value,D.text (show bits),D.text "symbols"])
-  | otherwise = pure (call "LawSpecRuntime.convert"
-      [quoted (Java.javaDataKey ty),value,D.text (show bits)])
+      pure (call (schemaName ++ ".validate") [ref,value,D.text bitsName,D.text "symbols"])
+  | otherwise = const (pure (call "LawSpecRuntime.convert"
+      [quoted (Java.javaDataKey ty),value,D.text bitsName])) bits
 
 -- | A codec converts between the generated Scala type and the runtime value,
 -- checking the value as it goes.
@@ -58,11 +65,8 @@ codec :: [DataDeclaration] -> Int -> Type -> Either String D.Doc
 codec declarations bits =
   -- Applied to the declarations once, it shares the codec maker's registry
   -- and names across types.
-  let codecFor = Native.scalaCodecDocWithContext (D.text "symbols") declarations
-  in \ty -> do
-  value <- codecFor ty
-  pure (D.multiline (D.text "{" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-    [D.text "val schema = _schema",D.text ("val bits = " ++ show bits),value]) <> D.hardline <> D.text "}"))
+  let codecFor = Native.scalaCodecDocIn (schemaName, bitsName) (D.text "symbols") declarations
+  in const codecFor bits
 
 -- | Literals become runtime values built from their declared type and exact
 -- digits, so Scala never reads a number at its own precision.
@@ -79,6 +83,9 @@ scalarLiteral ty value = case value of
     imaginary <- scalarLiteral (scalarType (scalarName i)) i
     pure (runtime "complex" [quoted name,real,imaginary])
   SCharacter name c -> pure (runtime "character" [quoted name,D.text (show c)])
+  -- Text is written as the string it is.
+  SSequence name units | name `elem` ["Text", "Utf16Text", "CodePointText"] ->
+    pure (runtime "text" [quoted name, quoted (map toEnum units)])
   SSequence name units -> pure (runtime "sequence" [quoted name,
     call "Array[Int]" (map (D.text . show) units)])
   SSymbol identity description -> pure (runtime "symbol" [quoted identity,quoted description,D.text "symbols"])
@@ -96,7 +103,7 @@ renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression declarations bits local external = render
   where
-    width = D.text (show bits)
+    width = const (D.text bitsName) bits
     key = quoted . Java.javaDataKey
     runtime name = call ("LawSpecRuntime." ++ name)
     render term
@@ -120,7 +127,7 @@ renderExpression declarations bits local external = render
         callbacks <- mapM (\(binder,predicate) -> do
           body <- render predicate
           pure (lambda [(local (binderId binder), valueType)] body)) predicates
-        pure (call "_schema.allPayloads"
+        pure (call (schemaName ++ ".allPayloads")
           [ref,argument,call ("java.util.List.of[java.util.function.Function[" ++ valueType ++ ", " ++ valueType ++ "]]") callbacks,width,D.text "symbols"])
       AllElements value binder predicate -> do
         argument <- render value
@@ -134,13 +141,16 @@ renderExpression declarations bits local external = render
         -- A block keeps a finite search in one JVM method. Reuse the shared
         -- strict binding helper so callbacks compile into separate methods.
         pure (runtime "let" [argument,lambda [(local (binderId binder),valueType)] inner])
+      -- A text literal is already its type's value.
+      Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
+        expressionType term == scalarType n -> scalarLiteral (expressionType term) value
       Constant value -> scalarLiteral (expressionType term) value >>= checked declarations bits (expressionType term)
       Construct tag args -> do
         values <- mapM render args
         if Native.requiresSchema declarations (expressionType term) then do
           ref <- reference (expressionType term)
           pure (call "LawSpecScalaCodecs.construct"
-            [D.text "_schema",ref,quoted (idText tag),call "List" values,width,D.text "symbols"])
+            [D.text schemaName,ref,quoted (idText tag),call "List" values,width,D.text "symbols"])
         else pure (runtime "construct" [key (expressionType term),quoted (idText tag),array values])
       ExternalCall _ args -> mapM render args >>= external term
       -- Ability nodes go to the caller, which knows where handlers are.
@@ -149,15 +159,16 @@ renderExpression declarations bits local external = render
       Calls _ args -> mapM render (maybe [] id args) >>= external term
       Convert mode target value -> do
         argument <- render value
-        case mode of
+        -- A value already of its target type needs no conversion.
+        if target == expressionType value then pure argument else case mode of
           CheckedArgument -> checked declarations bits target argument
           Explicit -> pure (runtime "helper" [key target,array [argument],width])
       If c a b -> do
         condition <- render c
         yes <- render a
         no <- render b
-        pure (D.group (D.text "(if (" <> runtime "truth" [condition] <> D.text ")" <> D.nest 2 (D.softline <> yes) <>
-          D.softline <> D.text "else" <> D.nest 2 (D.softline <> no) <> D.text ")"))
+        pure (D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
+          D.softline <> D.text "else" <> D.nest 2 (D.softline <> no)))
       ShortCircuit op a b -> do
         left <- render a
         right <- render b
@@ -176,7 +187,7 @@ renderExpression declarations bits local external = render
         if Native.requiresSchema declarations (expressionType a) then do
           ref <- reference (expressionType a)
           pure (runtime "bool" [(if op == NotEqual then D.text "!" else mempty) <>
-            call "_schema.equal" [ref,left,right,width,D.text "symbols"]])
+            call (schemaName ++ ".equal") [ref,left,right,width,D.text "symbols"]])
         else pure (runtime "binary" [quoted (binaryName op),left,right])
       Helper Concurrently [value] -> render value
       Helper builtin args -> do
@@ -188,12 +199,12 @@ renderExpression declarations bits local external = render
         arms <- mapM branch branches
         let fallback = D.text "case _ => throw " <> call "IllegalArgumentException"
               [quoted "invalid checked match constructor"]
-            body = D.text "_tag match " <> D.block 2 (D.joinWith D.hardline (arms ++ [fallback]))
-        pure (D.multiline (call "LawSpecScalaCodecs.matching" [D.text "_schema",ref,value,width,D.text "symbols"] <>
-          D.text " { (_tag, _fields) =>" <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"))
+            body = D.text "tag match " <> D.block 2 (D.joinWith D.hardline (arms ++ [fallback]))
+        pure (D.multiline (call "LawSpecScalaCodecs.matching" [D.text schemaName,ref,value,width,D.text "symbols"] <>
+          D.text " { (tag, fields) =>" <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"))
     branch matched = do
       body <- render (caseBody matched)
-      let bindings = [D.text ("val " ++ local (binderId binder) ++ " = _fields(" ++ show index ++ ")")
+      let bindings = [D.text ("val " ++ local (binderId binder) ++ " = fields(" ++ show index ++ ")")
             | (index,binder) <- zip [0::Int ..] (caseBinders matched)]
       pure (D.text ("case " ++ Native.scalaQuoted (idText (caseConstructor matched)) ++ " => ") <>
         D.block 2 (D.joinWith D.hardline (bindings ++ [body])))

@@ -114,7 +114,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | target `elem` ["java", "kotlin"] = M.findWithDefault (Backend.localName identity) identity jvmLocals
       | otherwise = Backend.localName identity
     jvmLocals = M.unions (map (\e -> jvmLocalTable target (jvmReserved target) (propertyBinders (original e) ++ planBinders e)) ls ++
-      [jvmLocalTable target (jvmReserved target) (C.contractArguments c ++ [C.contractResult c]) | c <- contracts u])
+      [jvmLocalTable target (jvmReserved target) (C.contractArguments c ++ [C.contractResult c]) | c <- contracts u] ++
+      -- A benchmark's measured expression keeps its binders' names too.
+      [jvmLocalTable target (jvmReserved target) (concatMap (expressionBinders . snd) (maybe [] C.harnessBenchmarks (C.unitHarnessSettings u)))])
     -- A declaration's source line, for the comment on its stub.
     declarationLink n = listToMaybe [l | d <- C.unitDeclarations u, C.declarationName d == n, Just l <- [sourceLink (C.declarationOrigin d)]]
     -- The binders the generation plan's own predicates and hints introduce.
@@ -423,8 +425,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktNativeResult ty value | towerResult ty = KotlinExpr.call "LawSpecRuntime.fromNative"
       [Doc.text (q "Integer"),value,Doc.text "MACHINE_BITS"]
     ktNativeResult ty value = ktCodecCall ty "encode" value
-    ktHandler ability = Doc.text "(" <> KotlinExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", KotlinExpr.quoted (C.abilityKey ability)] <>
-      Doc.group (Doc.nest 4 (Doc.softline <> Doc.group (Doc.text "as" <> Doc.softline <> Doc.text (ktInterface ability)))) <> Doc.text ")"
+    ktHandler ability = KotlinLayout.castCall "LawSpecRuntime.handler" [Doc.text "symbols", KotlinExpr.quoted (C.abilityKey ability)] (ktInterface ability)
     -- An ability's pieces are its owner's: the interface, the production
     -- handler (in the owner's adapter object) and the recording.
     ktInterface ability = maybe "Any" (\a -> KotlinAbilities.abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability)
@@ -439,6 +440,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     -- An adapter that fails with E: its native code throws
     -- LawSpecRuntime.Fail with a native E, or an exception lawspec.json maps.
     jvmFailing n = jvmFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n]
+    -- (nativeValue as T), broken before the as when it does not fit.
+    ktCast native = Doc.text "(nativeValue" <> Doc.group (Doc.nest 4 (Doc.softline <> Doc.text ("as " ++ native))) <> Doc.text ")"
     jvmFailingAs failing convert opening call = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
         let native = Doc.render Doc.Compact (Doc.text (if kt then java (KotlinData.kotlinDataType dataDeclarations failure)
@@ -477,7 +480,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Right (KotlinExpr.call "LawSpecRuntime.raiseFailure" (KotlinExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
-        Right (jvmFailingAs (operationFailure op) (\failure native -> ktNativeResult failure (Doc.text ("(nativeValue as " ++ native ++ ")"))) "{ nativeValue -> "
+        Right (jvmFailingAs (operationFailure op) (\failure native -> ktNativeResult failure (ktCast native)) "{ nativeValue -> "
           (ktNativeResult (expressionType term) (KotlinLayout.chain (ktHandler (C.operationAbility op)) [(C.operationName op,
             [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
@@ -500,7 +503,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         in Right $ if name `elem` map contractName (contracts u)
           then KotlinExpr.call (contractMethod name)
             (Doc.text "symbols" : [ktChecked ty value | (ty,value) <- typed])
-          else jvmFailing name (\failure native -> ktNativeResult failure (Doc.text ("(nativeValue as " ++ native ++ ")"))) "{ nativeValue -> "
+          else jvmFailing name (\failure native -> ktNativeResult failure (ktCast native)) "{ nativeValue -> "
             (ktNativeResult (expressionType term) (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
             (map ktHandler (usesOf name) ++ [ktNativeArgument ty value | (ty,value) <- typed]))))
       -- handle e with h end: e runs with h installed for its ability.

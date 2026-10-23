@@ -83,7 +83,7 @@ truth value = runtime "truth" [value]
 -- | Conditions joined, broken after each operator, as ktfmt breaks them.
 conjunction :: [D.Doc] -> D.Doc
 conjunction [] = text "true"
-conjunction (x : xs) = D.group (x <> D.nest 4 (mconcat [text " &&" <> D.softline <> y | y <- xs]))
+conjunction xs = L.operators "&&" xs
 -- | header { body }, the body on lines of its own.
 braced :: D.Doc -> [D.Doc] -> D.Doc
 braced header body = header <> text " " <> L.block body
@@ -114,13 +114,13 @@ emitTests Config{..} unit laws = do
            text "Runtime.getRuntime().availableProcessors()"] | parallel] ++
         ordered (map register registrations))
       spec = text ("class " ++ className ++ "LawSpecTest :") <> D.nest 4 (D.hardline <>
-        text "StringSpec({" <> D.nest 4 (D.hardline <> specBody) <> D.hardline <> text "})" <>
+        text "StringSpec({" <> D.nest 4 (D.hardline <> specBody) <> D.hardline <> text "})") <>
         -- parallel: Kotest runs the tests concurrently, on as many threads
         -- as processors.
-        (if parallel then text " " <> L.block
+        (if parallel then text " " <> L.block [separate
           [text "override fun concurrency(): Int = Runtime.getRuntime().availableProcessors()",
-           text "@Suppress(\"OVERRIDE_DEPRECATION\")" <> D.hardline <> text "override fun threads(): Int = Runtime.getRuntime().availableProcessors()"]
-         else mempty))
+           text "@Suppress(\"OVERRIDE_DEPRECATION\")" <> D.hardline <> text "override fun threads(): Int = Runtime.getRuntime().availableProcessors()"]]
+         else mempty)
       members = [text "// The machine profile's integer width." <> D.hardline <> text ("private const val MACHINE_BITS = " ++ show machineBits)] ++
         [text "private val SCHEMA = LawSpecDataSchema.create()" | usesSchema] ++
         [L.statements [bind' n codec | (n, codec) <- codecs] | not (null codecs)] ++
@@ -198,7 +198,7 @@ emitTests Config{..} unit laws = do
       | orderRandom =
           [ text ("val tests = mutableListOf<Pair<String, " ++ testType ++ ">>()")
           , braced (text "run")
-              [text ("operator fun String.invoke(test: " ++ testType ++ ") = tests.add(this to test)"), separate docs]
+              [L.equalsBody (text ("operator fun String.invoke(test: " ++ testType ++ ")")) (text "tests.add(this to test)"), separate docs]
           , braced (text "for ((name, test) in " <> call "lawspec.testing.LawSpecHarness.shuffled" [quoted unitLabel, text "tests"] <> text ")")
               [text "name(test)"] ]
       | otherwise = docs
@@ -221,7 +221,7 @@ emitTests Config{..} unit laws = do
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
     harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
-      (Just reason, _) -> [quoted (fn ++ "_skipped: " ++ label) <> text ".config(enabled = false) " <> L.block [text ("// " ++ reason)]]
+      (Just reason, _) -> [D.group (quoted (fn ++ "_skipped: " ++ label) <> D.nest 4 (D.softbreak <> text ".config(enabled = false) " <> L.block [text ("// " ++ reason)]))]
       (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> L.lambda [] [harness "knownFailing"
         [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, call "listOf" [harnessBody (harnessValue (fn ++ k)) | k <- kinds]]]]
       _ | runSettings h -> docs ++ [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text " " <> L.lambda [] [harness "run"
@@ -231,7 +231,7 @@ emitTests Config{..} unit laws = do
              text (if k == "_property" && observed h then "true" else "false"), harnessBody (harnessValue (fn ++ k))]] | k <- kinds]
         | otherwise -> docs
     benchmark (n, b) = quoted ("benchmark " ++ n) <> text " " <> L.lambda [] (withSymbols
-      [harness "benchmark" [quoted n, text "lawspec.testing.LawSpecHarness.Body " <> L.lambda [] [text "val measured = " <> expr b]]])
+      [harness "benchmark" [quoted n, text "lawspec.testing.LawSpecHarness.Body " <> L.lambda [] [bind "measured" (expr b)]]])
     -- A property whose inputs harness strategies draw, from Kotest's
     -- random source; their values' refinements are checked in the property.
     harnessProperty fn label e check = do
@@ -241,7 +241,7 @@ emitTests Config{..} unit laws = do
         let inp = domainInput plan
         case strategyOf inp of
           (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
-          [] -> pure (bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".sample(random).value"))) (generationPlan e)
+          [] -> pure (bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp))))) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
               conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
@@ -254,10 +254,12 @@ emitTests Config{..} unit laws = do
             (bindingsDoc ++ [conjunction (map (truth . expr) predicates)])
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "checkAll" [call "LawSpecTesting.config" [number (cases (generation e))], strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
+    -- A generator's value drawn from the property's random source.
+    sampled gen = L.selects gen [L.call ".sample" [text "random"], text ".value"]
     chooser = text "java.util.function.IntUnaryOperator " <> L.lambda ["count"] [text "random.random.nextInt(count)"]
     supplier doc = text "java.util.function.Supplier " <> L.lambda [] [doc]
     drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".sample(random).value")
+      C.DrawAny ty aim -> pure (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)))
       C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "listOf" [supplier (expr v) | v <- values]])
       C.DrawFrequency alternatives -> do
         options <- mapM (\(w, a) -> (\doc -> harness "Weighted" [number w, supplier doc]) <$> drawDoc inp strategy a) alternatives

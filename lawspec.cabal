@@ -765,6 +765,7 @@ library
       LawSpec.ScalaData
       LawSpec.ScalaDefinitions
       LawSpec.ScalaExpr
+      LawSpec.ScalaLayout
       LawSpec.ScalaNativeBinding
       LawSpec.ScalaProperties
       LawSpec.Scalar

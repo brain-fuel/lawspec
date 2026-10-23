@@ -5,7 +5,7 @@ module LawSpec.ScalaNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
 import Data.Char (toUpper, toLower)
-import Data.List (intercalate, nub, isPrefixOf, find)
+import Data.List (intercalate, nub, isPrefixOf, isInfixOf, find)
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Backend (unitName, inputs, inputType)
@@ -20,6 +20,7 @@ import LawSpec.AbilityEmit.Scala (abilitiesObjectOf, operationResult)
 import LawSpec.ScalaDefinitions (adapterResult)
 import qualified LawSpec.ScalaExpr as E
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.ScalaLayout as L
 import LawSpec.RuntimeSources (runtimeSource)
 
 -- | Bound adapters call the user's code directly, through generated
@@ -81,10 +82,10 @@ emitBindings minify plan testing files = do
         ref <- maybe (Left "unbound adapter") Right (bound d)
         argTypes <- mapM (S.scalaDataTypeDoc declarations) args
         resultType <- adapterResult declarations d
-        canonical <- mapM (S.scalaCodecDocWithContext (D.text "symbols") declarations) args
-        native <- mapM (S.scalaNativeCodecDoc declarations) args
-        canonicalResult <- S.scalaCodecDocWithContext (D.text "symbols") declarations result
-        nativeResult <- S.scalaNativeCodecDoc declarations result
+        canonical <- mapM (canonicalCodec) args
+        native <- mapM nativeCodec args
+        canonicalResult <- canonicalCodec result
+        nativeResult <- nativeCodec result
         nativeResultType <- if result == C.scalarType "Integer" then pure (D.text "scala.Int | scala.Long | scala.math.BigInt")
           else S.scalaNativeTypeDoc declarations mappings [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
@@ -104,9 +105,9 @@ emitBindings minify plan testing files = do
         resultBody <- case ref of
           StaticCall r -> do
             let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
-            pure $ if async then application <> D.text ".map(result => " <> returned <> D.text ")(using scala.concurrent.ExecutionContext.parasitic)"
-              else if result == C.scalarType "Unit" then application <> D.hardline <> D.text "()" else
-              D.text "val result = " <> application <> D.hardline <> returned
+            pure $ if async then [application <> D.text ".map(result => " <> returned <> D.text ")(using scala.concurrent.ExecutionContext.parasitic)"]
+              else if result == C.scalarType "Unit" then [application, D.text "()"] else
+              [L.bind "result" application, returned]
           _ -> do
             application <- case ref of
               MethodCall name | async -> case lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args] of
@@ -120,31 +121,32 @@ emitBindings minify plan testing files = do
                 helper <- maybe (Left "unplanned native call") Right
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
                 pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
-            pure $ if async then application <> D.text ".map(result => " <>
+            pure $ if async then [application <> D.text ".map(result => " <>
                 (if result == C.scalarType "Unit" then D.text "()" else returnedOf (D.text ("result.asInstanceOf[" ++ D.render D.Compact nativeResultType ++ "]"))) <>
-                D.text ")(using scala.concurrent.ExecutionContext.parasitic)"
-              else if result == C.scalarType "Unit" then application <> D.hardline <> D.text "()"
+                D.text ")(using scala.concurrent.ExecutionContext.parasitic)"]
+              else if result == C.scalarType "Unit" then [application, D.text "()"]
               -- A method's null is None; anything else is Some.
               else case maybeElement of
-                Just element -> D.text "val found: Any = " <> application <> D.hardline <>
-                  D.text "val result: " <> nativeResultType <> D.text " = if (found == null) None else " <>
-                    D.text "Some(found.asInstanceOf[" <> element <> D.text "])" <> D.hardline <> returned
-                Nothing -> D.text "val result = " <> application <> D.text ".asInstanceOf[" <> nativeResultType <> D.text "]" <> D.hardline <> returned
+                Just element -> [ D.group (D.text "val found: Any =" <> D.nest 2 (D.softline <> application))
+                  , D.group (D.text "val result: " <> nativeResultType <> D.text " =" <> D.nest 2 (D.softline <>
+                      D.text "if (found == null) None else Some(found.asInstanceOf[" <> element <> D.text "])"))
+                  , returned ]
+                Nothing -> [L.bind "result" (application <> D.text ".asInstanceOf[" <> nativeResultType <> D.text "]"), returned]
         -- An adapter that fails with E answers Either: the exceptions
         -- lawspec.json maps become its failures, as Lefts.
         failureCases <- case [failure | C.AbilityRef _ [failure] <- filter C.isFail (C.declarationUses d)] of
           failure : _ | not async -> do
             Just <$> mappedFailures failure
           _ -> pure Nothing
-        let body = maybe resultBody (const (D.text "scala.util.Right(" <> D.block 2 resultBody <> D.text ")")) failureCases
-        pure (D.text "def " <> E.call (S.escaped (C.declarationName d))
+        let body = maybe resultBody (const [D.text "scala.util.Right(" <> L.block resultBody <> D.text ")"]) failureCases
+        pure (L.parameters (D.text ("def " ++ S.escaped (C.declarationName d)))
             ([v <> D.text ": " <> t | (t,v) <- handlerParams] ++ [v <> D.text ": " <> t | (t,v) <- zip argTypes values]) <>
-          D.text ": " <> resultType <> D.text " = " <> D.block 2
-          (D.text "val symbols = LawSpecScala.symbols()" <> D.hardline <>
-           D.text "try " <> D.block 2 body <> D.text " catch " <>
-           D.block 2 (D.joinWith D.hardline (maybe [] id failureCases) <> (if maybe True null failureCases then mempty else D.hardline) <> D.text "case error @ (_: IllegalArgumentException | _: IllegalStateException | _: ClassCastException | _: ArithmeticException) =>" <>
-             D.nest 2 (D.hardline <> D.text "throw " <> E.call "IllegalArgumentException"
-             [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.getMessage",D.text "error"]))))
+          D.text ": " <> resultType <> D.text " = " <> L.block
+          ([D.text "val symbols = LawSpecScala.symbols()" | "symbols" `isInfixOf` D.render D.Compact (L.statements body)] ++
+           [D.text "try " <> L.block body <> D.text " catch " <>
+            L.block (maybe [] id failureCases ++ [D.text "case error: RuntimeException =>" <>
+              D.nest 2 (D.hardline <> D.text "throw " <> E.call "LawSpecRuntime.nativeBindingFailure"
+              [E.quoted ("native binding " ++ C.idText (C.declarationId d)), D.text "error"])])]))
       -- Each bound production handler, wrapped in the generated trait: its
       -- operations' values cross with the native codecs.
       wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, r) -> do
@@ -152,13 +154,13 @@ emitBindings minify plan testing files = do
           let (args, result) = C.functionType ty
           types <- mapM (S.scalaDataTypeDoc declarations) args
           resultType <- operationResult declarations a op result
-          canonical <- mapM (S.scalaCodecDocWithContext (D.text "symbols") declarations) args
-          native <- mapM (S.scalaNativeCodecDoc declarations) args
-          canonicalResult <- S.scalaCodecDocWithContext (D.text "symbols") declarations result
-          nativeResult <- S.scalaNativeCodecDoc declarations result
+          canonical <- mapM (canonicalCodec) args
+          native <- mapM nativeCodec args
+          canonicalResult <- canonicalCodec result
+          nativeResult <- nativeCodec result
           let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
               invocation = E.call ("inner." ++ S.escaped op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
-              plain = if result == C.scalarType "Unit" then invocation <> D.hardline <> D.text "()"
+              plain = if result == C.scalarType "Unit" then L.statements [invocation, D.text "()"]
                 else method canonicalResult "decode" [method nativeResult "encode" [invocation]]
           -- An operation that fails with E answers Either: the exceptions
           -- lawspec.json maps become its failures, as Lefts.
@@ -168,9 +170,9 @@ emitBindings minify plan testing files = do
               pure (D.text "try " <> D.block 2 (D.text "scala.util.Right(" <> D.block 2 plain <> D.text ")") <>
                 (if null cases then mempty else D.text " catch " <> D.block 2 (D.joinWith D.hardline cases)))
             _ -> pure plain
-          pure (D.text "override def " <> E.call (S.escaped op) [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " = " <>
-            D.block 2 (D.text "val symbols = LawSpecScala.symbols()" <> D.hardline <> body))
-        pure (D.text ("/** The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated trait. */") <> D.hardline <>
+          pure (L.parameters (D.text ("override def " ++ S.escaped op)) [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " = " <>
+            L.block ([D.text "val symbols = LawSpecScala.symbols()" | "symbols" `isInfixOf` D.render D.Compact body] ++ [body]))
+        pure (L.comment 78 ("The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated trait.") <>
           D.text ("class " ++ interfaceName a ++ "Bound extends " ++ interfaceType' a ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
             (D.text ("private val inner = " ++ intercalate "." (referenceParts r) ++ "()") : operations)))
       let name = concatMap cap (split '_' (last parts))
@@ -178,10 +180,10 @@ emitBindings minify plan testing files = do
           path = "src/main/scala/" ++ concatMap (++ "/") (init parts) ++ name ++ ".scala"
           header = (if null package then mempty else D.text ("package " ++ package) <> D.hardline <> D.hardline) <>
             D.text "import lawspec.runtime.*" <> D.hardline <> D.hardline
-          source = header <> D.text ("object " ++ name ++ " ") <> D.block 2
-            (D.text "private val schema: LawSpecSchema = LawSpecDataSchema.create()" <> D.hardline <>
-             D.text ("private val bits = " ++ show bits) <> D.hardline <> D.hardline <>
-             D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers))
+          source = header <> D.text ("object " ++ name ++ " ") <> L.block
+            [ D.text "private val Schema = LawSpecDataSchema.create()" <> D.hardline <>
+              D.text ("private val MachineBits = " ++ show bits)
+            , D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers) ]
       pure [Artifact path (render source) "generated" "source"]
   dataFiles <- if any ((== "src/main/java/lawspec/runtime/LawSpecDataSchema.java") . artifactPath) files then pure []
     else S.emitScalaDataWithProfile bits layout declarations
@@ -230,7 +232,9 @@ emitBindings minify plan testing files = do
     pure (helper : [file | file <- emitted,artifactPlacement file == "test"] ++
       [Artifact path (runtimeSource key) "generated" "test" |
         (path,key) <- [("src/test/scala/lawspec/testing/LawSpecScalaStrategies.scala","scala-data-strategies"),
-          ("src/test/scala/lawspec/testing/LawSpecGen.scala","scala-strategies")],
+          ("src/test/scala/lawspec/testing/LawSpecGen.scala","scala-strategies"),
+          ("src/test/scala/lawspec/testing/LawSpecScalars.scala","scala-scalars"),
+          ("src/test/scala/lawspec/testing/LawSpecTesting.scala","scala-testing")],
         not (any ((== path) . artifactPath) files)])
   let support = Artifact "src/main/scala/lawspec/runtime/LawSpecNativeCodecs.scala" codecs "generated" "source"
       runtime = [Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source" |
@@ -247,20 +251,22 @@ emitBindings minify plan testing files = do
     representations = bindingRepresentations plan
     mappings = resolvedTypes representations
     generators = resolvedGenerators representations
-    layout = D.selectLayout minify (D.Pretty 100)
+    layout = D.selectLayout minify L.scalaStyle
     render doc = D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> doc <> D.hardline)
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
-    method value name args = value <> D.text "." <> E.call name args
+    method value name args = L.chain value [(name, args)]
+    canonicalCodec = S.scalaCodecDocIn ("Schema", "MachineBits") (D.text "symbols") declarations
+    nativeCodec = S.scalaNativeCodecDocIn ("Schema", "MachineBits") declarations
     -- The exceptions lawspec.json maps to a failure of type failure, as cases
     -- that answer Left with it.
     mappedFailures failure = do
-      failureCodec <- S.scalaCodecDocWithContext (D.text "symbols") declarations failure
+      failureCodec <- canonicalCodec failure
       ref <- E.reference failure
-      pure [ D.text ("case error: " ++ intercalate "." (C.failureNative b) ++ " => scala.util.Left(") <> failureCodec <> D.text ".decode(" <>
-               E.call "LawSpecScalaCodecs.construct" [D.text "schema", ref, E.quoted (C.idText (C.failureConstructor b)),
-                 E.call "List" (C.mapFailureFields (\ty tag fields -> E.call "LawSpecScalaCodecs.construct" [D.text "schema", either error id (E.reference ty), E.quoted (C.idText tag), E.call "List" fields, D.text (show bits), D.text "symbols"]) (E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text (show bits)]) b),
-                 D.text (show bits), D.text "symbols"] <> D.text "))"
+      pure [ D.text ("case error: " ++ intercalate "." (C.failureNative b) ++ " =>") <> D.nest 2 (D.hardline <> E.call "scala.util.Left" [L.chain failureCodec [("decode",
+               [E.call "LawSpecScalaCodecs.construct" [D.text "Schema", ref, E.quoted (C.idText (C.failureConstructor b)),
+                 E.call "List" (C.mapFailureFields (\ty tag fields -> E.call "LawSpecScalaCodecs.construct" [D.text "Schema", either error id (E.reference ty), E.quoted (C.idText tag), E.call "List" fields, D.text "MachineBits", D.text "symbols"]) (E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text "MachineBits"]) b),
+                 D.text "MachineBits", D.text "symbols"]])]])
            | b <- bindingFailures plan, C.failureType b == failure ]
     handleDeclaration name = find (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations
     isHandle (C.Constructor name []) = handleDeclaration name /= Nothing

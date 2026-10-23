@@ -318,6 +318,15 @@ DEC-record-display-names:
   opened: 0.30.0
   decided: 0.30.0
 
+DEC-jvm-readable-output:
+  status: decided
+  question: How do the JVM targets meet the readable-output contract?
+  answer: |
+    Java, Kotlin, Scala, Groovy and Clojure follow DEC-readable-output-default and DEC-readable-generated-names. Java has no canonical formatter with Allman braces, so its check is Checkstyle 14.3.0 with Google's checks at error level and braces on their own lines (acceptance/formatters/java-checkstyle.xml). Checkstyle cannot parse Groovy, so Groovy's check is CodeNarc 4.0.0 with the matching rules (acceptance/formatters/groovy-codenarc.xml). Kotlin is checked with ktfmt 0.64 --kotlinlang-style --dry-run --set-exit-if-changed, Scala with scalafmt 3.11.5 --test (default configuration, Scala 3 dialect) and Clojure with cljfmt 0.16.6 check; all are pinned by Maven coordinate and run through coursier in acceptance (acceptance/Toolchain.hs). Kotlin and Scala keep their tests' scalar generators and checks in the runtime (LawSpecScalars, LawSpecTesting) rather than in each test file. Groovy's Spock specifications are generated from the plan, each feature running the Java model's JUnit test, never rewritten from Java text. Anonymous records take their display names (DEC-record-display-names) in all JVM targets. Decided by the owner's readable-output plan on 2026-10-22.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [google-style-guides]
+
 DEC-native-string-literals:
   status: decided
   question: How does generated code write text?

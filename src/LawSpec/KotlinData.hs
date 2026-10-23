@@ -290,7 +290,7 @@ codecDocUsingOwner scope@(schemaName, bitsName) owner context names parameters t
         pure (call ("LawSpecKotlinCodecs." ++ helper) [D.text schemaName, D.text bitsName])
       Nothing -> do
         native <- typeDoc [] names [] ty
-        pure (call (schemaName ++ ".scalar") [quoted name, D.text bitsName, D.group (native <> D.nest 4 (D.softbreak <> D.text "::class" <> D.softbreak <> D.text ".javaObjectType"))])
+        pure (call (schemaName ++ ".scalar") [quoted name, D.text bitsName, D.group (native <> D.text "::class" <> D.nest 4 (D.softbreak <> D.text ".javaObjectType"))])
   _ -> Left "function fields cannot cross Kotlin codecs"
 
 -- | Codec text for one-line uses.

@@ -8,7 +8,7 @@ import org.scalatest.funsuite.AnyFunSuite
   */
 class CryptoVectorsTest extends AnyFunSuite {
   private val lines = Array(
-    @@ VECTOR_LINES @@
+@@VECTOR_LINES@@
   )
 
   private def vectors(kind: String): List[List[String]] = {

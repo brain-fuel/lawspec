@@ -141,3 +141,11 @@ Gradle writes the JUnit XML report to `build/test-results/test`.
 
 `npx lawspec test` selects the features of the laws an edit can affect with
 Gradle's `--tests` filters.
+
+The specification is generated from the plan rather than rewritten from Java:
+the law's comment (its name, source line and the statement its tests check)
+is above its first feature, and a feature runs the test in the Java model's
+JUnit class, so both targets check a law the same way. Generated Groovy uses
+Allman braces with Google's other rules and passes CodeNarc 4.0.0 with the
+profile in `acceptance/formatters/groovy-codenarc.xml`, which LawSpec's
+acceptance runs on every generated project.

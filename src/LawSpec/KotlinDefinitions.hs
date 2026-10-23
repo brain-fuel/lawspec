@@ -113,15 +113,14 @@ emitKotlinDefinitions layout bits declarations units = do
     typeNames _ = []
     callees = Jvm.definitionCalls units
     call = KotlinLayout.call
-    -- A signature's result type stays whole, as ktfmt breaks the
-    -- parameters first.
-    flat = D.text . D.render D.Compact
+    -- A signature's result type is measured whole, as ktfmt breaks the
+    -- parameters first; it breaks its own arguments only after them.
+    flat doc = D.bestFit [D.text (D.render D.Compact doc), doc]
     -- codec.encode(value) and codec.decode(value), broken before the dot.
     encode codec value = KotlinLayout.chain codec [("encode", [value])]
     decode codec value = KotlinLayout.chain codec [("decode", [value])]
     -- A handler from symbols, as its ability's interface.
-    handlerAs ability = D.text "(" <> call "LawSpecRuntime.handler" [D.text "symbols", E.quoted (abilityKey ability)] <>
-      D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text (abilityInterface ability)))) <> D.text ")"
+    handlerAs ability = KotlinLayout.castCall "LawSpecRuntime.handler" [D.text "symbols", E.quoted (abilityKey ability)] (abilityInterface ability)
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 4 (D.softline <> value))
     typedJvm = emitJvmTyped KotlinStyle declarations units
     -- A typed definition whose types all convert directly calls its typed

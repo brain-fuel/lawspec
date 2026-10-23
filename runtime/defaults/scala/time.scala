@@ -40,7 +40,7 @@ object Time {
 
   /** The system clock: now never goes back; sleep blocks this thread. */
   class ClockHandler extends lawspec.abilities.lawspec.Time.Clock {
-    override def now(): @@ Instant @@ = @@ Instant @@(nowMicros())
+    override def now(): @@Instant@@ = @@Instant@@(nowMicros())
 
     override def sleep(
         value0: scala.concurrent.duration.FiniteDuration

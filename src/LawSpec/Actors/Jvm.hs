@@ -7,7 +7,7 @@
 -- runs it in a LawSpecRuntime.Actor; each handler is a method that sends its
 -- message and returns the reply, tell<Handler> sends it without waiting, and
 -- stop() refuses further messages.
-module LawSpec.Actors.Jvm (emit, Wire(..), actorWire, replyOf, adapterCall, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital) where
+module LawSpec.Actors.Jvm (emit, Wire(..), actorWire, replyOf, adapterCall, adapterFunction, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital) where
 
 import Control.Monad (foldM)
 import Data.Char (toUpper)
@@ -53,6 +53,10 @@ emit target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*>
 adapterClass :: C.Unit -> String
 adapterClass u = intercalate "." (init parts ++ [concatMap capital (split '_' (last parts))])
   where parts = split '.' (unitName u)
+
+-- | An adapter's qualified function name.
+adapterFunction :: Actor -> C.Declaration -> String
+adapterFunction a d = adapterClass (actorUnit a) ++ "." ++ adapterName (actorUnit a) (C.declarationId d)
 
 adapterCall :: Actor -> C.Declaration -> [String] -> String
 adapterCall a d args = adapterClass (actorUnit a) ++ "." ++ adapterName (actorUnit a) (C.declarationId d) ++
