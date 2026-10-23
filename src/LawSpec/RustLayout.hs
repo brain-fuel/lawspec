@@ -337,6 +337,18 @@ expr :: Expr -> D.Doc
 expr e = case e of
   Atom s -> D.text s
   Laid d -> d
+  -- A qualified path whose type is too long for its line breaks inside
+  -- the type's brackets (<T as Trait>::f), as rustfmt does.
+  Call (Atom path) args
+    | '<' : inner <- path, (ty, rest) <- breakAs inner, Just t@(Type _ (_ : _)) <- parseType ty ->
+        D.prefixChoice (path ++ "(") (D.text path <> arguments Nothing "(" ")" 60 args)
+          (D.text "<" <> typeBroken t <> D.text rest <> arguments Nothing "(" ")" 60 args)
+    where
+      breakAs str = go "" str
+      go acc r = case r of
+        [] -> (reverse acc, "")
+        _ | take 4 r == " as " -> (reverse acc, r)
+        c : r' -> go (c : acc) r'
   Call f args -> expr f <> arguments Nothing "(" ")" 60 args
   Macro name open close args -> D.text name <> arguments Nothing open close 60 args
   Method {} -> chain e
