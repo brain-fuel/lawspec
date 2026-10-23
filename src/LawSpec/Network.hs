@@ -67,20 +67,34 @@ withNetworkModules target uses files
       -- Rust test crates mount the module (adapters may use it), and Rust
       -- and Haskell tests install it before their laws run.
       | target == "rust" && artifactPlacement a == "test" && any (`isInfixOf` artifactContent a) ["mod lawspec_runtime;", "::lawspec_runtime;"] =
-          a { artifactContent =
-                replace "let ctx = &mut ls::Context::testing();" "lawspec_network::install(); let ctx = &mut ls::Context::testing();" $
-                replace "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;"
-                  ("#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;\n" ++
-                    -- lawspec.network's own test crate has it already, as its adapter.
-                    if "#[path = \"../src/lawspec/network.rs\"]" `isInfixOf` artifactContent a
-                      then "use adapter as lawspec_network;"
-                      else "#[path = \"../src/lawspec/network.rs\"]\nmod lawspec_network;") $
+          a { artifactContent = unlines . concatMap installing . lines $
+                -- lawspec.network's own test crate has it already, as its adapter.
+                (if "#[path = \"../src/lawspec/network.rs\"]" `isInfixOf` artifactContent a
+                  then replace "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;"
+                    "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;\nuse adapter as lawspec_network;"
+                  else mountNetwork) $
                 mountLibrary (artifactContent a) }
       | target == "haskell" && artifactPlacement a == "test" && "runIO (LS.useVirtualClock 0)" `isInfixOf` artifactContent a =
           a { artifactContent =
                 replace "runIO (LS.useVirtualClock 0)" "runIO (LS.useVirtualClock 0)\n  runIO LawSpecNetwork.install" $
                 replace "import qualified LawSpecRuntime as LS\n" "import qualified LawSpecRuntime as LS\nimport qualified LawSpecNetwork\n" (artifactContent a) }
       | otherwise = a
+    -- Each law's context is made after installing the module.
+    installing l = case break (/= ' ') l of
+      (indent, "let ctx = &mut ls::Context::testing();") -> [indent ++ "lawspec_network::install();", l]
+      _ -> [l]
+    -- The module is mounted among the others in name order, as rustfmt
+    -- orders them: before the first one named after it, with its attributes.
+    mountNetwork content =
+      let ls' = lines content
+          later i = case stripPrefix "mod " (ls' !! i) of
+            Just rest | last rest == ';' -> init rest > "lawspec_network"
+            _ -> False
+          start i = if i > 0 && "#[" `isPrefixOf` (ls' !! (i - 1)) then start (i - 1) else i
+      in case filter later [0 .. length ls' - 1] of
+        i : _ -> let (before, after) = splitAt (start i) ls'
+                 in unlines (before ++ ["#[path = \"../src/lawspec/network.rs\"]", "mod lawspec_network;"] ++ after)
+        [] -> content
     -- A test of a bound library crate uses the library's module.
     mountLibrary content = case [l | l <- lines content, "use " `isPrefixOf` l, "::lawspec_runtime;" `isInfixOf` l] of
       l : _ -> replace (l ++ "\n") (l ++ "\n" ++ replace "::lawspec_runtime;" "::lawspec_network;" l ++ "\n") content
