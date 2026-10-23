@@ -48,13 +48,16 @@ emitData target layout bits declarations = do
   exports <- mapM (\d -> do
     name <- named names (C.dataId d)
     pure (E.atom name <> D.text ("/" ++ show (length (C.dataParameters d))))) [d | d <- declarations, target == "erlang"]
-  let schema = E.remote "lawspec_beam_schema" "new" [E.array metadata,
-        E.array (map (E.binary . primitiveName) primitives),D.text (show bits)]
+  -- The runtime knows LawSpec's primitive types (lawspec_beam_schema:primitives/0).
+  let schema = E.remote "lawspec_beam_schema" "new" [E.array metadata,D.text (show bits)]
       factory = E.function "schema" [D.text "Symbols"]
         [if target == "gleam" then E.remote "lawspec_beam_schema" "with_codecs"
           [schema,E.remote "lawspec_beam_gleam" "codecs" []] else schema]
-      body = [D.text "-export_type(" <> E.array exports <> D.text ")." | not (null exports)] ++ definitions ++ [factory]
-  pure (Artifact "src/lawspec_data.erl" (D.render layout (E.moduleDoc "lawspec_data" [("schema",1)] body)) "generated" "source")
+      -- A case's schema and the symbols it interns.
+      context = D.text "%% A case's schema, and the symbols its literals intern." <> D.hardline <>
+        E.function "context" [] [E.assign "Symbols" (E.call "make_ref" []),E.tuple [E.call "schema" [D.text "Symbols"],D.text "Symbols"]]
+      body = [D.text "-export_type(" <> E.array exports <> D.text ")." | not (null exports)] ++ definitions ++ [factory,context]
+  pure (Artifact "src/lawspec_data.erl" (D.render layout (E.moduleDoc "lawspec_data" [("schema",1),("context",0)] body)) "generated" "source")
   where
     nativeShape tag identity
       | target == "gleam" = pure [(E.atom "native_tag",E.atom (E.snake (E.pascal tag)))]

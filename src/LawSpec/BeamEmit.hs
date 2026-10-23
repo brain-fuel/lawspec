@@ -38,6 +38,8 @@ import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedTypeBinding(..))
 import LawSpec.Typed.Beam (BeamTyped(..), emitBeamTyped)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
+import qualified LawSpec.BeamNames as Names
+import LawSpec.Naming (typeWords)
 
 emitBeam :: String -> Bool -> Plan -> Either [Diagnostic] [Artifact]
 emitBeam target minify = emitBeamWithBindings target minify emptyBindingPlan
@@ -190,8 +192,13 @@ emitBeamWithBindings target minify bindings plan = do
     adapter names unit = do
       functions <- fmap concat $ forM (adapterDeclarations unit) $ \d -> do
         signature <- Definitions.declarationSpec bits names units d
-        let args = [D.text ("_Argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType (C.declarationType d)))]
-            handlers = [D.text ("_Handler" ++ show i) | (i,_) <- zip [0::Int ..] (Effects.uses d)]
+        -- A stub's arguments are named for their types, and its handlers
+        -- for their abilities.
+        let types = fst (C.functionType (C.declarationType d))
+            named = Names.variables [] ([unwords (typeWords t) | t <- types] ++
+              [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d])
+            args = [D.text ("_" ++ v) | v <- take (length types) named]
+            handlers = [D.text ("_" ++ v) | v <- drop (length types) named]
         pure [signature,E.function (E.functionName d) (handlers ++ args) [E.remote "erlang" "error"
           [E.tuple [E.atom "not_implemented",E.binary (C.idText (C.declarationId d))]]]]
       production <- concat <$> mapM (Abilities.productionStub target bits names) (Abilities.productionAbilities unit)

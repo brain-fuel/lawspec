@@ -185,8 +185,7 @@ emitBindings target layout bindings plan = do
           parts = referenceParts (resolvedNativeConstructor c)
           shape encode patternDoc = E.record
             [(E.atom "encode",E.lambda [E.array values] encode),
-             (E.atom "decode",D.group (D.text "fun(" <> patternDoc <> D.text ") -> " <>
-               E.tuple [E.atom "ok",E.array values] <> D.text "; (_) -> no_match end"))]
+             (E.atom "decode",E.funClauses [([patternDoc],E.tuple [E.atom "ok",E.array values]),([D.text "_"],E.atom "no_match")])]
       case target of
         "erlang" -> do
           unless (length parts == 1) (Left "Erlang native constructors require one atom or record name")

@@ -1,7 +1,7 @@
 -- | Core expressions become native Erlang expressions. All shared semantics
 -- go through the BEAM runtime; this module never reads source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, proposition, assertion) where
+module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, proposition, assertion, assertionLabelled) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -169,7 +169,11 @@ proposition = propositionWith (\a b -> E.remote "lawspec_beam_scalar" "equal" [a
 -- | A failing equation retains both evaluated sides for the framework report.
 -- No adapter is called again just to explain its failure.
 assertion :: String -> (C.Expr -> Either String D.Doc) -> C.Proposition -> Either String D.Doc
-assertion label = propositionWith (\a b -> E.remote "lawspec_beam_runtime" "assert_equal" [a,b,E.binary label])
+assertion label = assertionLabelled (E.binary label)
+
+-- | As assertion, with the label written as given (a law's macro).
+assertionLabelled :: D.Doc -> (C.Expr -> Either String D.Doc) -> C.Proposition -> Either String D.Doc
+assertionLabelled label = propositionWith (\a b -> E.remote "lawspec_beam_runtime" "assert_equal" [a,b,label])
 
 propositionWith :: (D.Doc -> D.Doc -> D.Doc) -> (C.Expr -> Either String D.Doc) -> C.Proposition -> Either String D.Doc
 propositionWith equal render p = case p of

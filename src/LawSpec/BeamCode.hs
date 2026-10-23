@@ -148,8 +148,14 @@ apply f args
   | isFun, [arg] <- args = remote "lawspec_beam_runtime" "bind" [arg,f]
   | isFun, not (null args) = D.text "(" <> f <> D.text ")(" <>
       D.nest 4 (forceBreak <> D.hardline <> D.joinWith (D.text "," <> D.hardline) args) <> D.hardline <> D.text ")"
-  | otherwise = D.text ("(" ++ D.render D.Compact f ++ ")") <> D.delimit 4 "(" ")" args
-  where isFun = take 3 (D.render D.Compact f) == "fun"
+  | isFun = D.text "(" <> f <> D.text ")()"
+  | length flat <= 60 = D.text ("(" ++ flat ++ ")") <> D.delimit 4 "(" ")" args
+  | null args = D.text "(" <> f <> D.text ")()"
+  | otherwise = D.text "(" <> f <> D.text ")(" <>
+      D.nest 4 (forceBreak <> D.hardline <> D.joinWith (D.text "," <> D.hardline) args) <> D.hardline <> D.text ")"
+  where
+    flat = D.render D.Compact f
+    isFun = take 3 flat == "fun"
 
 -- | A fun of several clauses, each (Patterns) -> Body on lines of its own.
 funClauses :: [([D.Doc], D.Doc)] -> D.Doc

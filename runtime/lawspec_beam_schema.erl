@@ -4,7 +4,9 @@
 %% ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
 -module(lawspec_beam_schema).
 -export([
+    new/2,
     new/3,
+    primitives/0,
     validate/3,
     construct/4,
     match/2,
@@ -33,6 +35,46 @@
     bits := 32 | 64,
     codecs := map()
 }.
+
+% A program's schema over LawSpec's primitive types.
+new(Definitions, Bits) -> new(Definitions, primitives(), Bits).
+
+% LawSpec's primitive types (LawSpec.Scalar.primitives), by name.
+primitives() ->
+    [
+        <<"Bool">>,
+        <<"Int8">>,
+        <<"Int16">>,
+        <<"Int32">>,
+        <<"Int64">>,
+        <<"UInt8">>,
+        <<"UInt16">>,
+        <<"UInt32">>,
+        <<"UInt64">>,
+        <<"IntSize">>,
+        <<"UIntSize">>,
+        <<"UIntPtr">>,
+        <<"Integer">>,
+        <<"BigInt">>,
+        <<"BigUInt">>,
+        <<"Decimal">>,
+        <<"Rational">>,
+        <<"Float32">>,
+        <<"Float64">>,
+        <<"Complex64">>,
+        <<"Complex128">>,
+        <<"Char">>,
+        <<"CodePoint">>,
+        <<"CodeUnit16">>,
+        <<"Text">>,
+        <<"CodePointText">>,
+        <<"Utf16Text">>,
+        <<"Bytes">>,
+        <<"Symbol">>,
+        <<"Unit">>,
+        <<"Null">>,
+        <<"Undefined">>
+    ].
 
 new(Definitions, Primitives, Bits) when Bits =:= 32; Bits =:= 64 ->
     Builtins = [

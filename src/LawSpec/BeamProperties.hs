@@ -54,8 +54,12 @@ emit target layout bindings plan = do
     framework = case target of "erlang" -> "lawspec_beam_proper"; "gleam" -> "lawspec_beam_qcheck"; _ -> "Elixir.LawSpec.Beam.StreamData"
     schema = D.text "Schema"
     symbols = D.text "Symbols"
-    context = [D.text "Symbols = make_ref()",D.text "Schema = " <> wrap (E.remote "lawspec_data" "schema" [symbols])]
-      where wrap doc = if Native.hasGenerators bindings then E.remote "lawspec_native_generators" "schema" [doc] else doc
+    -- A case's schema and symbols, made fresh for each case.
+    contextFor statements
+      | Native.hasGenerators bindings = [E.assign "Symbols" (E.call "make_ref" []),
+          E.assign "Schema" (E.remote "lawspec_native_generators" "schema" [E.remote "lawspec_data" "schema" [symbols]])]
+      | otherwise = [E.field "=" (E.tuple [E.variable "Schema" scope, E.variable "Symbols" scope]) (E.remote "lawspec_data" "context" [])]
+      where scope = E.sequenceDoc statements
     unitTests planned = do
       let unit = plannedUnit planned
           properties = plannedProperties planned
@@ -142,7 +146,7 @@ emit target layout bindings plan = do
         (Definitions.external units symbols) expression
       let measure = E.remote "lawspec_beam_harness" "benchmark"
             [E.binary (C.idText (C.unitId unit)),E.binary label,E.lambda [] body]
-          test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (context ++ [measure]))]
+          test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (contextFor [measure] ++ [measure]))]
       pure (E.function (name ++ "_test_") [] [E.array
         [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
     single h = C.harnessSkip h /= Nothing || C.harnessKnownFailing h /= Nothing
@@ -216,12 +220,12 @@ emit target layout bindings plan = do
             in ( nativeTimeout (E.tuple [E.string description, D.text ("fun " ++ function ++ "/0")])
                , E.linkComment description link <>
                  E.function function [] [withHarness label (label ++ " " ++ suffix) harness (not (null resources)) observations
-                   (E.sequenceDoc (context ++ statements))] )
+                   (E.sequenceDoc (contextFor statements ++ statements))] )
           scoped outer active statements
             | plainScope = E.remote "lawspec_beam_runtime" "bind" [outer,E.lambda [active] statements]
             | otherwise = E.remote "lawspec_beam_effects" "with_scope" [outer,either error id choicesDoc,E.lambda [active] statements]
           choicesDoc = Effects.factories units symbols early
-      body <- Expr.assertion label render (C.propertyBody law)
+      body <- Expr.assertionLabelled lawIdentity render (C.propertyBody law)
       _ <- choicesDoc
       _ <- installLate schema
       let exampleSuffixes = take (length (C.propertyExamples law)) (caseSuffixes plan planned)

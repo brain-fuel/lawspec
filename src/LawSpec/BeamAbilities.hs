@@ -173,7 +173,9 @@ operationType target bits names ty = do
   pure $ case target of
     "gleam" -> D.text "fn" <> D.delimit 2 "(" ")" args <> D.text " -> " <> out
     "elixir" -> D.text "(" <> mconcat [D.joinWith (D.text ", ") args <> D.text " " | not (null args)] <> D.text "-> " <> out <> D.text ")"
-    _ -> D.text "fun((" <> D.joinWith (D.text ", ") args <> D.text ") -> " <> out <> D.text ")"
+    -- fun((Args) -> Result), as erlfmt breaks it.
+    _ -> D.group (D.text "fun(" <> D.nest 4 (D.softbreak <> D.delimit 4 "(" ")" args <>
+      D.group (D.text " ->" <> D.nest 4 (D.softline <> out))) <> D.softbreak <> D.text ")")
 
 emit :: String -> D.Layout -> Int -> Maybe BeamTyped -> [C.DataDeclaration] -> [C.Unit] -> Bool -> Either String [Artifact]
 emit target layout bits typed declarations units boundSchema = do

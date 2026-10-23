@@ -266,10 +266,10 @@ listSpine e = case expressionNode e of
 -- | A let's binding, or, when its body never reads it, its value discarded.
 letLine :: Binder -> Expr -> String -> D.Doc -> Expr -> D.Doc
 letLine binder body local x value
-  | binderId binder `elem` freeBinders body = D.text (local ++ " = ") <> x
+  | binderId binder `elem` freeBinders body = E.assign local x
   | otherwise = case expressionNode value of
-      Local _ -> D.text ("_" ++ local ++ " = ") <> x
-      Constant _ -> D.text ("_" ++ local ++ " = ") <> x
+      Local _ -> E.assign ("_" ++ local) x
+      Constant _ -> E.assign ("_" ++ local) x
       _ -> discarded x
 
 callOf :: Env -> Scope -> Id -> [Expr] -> M ([D.Doc], D.Doc)
@@ -329,13 +329,13 @@ cexpr env scope e = case expressionNode e of
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
     if null sb
-      then pure (sa, D.text "(" <> xa <> D.text (if op == And then " andalso " else " orelse ") <> xb <> D.text ")")
+      then pure (sa, E.operator (if op == And then "andalso" else "orelse") xa xb)
       else do
         t <- fresh "Logic"
         let rest = sb ++ [xb]
             arms = if op == And then [(D.text "true", rest), (D.text "false", [D.text "false"])]
                    else [(D.text "true", [D.text "true"]), (D.text "false", rest)]
-        pure (sa ++ [D.text (t ++ " = ") <> caseDoc xa arms], D.text t)
+        pure (sa ++ [E.assign t (caseDoc xa arms)], D.text t)
   Unary Not a -> do
     (s, x) <- cexpr env scope a
     pure (s, D.text "(not " <> x <> D.text ")")
@@ -345,12 +345,12 @@ cexpr env scope e = case expressionNode e of
   Binary op (Structural _) a b -> do
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
-    pure (sa ++ sb, D.text "(" <> xa <> D.text (if op == Equal then " =:= " else " =/= ") <> xb <> D.text ")")
+    pure (sa ++ sb, E.operator (if op == Equal then "=:=" else "=/=") xa xb)
   Binary op (Numeric _) a b -> do
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
     let te = expressionType e
-        infix' symbol = D.text "(" <> xa <> D.text symbol <> xb <> D.text ")"
+        infix' symbol = E.operator (filter (/= ' ') symbol) xa xb
         fast f = E.remote "lawspec_beam_fast" f [xa, xb]
         value = case op of
           Add -> Just (narrow te (infix' " + "))
@@ -446,7 +446,7 @@ cexpr env scope e = case expressionNode e of
     item <- fresh "Item"
     t <- fresh "At"
     let (nothing, just) = maybes (envTarget env)
-    pure (sx ++ sk ++ [D.text (t ++ " = ") <> caseDoc (E.remote "lawspec_beam_fast" f [v, i])
+    pure (sx ++ sk ++ [E.assign t $ caseDoc (E.remote "lawspec_beam_fast" f [v, i])
       [(E.tuple [E.atom "ok", D.text item], [E.tuple [E.atom just, D.text item]]), (E.atom "error", [E.atom nothing])]], D.text t)
   Helper Range [lo, hi] -> call2 "lawspec_beam_fast" "range" lo hi
   Helper Octets [b] -> one "binary_to_list" b
@@ -470,7 +470,7 @@ cexpr env scope e = case expressionNode e of
         lastLine : rest -> bind (reverse rest) lastLine
     bind s x = do
       t <- fresh "Value"
-      pure (s ++ [D.text (t ++ " = ") <> x], D.text t)
+      pure (s ++ [E.assign t x], D.text t)
 
 -- | Absent and Present, by name.
 maybes :: String -> (String, String)
@@ -597,7 +597,7 @@ intrinsicCall env intrinsic args = case (intrinsic, args) of
     found <- fresh "Found"
     t <- fresh "Lookup"
     let (nothing, just) = maybes (envTarget env)
-    pure ([D.text (t ++ " = ") <> caseDoc m
+    pure ([E.assign t $ caseDoc m
       [(D.delimit 4 "#{" "}" [k <> D.text " := " <> D.text found], [E.tuple [E.atom just, D.text found]]), (D.text "_", [E.atom nothing])]], D.text t)
   (KeyValPut, [(k, _), (v, _), (m, _)]) -> plain "maps" "put" [k, v, m]
   (KeyValDelete, [(k, _), (m, _)]) -> plain "maps" "remove" [k, m]
@@ -684,7 +684,7 @@ matchStatements env scope value cases = do
           body <- cstmt env ([x | (Just x, _) <- bound] ++ scope) (caseBody c)
           items <- if kind == "KeyVal" then entriesOf env ty subject else sortedItems env ty subject
           let binding = case bound of
-                [(Just (_, n'), _)] -> [D.text (n' ++ " = ") <> items]
+                [(Just (_, n'), _)] -> [E.assign n' items]
                 _ -> []
           pure (prelude ++ binding ++ body)
     Constructor n _ | Just d <- M.lookup n (envAll env) -> do
@@ -909,7 +909,8 @@ conversionClauses env k ty = case ty of
     let typeArgs = [t | TypeArgument t <- args]
     forM (dataConstructors d) $ \c -> do
       let types = fieldTypes d typeArgs c
-          fields = [D.text ("Field" ++ show i) | (i, _) <- zip [0 :: Int ..] types]
+          -- A field's variable is its source name.
+          fields = map D.text (Names.variables [] (map binderName (constructorFields c)))
       converted <- sequence [convert env k t f | (t, f) <- zip types fields]
       let tag = idText (constructorId c)
       pure $ case k of
