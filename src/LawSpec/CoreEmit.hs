@@ -797,7 +797,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
               destination = rel (split '/' tst ++ nested) (split '/' src)
               root = if null destination then "." else if ".." `isPrefixOf` destination
                 then destination else "./" ++ destination
-          in replace ("from '" ++ old) ("from '" ++ root ++ "/")
+          in replace ("from \"" ++ old) ("from \"" ++ root ++ "/") . replace ("from '" ++ old) ("from '" ++ root ++ "/")
         | target == "rust" && artifactPlacement a == "test" = replace "\n#[path = \"../src/" ("\n#[path = \"" ++ importRoot ++ "/")
         | otherwise = id
       result = map adjust files
