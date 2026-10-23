@@ -42,13 +42,14 @@ disables definition checks or deferred definition-contract enforcement.
 ## Inspect a law
 
 ```sh
-npx lawspec explain example.codec::codec --view developer
-npx lawspec explain example.codec::codec --view business --json
+npx lawspec explain example.codec::codec
+npx lawspec explain example.codec::codec --view dev --json
 ```
 
-`explain` presents the same typed requirement in developer, business, formal
-or evidence form. It includes examples and available evidence without running
-your adapters. Without a selector it explains every law. Use the exact
+`explain` words the same typed requirement in plain English (`--view eng`, the
+default), in mathematical notation (`--view math`), or for programmers
+(`--view dev`). The dev view adds the examples and any recorded native
+conformance. It runs none of your adapters. Without a selector it explains every law. Use the exact
 `<owner>::<name>` returned by `check --json`; preserve canonical phrase-name
 delimiters and quote the entire selector for the shell. The
 [CLI reference](../reference/cli.md#explain) gives a phrase-name example.

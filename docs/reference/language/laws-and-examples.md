@@ -83,8 +83,8 @@ end unit
 
 Applying a reusable law expands it: the compiler substitutes the arguments,
 avoiding variable capture, and specializes the types. It does not treat any
-function name specially. `lawspec explain` prints each expansion step and the
-final property.
+function name specially. `lawspec explain --view dev` prints each expansion
+step and the final property.
 
 Arguments can be adapters, partial applications, compositions, and scalar
 values such as an identity element. The [prelude](../prelude-algebra.md) defines

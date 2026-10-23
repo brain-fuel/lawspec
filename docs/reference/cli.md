@@ -12,7 +12,7 @@ lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec explain [<unit>::<law>] [--view developer|business|formal|evidence] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec explain [<unit>::<law>] [--view eng|math|dev] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -207,31 +207,96 @@ and its harness are kept apart: the harness can never change the obligation.
 
 ## `explain`
 
-Presents the checked law, its examples and available evidence. All views use
-the same typed assertion. The command does not execute adapters or law tests.
+Explains a checked law in one of three views. The compiler writes every view
+from the same typed law. Explaining a law changes no obligation and runs no
+adapter or law test.
 
-- `<unit>::<law>` selects the exact owner and name returned by `check --json`.
-  Without it, every law is explained; an unmatched selector is an error.
-- `--view developer` includes the requirement, typed property, examples,
-  documentary references and configured witness/search settings. It is the
-  default view.
-- `--view business` presents the same requirement in business wording.
-- `--view formal` presents its logical binders and proposition.
-- `--view evidence` lists available evidence and its reasons, keeping planned
-  checks separate from completed results.
-- `--json` returns explanation records containing the selected view, law
-  identity, typed assertion, inputs, examples, metadata, references,
-  witness/search settings, evidence and presentation text.
+- `<unit>::<law>` selects the exact owner and name that `check --json`
+  returns. Without it, every law is explained. A selector that matches no law
+  is an error.
+- `--view eng` explains the law in plain English. This is the default. Each
+  condition gets its own line. An input reads as "this request" after it is
+  introduced. A function call reads as "the refund for this request", and a
+  union case reads as `the refund decision "approved"`.
+- `--view math` uses mathematical notation: quantifiers over sets
+  (`∀ request ∈ RefundRequest`, `ℕ`, `ℤ`, `𝔹`), `∧`, `∨`, `¬`, `⇒`, `≤`, `≥`
+  and `≠`.
+- `--view dev` is for programmers: LawSpec notation with types. It shows the
+  law's identity, documentary references, expansion trace, configured
+  witness and search settings, inputs, the property, its source and every
+  example. Brackets appear only where LawSpec's precedence needs them. Recorded
+  native conformance appears last.
+- `--json` prints the chosen view as structured records. Each record has
+  `view`, `law`, `name` and an ordered `sections` list. Each section has a
+  `kind` and its `lines`. The text output is every section's lines, in order,
+  with a blank line between laws. In `eng`, a section that mentions a union
+  case also has `cases`, which names each case's type, the case, and all of
+  that type's cases.
+- The former views `developer`, `business`, `formal` and `evidence` are
+  errors. Each error names the replacement: `dev`, `eng`, `math`, or
+  `lawspec evidence <unit>::<law>`.
 
-Canonical phrase names retain their `"|...|` delimiters in a selector. For
-`unit demo` with a law declared as `law "|zero| is`, quote the entire selector
-for the shell:
+For example, with the refund law from
+[examples/rc1/refund-policy.lawspec](../../examples/rc1/refund-policy.lawspec):
 
-```sh
-npx lawspec explain 'demo::"|zero|' --view business --json
+```text
+$ npx lawspec explain 'example.refunds::"|an eligible flagged refund requires review|'
+Law: an eligible flagged refund requires review
+For every request (a RefundRequest):
+  If all of these are true:
+    - the requested amount of this request is greater than 0
+    - the requested amount of this request is at most its captured amount
+    - this request is flagged
+  then the refund for this request must be the refund decision "review required".
+
+$ npx lawspec explain 'example.refunds::"|an eligible flagged refund requires review|' --view math
+Law: an eligible flagged refund requires review
+∀ request ∈ RefundRequest.
+  (request.requestedAmount > 0 ∧ request.requestedAmount ≤ request.capturedAmount ∧ request.flagged) ⇒ refund(request) = ReviewRequired
+
+$ npx lawspec explain 'example.refunds::"|an eligible flagged refund requires review|' --view dev
+example.refunds::law::"|an eligible flagged refund requires review|
+"|an eligible flagged refund requires review|
+Inputs: request of type RefundRequest
+request.requestedAmount > 0 and request.requestedAmount <= request.capturedAmount and request.flagged implies refund request = ReviewRequired
+Source: refund-policy.lawspec:47:1
+Examples: 0
 ```
 
-The same qualified spelling selects that law in `evidence`.
+`--json` on the first command prints a record of this shape:
+
+```json
+[
+  {
+    "law": "example.refunds::law::\"|an eligible flagged refund requires review|",
+    "name": "\"|an eligible flagged refund requires review|",
+    "sections": [
+      { "kind": "title", "lines": ["Law: an eligible flagged refund requires review"] },
+      { "kind": "inputs", "lines": ["For every request (a RefundRequest):"] },
+      {
+        "cases": [
+          { "case": "review required", "cases": ["approved", "review required", "rejected"], "type": "refund decision" }
+        ],
+        "kind": "statement",
+        "lines": [
+          "  If all of these are true:",
+          "    - the requested amount of this request is greater than 0",
+          "    - the requested amount of this request is at most its captured amount",
+          "    - this request is flagged",
+          "  then the refund for this request must be the refund decision \"review required\"."
+        ]
+      }
+    ],
+    "view": "eng"
+  }
+]
+```
+
+A law's evidence is reported by [`evidence`](#evidence), not by `explain`.
+
+Canonical phrase names keep their `"|...|` delimiters in a selector. Quote the
+whole selector for the shell, as above. The same qualified spelling selects
+that law in `evidence`.
 
 ## `doctor`
 
