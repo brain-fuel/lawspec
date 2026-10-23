@@ -8,8 +8,8 @@ module LawSpec.Typed.Rust (RustTyped(..), emitRustTyped) where
 
 import Control.Monad (forM)
 import Control.Monad.State.Strict
-import Data.Char (isAlphaNum, isUpper, toLower)
-import Data.List (intercalate, isPrefixOf)
+import Data.Char (isAlphaNum)
+import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -19,10 +19,14 @@ import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.RustExpr as E
+import LawSpec.RustLayout (Arm(..))
+import qualified LawSpec.RustLayout as L
+import LawSpec.Naming (NameKind(..), claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, readableDefinitionName)
 import qualified LawSpec.RustData as Native
 import LawSpec.Collections (collectionContainer)
 import LawSpec.Time (isDurationType)
 import LawSpec.RustAbilityPaths (performBridges)
+import LawSpec.RecordNames (recordDisplayNames)
 
 data RustTyped = RustTyped
   { rustTypedModule :: D.Doc
@@ -53,33 +57,34 @@ data Env = Env
   , envBridges :: M.Map Id String               -- each operation's bridge
   }
 
-type R = StateT Int (Either String)
+-- | A function's locals are distinct: each is named from its source name
+-- (or what it holds) and claimed in the function's scope.
+type R = StateT [String] (Either String)
 
 fresh :: String -> R String
 fresh base = do
-  n <- get
-  put (n + 1)
-  pure (sanitize base ++ "_" ++ show n)
+  taken <- get
+  let (chosen, _) = claim (scopeWith taken) (localIdentifier "rust" base)
+  put (chosen : taken)
+  pure chosen
 
--- | A name as written, made a Rust identifier.
-identifier :: String -> String
-identifier name = case [c | c <- name, isAlphaNum c || c == '_'] of
-  [] -> "f"
-  cleaned -> cleaned
-
-sanitize :: String -> String
-sanitize name = case [c | c <- map lower name, isAlphaNum c || c == '_'] of
-  [] -> "v"
-  cleaned@(c : _) | isAlphaNum c && not (c >= '0' && c <= '9') -> cleaned
-  cleaned -> "v" ++ cleaned
-  where lower c = if isUpper c then toLower c else c
+-- | Names a typed function's locals never take: the functions it calls and
+-- the names the module and the runtime use.
+moduleReserved :: [String]
+moduleReserved = words "ctx ls self pair_fields entry_pair make_entry std crate super"
 
 emitRustTyped :: [DataDeclaration] -> [Unit] -> Either String RustTyped
 emitRustTyped declarations units = do
   let plan = typedPlanPerforming scalarTypes declarations units
       datas = typedData plan
-      names = dataNames datas
-      functions = M.fromList [ (c, functionName c d) | (c, d) <- typedRepresentatives plan ]
+      names = dataNames (recordDisplayNames declarations) datas
+      -- Each typed function is named after its definition; a specialised
+      -- copy after its definition and its argument types.
+      functionNames = fst (claimAll (scopeWith moduleReserved)
+        [ nativeIdentifier "rust" FunctionName (readableDefinitionName (declarationName (definitionDeclaration d))
+            (fst (functionType (declarationType (definitionDeclaration d)))))
+        | (_, d) <- typedRepresentatives plan ])
+      functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
       env = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions ""
         (M.fromList [(i, "crate::" ++ path) | (i, path) <- performBridges units])
@@ -89,8 +94,7 @@ emitRustTyped declarations units = do
   pairFields <- pairFieldsDoc env
   let directData = directDeclarations declarations datas
   publicDocs <- mapM (publicDoc env declarations) [d | d <- datas, idText (dataId d) `S.member` directData]
-  let body = D.text "#![allow(unused_variables, unused_mut, unused_parens, unused_braces, unreachable_code, non_snake_case, non_camel_case_types, dead_code, clippy::all)]" <> D.hardline <>
-        D.text "use crate::lawspec_runtime as ls;" <> D.hardline <>
+  let body = D.text "use crate::lawspec_runtime as ls;" <> D.hardline <>
         D.text "use ls::fast::{Dyn, POrd};" <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline) (dataDocs ++ publicDocs ++ pairFields ++ functionDocs)
       lookupFunction identity = do
@@ -101,27 +105,19 @@ emitRustTyped declarations units = do
         D.text "pub mod typed " <> D.block 4 body
     , rustTypedFunction = lookupFunction
     , rustTypedType = rustType outside
-    , rustTypedValue = \e -> evalStateT (expression outside Nothing [] e) 0
+    , rustTypedValue = \e -> L.expr <$> evalStateT (expression outside Nothing [] e) (moduleReserved ++ functionNames)
     , rustPairFields = modulePath ++ "pair_fields"
     , rustTypedNative = directType directData
     , rustTypedPlan = plan }
-  where
-    functionName _ d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
-    shortName name =
-      let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
-      in reverse (dropHash (reverse unprefixed))
-    dropHash reversed = case span (`elem` ("0123456789abcdef" :: String)) reversed of
-      (digits@(_ : _), '_' : rest) | length digits >= 8 -> rest
-      _ -> reversed
 
 -- | Rust names for the typed data types: the declared name, unless another
 -- typed type or a name the generated code uses has it.
-dataNames :: [DataDeclaration] -> M.Map String String
-dataNames datas = M.fromList (snd (foldl pick (reserved, []) datas))
+dataNames :: M.Map Id String -> [DataDeclaration] -> M.Map String String
+dataNames display datas = M.fromList (snd (foldl pick (reserved, []) datas))
   where
     reserved = S.fromList ["Option", "Result", "Some", "None", "Ok", "Err", "Vec", "Box", "String", "Arc", "Self", "Ordering", "Either", "List", "Map", "Set", "Int", "Text", "Bytes", "Dyn", "POrd", "ls", "std", "crate", "super"]
     pick (taken, acc) d =
-      let base = [c | c <- dataName d, isAlphaNum c || c == '_']
+      let base = [c | c <- M.findWithDefault (dataName d) (dataId d) display, isAlphaNum c || c == '_']
           candidates = base : [base ++ "_" ++ show k | k <- [2 :: Int ..]]
           chosen = firstOf [n | n <- candidates, n `S.notMember` taken, (n ++ "Node") `S.notMember` taken]
       in (S.insert chosen (S.insert (chosen ++ "Node") taken), (idText (dataId d), chosen) : acc)
@@ -187,79 +183,82 @@ dataDoc env d = do
       variants = dataConstructors d
       line = D.text
       header = line ("/// " ++ dataName d ++ " (" ++ idText (dataId d) ++ ").")
+      impl head' items = line (head' ++ " ") <> D.block 4 (D.joinWith D.hardline items)
+      method' head' params result body = L.function ("fn " ++ head') params result (L.stmts [] (Just body))
+      matchOn subject arms = L.Match (L.atom subject) arms
+      arm p body = Arm p Nothing body
+      expected = L.call "Err" [L.macroCall "format" [L.Laid (E.stringLiteral ("expected " ++ dataName d ++ ", found {other}"))]]
   fieldTypes <- forM variants $ \c -> mapM (rustTypeP env { envPrefix = "" } parameters . binderType) (constructorFields c)
   if null variants then pure (header <> D.hardline <>
     line "#[derive(Clone, Copy, PartialEq, Eq, Debug)]" <> D.hardline <> line ("pub enum " ++ name ++ " {}") <> D.hardline <>
-    line ("impl POrd for " ++ name ++ " ") <> D.block 4 (line "fn pcmp(&self, _: &Self) -> std::cmp::Ordering { match *self {} }") <> D.hardline <>
-    line ("impl Dyn for " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
-      [ line "fn to_dyn(&self) -> ls::Value { match *self {} }"
-      , line ("fn from_dyn(_: ls::Value) -> ls::Result<Self> { Err(" ++ E.quoted ("no value of " ++ dataName d) ++ ".into()) }") ]))
+    impl ("impl POrd for " ++ name) [method' "pcmp" ["&self", "_: &Self"] "std::cmp::Ordering" (L.atom "match *self {}")] <> D.hardline <>
+    impl ("impl Dyn for " ++ name)
+      [ method' "to_dyn" ["&self"] "ls::Value" (L.atom "match *self {}")
+      , method' "from_dyn" ["_: ls::Value"] "ls::Result<Self>" (L.call "Err" [L.method (L.Laid (E.stringLiteral ("no value of " ++ dataName d))) "into" []]) ])
   else if fieldless d then pure (header <> D.hardline <>
     line "#[derive(Clone, Copy, PartialEq, Eq, Debug)]" <> D.hardline <>
     line ("pub enum " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline [line (variantName c ++ ",") | c <- variants]) <> D.hardline <>
-    line ("impl " ++ name ++ " ") <> D.block 4 (line "fn rank(&self) -> u32 " <> D.block 4 (line "match self " <> D.block 4
-      (D.joinWith D.hardline [line (name ++ "::" ++ variantName c ++ " => " ++ show (rank c) ++ ",") | c <- variants]))) <> D.hardline <>
-    line ("impl POrd for " ++ name ++ " ") <> D.block 4 (line "fn pcmp(&self, other: &Self) -> std::cmp::Ordering { self.rank().cmp(&other.rank()) }") <> D.hardline <>
-    line ("impl Dyn for " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
-      [ line "fn to_dyn(&self) -> ls::Value " <> D.block 4 (line "let tag = match self " <> D.block 4
-          (D.joinWith D.hardline [line (name ++ "::" ++ variantName c ++ " => " ++ tagOf c ++ ",") | c <- variants]) <> line ";" <> D.hardline <>
-          line "ls::Value::Data(tag.into(), vec![])")
-      , line "fn from_dyn(value: ls::Value) -> ls::Result<Self> " <> D.block 4 (line "match ls::fast::tag(&value)? " <> D.block 4
-          (D.joinWith D.hardline ([line (tagOf c ++ " => Ok(" ++ name ++ "::" ++ variantName c ++ "),") | c <- variants] ++
-            [line ("other => Err(format!(\"expected " ++ dataName d ++ ", found {other}\")),")]))) ]))
+    impl ("impl " ++ name) [method' "rank" ["&self"] "u32" (matchOn "self" [arm (name ++ "::" ++ variantName c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline <>
+    impl ("impl POrd for " ++ name) [method' "pcmp" ["&self", "other: &Self"] "std::cmp::Ordering" (L.method (L.method (L.atom "self") "rank" []) "cmp" [L.prefix "&" (L.method (L.atom "other") "rank" [])])] <> D.hardline <>
+    impl ("impl Dyn for " ++ name)
+      [ L.function "fn to_dyn" ["&self"] "ls::Value" (L.stmts
+          [L.Let "tag" (matchOn "self" [arm (name ++ "::" ++ variantName c) (L.atom (tagOf c)) | c <- variants])]
+          (Just (L.call "ls::Value::Data" [L.method (L.atom "tag") "into" [], L.vecOf []])))
+      , method' "from_dyn" ["value: ls::Value"] "ls::Result<Self>" (L.Match (L.try' (L.call "ls::fast::tag" [L.atom "&value"]))
+          ([arm (tagOf c) (L.call "Ok" [L.atom (name ++ "::" ++ variantName c)]) | c <- variants] ++ [arm "other" expected])) ])
   else do
     let node = name ++ "Node"
-        patternOf prefix c = node ++ "::" ++ variantName c ++ (if null (constructorFields c) then "" else
-          "(" ++ intercalate ", " [prefix ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ ")")
-        compareArm c = line ("(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ") => ") <>
-          (if null (constructorFields c) then line "std::cmp::Ordering::Equal," else
-            line (foldl1 (\acc x -> acc ++ ".then_with(|| " ++ x ++ ")")
-              ["a" ++ show k ++ ".pcmp(b" ++ show k ++ ")" | k <- [0 .. length (constructorFields c) - 1]] ++ ","))
+        patternOf prefix' c = node ++ "::" ++ variantName c ++ (if null (constructorFields c) then "" else
+          "(" ++ intercalate ", " [prefix' ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ ")")
+        compareArm c = arm ("(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ")")
+          (if null (constructorFields c) then L.atom "std::cmp::Ordering::Equal" else
+            foldl1 (\acc x -> L.method acc "then_with" [L.closure "||" x])
+              [L.method (L.atom ("a" ++ show k)) "pcmp" [L.atom ("b" ++ show k)] | k <- [0 .. length (constructorFields c) - 1]])
         wildcard c = node ++ "::" ++ variantName c ++ (if null (constructorFields c) then "" else
           "(" ++ intercalate ", " (replicate (length (constructorFields c)) "_") ++ ")")
-        toDynArm c = line (patternOf "f" c ++ " => ls::Value::Data(" ++ tagOf c ++ ".into(), vec![" ++
-          intercalate ", " ["f" ++ show k ++ ".to_dyn()" | k <- [0 .. length (constructorFields c) - 1]] ++ "]),")
-        fromDynArm c ts = line (tagOf c ++ " => ") <> D.block 4 (D.joinWith D.hardline
-          ([line ("let mut fields = ls::fast::fields(value, " ++ tagOf c ++ ", " ++ show (length ts) ++ ")?;") | not (null ts)] ++
-           [line ("Ok(" ++ name ++ "(std::sync::Arc::new(" ++ node ++ "::" ++ variantName c ++
-             (if null ts then "" else "(" ++ intercalate ", " ["<" ++ t ++ " as Dyn>::from_dyn(fields.next().unwrap())?" | t <- ts] ++ ")") ++ ")))")]))
+        toDynArm c = arm (patternOf "f" c) (L.call "ls::Value::Data" [L.method (L.atom (tagOf c)) "into" [],
+          L.vecOf [L.method (L.atom ("f" ++ show k)) "to_dyn" [] | k <- [0 .. length (constructorFields c) - 1]]])
+        fromDynArm c ts = arm (tagOf c) (L.letIn
+          [L.Let "mut fields" (L.try' (L.call "ls::fast::fields" [L.atom "value", L.atom (tagOf c), L.atom (show (length ts))])) | not (null ts)]
+          (L.call "Ok" [L.call name [L.call "std::sync::Arc::new" [made c [L.try' (L.call ("<" ++ t ++ " as Dyn>::from_dyn") [L.method (L.method (L.atom "fields") "next" []) "unwrap" []]) | t <- ts]]]]))
+        made c values = if null values then L.atom (node ++ "::" ++ variantName c) else L.call (node ++ "::" ++ variantName c) values
     pure (header <> D.hardline <>
       line "#[derive(Clone, PartialEq, Eq, Debug)]" <> D.hardline <>
       line ("pub struct " ++ name ++ generics ++ "(pub std::sync::Arc<" ++ node ++ generics ++ ">);") <> D.hardline <>
       line "#[derive(PartialEq, Eq, Debug)]" <> D.hardline <>
       line ("pub enum " ++ node ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
         [line (variantName c ++ (if null ts then "" else "(" ++ intercalate ", " ts ++ ")") ++ ",") | (c, ts) <- zip variants fieldTypes]) <> D.hardline <>
-      line ("impl" ++ generics ++ " " ++ name ++ generics ++ " ") <> D.block 4 (line "fn rank(&self) -> u32 " <> D.block 4 (line "match &*self.0 " <> D.block 4
-        (D.joinWith D.hardline [line (wildcard c ++ " => " ++ show (rank c) ++ ",") | c <- variants]))) <> D.hardline <>
-      line ("impl" ++ bound "POrd" ++ " POrd for " ++ name ++ generics ++ " ") <> D.block 4
-        (line "fn pcmp(&self, other: &Self) -> std::cmp::Ordering " <> D.block 4
-          (line "if std::sync::Arc::ptr_eq(&self.0, &other.0) { return std::cmp::Ordering::Equal; }" <> D.hardline <>
-           line "match (&*self.0, &*other.0) " <> D.block 4 (D.joinWith D.hardline
-             (map compareArm variants ++ [line "_ => self.rank().cmp(&other.rank()),"])))) <> D.hardline <>
-      line ("impl" ++ bound "Dyn" ++ " Dyn for " ++ name ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
-        [ line "fn to_dyn(&self) -> ls::Value " <> D.block 4 (line "match &*self.0 " <> D.block 4 (D.joinWith D.hardline (map toDynArm variants)))
-        , line "fn from_dyn(value: ls::Value) -> ls::Result<Self> " <> D.block 4 (line "match ls::fast::tag(&value)? " <> D.block 4
-            (D.joinWith D.hardline (zipWith fromDynArm variants fieldTypes ++
-              [line ("other => Err(format!(\"expected " ++ dataName d ++ ", found {other}\")),")]))) ]))
+      impl ("impl" ++ generics ++ " " ++ name ++ generics) [method' "rank" ["&self"] "u32" (matchOn "&*self.0" [arm (wildcard c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline <>
+      impl ("impl" ++ bound "POrd" ++ " POrd for " ++ name ++ generics)
+        [L.function "fn pcmp" ["&self", "other: &Self"] "std::cmp::Ordering" (L.stmts
+          [L.Do (L.If (L.call "std::sync::Arc::ptr_eq" [L.atom "&self.0", L.atom "&other.0"]) (L.Block [L.Semi (L.Return (Just (L.atom "std::cmp::Ordering::Equal")))] Nothing) Nothing)]
+          (Just (matchOn "(&*self.0, &*other.0)" (map compareArm variants ++ [arm "_" (L.method (L.method (L.atom "self") "rank" []) "cmp" [L.prefix "&" (L.method (L.atom "other") "rank" [])]) | length variants > 1]))))] <> D.hardline <>
+      impl ("impl" ++ bound "Dyn" ++ " Dyn for " ++ name ++ generics)
+        [ method' "to_dyn" ["&self"] "ls::Value" (matchOn "&*self.0" (map toDynArm variants))
+        , method' "from_dyn" ["value: ls::Value"] "ls::Result<Self>" (L.Match (L.try' (L.call "ls::fast::tag" [L.atom "&value"]))
+            (zipWith fromDynArm variants fieldTypes ++ [arm "other" expected])) ])
 
 pairFieldsDoc :: Env -> Either String [D.Doc]
 pairFieldsDoc env = pure (pair ++ entry)
   where
+    fields name constructor first second subject = L.Match (L.atom subject)
+      [Arm (name ++ "Node::" ++ constructor ++ "(" ++ first ++ ", " ++ second ++ ")") Nothing
+        (L.atom ("(" ++ first ++ ".clone(), " ++ second ++ ".clone())"))]
     pair = case M.lookup (collectionsUnit ++ "::type::Pair") (envNames env) of
       Nothing -> []
       Just name -> [D.text "/// A handler clause's result and next state." <> D.hardline <>
-        D.text ("pub fn pair_fields<A: Clone, B: Clone>(pair: " ++ name ++ "<A, B>) -> (A, B) ") <> D.block 4
-          (D.text ("match &*pair.0 { " ++ name ++ "Node::Pair(a, b) => (a.clone(), b.clone()) }"))]
+        L.function "pub fn pair_fields<A: Clone, B: Clone>" ["pair: " ++ name ++ "<A, B>"] "(A, B)"
+          (L.expr (fields name "Pair" "a" "b" "&*pair.0"))]
     entry = case M.lookup (collectionsUnit ++ "::type::Entry") (envNames env) of
       Nothing -> []
       Just name ->
-        [ D.text ("pub fn entry_pair<K: Clone, V: Clone>(entry: &" ++ name ++ "<K, V>) -> (K, V) ") <> D.block 4
-            (D.text ("match &*entry.0 { " ++ name ++ "Node::Entry(k, v) => (k.clone(), v.clone()) }"))
-        , D.text ("pub fn make_entry<K: Clone, V: Clone>(k: &K, v: &V) -> " ++ name ++ "<K, V> ") <> D.block 4
-            (D.text (name ++ "(std::sync::Arc::new(" ++ name ++ "Node::Entry(k.clone(), v.clone())))")) ]
+        [ L.function "pub fn entry_pair<K: Clone, V: Clone>" ["entry: &" ++ name ++ "<K, V>"] "(K, V)"
+            (L.expr (fields name "Entry" "k" "v" "&*entry.0"))
+        , L.function "pub fn make_entry<K: Clone, V: Clone>" ["k: &K", "v: &V"] (name ++ "<K, V>")
+            (L.expr (L.call name [L.call "std::sync::Arc::new" [L.call (name ++ "Node::Entry") [L.method (L.atom "k") "clone" [], L.method (L.atom "v") "clone" []]]])) ]
 
 functionDoc :: Env -> Int -> Definition -> Either String D.Doc
-functionDoc env c d = flip evalStateT 0 $ do
+functionDoc env c d = flip evalStateT (moduleReserved ++ M.elems (envFunctions env)) $ do
   let declaration = definitionDeclaration d
       (_, result) = functionType (declarationType declaration)
       name = envFunctions env M.! c
@@ -271,16 +270,34 @@ functionDoc env c d = flip evalStateT 0 $ do
   let scope = [(i, l) | (i, l, _) <- params]
       selfCall = Just (c, map (\(_, l, _) -> l) params)
   body <- case M.lookup (declarationId declaration) (typedIntrinsics (envPlan env)) of
-    Just intrinsic -> intrinsicCall env intrinsic [(D.text l, ty) | ((_, l, _), ty) <- zip params (map binderType (definitionArguments d))]
+    Just intrinsic -> intrinsicCall env intrinsic [(L.atom l, ty) | ((_, l, _), ty) <- zip params (map binderType (definitionArguments d))]
     Nothing -> expression env selfCall scope (definitionBody d)
   let looping = hasTailSelf env c (definitionBody d)
       contextual = isContextual (envPlan env) (declarationId declaration)
-      signature = D.text ("pub fn " ++ name) <> D.delimitTrailing 4 "(" ")"
-        ([D.text "ctx: &mut ls::Context" | contextual] ++ [D.text ((if looping then "mut " else "") ++ l ++ ": " ++ t) | (_, l, t) <- params]) <>
-        D.text (" -> ls::Result<" ++ resultType ++ "> ")
+      rendered = L.expr (L.Block [] (Just body))
+      -- A parameter the body reassigns (a loop's) is mutable; one it never
+      -- reads is marked unused.
+      parameter l t = (if looping && reassigned l then "mut " else "") ++ E.unusedAs l rendered ++ ": " ++ t
+      reassigned l = l `elem` [n | (i, n, _) <- params, i `elem` tailChanged env c (map (\(i', _, _) -> i') params) (definitionBody d)]
       comment = D.text ("/// " ++ idText (declarationId declaration))
-  pure (comment <> D.hardline <> signature <> D.block 4
-    (if looping then D.text "loop " <> D.block 4 (D.text "return Ok(" <> body <> D.text ");") else D.text "Ok(" <> body <> D.text ")"))
+      returned = if looping
+        then L.stmts [L.Do (L.Prefix "loop " (L.Block [L.Semi (L.Return (Just (L.call "Ok" [body])))] Nothing))] Nothing
+        else L.stmts [] (Just (L.call "Ok" [body]))
+  pure (comment <> D.hardline <> L.function ("pub fn " ++ name)
+    ([(if E.mentions "ctx" rendered then "ctx" else "_ctx") ++ ": &mut ls::Context" | contextual] ++ [parameter l t | (_, l, t) <- params])
+    ("ls::Result<" ++ resultType ++ ">") returned)
+
+-- | The parameters a call of the function's own class in tail position
+-- passes something else for: the loop reassigns them.
+tailChanged :: Env -> Int -> [Id] -> Expr -> [Id]
+tailChanged env c parameters e = case expressionNode e of
+  ExternalCall i args | definitionClass (envPlan env) i == Just c && M.notMember i (typedIntrinsics (envPlan env)) ->
+    [p | (p, a) <- zip parameters args, expressionNode a /= Local p]
+  If _ a b -> tailChanged env c parameters a ++ tailChanged env c parameters b
+  Match _ cases -> concatMap (tailChanged env c parameters . caseBody) cases
+  Let _ _ body -> tailChanged env c parameters body
+  Helper Select [_, a, b] -> tailChanged env c parameters a ++ tailChanged env c parameters b
+  _ -> []
 
 -- | Whether a definition calls its own class in tail position.
 hasTailSelf :: Env -> Int -> Expr -> Bool
@@ -294,30 +311,36 @@ hasTailSelf env c e = case expressionNode e of
 
 type Scope = [(Id, String)]
 
+borrow :: L.Expr -> L.Expr
+borrow = L.prefix "&"
+
 -- | An expression of a typed type; selfCall is the enclosing function's class
 -- and parameters while the expression is in tail position.
-expression :: Env -> Maybe (Int, [String]) -> Scope -> Expr -> R D.Doc
+expression :: Env -> Maybe (Int, [String]) -> Scope -> Expr -> R L.Expr
 expression env selfCall scope e = case expressionNode e of
   Constant s -> lift (constant s)
   Local i -> do
     name <- lift (maybe (Left ("typed Rust: unbound local " ++ idText i)) Right (lookup i scope))
-    pure (D.text (if isCopy env (expressionType e) then name else name ++ ".clone()"))
+    pure (if isCopy env (expressionType e) then L.atom name else L.method (L.atom name) "clone" [])
   Let binder value body -> do
     v <- expression env Nothing scope value
     local <- fresh (binderName binder)
     rest <- expression env selfCall ((binderId binder, local) : scope) body
-    pure (D.block 4 (D.text ("let " ++ local ++ " = ") <> v <> D.text ";" <> D.hardline <> rest))
+    let pat = E.unusedAs local (L.expr rest)
+    pure (case rest of
+      L.Block ss t -> L.Block (L.Let pat v : ss) t
+      _ -> L.Block [L.Let pat v] (Just rest))
   If c a b -> do
     cond <- expression env Nothing scope c
     yes <- expression env selfCall scope a
     no <- expression env selfCall scope b
-    pure (D.text "if " <> cond <> D.text " " <> D.block 4 yes <> D.text " else " <> D.block 4 no)
+    pure (L.If cond yes (Just no))
   Helper Select [c, a, b] -> expression env selfCall scope (e { expressionNode = If c a b })
   ShortCircuit op a b -> do
     l <- expression env Nothing scope a
     r <- expression env Nothing scope b
-    pure (D.text "(" <> l <> D.text (if op == And then " && " else " || ") <> r <> D.text ")")
-  Unary Not a -> (\x -> D.text "!" <> paren x) <$> expression env Nothing scope a
+    pure (L.infixOp (if op == And then "&&" else "||") l r)
+  Unary Not a -> L.prefix "!" <$> expression env Nothing scope a
   Unary Negate _ -> integerExpression env scope e
   Binary {} -> binary env scope e
   Convert _ target value
@@ -338,9 +361,8 @@ expression env selfCall scope e = case expressionNode e of
             changed = [(p, a) | (p, a) <- zip params args, not (unchanged (p, a))]
         values <- mapM (expression env Nothing scope . snd) changed
         temporaries <- mapM (const (fresh "next")) values
-        pure (D.block 4 (D.joinWith D.hardline
-          ([D.text ("let " ++ t ++ " = ") <> v <> D.text ";" | (t, v) <- zip temporaries values] ++
-           [D.text (p ++ " = " ++ t ++ ";") | ((p, _), t) <- zip changed temporaries] ++ [D.text "continue"])))
+        pure (L.Block ([L.Let t v | (t, v) <- zip temporaries values] ++
+           [L.Semi (L.atom (p ++ " = " ++ t)) | ((p, _), t) <- zip changed temporaries]) (Just (L.atom "continue")))
     | otherwise -> do
         c <- lift (maybe (Left ("typed Rust: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
         let name = envPrefix env ++ envFunctions env M.! c
@@ -350,41 +372,39 @@ expression env selfCall scope e = case expressionNode e of
             -- The arguments first, so the context is borrowed once at a time.
             temporaries <- mapM (const (fresh "argument")) values
             types <- lift (mapM (rustType env . expressionType) args)
-            pure (D.block 4 (D.joinWith D.hardline
-              ([D.text ("let " ++ t ++ ": " ++ ty ++ " = ") <> v <> D.text ";" | (t, (ty, v)) <- zip temporaries (zip types values)] ++
-               [D.text name <> D.delimitTrailing 4 "(" ")" (D.text "&mut *ctx" : map D.text temporaries) <> D.text "?"])))
-          else pure (D.text name <> D.delimitTrailing 4 "(" ")" values <> D.text "?")
+            pure (L.Block [L.Let (t ++ ": " ++ ty) v | (t, (ty, v)) <- zip temporaries (zip types values)]
+              (Just (L.try' (L.call name (L.atom "&mut *ctx" : map L.atom temporaries)))))
+          else pure (L.try' (L.call name values))
   Helper Compare [a, b] -> do
     x <- expression env Nothing scope a
     y <- expression env Nothing scope b
     ordering <- lift (orderingName env)
-    pure (D.text "match ls::fast::POrd::pcmp(&" <> x <> D.text ", &" <> y <> D.text ") " <> D.block 4 (D.joinWith D.hardline
-      [D.text ("std::cmp::Ordering::" ++ o ++ " => " ++ ordering ++ "::" ++ o ++ ",") | o <- ["Less", "Equal", "Greater"]]))
+    pure (L.Match (L.call "ls::fast::POrd::pcmp" [borrow x, borrow y])
+      [Arm ("std::cmp::Ordering::" ++ o) Nothing (L.atom (ordering ++ "::" ++ o)) | o <- ["Less", "Equal", "Greater"]])
   Helper Length [_] -> integerExpression env scope e
-  Helper Unreachable _ -> pure (D.text "return Err(\"unreachable branch reached\".into())")
-  Helper Checked _ -> pure (D.text "true")
+  Helper Unreachable _ -> pure (L.Return (Just (L.call "Err" [L.method (L.Laid (E.stringLiteral "unreachable branch reached")) "into" []])))
+  Helper Checked _ -> pure (L.atom "true")
   Helper StartsWith [a, b] -> textTest "starts_with" a b
   Helper EndsWith [a, b] -> textTest "ends_with" a b
   Helper TextContains [a, b] -> textTest "contains" a b
   Helper RegexMatches [a, b] -> do
     p <- expression env Nothing scope a
     t <- expression env Nothing scope b
-    pure (D.text "ls::regex_matches(&" <> p <> D.text ", &" <> t <> D.text ")?")
+    pure (L.try' (L.call "ls::regex_matches" [borrow p, borrow t]))
   AllElements value binder predicate -> do
     xs <- expression env Nothing scope value
     item <- fresh (binderName binder)
     ok <- fresh "all"
     p <- expression env Nothing ((binderId binder, item) : scope) predicate
-    pure (D.block 4 (D.joinWith D.hardline
-      [ D.text ("let mut " ++ ok ++ " = true;")
-      , D.text ("for " ++ item ++ " in ") <> xs <> D.text ".iter() " <> D.block 4
-          (D.text ("let " ++ item ++ " = " ++ item ++ ".clone();") <> D.hardline <>
-           D.text "if !" <> paren p <> D.text (" { " ++ ok ++ " = false; break; }"))
-      , D.text ok ]))
+    let loopDoc = D.text ("for " ++ item ++ " in ") <> L.expr (L.method xs "iter" []) <> D.text " " <> L.block
+          [ L.Let item (L.method (L.atom item) "clone" [])
+          , L.Do (L.If (L.prefix "!" p) (L.Block [L.Semi (L.atom (ok ++ " = false")), L.Semi (L.atom "break")] Nothing) Nothing) ] Nothing
+    pure (L.Block [L.Let ("mut " ++ ok) (L.atom "true"), L.Item loopDoc] (Just (L.atom ok)))
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
   Perform (Operation ref "raise") [x] | isFail ref -> do
     v <- expression env Nothing scope x
-    pure (D.block 4 (D.text ("ls::raise_failure(" ++ E.quoted (abilityKey ref) ++ ", ls::fast::Dyn::to_dyn(&") <> v <> D.text "));" <> D.hardline <> D.text "unreachable!()"))
+    pure (L.Block [L.Semi (L.call "ls::raise_failure" [L.atom (E.quoted (abilityKey ref)), L.call "ls::fast::Dyn::to_dyn" [borrow v]])]
+      (Just (L.atom "unreachable!()")))
   -- An operation of another ability: its bridge, which finds the handler
   -- in the context, over the arguments' dynamic values.
   Perform op args -> do
@@ -393,20 +413,19 @@ expression env selfCall scope e = case expressionNode e of
     temporaries <- mapM (const (fresh "argument")) values
     types <- lift (mapM (rustType env . expressionType) args)
     resultType <- lift (rustType env (expressionType e))
-    pure (D.block 4 (D.joinWith D.hardline
-      ([D.text ("let " ++ t ++ ": " ++ ty ++ " = ") <> v <> D.text ";" | (t, (ty, v)) <- zip temporaries (zip types values)] ++
-       [ D.text ("let performed = " ++ bridge ++ "(&mut *ctx, vec![" ++ intercalate ", " ["ls::fast::Dyn::to_dyn(&" ++ t ++ ")" | t <- temporaries] ++ "])" ++
-           ".map_err(|error| format!(\"{}: {error}\", " ++ E.quoted (operationName op) ++ "))?;")
-       , D.text ("<" ++ resultType ++ " as ls::fast::Dyn>::from_dyn(performed)?") ])))
+    pure (L.Block ([L.Let (t ++ ": " ++ ty) v | (t, (ty, v)) <- zip temporaries (zip types values)] ++
+       [ L.Let "performed" (L.try' (L.method (L.call bridge [L.atom "&mut *ctx", L.vecOf [L.call "ls::fast::Dyn::to_dyn" [L.atom ("&" ++ t)] | t <- temporaries]])
+           "map_err" [L.closure "|error|" (L.macroCall "format" [L.atom "\"{}: {error}\"", L.atom (E.quoted (operationName op))])])) ])
+       (Just (L.try' (L.call ("<" ++ resultType ++ " as ls::fast::Dyn>::from_dyn") [L.atom "performed"]))))
   -- attempt e: Right of e's value, or Left of the failure it raised.
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
     v <- expression env Nothing scope body
     resultType <- lift (rustType env result)
     failureType' <- lift (rustType env failure)
-    pure (D.text ("match ls::fast::attempt(" ++ E.quoted (abilityKey ref) ++ ", || -> ls::Result<" ++ resultType ++ "> ") <>
-      D.block 4 (D.text "Ok(" <> v <> D.text ")") <> D.text ")? " <> D.block 4 (D.joinWith D.hardline
-        [ D.text "Ok(value) => ls::Either::Right(value),"
-        , D.text ("Err(failure) => ls::Either::Left(<" ++ failureType' ++ " as ls::fast::Dyn>::from_dyn(failure)?),") ]))
+    pure (L.Match (L.try' (L.call "ls::fast::attempt" [L.atom (E.quoted (abilityKey ref)),
+        L.closure ("|| -> ls::Result<" ++ resultType ++ ">") (L.Block [] (Just (L.call "Ok" [v])))]))
+      [ Arm "Ok(value)" Nothing (L.atom "ls::Either::Right(value)")
+      , Arm "Err(failure)" Nothing (L.call "ls::Either::Left" [L.try' (L.call ("<" ++ failureType' ++ " as ls::fast::Dyn>::from_dyn") [L.atom "failure"])]) ])
   Helper Append [a, b] -> do
     x <- expression env Nothing scope a
     y <- expression env Nothing scope b
@@ -414,7 +433,7 @@ expression env selfCall scope e = case expressionNode e of
           Constructor "Text" [] -> "ls::fast::append_text"
           Constructor "Bytes" [] -> "ls::fast::append_bytes"
           _ -> "ls::fast::append_list"
-    pure (D.text (f ++ "(&") <> x <> D.text ", &" <> y <> D.text ")")
+    pure (L.call f [borrow x, borrow y])
   Helper Slice [x, from, to] -> do
     v <- expression env Nothing scope x
     i <- integerExpression env scope from
@@ -423,52 +442,49 @@ expression env selfCall scope e = case expressionNode e of
           Constructor "Text" [] -> "ls::fast::slice_text"
           Constructor "Bytes" [] -> "ls::fast::slice_bytes"
           _ -> "ls::fast::slice_list"
-    pure (D.text (f ++ "(&") <> v <> D.text ", &" <> i <> D.text ", &" <> j <> D.text ")")
+    pure (L.call f [borrow v, borrow i, borrow j])
   Helper At [x, i] -> do
     v <- expression env Nothing scope x
     k <- integerExpression env scope i
     let f = if expressionType x == Constructor "Bytes" [] then "ls::fast::at_bytes" else "ls::fast::at_list"
-    pure (D.text (f ++ "(&") <> v <> D.text ", &" <> k <> D.text ")")
+    pure (L.call f [borrow v, borrow k])
   Helper Range [lo, hi] -> do
     a <- expression env Nothing scope lo
     b <- expression env Nothing scope hi
     case expressionType lo of
-      Constructor "Integer" [] -> pure (D.text "ls::fast::range_int(&" <> a <> D.text ", &" <> b <> D.text ")")
-      _ -> pure (D.text "ls::fast::List::from_vec((" <> a <> D.text ".." <> b <> D.text ").collect())")
-  Helper Octets [b] -> (\v -> D.text "ls::fast::octets(&" <> v <> D.text ")") <$> expression env Nothing scope b
-  Helper BytesOf [xs] -> (\v -> D.text "ls::fast::bytes_of(&" <> v <> D.text ")") <$> expression env Nothing scope xs
-  Helper Utf8 [t] -> (\v -> D.text "ls::fast::utf8(&" <> v <> D.text ")") <$> expression env Nothing scope t
+      Constructor "Integer" [] -> pure (L.call "ls::fast::range_int" [borrow a, borrow b])
+      _ -> pure (L.call "ls::fast::List::from_vec" [L.method (L.Paren (L.Infix 2 ".." a b)) "collect" []])
+  Helper Octets [b] -> (\v -> L.call "ls::fast::octets" [borrow v]) <$> expression env Nothing scope b
+  Helper BytesOf [xs] -> (\v -> L.call "ls::fast::bytes_of" [borrow v]) <$> expression env Nothing scope xs
+  Helper Utf8 [t] -> (\v -> L.call "ls::fast::utf8" [borrow v]) <$> expression env Nothing scope t
   Helper TextOf [n] -> case expressionType n of
-    Constructor "Integer" [] -> (\v -> D.text "ls::fast::text_of(&" <> v <> D.text ")") <$> expression env Nothing scope n
-    _ -> (\v -> D.text "ls::fast::text(&" <> paren v <> D.text ".to_string())") <$> expression env Nothing scope n
+    Constructor "Integer" [] -> (\v -> L.call "ls::fast::text_of" [borrow v]) <$> expression env Nothing scope n
+    _ -> (\v -> L.call "ls::fast::text" [borrow (L.method v "to_string" [])]) <$> expression env Nothing scope n
   Helper Join [sep, parts] -> do
     a <- expression env Nothing scope sep
     b <- expression env Nothing scope parts
-    pure (D.text "ls::fast::join(&" <> a <> D.text ", &" <> b <> D.text ")")
+    pure (L.call "ls::fast::join" [borrow a, borrow b])
   _ -> lift (Left ("typed Rust: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
-    textTest method a b = do
+    textTest name a b = do
       x <- expression env Nothing scope a
       y <- expression env Nothing scope b
-      pure (x <> D.text ("." ++ method ++ "(&*") <> y <> D.text ")")
-
-paren :: D.Doc -> D.Doc
-paren x = D.text "(" <> x <> D.text ")"
+      pure (L.method x name [L.prefix "&*" y])
 
 orderingName :: Env -> Either String String
 orderingName env = maybe (Left "typed Rust: Ordering has no typed form") (Right . (envPrefix env ++))
   (M.lookup (collectionsUnit ++ "::type::Ordering") (envNames env))
 
-constant :: Scalar -> Either String D.Doc
+constant :: Scalar -> Either String L.Expr
 constant s = case s of
-  SBool b -> pure (D.text (if b then "true" else "false"))
-  SAbsent "Unit" -> pure (D.text "()")
+  SBool b -> pure (L.atom (if b then "true" else "false"))
+  SAbsent "Unit" -> pure (L.atom "()")
   SInteger "Integer" n
-    | n >= -(2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int) -> pure (D.text ("ls::fast::Int::Small(" ++ show n ++ ")"))
-    | otherwise -> pure (D.text ("ls::fast::Int::from_big(" ++ show (show n) ++ ".parse::<ls::BigInt>().unwrap())"))
-  SInteger t n | Just r <- lookup t fixedTypes -> pure (D.text (literal r n))
-  SSequence "Text" units -> pure (D.text "ls::fast::text(" <> E.stringLiteral (map toEnum units) <> D.text ")")
-  SSequence "Bytes" units -> pure (D.text ("ls::fast::bytes(&[" ++ intercalate ", " (map (\u -> show u ++ "u8") units) ++ "])"))
+    | n >= -(2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int) -> pure (L.call "ls::fast::Int::Small" [L.atom (show n)])
+    | otherwise -> pure (L.call "ls::fast::Int::from_big" [L.method (L.method (L.atom (show (show n))) "parse::<ls::BigInt>" []) "unwrap" []])
+  SInteger t n | Just r <- lookup t fixedTypes -> pure (L.atom (literal r n))
+  SSequence "Text" units -> pure (L.call "ls::fast::text" [L.Laid (E.stringLiteral (map toEnum units))])
+  SSequence "Bytes" units -> pure (L.call "ls::fast::bytes" [L.prefix "&" (L.Macro "" "[" "]" [L.atom (show u ++ "u8") | u <- units])])
   _ -> Left ("typed Rust: unsupported constant " ++ show s)
   where
     literal r n
@@ -487,88 +503,88 @@ bounds t = lookup t [ ("Int8", (-128, 127)), ("Int16", (-32768, 32767)), ("Int32
 
 -- | An integer expression computed exactly in i128, with a bound on its
 -- magnitude in bits, when its operands are bounded.
-wide :: Env -> Scope -> Expr -> R (Maybe (D.Doc, Int))
+wide :: Env -> Scope -> Expr -> R (Maybe (L.Expr, Int))
 wide env scope e = case (expressionNode e, expressionType e) of
   (Constant (SInteger _ n), _) | abs n < 2 ^ (62 :: Int) ->
-    pure (Just (D.text (if n < 0 then "(" ++ show n ++ "i128)" else show n ++ "i128"), max 1 (bitLength (abs n))))
+    pure (Just (L.atom (if n < 0 then "(" ++ show n ++ "i128)" else show n ++ "i128"), max 1 (bitLength (abs n))))
   (_, Constructor t []) | Just _ <- lookup t fixedTypes -> do
     x <- expression env Nothing scope e
-    pure (Just (paren (x <> D.text " as i128"), 64))
+    pure (Just (L.cast x "i128", 64))
   (Convert _ (Constructor "Integer" []) value, _) -> wide env scope value
   (Helper Length [x], _) -> do
     v <- expression env Nothing scope x
-    pure (Just (paren (lengthOf (expressionType x) v <> D.text " as i128"), 64))
-  (Unary Negate a, _) -> fmap (\(x, b) -> (D.text "(-" <> x <> D.text ")", b + 1)) <$> wide env scope a
+    pure (Just (L.cast (lengthOf (expressionType x) v) "i128", 64))
+  (Unary Negate a, _) -> fmap (\(x, b) -> (L.prefix "-" x, b + 1)) <$> wide env scope a
   (Binary op (Numeric (Constructor "Integer" [])) a b, _) | op `elem` [Add, Subtract, Multiply] -> do
     l <- wide env scope a
     r <- wide env scope b
     pure $ case (l, r) of
       (Just (x, bx), Just (y, by)) ->
         let bits = if op == Multiply then bx + by else max bx by + 1
-            symbol = case op of Add -> " + "; Subtract -> " - "; _ -> " * "
-        in if bits <= 126 then Just (paren (x <> D.text symbol <> y), bits) else Nothing
+            symbol = case op of Add -> "+"; Subtract -> "-"; _ -> "*"
+        in if bits <= 126 then Just (L.infixOp symbol x y, bits) else Nothing
       _ -> Nothing
   _ -> pure Nothing
   where
     bitLength :: Integer -> Int
     bitLength n = length (takeWhile (> 0) (iterate (`div` 2) n))
 
-lengthOf :: Type -> D.Doc -> D.Doc
+lengthOf :: Type -> L.Expr -> L.Expr
 lengthOf ty v = case ty of
-  Constructor "Text" [] -> D.text "ls::fast::text_length(&" <> v <> D.text ")"
-  _ -> v <> D.text ".len()"
+  Constructor "Text" [] -> L.call "ls::fast::text_length" [borrow v]
+  _ -> L.method v "len" []
 
 -- | An expression of type Integer, as an ls::fast::Int.
-integerExpression :: Env -> Scope -> Expr -> R D.Doc
+integerExpression :: Env -> Scope -> Expr -> R L.Expr
 integerExpression env scope e = do
   w <- wide env scope e
   case w of
-    Just (x, _) -> pure (D.text "ls::fast::Int::from_i128" <> paren x)
+    Just (x, _) -> pure (L.call "ls::fast::Int::from_i128" [x])
     Nothing -> case expressionNode e of
-      Unary Negate a -> (\x -> x <> D.text ".neg()") <$> asInt a
+      Unary Negate a -> (\x -> L.method x "neg" []) <$> asInt a
       Binary op _ a b -> do
         x <- asInt a
         y <- asInt b
         pure $ case op of
-          Add -> x <> D.text ".add(&" <> y <> D.text ")"
-          Subtract -> x <> D.text ".sub(&" <> y <> D.text ")"
-          Multiply -> x <> D.text ".mul(&" <> y <> D.text ")"
-          Quotient -> x <> D.text ".quot(&" <> y <> D.text ")?"
-          Remainder -> x <> D.text ".rem(&" <> y <> D.text ")?"
-          _ -> x <> D.text ".pow(&" <> y <> D.text ")?"
+          Add -> L.method x "add" [borrow y]
+          Subtract -> L.method x "sub" [borrow y]
+          Multiply -> L.method x "mul" [borrow y]
+          Quotient -> L.try' (L.method x "quot" [borrow y])
+          Remainder -> L.try' (L.method x "rem" [borrow y])
+          _ -> L.try' (L.method x "pow" [borrow y])
       Helper Length [x] -> do
         v <- expression env Nothing scope x
-        pure (D.text "ls::fast::Int::from" <> paren (lengthOf (expressionType x) v))
+        pure (L.call "ls::fast::Int::from" [lengthOf (expressionType x) v])
       _ -> expression env Nothing scope e
   where
     asInt a = case expressionType a of
       Constructor "Integer" [] -> integerExpression env scope a
-      _ -> (\x -> D.text "ls::fast::Int::from" <> paren x) <$> expression env Nothing scope a
+      _ -> (\x -> L.call "ls::fast::Int::from" [x]) <$> expression env Nothing scope a
 
-binary :: Env -> Scope -> Expr -> R D.Doc
+binary :: Env -> Scope -> Expr -> R L.Expr
 binary env scope e = case expressionNode e of
   Binary op (Structural _) a b -> do
     x <- expression env Nothing scope a
     y <- expression env Nothing scope b
-    pure (paren (x <> D.text (if op == Equal then " == " else " != ") <> y))
+    pure (L.infixOp (if op == Equal then "==" else "!=") x y)
   Binary op (Numeric _) a b | isComparison op -> do
-    let symbol = case op of Equal -> " == "; NotEqual -> " != "; Less -> " < "; LessEqual -> " <= "; Greater -> " > "; _ -> " >= "
+    let symbol = case op of Equal -> "=="; NotEqual -> "!="; Less -> "<"; LessEqual -> "<="; Greater -> ">"; _ -> ">="
         same = expressionType a == expressionType b && maybe False (const True) (fixedName (expressionType a))
     if same
       then do
         x <- expression env Nothing scope a
         y <- expression env Nothing scope b
-        pure (paren (x <> D.text symbol <> y))
+        pure (L.infixOp symbol x y)
       else do
         l <- wide env scope a
         r <- wide env scope b
         case (l, r) of
-          (Just (x, _), Just (y, _)) -> pure (paren (x <> D.text symbol <> y))
+          (Just (x, _), Just (y, _)) -> pure (L.infixOp symbol x y)
           _ -> do
             x <- integerExpression env scope (widen a)
             y <- integerExpression env scope (widen b)
             let test = case op of Equal -> "is_eq"; NotEqual -> "is_ne"; Less -> "is_lt"; LessEqual -> "is_le"; Greater -> "is_gt"; _ -> "is_ge"
-            pure (D.text "ls::fast::POrd::pcmp(&" <> x <> D.text ", &" <> y <> D.text (")." ++ test ++ "()"))
+            pure (L.method (L.call "ls::fast::POrd::pcmp" [borrow x, borrow y]) test [])
   _ -> integerExpression env scope e
   where
     fixedName (Constructor n []) = lookup n fixedTypes
@@ -577,42 +593,42 @@ binary env scope e = case expressionNode e of
       Constructor "Integer" [] -> a
       _ -> a { expressionType = Constructor "Integer" [], expressionNode = Convert Explicit (Constructor "Integer" []) a }
 
-convert :: Env -> Scope -> Type -> Expr -> R D.Doc
+convert :: Env -> Scope -> Type -> Expr -> R L.Expr
 convert env scope target value = case (target, expressionType value) of
   (Constructor "Integer" [], _) -> integerExpression env scope (value { expressionType = target, expressionNode = Convert Explicit target value })
   (Constructor t [], Constructor s []) | Just r <- lookup t fixedTypes -> do
     case (bounds t, bounds s) of
       (Just (lo, hi), Just (slo, shi)) | slo >= lo && shi <= hi -> do
         x <- expression env Nothing scope value
-        pure (paren (x <> D.text (" as " ++ r)))
+        pure (L.cast x r)
       _ -> do
         w <- wide env scope value
         case w of
-          Just (x, _) -> pure (D.text ("ls::fast::narrow::<" ++ r ++ ">(") <> x <> D.text (", " ++ show t ++ ")?"))
+          Just (x, _) -> pure (L.try' (L.call ("ls::fast::narrow::<" ++ r ++ ">") [x, L.atom (show t)]))
           Nothing -> do
             x <- integerExpression env scope (if s == "Integer" then value else value { expressionType = Constructor "Integer" [], expressionNode = Convert Explicit (Constructor "Integer" []) value })
-            pure (x <> D.text (".narrow::<" ++ r ++ ">(" ++ show t ++ ")?"))
+            pure (L.try' (L.method x ("narrow::<" ++ r ++ ">") [L.atom (show t)]))
   _ -> lift (Left ("typed Rust: unsupported conversion to " ++ show target))
 
-construct :: Env -> Type -> Id -> [D.Doc] -> [Expr] -> R D.Doc
+construct :: Env -> Type -> Id -> [L.Expr] -> [Expr] -> R L.Expr
 construct env ty tag values args = case (idText tag, values) of
-  ("List::Nil", []) -> pure (D.text "ls::fast::List::nil()")
-  ("List::Cons", [h, t]) -> pure (D.text "ls::fast::List::cons" <> D.delimitTrailing 4 "(" ")" [h, t])
-  ("Maybe::Absent", []) -> pure (D.text "None")
-  ("Maybe::Present", [x]) -> pure (D.text "Some" <> paren x)
-  ("Either::Left", [x]) -> pure (D.text "ls::Either::Left" <> paren x)
-  ("Either::Right", [x]) -> pure (D.text "ls::Either::Right" <> paren x)
+  ("List::Nil", []) -> pure (L.call "ls::fast::List::nil" [])
+  ("List::Cons", [h, t]) -> pure (L.call "ls::fast::List::cons" [h, t])
+  ("Maybe::Absent", []) -> pure (L.atom "None")
+  ("Maybe::Present", [x]) -> pure (L.call "Some" [x])
+  ("Either::Left", [x]) -> pure (L.call "ls::Either::Left" [x])
+  ("Either::Right", [x]) -> pure (L.call "ls::Either::Right" [x])
   (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> do
     pairs <- lift (entryPairs env)
-    pure (D.text "ls::fast::Map::from_entries(" <> items <> D.text (".iter().map(" ++ pairs ++ "))"))
+    pure (L.call "ls::fast::Map::from_entries" [L.method (L.method items "iter" []) "map" [L.atom pairs]])
   (_, [items]) | Just ("Set", _) <- collectionArguments ty ->
-    pure (D.text "ls::fast::Set::from_iter(" <> items <> D.text ".iter().cloned())")
+    pure (L.call "ls::fast::Set::from_iter" [L.method (L.method items "iter" []) "cloned" []])
   _ -> case M.lookup tag (envConstructors env) of
     Just (d, c) -> do
       let name = envPrefix env ++ envNames env M.! idText (dataId d)
-      pure $ if fieldless d then D.text (name ++ "::" ++ variantName c)
-        else D.text (name ++ "(std::sync::Arc::new(" ++ name ++ "Node::" ++ variantName c) <>
-          (if null values then mempty else D.delimitTrailing 4 "(" ")" values) <> D.text "))"
+          variant = name ++ "Node::" ++ variantName c
+      pure $ if fieldless d then L.atom (name ++ "::" ++ variantName c)
+        else L.call name [L.call "std::sync::Arc::new" [if null values then L.atom variant else L.call variant values]]
     Nothing -> lift (Left ("typed Rust: unknown constructor " ++ idText tag ++ " " ++ show (length args)))
 
 -- | The function from an Entry to its key and value.
@@ -627,31 +643,31 @@ entryOf env = case M.lookup (collectionsUnit ++ "::type::Entry") (envNames env) 
   Just _ -> pure (envPrefix env ++ "make_entry")
   Nothing -> Left "typed Rust: Entry has no typed form"
 
-intrinsicCall :: Env -> Intrinsic -> [(D.Doc, Type)] -> R D.Doc
+intrinsicCall :: Env -> Intrinsic -> [(L.Expr, Type)] -> R L.Expr
 intrinsicCall env intrinsic args = case (intrinsic, map fst args) of
-  (KeyValOf, [es]) | D.render D.Compact es == "ls::fast::List::nil()" -> pure (D.text "ls::fast::Map::new()")
+  (KeyValOf, [es]) | L.flat es == Just "ls::fast::List::nil()" -> pure (L.call "ls::fast::Map::new" [])
   (KeyValOf, [es]) -> do
     pairs <- lift (entryPairs env)
-    pure (D.text "ls::fast::Map::from_entries(" <> es <> D.text (".iter().map(" ++ pairs ++ "))"))
-  (KeyValLookup, [k, m]) -> pure (m <> D.text ".get(&" <> k <> D.text ").cloned()")
-  (KeyValPut, [k, v, m]) -> pure (m <> D.text ".insert" <> D.delimitTrailing 4 "(" ")" [k, v])
-  (KeyValDelete, [k, m]) -> pure (m <> D.text ".remove(&" <> k <> D.text ")")
-  (KeyValKeys, [m]) -> pure (m <> D.text ".to_list(|k, _| k.clone())")
-  (KeyValValues, [m]) -> pure (m <> D.text ".to_list(|_, v| v.clone())")
+    pure (L.call "ls::fast::Map::from_entries" [L.method (L.method es "iter" []) "map" [L.atom pairs]])
+  (KeyValLookup, [k, m]) -> pure (L.method (L.method m "get" [borrow k]) "cloned" [])
+  (KeyValPut, [k, v, m]) -> pure (L.method m "insert" [k, v])
+  (KeyValDelete, [k, m]) -> pure (L.method m "remove" [borrow k])
+  (KeyValKeys, [m]) -> pure (L.method m "to_list" [L.closure "|k, _|" (L.method (L.atom "k") "clone" [])])
+  (KeyValValues, [m]) -> pure (L.method m "to_list" [L.closure "|_, v|" (L.method (L.atom "v") "clone" [])])
   (KeyValEntries, [m]) -> do
     entry <- lift (entryOf env)
-    pure (m <> D.text (".to_list(" ++ entry ++ ")"))
-  (SetOf, [xs]) | D.render D.Compact xs == "ls::fast::List::nil()" -> pure (D.text "ls::fast::Set::new()")
-  (SetOf, [xs]) -> pure (D.text "ls::fast::Set::from_iter(" <> xs <> D.text ".iter().cloned())")
-  (SetMember, [x, s]) -> pure (s <> D.text ".contains(&" <> x <> D.text ")")
-  (SetInsert, [x, s]) -> pure (s <> D.text ".insert" <> paren x)
-  (SetRemove, [x, s]) -> pure (s <> D.text ".remove(&" <> x <> D.text ")")
-  (SetUnion, [s, t]) -> pure (s <> D.text ".union(&" <> t <> D.text ")")
-  (SetIntersection, [s, t]) -> pure (s <> D.text ".intersection(&" <> t <> D.text ")")
-  (SetDifference, [s, t]) -> pure (s <> D.text ".difference(&" <> t <> D.text ")")
+    pure (L.method m "to_list" [L.atom entry])
+  (SetOf, [xs]) | L.flat xs == Just "ls::fast::List::nil()" -> pure (L.call "ls::fast::Set::new" [])
+  (SetOf, [xs]) -> pure (L.call "ls::fast::Set::from_iter" [L.method (L.method xs "iter" []) "cloned" []])
+  (SetMember, [x, s]) -> pure (L.method s "contains" [borrow x])
+  (SetInsert, [x, s]) -> pure (L.method s "insert" [x])
+  (SetRemove, [x, s]) -> pure (L.method s "remove" [borrow x])
+  (SetUnion, [s, t]) -> pure (L.method s "union" [borrow t])
+  (SetIntersection, [s, t]) -> pure (L.method s "intersection" [borrow t])
+  (SetDifference, [s, t]) -> pure (L.method s "difference" [borrow t])
   _ -> lift (Left ("typed Rust: bad intrinsic " ++ show intrinsic))
 
-match :: Env -> Maybe (Int, [String]) -> Scope -> Expr -> [MatchCase] -> Type -> R D.Doc
+match :: Env -> Maybe (Int, [String]) -> Scope -> Expr -> [MatchCase] -> Type -> R L.Expr
 match env selfCall scope value cases _ = do
   let ty = expressionType value
       used c b = binderId b `elem` freeBinders (caseBody c)
@@ -661,8 +677,8 @@ match env selfCall scope value cases _ = do
       bound c names = do
         fields <- mapM (\n -> maybe (pure Nothing) (\_ -> Just <$> fresh "field") n) names
         b <- body c names
-        let clones = [D.text ("let " ++ n ++ " = " ++ f ++ ".clone();") | (Just n, Just f) <- zip names fields]
-        pure (map (maybe "_" id) fields, D.block 4 (D.joinWith D.hardline (clones ++ [b])))
+        let clones = [L.Let n (L.method (L.atom f) "clone" []) | (Just n, Just f) <- zip names fields]
+        pure (map (maybe "_" id) fields, L.letIn clones b)
   -- The matched value: a local is borrowed where it is; anything else is
   -- bound first.
   (subject, wrap) <- case expressionNode value of
@@ -670,43 +686,44 @@ match env selfCall scope value cases _ = do
     _ -> do
       v <- expression env Nothing scope value
       t <- fresh "matched"
-      pure (t, \doc -> D.block 4 (D.text ("let " ++ t ++ " = ") <> v <> D.text ";" <> D.hardline <> doc))
-  let matchOn scrutinee arms = wrap (D.text ("match " ++ scrutinee ++ " ") <> D.block 4 (D.joinWith D.hardline arms))
+      pure (t, \m -> L.Block [L.Let t v] (Just m))
+  let matchOn scrutinee arms = wrap (L.Match (L.atom scrutinee) arms)
+      arm p b = Arm p Nothing b
   case ty of
     Constructor "Maybe" _ -> do
       arms <- forM cases $ \c -> do
         names <- bindNames c
         (fields, b) <- bound c names
         pure $ case (idText (caseConstructor c), fields) of
-          ("Maybe::Absent", _) -> D.text "None => " <> b
-          (_, [f]) -> D.text ("Some(" ++ f ++ ") => ") <> b
-          _ -> D.text "_ => unreachable!(),"
+          ("Maybe::Absent", _) -> arm "None" b
+          (_, [f]) -> arm ("Some(" ++ f ++ ")") b
+          _ -> arm "_" (L.atom "unreachable!()")
       pure (matchOn ("&" ++ subject) arms)
     Constructor "Either" _ -> do
       arms <- forM cases $ \c -> do
         names <- bindNames c
         (fields, b) <- bound c names
         let side = if idText (caseConstructor c) == "Either::Left" then "Left" else "Right"
-        pure (D.text ("ls::Either::" ++ side ++ "(" ++ concat (take 1 fields) ++ ") => ") <> b)
+        pure (arm ("ls::Either::" ++ side ++ "(" ++ concat (take 1 fields) ++ ")") b)
       pure (matchOn ("&" ++ subject) arms)
     Constructor "List" _ -> do
       arms <- forM cases $ \c -> do
         names <- bindNames c
         (fields, b) <- bound c names
         pure $ case (idText (caseConstructor c), fields) of
-          ("List::Nil", _) -> D.text "None => " <> b
-          (_, [h, t]) -> D.text ("Some((" ++ h ++ ", " ++ t ++ ")) => ") <> b
-          _ -> D.text "_ => unreachable!(),"
-      pure (matchOn (subject ++ ".uncons()") arms)
+          ("List::Nil", _) -> arm "None" b
+          (_, [h, t]) -> arm ("Some((" ++ h ++ ", " ++ t ++ "))") b
+          _ -> arm "_" (L.atom "unreachable!()")
+      pure (wrap (L.Match (L.method (L.atom subject) "uncons" []) arms))
     _ | Just (kind, _) <- collectionArguments ty, [c] <- cases, [b] <- caseBinders c -> do
           items <- fresh (binderName b)
           converted <- if kind == "KeyVal"
             then do
               entry <- lift (entryOf env)
-              pure (D.text (subject ++ ".to_list(" ++ entry ++ ")"))
-            else pure (D.text (subject ++ ".to_list()"))
+              pure (L.method (L.atom subject) "to_list" [L.atom entry])
+            else pure (L.method (L.atom subject) "to_list" [])
           rest <- expression env selfCall ((binderId b, items) : scope) (caseBody c)
-          pure (wrap (D.block 4 (D.text ("let " ++ items ++ " = ") <> converted <> D.text ";" <> D.hardline <> rest)))
+          pure (wrap (L.letIn [L.Let items converted] rest))
     Constructor n _ | Just d <- M.lookup n (envData env) -> do
       let name = envPrefix env ++ envNames env M.! n
       if fieldless d
@@ -714,7 +731,7 @@ match env selfCall scope value cases _ = do
           arms <- forM cases $ \c -> do
             b <- body c []
             con <- lift (maybe (Left "typed Rust: unknown constructor") (Right . snd) (M.lookup (caseConstructor c) (envConstructors env)))
-            pure (D.text (name ++ "::" ++ variantName con ++ " => ") <> D.block 4 b)
+            pure (arm (name ++ "::" ++ variantName con) b)
           pure (matchOn subject arms)
         else do
           arms <- forM cases $ \c -> do
@@ -723,7 +740,7 @@ match env selfCall scope value cases _ = do
             con <- lift (maybe (Left "typed Rust: unknown constructor") (Right . snd) (M.lookup (caseConstructor c) (envConstructors env)))
             let patternText = name ++ "Node::" ++ variantName con ++
                   (if null names then "" else "(" ++ intercalate ", " fields ++ ")")
-            pure (D.text (patternText ++ " => ") <> b)
+            pure (arm patternText b)
           pure (matchOn ("&*" ++ subject ++ ".0") arms)
     _ -> lift (Left ("typed Rust: cannot match on " ++ show ty))
 
@@ -781,28 +798,31 @@ publicDoc env declarations d = do
       line = D.text
       field f = rustIdentifier (binderName f)
       variant c = rustIdentifier (constructorName c)
+      count c = length (constructorFields c)
   native <- Native.rustDataTypeWithParameters declarations nativeParams (Constructor (idText (dataId d)) [TypeArgument (TypeVariable p) | p <- dataParameters d])
   let base = takeWhile (/= '<') native
       single = length variants == 1
       nativeOf c = if single then base else base ++ "::" ++ variant c
-      nativeRecord c values = nativeOf c ++ (if null (constructorFields c) then "" else " { " ++ intercalate ", " [field f ++ ": " ++ v | (f, v) <- zip (constructorFields c) values] ++ " }")
+      nativeRecord c values = L.struct (nativeOf c) [(field f, v) | (f, v) <- zip (constructorFields c) values]
       typedOf c values
-        | fieldless d = name ++ "::" ++ variantName c
-        | otherwise = name ++ "(std::sync::Arc::new(" ++ node ++ "::" ++ variantName c ++ (if null values then "" else "(" ++ intercalate ", " values ++ ")") ++ "))"
+        | fieldless d = L.atom (name ++ "::" ++ variantName c)
+        | otherwise = L.call name [L.call "std::sync::Arc::new" [if null values then L.atom (node ++ "::" ++ variantName c) else L.call (node ++ "::" ++ variantName c) values]]
       typedPattern c = if fieldless d then name ++ "::" ++ variantName c
-        else node ++ "::" ++ variantName c ++ (if null (constructorFields c) then "" else "(" ++ intercalate ", " ["f" ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ ")")
-      toArm c = line (typedPattern c ++ " => " ++ nativeRecord c ["f" ++ show k ++ ".to_native()" | k <- [0 .. length (constructorFields c) - 1]] ++ ",")
-      fromArm c = line (nativeRecord c [ "f" ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ " => " ++
-        typedOf c ["ls::fast::Public::from_native(f" ++ show k ++ ")" | k <- [0 .. length (constructorFields c) - 1]] ++ ",")
+        else node ++ "::" ++ variantName c ++ (if count c == 0 then "" else "(" ++ intercalate ", " ["f" ++ show k | k <- [0 .. count c - 1]] ++ ")")
+      toArm c = Arm (typedPattern c) Nothing (nativeRecord c [L.method (L.atom ("f" ++ show k)) "to_native" [] | k <- [0 .. count c - 1]])
+      -- The native record's pattern binds each field to f0, f1, ...
+      fromPattern c = nativeRecord c [L.atom ("f" ++ show k) | k <- [0 .. count c - 1]]
+      fromArm c = ArmOf (fromPattern c) Nothing (typedOf c [L.call "ls::fast::Public::from_native" [L.atom ("f" ++ show k)] | k <- [0 .. count c - 1]])
       scrutinee = if null variants then "*self" else if fieldless d then "self" else "&*self.0"
   pure (line ("impl" ++ bounded ++ " ls::fast::Public for " ++ name ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
     [ line ("type Native = " ++ native ++ ";")
-    , line "fn to_native(&self) -> Self::Native " <> D.block 4 (line ("match " ++ scrutinee ++ " ") <> D.block 4 (D.joinWith D.hardline (map toArm variants)))
-    , line "fn from_native(native: Self::Native) -> Self " <> D.block 4 (line "match native " <> D.block 4 (D.joinWith D.hardline (map fromArm variants) <>
-        (if null variants then line "_ => unreachable!()," else mempty))) ]))
+    , L.function "fn to_native" ["&self"] "Self::Native" (L.expr (L.Match (L.atom scrutinee) (map toArm variants)))
+    , L.function "fn from_native" ["native: Self::Native"] "Self" (L.expr (L.Match (L.atom "native")
+        (map fromArm variants ++ [Arm "_" Nothing (L.atom "unreachable!()") | null variants]))) ]))
 
 -- | A name as RustData writes it: a keyword is a raw identifier.
 rustIdentifier :: String -> String
 rustIdentifier name
   | name `elem` words "as async await break const continue dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return static struct trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen union" = "r#" ++ name
   | otherwise = name
+

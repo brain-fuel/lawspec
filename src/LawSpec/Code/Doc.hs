@@ -6,6 +6,7 @@ module LawSpec.Code.Doc
   , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment
   , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
+  , fitsIndented, Preference(..), prefer
   ) where
 
 import Data.List (intersperse, sort)
@@ -37,7 +38,14 @@ data Doc
   | Prefixed String Doc
   | ParenthesiseIfFits Doc
   | Omittable [Doc] String Doc
+  | FitsIndented Int Int Doc Doc
+  | Prefer Preference Doc Doc Doc Doc
   deriving (Eq, Show)
+
+-- | How rustfmt chooses between a right-hand side on the same line and on
+-- the next: for a let's value, and for a match arm's body (which stays on
+-- the arm's line when it can be extended there).
+data Preference = NextLineValue | ArmBody Bool deriving (Eq, Show)
 
 -- | Compact removes optional layout only. Mandatory newlines and nesting remain
 -- meaningful for Python, Haskell, Go, line comments, and preprocessor directives.
@@ -350,6 +358,20 @@ bestFit ds = BestFit ds
 parenthesised :: Doc -> Doc
 parenthesised a = group (text "(" <> nest 4 (softbreak <> group a) <> softbreak <> text ")")
 
+-- | rustfmt: the first layout when a line of the given width fits at the
+-- current block's indentation plus an offset, else the second. rustfmt
+-- lays an argument out on a line of its own when it fits there.
+fitsIndented :: Int -> Int -> Doc -> Doc -> Doc
+fitsIndented = FitsIndented
+
+-- | rustfmt's choice of a right-hand side's line: the measured documents
+-- are the value itself after the same-line and next-line openings; the
+-- others are the complete layouts. The next line is preferred when the
+-- value fits on it alone, when it saves more than one line, or when the
+-- same line would end with an opening bracket the next line does not.
+prefer :: Preference -> Doc -> Doc -> Doc -> Doc -> Doc
+prefer = Prefer
+
 -- | The separator goes between documents, never after the last.
 joinWith :: Doc -> [Doc] -> Doc
 joinWith separator = mconcat . intersperse separator
@@ -458,6 +480,44 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               _ | mode == Flat || lastFits || firstFits -> line'
                 | otherwise -> withParens
         in layoutWork column ((indentation, mode, margin, chosen):rest)
+      Prefer preference sameValue nextValue sameLayout nextLayout ->
+        let standalone d = layoutWork column [(indentation, Broken, margin, d)]
+            sameText = standalone sameValue
+            nextText = dropWhile (== '\n') (standalone nextValue)
+            linesOf t = lines t
+            fitsAll startColumn t = and [ (if i == (0 :: Int) then startColumn else 0) + measure l <= margin | (i, l) <- zip [0 ..] (linesOf t) ]
+            sameFits = fitsAll column sameText
+            nextFits = fitsAll 0 nextText
+            newlines t = length (filter (== '\n') t)
+            firstEnds c t = case linesOf t of
+              l : _ -> not (null l) && last l == c
+              [] -> False
+            preferNext = '\n' `notElem` nextText || newlines sameText > newlines nextText + 1 ||
+              any (\c -> firstEnds c sameText && not (firstEnds c nextText)) ("({[" :: String)
+            firstFits = case linesOf sameText of
+              l : _ -> column + measure l <= margin
+              [] -> True
+            chosen = case layout of
+              Compact -> sameLayout
+              CompactTabs -> sameLayout
+              _ -> case preference of
+                NextLineValue
+                  | '\n' `notElem` sameText && sameFits -> sameLayout
+                  | nextFits && (not sameFits || preferNext) -> nextLayout
+                  | otherwise -> sameLayout
+                ArmBody extend
+                  | '\n' `notElem` sameText && sameFits -> sameLayout
+                  | nextFits && preferNext -> nextLayout
+                  | extend && firstFits -> sameLayout
+                  | '\n' `elem` sameText -> nextLayout
+                  | otherwise -> sameLayout
+        in layoutWork column ((indentation, mode, margin, chosen):rest)
+      FitsIndented offset width first second ->
+        let chosen = case layout of
+              Compact -> first
+              CompactTabs -> first
+              _ -> if indentation + offset + width <= margin then first else second
+        in layoutWork column ((indentation, mode, margin, chosen):rest)
       BestFit alternatives ->
         let chosen = case layout of
               Compact -> head alternatives
@@ -532,6 +592,9 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       WhenBroken a -> fits column (if mode == Broken then (indentation, mode, margin, a):rest else rest)
       Parens a -> fits column ((indentation, mode, margin, parenthesised a):rest)
       BestFit alternatives -> fits column ((indentation, mode, margin, head alternatives):rest)
+      Prefer _ _ _ sameLayout _ -> fits column ((indentation, mode, margin, sameLayout):rest)
+      FitsIndented offset width first second -> fits column ((indentation, mode, margin,
+        if indentation + offset + width <= margin then first else second):rest)
       Operation operands operators -> fits column ((indentation, mode, margin, parenthesised (operationBody operands operators)):rest)
       Prefixed operator operand -> fits column ((indentation, mode, margin, text (operator ++ " ") <> operand):rest)
       ParenthesiseIfFits a -> fits column ((indentation, mode, margin, a):rest)
@@ -578,6 +641,8 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
           WhenBroken a -> flat || line flat a
           Parens a -> line flat (parenthesised a)
           BestFit alternatives -> all (line flat) alternatives
+          FitsIndented _ _ first second -> line flat first && line flat second
+          Prefer _ _ _ first second -> line flat first && line flat second
           Operation operands operators -> line flat (parenthesised (operationBody operands operators))
           Prefixed _ operand -> line flat operand
           ParenthesiseIfFits a -> line flat a

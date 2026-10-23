@@ -29,7 +29,7 @@ stringLiteral = D.text . quoted
 -- takes one, so no temporary can hide a binder an expression reads.
 -- ref:DEC-readable-generated-names
 reservedLocals :: [String]
-reservedLocals = words "ctx args values case seeds base symbol strategy candidate refinement config result actual expected condition value context ls adapter ls_gen prior draws found pick installing left right accepted fields tag payload payload_member digits coefficient exponent numerator denominator native_result index_target check valid observe score search_case"
+reservedLocals = words "ctx args values case seeds base symbol strategy candidate refinement config result actual expected condition value context ls adapter ls_gen prior draws found pick installing left right accepted fields tag payload payload_member digits coefficient exponent numerator denominator native_result index_target check valid observe score search_case arguments schema checked predicate"
 
 -- | A binder's local: its source name, cased and escaped for Rust, made
 -- distinct from the temporaries and from every name already in scope.
@@ -147,12 +147,11 @@ scalarLiteral scalar = case scalar of
     inner <- scalarLiteral value
     pure (presenceValue name (Just inner))
   where
-    nativeInteger n = n >= negate (2 ^ (127 :: Int)) && n < 2 ^ (127 :: Int)
-    exact variant constructor (leftName,left) (rightName,right) =
+    exact variant constructor (leftName,left) (rightName,right)
+      | nativeInteger left && nativeInteger right = call ("ls::Value::" ++ variant) [call constructor [big left,big right]]
+      | otherwise =
       D.text ("ls::Value::" ++ variant ++ "(") <>
-      (if nativeInteger left && nativeInteger right
-        then call constructor [big left,big right]
-        else D.block 4 (D.hang 4 (D.text ("let " ++ leftName ++ " =")) (big left) <>
+      ( D.block 4 (D.hang 4 (D.text ("let " ++ leftName ++ " =")) (big left) <>
           D.text ";" <> D.hardline <>
           D.hang 4 (D.text ("let " ++ rightName ++ " =")) (big right) <>
           D.text ";" <> D.hardline <> call constructor [D.text leftName,D.text rightName])) <>
@@ -163,6 +162,10 @@ scalarLiteral scalar = case scalar of
       | otherwise = D.block 4 (D.hang 4 (D.text "let digits =") (stringLiteral (show n)) <>
           D.text ";" <> D.hardline <>
           D.text "ls::BigInt::parse_bytes(digits.as_bytes(), 10).unwrap()")
+
+-- | Whether an integer is written as a native i128.
+nativeInteger :: Integer -> Bool
+nativeInteger n = n >= negate (2 ^ (127 :: Int)) && n < 2 ^ (127 :: Int)
 
 -- | A named payload keeps nested presence states readable and evaluates each
 -- payload exactly once, including Symbol fixture lookups.
@@ -265,14 +268,20 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
         let builtin = idText tag `elem` ["List::Nil","List::Cons","Maybe::Absent","Maybe::Present","Either::Left","Either::Right"]
             construct entries = call (if builtin then "ls::construct" else "ls::construct_data")
               [D.text (quoted (idText tag)),vector entries] <> if builtin then D.text "?" else mempty
-            simple field = case expressionNode field of
+            -- A field made without statements is written in place.
+            inline field = case expressionNode field of
+              Constant (SInteger _ n) -> nativeInteger n
+              Constant (SDecimal c e) -> nativeInteger c && nativeInteger e
+              Constant (SRational n d) -> nativeInteger n && nativeInteger d
+              Constant (SPresent _ _) -> False
               Constant _ -> True
               Local _ -> True
+              Construct _ inner -> all inline inner
               _ -> False
             locals = ["constructor_field_" ++ show i | i <- [0 :: Int .. length fields - 1]]
         -- Preserve evaluation order and keep block-valued fields out of vec!
         -- argument layouts, whose packing rules differ from ordinary calls.
-        pure (if all simple fields then construct values else D.block 4
+        pure (if all inline fields then construct values else D.block 4
           (D.joinWith D.hardline
             ([D.hang 4 (D.text ("let " ++ name ++ " =")) value <> D.text ";" |
               (name,value) <- zip locals values] ++ [construct (map D.text locals)])))

@@ -170,7 +170,8 @@ emitRustSchema bits layout declarations = do
       [ Doc.text "/// The program's data schema, built once." <> Doc.hardline <>
         Doc.text "pub fn schema() -> ls::Result<&'static ls::Schema> " <> Doc.block 4 (Doc.joinWith Doc.hardline
           [ Doc.text "static SCHEMA: std::sync::OnceLock<ls::Result<ls::Schema>> = std::sync::OnceLock::new();"
-          , Doc.text "SCHEMA.get_or_init(build).as_ref().map_err(|error| error.clone())" ])
+          , Doc.text "SCHEMA" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
+              (map Doc.text [".get_or_init(build)", ".as_ref()", ".map_err(|error| error.clone())"])) ])
       , Doc.text "fn build() -> ls::Result<ls::Schema> " <> Doc.block 4 factory ]) <> Doc.hardline))
   where
     variable (TypeVariable _) = True
