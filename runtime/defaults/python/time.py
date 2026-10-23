@@ -2,6 +2,7 @@
 """The default handler of lawspec.time's Clock: the system clock, kept from
 going back by a monotonic clock. An Instant is microseconds since
 1970-01-01T00:00:00Z."""
+
 import time as _time
 
 import lawspec_data as data
@@ -35,4 +36,5 @@ def register_clock() -> None:
     ls.register_clock_ability(
         now=lambda handler: handler.now().value,
         sleep=lambda handler, micros: handler.sleep(ls.timedelta(microseconds=micros)),
-        real_time=lambda handler: isinstance(handler, ClockHandler))
+        real_time=lambda handler: isinstance(handler, ClockHandler),
+    )

@@ -11,6 +11,7 @@ A secret key's bytes are its seed: d || z (64 bytes) for ML-KEM-768 (FIPS 203,
 ML-KEM.KeyGen_internal) and xi (32 bytes) for ML-DSA-65 (FIPS 204,
 ML-DSA.KeyGen_internal). Public keys, ciphertexts and signatures are the
 standards' encodings."""
+
 import builtins as _builtins
 import hashlib as _hashlib
 import os as _os
@@ -26,12 +27,15 @@ def _cryptography():
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         from cryptography.exceptions import InvalidSignature, InvalidTag
     except ImportError as error:
-        raise ImportError("lawspec.crypto's default handlers need the cryptography package: "
-                          "python -m pip install cryptography") from error
+        raise ImportError(
+            "lawspec.crypto's default handlers need the cryptography package: "
+            "python -m pip install cryptography"
+        ) from error
     return mlkem, mldsa, AESGCM, InvalidSignature, InvalidTag
 
 
 # FIPS 202.
+
 
 def sha3_256(message: bytes) -> bytes:
     return _hashlib.sha3_256(message).digest()
@@ -43,6 +47,7 @@ def shake256(message: bytes, length: int) -> bytes:
 
 # FIPS 203: ML-KEM-768. A secret key is the seed d || z.
 
+
 def ml_kem_768_key_pair_from_seed(seed: bytes) -> tuple[bytes, bytes]:
     mlkem = _cryptography()[0]
     key = mlkem.MLKEM768PrivateKey.from_seed_bytes(seed)
@@ -52,7 +57,9 @@ def ml_kem_768_key_pair_from_seed(seed: bytes) -> tuple[bytes, bytes]:
 def ml_kem_768_encapsulate(public_key: bytes) -> tuple[bytes, bytes]:
     """The ciphertext and the shared secret."""
     mlkem = _cryptography()[0]
-    secret, ciphertext = mlkem.MLKEM768PublicKey.from_public_bytes(public_key).encapsulate()
+    secret, ciphertext = mlkem.MLKEM768PublicKey.from_public_bytes(
+        public_key
+    ).encapsulate()
     return ciphertext, secret
 
 
@@ -62,6 +69,7 @@ def ml_kem_768_decapsulate(seed: bytes, ciphertext: bytes) -> bytes:
 
 
 # FIPS 204: ML-DSA-65. A secret key is the seed xi.
+
 
 def ml_dsa_65_public_key(seed: bytes) -> bytes:
     mldsa = _cryptography()[1]
@@ -74,7 +82,9 @@ def ml_dsa_65_sign(seed: bytes, message: bytes, context: bytes = b"") -> bytes:
     return key.sign(message, context) if context else key.sign(message)
 
 
-def ml_dsa_65_verify(public_key: bytes, message: bytes, signature: bytes, context: bytes = b"") -> bool:
+def ml_dsa_65_verify(
+    public_key: bytes, message: bytes, signature: bytes, context: bytes = b""
+) -> bool:
     mldsa, invalid = _cryptography()[1], _cryptography()[3]
     try:
         key = mldsa.MLDSA65PublicKey.from_public_bytes(public_key)
@@ -90,7 +100,10 @@ def ml_dsa_65_verify(public_key: bytes, message: bytes, signature: bytes, contex
 # AES-256-GCM: a sealed message is the 12-byte nonce, the ciphertext and the
 # 16-byte tag.
 
-def aes_256_gcm_encrypt(key: bytes, nonce: bytes, plaintext: bytes, associated: bytes) -> bytes:
+
+def aes_256_gcm_encrypt(
+    key: bytes, nonce: bytes, plaintext: bytes, associated: bytes
+) -> bytes:
     AESGCM = _cryptography()[2]
     return AESGCM(key).encrypt(nonce, plaintext, associated)
 
@@ -132,7 +145,7 @@ class _Address:
         return _Address(self.bytes)
 
     def _set(self, offset, size, value):
-        self.bytes[offset:offset + size] = value.to_bytes(size, "big")
+        self.bytes[offset : offset + size] = value.to_bytes(size, "big")
 
     def layer(self, value):
         self._set(0, 4, value)
@@ -189,7 +202,9 @@ def _chain(x, start, steps, seed, adrs):
 def _wots_digits(message):
     digits = _base_2b(message, _LGW, _LEN1)
     checksum = sum(_W - 1 - d for d in digits) << ((8 - (_LEN2 * _LGW) % 8) % 8)
-    return digits + _base_2b(checksum.to_bytes((_LEN2 * _LGW + 7) // 8, "big"), _LGW, _LEN2)
+    return digits + _base_2b(
+        checksum.to_bytes((_LEN2 * _LGW + 7) // 8, "big"), _LGW, _LEN2
+    )
 
 
 def _wots_secret(sk_seed, pk_seed, adrs, i):
@@ -229,7 +244,11 @@ def _wots_public_from_signature(signature, message, pk_seed, adrs):
     values = []
     for i, digit in enumerate(_wots_digits(message)):
         adrs.chain(i)
-        values.append(_chain(signature[i * _N:(i + 1) * _N], digit, _W - 1 - digit, pk_seed, adrs))
+        values.append(
+            _chain(
+                signature[i * _N : (i + 1) * _N], digit, _W - 1 - digit, pk_seed, adrs
+            )
+        )
     return _wots_compress(pk_seed, adrs, values)
 
 
@@ -256,11 +275,11 @@ def _xmss_sign(message, sk_seed, index, pk_seed, adrs):
 def _xmss_public_from_signature(index, signature, message, pk_seed, adrs):
     adrs.type_and_clear(_WOTS_HASH)
     adrs.key_pair(index)
-    node = _wots_public_from_signature(signature[:_LEN * _N], message, pk_seed, adrs)
+    node = _wots_public_from_signature(signature[: _LEN * _N], message, pk_seed, adrs)
     adrs.type_and_clear(_TREE)
     tree_index = index
     for k in range(_HP):
-        sibling = signature[(_LEN + k) * _N:(_LEN + k + 1) * _N]
+        sibling = signature[(_LEN + k) * _N : (_LEN + k + 1) * _N]
         adrs.tree_height(k + 1)
         if (index >> k) % 2 == 0:
             tree_index //= 2
@@ -297,13 +316,21 @@ def _ht_sign(message, sk_seed, pk_seed, tree, leaf):
 def _ht_verify(message, signature, pk_seed, tree, leaf, pk_root):
     adrs = _Address()
     adrs.tree(tree)
-    node = _xmss_public_from_signature(leaf, signature[:_XMSS_BYTES], message, pk_seed, adrs)
+    node = _xmss_public_from_signature(
+        leaf, signature[:_XMSS_BYTES], message, pk_seed, adrs
+    )
     for j in range(1, _D):
         leaf = tree % (1 << _HP)
         tree >>= _HP
         adrs.layer(j)
         adrs.tree(tree)
-        node = _xmss_public_from_signature(leaf, signature[j * _XMSS_BYTES:(j + 1) * _XMSS_BYTES], node, pk_seed, adrs)
+        node = _xmss_public_from_signature(
+            leaf,
+            signature[j * _XMSS_BYTES : (j + 1) * _XMSS_BYTES],
+            node,
+            pk_seed,
+            adrs,
+        )
     return node == pk_root
 
 
@@ -333,7 +360,11 @@ def _fors_sign(digest, sk_seed, pk_seed, adrs):
     for i, index in enumerate(_base_2b(digest, _A, _K)):
         parts.append(_fors_secret(sk_seed, pk_seed, adrs, (i << _A) + index))
         for j in range(_A):
-            parts.append(_fors_node(sk_seed, (i << (_A - j)) + ((index >> j) ^ 1), j, pk_seed, adrs))
+            parts.append(
+                _fors_node(
+                    sk_seed, (i << (_A - j)) + ((index >> j) ^ 1), j, pk_seed, adrs
+                )
+            )
     return b"".join(parts)
 
 
@@ -344,9 +375,9 @@ def _fors_public_from_signature(signature, digest, pk_seed, adrs):
         adrs.tree_height(0)
         tree_index = (i << _A) + index
         adrs.tree_index(tree_index)
-        node = _shake(pk_seed, adrs.raw(), signature[offset:offset + _N])
+        node = _shake(pk_seed, adrs.raw(), signature[offset : offset + _N])
         for j in range(_A):
-            sibling = signature[offset + (j + 1) * _N:offset + (j + 2) * _N]
+            sibling = signature[offset + (j + 1) * _N : offset + (j + 2) * _N]
             adrs.tree_height(j + 1)
             if (index >> j) % 2 == 0:
                 tree_index //= 2
@@ -365,16 +396,22 @@ def _fors_public_from_signature(signature, digest, pk_seed, adrs):
 
 def _digest_indices(r, pk_seed, pk_root, message):
     digest = _shake(r, pk_seed, pk_root, message, length=_M)
-    md = digest[:(_K * _A + 7) // 8]
+    md = digest[: (_K * _A + 7) // 8]
     tree_bytes = (_H - _H // _D + 7) // 8
     leaf_bytes = (_H // _D + 7) // 8
     start = (_K * _A + 7) // 8
-    tree = int.from_bytes(digest[start:start + tree_bytes], "big") % (1 << (_H - _H // _D))
-    leaf = int.from_bytes(digest[start + tree_bytes:start + tree_bytes + leaf_bytes], "big") % (1 << (_H // _D))
+    tree = int.from_bytes(digest[start : start + tree_bytes], "big") % (
+        1 << (_H - _H // _D)
+    )
+    leaf = int.from_bytes(
+        digest[start + tree_bytes : start + tree_bytes + leaf_bytes], "big"
+    ) % (1 << (_H // _D))
     return md, tree, leaf
 
 
-def slh_dsa_key_pair(sk_seed: bytes, sk_prf: bytes, pk_seed: bytes) -> tuple[bytes, bytes]:
+def slh_dsa_key_pair(
+    sk_seed: bytes, sk_prf: bytes, pk_seed: bytes
+) -> tuple[bytes, bytes]:
     """slh_keygen_internal: the public key and the secret key."""
     adrs = _Address()
     adrs.layer(_D - 1)
@@ -382,8 +419,12 @@ def slh_dsa_key_pair(sk_seed: bytes, sk_prf: bytes, pk_seed: bytes) -> tuple[byt
     return pk_seed + root, sk_seed + sk_prf + pk_seed + root
 
 
-def slh_dsa_sign_internal(message: bytes, secret_key: bytes, randomness: bytes) -> bytes:
-    sk_seed, sk_prf, pk_seed, pk_root = (secret_key[i * _N:(i + 1) * _N] for i in range(4))
+def slh_dsa_sign_internal(
+    message: bytes, secret_key: bytes, randomness: bytes
+) -> bytes:
+    sk_seed, sk_prf, pk_seed, pk_root = (
+        secret_key[i * _N : (i + 1) * _N] for i in range(4)
+    )
     r = _shake(sk_prf, randomness, message)
     md, tree, leaf = _digest_indices(r, pk_seed, pk_root, message)
     adrs = _Address()
@@ -395,7 +436,9 @@ def slh_dsa_sign_internal(message: bytes, secret_key: bytes, randomness: bytes) 
     return r + fors + _ht_sign(fors_public, sk_seed, pk_seed, tree, leaf)
 
 
-def slh_dsa_verify_internal(message: bytes, signature: bytes, public_key: bytes) -> bool:
+def slh_dsa_verify_internal(
+    message: bytes, signature: bytes, public_key: bytes
+) -> bool:
     if len(signature) != SLH_DSA_SIGNATURE_BYTES or len(public_key) != 2 * _N:
         return False
     pk_seed, pk_root = public_key[:_N], public_key[_N:]
@@ -414,17 +457,24 @@ def _pure(message, context):
     return bytes([0, len(context)]) + context + message
 
 
-def slh_dsa_sign(secret_key: bytes, message: bytes, context: bytes = b"", deterministic: bool = False) -> bytes:
+def slh_dsa_sign(
+    secret_key: bytes, message: bytes, context: bytes = b"", deterministic: bool = False
+) -> bytes:
     """slh_sign: hedged with fresh randomness, or deterministic (PK.seed)."""
-    randomness = secret_key[2 * _N:3 * _N] if deterministic else _os.urandom(_N)
+    randomness = secret_key[2 * _N : 3 * _N] if deterministic else _os.urandom(_N)
     return slh_dsa_sign_internal(_pure(message, context), secret_key, randomness)
 
 
-def slh_dsa_verify(public_key: bytes, message: bytes, signature: bytes, context: bytes = b"") -> bool:
-    return len(context) < 256 and slh_dsa_verify_internal(_pure(message, context), signature, public_key)
+def slh_dsa_verify(
+    public_key: bytes, message: bytes, signature: bytes, context: bytes = b""
+) -> bool:
+    return len(context) < 256 and slh_dsa_verify_internal(
+        _pure(message, context), signature, public_key
+    )
 
 
 # The handlers.
+
 
 class HashHandler:
     """SHA3-256 and SHAKE256."""
@@ -441,13 +491,17 @@ class KeyExchangeHandler:
 
     def exchangeKeyPair(self) -> @@ExchangeKeyPair@@:
         public, secret = ml_kem_768_key_pair_from_seed(_os.urandom(64))
-        return @@ExchangeKeyPair@@(@@ExchangePublicKey@@(public), @@ExchangeSecretKey@@(secret))
+        return @@ExchangeKeyPair@@(
+            @@ExchangePublicKey@@(public), @@ExchangeSecretKey@@(secret)
+        )
 
     def encapsulate(self, value0: @@ExchangePublicKey@@) -> @@Encapsulated@@:
         ciphertext, secret = ml_kem_768_encapsulate(value0.value)
         return @@Encapsulated@@(@@Ciphertext@@(ciphertext), @@SharedSecret@@(secret))
 
-    def decapsulate(self, value0: @@ExchangeSecretKey@@, value1: @@Ciphertext@@) -> @@SharedSecret@@:
+    def decapsulate(
+        self, value0: @@ExchangeSecretKey@@, value1: @@Ciphertext@@
+    ) -> @@SharedSecret@@:
         return @@SharedSecret@@(ml_kem_768_decapsulate(value0.value, value1.value))
 
 
@@ -456,12 +510,21 @@ class SignatureHandler:
 
     def signingKeyPair(self) -> @@SigningKeyPair@@:
         seed = _os.urandom(32)
-        return @@SigningKeyPair@@(@@VerifyingKey@@(ml_dsa_65_public_key(seed)), @@SigningKey@@(seed))
+        return @@SigningKeyPair@@(
+            @@VerifyingKey@@(ml_dsa_65_public_key(seed)), @@SigningKey@@(seed)
+        )
 
-    def sign(self, value0: @@SigningKey@@, value1: _builtins.bytes) -> @@SignatureBytes@@:
+    def sign(
+        self, value0: @@SigningKey@@, value1: _builtins.bytes
+    ) -> @@SignatureBytes@@:
         return @@SignatureBytes@@(ml_dsa_65_sign(value0.value, value1))
 
-    def verify(self, value0: @@VerifyingKey@@, value1: _builtins.bytes, value2: @@SignatureBytes@@) -> _builtins.bool:
+    def verify(
+        self,
+        value0: @@VerifyingKey@@,
+        value1: _builtins.bytes,
+        value2: @@SignatureBytes@@,
+    ) -> _builtins.bool:
         return ml_dsa_65_verify(value0.value, value1, value2.value)
 
 
@@ -471,13 +534,22 @@ class SlhDsaSignatureHandler:
     "native": ["lawspec", "crypto", "SlhDsaSignatureHandler"]}."""
 
     def signingKeyPair(self) -> @@SigningKeyPair@@:
-        public, secret = slh_dsa_key_pair(_os.urandom(_N), _os.urandom(_N), _os.urandom(_N))
+        public, secret = slh_dsa_key_pair(
+            _os.urandom(_N), _os.urandom(_N), _os.urandom(_N)
+        )
         return @@SigningKeyPair@@(@@VerifyingKey@@(public), @@SigningKey@@(secret))
 
-    def sign(self, value0: @@SigningKey@@, value1: _builtins.bytes) -> @@SignatureBytes@@:
+    def sign(
+        self, value0: @@SigningKey@@, value1: _builtins.bytes
+    ) -> @@SignatureBytes@@:
         return @@SignatureBytes@@(slh_dsa_sign(value0.value, value1))
 
-    def verify(self, value0: @@VerifyingKey@@, value1: _builtins.bytes, value2: @@SignatureBytes@@) -> _builtins.bool:
+    def verify(
+        self,
+        value0: @@VerifyingKey@@,
+        value1: _builtins.bytes,
+        value2: @@SignatureBytes@@,
+    ) -> _builtins.bool:
         return slh_dsa_verify(value0.value, value1, value2.value)
 
 
@@ -487,14 +559,22 @@ class AeadHandler:
     def aeadKey(self) -> @@AeadKey@@:
         return @@AeadKey@@(_os.urandom(32))
 
-    def deriveAeadKey(self, value0: @@SharedSecret@@, value1: _builtins.bytes) -> @@AeadKey@@:
+    def deriveAeadKey(
+        self, value0: @@SharedSecret@@, value1: _builtins.bytes
+    ) -> @@AeadKey@@:
         return @@AeadKey@@(shake256(value0.value + value1, 32))
 
-    def seal(self, value0: @@AeadKey@@, value1: _builtins.bytes, value2: _builtins.bytes) -> @@Sealed@@:
+    def seal(
+        self, value0: @@AeadKey@@, value1: _builtins.bytes, value2: _builtins.bytes
+    ) -> @@Sealed@@:
         nonce = _os.urandom(12)
-        return @@Sealed@@(nonce + aes_256_gcm_encrypt(value0.value, nonce, value1, value2))
+        return @@Sealed@@(
+            nonce + aes_256_gcm_encrypt(value0.value, nonce, value1, value2)
+        )
 
-    def unseal(self, value0: @@AeadKey@@, value1: @@Sealed@@, value2: _builtins.bytes) -> _schema.Maybe[_builtins.bytes]:
+    def unseal(
+        self, value0: @@AeadKey@@, value1: @@Sealed@@, value2: _builtins.bytes
+    ) -> _schema.Maybe[_builtins.bytes]:
         sealed = value1.value
         opened = aes_256_gcm_decrypt(value0.value, sealed[:12], sealed[12:], value2)
         return _schema.Absent() if opened is None else _schema.Present(opened)
