@@ -79,7 +79,8 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
       let bodyText = D.render D.Compact (D.joinWith D.hardline bodies)
           uses w = w `elem` words (map (\c -> if isAlphaNum c then c else ' ') bodyText)
           environment' = [d | (d, w) <- zip environment ["schema", "machineBits"], uses w]
-          rendered = D.render D.Compact (D.joinWith D.hardline (environment' ++ bodies))
+          -- Re-exported names count as used.
+          rendered = exports ++ " " ++ D.render D.Compact (D.joinWith D.hardline (environment' ++ bodies))
           imports = Definitions.moduleImports rendered (candidates extra ++ unqualified)
       in Artifact ("src/" ++ map (\c -> if c == '.' then '/' else c) name ++ ".hs")
       (D.render layout (D.joinWith D.hardline (map D.text

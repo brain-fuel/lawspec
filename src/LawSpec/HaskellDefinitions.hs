@@ -36,7 +36,7 @@ import LawSpec.Typed.Plan (TypedPlan(..), isTypedHandler, isContextual)
 moduleNames :: [String]
 moduleNames = targetKeywords "haskell" ++ words
   "schema machineBits symbols state start current result checkedResult pair next nativeResult value \
-  \typed native inner failure subject steps"
+  \typed native inner failure subject steps argument" ++ ["argument" ++ show i | i <- [1 .. 9 :: Int]]
 
 -- | Each definition's and spec handler's function, named after it, unique
 -- across the bodies and workflows modules.

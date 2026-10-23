@@ -4,13 +4,15 @@
 module LawSpecTesting (assertEqual, check, holds, holdsFor) where
 
 import Control.Exception (SomeException, catch, displayException)
+import Data.Char (chr)
+import Data.List (intercalate)
 import qualified Hedgehog
 import qualified Hedgehog.Internal.Config as Config
 import qualified Hedgehog.Internal.Region as Region
 import qualified Hedgehog.Internal.Report as Report
 import qualified Hedgehog.Internal.Runner as Runner
 import qualified Hedgehog.Internal.Seed as Seed
-import LawSpecRuntime (Scalar)
+import LawSpecRuntime (Scalar (..))
 import qualified LawSpecRuntime as LS
 import qualified System.Environment as Environment
 import Test.Hspec (expectationFailure, shouldBe)
@@ -27,9 +29,9 @@ assertEqual context actual expected = catch action handler
           expectationFailure $
             context
               ++ " | actual="
-              ++ show actual
+              ++ shown actual
               ++ " expected="
-              ++ show expected
+              ++ shown expected
               ++ LS.difference actual expected
     handler :: SomeException -> IO ()
     handler e = expectationFailure (context ++ " | " ++ displayException e)
@@ -62,3 +64,18 @@ holdsFor :: Int -> Hedgehog.PropertyT IO () -> IO ()
 holdsFor tests body = do
   passed <- check (Hedgehog.withTests (fromIntegral tests) (Hedgehog.property body))
   passed `shouldBe` True
+
+-- | A value as a reader writes it: text as a string, lists and data with
+-- their parts.
+shown :: Scalar -> String
+shown value = case value of
+  SSequence "Text" units -> show (map chr units)
+  SList items -> "[" ++ intercalate ", " (map shown items) ++ "]"
+  SData tag fields -> unwords (tag : map parenthesised fields)
+  SInteger _ n -> show n
+  SBool b -> show b
+  _ -> show value
+  where
+    parenthesised field = case field of
+      SData _ (_ : _) -> "(" ++ shown field ++ ")"
+      _ -> shown field

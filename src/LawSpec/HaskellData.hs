@@ -486,7 +486,10 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
       ("Data.Int", Just "I", Nothing), ("Data.Word", Just "W", Nothing), ("Data.Text", Just "T", Nothing),
       ("Data.ByteString", Just "B", Nothing), ("Data.Complex", Just "C", Nothing),
       ("LawSpecDataCodecs", Just "Canonical", Nothing)] ++
-     [(m, Just m, Nothing) | m <- imports])
+     [case words i of
+        [m, "as", alias] -> (m, Just alias, Nothing)
+        _ -> (i, Just i, Nothing)
+     | i <- imports])
     (definitions' ++ dynamic))
   where
     sdata tag fields = H.call "LS.SData" [H.string tag, H.List fields]
