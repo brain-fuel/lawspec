@@ -152,7 +152,7 @@ emit minify bits datas units = do
           start = jvmTypedStart typed (C.handlerId h)
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
-        function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (jvmTypedFunction typed clause)
+        function <- maybe (Left ("untyped clause " ++ C.idText clause)) (Right . KotlinLayout.escapedPath) (jvmTypedFunction typed clause)
         s <- signature op ty
         let (args, result) = C.functionType ty
         argumentCodecs <- mapM codec args

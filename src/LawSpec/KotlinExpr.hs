@@ -201,7 +201,7 @@ renderExpressionIn scope@(schema, width) declarations local external = render
       _ -> [e]
     branch matched = do
       body <- render (caseBody matched)
-      let bindings = [D.text ("val " ++ local (binderId binder) ++ " = fields[" ++ show index ++ "]")
+      let bindings = [L.bind (local (binderId binder)) (D.group (D.text "fields[" <> D.nest 4 (D.softbreak <> D.text (show index ++ "]"))))
             | (index,binder) <- zip [0::Int ..] (caseBinders matched)]
       pure (quoted (idText (caseConstructor matched)) <> D.text " -> " <>
         D.block 4 (D.joinWith D.hardline (bindings ++ [body])))

@@ -355,12 +355,12 @@ object Crypto {
 
     /** AES-256-GCM, a fresh random nonce per message. */
     class AeadHandler : lawspec.abilities.lawspec.Crypto.Aead {
-        override fun aeadKey(): @@AeadKey@@=@@AeadKey@@(randomBytes(32))
+        override fun aeadKey(): @@AeadKey@@ = @@AeadKey@@(randomBytes(32))
 
         override fun deriveAeadKey(
             value0: @@SharedSecret@@,
             value1: kotlin.ByteArray,
-        ): @@AeadKey@@=@@AeadKey@@(shake256(value0.value + value1, 32))
+        ): @@AeadKey@@ = @@AeadKey@@(shake256(value0.value + value1, 32))
 
         override fun seal(
             value0: @@AeadKey@@,

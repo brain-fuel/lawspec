@@ -80,7 +80,7 @@ emit minify bits datas units = do
     interface a = do
       methods <- mapM (\(op, ty) -> (<> line ";") <$> signature op ty) (C.abilityOperations a)
       pure (javadoc 98 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
-        line ("public interface " ++ interfaceName a ++ "") <> D.hardline <> D.block 2 (D.joinWith D.hardline methods))
+        line ("public interface " ++ interfaceName a ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline) methods))
     codec ty = Native.javaCodecDocWithContext (line "symbols") datas bits ty
     -- A Java type as a type argument: primitives boxed.
     boxed t = case D.render D.Compact t of

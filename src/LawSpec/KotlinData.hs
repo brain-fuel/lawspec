@@ -200,7 +200,7 @@ emitKotlinDataWithProfile bits layout declarations = do
               flatClass = D.render D.Compact dataClass
               inheriting = case superDoc of
                 Nothing -> dataClass
-                Just s | '\n' `notElem` flatClass -> D.bestFit [D.text flatClass <> D.text " : " <> s,
+                Just s | '\n' `notElem` flatClass -> D.bestFit [D.text (flatClass ++ " : " ++ D.render D.Compact s),
                   D.prefixChoice (flatClass ++ " :") (D.text (flatClass ++ " :") <> D.nest 4 (D.hardline <> s))
                     (dataClass <> inherits)]
                 Just _ -> dataClass <> inherits
@@ -374,7 +374,7 @@ emitCodecs mappings owner layout declarations = do
           variable i = C.TypeArgument (C.TypeVariable (C.Id ("dynamic" ++ show i)))
           caseFor key ty = do
             doc <- codecDocUsingOwner ("schema", "bits") owner (Just (D.text "symbols")) names arguments ty
-            pure (D.text (show key ++ " -> ") <> doc)
+            pure (D.group (D.text (show key ++ " ->") <> D.nest 4 (D.softline <> doc)))
       dataCases <- mapM (\d -> caseFor (C.idText (C.dataId d))
         (C.Constructor (C.idText (C.dataId d)) [variable i | i <- [0 .. length (C.dataParameters d) - 1]])) declarations
       structural <- mapM (\(name, arity) -> caseFor name (C.Constructor name [variable i | i <- [0 .. arity - 1]]))
@@ -382,11 +382,12 @@ emitCodecs mappings owner layout declarations = do
       scalars <- fmap concat $ mapM (\p -> if nativeRepresentation "kotlin" (primitiveName p) == Nothing then pure []
         else (: []) <$> caseFor (primitiveName p) (C.Constructor (primitiveName p) [])) primitives
       pure (D.text "@Suppress(\"UNCHECKED_CAST\")" <> D.hardline <>
-        D.text "fun dynamic(schema: LawSpecSchema, bits: Int, symbols: MutableMap<String, Any>, type: LawSpecSchema.Named): Codec<Any?> " <>
-        D.block 4 (D.text "val arguments = type.arguments().map { dynamic(schema, bits, symbols, it as LawSpecSchema.Named) }" <> D.hardline <>
+        KotlinLayout.callWith (D.text "fun dynamic") (map D.text ["schema: LawSpecSchema", "bits: Int", "symbols: MutableMap<String, Any>", "type: LawSpecSchema.Named"]) <>
+        D.text ": Codec<Any?> " <>
+        D.block 4 (KotlinLayout.bind "arguments" (D.text "type.arguments().map { dynamic(schema, bits, symbols, it as LawSpecSchema.Named) }") <> D.hardline <>
           D.text "return when (type.name()) " <> D.block 4 (D.joinWith D.hardline
             (dataCases ++ structural ++ scalars ++ [D.text "else -> schema.supported(type, bits, symbols)"])) <>
-          D.text " as Codec<Any?>"))
+          D.nest 4 (D.hardline <> D.text "as Codec<Any?>")))
     mapping declaration = find ((== C.dataId declaration) . C.dataId . resolvedDeclaration) mappings
     nativeOwner declaration name = maybe ("lawspec.data." ++ name)
       (intercalate "." . referenceParts . resolvedNativeType) (mapping declaration)
@@ -417,7 +418,8 @@ emitCodecs mappings owner layout declarations = do
          D.text ("return schema.codec<" ++ handleType ++ ">(") <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
            [D.text "type", D.text "bits", D.text "symbols",
             D.text "{ value -> LawSpecRuntime.handle(LawSpecSchema.key(type), value) }",
-            D.text ("{ value -> LawSpecRuntime.handleTarget(value)" ++ (if handleType == "kotlin.Any" then "" else " as " ++ handleType) ++ " }")] <>
+            KotlinLayout.lambda ["value"] [D.group (D.text "LawSpecRuntime.handleTarget(value)" <>
+              (if handleType == "kotlin.Any" then mempty else D.nest 4 (D.softline <> D.text ("as " ++ handleType))))]] <>
             D.text ",") <> D.hardline <> D.text ")"))
       where handleType = maybe "kotlin.Any" id (C.dataNative declaration)
     definition names declaration = do

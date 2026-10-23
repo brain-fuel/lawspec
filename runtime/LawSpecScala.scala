@@ -16,6 +16,10 @@ object LawSpecScala:
   /** A fresh, empty symbols map. */
   def symbols(): Symbols = java.util.HashMap[String, Object]()
 
+  /** The handler installed in symbols for an ability, as its trait. */
+  def handler[T](symbols: Symbols, ability: String): T =
+    LawSpecRuntime.handler(symbols, ability).asInstanceOf[T]
+
   /** The value of an operation that fails with E, natively an Either: a Left
     * becomes the failure the law sees, as LawSpecRuntime.Fail does for the
     * other JVM targets.

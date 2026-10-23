@@ -5,14 +5,27 @@
 -- lines, a declaration broken after its =, and a chained call broken
 -- before its dot. Strings are Kotlin literals ($ escaped) and never split.
 module LawSpec.KotlinLayout
-  ( kotlinString, operators, call, callThen, selects, castCall, cast, callWith, arguments, lambda, trailing, trailingCall, bind, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
+  ( kotlinString, escapedPath, operators, call, callThen, selects, castCall, cast, callWith, arguments, lambda, trailing, trailingCall, bind, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
+import LawSpec.CallText (CallTree(..), parseCall)
 
 kotlinStyle :: D.Layout
 kotlinStyle = D.PrettyPoints 100
+
+-- | A Java name as Kotlin writes it: a segment that is a Kotlin keyword
+-- (LawSpecTyped.fun) in backticks.
+escapedPath :: String -> String
+escapedPath = joinDots . map escape . splitOn
+  where
+    escape s | s `elem` words "as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while" = "`" ++ s ++ "`"
+             | otherwise = s
+    splitOn s = case break (== '.') s of
+      (a, []) -> [a]
+      (a, _ : b) -> a : splitOn b
+    joinDots = foldr1 (\a b -> a ++ "." ++ b)
 
 -- | A string literal.
 kotlinString :: String -> D.Doc
@@ -31,8 +44,11 @@ callThen name values suffix = case break (== '.') (reverse name) of
   (method@(_ : _), '.' : receiver@(_ : _)) | not (null values) ->
     -- (Flat, a best fit takes the first; broken, the opening decides.)
     D.bestFit [callWith (D.text name) values <> suffix, D.prefixChoice (name ++ "(") (callWith (D.text name) values <> suffix)
-      (D.text package <> D.nest 4 (mconcat [D.hardline <> D.text ('.' : c) | c <- classes] <> D.hardline <> callWith (D.text ('.' : reverse method)) values <> suffix))]
+      (receiverDoc <> D.nest 4 (D.hardline <> callWith (D.text ('.' : reverse method)) values <> suffix))]
     where
+      -- The receiver stays whole when it fits on the line.
+      receiverDoc = if null classes then D.text package
+        else D.bestFit [D.text (reverse receiver), D.text package <> D.nest 4 (mconcat [D.hardline <> D.text ('.' : c) | c <- classes])]
       segments = splitDots (reverse receiver)
       (lower, upper) = span startsLower segments
       (package, classes) = case (lower, upper) of
@@ -113,11 +129,18 @@ chain receiver methods = D.group (D.nest 4 (receiver' <> mconcat [D.softbreak <>
     flat = D.render D.Compact receiver
     receiver' = case qualifiedCall flat of
       Just (owner, method, args) ->
-        let broken = D.text owner <> D.softbreak <> callWith (D.text ('.' : method)) (map D.text args)
+        let broken = D.text owner <> D.softbreak <> callWith (D.text ('.' : method)) (map argument args)
+            argument a = maybe (D.text a) rebuilt (parseCall a)
+            rebuilt tree = case tree of
+              Atom t -> D.text t
+              Apply n as -> call n (map rebuilt as)
         in if take 1 owner `elem` map pure ['a' .. 'z'] && '.' `notElem` owner then broken
            -- A constant (SCHEMA) is a value, not a class: its call keeps its dot.
            else if all (\c -> c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c == '_') owner then receiver
-           else D.bestFit [D.text flat, broken]
+           -- A class's call keeps its dot when its opening fits, and breaks
+           -- its arguments; otherwise it breaks before its method.
+           else D.bestFit [D.text flat, D.prefixChoice (owner ++ "." ++ method ++ "(")
+             (D.text owner <> callWith (D.text ('.' : method)) (map argument args)) broken]
       Nothing -> receiver
 
 -- | Owner.method(a, b) in one line's text: the owner, method and arguments.
@@ -167,7 +190,7 @@ qualifiedCall text
 castCall :: String -> [D.Doc] -> String -> D.Doc
 castCall name values target = D.prefixChoice ("(" ++ flat)
   (D.text "(" <> call name values <> D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text target))) <> D.text ")")
-  (D.text "(" <> callThen name values (D.text (" as " ++ target ++ ")")))
+  (D.text "(" <> callThen name values (D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text target))) <> D.text ")"))
   where flat = D.render D.Compact (call name values)
 
 -- | (value as T), broken before the as when it does not fit.

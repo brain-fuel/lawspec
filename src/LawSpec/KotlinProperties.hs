@@ -415,8 +415,8 @@ emitTests Config{..} unit laws = do
                 -- their own fields' generators and the checked schema boundary.
                 scalar = case inputRange machineBits input of
                   Nothing -> scalarGenerators
-                  Just range -> L.lambda ["type"] [D.group (text "if (type == " <> quoted (typeKey ty) <> text ")" <>
-                      D.nest 4 (D.softline <> generatorWithin (Just range) ty) <> D.softline <>
+                  Just range -> L.lambda ["type"] [D.group (D.group (text "if (type == " <> quoted (typeKey ty) <> text ")" <>
+                      D.nest 4 (D.softline <> generatorWithin (Just range) ty)) <> D.softline <>
                       text "else " <> call "LawSpecScalars.generator" [text "type", text "MACHINE_BITS"])]
                 strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
                   value:_ -> call "Arb.constant" [call "LawSpecKotlinStrategies.Checked" [expr value,text "null"]]

@@ -23,6 +23,7 @@ import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.ScalaData as ScalaData
+import LawSpec.ScalaText (scalaText)
 import LawSpec.DataNames (isProduct, caseNames)
 import LawSpec.Time (isDurationType)
 import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmMethod)
@@ -1173,7 +1174,7 @@ scalaHelper env kind index ty = do
   body <- if kind == "toNative" then scalaToNative env ty else scalaFromNative env ty
   let name = kind ++ show index
       (parameter, result) = if kind == "toNative" then ("x: " ++ t, n) else ("n: " ++ n, t)
-      signature = D.group (D.text ("def " ++ name ++ "(") <> D.nest 4 (D.softbreak <> D.text parameter) <> D.softbreak <> D.text ("): " ++ result))
+      signature = D.group (D.text ("def " ++ name ++ "(") <> D.nest 4 (D.softbreak <> scalaText parameter) <> D.softbreak <> D.text "): " <> scalaText result)
   pure (signature <> D.text " = " <> D.block 2 (D.joinWith D.hardline body))
 
 -- | A typed form, in Scala's syntax: java.lang's names qualified.
@@ -1198,39 +1199,39 @@ scalaNative env = ScalaData.scalaDataType (envDeclarations env)
 
 scalaToNative :: Env -> Type -> M [D.Doc]
 scalaToNative env ty = case ty of
-  Constructor "Bool" [] -> pure [D.text "x.booleanValue"]
-  Constructor "Text" [] -> pure [D.text "x"]
-  Constructor "Integer" [] -> pure [D.text "scala.math.BigInt(x)"]
-  Constructor "Unit" [] -> pure [D.text "()"]
-  Constructor "Bytes" [] -> pure [D.text "scala.IArray.unsafeFromArray(x.toArray())"]
-  Constructor n [] | isFixed ty -> pure [D.text ("x.longValue" ++ fromMaybe "" (lookup n [("Int8", ".toByte"), ("Int16", ".toShort"), ("Int32", ".toInt"), ("UInt8", ".toShort"), ("UInt16", ".toInt")]))]
+  Constructor "Bool" [] -> pure [scalaText "x.booleanValue"]
+  Constructor "Text" [] -> pure [scalaText "x"]
+  Constructor "Integer" [] -> pure [scalaText "scala.math.BigInt(x)"]
+  Constructor "Unit" [] -> pure [scalaText "()"]
+  Constructor "Bytes" [] -> pure [scalaText "scala.IArray.unsafeFromArray(x.toArray())"]
+  Constructor n [] | isFixed ty -> pure [scalaText ("x.longValue" ++ fromMaybe "" (lookup n [("Int8", ".toByte"), ("Int16", ".toShort"), ("Int32", ".toInt"), ("UInt8", ".toShort"), ("UInt16", ".toInt")]))]
   Constructor "List" [TypeArgument a] -> do
     c <- helper "toNative" a
     na <- lift' (scalaNative env a)
-    pure [ D.text ("val out = scala.collection.immutable.List.newBuilder[" ++ na ++ "]")
-         , D.text ("x.forEach(item => out += " ++ c ++ "(item))")
-         , D.text "out.result()" ]
+    pure [ scalaText ("val out = scala.collection.immutable.List.newBuilder[" ++ na ++ "]")
+         , scalaText ("x.forEach(item => out += " ++ c ++ "(item))")
+         , scalaText "out.result()" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "toNative" a
-    pure [D.text ("if (x.isPresent) scala.Some(" ++ c ++ "(x.get)) else scala.None")]
+    pure [scalaText ("if (x.isPresent) scala.Some(" ++ c ++ "(x.get))"), scalaText "else scala.None"]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "toNative" a
     cr <- helper "toNative" b
-    pure [D.text ("if (x.isLeft) scala.util.Left(" ++ cl ++ "(x.left)) else scala.util.Right(" ++ cr ++ "(x.right))")]
+    pure [scalaText ("if (x.isLeft) scala.util.Left(" ++ cl ++ "(x.left))"), scalaText ("else scala.util.Right(" ++ cr ++ "(x.right))")]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "toNative" k
         cv <- helper "toNative" v
         nk <- lift' (scalaNative env k)
         nv <- lift' (scalaNative env v)
-        pure [ D.text ("val out = scala.collection.immutable.ListMap.newBuilder[" ++ nk ++ ", " ++ nv ++ "]")
-             , D.text ("x.forEach((k, v) => out += ((" ++ ck ++ "(k), " ++ cv ++ "(v))))")
-             , D.text "out.result()" ]
+        pure [ scalaText ("val out = scala.collection.immutable.ListMap.newBuilder[" ++ nk ++ ", " ++ nv ++ "]")
+             , scalaText ("x.forEach((k, v) => out += ((" ++ ck ++ "(k), " ++ cv ++ "(v))))")
+             , scalaText "out.result()" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
         c <- helper "toNative" a
         na <- lift' (scalaNative env a)
-        pure [ D.text ("val out = scala.collection.immutable.ListSet.newBuilder[" ++ na ++ "]")
-             , D.text ("x.toList().forEach(item => out += " ++ c ++ "(item))")
-             , D.text "out.result()" ]
+        pure [ scalaText ("val out = scala.collection.immutable.ListSet.newBuilder[" ++ na ++ "]")
+             , scalaText ("x.toList().forEach(item => out += " ++ c ++ "(item))")
+             , scalaText "out.result()" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         typedName = envPrefix env ++ envNames env M.! n
@@ -1247,56 +1248,60 @@ scalaToNative env ty = case ty of
           | singleton c = nativeCase c
           | otherwise = nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric) ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ ScalaData.escaped (fieldName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if fieldless d
-      then pure [ D.text "x match " <> D.block 2 (D.joinWith D.hardline
-                    [D.text ("case " ++ typedName ++ "." ++ variantName env d c ++ " => " ++ made "" c []) | c <- dataConstructors d]) ]
+      then pure [ scalaText "x match " <> D.block 2 (D.joinWith D.hardline
+                    [scalaText ("case " ++ typedName ++ "." ++ variantName env d c ++ " => " ++ made "" c []) | c <- dataConstructors d]) ]
       else if isProductType d
-        then let c = firstOf (dataConstructors d) in pure [D.text (made "x." c (firstOf converters))]
-        else pure [ D.text "x.tag match " <> D.block 2 (D.joinWith D.hardline
+        then let c = firstOf (dataConstructors d) in pure [scalaText (made "x." c (firstOf converters))]
+        else pure [ scalaText "x.tag match " <> D.block 2 (D.joinWith D.hardline
                       ([ D.text ("case " ++ show k ++ " => ") <> D.block 2 (D.joinWith D.hardline
-                           ([D.text ("val y = x.asInstanceOf[" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "]") | not (null (constructorFields c))] ++
-                            [D.text (made "y." c cs)]))
+                           ([scalaText ("val y = x.asInstanceOf[" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "]") | not (null (constructorFields c))] ++
+                            [scalaText (made "y." c cs)]))
                        | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ] ++
-                       [D.text "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
+                       [scalaText "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
   _ -> lift' (Left ("typed Scala: no native conversion for " ++ show ty))
 
 scalaFromNative :: Env -> Type -> M [D.Doc]
 scalaFromNative env ty = case ty of
-  Constructor "Bool" [] -> pure [D.text "java.lang.Boolean.valueOf(n)"]
-  Constructor "Text" [] -> pure [D.text "n"]
-  Constructor "Integer" [] -> pure [D.text "n.bigInteger"]
-  Constructor "Unit" [] -> pure [D.text "lawspec.runtime.LawSpecFast.Unit.UNIT"]
-  Constructor "Bytes" [] -> pure [D.text "lawspec.runtime.LawSpecFast.Bytes(scala.IArray.genericWrapArray(n).toArray)"]
-  _ | isFixed ty -> pure [D.text "java.lang.Long.valueOf(n.toLong)"]
+  Constructor "Bool" [] -> pure [scalaText "java.lang.Boolean.valueOf(n)"]
+  Constructor "Text" [] -> pure [scalaText "n"]
+  Constructor "Integer" [] -> pure [scalaText "n.bigInteger"]
+  Constructor "Unit" [] -> pure [scalaText "lawspec.runtime.LawSpecFast.Unit.UNIT"]
+  Constructor "Bytes" [] -> pure [scalaText "lawspec.runtime.LawSpecFast.Bytes(scala.IArray.genericWrapArray(n).toArray)"]
+  _ | isFixed ty -> pure [scalaText "java.lang.Long.valueOf(n.toLong)"]
   Constructor "List" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- scalaTyped env a
-    pure [ D.text ("var out = lawspec.runtime.LawSpecFast.List.nil[" ++ at ++ "]()")
-         , D.text ("n.reverseIterator.foreach(item => out = lawspec.runtime.LawSpecFast.List.cons(" ++ c ++ "(item), out))")
-         , D.text "out" ]
+    pure [ scalaText ("var out = lawspec.runtime.LawSpecFast.List.nil[" ++ at ++ "]()")
+         , scalaText ("n.reverseIterator.foreach(item => out = lawspec.runtime.LawSpecFast.List.cons(" ++ c ++ "(item), out))")
+         , scalaText "out" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- scalaTyped env a
-    pure [D.text ("n match { case scala.Some(v) => lawspec.runtime.LawSpecFast.Maybe.present[" ++ at ++ "](" ++ c ++ "(v)); case scala.None => lawspec.runtime.LawSpecFast.Maybe.absent[" ++ at ++ "]() }")]
+    pure [scalaText "n match " <> D.block 2 (D.joinWith D.hardline
+      [ scalaText ("case scala.Some(v) => lawspec.runtime.LawSpecFast.Maybe.present[" ++ at ++ "](" ++ c ++ "(v))")
+      , scalaText ("case scala.None => lawspec.runtime.LawSpecFast.Maybe.absent[" ++ at ++ "]()") ])]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "fromNative" a
     cr <- helper "fromNative" b
     lt <- scalaTyped env a
     rt <- scalaTyped env b
-    pure [D.text ("n match { case scala.util.Left(v) => lawspec.runtime.LawSpecFast.Either.left[" ++ lt ++ ", " ++ rt ++ "](" ++ cl ++ "(v)); case scala.util.Right(v) => lawspec.runtime.LawSpecFast.Either.right[" ++ lt ++ ", " ++ rt ++ "](" ++ cr ++ "(v)) }")]
+    pure [scalaText "n match " <> D.block 2 (D.joinWith D.hardline
+      [ scalaText ("case scala.util.Left(v) => lawspec.runtime.LawSpecFast.Either.left[" ++ lt ++ ", " ++ rt ++ "](" ++ cl ++ "(v))")
+      , scalaText ("case scala.util.Right(v) => lawspec.runtime.LawSpecFast.Either.right[" ++ lt ++ ", " ++ rt ++ "](" ++ cr ++ "(v))") ])]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "fromNative" k
         cv <- helper "fromNative" v
         kt <- scalaTyped env k
         vt <- scalaTyped env v
-        pure [ D.text ("var out = lawspec.runtime.LawSpecFast.Map.empty[" ++ kt ++ ", " ++ vt ++ "]()")
-             , D.text ("n.foreach((k, v) => out = out.put(" ++ ck ++ "(k), " ++ cv ++ "(v)))")
-             , D.text "out" ]
+        pure [ scalaText ("var out = lawspec.runtime.LawSpecFast.Map.empty[" ++ kt ++ ", " ++ vt ++ "]()")
+             , scalaText ("n.foreach((k, v) => out = out.put(" ++ ck ++ "(k), " ++ cv ++ "(v)))")
+             , scalaText "out" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
         c <- helper "fromNative" a
         at <- scalaTyped env a
-        pure [ D.text ("var out = lawspec.runtime.LawSpecFast.Set.empty[" ++ at ++ "]()")
-             , D.text ("n.foreach(item => out = out.insert(" ++ c ++ "(item)))")
-             , D.text "out" ]
+        pure [ scalaText ("var out = lawspec.runtime.LawSpecFast.Set.empty[" ++ at ++ "]()")
+             , scalaText ("n.foreach(item => out = out.insert(" ++ c ++ "(item)))")
+             , scalaText "out" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         typedName = envPrefix env ++ envNames env M.! n
@@ -1317,8 +1322,8 @@ scalaFromNative env ty = case ty of
         pattern c | singleton c = nativeCase c
                   | otherwise = "y: " ++ nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric ++ " @unchecked")
     if isProduct d
-      then let c = firstOf (dataConstructors d) in pure [D.text (made "n." c (firstOf converters))]
-      else pure [ D.text "(n: Any) match " <> D.block 2 (D.joinWith D.hardline
-                    ([D.text ("case " ++ pattern c ++ " => " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters] ++
-                     [D.text "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
+      then let c = firstOf (dataConstructors d) in pure [scalaText (made "n." c (firstOf converters))]
+      else pure [ scalaText "(n: Any) match " <> D.block 2 (D.joinWith D.hardline
+                    ([scalaText ("case " ++ pattern c ++ " => " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters] ++
+                     [scalaText "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
   _ -> lift' (Left ("typed Scala: no native conversion for " ++ show ty))

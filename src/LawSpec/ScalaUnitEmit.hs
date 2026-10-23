@@ -91,8 +91,9 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     -- logical domain.
     scNativeResult ty value | ty == Named "Integer" = ScalaExpr.call "LawSpecScalaCodecs.integer" [value, Doc.text "MachineBits"]
     scNativeResult ty value = ScalaLayout.chain (codecOf ty) [("encode", [value])]
-    scHandler ability = Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey ability) ++ ").asInstanceOf[" ++
-      scInterface ability ++ "]")
+    scHandler ability = ScalaExpr.call ("LawSpecScala.handler[" ++ scInterface ability ++ "]") [Doc.text "symbols", ScalaExpr.quoted (C.abilityKey ability)]
+    -- params => body, the body on its own line when it does not fit.
+    arrow params body = Doc.group (Doc.text (params ++ " =>") <> Doc.nest 2 (Doc.softline <> body))
     -- An ability's pieces are its owner's: the trait, the production handler
     -- (in the owner's adapter object) and the recording.
     scInterface ability = maybe "Any" (\a -> ScalaAbilities.abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability)
@@ -111,31 +112,31 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         let native = java (ScalaData.scalaDataType dataDeclarations failure)
             mapped = [ ScalaExpr.call "LawSpecRuntime.MappedFailure"
                          [Doc.text ("classOf[" ++ intercalate "." (C.failureNative b) ++ "]"),
-                          Doc.text "(error: Throwable) => " <>
+                          arrow "(error: Throwable)" (
                             scConstruct failure (C.idText (C.failureConstructor b))
-                              (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (Doc.text "java.util.Objects.toString(error.getMessage, \"\")")) b)]
+                              (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (Doc.text "java.util.Objects.toString(error.getMessage, \"\")")) b))]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in ScalaExpr.call "LawSpecRuntime.nativeFailures"
-             ([ScalaExpr.quoted (C.abilityKey ability), Doc.text "(nativeValue: Object) => " <> scNativeResult failure (Doc.text ("nativeValue.asInstanceOf[" ++ native ++ "]")),
-               Doc.text "() => " <> call] ++ mapped)
+             ([ScalaExpr.quoted (C.abilityKey ability), arrow "(nativeValue: Object)" (scNativeResult failure (Doc.text ("nativeValue.asInstanceOf[" ++ native ++ "]"))),
+               arrow "()" call] ++ mapped)
       _ -> call
     orFail failing value = if null failing then value else ScalaExpr.call "LawSpecScala.orFail" [value]
-    installs e = [Doc.text ("val " ++ sharedVar h ++ " = " ++ constructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h))) | h <- sharedOf e] ++
+    installs e = [ScalaLayout.bind (sharedVar h) (constructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h))) | h <- sharedOf e] ++
       installing e (earlyHandlers e)
     lateInstalls e = installing e (lateHandlers e)
     installing e chosen = case chosen of
       [] -> []
       _ -> [ScalaExpr.call "LawSpecRuntime.installHandlers" [Doc.text "symbols", handlerMap (lawMaking e) chosen]]
     handlerMap making chosen = ScalaExpr.call "java.util.Map.of[String, Object]"
-      (concat [[ScalaExpr.quoted (C.abilityKey a), Doc.text (constructHandler making a c)] | (a, c) <- chosen])
+      (concat [[ScalaExpr.quoted (C.abilityKey a), constructHandler making a c] | (a, c) <- chosen])
     constructHandler making@(shared, resourceOf) a c = case c of
-      C.ProductionHandler | Just ps <- abilityNamed a >>= C.abilityNative -> intercalate "." ps ++ "(" ++ madeWith ++ ")"
-      C.ProductionHandler -> maybe "Unknown" production (abilityNamed a) ++ "(" ++ madeWith ++ ")"
-      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> sharedVar x
-      C.SpecHandler h -> ScalaAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
-      C.RecordingHandler inner -> maybe "Unknown" (\x -> ScalaAbilities.abilitiesObjectOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a) ++
-        "(" ++ constructHandler making a inner ++ ", symbols)"
-      where madeWith = maybe "" (\(t, local) -> Doc.render Doc.Compact (scNativeArgument t (Doc.text local))) (resourceOf a c)
+      C.ProductionHandler | Just ps <- abilityNamed a >>= C.abilityNative -> ScalaExpr.call (intercalate "." ps) madeWith
+      C.ProductionHandler -> ScalaExpr.call (maybe "Unknown" production (abilityNamed a)) madeWith
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> Doc.text (sharedVar x)
+      C.SpecHandler h -> ScalaExpr.call (ScalaAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h)) [Doc.text "symbols"]
+      C.RecordingHandler inner -> ScalaExpr.call (maybe "Unknown" (\x -> ScalaAbilities.abilitiesObjectOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a))
+        [constructHandler making a inner, Doc.text "symbols"]
+      where madeWith = maybe [] (\(t, local) -> [scNativeArgument t (Doc.text local)]) (resourceOf a c)
     scExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (ScalaExpr.call evaluator (Doc.text "symbols" : values))
@@ -146,20 +147,20 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       C.Perform op args ->
         let failing = operationFailure op
         in Right (failingAs failing
-          (scNativeResult (expressionType term) (orFail failing (scHandler (C.operationAbility op) <> ScalaExpr.call ("." ++ ScalaData.escaped (C.operationName op))
-            [scNativeArgument ty v | (ty,v) <- zip (map expressionType args) values]))))
+          (scNativeResult (expressionType term) (orFail failing (ScalaLayout.chain (scHandler (C.operationAbility op)) [(ScalaData.escaped (C.operationName op),
+            [scNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])]))))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = Doc.text "(value: LawSpecRuntime.Value) => " <> scConstruct (expressionType term) tag [scChecked ty (Doc.text "value")]
-          in Right (ScalaExpr.call "LawSpecRuntime.attempt" [ScalaExpr.quoted (C.abilityKey ability), Doc.text "() => " <> body,
+          let side tag ty = arrow "(value: LawSpecRuntime.Value)" (scConstruct (expressionType term) tag [scChecked ty (Doc.text "value")])
+          in Right (ScalaExpr.call "LawSpecRuntime.attempt" [ScalaExpr.quoted (C.abilityKey ability), arrow "()" body,
             side "Either::Right" result, side "Either::Left" failure])
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
               Nothing -> Doc.text "null"
-              Just xs -> Doc.text "(recorded: java.util.List[LawSpecRuntime.Value]) => " <> Doc.joinWith (Doc.text " && ")
-                [scEqual (expressionType a) (Doc.text ("recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
-        in Right (ScalaExpr.call "LawSpecRuntime.countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey (C.operationAbility op)) ++ ")"),
+              Just xs -> arrow "(recorded: java.util.List[LawSpecRuntime.Value])" (ScalaLayout.conjunction
+                [scEqual (expressionType a) (Doc.text ("recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)])
+        in Right (ScalaExpr.call "LawSpecRuntime.countCalls" [ScalaExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", ScalaExpr.quoted (C.abilityKey (C.operationAbility op))],
           ScalaExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
         let callee = declarationName identity
@@ -174,7 +175,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (ScalaExpr.call "LawSpecRuntime.withHandlers" [Doc.text "symbols",
-          handlerMap plainMaking [(ability, choice)], Doc.text "() => " <> body])
+          handlerMap plainMaking [(ability, choice)], arrow "()" body])
       _ -> Left "expected checked Scala external call"
     valueLiteral value = case value of
       V.ScalarValue scalarValue -> either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right

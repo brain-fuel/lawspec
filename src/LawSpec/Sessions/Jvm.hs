@@ -23,6 +23,7 @@ import LawSpec.ScalaData (scalaCodecDocWithContext, scalaCodecDocIn, scalaDataTy
 import qualified LawSpec.ScalaLayout as SL
 import qualified LawSpec.KotlinLayout as KL
 import LawSpec.JvmNames (javadoc)
+import qualified LawSpec.JavaExpr as E
 import LawSpec.MachineSpec (describe)
 import LawSpec.Scalar (isInteger)
 
@@ -156,12 +157,11 @@ networkSource target bits datas sessions session = do
     , "  {"
     , "    var symbols = new java.util.HashMap<String, Object>();" ] ++
     [ "    var codec" ++ show i ++ " = " ++ c ++ ";" | not kotlin, (i, c, _) <- codecs ] ++
-    [ "    return new LawSpecRuntime.Wire("
-    , "        java.util.List.of(" ++ intercalate ", "
-        ["new LawSpecRuntime.Step(" ++ (if sends then "true" else "false") ++ ", LawSpecRuntime.descriptor(" ++ show d ++ "))" | (sends, d, _) <- parts] ++ "),"
-    , "        java.util.Arrays.<Object>asList(" ++ intercalate ", " (map partDoc (zip [0 ..] parts)) ++ "),"
-    , "        TYPES);"
-    , "  }"
+    wrapAt 4 (D.text "return " <> E.call "new LawSpecRuntime.Wire"
+      [ E.call "java.util.List.of" [E.call "new LawSpecRuntime.Step" [D.text (if sends then "true" else "false"), E.call "LawSpecRuntime.descriptor" [D.text (show d)]] | (sends, d, _) <- parts]
+      , E.call "java.util.Arrays.<Object>asList" (map (D.text . partDoc) (zip [0 ..] parts))
+      , D.text "TYPES" ] <> D.text ";") ++
+    [ "  }"
     , ""
     , "  /**"
     , "   * The first end of a channel named name on node, which another node dials at {node"
@@ -171,8 +171,8 @@ networkSource target bits datas sessions session = do
     , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name)"
     , "  {"
     , "    var w = wire();"
-    , "    return new First." ++ first ++ "(new LawSpecRuntime.NativeChannel(node.listen(name, w.steps(), w.values()), w.parts()));"
-    , "  }"
+    ] ++ wrapAt 4 (D.text "return " <> E.call ("new First." ++ first) [E.call "new LawSpecRuntime.NativeChannel" [D.text "node.listen(name, w.steps(), w.values())", D.text "w.parts()"]] <> D.text ";") ++
+    [ "  }"
     , ""
     , "  /** The second end of the channel listening at address on another node. */"
     , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address)"
@@ -183,8 +183,8 @@ networkSource target bits datas sessions session = do
     , "    {"
     , "      steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
     , "    }"
-    , "    return new Second." ++ second ++ "(new LawSpecRuntime.NativeChannel(node.dial(address, steps, w.values()), w.parts()));"
-    , "  }" ], kotlinFile)
+    ] ++ wrapAt 4 (D.text "return " <> E.call ("new Second." ++ second) [E.call "new LawSpecRuntime.NativeChannel" [D.text "node.dial(address, steps, w.values())", D.text "w.parts()"]] <> D.text ";") ++
+    [ "  }" ], kotlinFile)
   where
     scalaConversions name codecs = do
       functions <- mapM (\(i, _, t) -> do
@@ -326,8 +326,7 @@ protocolSource datas sessions network session = do
                     , "      }" ]
                 | otherwise =
                     [ ""
-                    , "      /** Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up. */"
-                    ] ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
+                    ] ++ jdoc 6 ("Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up.") ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
                     [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive()"
                     , "      {"
                     , "        LawSpecRuntime.claimEnd(used);"
@@ -338,8 +337,8 @@ protocolSource datas sessions network session = do
                 (if stepSends s then "sends " else "receives ") ++ described ++ "."
               abandon =
                 [ ""
-                , "      /** Gives up the conversation: the other end's receives throw PeerFailed after what was sent. */"
-                , "      public void abandon()"
+                ] ++ jdoc 6 "Gives up the conversation: the other end's receives throw PeerFailed after what was sent." ++
+                [ "      public void abandon()"
                 , "      {"
                 , "        LawSpecRuntime.claimEnd(used);"
                 , "        channel.abandon(" ++ show side ++ ");"
@@ -353,6 +352,14 @@ protocolSource datas sessions network session = do
       Nothing -> do
         boxed <- shorten <$> javaDataType datas t
         pure (boxed, maybe boxed id (lookup boxed unboxed), "value")
+
+-- | A Javadoc comment at an indentation, wrapped within 100 columns.
+jdoc :: Int -> String -> [String]
+jdoc indent text = wrapAt indent (javadoc (100 - indent) text)
+
+-- | A document's lines at an indentation, laid out within 100 columns.
+wrapAt :: Int -> D.Doc -> [String]
+wrapAt indent doc = map (replicate indent ' ' ++) (lines (D.render (D.Pretty (100 - indent)) doc))
 
 article :: String -> String
 article word | '\'' `elem` word = word

@@ -203,7 +203,7 @@ emitJavaDataWithProfile bits layout declarations = do
         [only] | isProduct declaration -> record names parameters ("public record " ++ name) args Nothing only
         _ -> do
           mapM_ (identifier . caseOf) variants
-          body <- D.joinWith D.hardline <$> mapM (\v -> do
+          body <- D.joinWith (D.hardline <> D.hardline) <$> mapM (\v -> do
             -- A GADT case is generic in the parameters it leaves open and in
             -- its existentials, and implements the interface it refines to.
             -- A field-only existential is an Object; its witness names its type.

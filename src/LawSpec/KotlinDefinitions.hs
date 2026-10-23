@@ -127,7 +127,7 @@ emitKotlinDefinitions layout bits declarations units = do
     -- method (in the shared JVM code) between the conversions.
     definition d
       | Right typed <- typedJvm
-      , Just function <- jvmTypedFunction typed (declarationId (definitionDeclaration d))
+      , Just function <- KotlinLayout.escapedPath <$> jvmTypedFunction typed (declarationId (definitionDeclaration d))
       , not (isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d)))
       , let (args, result) = functionType (declarationType (definitionDeclaration d))
       , result /= scalarType "Unit"

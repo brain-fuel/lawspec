@@ -12,6 +12,7 @@ module LawSpec.ScalaLayout
 
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
+import LawSpec.CallText (CallTree(..), parseCall)
 
 scalaStyle :: D.Layout
 scalaStyle = D.PrettyPoints 80
@@ -22,7 +23,12 @@ scalaString = D.text . literalFor "scala"
 
 -- | name(a, b), or broken one argument a line.
 call :: String -> [D.Doc] -> D.Doc
-call name = callWith (D.text name)
+call name values = case break (== '.') (reverse name) of
+  -- A method with type arguments (Codecs.scalar[T]) is a chain to scalafmt:
+  -- it breaks before the method when the call does not fit.
+  (method@(_ : _), '.' : owner@(_ : _)) | '[' `elem` method, '[' `notElem` owner, not (null values) ->
+    D.group (D.text (reverse owner) <> D.nest 2 (D.softbreak <> callWith (D.text ('.' : reverse method)) values))
+  _ -> callWith (D.text name) values
 
 callWith :: D.Doc -> [D.Doc] -> D.Doc
 callWith name [] = name <> D.text "()"
@@ -70,9 +76,13 @@ chain receiver methods
     (path, applied) = break (== '(') flat
     qualified = not (null applied) && '\n' `notElem` flat && last flat == ')' && all (\c -> c `elem` ("._" :: String) || c `elem` ['a'..'z'] || c `elem` ['A'..'Z'] || c `elem` ['0'..'9']) path
     calls = length methods + (if not (null applied) then 1 else 0)
-    start = case break (== '.') (reverse path) of
-      (method@(_ : _), '.' : owner@(_ : _)) | qualified -> D.text (reverse owner) <> D.nest 2 (D.softbreak <> D.text ('.' : reverse method ++ applied))
+    start = case (break (== '.') (reverse path), parseCall flat) of
+      ((method@(_ : _), '.' : owner@(_ : _)), Just (Apply _ args)) | qualified ->
+        D.text (reverse owner) <> D.nest 2 (D.softbreak <> call ('.' : reverse method) (map rebuilt args))
       _ -> receiver
+    rebuilt tree = case tree of
+      Atom t -> D.text t
+      Apply n args -> call n (map rebuilt args)
 
 -- | { ... } over statements.
 block :: [D.Doc] -> D.Doc

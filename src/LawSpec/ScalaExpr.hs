@@ -197,8 +197,8 @@ renderExpression declarations bits local external = render
         value <- render scrutinee
         ref <- reference (expressionType scrutinee)
         arms <- mapM branch branches
-        let fallback = D.text "case _ => throw " <> call "IllegalArgumentException"
-              [quoted "invalid checked match constructor"]
+        let fallback = D.text "case _ =>" <> D.nest 2 (D.hardline <> D.text "throw " <> call "IllegalArgumentException"
+              [quoted "invalid checked match constructor"])
             body = D.text "tag match " <> D.block 2 (D.joinWith D.hardline (arms ++ [fallback]))
         pure (D.multiline (call "LawSpecScalaCodecs.matching" [D.text schemaName,ref,value,width,D.text "symbols"] <>
           D.text " { (tag, fields) =>" <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"))

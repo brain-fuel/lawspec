@@ -186,11 +186,14 @@ emitDefinitions style layout bits declarations units = do
           nativeResult <- Native.javaDataTypeDoc declarations result
           let declaration = definitionDeclaration d
               parameters = D.text "Map<String, Object> symbols" : [ty <> D.text (" value" ++ show i) | (i, ty) <- zip [0::Int ..] nativeArgs]
-          pure (D.group (D.text "public static " <> nativeResult <> D.text (" " ++ declarationName declaration ++ "(") <>
+          pure (D.group (D.text "public static " <> nativeResult <> D.text (" " ++ apiName declaration ++ "(") <>
               D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")") <> D.hardline <>
-            D.block 2 (D.text ("return " ++ toNative ++ "(" ++ function ++ "(" ++
-              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "));")))
+            D.block 2 (D.text "return " <> E.call toNative [E.call function
+              [E.call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]] <> D.text ";"))
       | otherwise = nativeDynamic d
+    -- A definition's method: its name as Google Java Style writes it
+    -- (nOfStack is nofStack).
+    apiName declaration = jvmLocal "java" [] (declarationName declaration)
     nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
@@ -208,12 +211,12 @@ emitDefinitions style layout bits declarations units = do
           installs = [E.call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
             E.call "java.util.Map.<String, Object>of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
             | not (null handlers)]
-          opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ declarationName declaration ++ "("
+          opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ apiName declaration ++ "("
           normalSignature = D.group (D.text "public static " <> nativeResult <>
-            D.text (" " ++ declarationName declaration ++ "(") <>
+            D.text (" " ++ apiName declaration ++ "(") <>
             D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")")
           wrappedSignature = D.text "public static " <> nativeResult <>
-            D.nest 4 (D.hardline <> D.text (declarationName declaration ++ "(") <>
+            D.nest 4 (D.hardline <> D.text (apiName declaration ++ "(") <>
               D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")")
           signature = D.prefixChoice opening normalSignature wrappedSignature
           input i codec = [assign ("codec" ++ show i) codec,
