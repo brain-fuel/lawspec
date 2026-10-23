@@ -5,7 +5,8 @@
 -- in Go, law_charge_captures_once_native in Rust and
 -- lawChargeCapturesOnceNative on the JVM and in Haskell. A law's
 -- several tests add a kind after a separator no name contains (Python's
--- __property, Go's _Property, the JVM's _property), so selecting one law's
+-- __property, Go's _Property, the JVM's _property; a Rust law is a module
+-- of tests, law_<words>::property), so selecting one law's
 -- tests never selects another's. JavaScript and TypeScript name tests by
 -- the label itself.
 module LawSpec.TestNames (lawWords, unitTestNames, unitBenchmarkNames, testIdentifier, kindSuffix) where
@@ -75,7 +76,7 @@ kindSuffix target kind = case target of
   "csharp" -> "_" ++ capital kind
   "groovy" -> ": " ++ spaced kind
   "clojure" -> "--" ++ map (\c -> if c == ' ' then '-' else c) (spaced kind)
-  "rust" -> ""
+  "rust" -> "::" ++ snake kind
   _ -> "_" ++ kind
   where capital (c : cs) = toUpper c : cs
         capital [] = []

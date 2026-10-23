@@ -326,6 +326,10 @@ google-style-guides:
   kind: article
   title: Google Style Guides
   locator: https://google.github.io/styleguide/
+rustfmt:
+  kind: article
+  title: rustfmt configuration (default settings)
+  locator: https://rust-lang.github.io/rustfmt/
 ruff-formatter:
   kind: article
   title: The Ruff Formatter
