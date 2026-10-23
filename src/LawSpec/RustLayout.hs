@@ -238,6 +238,17 @@ overflowable count e = case e of
   Cast a _ -> overflowable count a
   _ -> False
 
+-- | Whether rustfmt lets a closure's body break without a block around it.
+multilineBody :: Expr -> Bool
+multilineBody e = case e of
+  Block _ _ -> True
+  Match {} -> True
+  Struct {} -> True
+  Try a -> multilineBody a
+  Prefix _ a -> multilineBody a
+  Cast a _ -> multilineBody a
+  _ -> False
+
 -- | Whether an expression holds no block: rustfmt's choice of its line
 -- can then be made by laying it out both ways.
 shallow :: Expr -> Bool
@@ -312,7 +323,14 @@ expr e = case e of
   Block ss tailExpr -> blockDoc ss tailExpr
   If c a b -> ifDoc c a b
   Match scrutinee arms -> D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms
-  Closure h body -> D.text (h ++ " ") <> expr body
+  -- A closure's body that is not a block, match or struct literal is on
+  -- the closure's line or in a block of its own (rustfmt vetoes breaking
+  -- it there).
+  Closure h body
+    | multilineBody body -> D.text (h ++ " ") <> expr body
+    | otherwise -> case oneLine body of
+        Just t -> oneOf [D.text (h ++ " " ++ t), D.text (h ++ " ") <> blockDoc [] (Just body)]
+        Nothing -> D.text (h ++ " ") <> blockDoc [] (Just body)
   Struct name [] -> D.text name
   Struct name fields -> structDoc name fields
   Return Nothing -> D.text "return"
