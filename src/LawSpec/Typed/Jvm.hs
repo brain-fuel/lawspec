@@ -623,7 +623,7 @@ cexpr env scope e
         parts <- mapM (cexpr env scope) args
         codecs <- lift' (mapM (codecExpression env [] . expressionType) args)
         resultCodec <- lift' (codecExpression env [] (expressionType e))
-        pure (concatMap fst parts, jcall (resultCodec ++ ".decode") [jcall ("LawSpecDefinitionBodies." ++ jvmPerformName op)
+        pure (concatMap fst parts, jcall (resultCodec ++ ".decode") [E.call ("LawSpecDefinitionBodies." ++ jvmPerformName op)
           (javaText "symbols" : [jcall (codec ++ ".encode") [x] | (codec, x) <- zip codecs (map snd parts)])])
       -- attempt e: Right of e's value, or Left of the failure it raised.
       Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do

@@ -11,7 +11,7 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.Char (isAlphaNum, toLower, toUpper)
-import Data.List (intercalate, isPrefixOf, stripPrefix)
+import Data.List (intercalate, isPrefixOf, nub, sort, stripPrefix, tails)
 import LawSpec.TestNames (unitTestNames, lawWords)
 import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase)
 import LawSpec.Naming (displayLabel)
@@ -146,15 +146,67 @@ emitTests Config{..} unit laws = do
         "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value", "lawspec.runtime.LawSpecSchema",
         "lawspec.testing.LawSpecDataStrategies", "lawspec.testing.LawSpecHarness", "org.jetbrains.jetCheck.Generator", "org.jetbrains.jetCheck.PropertyChecker",
         "org.junit.jupiter.api.Test"], usesSimple (simpleName name) rendered]
+      -- An ability's class (lawspec.abilities.example.Crypto) is imported
+      -- when its simple name means nothing else in the file.
+      -- Failing that (the unit's own class has the name), its interface is.
+      abilityClasses = nub (concat [if unshadowed q then [q] else filter unshadowed (interfacesOf q) | q <- nub (qualifiedAbilityClasses rendered)])
+      interfacesOf q = nub [q ++ "." ++ takeWhile (\c -> isAlphaNum c || c == '_') rest | rest <- mapMaybeTails (stripPrefix (q ++ ".")) rendered]
+      mapMaybeTails f t = [r | rest <- tails t, Just r <- [f rest]]
+      code = blankStrings rendered
+      unshadowed q = let simple' = simpleName q
+                     in occurrences simple' code == length [() | rest <- tails code, (q ++ ".") `isPrefixOf` rest]
+                        && simple' `notElem` [className, className ++ "LawSpecTest"]
+      allImports = sort (imports ++ abilityClasses)
+      shortened = D.mapText (\t -> foldl (\acc q -> replaceAll (q ++ ".") (simpleName q ++ ".") acc) t abilityClasses) body
   pure $ text ("// " ++ generatedHeader sourceFile) <> D.hardline <> D.hardline <>
     (if null packageName then mempty else text ("package " ++ packageName ++ ";") <> D.hardline <> D.hardline) <>
-    (if null imports then mempty else statements [text ("import " ++ i ++ ";") | i <- imports] <> D.hardline <> D.hardline) <>
+    (if null allImports then mempty else statements [text ("import " ++ i ++ ";") | i <- allImports] <> D.hardline <> D.hardline) <>
     -- order random: LawSpec's seeded order (LawSpecOrder); parallel: JUnit's
     -- concurrent mode, enabled for such classes in junit-platform.properties.
     (if orderRandom then text "@org.junit.jupiter.api.TestMethodOrder(lawspec.testing.LawSpecOrder.class)" <> D.hardline else mempty) <>
     (if parallel then text "@org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.CONCURRENT)" <> D.hardline else mempty) <>
-    braced (text ("public final class " ++ className ++ "LawSpecTest")) body <> D.hardline
+    braced (text ("public final class " ++ className ++ "LawSpecTest")) shortened <> D.hardline
   where
+    -- lawspec.abilities.<package>.<Class> as it is named before an interface.
+    qualifiedAbilityClasses t = case t of
+      [] -> []
+      _ | "lawspec.abilities." `isPrefixOf` t ->
+            let (name, rest) = span (\c -> isAlphaNum c || c == '.' || c == '_') t
+                parts = splitDots name
+                classParts = takeWhile (\p -> null p || not (isUpperChar (head p))) parts
+                outer = take 1 (drop (length classParts) parts)
+            in [intercalate "." (classParts ++ outer) | not (null outer)] ++ qualifiedAbilityClasses rest
+      _ : rest -> qualifiedAbilityClasses rest
+    splitDots n = case break (== '.') n of
+      (a, '.' : b) -> a : splitDots b
+      (a, _) -> [a]
+    isUpperChar c = c >= 'A' && c <= 'Z'
+    -- Where a name occurs as a whole word.
+    occurrences w t = length [() | (before, rest) <- zip (' ' : t) (tails t), not (wordChar before), w `isPrefixOf` rest
+                                 , not (wordChar (headOr ' ' (drop (length w) rest)))]
+    wordChar c = isAlphaNum c || c == '_'
+    -- The code with its string literals' text blanked.
+    blankStrings t = case t of
+      '/' : '/' : rest -> let (comment, after) = break (== '\n') rest in map (const ' ') ("//" ++ comment) ++ blankStrings after
+      '/' : '*' : rest -> ' ' : ' ' : inComment rest
+      '\'' : '"' : '\'' : rest -> ' ' : ' ' : ' ' : blankStrings rest
+      '"' : rest -> '"' : inString rest
+      c : rest -> c : blankStrings rest
+      [] -> []
+    inComment t = case t of
+      '*' : '/' : rest -> ' ' : ' ' : blankStrings rest
+      _ : rest -> ' ' : inComment rest
+      [] -> []
+    inString t = case t of
+      '\\' : _ : rest -> ' ' : ' ' : inString rest
+      '"' : rest -> '"' : blankStrings rest
+      _ : rest -> ' ' : inString rest
+      [] -> []
+    headOr d xs = case xs of { x : _ -> x; [] -> d }
+    replaceAll old new t = case t of
+      [] -> []
+      _ | old `isPrefixOf` t -> new ++ replaceAll old new (drop (length old) t)
+      c : rest -> c : replaceAll old new rest
     -- Binders keep their source names (LawSpec.JvmNames).
     inputId = local . C.binderId . C.quantifiedBinder
     localName = local

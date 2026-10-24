@@ -42,7 +42,7 @@ jvmLocal target reserved source
   where
     candidate = googleCase (dropWhileEnd (== '_') (localIdentifier target source'))
     -- A record view's field is a view; its hash would only widen the line.
-    source' = if target == "java" && "lawspec::record-view::" `isPrefixOf` source then "view" else source
+    source' = if target == "java" && "lawspecRecordView" `isPrefixOf` source then "view" else source
 
 -- Google Java Style's local names have a lower-case second letter (aValue
 -- would read as an abbreviation): a single leading letter word joins the

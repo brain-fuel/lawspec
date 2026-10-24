@@ -49,10 +49,11 @@ quoted s = case pieces s of
 -- | Arguments wrap when a call is too wide, in the Java style LawSpec follows.
 -- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
+call name [] = D.text (name ++ "()")
 call name args
   -- A long qualified name breaks before its method when its opening does
   -- not fit.
-  | length name > 40, (receiver@(_ : _), '.' : method@(_ : _)) <- breakLast name
+  | length name > 30, (receiver@(_ : _), '.' : method@(_ : _)) <- breakLast name
   , all (\c -> isAlphaNum c || c `elem` ("._" :: String)) name =
       D.prefixChoice (name ++ "(") (plain name) (D.group (D.text receiver <> D.nest 4 (D.softbreak <> plain ("." ++ method))))
   | otherwise = plain name

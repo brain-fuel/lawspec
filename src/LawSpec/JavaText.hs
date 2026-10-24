@@ -12,14 +12,32 @@ data Piece = Token String | Parens [[Piece]]
 -- | The code as a document.
 javaText :: String -> D.Doc
 javaText s = case pieces s of
-  Just (ps, "") -> mconcat (map piece ps)
+  Just (ps, "") -> laid ps
   _ -> D.text s
+
+-- | Pieces as a document: a long qualified call breaks before its method
+-- when its opening does not fit.
+laid :: [Piece] -> D.Doc
+laid ps = case ps of
+  Token t : p@(Parens _) : rest
+    | (callee, lead) <- calleeOf t, length callee > 30
+    , (receiver@(_ : _), method@(_ : _)) <- splitLast callee ->
+        D.text lead <> D.prefixChoice (callee ++ "(") (D.text callee <> piece p)
+          (D.group (D.text receiver <> D.nest 4 (D.softbreak <> D.text ('.' : method) <> piece p))) <> laid rest
+  p : rest -> piece p <> laid rest
+  [] -> mempty
+  where
+    calleeOf t = let callee = reverse (takeWhile (\c -> c `elem` ('.' : '_' : ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'])) (reverse t))
+                 in (callee, take (length t - length callee) t)
+    splitLast n = case break (== '.') (reverse n) of
+      (method, '.' : receiver) -> (reverse receiver, reverse method)
+      _ -> ([], [])
 
 piece :: Piece -> D.Doc
 piece p = case p of
   Token t -> D.text t
   Parens [] -> D.text "()"
-  Parens items -> D.group (D.text "(" <> D.nest 4 (D.softbreak <> D.commaSep (map (mconcat . map piece) items)) <> D.text ")")
+  Parens items -> D.group (D.text "(" <> D.nest 4 (D.softbreak <> D.commaSep (map laid items)) <> D.text ")")
 
 pieces :: String -> Maybe ([Piece], String)
 pieces s = case s of
