@@ -773,7 +773,7 @@ ifDocOf elseIf c a b = case (flat (If c a b), b) of
     brokenCondition = D.text "if " <> (if isChain c then brokenChain' c else expr c) <> closer
     opened = case oneLine c of
       Just t | elseIf -> D.fitsIndented 0 (width ("if " ++ t ++ " {"))
-        (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{"]) brokenCondition
+        (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{", brokenCondition]) brokenCondition
       Just t -> oneOf [D.text ("if " ++ t ++ " {"), brokenCondition]
       Nothing -> D.text "if " <> expr c <> closer
     thenBlock = case asBlock a of
