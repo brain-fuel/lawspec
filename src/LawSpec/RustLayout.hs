@@ -567,14 +567,14 @@ chainWith root' links' e = case chainOneLine of
         Match {} -> True
         Block _ _ -> True
         Laid _ -> isNothing (flat r)
-        Call {} -> isNothing (oneLine r)
+        _ | callRoot r -> isNothing (oneLine r)
         _ -> False
       _ -> False
     linkLines = mconcat [D.hardline <> linkDoc l | l <- links']
     -- A call root that breaks closes on its own line, and the links follow
     -- it unindented.
     eachLine = case root' of
-      [Left r@(Call {})] | not blockRoot, Just t <- oneLine r -> oneOf [D.text t <> D.nest 4 linkLines, expr r <> linkLines]
+      [Left r] | callRoot r, not blockRoot, Just t <- oneLine r -> oneOf [D.text t <> D.nest 4 linkLines, expr r <> linkLines]
       _ -> rootDoc <> (if blockRoot then id else D.nest 4) linkLines
     prefixText = concat <$> mapM (either oneLine flatLink) (root' ++ map Right (init links'))
     -- rustfmt's choice for the last call (format_last_child): on the
@@ -876,4 +876,12 @@ fieldDoc name ty = oneOf
 triedChain :: Expr -> Bool
 triedChain e = case e of
   Try a -> isChain a
+  _ -> False
+
+-- | A chain's root that is a call (or a tried one): broken, it closes on a
+-- line of its own.
+callRoot :: Expr -> Bool
+callRoot e = case e of
+  Call {} -> True
+  Try a -> callRoot a
   _ -> False

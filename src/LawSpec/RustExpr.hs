@@ -325,36 +325,35 @@ renderWith declarations bits schema typeReference typeKey callees = render
               Just _ -> L.call "Some" [L.prefix "&" (L.closure "|recorded: &[ls::Value]| -> ls::Result<bool>"
                 (L.Block [] (Just (L.call "Ok" [foldr1 (L.infixOp "&&") (L.atom "true" `orIfNone`
                   [tried (L.call "ls::equal" [L.atom ("&recorded[" ++ show i ++ "]"), L.atom ("&" ++ e)]) | (i,e) <- zip [0 :: Int ..] expected])]))))]
-        pure (L.Block [L.Let e value | (e,value) <- zip expected values]
-          (Just (tried (L.call "ls::count_calls" [L.atom "ctx", L.atom (quoted (abilityKey (operationAbility op))), L.atom (quoted (operationName op)), matcher]))))
+        pure (L.letIn [L.Let e value | (e,value) <- zip expected values]
+          ((tried (L.call "ls::count_calls" [L.atom "ctx", L.atom (quoted (abilityKey (operationAbility op))), L.atom (quoted (operationName op)), matcher]))))
       Binary op evidence a b -> do
         left <- render names a
         right <- render names b
         let domain = case evidence of Numeric ty -> ty; Structural ty -> ty
         key <- typeKey domain
-        pure (L.Block [L.Let "left" left, L.Let "right" right]
-          (Just (tried (L.call "ls::binary" [L.atom (quoted (binaryName op)), laid key, L.atom "left", L.atom "right"]))))
+        pure (bound [("left", left), ("right", right)] (\[l, r] -> tried (L.call "ls::binary" [L.atom (quoted (binaryName op)), laid key, l, r])))
       Unary op value -> do
         body <- render names value
-        pure (L.Block [L.Let "value" body] (Just (case op of
-          Negate -> tried (L.call "ls::negate" [L.atom "value"])
-          Not -> L.call "ls::Value::Bool" [L.prefix "!" (tried (L.method (L.atom "value") "boolean" []))])))
+        pure (bound [("value", body)] (\[v] -> case op of
+          Negate -> tried (L.call "ls::negate" [v])
+          Not -> L.call "ls::Value::Bool" [L.prefix "!" (tried (L.method v "boolean" []))]))
       If c a b -> do
         condition <- render names c
         yes <- render names a
         no <- render names b
-        pure (L.Block [L.Let "condition" condition] (Just (L.If (tried (L.method (L.atom "condition") "boolean" [])) (asBlock yes) (Just (asBlock no)))))
+        pure (bound [("condition", condition)] (\[v] -> L.If (tried (L.method v "boolean" [])) (asBlock yes) (Just (asBlock no))))
       ShortCircuit op a b -> do
         left <- render names a
         right <- render names b
         let (yes,no) = if op == And then (right, L.call "ls::Value::Bool" [L.atom "false"]) else (L.call "ls::Value::Bool" [L.atom "true"], right)
-        pure (L.Block [L.Let "left" left] (Just (L.If (tried (L.method (L.atom "left") "boolean" [])) (asBlock yes) (Just (asBlock no)))))
+        pure (bound [("left", left)] (\[v] -> L.If (tried (L.method v "boolean" [])) (asBlock yes) (Just (asBlock no))))
       Convert _ target value
         | target == expressionType value -> render names value
         | otherwise -> do
             body <- render names value
             key <- typeKey target
-            pure (L.Block [L.Let "value" body] (Just (tried (L.method (L.atom "value") "convert" [laid key, laid bits]))))
+            pure (bound [("value", body)] (\[v] -> tried (L.method v "convert" [laid key, laid bits])))
       Helper Concurrently [value] -> render names value
       Helper builtin args -> do
         values <- mapM (render names) args
@@ -407,3 +406,15 @@ renderWith declarations bits schema typeReference typeKey callees = render
         _ -> Left ("no Rust match representation for " ++ idText (caseConstructor matched))
       pure (Arm patternText guard (blockOf bindings body))
 
+-- | Operands used in order: one that is a block is bound to its name
+-- first (and so is each before it, keeping the order they are evaluated
+-- in); the others are written in place.
+bound :: [(String, L.Expr)] -> ([L.Expr] -> L.Expr) -> L.Expr
+bound operands use =
+  let blocks = [i | (i, (_, v)) <- zip [0 :: Int ..] operands, isBlock v]
+      lastBlock = if null blocks then -1 else maximum blocks
+      named = [(i <= lastBlock, n, v) | (i, (n, v)) <- zip [0 ..] operands]
+      isBlock v = case v of
+        L.Block _ _ -> True
+        _ -> False
+  in L.letIn [L.Let n v | (True, n, v) <- named] (use [if b then L.atom n else v | (b, n, v) <- named])

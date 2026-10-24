@@ -22,7 +22,22 @@ pub type Result<T> = std::result::Result<T, String>;
 
 /// Runs a generated test on a thread with a large stack: generated values of
 /// deep data, in debug builds, can exceed the default test thread's stack.
+/// The tests of one file run one at a time: a law's examples, boundaries
+/// and property share what they acquire (a file, a store) as one test's
+/// cases did.
+#[track_caller]
 pub fn with_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> T {
+    type Locks = std::sync::Mutex<HashMap<&'static str, Arc<std::sync::Mutex<()>>>>;
+    static FILES: std::sync::OnceLock<Locks> = std::sync::OnceLock::new();
+    let file = std::panic::Location::caller().file();
+    let lock = FILES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry(file)
+        .or_default()
+        .clone();
+    let _serial = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
         .spawn(body)
