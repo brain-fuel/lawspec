@@ -177,7 +177,13 @@ conjunctionStatement (x : xs) = D.group (x <> mconcat [D.text " &&" <> D.softlin
 
 -- | header = body, the body on its own line when it does not fit.
 equalsBody :: D.Doc -> D.Doc -> D.Doc
-equalsBody header body = header <> D.group (D.text " =" <> D.nest 2 (D.softline <> body))
+equalsBody header body
+  -- A body of several lines (synchronized { ... }) stays after the = when
+  -- its first line fits there.
+  | '\n' `elem` flatBody = D.prefixChoice (D.render D.Compact header ++ " = " ++ takeWhile (/= '\n') flatBody)
+      (header <> D.text " = " <> body) (header <> D.text " =" <> D.nest 2 (D.hardline <> body))
+  | otherwise = header <> D.group (D.text " =" <> D.nest 2 (D.softline <> body))
+  where flatBody = D.render D.Compact body
 
 -- | A line comment, wrapped at the page's width.
 comment :: Int -> String -> D.Doc
