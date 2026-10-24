@@ -118,7 +118,7 @@ emitBindings minify plan testing files = do
           else if unit then D.text "void" else resultType) <>
           D.text " " <> call (C.declarationName d) ([t <> D.text " " <> v | (t,v) <- handlerParams] ++ [t <> D.text " " <> v | (t,v) <- zip argTypes values]) <>
           D.hardline <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
-            D.text "try" <> D.hardline <> D.block 2 (if async then asyncBody else resultBody) <> D.hardline <> D.group (D.text "catch (" <> D.nest 4 (D.softbreak <> D.group (D.text "IllegalArgumentException" <> mconcat [D.softline <> D.text ("| " ++ e) | e <- ["IllegalStateException", "ClassCastException", "ArithmeticException error"]])) <> D.text ")") <> D.hardline <>
+            D.text "try" <> D.hardline <> D.block 2 (if async then asyncBody else resultBody) <> D.hardline <> D.group (D.text "catch (" <> D.nest 4 (D.softbreak <> D.group (D.text "IllegalArgumentException" <> D.nest 4 (mconcat [D.softline <> D.text ("| " ++ e) | e <- ["IllegalStateException", "ClassCastException", "ArithmeticException error"]]))) <> D.text ")") <> D.hardline <>
             D.block 2 (D.text "throw " <> call "new IllegalArgumentException"
               [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.getMessage()",D.text "error"] <> D.text ";")))
       -- Each bound production handler, wrapped in the generated interface:

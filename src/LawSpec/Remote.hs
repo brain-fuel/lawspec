@@ -8,7 +8,7 @@
 module LawSpec.Remote (Remote(..), remoteManifest, remoteArtifacts) where
 
 import Control.Monad (foldM)
-import Data.List (intercalate)
+import Data.List (intercalate, stripPrefix)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.Dependencies as D
@@ -199,6 +199,7 @@ remoteArtifacts target calls plan = case (target, remotes) of
       , ""
       , "import java.util.List;"
       , "import java.util.Map;"
+      , "import lawspec.runtime.LawSpecDefinitionBodies;"
       , "import lawspec.runtime.LawSpecRuntime;"
       , ""
       , "/**"
@@ -222,7 +223,7 @@ remoteArtifacts target calls plan = case (target, remotes) of
       concat
       [ map ("    " ++) (lines (Doc.render (Doc.Pretty 96) (jcall "DEFINITIONS.put" [Doc.text (jquote (remoteName r)),
           jcall "new Entry" [Doc.text (jquote (remoteDigest r)), jcall "new LawSpecRuntime.Definition"
-            [ Doc.group (Doc.text "args ->" <> Doc.nest 4 (Doc.softline <> jcall call
+            [ Doc.group (Doc.text "args ->" <> Doc.nest 4 (Doc.softline <> jcall (unqualifiedCall call)
                 (Doc.text "new java.util.HashMap<String, Object>()" : [Doc.text ("args.get(" ++ show i ++ ")") | i <- [0 .. length (remoteArguments r) - 1]])))
             , jcall "List.of" (map jdescriptor (remoteArguments r))
             , jdescriptor (remoteResult r) ]]] <> Doc.text ";")))
@@ -426,3 +427,7 @@ haskellRemote forms entries = unlines $
   , "  P.Just (h, _, a, r) -> LS.evaluateRemote node address h args a r types 5"
   , "  P.Nothing -> E.throwIO (E.ErrorCall (\"no definition \" P.++ name))" ]
   where args r = ["x" ++ show k | k <- [0 .. length (remoteArguments r) - 1]]
+
+-- | A checked definition's call, LawSpecDefinitionBodies imported.
+unqualifiedCall :: String -> String
+unqualifiedCall call = maybe call ("LawSpecDefinitionBodies." ++) (stripPrefix "lawspec.runtime.LawSpecDefinitionBodies." call)

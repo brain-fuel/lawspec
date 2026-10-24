@@ -72,10 +72,16 @@ number = text . show
 statement x = x <> text ";"
 returned x = statement (text "return " <> x)
 bind n x = D.group (text ("var " ++ n ++ " =") <> D.nest 4 (D.softline <> x) <> text ";")
--- A body that is a block opens on the lambda's line.
+-- A body that is a block opens on the lambda's line; so does a call whose
+-- opening fits there, its arguments breaking instead.
 lambda parameters body
-  | "LawSpecRuntime.block(() -> {" `isPrefixOf` D.render D.Compact body = text (parameters ++ " -> ") <> body
-  | otherwise = D.group (text (parameters ++ " ->") <> D.nest 4 (D.softline <> body))
+  | "LawSpecRuntime.block(() -> {" `isPrefixOf` flat = text (parameters ++ " -> ") <> body
+  | (opening@(_ : _), '(' : _) <- break (== '(') flat, all (\c -> isAlphaNum c || c `elem` ("._" :: String)) opening =
+      D.prefixChoice (parameters ++ " -> " ++ opening ++ "(") (text (parameters ++ " -> ") <> body) broken
+  | otherwise = broken
+  where
+    flat = D.render D.Compact body
+    broken = D.group (text (parameters ++ " ->") <> D.nest 4 (D.softline <> body))
 closure parameters body = D.multiline (text (parameters ++ " -> ") <> block body)
 chain base methods = D.group (D.nest 4 base <> D.nest 4
   (mconcat [D.softbreak <> call ("." ++ name) args | (name,args) <- methods]))
