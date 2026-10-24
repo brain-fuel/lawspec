@@ -52,8 +52,14 @@ callWith name [] = name <> D.text "()"
 callWith name values
   -- An argument of several lines puts every argument on a line of its own.
   | any (('\n' `elem`) . D.render D.Compact) values =
-      D.multiline (name <> D.text "(" <> D.nest 2 (D.hardline <> D.joinWith (D.text "," <> D.hardline) values) <> D.hardline <> D.text ")")
+      D.multiline (name <> D.text "(" <> D.nest 2 (D.hardline <> joined values) <> D.hardline <> D.text ")")
   | otherwise = D.group (name <> D.text "(" <> D.nest 2 (D.softbreak <> D.commaSep values) <> D.softbreak <> D.text ")")
+  where
+    -- A block argument follows the argument before it, as scalafmt puts it.
+    joined (a : b : rest) | take 1 (D.render D.Compact b) == "{" = joined ((a <> D.text ", " <> b) : rest)
+    joined (a : rest@(_ : _)) = a <> D.text "," <> D.hardline <> joined rest
+    joined [a] = a
+    joined [] = mempty
 
 -- | A definition's parameters: (a: A, b: B), or one a line, indented 4.
 parameters :: D.Doc -> [D.Doc] -> D.Doc
