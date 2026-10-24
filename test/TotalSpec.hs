@@ -199,7 +199,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         length sourceFiles `shouldBe` 1
         map ownership sourceFiles `shouldBe` ["generated"]
         map artifactPlacement sourceFiles `shouldBe` ["source"]
-        concatMap artifactContent sourceFiles `shouldSatisfy` isInfixOf "pub fn identity(ctx: &mut ls::Context, value0: i8) -> ls::Result<i8>"
+        concatMap artifactContent sourceFiles `shouldSatisfy` isInfixOf "pub fn identity(_ctx: &mut ls::Context, x: i8) -> ls::Result<i8>"
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "pub fn identity"
   it "emits Java definitions with native entry points and checked support" $ do

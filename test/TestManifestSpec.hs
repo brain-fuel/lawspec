@@ -49,7 +49,8 @@ named target name = case target of
   "python" -> "def " ++ name ++ "__"
   "prolog" -> "test('" ++ name ++ "')"
   "go" -> "func " ++ name ++ "_"
-  "rust" -> "fn " ++ name ++ "()"
+  -- A Rust law is a module of tests (law_<words>::<test>).
+  "rust" -> "mod " ++ takeWhile (/= ':') name ++ " {"
   "haskell" -> "\"" ++ name ++ "_"
   "kotlin" -> "\"" ++ name ++ "_"
   _ -> name ++ "_"
