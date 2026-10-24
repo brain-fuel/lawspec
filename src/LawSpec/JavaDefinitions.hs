@@ -21,7 +21,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmPerformName)
 import qualified Data.Set as S
-import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved, jvmMethod)
+import LawSpec.JvmNames (googleCase, jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved, jvmMethod)
 import LawSpec.Naming (readableDefinitionName)
 
 -- | The adapters orchestrations call, with their units.
@@ -196,7 +196,10 @@ emitDefinitions style layout bits declarations units = do
       | otherwise = nativeDynamic d
     -- A definition's method: its name as Google Java Style writes it
     -- (nOfStack is nofStack).
-    apiName declaration = jvmLocal "java" [] (declarationName declaration)
+    -- A definition's API name is its own in Google's case (nofStack); a
+    -- Java keyword gets jvmLocal's spelling (shortValue).
+    apiName declaration = let n = declarationName declaration
+      in if n `elem` jvmReserved "java" then jvmLocal "java" [] n else googleCase n
     nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)

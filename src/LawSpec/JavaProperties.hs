@@ -405,8 +405,9 @@ emitTests Config{..} unit laws = do
         wrap r inner | Just key <- C.resourceShared r, Just reset <- C.resourceReset r =
           let rid = C.binderId (C.resourceBinder r)
               resource = localName rid
-              other = C.Id (C.idText rid ++ "shared")
-              usingIt body = closure (resource ++ "Shared") (bind "unused" (expr (C.renameLocal rid other body)))
+              -- An id no binder has, named as the lambda's parameter.
+              other = C.Id (resource ++ "Shared")
+              usingIt body = closure (localName other) (bind "unused" (expr (C.renameLocal rid other body)))
           in statements [bind resource (runtime "share" [quoted key, lambda "()" (expr (C.resourceAcquire r)), usingIt reset, usingIt (C.resourceRelease r),
               text (if C.resourceConcurrent r then "true" else "false")]),
             tryFinally inner (statement (runtime "unshare" [quoted key]))]
