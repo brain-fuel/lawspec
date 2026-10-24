@@ -212,7 +212,7 @@ emitTests Config{..} unit laws = do
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
     observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing
     harness name' = call ("lawspec.testing.LawSpecHarness." ++ name')
-    harnessBody name' = text ("(() => " ++ name' ++ "()): lawspec.testing.LawSpecHarness.Body")
+    harnessBody name' = text ("() => " ++ name' ++ "()")
     observations e =
       let h = C.propertyHarness (original e)
           label = owner e ++ "::" ++ name e
