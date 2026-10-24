@@ -466,8 +466,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             Quantified _ _ _ -> Left "a scoped proposition requires complete search planning before native emission"
             Negation _ -> Left "proposition negation requires execution planning before native emission"
           predicate names label p = do
-            value <- render names p
-            pure (block (statements [binding "condition" value,
+            value <- renderL names p
+            pure (block (statements [RL.stmt (RL.Let "condition" value),
               conditional (Doc.text "!condition.boolean()?")
                 (statement (Doc.text "return " <> invoke "Err" [string label <> Doc.text ".into()"]))]))
       let mappedAdapters = [(d,call) | d <- adapters, Just call <- [nativeCall d]]
@@ -644,8 +644,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             ty <- schemaType (binderType (quantifiedBinder input))
             pure (binding name (invoke "lawspec_schema::schema()?.validate_with_context" [Doc.text name,borrow ty,bits,Doc.text "ctx"] <> Doc.text "?"))
         valid <- forM (concatMap quantifiedPredicates (propertyInputs p)) $ \predicateExpr -> do
-          term <- render names predicateExpr
-          pure (statements [binding "condition" term,
+          term <- renderL names predicateExpr
+          pure (statements [RL.stmt (RL.Let "condition" term),
             conditional (Doc.text "!condition.boolean()?") (Doc.text "return Ok(false);")])
         strategies <- forM (zip3 [0::Int ..] (propertyInputs p) (generatorRequirements pp)) $ \(i,input,requirement) -> do
           bounds <- forM (quantifiedBounds input) $ \(op,e) -> do
