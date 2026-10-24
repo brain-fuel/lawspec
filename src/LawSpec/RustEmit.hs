@@ -842,7 +842,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             -- one test; otherwise each test runs under the harness's settings.
             harnessed k name' isProperty (stmts, final) =
               let turned = asBody (turn k ++ stmts, final)
-                  runner = Doc.text "|| " <> withStack turned
+                  runner = stackClosure turned
               in if runSettings h
                 then closureCall "lawspec_harness::run" [string (unitName ++ "::" ++ label), string (moduleName ++ "::" ++ name'), Doc.text (show (maybe 0 id (harnessTimeout h))),
                       Doc.text (show (harnessRepeat h)), Doc.text (show (harnessRetries h)),
@@ -854,7 +854,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                 Doc.text "fn skipped() {}"]
               (_, Just reason) -> [Doc.text "#[test]" <> Doc.hardline <> function "known_failing" [] "ls::Result<()>"
                 (closureCall "lawspec_harness::known_failing" [string (unitName ++ "::" ++ label), string (moduleName ++ "::known_failing"), string reason]
-                  (Doc.text "|| " <> withStack whole))]
+                  (stackClosure whole))]
               _ -> [ maybe mempty (\e -> Doc.lineComment 96 "// " (labelled ("example " ++ displayLabel (exampleName e)) (sourceLinkOf e))) example <>
                      Doc.text "#[test]" <> Doc.hardline <> function name' [] "ls::Result<()>" (harnessed (index * 1000 + k) name' (name' == "property") d)
                    | (k, (name', example, d)) <- zip [0..] caseTests ]
@@ -1022,6 +1022,13 @@ written :: String -> Maybe String
 written link = if take 1 link == "<" then Nothing else Just link
 
 -- | A test's body on a thread with room for deep values.
+-- | A closure running body under ls::with_stack: rustfmt puts a body that
+-- breaks over lines in braces.
+stackClosure :: Doc.Doc -> Doc.Doc
+stackClosure body
+  | Doc.render Doc.Compact body == "Ok(())" = Doc.text "|| " <> withStack body
+  | otherwise = Doc.text "|| " <> block (withStack body)
+
 withStack :: Doc.Doc -> Doc.Doc
 withStack body
   | Doc.render Doc.Compact body == "Ok(())" = Doc.text "ls::with_stack(|| Ok(()))"

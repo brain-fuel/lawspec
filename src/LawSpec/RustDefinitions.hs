@@ -157,7 +157,11 @@ emitRustDefinitions layout bits declarations units = do
         [E.unusedAs "ctx" body ++ ": &mut ls::Context", E.unusedAs "arguments" body ++ ": Vec<ls::Value>"] "ls::Result<ls::Value>" body)
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
     -- A callback: its parameters, result type and the call it makes.
-    callback params result body = L.closure ("|" ++ params ++ "| -> " ++ result) (L.Block [] (Just body))
+    -- (the field's function type gives its parameters' and result's types)
+    callback params _ body = L.closure ("|" ++ intercalate ", " [takeWhile (/= ':') p' | p' <- splitParams params] ++ "|") body
+    splitParams ps = case break (== ',') ps of
+      (p', ',' : ' ' : rest) -> p' : splitParams rest
+      (p', _) -> [p']
     numbers ns = [L.call "ls::Value::Integer" [L.call "ls::BigInt::from" [L.atom (show n ++ "i64")]] | n <- ns]
     nowValue = L.call "ls::Value::Integer" [L.call "ls::BigInt::from" [L.atom "now"]]
     called' name args = L.call name [L.atom "ctx", L.vecOf args]
