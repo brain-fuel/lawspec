@@ -42,14 +42,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `perform_store_text_save`) instead of `evaluate_<n>` and digest suffixes;
   anonymous records are named from where they are used (`DeclinedDetails`);
   a handler from the context is typed by its binding. Adapters and native
-  code that use the old names must be renamed.
+  code that use the old names must be renamed. Actors' handler methods are
+  snake case too (`withdraw_all`, `tell_withdraw_all`). The tests of one
+  generated file run one at a time (`ls::with_stack`), as a law's cases
+  share what they acquire; tests the harness orders run on `ls::on_stack`.
 - Generated Rust writes text as Rust string literals, never split, links each
   law, test, adapter call and definition to its source line, and gives each
   law a comment with its name, what it says and the statement its tests
   check. A failing expectation names its law, its example and its line, and
   the runtime says how the values differ (`ls::expect_equal`, `ls::called`).
-  Seed and failure-database settings, handler locking, remote definitions
-  and session listening move into the runtimes. Generated Rust carries no
+  Seed and failure-database settings, handler locking, remote definitions,
+  served actor messages (`ls::net::message`), resource brackets
+  (`ls::bracket`) and session listening move into the runtimes. Generated Rust carries no
   blanket `allow` attributes and builds without warnings.
 - Generated Rust is laid out as `rustfmt` (1.97.1, edition 2024, default
   settings) lays it out, by a Rust layout module that follows rustfmt's
