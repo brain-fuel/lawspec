@@ -1,0 +1,1 @@
+src/test/scala/example/ArithmeticLawSpecTest.scala scalafmt 3.11.5 (the latest) stops with SearchStateExploded (runner.optimizer.maxVisitsPerToken 10000) on this 68,000-line file; each of its traits formats unchanged on its own, so the cause is the size of the file, not a construct the generator could avoid (https://github.com/scalameta/scalafmt/issues/949)
