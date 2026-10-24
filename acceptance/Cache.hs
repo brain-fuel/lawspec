@@ -79,6 +79,7 @@ toolFingerprint target = do
     "haskell" -> [("stack", ["--version"])]
     "scala" -> [("java", ["-version"]), ("scala", ["version"])]
     "clojure" -> [("java", ["-version"]), ("clojure", ["--version"])]
+    "swift" -> [("swift", ["--version"]), ("swift", ["format", "--version"])]
     _ -> []
   where
     version (program, arguments) = do

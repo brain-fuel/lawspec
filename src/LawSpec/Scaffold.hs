@@ -328,7 +328,8 @@ dotnetScaffold minify target =
 
 -- | A SwiftPM package: the runtime and test support the compiler writes to
 -- lawspec/, the program's sources in src (the App module) and its tests in
--- tests. macOS 26 is the first with CryptoKit's ML-KEM and ML-DSA.
+-- tests. macOS 26 is the first with CryptoKit's ML-KEM and ML-DSA. It is
+-- laid out as swift-format writes it.
 -- ref:DEC-swift-runtime-from-scratch
 swiftScaffold :: Bool -> [(FilePath, String)]
 swiftScaffold minify =
@@ -337,14 +338,16 @@ swiftScaffold minify =
       , "import PackageDescription"
       , ""
       , "let package = Package("
-      , "    name: \"Example\","
-      , "    platforms: [.macOS(.v26)],"
-      , "    targets: ["
-      , "        .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),"
-      , "        .target(name: \"LawSpecTesting\", dependencies: [\"LawSpecRuntime\"], path: \"lawspec/LawSpecTesting\"),"
-      , "        .target(name: \"App\", dependencies: [\"LawSpecRuntime\"], path: \"src\"),"
-      , "        .testTarget(name: \"AppTests\", dependencies: [\"App\", \"LawSpecRuntime\", \"LawSpecTesting\"], path: \"tests\"),"
-      , "    ]"
+      , "  name: \"Example\","
+      , "  platforms: [.macOS(.v26)],"
+      , "  targets: ["
+      , "    .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),"
+      , "    .target("
+      , "      name: \"LawSpecTesting\", dependencies: [\"LawSpecRuntime\"], path: \"lawspec/LawSpecTesting\"),"
+      , "    .target(name: \"App\", dependencies: [\"LawSpecRuntime\"], path: \"src\"),"
+      , "    .testTarget("
+      , "      name: \"AppTests\", dependencies: [\"App\", \"LawSpecRuntime\", \"LawSpecTesting\"], path: \"tests\"),"
+      , "  ]"
       , ")" ]) ]
   where lines' = if minify then unlines . filter (not . null) else unlines
 

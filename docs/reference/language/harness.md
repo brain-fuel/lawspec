@@ -438,11 +438,13 @@ accepts, unique within a unit:
 | --- | --- |
 | Python | `test_a_discount_is_never_more_than_the_total__property` |
 | Go | `TestADiscountIsNeverMoreThanTheTotal_Property` |
-| Java, Kotlin, Haskell | `lawADiscountIsNeverMoreThanTheTotal_property` |
+| Java, Kotlin, Haskell, Swift | `lawADiscountIsNeverMoreThanTheTotal_property` |
 | Rust | `law_a_discount_is_never_more_than_the_total` |
 | JavaScript, TypeScript | `example.shop::a discount is never more than the total property` |
 
-A law's examples and boundary cases add `example0`, `boundary0` and so on.
+A law's examples and boundary cases add `example0`, `boundary0` and so on;
+on Swift an example's test adds the example's words instead
+(`_spacesBecomeHyphens`), and its boundary cases share one `_boundary` test.
 A law with generated cases also has a `replay` test, which replays the
 failing inputs the [failure database](../cli.md#the-failure-database) kept
 (Java and Rust replay at the start of the property test instead), and a law

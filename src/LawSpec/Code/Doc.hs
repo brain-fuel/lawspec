@@ -4,7 +4,7 @@
 module LawSpec.Code.Doc
   ( Doc, Layout(..), text, utf8Text, utf8Length, displayWidth, hardline, softline, softbreak
   , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment
-  , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue
+  , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue, flatReserve
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
   ) where
 
@@ -37,6 +37,7 @@ data Doc
   | Prefixed String Doc
   | ParenthesiseIfFits Doc
   | Omittable [Doc] String Doc
+  | FlatReserve Int
   deriving (Eq, Show)
 
 -- | Compact removes optional layout only. Mandatory newlines and nesting remain
@@ -350,6 +351,12 @@ bestFit ds = BestFit ds
 parenthesised :: Doc -> Doc
 parenthesised a = group (text "(" <> nest 4 (softbreak <> group a) <> softbreak <> text ")")
 
+-- | Columns a flat layout keeps free without printing anything, as
+-- swift-format keeps one for the trailing comma a collection literal gains
+-- when it breaks. Only measuring sees it; a broken layout ignores it.
+flatReserve :: Int -> Doc
+flatReserve = FlatReserve . max 0
+
 -- | The separator goes between documents, never after the last.
 joinWith :: Doc -> [Doc] -> Doc
 joinWith separator = mconcat . intersperse separator
@@ -421,6 +428,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     layoutWork _ [] = ""
     layoutWork column ((indentation, mode, margin, current):rest) = case current of
       Empty -> layoutWork column rest
+      FlatReserve _ -> layoutWork column rest
       Text s -> s ++ layoutWork (lastColumnWith measure column s) rest
       Utf8Text s -> s ++ layoutWork (lastColumnWith utf8Length column s) rest
       Append a b -> layoutWork column ((indentation, mode, margin, a):(indentation, mode, margin, b):rest)
@@ -526,6 +534,8 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     fits column ((_, _, margin, _):_) | column > margin = False
     fits column ((indentation, mode, margin, current):rest) = case current of
       Empty -> fits column rest
+      FlatReserve n | mode == Flat -> column + n <= margin && fits (column + n) rest
+      FlatReserve _ -> fits column rest
       Text s -> case break (== '\n') s of
         (prefix, []) -> column + measure prefix <= margin && fits (column + measure prefix) rest
         (prefix, _) -> column + measure prefix <= margin
@@ -568,6 +578,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       where
         line flat current = case current of
           Empty -> True
+          FlatReserve _ -> True
           Text s -> '\n' `notElem` s
           Utf8Text s -> '\n' `notElem` s
           Append a b -> line flat a && line flat b

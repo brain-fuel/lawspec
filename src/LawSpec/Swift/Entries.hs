@@ -1,7 +1,7 @@
 -- | Where each declaration's entry is in Swift: the generated enum of its
 -- unit. Definitions, abilities and tests call entries through this one
 -- table. ref:DEC-typed-core-boundary
-module LawSpec.Swift.Entries (Entry(..), entries, entryCall, orderedUnits) where
+module LawSpec.Swift.Entries (Entry(..), entries, entryCall, orderedUnits, numbered) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Swift.Code
@@ -11,10 +11,22 @@ import Data.Graph (stronglyConnComp, flattenSCC)
 -- | Where a declaration's entry is: its unit's generated enum and the name.
 data Entry = Entry { entryOwner :: String, entryName :: String }
 
+-- Names in a unit's enum are its declarations' names, numbered when two
+-- read alike (two specialised copies of one definition).
 entries :: [C.Unit] -> [(C.Id, Entry)]
 entries units =
-  [ (C.declarationId d, Entry (generatedName (C.unitId u)) (functionName d))
-  | u <- units, d <- C.unitDeclarations u ]
+  [ (C.declarationId d, Entry (generatedName (C.unitId u)) name)
+  | u <- units, let ds = C.unitDeclarations u
+  , (d, name) <- zip ds (numbered (map functionName ds)) ]
+
+-- | Names made distinct in order: a repeat gains 2, 3, ...
+numbered :: [String] -> [String]
+numbered = go []
+  where
+    go _ [] = []
+    go taken (n : rest) =
+      let chosen = head [c | c <- n : [n ++ show k | k <- [2 :: Int ..]], c `notElem` taken]
+      in chosen : go (chosen : taken) rest
 
 entryCall :: Entry -> [Expr] -> Expr
 entryCall e = Call (entryOwner e ++ "." ++ entryName e)
