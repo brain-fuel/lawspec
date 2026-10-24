@@ -412,7 +412,8 @@ oneOf = D.bestFit
 -- (callee is what the arguments follow: rustfmt lets a broken chain
 -- overflow only a callee shorter than an indent, such as Ok)
 arguments :: String -> Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
-arguments _ _ open close _ [] = D.text (open ++ close)
+-- (rustfmt breaks even empty brackets on a line that has no room)
+arguments _ _ open close _ [] = oneOf [D.text (open ++ close), D.text open <> D.hardline <> D.text close]
 arguments callee cap open close limit args =
   case mapM oneLine args of
     Just texts | fitsArguments limit open args texts
@@ -751,7 +752,10 @@ letDoc binding e =
     let head' = D.text (binding ++ " =")
         value = expr e <> D.text ";"
         sameValue = D.text " " <> value
-        nextValue = D.nest 4 (D.hardline <> value)
+        -- (an if moved to the next line leaves room for the semicolon)
+        nextValue = D.nest 4 (D.hardline <> (case e of
+          If {} -> D.narrow 1 (expr e) <> D.text ";"
+          _ -> value))
         -- (a match whose scrutinee breaks on the let's line goes to the
         -- next line when its scrutinee is on one line there)
         matched = case e of
@@ -788,8 +792,7 @@ ifDocOf elseIf c a b = case (flat (If c a b), b) of
     opened = case oneLine c of
       Just t | elseIf -> D.fitsIndented 0 (width ("if " ++ t ++ " {"))
         (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{", brokenCondition]) brokenCondition
-      -- (rustfmt counts a chain's last ? twice)
-      Just t -> oneOf [(if triedChain c && rootTried c then D.narrow 1 else id) (D.text ("if " ++ t ++ " {")), brokenCondition]
+      Just t -> oneOf [D.text ("if " ++ t ++ " {"), brokenCondition]
       Nothing -> D.text "if " <> expr c <> closer
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
