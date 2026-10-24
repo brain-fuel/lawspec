@@ -10,6 +10,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import System.Directory (listDirectory)
 import Test.Hspec
+import LawSpec.Code.ECMAScript (javascriptLiteral)
 import LawSpec.Api (dispatch)
 import LawSpec.Targets (programTargets)
 
@@ -34,12 +35,6 @@ text :: Value -> String
 text (String s) = T.unpack s
 text _ = ""
 
-
--- | Long labels are emitted as concatenated string literals: 'a ' + 'b'.
-joined :: String -> String
-joined ('\'' : rest) | ('+' : after) <- dropWhile (== ' ') rest, ('\'' : more) <- dropWhile (`elem` (" \n" :: String)) after = joined more
-joined (c : rest) = c : joined rest
-joined [] = []
 
 -- | How each target names the tests of law n.
 -- A law's tests are named after its label (LawSpec.TestNames); the manifest
@@ -114,8 +109,8 @@ test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $
           Nothing -> expectationFailure (target ++ ": no generated test file " ++ file)
           Just content
             | target `elem` ["javascript", "typescript"] ->
-                -- Labels are single-quoted string literals there.
-                joined content `shouldSatisfy` isInfixOf (concatMap (\c -> if c == '\'' then "\\'" else [c]) (text (field "label" t)))
+                -- Labels are inside native string literals there.
+                content `shouldSatisfy` isInfixOf (init (drop 1 (javascriptLiteral (text (field "label" t)))))
             -- Haskell and Kotlin split long string literals into pieces.
             | otherwise -> unsplit content `shouldSatisfy` isInfixOf
                 (if field "kind" t == String "model" then modelNamed target name else named target name)

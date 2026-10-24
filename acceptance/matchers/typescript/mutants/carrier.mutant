@@ -1,7 +1,7 @@
 expect: the carrier is never empty
 @@ src/example/matchers.ts
 <<<<<<<
-  return new data.OrderShipped(new data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911('post', value0));
+  return new data.OrderShipped(new data.ShippedDetails('post', value0));
 =======
-  return new data.OrderShipped(new data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911('', value0));
+  return new data.OrderShipped(new data.ShippedDetails('', value0));
 >>>>>>>

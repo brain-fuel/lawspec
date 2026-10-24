@@ -480,7 +480,7 @@ emitPlanFormatted minify target Plan{..} = do
           ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ runtimeSource "web-harness") "generated" "test"
           | target `elem` ["javascript","typescript"] && usesHarness] ++
         [Artifact ("test/lawspec_data_strategies." ++ if target == "typescript" then "ts" else "mjs")
-          ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ webStrategies) "generated" "test" | target `elem` ["javascript","typescript"] && not (null dataFiles)] ++ [runtime | needsRuntime && target /= "go"] ++
+          webStrategies "generated" "test" | target `elem` ["javascript","typescript"] && not (null dataFiles)] ++ [runtime | needsRuntime && target /= "go"] ++
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecKotlinStrategies.kt" (runtimeSource "kotlin-data-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
         -- TCP and HTTP transports for nodes (the network package).
         [Artifact "src/LawSpecTransports.hs" (runtimeSource "haskell-transports") "generated" "source" | needsRuntime && target == "haskell"] ++
@@ -520,11 +520,7 @@ emitPlanFormatted minify target Plan{..} = do
       , "  }"
       , "}" ]
     definitionCalls = JavaDefinitions.definitionCalls (map plannedUnit plannedUnits)
-    webStrategies = unlines [if line == "import * as ls from './lawspec_runtime.mjs';"
-      then "import * as ls from '../src/lawspec_runtime." ++ (if target == "typescript" then "js" else "mjs") ++ "';"
-      else if line == schemaImport
-      then "import {RefinementViolation, witnessed, witnessInstances} from '../src/lawspec_schema." ++ (if target == "typescript" then "js" else "mjs") ++ "';"
-      else line | line <- lines (runtimeSource "web-data-strategies")]
+    webStrategies = WebData.testStrategies (target == "typescript")
     requiresSchema = if target == "python" then PythonData.requiresSchema else WebData.requiresSchema
     hasPayload = any payloadExpression
       (concatMap (concatMap C.contractExpressions . contracts . plannedUnit) plannedUnits ++
@@ -559,7 +555,7 @@ emitPlanFormatted minify target Plan{..} = do
       | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "python" = PythonDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
-      | otherwise = WebDefinitions.definitionCalls (map plannedUnit plannedUnits)
+      | otherwise = WebDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
     lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
@@ -801,7 +797,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
               destination = rel (split '/' tst ++ nested) (split '/' src)
               root = if null destination then "." else if ".." `isPrefixOf` destination
                 then destination else "./" ++ destination
-          in replace ("from '" ++ old) ("from '" ++ root ++ "/")
+          in replace ("from \"" ++ old) ("from \"" ++ root ++ "/") . replace ("from '" ++ old) ("from '" ++ root ++ "/")
         | target == "rust" && artifactPlacement a == "test" = replace "\n#[path = \"../src/" ("\n#[path = \"" ++ importRoot ++ "/")
         | otherwise = id
       result = map adjust files
@@ -809,8 +805,6 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
   pure result
 
 -- | The web strategies' schema import, rewritten to the emitted layout.
-schemaImport :: String
-schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"
 
 -- | Emitted files are held as text, weighed by their length.
 emitTable :: Table (Either [Diagnostic] [Stored])
@@ -841,8 +835,8 @@ remoteCalls target plan = case target of
   "go" -> GoDefinitions.definitionCalls units
   t | t `elem` ["java", "kotlin","scala"] -> JavaDefinitions.definitionCalls units
   "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
-  "javascript" -> WebDefinitions.definitionCalls units
-  "typescript" -> WebDefinitions.definitionCalls units
+  "javascript" -> WebDefinitions.definitionCalls (planDataDeclarations plan) units
+  "typescript" -> WebDefinitions.definitionCalls (planDataDeclarations plan) units
   "haskell" -> HaskellDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)

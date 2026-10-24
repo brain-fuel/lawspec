@@ -99,6 +99,14 @@ formatter target = do
         "sh" (\dir -> ["-c", script dir])
         (case t of "erlang" -> [".erl"]; "elixir" -> [".ex", ".exs", ".erl"]; _ -> [".gleam", ".erl"])
         ["test/locks/beam-formatters.txt", "test/locks/elixir/formatter.exs"]))
+    -- Prettier's default configuration (pinned in the target's lock), with
+    -- no project or repository configuration and no ignore files: the
+    -- staging directory sits under the repository's ignored .artifacts.
+    t | t `elem` ["javascript", "typescript"] ->
+      pure (Just (Formatter "prettier" "node"
+        (\dir -> [root </> ".integration" </> t </> "node_modules/prettier/bin/prettier.cjs",
+          "--check", "--no-config", "--no-editorconfig", "--ignore-path", dir </> ".no-ignore", dir])
+        [".mjs", ".js", ".ts", ".mts"] ["test/locks" </> t </> "package-lock.json"]))
     _ -> pure Nothing
 
 -- | The Fantomas version a dotnet tool manifest pins.

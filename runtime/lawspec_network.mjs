@@ -14,20 +14,22 @@
 // runtime loads this module when its first secure node is made, and uses
 // its layer (node, identity, trusted) as the node's secure layer; the module
 // imports nothing from the runtime.
-import { createCipheriv, createDecipheriv, createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
-import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
+import { createCipheriv, createDecipheriv, createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
+import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 
 const UTF8 = new TextEncoder();
-const STRICT_UTF8 = new TextDecoder('utf-8', {fatal: true});
-const RECORD = Uint8Array.of(0x4C, 0x53, 0x01);
-const HELLO = 1, WELCOME = 2, DATA = 3;
-const LABEL_HELLO = UTF8.encode('lawspec-handshake-v1-hello');
-const LABEL_WELCOME = UTF8.encode('lawspec-handshake-v1-welcome');
-const LABEL_KEY = UTF8.encode('lawspec-session-v1');
-const LABEL_FRAME = UTF8.encode('lawspec-frame-v1');
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
+const RECORD = Uint8Array.of(0x4c, 0x53, 0x01);
+const HELLO = 1,
+  WELCOME = 2,
+  DATA = 3;
+const LABEL_HELLO = UTF8.encode("lawspec-handshake-v1-hello");
+const LABEL_WELCOME = UTF8.encode("lawspec-handshake-v1-welcome");
+const LABEL_KEY = UTF8.encode("lawspec-session-v1");
+const LABEL_FRAME = UTF8.encode("lawspec-frame-v1");
 const HANDSHAKE_RETRY = 100;
 const HANDSHAKE_DEADLINE = 5000;
 const QUEUE_LIMIT = 4096;
@@ -36,7 +38,10 @@ const NO_CONTEXT = new Uint8Array(0);
 /** Bytes that are not a well-formed record. */
 class RecordError extends Error {}
 
-const asBytes = (data) => (data instanceof Uint8Array && data.constructor === Uint8Array ? data : new Uint8Array(data));
+const asBytes = (data) =>
+  data instanceof Uint8Array && data.constructor === Uint8Array
+    ? data
+    : new Uint8Array(data);
 
 function concatBytes(...parts) {
   const total = parts.reduce((n, p) => n + p.length, 0);
@@ -49,12 +54,15 @@ function concatBytes(...parts) {
   return out;
 }
 
-const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+const hex = (bytes) =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
 function fromHex(text) {
-  if (text.length % 2 !== 0 || /[^0-9a-fA-F]/.test(text)) throw new Error('not hexadecimal: ' + text);
+  if (text.length % 2 !== 0 || /[^0-9a-fA-F]/.test(text))
+    throw new Error("not hexadecimal: " + text);
   const out = new Uint8Array(text.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(text.slice(2 * i, 2 * i + 2), 16);
+  for (let i = 0; i < out.length; i++)
+    out[i] = parseInt(text.slice(2 * i, 2 * i + 2), 16);
   return out;
 }
 
@@ -66,11 +74,13 @@ function equalBytes(a, b) {
 }
 
 function sha3(data) {
-  return asBytes(createHash('sha3-256').update(data).digest());
+  return asBytes(createHash("sha3-256").update(data).digest());
 }
 
 function shake(data, length) {
-  return asBytes(createHash('shake256', {outputLength: length}).update(data).digest());
+  return asBytes(
+    createHash("shake256", { outputLength: length }).update(data).digest(),
+  );
 }
 
 function secureRandom(n) {
@@ -84,7 +94,7 @@ function w(data) {
   const out = [];
   let n = data.length;
   for (;;) {
-    const byte = n & 0x7F;
+    const byte = n & 0x7f;
     n = Math.floor(n / 128);
     if (n) out.push(byte | 0x80);
     else {
@@ -96,12 +106,15 @@ function w(data) {
 }
 
 function readVarint(data, pos) {
-  let result = 0, scale = 1;
+  let result = 0,
+    scale = 1;
   for (;;) {
-    if (pos >= data.length) throw new RecordError('the record ends in the middle of a length');
+    if (pos >= data.length)
+      throw new RecordError("the record ends in the middle of a length");
     const byte = data[pos++];
-    result += (byte & 0x7F) * scale;
-    if (result > Number.MAX_SAFE_INTEGER) throw new RecordError('a record length is too large');
+    result += (byte & 0x7f) * scale;
+    if (result > Number.MAX_SAFE_INTEGER)
+      throw new RecordError("a record length is too large");
     if (byte < 0x80) return [result, pos];
     scale *= 128;
   }
@@ -112,7 +125,8 @@ function readFields(data, pos, count) {
   for (let i = 0; i < count; i++) {
     let n;
     [n, pos] = readVarint(data, pos);
-    if (pos + n > data.length) throw new RecordError('a record field runs past its end');
+    if (pos + n > data.length)
+      throw new RecordError("a record field runs past its end");
     fields.push(data.slice(pos, pos + n));
     pos += n;
   }
@@ -126,9 +140,10 @@ export class NodeIdentity {
   #secretKey;
   constructor(seed) {
     const bytes = Uint8Array.from(seed);
-    if (bytes.length !== 32) throw new Error('a node identity is a 32-byte ML-DSA-65 seed');
+    if (bytes.length !== 32)
+      throw new Error("a node identity is a 32-byte ML-DSA-65 seed");
     this.seed = bytes;
-    const {publicKey, secretKey} = ml_dsa65.keygen(bytes.slice());
+    const { publicKey, secretKey } = ml_dsa65.keygen(bytes.slice());
     this.verifyingKey = publicKey;
     this.#secretKey = secretKey;
   }
@@ -144,13 +159,19 @@ export class NodeIdentity {
     return hex(sha3(this.verifyingKey));
   }
   sign(message) {
-    return ml_dsa65.sign(message, this.#secretKey.slice(), {context: NO_CONTEXT});
+    return ml_dsa65.sign(message, this.#secretKey.slice(), {
+      context: NO_CONTEXT,
+    });
   }
 }
 
 function verifySigned(verifyingKey, message, signature) {
   try {
-    return ml_dsa65.verify(signature, message, verifyingKey, {context: NO_CONTEXT}) === true;
+    return (
+      ml_dsa65.verify(signature, message, verifyingKey, {
+        context: NO_CONTEXT,
+      }) === true
+    );
   } catch {
     return false;
   }
@@ -165,12 +186,12 @@ function verifySigned(verifyingKey, message, signature) {
  * each null when not given.
  */
 export function networkConfig() {
-  const none = {identity: null, trusted: null};
+  const none = { identity: null, trusted: null };
   let conf = process.env.LAWSPEC_NETWORK_CONF;
   if (conf === undefined) {
     let here = process.cwd();
     for (;;) {
-      const candidate = join(here, 'lawspec-network.conf');
+      const candidate = join(here, "lawspec-network.conf");
       if (existsSync(candidate)) {
         conf = candidate;
         break;
@@ -182,27 +203,45 @@ export function networkConfig() {
   }
   if (!existsSync(conf)) return none;
   const base = dirname(resolve(conf));
-  let identity = null, trusted = null;
-  for (const line of readFileSync(conf, 'utf8').split('\n')) {
+  let identity = null,
+    trusted = null;
+  for (const line of readFileSync(conf, "utf8").split("\n")) {
     const trimmed = line.trim();
     const at = trimmed.search(/\s/);
-    if (at < 0 || trimmed.startsWith('#')) continue;
-    const word = trimmed.slice(0, at), target = join(base, trimmed.slice(at).trim());
-    if (word === 'identity') {
-      identity = new NodeIdentity(fromHex(readFileSync(target, 'utf8').trim()));
-    } else if (word === 'trusted') {
-      trusted = new Set(readFileSync(target, 'utf8').split(/\s+/).filter((t) => t !== '').map((t) => t.toLowerCase()));
+    if (at < 0 || trimmed.startsWith("#")) continue;
+    const word = trimmed.slice(0, at),
+      target = join(base, trimmed.slice(at).trim());
+    if (word === "identity") {
+      identity = new NodeIdentity(fromHex(readFileSync(target, "utf8").trim()));
+    } else if (word === "trusted") {
+      trusted = new Set(
+        readFileSync(target, "utf8")
+          .split(/\s+/)
+          .filter((t) => t !== "")
+          .map((t) => t.toLowerCase()),
+      );
     }
   }
-  return {identity, trusted};
+  return { identity, trusted };
 }
 
 export function helloBody(session, address, verifyingKey, encapsulationKey) {
-  return concatBytes(w(session), w(UTF8.encode(address)), w(verifyingKey), w(encapsulationKey));
+  return concatBytes(
+    w(session),
+    w(UTF8.encode(address)),
+    w(verifyingKey),
+    w(encapsulationKey),
+  );
 }
 
 export function welcomeBody(session, address, verifyingKey, ciphertext, hello) {
-  return concatBytes(w(session), w(UTF8.encode(address)), w(verifyingKey), w(ciphertext), w(sha3(hello)));
+  return concatBytes(
+    w(session),
+    w(UTF8.encode(address)),
+    w(verifyingKey),
+    w(ciphertext),
+    w(sha3(hello)),
+  );
 }
 
 /**
@@ -214,11 +253,27 @@ export function sessionKey(shared, hello, welcome) {
 }
 
 /** A data record: the frame sealed with key, under a fresh nonce unless one is given. */
-export function sealFrame(key, session, direction, frame, nonce = secureRandom(12)) {
-  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+export function sealFrame(
+  key,
+  session,
+  direction,
+  frame,
+  nonce = secureRandom(12),
+) {
+  const cipher = createCipheriv("aes-256-gcm", key, nonce);
   cipher.setAAD(concatBytes(LABEL_FRAME, session, Uint8Array.of(direction)));
-  const body = concatBytes(cipher.update(frame), cipher.final(), cipher.getAuthTag());
-  return concatBytes(RECORD, Uint8Array.of(DATA), w(session), Uint8Array.of(direction), w(concatBytes(nonce, body)));
+  const body = concatBytes(
+    cipher.update(frame),
+    cipher.final(),
+    cipher.getAuthTag(),
+  );
+  return concatBytes(
+    RECORD,
+    Uint8Array.of(DATA),
+    w(session),
+    Uint8Array.of(direction),
+    w(concatBytes(nonce, body)),
+  );
 }
 
 /** The frame a data record seals, or null. */
@@ -236,10 +291,19 @@ export function openFrame(key, record) {
   }
   if (end !== record.length || sealed.length < 28) return null;
   try {
-    const decipher = createDecipheriv('aes-256-gcm', key, sealed.subarray(0, 12));
-    decipher.setAAD(concatBytes(LABEL_FRAME, session, Uint8Array.of(direction)));
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      key,
+      sealed.subarray(0, 12),
+    );
+    decipher.setAAD(
+      concatBytes(LABEL_FRAME, session, Uint8Array.of(direction)),
+    );
     decipher.setAuthTag(sealed.subarray(sealed.length - 16));
-    return concatBytes(decipher.update(sealed.subarray(12, sealed.length - 16)), decipher.final());
+    return concatBytes(
+      decipher.update(sealed.subarray(12, sealed.length - 16)),
+      decipher.final(),
+    );
   } catch {
     return null;
   }
@@ -250,18 +314,53 @@ export function openFrame(key, record) {
  * bodies' hashes, the session key and a sealed frame, as every target must
  * compute them.
  */
-export function handshakeVector(initiatorSeed, responderSeed, kemSeed, session, initiator, responder,
-                                ciphertext, nonce, frame, helloHash, welcomeHash, key, record) {
+export function handshakeVector(
+  initiatorSeed,
+  responderSeed,
+  kemSeed,
+  session,
+  initiator,
+  responder,
+  ciphertext,
+  nonce,
+  frame,
+  helloHash,
+  welcomeHash,
+  key,
+  record,
+) {
   const x = fromHex;
-  const first = new NodeIdentity(x(initiatorSeed)), second = new NodeIdentity(x(responderSeed));
+  const first = new NodeIdentity(x(initiatorSeed)),
+    second = new NodeIdentity(x(responderSeed));
   const kem = ml_kem768.keygen(x(kemSeed));
-  const hello = helloBody(x(session), initiator, first.verifyingKey, kem.publicKey);
-  const welcome = welcomeBody(x(session), responder, second.verifyingKey, x(ciphertext), hello);
-  const derived = sessionKey(asBytes(ml_kem768.decapsulate(x(ciphertext), kem.secretKey)), hello, welcome);
+  const hello = helloBody(
+    x(session),
+    initiator,
+    first.verifyingKey,
+    kem.publicKey,
+  );
+  const welcome = welcomeBody(
+    x(session),
+    responder,
+    second.verifyingKey,
+    x(ciphertext),
+    hello,
+  );
+  const derived = sessionKey(
+    asBytes(ml_kem768.decapsulate(x(ciphertext), kem.secretKey)),
+    hello,
+    welcome,
+  );
   const sealed = sealFrame(derived, x(session), 0, x(frame), x(nonce));
   const opened = openFrame(derived, sealed);
-  return hex(sha3(hello)) === helloHash && hex(sha3(welcome)) === welcomeHash &&
-    hex(derived) === key && hex(sealed) === record && opened !== null && equalBytes(opened, x(frame));
+  return (
+    hex(sha3(hello)) === helloHash &&
+    hex(sha3(welcome)) === welcomeHash &&
+    hex(derived) === key &&
+    hex(sealed) === record &&
+    opened !== null &&
+    equalBytes(opened, x(frame))
+  );
 }
 
 /** A one-time token from the operating system's secure generator: 32 bytes as 64 hexadecimal digits. */
@@ -303,10 +402,14 @@ export class SecureLayer {
   known;
   constructor(node, identity = null, trusted = null) {
     this.node = node;
-    const config = identity === null || trusted === null ? networkConfig() : null;
+    const config =
+      identity === null || trusted === null ? networkConfig() : null;
     this.identity = identity ?? config.identity ?? NodeIdentity.generate();
     const fingerprints = trusted ?? config.trusted;
-    this.trusted = fingerprints === null ? null : new Set([...fingerprints].map((t) => String(t).toLowerCase()));
+    this.trusted =
+      fingerprints === null
+        ? null
+        : new Set([...fingerprints].map((t) => String(t).toLowerCase()));
     // By session id (hexadecimal).
     this.sessions = new Map();
     // By peer address: the session this node began.
@@ -341,7 +444,10 @@ export class SecureLayer {
       }
     }
     if (session !== undefined) {
-      await this.node.transport.send(peer, sealFrame(session.key, session.id, session.direction, frame));
+      await this.node.transport.send(
+        peer,
+        sealFrame(session.key, session.id, session.direction, frame),
+      );
       return;
     }
     let pending = this.pending.get(peer);
@@ -364,10 +470,22 @@ export class SecureLayer {
   begin(peer) {
     const session = secureRandom(16);
     const kem = ml_kem768.keygen(secureRandom(64));
-    const body = helloBody(session, this.node.address, this.identity.verifyingKey, kem.publicKey);
+    const body = helloBody(
+      session,
+      this.node.address,
+      this.identity.verifyingKey,
+      kem.publicKey,
+    );
     const signature = this.identity.sign(concatBytes(LABEL_HELLO, body));
-    return {session, kem, body, queue: [], done: false, timer: undefined,
-      hello: concatBytes(RECORD, Uint8Array.of(HELLO), body, w(signature))};
+    return {
+      session,
+      kem,
+      body,
+      queue: [],
+      done: false,
+      timer: undefined,
+      hello: concatBytes(RECORD, Uint8Array.of(HELLO), body, w(signature)),
+    };
   }
   /** Sends the hello again every 100ms until welcomed, for up to 5s. */
   retry(peer, pending) {
@@ -393,20 +511,28 @@ export class SecureLayer {
    */
   receive(record) {
     record = asBytes(record);
-    if (record.length < 4 || !equalBytes(record.subarray(0, 3), RECORD)) return null;
+    if (record.length < 4 || !equalBytes(record.subarray(0, 3), RECORD))
+      return null;
     try {
       switch (record[3]) {
-        case HELLO: this.hello(record); return null;
-        case WELCOME: this.welcome(record); return null;
-        case DATA: return this.data(record);
-        default: return null;
+        case HELLO:
+          this.hello(record);
+          return null;
+        case WELCOME:
+          this.welcome(record);
+          return null;
+        case DATA:
+          return this.data(record);
+        default:
+          return null;
       }
     } catch {
       return null;
     }
   }
   hello(record) {
-    const [[session, address, verifyingKey, encapsulationKey], pos] = readFields(record, 4, 4);
+    const [[session, address, verifyingKey, encapsulationKey], pos] =
+      readFields(record, 4, 4);
     const [[signature], end] = readFields(record, pos, 1);
     if (end !== record.length) return;
     const body = record.slice(4, pos);
@@ -414,29 +540,68 @@ export class SecureLayer {
     const id = hex(session);
     let answered = this.welcomes.get(id);
     if (answered === undefined) {
-      if (!verifySigned(verifyingKey, concatBytes(LABEL_HELLO, body), signature)) return;
+      if (
+        !verifySigned(verifyingKey, concatBytes(LABEL_HELLO, body), signature)
+      )
+        return;
       if (!this.acceptPeer(from, verifyingKey)) return;
-      const {cipherText, sharedSecret} = ml_kem768.encapsulate(encapsulationKey);
-      const welcome = welcomeBody(session, this.node.address, this.identity.verifyingKey, cipherText, body);
-      answered = [from, concatBytes(RECORD, Uint8Array.of(WELCOME), welcome,
-        w(this.identity.sign(concatBytes(LABEL_WELCOME, welcome))))];
+      const { cipherText, sharedSecret } =
+        ml_kem768.encapsulate(encapsulationKey);
+      const welcome = welcomeBody(
+        session,
+        this.node.address,
+        this.identity.verifyingKey,
+        cipherText,
+        body,
+      );
+      answered = [
+        from,
+        concatBytes(
+          RECORD,
+          Uint8Array.of(WELCOME),
+          welcome,
+          w(this.identity.sign(concatBytes(LABEL_WELCOME, welcome))),
+        ),
+      ];
       this.welcomes.set(id, answered);
-      this.sessions.set(id, new SecureSession(session, from, sessionKey(asBytes(sharedSecret), body, welcome), 1, false));
+      this.sessions.set(
+        id,
+        new SecureSession(
+          session,
+          from,
+          sessionKey(asBytes(sharedSecret), body, welcome),
+          1,
+          false,
+        ),
+      );
     }
     this.node.transport.send(answered[0], answered[1]).catch(() => {});
   }
   welcome(record) {
-    const [[session, address, verifyingKey, ciphertext, helloHash], pos] = readFields(record, 4, 5);
+    const [[session, address, verifyingKey, ciphertext, helloHash], pos] =
+      readFields(record, 4, 5);
     const [[signature], end] = readFields(record, pos, 1);
     if (end !== record.length) return;
     const from = STRICT_UTF8.decode(address);
     const pending = this.pending.get(from);
-    if (pending === undefined || pending.done || !equalBytes(pending.session, session) ||
-        !equalBytes(helloHash, sha3(pending.body))) return;
+    if (
+      pending === undefined ||
+      pending.done ||
+      !equalBytes(pending.session, session) ||
+      !equalBytes(helloHash, sha3(pending.body))
+    )
+      return;
     const body = record.slice(4, pos);
-    if (!verifySigned(verifyingKey, concatBytes(LABEL_WELCOME, body), signature)) return;
+    if (
+      !verifySigned(verifyingKey, concatBytes(LABEL_WELCOME, body), signature)
+    )
+      return;
     if (!this.acceptPeer(from, verifyingKey)) return;
-    const key = sessionKey(asBytes(ml_kem768.decapsulate(ciphertext, pending.kem.secretKey.slice())), pending.body, body);
+    const key = sessionKey(
+      asBytes(ml_kem768.decapsulate(ciphertext, pending.kem.secretKey.slice())),
+      pending.body,
+      body,
+    );
     const established = new SecureSession(session, from, key, 0, true);
     this.pending.delete(from);
     pending.done = true;
@@ -444,7 +609,9 @@ export class SecureLayer {
     this.sessions.set(hex(session), established);
     this.outbound.set(from, established);
     for (const frame of pending.queue) {
-      this.node.transport.send(from, sealFrame(key, session, 0, frame)).catch(() => {});
+      this.node.transport
+        .send(from, sealFrame(key, session, 0, frame))
+        .catch(() => {});
     }
   }
   data(record) {

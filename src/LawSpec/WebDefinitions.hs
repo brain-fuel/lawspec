@@ -1,5 +1,5 @@
 -- | Native public JS/TS entry points over framework-independent checked bodies.
-module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls, plainCall) where
+module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls, definitionNames, plainCall) where
 
 import Control.Monad (forM)
 import LawSpec.Core.Policy
@@ -8,21 +8,49 @@ import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.WebData as Native
-import qualified LawSpec.WebExpr as E
+import qualified LawSpec.WebExpr as X
+import qualified LawSpec.Code.ECMAScript as E
 import qualified LawSpec.Code.Doc as D
-import Data.List (nub, sort, intercalate, stripPrefix, isPrefixOf)
+import Data.List (nub, sort, stripPrefix, isPrefixOf)
+import Data.Char (toLower)
 import LawSpec.AbilityNames (specName, interfaceName, ownerName)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 import LawSpec.Typed.Plan (TypedPlan(..))
+import LawSpec.WebTypes (namesFor)
+import LawSpec.WebModule (Support(..), webModule, linkComment, printWebModule, importExtension)
+import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.SourceLink (sourceLink)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 
--- | An asynchronous definition's call is marked "await ", so callers await it.
-definitionCalls :: [Unit] -> [(Id,String)]
-definitionCalls units = [(identity, (if identity `elem` waiting then "await " else "") ++ "_definitions.evaluate" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units), let identity = declarationId (definitionDeclaration d)]
+-- | Generated tests call checked definitions by these names, so every test
+-- file agrees. An asynchronous definition's call is marked "await ", so
+-- callers await it.
+definitionCalls :: [DataDeclaration] -> [Unit] -> [(Id,String)]
+definitionCalls declarations units =
+  [(identity, (if identity `elem` waiting then "await " else "") ++ "_definitions." ++ name) | (identity, name) <- definitionNames declarations units]
   where waiting = asyncDefinitions units
+
+-- | A definition's function is named after it (LawSpec.Naming), with _2
+-- only when two definitions would share a name.
+definitionNames :: [DataDeclaration] -> [Unit] -> [(Id,String)]
+definitionNames declarations units = zip (map (declarationId . definitionDeclaration) definitions)
+  (fst (claimAll (scopeWith (X.webReserved ++ moduleNames)) (map base definitions)))
+  where
+    definitions = concatMap unitDefinitions units
+    -- Data types are named as the generated code names them.
+    shown = either (const []) id (namesFor declarations)
+    display ty = case ty of
+      Constructor n args | Just name <- lookup (Id n) shown -> Constructor name (map display' args)
+      Constructor n args -> Constructor n (map display' args)
+      _ -> ty
+    display' (TypeArgument t) = TypeArgument (display t)
+    display' a = a
+    base d = let declaration = definitionDeclaration d
+      in nativeIdentifier "javascript" FunctionName
+           (readableDefinitionName (declarationName declaration) (map display (fst (functionType (declarationType declaration)))))
+    moduleNames = ["data", "ls", "schema", "result", "checkedResult", "lsf"]
 
 -- | Workflows (and their stages) that call an asynchronous adapter, directly or
 -- through another such definition, are async functions.
@@ -51,48 +79,58 @@ emitWebDefinitions _ _ _ _ units | null (concatMap unitDefinitions units) = pure
 emitWebDefinitions ts layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
   typed <- emitWebTyped ts bits declarations units
-  bodies <- mapM (\(index, d) -> maybe (implementation contracts (index, d)) (bridge typed index d)
+  bodies <- mapM (\d -> maybe (implementation contracts d) (bridge typed d)
       (webTypedFunction typed (declarationId (definitionDeclaration d))))
-    (zip [0::Int ..] (concatMap unitDefinitions units))
+    (concatMap unitDefinitions units)
   wrappers <- mapM nativeUnit (filter (not . null . unitDefinitions) units)
   let hasTyped = not (M.null (typedDefinitions (webTypedPlan typed)))
       typedFiles = if hasTyped
         then [ Artifact ("src/lawspec_typed." ++ extension) (webTypedModule typed) "generated" "source"
              , Artifact ("src/lawspec_fast." ++ extension) (if ts then "// @ts-nocheck\n" ++ replaceText "./lawspec_runtime.mjs" "./lawspec_runtime.js" (runtimeSource "web-fast") else runtimeSource "web-fast") "generated" "source" ]
         else []
-  pure (file ("src/lawspec_definition_bodies." ++ extension) "./" (adapterImports ++ ["import * as _typed from './lawspec_typed." ++ importExtension ++ "';" | hasTyped]) bodies : wrappers ++ typedFiles)
+  pure (file ("src/lawspec_definition_bodies." ++ extension) "./"
+    (adapterImports ++ [("_typed", E.ImportDecl False (E.ImportNamespace "_typed") ("./lawspec_typed." ++ importExtension ts)) | hasTyped]) bodies : wrappers ++ typedFiles)
   where
     replaceText old new text = case text of
       [] -> []
       _ | take (length old) text == old -> new ++ replaceText old new (drop (length old) text)
       c : rest -> c : replaceText old new rest
+    names = definitionNames declarations units
+    functionNameOf d = maybe "unnamed" id (lookup (declarationId (definitionDeclaration d)) names)
+    -- Each function's comment links it to its definition.
+    linked d stmt = let declaration = definitionDeclaration d
+      in [linkComment (declarationName declaration) (sourceLink (declarationOrigin declaration)), stmt]
+    -- A definition's arguments keep their source names.
+    argumentNames d = fst (claimAll (scopeWith (X.webReserved ++ ["result", "checkedResult"]))
+      [localIdentifier "javascript" (binderName b) | b <- definitionArguments d])
     -- A typed definition's dynamic entry converts its arguments and result.
-    bridge typed index d function = do
+    bridge typed d function = do
       let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
           identity = declarationId (definitionDeclaration d)
-          arguments = ["value" ++ show i | i <- [0 .. length argTypes - 1]]
+          arguments = argumentNames d
           needsContext = identity `Set.member` typedContextual (webTypedPlan typed)
-          call = "_typed." ++ webTypedTo typed resultType ++ "(_typed." ++ function ++ "(" ++
-            intercalate ", " (["symbols" | needsContext] ++ ["_typed." ++ webTypedFrom typed t ++ "(" ++ a ++ ")" | (t, a) <- zip argTypes arguments]) ++ "))"
-      pure (D.text ("export function evaluate" ++ show index) <>
-        D.delimitTrailing 4 "(" ")" (symbols : [D.text a <> annotation (D.text "unknown") | a <- arguments]) <> annotation (D.text "unknown") <> D.text " " <>
-        D.block 2 (contextual identity (D.text ("return " ++ call ++ ";"))))
+          invocation = E.call ("_typed." ++ webTypedTo typed resultType) [E.call ("_typed." ++ function)
+            ([E.Ident "symbols" | needsContext] ++ [E.call ("_typed." ++ webTypedFrom typed t) [E.Ident a] | (t, a) <- zip argTypes arguments])]
+      pure (linked d (E.FunctionDecl True False (functionNameOf d) [] (symbols : [annotated a unknownType | a <- arguments]) (annotation unknownType)
+        [contextual identity [E.ret invocation]]))
     extension = if ts then "ts" else "mjs"
-    importExtension = if ts then "js" else "mjs"
-    width = D.text (show bits)
-    callees = definitionCalls units
+    width = X.machineBits
+    unknownType = E.TKeyword "unknown"
+    annotated name ty = (E.param name) { E.paramType = if ts then Just ty else Nothing }
+    annotation ty = if ts then Just ty else Nothing
+    callees = definitionCalls declarations units
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
     adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,
       declarationId d `notElem` definitionIds]
     -- The adapter modules orchestrations call, imported from the bodies file.
     adapterAlias owner = "_adapters_" ++ map (\c -> if c == '.' then '_' else c) owner
-    adapterImports = nub [ "import * as " ++ adapterAlias owner ++ " from './" ++
-                             map (\c -> if c == '.' then '/' else c) owner ++ "." ++ importExtension ++ "';"
+    adapterImports = nub [ (adapterAlias owner, E.ImportDecl False (E.ImportNamespace (adapterAlias owner))
+                             ("./" ++ map (\c -> if c == '.' then '/' else c) owner ++ "." ++ importExtension ts))
                          | d <- concatMap unitDefinitions units, definitionOrchestrates d
                          , callee <- calls (definitionBody d), Just (owner, _) <- [lookup callee adapters] ] ++
       -- The spec handlers that handle ... with h end regions make.
-      nub [ "import * as " ++ abilitiesAlias owner ++ " from './lawspec_abilities/" ++
-              map (\c -> if c == '.' then '/' else c) owner ++ "." ++ importExtension ++ "';"
+      nub [ (abilitiesAlias owner, E.ImportDecl False (E.ImportNamespace (abilitiesAlias owner))
+              ("./lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) owner ++ "." ++ importExtension ts))
           | d <- concatMap unitDefinitions units, h <- scopedHandlers (definitionBody d), Just (owner, _) <- [specHandlerOwner h] ]
     abilitiesAlias owner = "_abilities_" ++ map (\c -> if c == '.' then '_' else c) owner
     scopedHandlers expression = case expressionNode expression of
@@ -104,46 +142,45 @@ emitWebDefinitions ts layout bits declarations units = do
     calls expression = case expressionNode expression of
       ExternalCall callee arguments -> callee : concatMap calls arguments
       _ -> concatMap calls (children expression)
-    annotation ty = if ts then D.text ": " <> ty else mempty
-    file path root imports bodies = Artifact path (D.render layout (
-      D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
-      D.joinWith D.hardline (map D.text (sort (imports ++
-        ["import * as " ++ alias ++ " from '" ++ root ++ moduleName ++ "." ++ importExtension ++ "';"
-        | (alias,moduleName) <- [("data","lawspec_data"),("ls","lawspec_runtime"),("schema","lawspec_schema")]]))) <>
-      D.hardline <> D.hardline <> D.text "const _lawspec_schema = data.makeSchema();" <>
-      D.hardline <> D.hardline <>
-      D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "generated" "source"
+    -- A module of functions: its imports and support are those it uses.
+    file path root imports functions = Artifact path (printWebModule layout ts (webModule ts
+      [E.Comment ["// Generated by LawSpec. Do not edit."]]
+      (imports ++ [ (alias, E.ImportDecl False (E.ImportNamespace alias) (root ++ moduleName ++ "." ++ importExtension ts))
+                  | (alias, moduleName) <- [("data","lawspec_data"),("ls","lawspec_runtime"),("schema","lawspec_schema")]])
+      [ Support "_lawspec_schema" [E.constDecl "_lawspec_schema" (E.call "data.makeSchema" [])]
+      , Support "MACHINE_BITS" (X.machineBitsDeclaration bits) ]
+      functions)) "generated" "source"
     -- A failure raised with Fail passes through, to the attempt that awaits it.
-    contextual identity body = D.text "try " <> D.block 2 body <>
-      D.text " catch (error) " <> D.block 2
-        (D.text "if (error instanceof ls.Failure) throw error;" <> D.hardline <> D.text "throw " <> E.call "new globalThis.Error"
-          [D.group (E.quotedValue (idText identity ++ ": ") <> D.text " +" <>
-            D.nest 4 (D.softline <> E.call "globalThis.String" [D.text "error"])),D.text "{cause: error}"] <> D.text ";")
-    assign name value = D.text ("const " ++ name ++ " = ") <> value <> D.text ";"
+    contextual identity body = E.Try body (Just (Just (E.PIdent "error"),
+      [ E.IfSingle (E.Binary "instanceof" (E.Ident "error") (E.member (E.Ident "ls") "Failure")) (E.Throw (E.Ident "error"))
+      , E.Throw (E.new' "globalThis.Error"
+          [E.Binary "+" (E.Str (idText identity ++ ": ")) (E.call "globalThis.String" [E.Ident "error"]),
+           E.Object [E.Prop (E.KName "cause") (E.Ident "error")]]) ])) Nothing
     schemaCall name ty value = do
-      ref <- Native.webTypeReferenceDoc ty
-      pure (E.call ("_lawspec_schema." ++ name) [ref,value,width,D.text "symbols"])
+      ref <- Native.webTypeReference ty
+      pure (E.call ("_lawspec_schema." ++ name) [ref,value,width,E.Ident "symbols"])
     -- A handler's values cross with the handler schema (ls.handlerSchema).
     handlerCall name ty value = do
-      ref <- Native.webTypeReferenceDoc ty
-      pure (E.call ("ls.handlerSchema(_lawspec_schema)." ++ name) [ref,value,width,D.text "symbols"])
-    symbols = D.text "symbols" <> annotation (D.text "Map<string, symbol>")
-    implementation contracts (index,d) = do
-      let binders = definitionArguments d ++ nestedBinders (definitionBody d)
-          names = zip (nub (map binderId binders)) ["value" ++ show i | i <- [0::Int ..]]
-          local identity = maybe (error "unresolved JS/TS local") id (lookup identity names)
-          arguments = [D.text (local (binderId binder)) <> annotation (D.text "unknown") | binder <- definitionArguments d]
+      ref <- Native.webTypeReference ty
+      pure (E.method (E.call "ls.handlerSchema" [E.Ident "_lawspec_schema"]) name [ref,value,width,E.Ident "symbols"])
+    symbols = annotated "symbols" (E.TRef "Map" [E.TKeyword "string", E.TKeyword "symbol"])
+    failureCallback convert = E.arrow [annotated "_failure" unknownType] convert
+    implementation contracts d = do
+      let binders = definitionArguments d
+          arguments = argumentNames d
+          locals = zip (map binderId binders) arguments
+          local identity = maybe (error "unresolved JS/TS local") id (lookup identity locals)
           asynchronous = declarationId (definitionDeclaration d) `elem` asyncDefinitions units
-          awaitIf condition expression = if condition then D.text "(await " <> expression <> D.text ")" else expression
+          awaitIf condition expression = if condition then E.Await expression else expression
           external term values = case expressionNode term of
             -- raise aborts to the nearest attempt of its Fail ability.
             Perform op [_] | isFail (operationAbility op) ->
-              pure (E.call "ls.raiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
+              pure (E.call "ls.raiseFailure" (E.Str (abilityKey (operationAbility op)) : values))
             -- An operation goes to the handler installed in symbols for its
             -- ability (evidence passing).
             Perform op args -> do
               nativeValues <- sequence [handlerCall "toNative" (expressionType a) value | (a, value) <- zip args values]
-              let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
+              let invocation = E.method (E.call "ls.handler" [E.Ident "symbols", E.Str (abilityKey (operationAbility op))]) (operationName op) nativeValues
               result <- if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [invocation])
                 else handlerCall "fromNative" (expressionType term) invocation
@@ -151,30 +188,30 @@ emitWebDefinitions ts layout bits declarations units = do
               -- ls.Fail with a native E, which becomes the failure.
               case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
                 Just failing@(AbilityRef _ [failure]) -> do
-                  convert <- handlerCall "fromNative" failure (D.text "_failure")
-                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey failing), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert, D.text "() => " <> result, D.text "[]"])
+                  convert <- handlerCall "fromNative" failure (E.Ident "_failure")
+                  pure (E.call "ls.nativeFailures" [E.Str (abilityKey failing), failureCallback convert, E.arrow [] result, E.Array []])
                 _ -> pure result
             -- prelude.attempt e: Right of e's value, or Left of its failure.
             Handle (CatchFailure ability) _ | [body] <- values ->
-              pure (E.call "ls.attempt" [E.quoted (abilityKey ability), D.text "() => " <> body,
-                D.text "(_value" <> annotation (D.text "unknown") <> D.text ") => ls.construct('Either::Right', [_value])",
-                D.text "(_value" <> annotation (D.text "unknown") <> D.text ") => ls.construct('Either::Left', [_value])"])
+              pure (E.call "ls.attempt" [E.Str (abilityKey ability), E.arrow [] body,
+                E.arrow [annotated "_value" unknownType] (E.call "ls.construct" [E.Str "Either::Right", E.Array [E.Ident "_value"]]),
+                E.arrow [annotated "_value" unknownType] (E.call "ls.construct" [E.Str "Either::Left", E.Array [E.Ident "_value"]])])
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values, Just (owner, x) <- specHandlerOwner h ->
-              pure (E.call "ls.withHandlers" [D.text "symbols",
-                D.delimitTrailing 4 "{" "}" [E.quoted (abilityKey ability) <> D.text (": new " ++ abilitiesAlias owner ++ "." ++ specName x ++ "(symbols)")],
-                D.text "() => " <> body])
+              pure (E.call "ls.withHandlers" [E.Ident "symbols",
+                E.Object [E.Prop (E.KString (abilityKey ability)) (E.new' (abilitiesAlias owner ++ "." ++ specName x) [E.Ident "symbols"])],
+                E.arrow [] body])
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (awaitIf ("await " `isPrefixOf` name)
-                (E.call (drop (length ("_definitions." :: String)) (plainCall name)) (D.text "symbols":values)))
+                (E.call (drop (length ("_definitions." :: String)) (plainCall name)) (E.Ident "symbols":values)))
             -- An orchestration calls an adapter natively: the values cross
             -- to native and back through the schema, as in the tests.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity adapters -> do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "toNative" ty value | (ty, value) <- zip parameterTypes values]
               -- An adapter that uses abilities gets their handlers first.
-              let handlers = [D.text ("ls.handler(symbols, " ++ show (abilityKey a) ++ ")") | a <- declarationUses adapter, not (isFail a)]
+              let handlers = [E.call "ls.handler" [E.Ident "symbols", E.Str (abilityKey a)] | a <- declarationUses adapter, not (isFail a)]
                   called = awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) (handlers ++ nativeValues))
               -- A Unit adapter returns undefined, which is the Unit value.
               result <- if resultType == Constructor "Unit" []
@@ -183,83 +220,78 @@ emitWebDefinitions ts layout bits declarations units = do
               -- An adapter that fails with E: native code throws ls.Fail.
               case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
                 ability@(AbilityRef _ [failure]) : _ | not (declarationAsync adapter) -> do
-                  convert <- schemaCall "fromNative" failure (D.text "_failure")
-                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert,
-                    D.text "() => " <> result, D.text "[]"])
+                  convert <- schemaCall "fromNative" failure (E.Ident "_failure")
+                  pure (E.call "ls.nativeFailures" [E.Str (abilityKey ability), failureCallback convert, E.arrow [] result, E.Array []])
                 -- An async adapter's rejected promise fails the same way.
                 ability@(AbilityRef _ [failure]) : _ -> do
-                  convert <- schemaCall "fromNative" failure (D.text "_failure")
-                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.quoted (abilityKey ability), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert,
-                    D.text "async () => " <> result, D.text "[]"]))
+                  convert <- schemaCall "fromNative" failure (E.Ident "_failure")
+                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.Str (abilityKey ability), failureCallback convert,
+                    E.asyncArrow [] result, E.Array []]))
                 _ -> pure result
             _ -> Left "unresolved JS/TS total call"
-      rendered <- (if asynchronous then E.renderAsyncExpression else E.renderExpression) ts declarations bits local external (definitionBody d)
+      rendered <- (if asynchronous then X.renderAsyncExpression else X.renderExpression) ts declarations local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy | policyFrame policy -> pure (awaitIf asynchronous (E.call (if asynchronous then "ls.runWorkflowAsync" else "ls.runWorkflow")
-          [D.text "symbols", D.text (if asynchronous then "async () => " else "() => ") <> rendered]))
+          [E.Ident "symbols", E.Arrow asynchronous [] Nothing (E.ExpressionBody rendered)]))
         Just policy -> do
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
           let key = case definitionArguments d of
-                argument : _ -> D.text (local (binderId argument))
-                [] -> D.text "null"
+                argument : _ -> E.Ident (local (binderId argument))
+                [] -> E.Null
           pure (awaitIf asynchronous (E.call (if asynchronous then "ls.runStageAsync" else "ls.runStage")
-            [D.text "symbols", config, D.text (if asynchronous then "async () => " else "() => ") <> rendered, key]))
+            [E.Ident "symbols", config, E.Arrow asynchronous [] Nothing (E.ExpressionBody rendered), key]))
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
-      let checks = []
-          result = D.text "result"
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
       statements <- case contract of
-        Nothing -> pure (checks ++ [assign "result" body,D.text "return " <> result <> D.text ";"])
+        Nothing -> pure [E.ret body]
         Just c -> do
           let aliases = zip (map binderId (contractArguments c))
                 (map (local . binderId) (definitionArguments d)) ++
-                [(binderId (contractResult c),"checked_result")] ++
-                [(binderId b,"contract_value_" ++ show i) | (i,b) <- zip [0::Int ..]
-                  (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c))]
+                [(binderId (contractResult c),"checkedResult")]
               resolve identity = maybe (error "unbound definition contract binder") id (lookup identity aliases)
               require stage predicate = do
-                expression <- E.renderExpression ts declarations bits resolve external predicate
-                pure (E.call "ls.requireContract" [expression,E.quoted stage] <> D.text ";")
+                expression <- X.renderExpression ts declarations resolve external predicate
+                pure (E.ExprStmt (E.call "ls.requireContract" [expression,E.Str stage]))
           pre <- mapM (require "precondition") (contractPreconditions c)
           -- Proved by the totality audit; see LawSpec.Core.Evidence.
           post <- mapM (require "postcondition") (runtimePostconditions c)
-          pure (checks ++ pre ++ [assign "result" body,assign "checked_result" result] ++
-            post ++ [D.text "return checked_result;"])
-      pure (D.text ((if asynchronous then "export async function evaluate" else "export function evaluate") ++ show index) <>
-        D.delimitTrailing 4 "(" ")" (symbols:arguments) <> annotation (D.text (if asynchronous then "Promise<unknown>" else "unknown")) <> D.text " " <>
-        D.block 2 (contextual (declarationId (definitionDeclaration d)) (D.joinWith D.hardline
-          statements)))
+          pure (pre ++ [E.constDecl "checkedResult" body] ++ post ++ [E.ret (E.Ident "checkedResult")])
+      pure (linked d (E.FunctionDecl True asynchronous (functionNameOf d) [] (symbols : [annotated a unknownType | a <- arguments])
+        (annotation (if asynchronous then E.TRef "Promise" [unknownType] else unknownType))
+        [contextual (declarationId (definitionDeclaration d)) statements]))
     evaluator identity = maybe (Left "unresolved JS/TS policy definition") (Right . drop (length ("_definitions." :: String)) . plainCall)
       (lookup identity callees)
+    anyParam p = annotated p (E.TKeyword "any")
+    callTo name args = E.call name (E.Ident "symbols" : args)
     policyDoc key policy = do
       gates <- policyGates policy
       compensate <- case policyCompensate policy of
-        Nothing -> pure (D.text "null")
-        Just undo -> (\name -> arrow ["value"] (name ++ "(symbols, value)")) <$> evaluator undo
+        Nothing -> pure E.Null
+        Just undo -> (\name -> E.arrow [anyParam "value"] (callTo name [E.Ident "value"])) <$> evaluator undo
       retry <- case policyRetry policy of
-        Nothing -> pure (D.text "null")
+        Nothing -> pure E.Null
         Just r -> do
           strategy <- case retryStrategy r of
-            Immediate -> pure (array [E.quoted "immediate"])
-            Fixed delay -> pure (array [E.quoted "fixed", big delay])
-            Linear delay step -> pure (array [E.quoted "linear", big delay, big step])
-            Exponential delay factor cap -> pure (array [E.quoted "exponential", big delay, big factor, maybe (D.text "null") big cap])
-            Fibonacci delay -> pure (array [E.quoted "fibonacci", big delay])
+            Immediate -> pure (E.Array [E.Str "immediate"])
+            Fixed delay -> pure (E.Array [E.Str "fixed", big delay])
+            Linear delay step -> pure (E.Array [E.Str "linear", big delay, big step])
+            Exponential delay factor cap -> pure (E.Array [E.Str "exponential", big delay, big factor, maybe E.Null big cap])
+            Fibonacci delay -> pure (E.Array [E.Str "fibonacci", big delay])
             Custom decide -> do
               name <- evaluator decide
-              pure (array [E.quoted "custom", D.text ("(attempt, error, previous) => ls.retryDecision(" ++ name ++
-                "(symbols, attempt, error, new ls.DataValue('lawspec.time::type::Duration::Duration', [previous])))")])
+              pure (E.Array [E.Str "custom", E.arrow (map anyParam ["attempt", "error", "previous"]) (E.call "ls.retryDecision"
+                [callTo name [E.Ident "attempt", E.Ident "error", E.new' "ls.DataValue" [E.Str "lawspec.time::type::Duration::Duration", E.Array [E.Ident "previous"]]]])])
           condition <- case retryWhen r of
-            Nothing -> pure (D.text "null")
-            Just p -> (\name -> D.text ("(error) => " ++ name ++ "(symbols, error)")) <$> evaluator p
-          pure (object [("strategy", strategy), ("attempts", big (retryAttempts r)), ("jitter", E.quoted (jitterName (retryJitter r))), ("when", condition)])
-      pure (object [("stage", E.quoted (policyStage policy)), ("retry", retry), ("timeout", maybe (D.text "null") big (policyTimeout policy)),
-        ("key", E.quoted key), ("gates", array gates), ("cache", maybe (D.text "null") big (policyCache policy)),
-        ("wraps", D.text (if null (policyFailures policy) then "false" else "true")), ("compensate", compensate),
-        ("hedge", maybe (D.text "null") (\h -> array [big (hedgeDelay h), big (hedgeMost h)]) (policyHedge policy))])
+            Nothing -> pure E.Null
+            Just p -> (\name -> E.arrow [anyParam "error"] (callTo name [E.Ident "error"])) <$> evaluator p
+          pure (object [("strategy", strategy), ("attempts", big (retryAttempts r)), ("jitter", E.Str (jitterName (retryJitter r))), ("when", condition)])
+      pure (object [("stage", E.Str (policyStage policy)), ("retry", retry), ("timeout", maybe E.Null big (policyTimeout policy)),
+        ("key", E.Str key), ("gates", E.Array gates), ("cache", maybe E.Null big (policyCache policy)),
+        ("wraps", E.BoolLit (not (null (policyFailures policy)))), ("compensate", compensate),
+        ("hedge", maybe E.Null (\h -> E.Array [big (hedgeDelay h), big (hedgeMost h)]) (policyHedge policy))])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
@@ -267,84 +299,75 @@ emitWebDefinitions ts layout bits declarations units = do
         start <- evaluator (breakerStart b)
         admit <- evaluator (breakerAdmit b)
         record <- evaluator (breakerRecord b)
-        pure (object [("kind", E.quoted "breaker"), ("start", arrow ["now"] (start ++ "(symbols, now)")),
-          ("admit", arrow ["state", "now"] (admit ++ "(symbols, state, now)")),
-          ("finish", arrow ["state", "now", "succeeded"] (record ++ "(symbols, " ++ bigs [breakerFailures b, breakerWindow b, breakerCooldown b] ++ ", state, now, succeeded)")),
-          ("wait", D.text "null")])
+        pure (object [("kind", E.Str "breaker"), ("start", E.arrow [anyParam "now"] (callTo start [E.Ident "now"])),
+          ("admit", E.arrow (map anyParam ["state", "now"]) (callTo admit [E.Ident "state", E.Ident "now"])),
+          ("finish", E.arrow (map anyParam ["state", "now", "succeeded"]) (callTo record
+            (map big [breakerFailures b, breakerWindow b, breakerCooldown b] ++ map E.Ident ["state", "now", "succeeded"]))),
+          ("wait", E.Null)])
       limit <- forM (policyLimit policy) $ \l -> do
         start <- evaluator (limitStart l)
         admit <- evaluator (limitAdmit l)
-        let numbers = bigs [limitCount l, limitPeriod l]
-        pure (object [("kind", E.quoted "limit"), ("start", arrow ["now"] (start ++ "(symbols, " ++ numbers ++ ", now)")),
-          ("admit", arrow ["state", "now"] (admit ++ "(symbols, " ++ numbers ++ ", state, now)")),
-          ("finish", D.text "null"), ("wait", waitDoc (limitWait l))])
+        let numbers = map big [limitCount l, limitPeriod l]
+        pure (object [("kind", E.Str "limit"), ("start", E.arrow [anyParam "now"] (callTo start (numbers ++ [E.Ident "now"]))),
+          ("admit", E.arrow (map anyParam ["state", "now"]) (callTo admit (numbers ++ [E.Ident "state", E.Ident "now"]))),
+          ("finish", E.Null), ("wait", waitDoc (limitWait l))])
       bulkhead <- forM (policyBulkhead policy) $ \b -> do
         start <- evaluator (bulkheadStart b)
         admit <- evaluator (bulkheadAdmit b)
         release <- evaluator (bulkheadRelease b)
-        let n = bigs [bulkheadLimit b]
-        pure (object [("kind", E.quoted "bulkhead"), ("start", arrow ["now"] (start ++ "(symbols, " ++ n ++ ", now)")),
-          ("admit", arrow ["state", "now"] (admit ++ "(symbols, " ++ n ++ ", state, now)")),
-          ("finish", arrow ["state", "now", "succeeded"] (release ++ "(symbols, state)")), ("wait", waitDoc (bulkheadWait b))])
+        let n = [big (bulkheadLimit b)]
+        pure (object [("kind", E.Str "bulkhead"), ("start", E.arrow [anyParam "now"] (callTo start (n ++ [E.Ident "now"]))),
+          ("admit", E.arrow (map anyParam ["state", "now"]) (callTo admit (n ++ [E.Ident "state", E.Ident "now"]))),
+          ("finish", E.arrow (map anyParam ["state", "now", "succeeded"]) (callTo release [E.Ident "state"])), ("wait", waitDoc (bulkheadWait b))])
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
-    arrow parameters body = D.text ("(" ++ intercalate ", " [p ++ (if ts then ": any" else "") | p <- parameters] ++ ") => " ++ body)
-    bigs numbers = intercalate ", " [show n ++ "n" | n <- numbers]
     waitDoc wait = case wait of
-      Nothing -> D.text "null"
-      Just Nothing -> D.text "-1n"
+      Nothing -> E.Null
+      Just Nothing -> E.Unary "-" (E.BigIntLit "1")
       Just (Just d) -> big d
-    array items = D.text "[" <> D.joinWith (D.text ", ") items <> D.text "]"
-    object fields = D.text "{" <> D.joinWith (D.text ", ") [D.text (key ++ ": ") <> value | (key, value) <- fields] <> D.text "}"
-    big n = D.text (show n ++ "n")
+    object fields = E.Object [E.Prop (E.KName k) v | (k, v) <- fields]
+    big n = if n < 0 then E.Unary "-" (E.BigIntLit (show (negate n))) else E.BigIntLit (show n)
     jitterName j = case j of
       NoJitter -> "none"
       FullJitter -> "full"
       EqualJitter -> "equal"
       DecorrelatedJitter -> "decorrelated"
     nativeUnit unit = do
-      wrappers <- mapM native (unitDefinitions unit)
+      functions <- mapM native (unitDefinitions unit)
       let unitName = idText (unitId unit)
           depth = 1 + length (filter (== '.') unitName)
           root = concat (replicate depth "../")
           path = "src/lawspec_definitions/" ++ map (\c -> if c == '.' then '/' else c) unitName ++ "." ++ extension
-      pure (file path root ["import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ importExtension ++ "';"] wrappers)
+      pure (file path root [("_definitions", E.ImportDecl False (E.ImportNamespace "_definitions") (root ++ "lawspec_definition_bodies." ++ importExtension ts))] functions)
     native d = do
       let root = concat (replicate (1 + length (filter (== '.') (idText (unitId (ownerOf d))))) "../")
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
-          values = ["value" ++ show i | i <- [0 .. length args - 1]]
-      types <- mapM (Native.webDataTypeDoc declarations) args
-      resultType <- Native.webDataTypeDoc declarations result
-      arguments <- sequence [schemaCall "fromNative" ty (D.text value) | (ty,value) <- zip args values]
+          values = argumentNames d
+          -- The dynamic value of each native argument.
+          dynamicNames = fst (claimAll (scopeWith (X.webReserved ++ values ++ ["result"])) [v ++ "Value" | v <- values])
+      types <- mapM (Native.webDataTypeOf declarations) args
+      resultType <- Native.webDataTypeOf declarations result
+      arguments <- sequence [schemaCall "fromNative" ty (E.Ident value) | (ty,value) <- zip args values]
       name <- maybe (Left "unresolved JS/TS native call") Right (lookup (declarationId declaration) callees)
-      output <- schemaCall "toNative" result (D.text "result")
+      output <- schemaCall "toNative" result (E.Ident "result")
       let handlers = [ (ability, lowerFirst (interfaceName a), a) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
-          parameters = symbols : [D.text name <> annotation (D.text ("import('" ++ root ++ "lawspec_abilities/" ++
-              map (\c -> if c == '.' then '/' else c) (ownerName a) ++ ".js')." ++ interfaceName a)) | (_, name, a) <- handlers] ++
-            [D.text value <> annotation ty | (value,ty) <- zip values types]
+          parameters = symbols : [annotated handlerName (E.TRaw ("import(" ++ E.javascriptLiteral (root ++ "lawspec_abilities/" ++
+              map (\c -> if c == '.' then '/' else c) (ownerName a) ++ ".js") ++ ")." ++ interfaceName a)) | (_, handlerName, a) <- handlers] ++
+            [annotated value ty | (value,ty) <- zip values types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
-          installs = [E.call "ls.installHandlers" [D.text "symbols", D.delimitTrailing 4 "{" "}"
-            [E.quoted (abilityKey ability) <> D.text (": " ++ name) | (ability, name, _) <- handlers]] <> D.text ";" | not (null handlers)]
-          inputs = installs ++ [assign ("argument" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
+          installs = [E.ExprStmt (E.call "ls.installHandlers" [E.Ident "symbols", E.Object
+            [E.Prop (E.KString (abilityKey ability)) (E.Ident handlerName) | (ability, handlerName, _) <- handlers]]) | not (null handlers)]
+          inputs = installs ++ [E.constDecl dynamic value | (dynamic,value) <- zip dynamicNames arguments]
           waiting = "await " `isPrefixOf` name
-          invocation = (if waiting then D.text "await " else mempty) <>
-            E.call (plainCall name) (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
-      pure (D.text ((if waiting then "export async function " else "export function ") ++ declarationName declaration) <>
-        D.delimitTrailing 4 "(" ")" parameters <> annotation (if waiting then D.text "Promise<" <> resultType <> D.text ">" else resultType) <> D.text " " <>
-        D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline
-          (inputs ++ [assign "result" invocation,D.text "return " <> output <> D.text ";"]))))
+          invocation = (if waiting then E.Await else id)
+            (E.call (plainCall name) (E.Ident "symbols" : map E.Ident dynamicNames))
+      pure (linked d (E.FunctionDecl True waiting (declarationName declaration) [] parameters
+        (annotation (if waiting then E.TRef "Promise" [resultType] else resultType))
+        [contextual (declarationId declaration) (inputs ++ [E.constDecl "result" invocation, E.ret output])]))
     ownerOf d = case [u | u <- units, d `elem` unitDefinitions u] of
       u : _ -> u
       [] -> error "a definition without a unit"
-    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst (c:cs) = toLower c : cs
     lowerFirst [] = []
-    nestedBinders expression = case expressionNode expression of
-      AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
-      Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
-      AllPayloads value predicates -> nestedBinders value ++ concat
-        [binder : nestedBinders predicate | (binder,predicate) <- predicates]
-      Match value cases -> nestedBinders value ++ concat
-        [caseBinders branch ++ nestedBinders (caseBody branch) | branch <- cases]
-      _ -> concatMap nestedBinders (children expression)

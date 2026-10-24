@@ -590,8 +590,9 @@ library
       LawSpec.Clojure.Tests
       LawSpec.ClojureSources
       LawSpec.Code.Doc
-      LawSpec.Code.JavaScript
+      LawSpec.Code.ECMAScript
       LawSpec.Code.Literal
+      LawSpec.Code.Prettier
       LawSpec.Collections
       LawSpec.Common
       LawSpec.Compile
@@ -827,7 +828,9 @@ library
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
+      LawSpec.WebModule
       LawSpec.WebNativeBinding
+      LawSpec.WebTests
       LawSpec.WebTypes
       LawSpec.Witness
   other-modules:
@@ -998,6 +1001,7 @@ test-suite lawspec-test
       DocumentSpec
       DomainModelSpec
       DotNetSpec
+      ECMAScriptSpec
       EqSetOperationsSpec
       EqSetSpec
       ExactWideningSpec

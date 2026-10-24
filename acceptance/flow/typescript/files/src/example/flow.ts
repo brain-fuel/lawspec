@@ -2,7 +2,7 @@
 import * as data from '.././lawspec_data.js';
 
 export function push(value0: number, value1: data.Stack): data.PushFlow {
-  return new data.PushFlow(new data.StackPush(new data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be(value1, value0)));
+  return new data.PushFlow(new data.StackPush(new data.PushDetails(value1, value0)));
 }
 
 // The flow signature guarantees a nonempty stack.

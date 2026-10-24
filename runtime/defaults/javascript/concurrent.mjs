@@ -3,8 +3,8 @@
 // handler's operations run synchronously, so a pause cannot yield to the
 // event loop; it returns at once. It is the runtime's NativeAsync, which also
 // starts and waits for the tasks of workflows and async adapters.
-import * as ls from '../lawspec_runtime.mjs';
+import * as ls from "../lawspec_runtime.mjs";
 /** Native concurrency: the event loop. */
 export class AsyncHandler extends ls.NativeAsync {
-    pause() { }
+  pause() {}
 }

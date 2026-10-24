@@ -1,83 +1,45 @@
--- | Framework-specific assertion helpers, with layout supplied by the caller.
-module LawSpec.PortableTestHelpers (assertionHelperDoc, dataHelperDoc, asyncAssertionHelpersDoc) where
+-- | Python's assertion helpers, with layout supplied by the caller.
+-- (JavaScript's are the runtime's ls.check and ls.checkData.)
+module LawSpec.PortableTestHelpers (assertionHelperDoc, dataHelperDoc) where
 
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.PythonExpr as Python
-import qualified LawSpec.WebExpr as Web
 
 -- | Assertions report the law, the inputs and both sides, so a failure
 -- explains itself.
-assertionHelperDoc :: Bool -> D.Doc
-assertionHelperDoc py = assertionHelper py Nothing
+assertionHelperDoc :: D.Doc
+assertionHelperDoc = assertionHelper False
 
 -- | Data values are built and compared through helpers emitted once per test
 -- module rather than at every use.
-dataHelperDoc :: Bool -> Int -> Int -> [D.Doc] -> D.Doc
-dataHelperDoc py bits budget entries = D.joinWith separation
-  [statement ((if py then "" else "const ") ++ "_lawspec_schema = ")
-    (call (if py then "data.make_schema" else "data.makeSchema") []),
-   statement ((if py then "" else "const ") ++ "_lawspec_primitive_generators = ")
-    (D.delimitTrailing indentation "{" "}" entries),
-   function py "_lawspec_data_generator" ["ty"]
-    (statement "return " (call "_data_strategy"
-      [D.text "_lawspec_schema",D.text "ty",D.text (if py then "MACHINE_BITS" else show bits),D.text (show budget),
-       D.text (if py then "_lawspec_primitive_generators.__getitem__"
-         else "(name) => _lawspec_primitive_generators[name]")])),
-   assertionHelper py (Just bits)]
+dataHelperDoc :: Int -> Int -> [D.Doc] -> D.Doc
+dataHelperDoc _ budget entries = D.joinWith separation
+  [D.text "_lawspec_schema = " <> Python.call "data.make_schema" [],
+   D.text "_lawspec_primitive_generators = " <> D.delimitTrailing 4 "{" "}" entries,
+   function "_lawspec_data_generator" ["ty"]
+    (D.text "return " <> Python.call "_data_strategy"
+      [D.text "_lawspec_schema",D.text "ty",D.text "MACHINE_BITS",D.text (show budget),
+       D.text "_lawspec_primitive_generators.__getitem__"]),
+   assertionHelper True]
   where
-    indentation = if py then 4 else 2
-    separation = D.hardline <> D.hardline <> if py then D.hardline else mempty
-    call = if py then Python.call else Web.call
-    statement prefix value = D.text prefix <> value <> if py then mempty else D.text ";"
+    separation = D.hardline <> D.hardline <> D.hardline
 
-function :: Bool -> String -> [String] -> D.Doc -> D.Doc
-function py name parameters body =
-  let signature = D.text ((if py then "def " else "function ") ++ name) <>
-        D.delimitTrailing (if py then 4 else 2) "(" ")" (map D.text parameters)
-  in if py then Python.suite signature body else signature <> D.text " " <> D.block 2 body
+function :: String -> [String] -> D.Doc -> D.Doc
+function name parameters body =
+  Python.suite (D.text ("def " ++ name) <> D.delimitTrailing 4 "(" ")" (map D.text parameters)) body
 
--- | JavaScript assertions whose thunks await async adapters.
-asyncAssertionHelpersDoc :: Int -> D.Doc
-asyncAssertionHelpersDoc bits = D.joinWith (D.hardline <> D.hardline)
-  [asynchronous (assertionHelper False Nothing), asynchronous (assertionHelper False (Just bits))]
+assertionHelper :: Bool -> D.Doc
+assertionHelper structural = function name parameters guarded
   where
-    asynchronous doc = D.text (rewrite (D.render (D.Pretty 80) doc))
-    rewrite text = foldr (\(a, b) acc -> replaceAll a b acc) text
-      [ ("function _lawspecAssert(", "async function _lawspecAssertAsync(")
-      , ("function _lawspec_data_assert(", "async function _lawspec_data_assertAsync(")
-      , ("actual()", "await actual()"), ("expected()", "await expected()") ]
-    replaceAll a b text = case text of
-      [] -> []
-      _ | take (length a) text == a -> b ++ replaceAll a b (drop (length a) text)
-      c : rest -> c : replaceAll a b rest
-
-assertionHelper :: Bool -> Maybe Int -> D.Doc
-assertionHelper py profile = function py name parameters guarded
-  where
-    call = if py then Python.call else Web.call
-    structural = maybe False (const True) profile
-    name = if structural then "_lawspec_data_assert" else if py then "_lawspec_assert" else "_lawspecAssert"
+    name = if structural then "_lawspec_data_assert" else "_lawspec_assert"
     parameters = ["context","actual","expected"] ++ if structural then ["ty","symbols"] else ["ta","tb"]
-    equal = case profile of
-      Nothing -> call "ls.equal" (map D.text ["a","b","ta","tb"])
-      Just bits -> call "_lawspec_schema.equal" (map D.text
-        (["ty","a","b",if py then "MACHINE_BITS" else show bits,"symbols"]))
+    equal = if structural
+      then Python.call "_lawspec_schema.equal" (map D.text ["ty","a","b","MACHINE_BITS","symbols"])
+      else Python.call "ls.equal" (map D.text ["a","b","ta","tb"])
     -- As ruff lays it out: the message moves into parentheses of its own.
     pythonAssert = D.text "assert " <> equal <> D.text ", (" <> D.nest 4 (D.hardline <>
       D.text "f\"{context} | actual={a!r}, expected={b!r}{ls.difference(a, b)}\"") <> D.hardline <> D.text ")"
-    -- Where the values differ is worked out only when they do.
-    javascriptAssert = D.text "if (!" <> equal <> D.text ") " <> D.block 2 (D.joinWith D.hardline
-      ([D.text "const where = ls.difference(a, b);"] ++
-       if structural then [D.text "assert.fail(`${context}${where}`);"]
-       else [D.text "assert.fail(`${context} | actual=${String(a)}, ` +", D.text "  `expected=${String(b)}${where}`);"]))
-    body = D.joinWith D.hardline $
-      (if py then [D.text "a, b = actual(), expected()"]
-       else [D.text "const a = actual();",D.text "const b = expected();"]) ++
-      [if py then pythonAssert else javascriptAssert]
-    guarded = if py then Python.suite (D.text "try") body <> D.hardline <>
+    body = D.joinWith D.hardline [D.text "a, b = actual(), expected()", pythonAssert]
+    guarded = Python.suite (D.text "try") body <> D.hardline <>
       Python.suite (D.text "except Exception as error")
         (D.text "raise AssertionError(f\"{context}: {error}\") from error")
-      else D.text "try " <> D.block 2 body <>
-        D.text " catch (error) " <> D.block 2
-          (D.text "throw " <> call "new Error"
-            [D.text "`${context}: ${error.message}`",D.text "{cause: error}"] <> D.text ";")

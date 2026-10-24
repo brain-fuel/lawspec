@@ -65,6 +65,8 @@ async function setup(target) {
       // lawspec.crypto or lawspec.network, so it declares the lock's packages,
       // which a project scaffolded without crypto leaves out; npm ci would
       // otherwise skip them.
+      // The lock also pins Prettier, which acceptance runs in check mode on
+      // generated code.
       const declared = JSON.parse(await readFile(lock, "utf8")).packages[""];
       const manifestPath = path.join(root, "package.json");
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));

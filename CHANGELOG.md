@@ -30,6 +30,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are formatted the same way. Acceptance runs `ruff format --check` on every
   generated Python project (the formatted step). The other targets follow
   with their language families.
+- **Breaking: generated JavaScript and TypeScript names.** Locals keep their
+  source names; checked definitions are named after the definition
+  (`_definitions.feeModel` instead of `_definitions.evaluate0`), typed
+  functions after the definition (`modelPeek` instead of
+  `Def_modelPeek_a0205a6d`), typed classes after their type (`Pair` instead
+  of `T_Pair`) and typed helpers after their kind and type
+  (`fromPairInt64Int64` instead of `from_<digest>`). Anonymous records have a
+  name from where they are used, and a data name that is still taken gets
+  `_2`. Adapters and native code that use the old names must be renamed.
+- Generated JavaScript and TypeScript are laid out as Prettier (3.9.10,
+  default settings) lays them out, and the web runtimes and default handlers
+  are formatted the same way. LawSpec prints the code itself, from a syntax
+  tree, with a port of Prettier's printer; acceptance runs
+  `prettier --check` on every generated JavaScript and TypeScript project.
+  Text is written as string literals (never split mid-word), small integers
+  and booleans as literals, `MACHINE_BITS` is named once per module, modules
+  import only what they use, and each test, definition and class links to
+  its source line. Each law's comment gives its name, source line, what it
+  says and the statement its tests check. The assertion helpers, the seed
+  option and the data generators' scalar table are the runtime's
+  (`ls.check`, `ls.checkData`, `ls.seeded`, `primitiveGenerators`), so a
+  test module holds only its laws.
 
 - **Breaking: artifact and Prolog names.** HCL variables are named after their
   declarations (`settings`, and `type_settings` for a type-only variable)

@@ -287,7 +287,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "function identity"
         if target == "typescript" then do
-          concatMap artifactContent native `shouldSatisfy` isInfixOf "value0: Array<number>"
+          concatMap artifactContent native `shouldSatisfy` isInfixOf "x: Array<number>"
           concatMap artifactContent (native ++ bodies) `shouldNotSatisfy` isInfixOf "@ts-nocheck"
         else pure ()) [("javascript","mjs"),("typescript","ts")]
   it "rejects JS/TS definition support collisions and shadowed globals" $ do

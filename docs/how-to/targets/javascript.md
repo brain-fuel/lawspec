@@ -104,5 +104,21 @@ retries are bounded by `maxAttempts`; an exhausted search fails.
 
 ## Formatting
 
-Two-space blocks, four-space continuations, single-quoted strings and an
-80-column limit. See [formatting](../../reference/formatting.md).
+Output is what Prettier writes with its default settings: two-space
+indentation, 80 columns, double quotes unless single quotes need fewer
+escapes, semicolons and trailing commas. LawSpec lays it out itself, so
+generation needs no formatter, and LawSpec's own acceptance checks every
+generated project with `prettier --check`. `--minify` allows long lines. See
+[formatting](../../reference/formatting.md).
+
+## Names
+
+Generated code uses the specification's names. Locals keep their source
+names; a checked definition's body is a function named after it
+(`_definitions.feeModel`), with `_2` only when two would share a name, and
+a typed helper is named after its kind and type (`fromPairInt64Int64`). An
+anonymous record is a class named from where it is used: the payload of a
+`Declined` case is `DeclinedDetails`. Each test, definition and class has a
+comment linking it to its source line, text is written as string literals,
+and the assertions are the runtime's (`ls.check`), so a test module holds
+only its laws.

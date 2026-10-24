@@ -3,13 +3,17 @@
 // `seeded random n` (a 64-bit linear congruential generator, the same on
 // every target), started at the run's seed: LAWSPEC_SEED, or 0. SecureRandom
 // is the operating system's cryptographically secure generator.
-import { randomBytes } from 'node:crypto';
-import type * as abilities from '../lawspec_abilities/lawspec/randomness.js';
+import { randomBytes } from "node:crypto";
+import type * as abilities from "../lawspec_abilities/lawspec/randomness.js";
 
 const modulus = 1n << 64n;
 
 export function randomStep(state: bigint): bigint {
-  return (6364136223846793005n * (((state % modulus) + modulus) % modulus) + 1442695040888963407n) % modulus;
+  return (
+    (6364136223846793005n * (((state % modulus) + modulus) % modulus) +
+      1442695040888963407n) %
+    modulus
+  );
 }
 
 /** A draw from 0 up to bound, as lawspec.randomness's randomDraw makes it. */
@@ -29,7 +33,8 @@ export function runSeed(): bigint {
 export class RandomHandler implements abilities.Random {
   private state: bigint;
   constructor(seed?: bigint) {
-    this.state = seed === undefined ? runSeed() : ((seed % modulus) + modulus) % modulus;
+    this.state =
+      seed === undefined ? runSeed() : ((seed % modulus) + modulus) % modulus;
   }
   randomBelow(value0: bigint): bigint {
     const state = this.state;
@@ -57,6 +62,6 @@ export class SecureRandomHandler implements abilities.SecureRandom {
     return secureBelow(value0);
   }
   secureToken(): string {
-    return randomBytes(32).toString('hex');
+    return randomBytes(32).toString("hex");
   }
 }

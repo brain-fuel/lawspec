@@ -52,11 +52,11 @@ test('generated typed failure messages execute real properties and examples and 
       const correct=run();assert.equal(correct.status,0,correct.stdout+correct.stderr);
       assert.match(correct.stdout,/declined property/);
       assert.match(correct.stdout,/example: minusOne/);
-      const needle="'a negative amount'",models=result.files.filter(file=>file.path.startsWith('src/')&&file.content.includes(needle));
+      const needle='"a negative amount"',models=result.files.filter(file=>file.path.startsWith('src/')&&file.content.includes(needle));
       assert.equal(models.length,1,'one checked model owns the failure message');
       const model=path.join(root,models[0].path),original=await readFile(model,'utf8');
       assert.equal(original.split(needle).length,2);
-      await writeFile(model,original.replace(needle,"'unrelated'"));
+      await writeFile(model,original.replace(needle,'"unrelated"'));
       const wrong=run();assert.notEqual(wrong.status,0);
       assert.match(wrong.stdout,/declined property/);
       await writeFile(model,original);

@@ -21,7 +21,7 @@ test('finite set covers retain all storage orders and dependent accepted tuples'
       assert.match(evidence(result)[index].reason, new RegExp(`evaluated all ${count} inputs`));
     const generated = await compiler.planGeneration({...request, target: 'typescript'});
     assert.deepEqual(generated.diagnostics, []);
-    assert.ok(generated.files.some(file => file.content.includes('export type T_Empty = never;')));
+    assert.ok(generated.files.some(file => file.content.includes('export type Empty = never;')));
     const limited = await compiler.planGeneration({...request, target: 'javascript', generation: {exhaustiveLimit: 4}});
     assert.ok(limited.diagnostics.some(item => item.code === 'verification-incomplete'));
     const planned = await compiler.check(input(bits, ['property', 'examples']));
