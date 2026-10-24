@@ -361,6 +361,9 @@ registry/rocq-extraction:
 registry/ruff-formatter:
   digest: sha256:00801f285b8b8469
   verdict: pending
+registry/rustfmt:
+  digest: sha256:df790a46c3b95342
+  verdict: pending
 registry/scala-cli:
   digest: sha256:8ac3d52b87ccacd7
   verdict: pending

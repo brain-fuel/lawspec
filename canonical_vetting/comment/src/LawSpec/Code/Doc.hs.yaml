@@ -16,6 +16,9 @@ decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/data/Layout:
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/data/Measure:
   digest: sha256:6eda05ec4ecfeaf6
   verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/data/Preference:
+  digest: sha256:e544d94ec1f8aa99
+  verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/data/Style:
   digest: sha256:a026cf5b611e617e
   verdict: pending
@@ -49,11 +52,20 @@ decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/displa
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/firstLineWidth:
   digest: sha256:f26b5797fc53f9df
   verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/fitsIndented:
+  digest: sha256:1ae93559f11ec388
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/fitsIndentedTwice:
+  digest: sha256:587a25805aa2fe68
+  verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/flatReserve:
   digest: sha256:9a7163f002daba0a
   verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/flow:
   digest: sha256:394cfef7c0154071
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/fullWidth:
+  digest: sha256:6ee842ce01505e15
   verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/group:
   digest: sha256:20a623ee9b53a009
@@ -76,6 +88,9 @@ decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/lineCo
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/multiline:
   digest: sha256:531b420bc009aa64
   verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/narrow:
+  digest: sha256:5b4201175cdc460d
+  verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/nest:
   digest: sha256:e941f437b5392068
   verdict: pending
@@ -84,6 +99,9 @@ decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/operat
   verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/parens:
   digest: sha256:c7580c06122c8cab
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/prefer:
+  digest: sha256:74df06b142736093
   verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/prefixChoice:
   digest: sha256:e561ce8360145a9c

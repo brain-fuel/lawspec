@@ -238,6 +238,9 @@ ledger/DEC-refuted-status:
 ledger/DEC-release-cadence:
   digest: sha256:f925fff0d09f262f
   verdict: pending
+ledger/DEC-rust-readable-output:
+  digest: sha256:3fc90d3ec7275e8d
+  verdict: pending
 ledger/DEC-scala-on-the-jvm-runtime:
   digest: sha256:849298526d95bbda
   verdict: pending

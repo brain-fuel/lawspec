@@ -1,8 +1,23 @@
 decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust:
   digest: sha256:9a8a3ee7f5fc14a4
   verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/arrayOf:
+  digest: sha256:766a1b0da9cea43e
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/body:
+  digest: sha256:0c3ecf2095fadd13
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/comment:
+  digest: sha256:9fcf370b64f5d63d
+  verdict: pending
 decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/emit:
   digest: sha256:4c7ad84487965fda
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/impl:
+  digest: sha256:1946ec83b4b0c325
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/self0:
+  digest: sha256:e222451070ff80a4
   verdict: pending
 decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/supervisorStruct:
   digest: sha256:ca3169b4e745c59f

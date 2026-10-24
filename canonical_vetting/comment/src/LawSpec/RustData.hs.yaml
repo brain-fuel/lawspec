@@ -16,3 +16,6 @@ decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/rustDa
 decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/rustFieldBoxed:
   digest: sha256:6f34891c721a8220
   verdict: pending
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/tupleType:
+  digest: sha256:cf974e9b35daec85
+  verdict: pending

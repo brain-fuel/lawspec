@@ -1,0 +1,135 @@
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout:
+  digest: sha256:c733c3a9c041f3bb
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/data/Type:
+  digest: sha256:5600fa6403796fd3
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/arguments:
+  digest: sha256:4f2eb7b74df25eb5
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/armsDoc:
+  digest: sha256:1738155417370887
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/blocky:
+  digest: sha256:8431e619007c11bd
+  verdict: pending
+"decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/brokenChain'":
+  digest: sha256:ac6a4094b20559b3
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/callRoot:
+  digest: sha256:a2467cd0e82b4042
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/castType:
+  digest: sha256:0575e03364abb0fe
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/chain:
+  digest: sha256:13dbea99adced0c8
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/chainPrefix:
+  digest: sha256:d7f3ca767a7f19d4
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/declaration:
+  digest: sha256:ba04a7e48f0259a9
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/expr:
+  digest: sha256:fb9173a4572c072e
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/extendable:
+  digest: sha256:84fb9b9e80e4b9bc
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/fieldDoc:
+  digest: sha256:6a685b3d23269b14
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/fitsArguments:
+  digest: sha256:413855f13c60b0ac
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/flat:
+  digest: sha256:4bb6684b396aca84
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/function:
+  digest: sha256:52ec0fc84099725c
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/ifDocOf:
+  digest: sha256:1c72cdd5742860b3
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/infixDoc:
+  digest: sha256:03ffaa79b436e932
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/infixOp:
+  digest: sha256:ad3e471cff295070
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/laidBlock:
+  digest: sha256:57c5340fd372b629
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/leading:
+  digest: sha256:d14ea141d39cb927
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/letDoc:
+  digest: sha256:bec387950fef7d60
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/method:
+  digest: sha256:83bd0ad39532bfa9
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/multilineBody:
+  digest: sha256:e48229eff720229a
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/nestedCall:
+  digest: sha256:73b8d4401936d685
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/oneLine:
+  digest: sha256:3305cd832e2e2b22
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/oneLineLink:
+  digest: sha256:7c7d770a5351aeed
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/oneOf:
+  digest: sha256:d231702f1e8cf067
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/opening:
+  digest: sha256:35f7c5714428786f
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/operand:
+  digest: sha256:cec3ec606387b891
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/overflowable:
+  digest: sha256:776cec492db32166
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/overflowing:
+  digest: sha256:60e70a8a094b75b2
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/parameterDoc:
+  digest: sha256:a1a5089141940b47
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/parseType:
+  digest: sha256:e5ce1a5e29296d48
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/precedence:
+  digest: sha256:879266c104d8c256
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/rootTried:
+  digest: sha256:f46d1d54665bde5d
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/shallow:
+  digest: sha256:19ed53dee0d2b3f3
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/simple:
+  digest: sha256:d381a045207cb58a
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/stmt:
+  digest: sha256:51983a359fbcfb73
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/stmts:
+  digest: sha256:396b72dd379a0efd
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/structDoc:
+  digest: sha256:91fc1c908a9eeee5
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/triedChain:
+  digest: sha256:6d46b3752b7bb88d
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/typeDoc:
+  digest: sha256:f2b39795c0218b21
+  verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/typeOf:
+  digest: sha256:09a0b664fcec4e28
+  verdict: pending

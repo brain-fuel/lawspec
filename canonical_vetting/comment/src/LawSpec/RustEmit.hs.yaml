@@ -1,6 +1,12 @@
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit:
   digest: sha256:2eeea204ce28e1f2
   verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/binding:
+  digest: sha256:e5e21e9ed5463bc2
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/closureCall:
+  digest: sha256:e1dbf6b4ec3c3445
+  verdict: pending
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRust:
   digest: sha256:7461ca5c9808ce06
   verdict: pending
@@ -16,6 +22,9 @@ decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRu
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/invoke:
   digest: sha256:e90ad1b297fd56a5
   verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/outerless:
+  digest: sha256:a76ce0fcbed6e4df
+  verdict: pending
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustDelimited:
   digest: sha256:c8571767c7a4819a
   verdict: pending
@@ -25,6 +34,18 @@ decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustTy
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/schemaVector:
   digest: sha256:b622106f6a6e880d
   verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/stackClosure:
+  digest: sha256:48ff13a17248bc27
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/unraw:
+  digest: sha256:39e8f7e94816ccd0
+  verdict: pending
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/valueBudget:
   digest: sha256:0454eeb79b2cbd2f
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/valueExpr:
+  digest: sha256:e53a08e6f0112ad0
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/writtenLink:
+  digest: sha256:3f78cf2f23c9cf83
   verdict: pending

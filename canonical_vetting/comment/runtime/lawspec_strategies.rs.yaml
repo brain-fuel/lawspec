@@ -16,8 +16,14 @@ decision/rust/runtime/lawspec_strategies.rs/function/checked_schema_strategy:
 decision/rust/runtime/lawspec_strategies.rs/function/eval_index_term:
   digest: sha256:0b2ca7059fe6bc15
   verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/failure_persistence:
+  digest: sha256:3cb99100b0d5dc56
+  verdict: pending
 decision/rust/runtime/lawspec_strategies.rs/function/indexed_strategy:
   digest: sha256:a015dddbce80cae9
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/rng_seed:
+  digest: sha256:3d61303cb18a784c
   verdict: pending
 decision/rust/runtime/lawspec_strategies.rs/function/schema_strategy:
   digest: sha256:19014ae1d4c913d0
