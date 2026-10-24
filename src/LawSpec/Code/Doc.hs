@@ -251,6 +251,13 @@ mapText f doc = case doc of
   Prefixed operator a -> Prefixed operator (mapText f a)
   ParenthesiseIfFits a -> ParenthesiseIfFits (mapText f a)
   Omittable operands operator a -> Omittable (map (mapText f) operands) operator (mapText f a)
+  FlatReserve n -> FlatReserve n
+  FitsIndented offset width a b -> FitsIndented offset width (mapText f a) (mapText f b)
+  Prefer preference a b c d -> Prefer preference (mapText f a) (mapText f b) (mapText f c) (mapText f d)
+  Narrow n a -> Narrow n (mapText f a)
+  FullWidth a -> FullWidth (mapText f a)
+  FitsIndentedTwice width a b -> FitsIndentedTwice width (mapText f a) (mapText f b)
+  StopHere -> StopHere
 
 -- | Move a short right-hand side onto its own line when necessary. If it must
 -- wrap internally anyway, keep its opening on the same line as the prefix.
