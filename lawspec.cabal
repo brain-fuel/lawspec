@@ -706,6 +706,8 @@ library
       LawSpec.JavaNativeBinding
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
+      LawSpec.JavaText
+      LawSpec.JvmLets
       LawSpec.JvmNames
       LawSpec.KotlinData
       LawSpec.KotlinDefinitions
