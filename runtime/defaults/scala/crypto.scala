@@ -340,7 +340,9 @@ object Crypto {
       )
     }
 
-    override def encapsulate(value0: @@ExchangePublicKey@@): @@Encapsulated@@ = {
+    override def encapsulate(
+        value0: @@ExchangePublicKey@@
+    ): @@Encapsulated@@ = {
       val (ciphertext, secret) =
         mlKem768Encapsulate(bytes(value0.value), secure)
       @@Encapsulated@@(

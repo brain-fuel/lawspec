@@ -429,7 +429,7 @@ emitTests Config{..} unit laws = do
                      number (maxAttempts (generation e)),text "symbols",call "List" (seeds ++ hints)] ++
                     [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
                     [scalar]
-                added = L.trailing (strategy <> text ".map") ["drawn"]
+                added = L.trailingChain strategy [] "map" ["drawn"]
                   [braced (L.condition "if" (text "drawn.error != null")) [state (text "values")] <> text " else " <>
                    L.block [state (text "values :+ drawn.requireValue()")]]
             pure $ L.trailing (call "Arb.flatMap" [prior]) ["inputs"]

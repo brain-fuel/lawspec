@@ -15,10 +15,11 @@ object Logging {
         value1: java.lang.String
     ): scala.Unit = {
       val level = value0 match {
-        case @@LogLevel/Debug@@   => java.lang.System.Logger.Level.DEBUG
-        case @@LogLevel/Warning@@ => java.lang.System.Logger.Level.WARNING
-        case @@LogLevel/Error@@   => java.lang.System.Logger.Level.ERROR
-        case _                        => java.lang.System.Logger.Level.INFO
+        case @@LogLevel/Debug@@ => java.lang.System.Logger.Level.DEBUG
+        case @@LogLevel/Warning@@ =>
+          java.lang.System.Logger.Level.WARNING
+        case @@LogLevel/Error@@ => java.lang.System.Logger.Level.ERROR
+        case _                           => java.lang.System.Logger.Level.INFO
       }
       logger.log(level, value1)
     }
