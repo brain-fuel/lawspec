@@ -8,6 +8,8 @@ import qualified LawSpec.Core as C
 import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, identityOf, nodeIdentity)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
+import qualified LawSpec.Core.Smt as Smt
+import LawSpec.TestManifest (TestEntry(..), testManifest)
 
 -- | A program's laws and declarations by their source names, each with its
 -- identity.
@@ -108,6 +110,14 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     let changed = identities (edit "1 + count tail" "2 + count tail" base)
     same "count" changed `shouldBe` False
     same "counts" changed `shouldBe` False
+  it "reruns no test and no proof after a reformat and a local rename" $ do
+    let compiled source = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines source)])
+        edited = concatMap (\line -> [line, ""]) (edit "(x :: Integer) -> Integer is x + x end" "(y :: Integer) -> Integer is y + y end" base)
+        testKeys program = [ (entryLaw e, entryKey e) | target <- ["python", "rust", "haskell"], e <- testManifest target Nothing program ]
+        proofKeys program = either (error . show) (map (\t -> (Smt.taskLaw t, Smt.taskProgram t))) (Smt.proofTasks program)
+    testKeys (compiled edited) `shouldBe` testKeys (compiled base)
+    length (testKeys (compiled base)) `shouldSatisfy` (> 0)
+    proofKeys (compiled edited) `shouldBe` proofKeys (compiled base)
   it "leaves names and spans out of the semantic encoding" $
     show (semanticHash (at "doubles")) `shouldSatisfy` (not . ("doubles" `isInfixOf`))
   where
