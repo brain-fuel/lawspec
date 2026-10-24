@@ -1,7 +1,7 @@
 /** <module> Native order rules with distinct imported package versions.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_7458f44cdbf1d509,
+:- module(shop_orders,
           [ls_settlement/2, ls_lineTotal/2, ls_cheaper/3, ls_roundDown/2, ls_classify/2]).
 
 ls_settlement(value(Tag, []), R) :-

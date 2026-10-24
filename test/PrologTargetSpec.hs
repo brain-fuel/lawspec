@@ -71,7 +71,11 @@ test_prologEmitter = describe "Prolog emitter admission" $ do
             Left diagnostics -> expectationFailure (show diagnostics)
             Right files -> do
               let bridge = concat [artifactContent file | file <- files, artifactPath file == "src/sample.py"]
-              bridge `shouldSatisfy` isInfixOf "\"close\": _function0"
+              bridge `shouldSatisfy` isInfixOf "\"close\": close"
+              bridge `shouldSatisfy` isInfixOf "def close(value0):"
+              -- The unit's module is named after it, in SWI-Prolog's layout.
+              concat [artifactContent file | file <- files, artifactPath file == "src/sample.pl"] `shouldSatisfy`
+                isInfixOf ":- module(sample,\n          [ ls_close/2\n          ]).\n"
               bridge `shouldNotSatisfy` isInfixOf "not Python source"
               bridge `shouldSatisfy` isInfixOf "ls_close"
               mapM_ (\path -> map artifactPath files `shouldContain` [path])
@@ -83,9 +87,10 @@ test_prologEmitter = describe "Prolog emitter admission" $ do
         Left diagnostics -> expectationFailure (show diagnostics)
         Right files -> do
           let code = concat [artifactContent f | f <- files, artifactPath f == "src/effects.py"]
-          code `shouldSatisfy` isInfixOf "\"ClockHandler\": _production0"
+          code `shouldSatisfy` isInfixOf "\"ClockHandler\": ClockHandler"
+          code `shouldSatisfy` isInfixOf "class ClockHandler(_bridge.Production):"
           code `shouldSatisfy` isInfixOf "handler_ClockHandler_new"
-          code `shouldSatisfy` isInfixOf "_bridge.Production.__init__(self,"
+          code `shouldSatisfy` isInfixOf "_bridge.Production.__init__(\n                self,\n"
   it "validates definitions independently of optional law layers or host files" $
     case planned "unit sample\nfunction value (u :: Unit) -> UInt8 is 1 end function\nend unit" of
       Left message -> expectationFailure message

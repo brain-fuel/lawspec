@@ -1,7 +1,7 @@
 /** <module> Exercise the checked workflow through its public model interface.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_0faa0fa2630ee7ca, [ls_approvedQuickly/2, ls_approvalErrors/2]).
+:- module(example_approvals, [ls_approvedQuickly/2, ls_approvalErrors/2]).
 :- use_module(library(janus)).
 :- use_module('../lawspec_prolog.pl', []).
 :- use_module('workflows.pl', []).
@@ -19,7 +19,7 @@ ls_approvedQuickly(Number, Quick) :-
     ( Finished-Started < 0.55 -> Quick = true ; Quick = false ).
 
 ls_approvalErrors(Number, Errors) :-
-    lawspec_cfb6be83143715a5:reset_finished,
+    example_workflows:reset_finished,
     approve(Number, Result),
     ( Result = value('Either::Left', [value(_, [Failures])]) ->
         maplist(failure_error, Failures, Errors)

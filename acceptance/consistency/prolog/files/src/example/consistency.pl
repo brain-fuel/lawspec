@@ -4,7 +4,7 @@ Each caller increments its own replica and returns its local count. The
 existing Core checker verifies convergence without asserting linearizability.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_f576c246135c9418, [ls_newViews/2, ls_hit/2, ls_total/2]).
+:- module(example_consistency, [ls_newViews/2, ls_hit/2, ls_total/2]).
 :- use_module(library(janus)).
 :- dynamic memory/1.
 :- initialization(init_memory).

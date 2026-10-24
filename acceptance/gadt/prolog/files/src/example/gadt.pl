@@ -1,7 +1,7 @@
 /** <module> Native evaluation of typed expression trees and hidden carriers.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_41aa2588b64b427a,
+:- module(example_gadt,
           [ls_evalNumber/2, ls_evalTruth/2, ls_evalPair/2, ls_fold/2, ls_describe/2]).
 
 ls_evalNumber(value(Tag, Fields), R) :-

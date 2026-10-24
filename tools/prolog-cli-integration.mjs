@@ -4,7 +4,6 @@
 // ref:DEC-prolog-janus
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import {promisify} from 'node:util';
 import {mkdir,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import path from 'node:path';
@@ -54,7 +53,7 @@ await call('generate',compact?['--minify']:[]);
 const adapter=path.join(project,'app/code/example/prologBasic.pl');
 const original=await readFile(path.join(repo,'acceptance/prolog-bridge/prolog/files/src/example/prologBasic.pl'),'utf8');
 await writeFile(adapter,original);
-const module='lawspec_'+createHash('sha256').update('example.benchmarkProbe').digest('hex').slice(0,16);
+const module='example_benchmark_probe';
 await writeFile(path.join(project,'app/code/example/benchmarkProbe.pl'),
   `:- module(${module},[ls_measure/2]).\n:- use_module(library(janus)).\nls_measure(U,U) :- py_call(benchmark_audit:record()).\n`);
 await writeFile(path.join(project,'app/code/benchmark_audit.py'),
@@ -103,7 +102,7 @@ const resultFile=path.join(results,(await readdir(results)).find(file=>file.ends
 for(const [layers,cases]of [[['examples'],1],[['exhaustive'],2],[[],0]]){
   config.verification.layers=layers;await writeFile(configFile,JSON.stringify(config,null,2)+'\n');
   await call('generate',compact?['--minify']:[]);
-  const identity='lawspec_'+createHash('sha256').update('example.selection').digest('hex').slice(0,16);
+  const identity='example_selection';
   await writeFile(path.join(project,'app/code/example/selection.pl'),
     `:- module(${identity},[ls_echo/2]).\nls_echo(X,X).\n`);
   const selected=cases?await test(['--fresh']):await call('test',['--json','--fresh',...(compact?['--minify']:[])]);

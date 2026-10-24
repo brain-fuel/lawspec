@@ -1,7 +1,7 @@
 /** <module> Indexed stack operations with independent native state values.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_c75e342719764716, [ls_push/3, ls_pop/2, ls_peek/2]).
+:- module(example_flow, [ls_push/3, ls_pop/2, ls_peek/2]).
 
 ls_push(Top, Rest, value('example.flow::type::PushFlow::PushFlow',
     [value('example.flow::type::Stack::Push',

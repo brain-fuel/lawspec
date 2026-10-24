@@ -395,6 +395,10 @@ stepInputs name = case name of
   "beam-qcheck" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-qcheck.sh",
     "test/locks/gleam/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
     [["gleam", "--version"], ["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."]])
+  -- The artifact validators pin yamllint in their script and require
+  -- OpenTofu 1.13.1, whose version keys the step with the other tools.
+  _ | name `elem` [t ++ "-artifact-validation" | t <- Targets.artifactTargets] ->
+      Just (Inputs [] unread [["tofu", "version"], ["java", "-version"], ["make", "--version"], ["python3", "--version"]])
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"] ++ ledgers

@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 import jsonschema
@@ -40,6 +41,12 @@ def compile_artifact(core, target, source):
     return response
 
 
+OPENTOFU = '1.13.1'
+# yamllint's defaults, except that a value no line break can split (a long
+# integer or word) may pass 80 columns, as a long word already may.
+YAMLLINT = '{extends: default, rules: {line-length: {allow-non-breakable-inline-mappings: true}}}'
+
+
 def generate(core, directory, target, source=SOURCE):
     response = compile_artifact(core, target, source)
     assert not response['diagnostics'], response['diagnostics']
@@ -49,7 +56,33 @@ def generate(core, directory, target, source=SOURCE):
         destination = directory / artifact['path']
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(artifact['content'])
+    formatted(directory)
     return response
+
+
+def tofu():
+    """The pinned OpenTofu, whose fmt is HCL's canonical formatter."""
+    binary = shutil.which('tofu')
+    assert binary, 'OpenTofu is required'
+    version = json.loads(run([binary, 'version', '-json'], '.').stdout)['terraform_version']
+    assert version == OPENTOFU, f'OpenTofu {OPENTOFU} is required, found {version}'
+    return binary
+
+
+def formatted(directory):
+    """The formatted step: generated artifacts are laid out as their formatters
+    lay them out. JSON is json.dumps(indent=2, ensure_ascii=False); YAML passes
+    the pinned yamllint's default rules strictly (block style, 80 columns,
+    unbreakable values excepted); HCL
+    is unchanged by tofu fmt. ref:DEC-readable-artifacts"""
+    for path in sorted(directory.rglob('*.json')):
+        text = path.read_text()
+        assert text == json.dumps(json.loads(text), indent=2, ensure_ascii=False) + '\n', f'{path.name} is not indented JSON'
+    for path in sorted(directory.rglob('*.yaml')):
+        yamllint = Path(sys.executable).parent / 'yamllint'
+        run([str(yamllint), '--strict', '-d', YAMLLINT, path.name], path.parent)
+    if any(directory.rglob('*.tf')):
+        run([tofu(), 'fmt', '-check', '-diff', '-recursive'], directory)
 
 
 def canon_parse(directory, language, start, filename):
@@ -97,27 +130,42 @@ def check_yaml(core, directory):
     return settings
 
 
+def check_yaml_text(core, directory):
+    """Long text wraps at spaces in block YAML and still reads back exactly."""
+    text = ('A long setting  with two spaces, a "quote", a back\\slash, a tab\there, '
+            'and words enough to pass eighty columns: 日本語 é 😀 ' + 'word ' * 30 + 'end')
+    escaped = text.replace('\\', '\\\\').replace('"', '\\"').replace('\t', '\\t')
+    generate(core, directory, 'yaml',
+             f'unit wrapped\nfunction note (u :: Unit) -> Text is "{escaped}" end function\nend unit')
+    lines = (directory / 'configuration.yaml').read_text().splitlines()
+    assert len(lines) > 4 and all(len(line) <= 80 for line in lines), lines
+    assert yaml.safe_load((directory / 'configuration.yaml').read_text()) == {'wrapped::note': text}
+
+
 def check_hcl(core, directory, expected):
     generate(core, directory, 'hcl')
     receipt = json.loads((directory / 'lawspec-artifacts.json').read_text())
     name = receipt['entries'][0]['name']
+    assert name == 'settings', 'the HCL variable is not named after its declaration'
     (directory / 'outputs.tf').write_text(f'output "settings" {{ value = var.{name} }}\n')
-    tofu = shutil.which('tofu')
-    assert tofu, 'OpenTofu is required'
-    run([tofu, 'init', '-backend=false', '-input=false'], directory)
-    run([tofu, 'validate', '-no-color'], directory)
+    tofu_ = tofu()
+    run([tofu_, 'init', '-backend=false', '-input=false'], directory)
+    run([tofu_, 'validate', '-no-color'], directory)
     canon_parse(directory, 'hcl', 'configFile', 'variables.tf')
-    args = [tofu, 'plan', '-no-color', '-input=false', '-refresh=false', '-lock=false',
+    args = [tofu_, 'plan', '-no-color', '-input=false', '-refresh=false', '-lock=false',
             '-var-file=configuration.tfvars.json']
     run(args + ['-out=plan'], directory)
-    plan = json.loads(run([tofu, 'show', '-json', 'plan'], directory).stdout)
+    plan = json.loads(run([tofu_, 'show', '-json', 'plan'], directory).stdout)
     assert plan['planned_values']['outputs']['settings']['value'] == expected, 'Terraform changed literal data'
     values = json.loads((directory / 'configuration.tfvars.json').read_text())
-    for wrong in (-1, 65536, 0.5, None):
+    # Each restriction has its own message.
+    for wrong, message in ((-1, 'must be a whole number from 0 to 65535'), (65536, 'from 0 to 65535 (UInt16)'),
+                           (0.5, 'must be a whole number'), (None, 'settings.port must be set')):
         mutant = copy.deepcopy(values)
         mutant[name]['port'] = wrong
         (directory / 'configuration.tfvars.json').write_text(json.dumps(mutant))
-        run(args, directory, ok=False)
+        result = run(args, directory, ok=False)
+        assert message in ' '.join((result.stdout + result.stderr).split()), (wrong, result.stdout + result.stderr)
 
 
 def check_empty_type(core, directory):
@@ -146,10 +194,11 @@ def check_hcl_type_export(core, directory):
     assert receipt['missingTypeValues'] == [variable['name']]
     assert 'types::type::Settings' in receipt['types'][variable['schema']]
     (directory / 'outputs.tf').write_text(f'output "settings" {{ value = var.{variable["name"]} }}\n')
+    assert variable['name'] == 'type_settings', variable
     (directory / 'inputs.tfvars.json').write_text(json.dumps({variable['name']: {'port': 8080}}))
-    tofu = shutil.which('tofu')
-    run([tofu, 'init', '-backend=false', '-input=false'], directory)
-    run([tofu, 'plan', '-input=false', '-refresh=false', '-lock=false', '-var-file=inputs.tfvars.json'], directory)
+    tofu_ = tofu()
+    run([tofu_, 'init', '-backend=false', '-input=false'], directory)
+    run([tofu_, 'plan', '-input=false', '-refresh=false', '-lock=false', '-var-file=inputs.tfvars.json'], directory)
 
 
 def check_restrictions(core, directory, target):
@@ -167,13 +216,15 @@ def check_restrictions(core, directory, target):
         values = json.loads((directory / 'configuration.tfvars.json').read_text())
         name, = values
         (directory / 'outputs.tf').write_text(f'output "sample" {{ value = var.{name} }}\n')
-        tofu = shutil.which('tofu')
-        run([tofu, 'init', '-backend=false', '-input=false'], directory)
-        args = [tofu, 'plan', '-input=false', '-refresh=false', '-lock=false', '-var-file=configuration.tfvars.json']
+        tofu_ = tofu()
+        run([tofu_, 'init', '-backend=false', '-input=false'], directory)
+        args = [tofu_, 'plan', '-no-color', '-input=false', '-refresh=false', '-lock=false',
+                '-var-file=configuration.tfvars.json']
         run(args, directory)
         values[name]['value'] = 0
         (directory / 'configuration.tfvars.json').write_text(json.dumps(values))
-        run(args, directory, ok=False)
+        result = run(args, directory, ok=False)
+        assert 'restriction of Positive: value > 0' in ' '.join((result.stdout + result.stderr).split()), result.stdout
 
 
 def check_sum(core, directory):
@@ -241,9 +292,7 @@ def check_antlr_inputs(core, directory):
     assert manifest['lawsExecuted'] is False
 
     def entry(scalar):
-        matches = [key for key, ty in manifest['types'].items()
-                   if ty.startswith('Constructor "inputOnly::type::Box"')
-                   and f'Constructor "{scalar}"' in ty]
+        matches = [key for key, ty in manifest['types'].items() if ty == f'inputOnly::type::Box {scalar}']
         assert len(matches) == 1, (scalar, matches)
         key = matches[0]
         result = manifest['entryPoints'][key]
@@ -312,6 +361,7 @@ def main():
             check_empty_type(core, root / 'yaml-empty')
             check_large_integer(core, root / 'yaml-large-integer')
             check_sum(core, root / 'yaml-sum')
+            check_yaml_text(core, root / 'yaml-text')
             check_restrictions(core, root / 'yaml-restricted', 'yaml')
             print('YAML: checked values and rejection controls passed', flush=True)
         if 'hcl' in selected:

@@ -1,7 +1,7 @@
 /** <module> Native collections, IEEE averages, slugs and typed alternatives.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_5872aa9105cca700,
+:- module(example_matchers,
           [ls_sortItems/2, ls_uniqueTags/2, ls_average/3, ls_slug/2, ls_ship/2]).
 :- use_module(library(janus)).
 :- use_module(library(lists)).

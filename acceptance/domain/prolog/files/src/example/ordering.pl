@@ -1,7 +1,7 @@
 /** <module> Independent native adapters for the shared domain laws.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_95672250821d7d7e, [ls_firstLine/2, ls_validateOrder/2, ls_priceOrder/2]).
+:- module(example_ordering, [ls_firstLine/2, ls_validateOrder/2, ls_priceOrder/2]).
 
 ls_firstLine(value(_, [[Head|_]]), Head).
 

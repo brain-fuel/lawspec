@@ -3,7 +3,7 @@
 The instance token holds independent mutable state. Explicit operation calls
 remain observable to the generated recording handler and checked model.
 */
-:- module(lawspec_f576905be24f781a, [ls_execute/3, ls_twice/3, ls_contextCheck/2,
+:- module(example_prolog_effects, [ls_execute/3, ls_twice/3, ls_contextCheck/2,
     handler_LedgerHandler_new/1, handler_LedgerHandler_add/3]).
 :- use_module(library(janus)).
 :- use_module('../lawspec_models/example/prologEffects.pl', []).
@@ -14,8 +14,8 @@ ls_twice(H, N, R) :-
     lawspec_prolog:operation(H, add, [N], R).
 ls_contextCheck(Unit, R) :-
     lawspec_prolog:new_context(Context),
-    lawspec_f576905be24f781a_model:ls_symbolValue(Context, Unit, First),
-    lawspec_f576905be24f781a_model:ls_symbolValue(Context, Unit, Second),
+    example_prolog_effects_model:ls_symbolValue(Context, Unit, First),
+    example_prolog_effects_model:ls_symbolValue(Context, Unit, Second),
     ( First == Second -> R=true ; R=false ).
 
 handler_LedgerHandler_new(Token) :- py_call(builtins:list([0]), Token, [py_object(true)]).

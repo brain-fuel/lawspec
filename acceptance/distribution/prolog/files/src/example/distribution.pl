@@ -4,7 +4,7 @@ Wire vectors and handshake vectors exercise the existing host runtime. Actor
 state transitions and protocol peers are native Prolog implementations.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_51badf03d520690b, [ls_encoded/5, ls_roundTrips/5,
+:- module(example_distribution, [ls_encoded/5, ls_roundTrips/5,
     ls_openTally/2, ls_add/3, ls_remoteShifted/2, ls_remoteAdds/2,
     ls_remoteDoubling/2, ls_remoteLedger/2, ls_remoteHandoff/2,
     ls_remoteHandoffOnward/2, ls_sealedOnTheWire/2, ls_handshakeAgrees/2,
@@ -56,7 +56,7 @@ double(End, @(true)) :-
 spawn_double(End, Process) :-
     py_call(builtins:getattr(eval(builtins:'__import__'(janus_swi)), query_once), Query),
     py_call(builtins:dict('End'=End), Arguments, [py_object(true)]),
-    py_call(functools:partial(Query, "lawspec_51badf03d520690b:double(End,_Result)", Arguments), Callback),
+    py_call(functools:partial(Query, "example_distribution:double(End,_Result)", Arguments), Callback),
     py_call(lawspec_runtime:spawn(Callback), Process).
 joined(Process) :-
     py_call(Process:join(), Answer, [py_object(true)]), py_call(Answer:get(truth), @(true)).

@@ -1,7 +1,7 @@
 /** <module> Native canonical_url implementation for integration laws.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_2cec454df55ecf28, [ls_canonicalize/2]).
+:- module(example_canonical_url, [ls_canonicalize/2]).
 
 ls_canonicalize(X, R) :-
     string_codes(X, Codes), reverse(Codes, Reversed),

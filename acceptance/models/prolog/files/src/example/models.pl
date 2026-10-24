@@ -4,7 +4,7 @@ Counter IDs and updates use SWI's established atomic flags. The reference
 model and history checker remain the existing independent Core implementation.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_eb92b993c0a1cd06, [ls_empty/2, ls_push/3, ls_pop/2, ls_peek/2,
+:- module(example_models, [ls_empty/2, ls_push/3, ls_pop/2, ls_peek/2,
     ls_newCounter/2, ls_increment/2, ls_decrement/2, ls_read/2]).
 :- dynamic counter_created/1.
 

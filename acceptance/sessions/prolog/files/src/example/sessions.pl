@@ -4,7 +4,7 @@ Janus query_once supplies the established thread-attached callback interface. Va
 arguments to the callback, never interpolated into Prolog query strings.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_5b5168ae04ccdf0b, [ls_add/3, ls_addHired/3, serve/2, manage/2]).
+:- module(example_sessions, [ls_add/3, ls_addHired/3, serve/2, manage/2]).
 :- use_module(library(janus)).
 
 serve(Server, true) :-
@@ -25,8 +25,8 @@ spawn(Predicate, End, Process) :-
     py_call(builtins:dict('End'=End), Arguments, [py_object(true)]),
     py_call(functools:partial(Query, Goal, Arguments), Callback),
     py_call(lawspec_runtime:spawn(Callback), Process).
-callback_goal(serve, "lawspec_5b5168ae04ccdf0b:serve(End, _Result)").
-callback_goal(manage, "lawspec_5b5168ae04ccdf0b:manage(End, _Result)").
+callback_goal(serve, "example_sessions:serve(End, _Result)").
+callback_goal(manage, "example_sessions:manage(End, _Result)").
 joined(Process) :-
     py_call(Process:join(), Answer, [py_object(true)]), py_call(Answer:get(truth), @(true)).
 

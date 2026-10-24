@@ -4,7 +4,7 @@ Decimal addition aligns arbitrary precision integer coefficients. No checked
 model or floating-point arithmetic supplies the implementation result.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_ab50e37251c0eabc,
+:- module(example_scalar_adapters,
           [ls_echoChar/2, ls_echoCodePoint/2, ls_echoCodeUnit/2,
            ls_echoBytes/2, ls_echoComplex/2, ls_successor/2, ls_narrow/2,
            ls_addDecimal/3, ls_sameSymbol/3, ls_echoRaw/2, ls_echoPresence/2,

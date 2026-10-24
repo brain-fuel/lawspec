@@ -1,7 +1,7 @@
 /** <module> Synchronous and asynchronous adapters with declared failures.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_e7de6d7eaf2b839c,
+:- module(example_failures,
           [ls_refund/2, ls_settle/2, handler_GatewayHandler_new/1,
            handler_GatewayHandler_decide/3]).
 

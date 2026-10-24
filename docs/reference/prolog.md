@@ -40,8 +40,18 @@ under `src/lawspec_models/`; application adapters live under the unit's ordinary
 path. The launcher `lawspec_test.py` and selection manifest
 `lawspec-prolog-tests.json` stay in the target root and carry the configured
 module paths. Keep the generated module declaration when implementing an adapter.
+A unit's module is named after the unit in snake case: `example.payments` is
+module `example_payments`, and its checked models are `example_payments_model`.
+A name an SWI-Prolog library module already has gets a trailing underscore.
 Generated predicates use an `ls_` prefix to avoid protected SWI predicates such
-as `close/2`.
+as `close/2`. PLUnit test units are named after their host test file.
+
+Generated Prolog is laid out as SWI-Prolog's `portray_clause/2` prints it, the
+conventional layout of `listing/1`: atoms quoted only where `writeq/1` quotes
+them, a module's exports one per line and a source link above each predicate.
+The Python host files follow `ruff format`. Acceptance checks both: every clause
+must equal `portray_clause/2`'s output (`tools/prolog-layout.pl`, which can also
+rewrite a file with `--write`), and `ruff format --check` must pass.
 
 ## Predicate interface
 

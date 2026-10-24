@@ -2,5 +2,5 @@
 <<<<<<<
         maplist(failure_error, Failures, Errors)
 =======
-        lawspec_cfb6be83143715a5:finished(Errors)
+        example_workflows:finished(Errors)
 >>>>>>>

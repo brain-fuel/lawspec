@@ -1,7 +1,7 @@
 /** <module> Native steps for limits, compensation, timeout and hedging.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_048b9363a7f94414, [ls_admitTicket/2, ls_reserveSeat/2,
+:- module(example_limits, [ls_admitTicket/2, ls_reserveSeat/2,
     ls_chargeCard/2, ls_releaseSeat/2, ls_fetchQuote/2, ls_hedgeQuote/2,
     reset_quotes/0]).
 

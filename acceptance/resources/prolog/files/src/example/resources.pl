@@ -4,7 +4,7 @@ Store limits detect missing release, and the pool's one-acquisition budget
 checks the shared per-unit lifetime. Core owns acquisition/reset/release order.
 ref:DEC-prolog-janus
 */
-:- module(lawspec_7a59540223a56e91, [ls_openStore/2, ls_closeStore/2, ls_clearStore/2,
+:- module(example_resources, [ls_openStore/2, ls_closeStore/2, ls_clearStore/2,
     ls_put/4, ls_get/3, ls_isOpen/2, ls_size/2, ls_writeNote/3, ls_readNote/2,
     ls_canListen/2, ls_setGreeting/2, ls_greeting/2, ls_openPool/2,
     ls_drainPool/2, ls_closePool/2, ls_fill/3, ls_level/2]).

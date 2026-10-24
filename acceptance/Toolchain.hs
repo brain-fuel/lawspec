@@ -40,6 +40,13 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    "prolog" -> do
+      python <- maybe (root </> ".integration/prolog/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
+      -- SWI-Prolog's conventional layout for Prolog (the SWI version is in
+      -- the prolog fingerprint) and ruff format for the Python host files.
+      pure (Just (Formatter "SWI-Prolog portray_clause and ruff format" "sh"
+        (\dir -> ["tools/prolog-formatted.sh", python, dir]) [".pl", ".py"]
+        ["tools/prolog-formatted.sh", "tools/prolog-layout.pl", "test/locks/prolog.txt"]))
     _ -> pure Nothing
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
