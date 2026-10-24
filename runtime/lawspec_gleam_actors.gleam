@@ -4,7 +4,9 @@
 import gleam/dynamic
 
 pub type Process
+
 pub type Handle
+
 pub type ChildSpec
 
 pub type Event {

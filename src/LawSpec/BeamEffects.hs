@@ -11,10 +11,11 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.AbilityNames as N
 import Data.List (nubBy)
+import qualified LawSpec.BeamNames as Names
 
+-- | lawspec_definitions' function for each declaration, named after it.
 entries :: [C.Unit] -> [(C.Id,String)]
-entries units = [(C.declarationId d,"evaluate_" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap C.unitDeclarations units)]
+entries = Names.definitionEntries
 
 abilities :: [C.Unit] -> [C.Ability]
 abilities units = nubBy (\a b -> C.abilityInstance a == C.abilityInstance b)
@@ -25,11 +26,11 @@ handlers = nubBy (\a b -> C.handlerId a == C.handlerId b) . concatMap C.unitHand
 
 abilityEntry :: [C.Unit] -> C.AbilityRef -> Either String String
 abilityEntry units ref = maybe (Left ("missing BEAM ability: " ++ C.abilityKey ref)) Right
-  (lookup ref [(C.abilityInstance a,"ability_" ++ show i) | (i,a) <- zip [0::Int ..] (abilities units)])
+  (lookup ref (fst (Names.abilityEntries (abilities units) (handlers units))))
 
 handlerEntry :: [C.Unit] -> C.Id -> Either String String
 handlerEntry units identity = maybe (Left ("missing BEAM handler: " ++ C.idText identity)) Right
-  (lookup identity [(C.handlerId h,"handler_" ++ show i) | (i,h) <- zip [0::Int ..] (handlers units)])
+  (lookup identity (snd (Names.abilityEntries (abilities units) (handlers units))))
 
 uses :: C.Declaration -> [C.AbilityRef]
 uses = filter (not . C.isFail) . C.declarationUses

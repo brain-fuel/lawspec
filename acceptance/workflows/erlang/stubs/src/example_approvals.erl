@@ -4,10 +4,9 @@
 
 -spec approved_quickly(-9223372036854775808..9223372036854775807) -> boolean().
 
-approved_quickly(_Argument0) ->
-    erlang:error({not_implemented, <<"example.approvals::approvedQuickly"/utf8>>}).
+approved_quickly(_Int64) ->
+    erlang:error({not_implemented, <<"example.approvals::approvedQuickly">>}).
 
 -spec approval_errors(-9223372036854775808..9223372036854775807) -> [binary()].
 
-approval_errors(_Argument0) ->
-    erlang:error({not_implemented, <<"example.approvals::approvalErrors"/utf8>>}).
+approval_errors(_Int64) -> erlang:error({not_implemented, <<"example.approvals::approvalErrors">>}).

@@ -2,5 +2,5 @@
 <<<<<<<
 %D.Pairs{value: xs}
 =======
-%D.Pairs{value: %D.RowCell{value: %D.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f{head: 0, tail: xs}}}
+%D.Pairs{value: %D.RowCell{value: %D.CellDetails{head: 0, tail: xs}}}
 >>>>>>>

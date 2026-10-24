@@ -4,13 +4,43 @@
 %% operation runs there, so only its arguments and its result are copied.
 %% ref:DEC-typed-native-definitions
 -module(lawspec_beam_fast).
--export([int8/1, int16/1, int32/1, int64/1, uint8/1, uint16/1, uint32/1, uint64/1,
-    quot/2, remainder/2, power/2, unreachable/0, discard/1,
-    text_length/1, starts_with/2, ends_with/2, contains/2,
-    slice_text/3, slice_bytes/3, slice_list/3, at_text/2, at_bytes/2, at_list/2, range/2, join/2,
-    compare/2, sorted_pairs/1, sorted_pairs/2, sorted_items/1, sorted_items/2,
-    set_of/1, key_val_of/1,
-    handler/3, update/2, update_tracked/2, state/1, set_state/2]).
+-export([
+    int8/1,
+    int16/1,
+    int32/1,
+    int64/1,
+    uint8/1,
+    uint16/1,
+    uint32/1,
+    uint64/1,
+    quot/2,
+    remainder/2,
+    power/2,
+    unreachable/0,
+    discard/1,
+    text_length/1,
+    starts_with/2,
+    ends_with/2,
+    contains/2,
+    slice_text/3,
+    slice_bytes/3,
+    slice_list/3,
+    at_text/2,
+    at_bytes/2,
+    at_list/2,
+    range/2,
+    join/2,
+    compare/2,
+    sorted_pairs/1, sorted_pairs/2,
+    sorted_items/1, sorted_items/2,
+    set_of/1,
+    key_val_of/1,
+    handler/3,
+    update/2,
+    update_tracked/2,
+    state/1,
+    set_state/2
+]).
 
 %% Bounded integers: a result outside its type fails as the dynamic code does.
 int8(V) when V >= -128, V =< 127 -> V;
@@ -36,11 +66,16 @@ quot(A, B) when B =/= 0 -> A div B;
 quot(_, _) -> erlang:error({lawspec, {invalid_exact_operation, <<"quot">>}}).
 remainder(A, B) when B =/= 0 -> A rem B;
 remainder(_, _) -> erlang:error({lawspec, {invalid_exact_operation, <<"rem">>}}).
-power(_, 0) -> 1;
+power(_, 0) ->
+    1;
 power(A, N) when N > 0 ->
     H = power(A, N div 2),
-    case N rem 2 of 0 -> H * H; 1 -> H * H * A end;
-power(_, _) -> erlang:error({lawspec, {invalid_exact_operation, <<"pow">>}}).
+    case N rem 2 of
+        0 -> H * H;
+        1 -> H * H * A
+    end;
+power(_, _) ->
+    erlang:error({lawspec, {invalid_exact_operation, <<"pow">>}}).
 
 unreachable() -> erlang:error({lawspec, unreachable}).
 
@@ -103,7 +138,8 @@ compare(_, _) -> 0.
 %% A KeyVal is a map and a Set a version 2 set; their entries and items are
 %% given in the portable order of their keys.
 sorted_pairs(M) -> lists:sort(maps:to_list(M)).
-sorted_pairs(M, Compare) -> lists:sort(fun({A, _}, {B, _}) -> Compare(A, B) =< 0 end, maps:to_list(M)).
+sorted_pairs(M, Compare) ->
+    lists:sort(fun({A, _}, {B, _}) -> Compare(A, B) =< 0 end, maps:to_list(M)).
 sorted_items(S) -> lists:sort(sets:to_list(S)).
 sorted_items(S, Compare) -> lists:sort(fun(A, B) -> Compare(A, B) =< 0 end, sets:to_list(S)).
 set_of(Items) -> sets:from_list(Items, [{version, 2}]).
@@ -128,4 +164,5 @@ state({lawspec_typed, Cell, _}) -> lawspec_beam_handler:in_place(Cell, fun(S) ->
 state(_) -> erlang:error({lawspec, stateless_handler}).
 set_state({lawspec_typed, Cell, _}, Value) ->
     lawspec_beam_handler:in_place(Cell, fun(_) -> {ok, Value} end);
-set_state(_, _) -> erlang:error({lawspec, stateless_handler}).
+set_state(_, _) ->
+    erlang:error({lawspec, stateless_handler}).

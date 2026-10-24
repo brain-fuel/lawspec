@@ -1,6 +1,6 @@
 @@ src/example_arithmetic.erl
 <<<<<<<
-{perfect_node, {recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8, mirror(R), mirror(L)}}
+{perfect_node, {node_details, mirror(R), mirror(L)}}
 =======
-{perfect_node, {recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8, mirror(L), mirror(R)}}
+{perfect_node, {node_details, mirror(L), mirror(R)}}
 >>>>>>>

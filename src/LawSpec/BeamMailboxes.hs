@@ -39,8 +39,8 @@ emit target layout bits declarations units = do
         result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
         variable = D.text . ("_Ls" ++) . E.pascal
         boxVar = variable "mailbox"
-        schema = D.text "_LsSchema"
-        fresh = D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
+        schema = D.text "Schema"
+        fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
         runtime = E.remote "lawspec_beam_mailbox"
         bridge direction ref value = E.remote "lawspec_beam_schema" direction [value,ref,schema]
         unitValue = E.atom (if target == "gleam" then "nil" else "ok")
@@ -98,8 +98,8 @@ nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "L
 render :: String -> D.Layout -> C.Unit -> C.Mailbox -> String -> Bool -> [Function] -> [Artifact]
 render target layout unit box typeName wired functions =
   Artifact ("src/" ++ name ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render layout elixir) "generated" "source"]
-    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render layout gleam) "generated" "source"]
+    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
     _ -> []
   where
     name = moduleName unit box
@@ -113,12 +113,12 @@ render target layout unit box typeName wired functions =
       ([D.text ("-export_type([t/0" ++ (if wired then ", sender/0" else "") ++ "])."),
         D.text "-opaque t() :: lawspec_beam_mailbox:mailbox()."] ++
        [D.text "-opaque sender() :: lawspec_beam_mailbox:sender()." | wired] ++
-       concat [[D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
+       concat [[E.spec n (map (erlType . snd) ps) (erlType result),
          E.function n [D.text ("_Ls" ++ E.pascal p) | (p,_) <- ps] body] | Function n ps result body <- functions])
     elixir = X.moduleDoc exModule False
       ([D.text "@opaque t :: :lawspec_beam_mailbox.mailbox()"] ++
        [D.text "@opaque sender :: :lawspec_beam_mailbox.sender()" | wired] ++
-       concat [[D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType result,
+       concat [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
          X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- functions])
     gleam = G.fileDoc False

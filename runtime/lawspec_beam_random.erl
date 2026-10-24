@@ -12,5 +12,6 @@ next(State) ->
     B = ((A bxor (A bsr 27)) * 16#94d049bb133111eb) band ?MASK,
     {B bxor (B bsr 31), S}.
 below(Bound, State) when is_integer(Bound), Bound > 0 ->
-    {N, Next} = next(State), {N rem Bound, Next};
+    {N, Next} = next(State),
+    {N rem Bound, Next};
 below(Bound, State) when is_integer(Bound), Bound =< 0 -> {0, State}.

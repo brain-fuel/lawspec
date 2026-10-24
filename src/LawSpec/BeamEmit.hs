@@ -38,6 +38,8 @@ import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedTypeBinding(..))
 import LawSpec.Typed.Beam (BeamTyped(..), emitBeamTyped)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
+import qualified LawSpec.BeamNames as Names
+import LawSpec.Naming (typeWords)
 
 emitBeam :: String -> Bool -> Plan -> Either [Diagnostic] [Artifact]
 emitBeam target minify = emitBeamWithBindings target minify emptyBindingPlan
@@ -131,18 +133,18 @@ emitBeamWithBindings target minify bindings plan = do
        Artifact (testSupport ++ "lawspec_beam_crypto_vectors.erl") vectorSource "generated" "test",
        vectorTests]
     vectorSource = unlines [if line == "vector_text() -> @@VECTORS@@."
-      then "vector_text() -> " ++ D.render layout (E.binary (defaultSource "vectors.txt")) ++ "." else line
+      then "vector_text() ->\n    " ++ D.render layout (E.binary (defaultSource "vectors.txt")) ++ "." else line
       | line <- lines (defaultSource "beam/crypto_vectors.erl")]
     vectorKinds = ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
       "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
       "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
     vectorTests = case target of
       "elixir" -> Artifact "test/lawspec_crypto_vectors_test.exs"
-        (D.render layout (X.moduleDoc "LawSpec.CryptoVectorsTest" False (D.text "use ExUnit.Case" :
+        (D.render (X.layoutFor layout) (X.moduleDoc "LawSpec.CryptoVectorsTest" False (D.text "use ExUnit.Case" :
           [D.text "test " <> X.string kind <> D.text " do" <> D.nest 2 (D.hardline <>
             X.remote ":lawspec_beam_crypto_vectors" "check" [X.string kind]) <> D.hardline <> D.text "end" | kind <- vectorKinds]))) "generated" "test"
       "gleam" -> Artifact "test/lawspec_crypto_vectors_test.gleam"
-        (D.render layout (G.fileDoc False (G.external "lawspec_beam_crypto_vectors" "check" "check" [D.text "kind: String"] (D.text "Nil") :
+        (D.render (G.layoutFor layout) (G.fileDoc False (G.external "lawspec_beam_crypto_vectors" "check" "check" [D.text "kind: String"] (D.text "Nil") :
           [G.function (E.snake kind ++ "_test") [] (D.text "Nil") [G.call "check" [G.string kind]] | kind <- vectorKinds]))) "generated" "test"
       _ -> Artifact "test/lawspec_crypto_vectors_tests.erl"
         (D.render layout (E.moduleDoc "lawspec_crypto_vectors_tests" [("crypto_vectors_test_",0)]
@@ -164,6 +166,7 @@ emitBeamWithBindings target minify bindings plan = do
         [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
         [Artifact "test/support/lawspec_beam_exunit_formatter.ex" (runtimeSource "beam-exunit-formatter") "generated" "test" | target == "elixir"] ++
         [Artifact "test/support/lawspec_beam_exunit_schedule.ex" (runtimeSource "beam-exunit-schedule") "generated" "test" | target == "elixir"] ++
+        [Artifact "test/support/lawspec_beam_exunit_cases.ex" (runtimeSource "beam-exunit-cases") "generated" "test" | target == "elixir"] ++
         [Artifact (testSupport ++ "lawspec_beam_tasks.erl") (runtimeSource "beam-tasks") "generated" "test"
           | target == "elixir" || hasCaseSupervision, "tasks" `notElem` runtimeNames,
             (testSupport ++ "lawspec_beam_tasks.erl") `notElem` map artifactPath modelRuntimes] ++
@@ -189,8 +192,13 @@ emitBeamWithBindings target minify bindings plan = do
     adapter names unit = do
       functions <- fmap concat $ forM (adapterDeclarations unit) $ \d -> do
         signature <- Definitions.declarationSpec bits names units d
-        let args = [D.text ("_Argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType (C.declarationType d)))]
-            handlers = [D.text ("_Handler" ++ show i) | (i,_) <- zip [0::Int ..] (Effects.uses d)]
+        -- A stub's arguments are named for their types, and its handlers
+        -- for their abilities.
+        let types = fst (C.functionType (C.declarationType d))
+            named = Names.variables [] ([unwords (typeWords t) | t <- types] ++
+              [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d])
+            args = [D.text ("_" ++ v) | v <- take (length types) named]
+            handlers = [D.text ("_" ++ v) | v <- drop (length types) named]
         pure [signature,E.function (E.functionName d) (handlers ++ args) [E.remote "erlang" "error"
           [E.tuple [E.atom "not_implemented",E.binary (C.idText (C.declarationId d))]]]]
       production <- concat <$> mapM (Abilities.productionStub target bits names) (Abilities.productionAbilities unit)

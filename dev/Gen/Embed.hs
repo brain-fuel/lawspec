@@ -41,7 +41,7 @@ runtimeFiles =
   , ("beam-test_run", "lawspec_beam_test_run.erl"), ("beam-harness", "lawspec_beam_harness.erl")
   , ("beam-report", "lawspec_beam_report.erl")
   , ("beam-coverage", "lawspec_beam_coverage.erl")
-  , ("beam-exunit-formatter", "lawspec_beam_exunit_formatter.ex")
+  , ("beam-exunit-formatter", "lawspec_beam_exunit_formatter.ex"), ("beam-exunit-cases", "lawspec_beam_exunit_cases.ex")
   , ("beam-schedule", "lawspec_beam_schedule.erl"), ("beam-exunit-schedule", "lawspec_beam_exunit_schedule.ex")
   , ("beam-search", "lawspec_beam_search.erl")
   , ("beam-waits", "lawspec_beam_waits.erl")

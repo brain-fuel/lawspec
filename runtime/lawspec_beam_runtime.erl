@@ -2,15 +2,35 @@
 %% Values stay in the portable domain until an explicit native boundary.
 %% ref:DEC-typed-core-boundary
 -module(lawspec_beam_runtime).
--export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1, async_call/1,
-    worker_context/0, with_worker_context/2, recorded/4]).
+-export([
+    bind/2,
+    require/2,
+    assert_equal/3,
+    contextual/2,
+    helper/4,
+    concurrently/1,
+    async_call/1,
+    worker_context/0,
+    with_worker_context/2,
+    recorded/4
+]).
 
 %% LawSpec's allocator, active handler operation, cancellation scopes and
 %% workflow runtime/frame cross workers. Application entries stay process-local.
-worker_context() -> [{Key, get(Key)} || Key <-
-    [{lawspec_beam_effects, scope}, {lawspec_beam_handler, context}, {lawspec_beam_tasks, scopes},
-     {lawspec_beam_workflow, runtime}, {lawspec_beam_workflow, frame}, {lawspec_beam_resources, run},
-     {lawspec_beam_resources, case_run}]].
+worker_context() ->
+    [
+        {Key, get(Key)}
+     || Key <-
+            [
+                {lawspec_beam_effects, scope},
+                {lawspec_beam_handler, context},
+                {lawspec_beam_tasks, scopes},
+                {lawspec_beam_workflow, runtime},
+                {lawspec_beam_workflow, frame},
+                {lawspec_beam_resources, run},
+                {lawspec_beam_resources, case_run}
+            ]
+    ].
 
 with_worker_context(Context, Body) ->
     Previous = [{Key, put(Key, Value)} || {Key, Value} <- Context],
@@ -21,8 +41,18 @@ with_worker_context(Context, Body) ->
         end,
         Body()
     after
-        lists:foreach(fun({Key, undefined}) -> erase(Key); ({Key, Value}) -> put(Key, Value) end, Previous)
+        lists:foreach(
+            fun
+                ({Key, undefined}) -> erase(Key);
+                ({Key, Value}) -> put(Key, Value)
+            end,
+            Previous
+        )
     end.
+
+%% let x = value in body, as generated code writes it: the value, then the
+%% body given it.
+bind(Value, Body) -> Body(Value).
 
 require(true, _) -> ok;
 require(false, Context) -> erlang:error({lawspec, {contract_failed, Context}});
@@ -30,21 +60,31 @@ require(_, Context) -> erlang:error({lawspec, {non_boolean_contract, Context}}).
 
 assert_equal(Actual, Expected, Label) ->
     case lawspec_beam_scalar:equal(Actual, Expected) of
-        true -> true;
-        false -> erlang:error({lawspec, {equation_failed, Label,
-            {actual, Actual}, {expected, Expected}}})
+        true ->
+            true;
+        false ->
+            erlang:error(
+                {lawspec, {equation_failed, Label, {actual, Actual}, {expected, Expected}}}
+            )
     end.
 
 contextual(Identity, Body) ->
-    try Body() catch
+    try
+        Body()
+    catch
         error:{lawspec, Reason}:Stack -> erlang:raise(error, {lawspec, {Identity, Reason}}, Stack)
     end.
 
-helper(<<"incompleteSearch">>, [Reason], _, _) -> erlang:error({lawspec, Reason});
-helper(<<"unreachable">>, _, _, _) -> erlang:error({lawspec, unreachable});
-helper(<<"recorded">>, [Key, Value], [_, Type], _) -> recorded(Key, Value, Type, none);
-helper(<<"recorded">>, [Key, Value], [], _) -> recorded_text(Key, lawspec_beam_values:render(Value));
-helper(Name, Values, Types, Bits) -> lawspec_beam_scalar:helper(Name, Values, Types, Bits).
+helper(<<"incompleteSearch">>, [Reason], _, _) ->
+    erlang:error({lawspec, Reason});
+helper(<<"unreachable">>, _, _, _) ->
+    erlang:error({lawspec, unreachable});
+helper(<<"recorded">>, [Key, Value], [_, Type], _) ->
+    recorded(Key, Value, Type, none);
+helper(<<"recorded">>, [Key, Value], [], _) ->
+    recorded_text(Key, lawspec_beam_values:render(Value));
+helper(Name, Values, Types, Bits) ->
+    lawspec_beam_scalar:helper(Name, Values, Types, Bits).
 
 %% Recorded values use typed portable rendering and the same folder
 %% selection as the other targets. Read-only runs never create a recording;
@@ -58,28 +98,42 @@ recorded_text(Key, Text) ->
     case os:getenv("LAWSPEC_UPDATE_RECORDED") of
         "1" ->
             case filelib:ensure_dir(Path) of
-                ok -> case file:write_file(Path, <<Text/binary, "\n">>) of
-                    ok -> true;
-                    {error, Reason} -> recording_io_error(Key, Reason)
-                end;
-                {error, Reason} -> recording_io_error(Key, Reason)
+                ok ->
+                    case file:write_file(Path, <<Text/binary, "\n">>) of
+                        ok -> true;
+                        {error, Reason} -> recording_io_error(Key, Reason)
+                    end;
+                {error, Reason} ->
+                    recording_io_error(Key, Reason)
             end;
-        _ -> case file:read_file(Path) of
-            {ok, Bytes} ->
-                Stored = trim_recording_newline(Bytes),
-                case Stored =:= Text of
-                    true -> true;
-                    false -> error({lawspec, <<"recorded/", Key/binary,
-                        " differs: expected ", Stored/binary, ", actual ", Text/binary,
-                        " (lawspec test --update-recorded records the new value)">>})
-                end;
-            {error, enoent} -> error({lawspec, <<"no recording recorded/", Key/binary,
-                "; run lawspec test --update-recorded to record ", Text/binary>>});
-            {error, Reason} -> recording_io_error(Key, Reason)
-        end
+        _ ->
+            case file:read_file(Path) of
+                {ok, Bytes} ->
+                    Stored = trim_recording_newline(Bytes),
+                    case Stored =:= Text of
+                        true ->
+                            true;
+                        false ->
+                            error(
+                                {lawspec,
+                                    <<"recorded/", Key/binary, " differs: expected ", Stored/binary,
+                                        ", actual ", Text/binary,
+                                        " (lawspec test --update-recorded records the new value)">>}
+                            )
+                    end;
+                {error, enoent} ->
+                    error(
+                        {lawspec,
+                            <<"no recording recorded/", Key/binary,
+                                "; run lawspec test --update-recorded to record ", Text/binary>>}
+                    );
+                {error, Reason} ->
+                    recording_io_error(Key, Reason)
+            end
     end.
 
-trim_recording_newline(<<>>) -> <<>>;
+trim_recording_newline(<<>>) ->
+    <<>>;
 trim_recording_newline(Bytes) ->
     case binary:last(Bytes) of
         $\n -> binary:part(Bytes, 0, byte_size(Bytes) - 1);
@@ -87,8 +141,11 @@ trim_recording_newline(Bytes) ->
     end.
 
 recording_io_error(Key, Reason) ->
-    error({lawspec, <<"cannot access recording recorded/", Key/binary, ": ",
-        (atom_to_binary(Reason, utf8))/binary>>}).
+    error(
+        {lawspec,
+            <<"cannot access recording recorded/", Key/binary, ": ",
+                (atom_to_binary(Reason, utf8))/binary>>}
+    ).
 
 recorded_root() ->
     case os:getenv("LAWSPEC_RECORDED") of
@@ -103,13 +160,17 @@ find_recorded_root() ->
     find_recorded_root(Start, Start).
 
 find_recorded_root(Folder, Start) ->
-    case filelib:is_regular(filename:join(Folder, <<"lawspec.json">>)) orelse
-         filelib:is_dir(filename:join(Folder, <<"recorded">>)) of
-        true -> filename:join(Folder, <<"recorded">>);
-        false -> case filename:dirname(Folder) of
-            Folder -> filename:join(Start, <<"recorded">>);
-            Parent -> find_recorded_root(Parent, Start)
-        end
+    case
+        filelib:is_regular(filename:join(Folder, <<"lawspec.json">>)) orelse
+            filelib:is_dir(filename:join(Folder, <<"recorded">>))
+    of
+        true ->
+            filename:join(Folder, <<"recorded">>);
+        false ->
+            case filename:dirname(Folder) of
+                Folder -> filename:join(Start, <<"recorded">>);
+                Parent -> find_recorded_root(Parent, Start)
+            end
     end.
 
 %% BEAM adapters return ordinary native values. An async declaration runs the
@@ -125,21 +186,40 @@ async_call(Body) -> hd(concurrently([Body])).
 concurrently(Bodies) ->
     Caller = self(),
     Context = worker_context(),
-    {Coordinator, Monitor} = spawn_monitor(fun() -> with_worker_context(Context, fun() ->
-        process_flag(trap_exit, true),
-        ParentMonitor = monitor(process, Caller),
-        Workers = [{spawn_opt(fun() ->
-            Result = try {ok, with_worker_context(Context, Body)} catch Class:Reason:Stack -> {exception, Class, Reason, Stack} end,
+    {Coordinator, Monitor} = spawn_monitor(fun() ->
+        with_worker_context(Context, fun() ->
+            process_flag(trap_exit, true),
+            ParentMonitor = monitor(process, Caller),
+            Workers = [
+                {
+                    spawn_opt(
+                        fun() ->
+                            Result =
+                                try
+                                    {ok, with_worker_context(Context, Body)}
+                                catch
+                                    Class:Reason:Stack -> {exception, Class, Reason, Stack}
+                                end,
+                            exit({lawspec_result, Result})
+                        end,
+                        [link, monitor]
+                    ),
+                    I
+                }
+             || {I, Body} <- lists:enumerate(Bodies)
+            ],
+            Result = collect(Workers, #{}, ParentMonitor),
             exit({lawspec_result, Result})
-        end, [link, monitor]), I} || {I, Body} <- lists:enumerate(Bodies)],
-        Result = collect(Workers, #{}, ParentMonitor),
-        exit({lawspec_result, Result})
-    end) end),
+        end)
+    end),
     receive
-        {'DOWN', Monitor, process, Coordinator, {lawspec_result, {ok, Results}}} -> Results;
-        {'DOWN', Monitor, process, Coordinator, {lawspec_result, {exception, Class, Reason, Stack}}} ->
+        {'DOWN', Monitor, process, Coordinator, {lawspec_result, {ok, Results}}} ->
+            Results;
+        {'DOWN', Monitor, process, Coordinator,
+            {lawspec_result, {exception, Class, Reason, Stack}}} ->
             erlang:raise(Class, Reason, Stack);
-        {'DOWN', Monitor, process, Coordinator, Reason} -> erlang:error({lawspec, {concurrent_group_failed, Reason}})
+        {'DOWN', Monitor, process, Coordinator, Reason} ->
+            erlang:error({lawspec, {concurrent_group_failed, Reason}})
     end.
 
 collect([], Results, ParentMonitor) ->
@@ -151,21 +231,29 @@ collect([], Results, ParentMonitor) ->
     end;
 collect(Workers, Results, ParentMonitor) ->
     receive
-        {'DOWN', ParentMonitor, process, _, _} -> cancel(Workers), exit(normal);
+        {'DOWN', ParentMonitor, process, _, _} ->
+            cancel(Workers),
+            exit(normal);
         {'DOWN', Monitor, process, Pid, Reason} ->
             case lists:keytake({Pid, Monitor}, 1, Workers) of
                 {value, {_, I}, Rest} ->
-                    Outcome = case Reason of
-                        {lawspec_result, {ok, _} = Value} -> Value;
-                        {lawspec_result, {exception, _, _, _} = Error} -> Error;
-                        _ -> {exception, error, {lawspec, {concurrent_step_failed, Reason}}, []}
-                    end,
+                    Outcome =
+                        case Reason of
+                            {lawspec_result, {ok, _} = Value} -> Value;
+                            {lawspec_result, {exception, _, _, _} = Error} -> Error;
+                            _ -> {exception, error, {lawspec, {concurrent_step_failed, Reason}}, []}
+                        end,
                     collect(Rest, Results#{I => Outcome}, ParentMonitor)
             end
     end.
 
 cancel(Workers) ->
     lists:foreach(fun({{Pid, _}, _}) -> exit(Pid, kill) end, Workers),
-    lists:foreach(fun({{Pid, Monitor}, _}) ->
-        receive {'DOWN', Monitor, process, Pid, _} -> ok end
-    end, Workers).
+    lists:foreach(
+        fun({{Pid, Monitor}, _}) ->
+            receive
+                {'DOWN', Monitor, process, Pid, _} -> ok
+            end
+        end,
+        Workers
+    ).

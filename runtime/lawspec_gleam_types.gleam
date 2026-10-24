@@ -3,11 +3,17 @@
 //// ref:DEC-portable-exact-arithmetic ref:DEC-idiomatic-generated-types
 
 pub type Float32
+
 pub type Float64
+
 pub type Complex64
+
 pub type Complex128
+
 pub type Rational
+
 pub type Decimal
+
 pub type Symbol
 
 pub type Null {

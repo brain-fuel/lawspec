@@ -100,9 +100,8 @@ function in the Erlang module `lawspec_typed` over the same custom types,
 lists, strings and integers your code uses. Only `KeyVal` and `Set` values
 convert at its boundary, since typed code keeps them as Erlang maps and
 version 2 `sets`. Integers are checked where their type bounds them, and
-`String` is measured in code points. Each function is named for its
-definition and a digest of its identity, so its name survives unrelated
-edits.
+`String` is measured in code points. Each function is named for its definition, with `_2` only when two
+would share a name, so its name survives unrelated edits.
 
 A spec handler whose clauses are all typed keeps its state in its cell's
 process and runs each operation there, so an operation copies only its
@@ -118,3 +117,23 @@ Resource acquisition and release run in a dedicated owner process; the test
 worker borrows the handle. Route operations on private native state back to
 that owner. See [BEAM ownership and cancellation](../../reference/language/resources.md#beam-ownership-and-cancellation)
 for the callback contract, owner-call helper and cleanup deadlines.
+
+## Formatting
+
+Output is what `gleam format` (Gleam 1.19.0) writes: two-space indentation,
+80 columns and trailing commas in wrapped lists. The shared Erlang modules
+follow `erlfmt` 1.8.0. LawSpec lays both out itself, so generation needs no
+formatter, and LawSpec's own acceptance checks every generated project with
+`gleam format --check` and `erlfmt --check`. `--minify` allows a compact
+layout.
+
+## Names
+
+Generated Gleam uses the specification's names: an adapter's arguments are
+named for their types (`_money`), and an anonymous record is a type named
+from where it is used (the payload of a `Declined` case is
+`DeclinedDetails`). Each case of a law is a Gleeunit test named for the law
+and the case:
+`law_normalizers_agree__spaces_become_hyphens_punctuation_is_preserved_test`,
+`law_normalizers_agree__boundary_1_test`. The cases themselves are the
+shared Erlang modules', whose names are the Erlang target's.

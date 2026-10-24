@@ -52,8 +52,8 @@ emit target layout bits declarations units = do
         name = moduleName unit session
         variable = D.text . ("_Ls" ++) . E.pascal
         runtime = E.remote "lawspec_beam_session"
-        schema = D.text "_LsSchema"
-        fresh = D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
+        schema = D.text "Schema"
+        fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
         native ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeType bits names [] ty <*>
           G.nativeType False names [] ty <*> pure (G.imports False [ty])
         result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
@@ -112,25 +112,25 @@ emit target layout bits declarations units = do
           ([D.text "-export_type(" <> E.array [D.text (t ++ "/0") | t <- types] <> D.text ")."] ++
            [D.text ("-opaque " ++ t ++ "() :: lawspec_beam_session:session().") | t <- types] ++
            [E.function "spec" [] [spec]] ++
-           concat [[D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType r <> D.text ".",
+           concat [[E.spec n (map (erlType . snd) ps) (erlType r),
              E.function n [variable p | (p,_) <- ps] body] | Function n ps r body <- functions])
         elixir = X.moduleDoc (elixirModule unit session) False
           ([D.text ("@opaque " ++ t ++ " :: :lawspec_beam_session.session()") | t <- types] ++
-           concat [[D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType r,
+           concat [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType r),
              X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
              | Function n ps r _ <- functions])
         gleam = G.fileDoc False
           (nub (D.text "import lawspec/session_types" : concat [concatMap (imports . snd) ps ++ imports r | Function _ ps r _ <- functions]) ++
-           [D.text ("pub type " ++ E.pascal side ++ show i ++ " = session_types." ++ globalType unit session side i)
+           [G.typeAlias (E.pascal side ++ show i) (D.text ("session_types." ++ globalType unit session side i))
              | side <- ["first","second"], i <- [0..length steps]] ++
            [G.external name n n [D.text (p ++ ": ") <> gleamType t | (p,t) <- ps] (gleamType r)
              | Function n ps r _ <- functions])
     pure (Artifact ("src/" ++ name ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-      "elixir" -> [Artifact ("lib/" ++ modulePath unit session ++ ".ex") (D.render layout elixir) "generated" "source"]
-      "gleam" -> [Artifact ("src/" ++ modulePath unit session ++ ".gleam") (D.render layout gleam) "generated" "source"]
+      "elixir" -> [Artifact ("lib/" ++ modulePath unit session ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+      "gleam" -> [Artifact ("src/" ++ modulePath unit session ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
       _ -> []))
   pure (artifacts ++ [Artifact "src/lawspec/session_types.gleam"
-    (D.render layout (G.fileDoc False [D.text ("pub type " ++ n) | n <- typeNames])) "generated" "source"
+    (D.render (G.layoutFor layout) (G.fileDoc False [D.text ("pub type " ++ n) | n <- typeNames])) "generated" "source"
       | target == "gleam", not (null protocols)])
 
 moduleName :: C.Unit -> C.Session -> String
@@ -153,7 +153,7 @@ tupleType :: [NativeType] -> NativeType
 tupleType ts = NativeType (E.tuple (map erlType ts)) (X.tuple (map exType ts)) (G.tuple (map gleamType ts)) (concatMap imports ts)
 callbackType :: [NativeType] -> NativeType -> NativeType
 callbackType ps r = NativeType
-  (D.text "fun((" <> D.joinWith (D.text ", ") (map erlType ps) <> D.text ") -> " <> erlType r <> D.text ")")
+  (E.funType (map erlType ps) (erlType r))
   (D.text "(" <> D.joinWith (D.text ", ") (map exType ps) <> D.text " -> " <> exType r <> D.text ")")
   (D.text "fn(" <> D.joinWith (D.text ", ") (map gleamType ps) <> D.text ") -> " <> gleamType r)
   (concatMap imports (r:ps))

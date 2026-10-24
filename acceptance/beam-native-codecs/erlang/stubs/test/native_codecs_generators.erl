@@ -5,11 +5,9 @@
 -spec parcels(proper_types:raw_type()) -> proper_types:raw_type().
 
 parcels(_Child0) ->
-    erlang:error({not_implemented, <<"Implement generator for native.codecs::type::Parcel"/utf8>>}).
+    erlang:error({not_implemented, <<"Implement generator for native.codecs::type::Parcel">>}).
 
 -spec positives() -> proper_types:raw_type().
 
 positives() ->
-    erlang:error(
-        {not_implemented, <<"Implement generator for native.codecs::type::Positive"/utf8>>}
-    ).
+    erlang:error({not_implemented, <<"Implement generator for native.codecs::type::Positive">>}).

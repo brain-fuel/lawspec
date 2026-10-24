@@ -1,7 +1,7 @@
 -module(native_codecs).
 -export([copy_parcel/1, copy_nested/1, copy_chain/1, copy_positive/1,
     to_parcel/2, from_parcel/2, to_chain/2, from_chain/2, to_positive/1, from_positive/1]).
--define(CHAIN_PAYLOAD, record5eebfa15fa6145a8da5c04a1c56125f8f3b2caeb2a02d9cb36e95342d4209998).
+-define(CHAIN_PAYLOAD, more_details).
 
 copy_parcel(#{private := V}) -> #{private => V}.
 copy_nested(#{private := absent}) -> #{private => absent};

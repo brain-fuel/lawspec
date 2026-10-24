@@ -1,42 +1,103 @@
 -- | Native Gleam tokens and types. Shared Core expressions and runtime values
 -- are compiled once on BEAM, with checked bridges at every public function.
 -- ref:DEC-idiomatic-generated-types ref:DEC-readable-output-default
-module LawSpec.GleamCode (string, call, tuple, function, external, fileDoc, nativeType, imports) where
+module LawSpec.GleamCode (variableName, string, call, tuple, function, fnType, lambda, huggedLambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import LawSpec.Scalar (primitive, family, Family(..))
-import Data.Char (ord)
-import Numeric (showHex)
+import Data.List (intercalate, isPrefixOf, sort)
+import LawSpec.Code.Literal (literalFor)
+import LawSpec.SourceLink (generatedHeader)
 
+-- | A Gleam string (LawSpec.Code.Literal). ref:DEC-native-string-literals
 string :: String -> D.Doc
-string s = D.text ('"' : concatMap escape s ++ "\"")
-  where
-    escape c | c == '"' || c == '\\' = ['\\',c]
-    escape '\n' = "\\n"
-    escape '\r' = "\\r"
-    escape '\t' = "\\t"
-    escape c | ord c < 32 || ord c >= 127 = "\\u{" ++ showHex (ord c) "}"
-    escape c = [c]
+string = D.text . literalFor "gleam"
 
+-- | A Gleam name: Gleam's keywords escaped with _lawspec, as functions are.
+variableName :: String -> String
+variableName = E.gleamName
+
+-- | gleam format's width, 80, for the BEAM layout.
+layoutFor :: D.Layout -> D.Layout
+layoutFor layout = case layout of
+  D.Pretty _ -> D.Pretty 80
+  other -> other
+
+-- | Arguments or fields, with gleam format's trailing comma when they wrap.
 call :: String -> [D.Doc] -> D.Doc
-call name args = D.text name <> D.delimit 2 "(" ")" args
+call name args = D.text name <> D.delimitTrailing 2 "(" ")" args
 
 tuple :: [D.Doc] -> D.Doc
-tuple = D.delimit 2 "#(" ")"
+tuple = D.delimitTrailing 2 "#(" ")"
 
+-- | pub fn name(args) -> Result { body }, the body on lines of its own.
+-- A top-level function's header is measured as gleam format measures it:
+-- without its opening brace.
 function :: String -> [D.Doc] -> D.Doc -> [D.Doc] -> D.Doc
-function name args result body = D.group (D.text "pub fn " <> call name args <> D.text " -> " <> result <>
-  D.text " {" <> D.nest 2 (D.softline <> D.joinWith D.softline body) <> D.softline <> D.text "}")
+function name args result body = header <>
+  D.text " {" <> D.nest 2 (D.hardline <> D.joinWith D.hardline body) <> D.hardline <> D.text "}"
+  where
+    compact = D.render D.Compact
+    flatArgs = intercalate ", " (map compact args)
+    flat = "pub fn " ++ name ++ "(" ++ flatArgs ++ ") -> " ++ compact result
+    header
+      | null args || length flat + 2 <= 80 = D.text ("pub fn " ++ name ++ "(" ++ flatArgs ++ ") -> ") <> D.text (compact result)
+      | otherwise = D.text ("pub fn " ++ name ++ "(") <> D.nest 2 (mconcat [D.hardline <> D.text (compact a ++ ",") | a <- args]) <>
+          D.hardline <> D.text ") -> " <> (if length (") -> " ++ compact result) <= 80 then D.text (compact result) else result)
 
+-- | fn(Args) -> Result, breaking after its arrow.
+fnType :: [D.Doc] -> D.Doc -> D.Doc
+fnType args result = D.group (D.text ("fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") ->") <>
+  D.nest 2 (D.softline <> result))
+
+-- | fn(args) { body }, the body on lines of its own when it does not fit.
+-- gleam format measures an item without its trailing comma, so a fun
+-- written at a known column decides its own layout.
+lambda :: Int -> [D.Doc] -> D.Doc -> D.Doc
+lambda column args body
+  | column + length flat <= 81 = D.text flat
+  | otherwise = D.multiline mempty <> D.text opening <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"
+  where
+    opening = "fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") {"
+    flat = opening ++ " " ++ D.render D.Compact body ++ " }"
+
+-- | name(fn(args) { body }), a call's sole fun argument hugging its
+-- parentheses when the call does not fit on one line at the column.
+huggedLambda :: String -> Int -> [D.Doc] -> D.Doc -> D.Doc
+huggedLambda name column args body
+  | column + length flat <= 80 = D.text flat
+  | otherwise = D.multiline mempty <> D.text (name ++ "(" ++ opening) <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "})"
+  where
+    opening = "fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") {"
+    flat = name ++ "(" ++ opening ++ " " ++ D.render D.Compact body ++ " })"
+
+-- | An external function: its attribute on one line, as gleam format keeps it.
 external :: String -> String -> String -> [D.Doc] -> D.Doc -> D.Doc
-external owner foreignName name args result = call "@external" [D.text "erlang",string owner,string foreignName] <>
+external owner foreignName name args result =
+  D.text ("@external(erlang, " ++ literalFor "gleam" owner ++ ", " ++ literalFor "gleam" foreignName ++ ")") <>
   D.hardline <> D.text "pub fn " <> call name args <> D.text " -> " <> result
 
+-- | pub type Name = Type, the type on the next line as gleam format puts it.
+typeAlias :: String -> D.Doc -> D.Doc
+typeAlias name ty = D.text ("pub type " ++ name ++ " =") <> D.nest 2 (D.hardline <> ty)
+
 fileDoc :: Bool -> [D.Doc] -> D.Doc
-fileDoc editable body = D.text (if editable then "// User-owned LawSpec adapter. Implement these functions." else "// Generated by LawSpec. Do not edit.") <>
-  D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) body <> D.hardline
+fileDoc editable = fileWith (if editable then "// User-owned LawSpec adapter. Implement these functions." else "// " ++ generatedHeader Nothing)
+
+-- | A generated file whose header names its specification.
+fileDocFrom :: Maybe FilePath -> [D.Doc] -> D.Doc
+fileDocFrom source = fileWith ("// " ++ generatedHeader source)
+
+-- | Imports first, sorted as gleam format sorts them; then the rest.
+fileWith :: String -> [D.Doc] -> D.Doc
+fileWith header body = D.text header <> D.hardline <> D.hardline <>
+  D.joinWith (D.hardline <> D.hardline) ([D.joinWith D.hardline (map D.text (sort imported)) | not (null imported)] ++ rest) <> D.hardline
+  where
+    rendered = [(D.render D.Compact d, d) | d <- body]
+    imported = [t | (t, _) <- rendered, "import " `isPrefixOf` t]
+    rest = [d | (t, d) <- rendered, not ("import " `isPrefixOf` t)]
 
 nativeType :: Bool -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 nativeType localData names parameters ty = case ty of

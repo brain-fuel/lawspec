@@ -1,7 +1,7 @@
 -- | Native property cases and framework generators from checked Core.
 -- Test execution planes share these expressions; source syntax stays out.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks
-module LawSpec.BeamProperties (emit, searchDescriptors) where
+module LawSpec.BeamProperties (emit, searchDescriptors, caseFunction) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -20,8 +20,16 @@ import LawSpec.Testing
 import LawSpec.NativeRequest (BindingPlan)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
 import LawSpec.Search (lawDescriptors, searchable)
-import LawSpec.Backend (metadataDocument)
 import Control.Monad (forM, foldM)
+import qualified Data.Map.Strict as M
+import Data.Char (toUpper)
+import Data.Maybe (listToMaybe, mapMaybe)
+import qualified LawSpec.BeamNames as Names
+import LawSpec.Backend (lawCommentLines)
+import qualified LawSpec.Backend as Backend
+import LawSpec.Naming (displayLabel, exampleTestSuffix, boundaryTestSuffix, uniqueNames)
+import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
+import LawSpec.Common (Location)
 
 emit :: String -> D.Layout -> BindingPlan -> Plan -> Either String [Artifact]
 emit target layout bindings plan = do
@@ -35,8 +43,8 @@ emit target layout bindings plan = do
       (D.render layout (E.moduleDoc "lawspec_generated_tests" [("lawspec_test_",0)]
         [E.function "lawspec_test_" [] [E.tuple [E.atom "setup",
           E.lambda [] (E.remote "lawspec_beam_test_run" "setup" []),
-          E.lambda [D.text "_LsRun"] (E.remote "lawspec_beam_test_run" "cleanup" [D.text "_LsRun"]),
-          E.lambda [D.text "_LsRun"] (E.remote "lawspec_beam_test_run" "select_units" [E.array
+          E.lambda [D.text "Run"] (E.remote "lawspec_beam_test_run" "cleanup" [D.text "Run"]),
+          E.lambda [D.text "_Run"] (E.remote "lawspec_beam_test_run" "select_units" [E.array
             [E.tuple [E.binary (C.idText (C.unitId u)), E.lambda [] (E.tuple [E.string (C.idText (C.unitId u)),
               E.remote (Definitions.adapterModule u ++ "_lawspec_tests") "scheduled_cases" []])]
             | p <- testedUnits, let u = plannedUnit p]])]]])) "generated" "test"
@@ -45,10 +53,14 @@ emit target layout bindings plan = do
     hasPolicies = any ((/= Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units)
     testSupport = case target of "elixir" -> "test/support/"; "gleam" -> "test-support/src/"; _ -> "test/"
     framework = case target of "erlang" -> "lawspec_beam_proper"; "gleam" -> "lawspec_beam_qcheck"; _ -> "Elixir.LawSpec.Beam.StreamData"
-    schema = D.text "_LsSchema"
-    symbols = D.text "_LsSymbols"
-    context = [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> wrap (E.remote "lawspec_data" "schema" [symbols])]
-      where wrap doc = if Native.hasGenerators bindings then E.remote "lawspec_native_generators" "schema" [doc] else doc
+    schema = D.text "Schema"
+    symbols = D.text "Symbols"
+    -- A case's schema and symbols, made fresh for each case.
+    contextFor statements
+      | Native.hasGenerators bindings = [E.assign "Symbols" (E.call "make_ref" []),
+          E.assign "Schema" (E.remote "lawspec_native_generators" "schema" [E.remote "lawspec_data" "schema" [symbols]])]
+      | otherwise = [E.field "=" (E.tuple [E.variable "Schema" scope, E.variable "Symbols" scope]) (E.remote "lawspec_data" "context" [])]
+      where scope = E.sequenceDoc statements
     unitTests planned = do
       let unit = plannedUnit planned
           properties = plannedProperties planned
@@ -59,19 +71,22 @@ emit target layout bindings plan = do
           allNames = names ++ map ModelChecks.checkName models ++ benchmarkNames
           allowances = zip names (map runnerAllowance properties)
           allowance n = maybe runnerGuard id (lookup n allowances)
+          -- What each test checks, linked to its source where it has one.
+          described n = maybe n id (lookup n
+            ([(n', labelled (displayLabel (C.propertyName (plannedProperty p))) (propertyLink (plannedProperty p))) | (n',p) <- zip names properties] ++
+             [(ModelChecks.checkName c, ModelChecks.checkLabel c) | c <- models] ++
+             [(n', "benchmark " ++ label) | ((label,_),n') <- zip measured benchmarkNames]))
           groups = [(C.propertyName (plannedProperty p), n) | (p,n) <- zip properties names] ++
             [(ModelChecks.checkLabel c, ModelChecks.checkName c) | c <- models] ++
             [("benchmark " ++ label, n) | ((label,_),n) <- zip measured benchmarkNames]
           name = Definitions.adapterModule unit ++ (if target == "erlang" then "_lawspec_tests" else "_lawspec_cases")
-          counts = [(n, if single (C.propertyHarness (plannedProperty p)) then 1 else length (C.propertyExamples (plannedProperty p)) +
-            length (maybe (boundaryCases p) id (finiteCases p)) +
-            (if finiteCases p == Nothing || sampleFinite plan p || observed (C.propertyHarness (plannedProperty p)) then 1 else 0) +
-            maybe 0 (const 1) (targetSearch plan p))
-            | (n,p) <- zip names properties] ++ [(ModelChecks.checkName c,1) | c <- models] ++ [(n,1) | n <- benchmarkNames]
+          -- Each test's cases by name; a model check or benchmark has one.
+          counts = [(n, caseSuffixes plan p) | (n,p) <- zip names properties] ++
+            [(ModelChecks.checkName c,[""]) | c <- models] ++ [(n,[""]) | n <- benchmarkNames]
           skips = [n | (n,p) <- zip names properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) /= Nothing]
-          gleamCases = [(n,i) | (n,count) <- counts, i <- [0..count-1], target == "gleam", n `notElem` skips]
+          gleamCases = [(n,i,suffix) | (n,suffixes) <- counts, (i,suffix) <- zip [0 :: Int ..] suffixes, target == "gleam", n `notElem` skips]
           gleamSkips = [n | n <- skips, target == "gleam"]
-          caseEntry n i = n ++ "_case_" ++ show i
+          caseEntry n suffix = caseFunction n suffix "_case"
           settings = C.unitHarnessSettings unit
           random = maybe False C.harnessOrderRandom settings
           parallel = maybe False C.harnessParallel settings
@@ -82,23 +97,23 @@ emit target layout bindings plan = do
           selected groups = E.remote "lawspec_beam_test_run" "select" [E.binary (C.idText (C.unitId unit)), groups]
           groupLabel n = E.string ("lawspec:" ++ C.idText (C.unitId unit) ++ "::" ++ n)
           facade = Definitions.adapterModule unit ++ "_lawspec_test"
-          gleamNative n i = E.remote "erlang" "make_fun"
-            [E.atom facade, E.atom (n ++ "__case_" ++ show i ++ "_test"), D.text "0"]
+          gleamNative n suffix = E.remote "erlang" "make_fun"
+            [E.atom facade, E.atom (caseFunction n suffix "_test"), D.text "0"]
           gleamGroups = selected (E.array
             [E.tuple [E.binary n, E.tuple [groupLabel n, E.array (if n `elem` skips
                 then [E.tuple [E.atom "generator", E.remote "erlang" "make_fun"
                   [E.atom facade, E.atom (n ++ "__skipped_test_"), D.text "0"]]]
-                else [E.tuple [E.atom "timeout", D.text (show ((allowance n + 999) `div` 1000)), E.tuple [E.string (n ++ "__case_" ++ show i), gleamNative n i]]
-                  | i <- [0..count-1]])]] | (n,count) <- counts])
+                else [E.tuple [E.atom "timeout", D.text (show ((allowance n + 999) `div` 1000)), E.tuple [E.string (caseFunction n suffix ""), gleamNative n suffix]]
+                  | suffix <- suffixes])]] | (n,suffixes) <- counts])
           gleamSuite = [E.function "lawspec_suite" [] [if scheduled then schedule gleamGroups else gleamGroups]
             | target == "gleam"]
-          bridges = [E.function (caseEntry n i) [] [E.remote "lawspec_beam_gleam" "run_case"
-            [E.call (n ++ "_test_") [],D.text (show i)]] | (n,i) <- gleamCases] ++
+          bridges = [E.function (caseEntry n suffix) [] [E.remote "lawspec_beam_gleam" "run_case"
+            [E.call (n ++ "_test_") [],D.text (show i)]] | (n,i,suffix) <- gleamCases] ++
             [E.function (n ++ "_skipped_cases") [] [eunitCases n] | n <- gleamSkips]
           eunitCases n = E.remote "lawspec_beam_harness" "erlang_cases" [E.call (n ++ "_test_") []]
           exports = case target of
             "erlang" -> [("cases",0),("scheduled_cases",0),("suite",0)] ++ [(n ++ "_cases",0) | n <- allNames]
-            "gleam" -> [(caseEntry n i,0) | (n,i) <- gleamCases] ++ [(n ++ "_skipped_cases",0) | n <- gleamSkips] ++
+            "gleam" -> [(caseEntry n suffix,0) | (n,_,suffix) <- gleamCases] ++ [(n ++ "_skipped_cases",0) | n <- gleamSkips] ++
               [("lawspec_suite",0)]
             _ -> [(n ++ "_test_",0) | n <- allNames]
           grouped = [E.function "cases" [] [E.array
@@ -123,40 +138,52 @@ emit target layout bindings plan = do
             | check <- models]
       measurements <- sequence [benchmarkTest unit n label body | (n,(label,body)) <- zip benchmarkNames measured]
       pure (Artifact (testSupport ++ name ++ ".erl")
-        (D.render layout (E.moduleDoc name exports (bodies ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite))) "generated" "test" :
-        [Elixir.unitTests layout unit [(n, allowance n) | n <- allNames] | target == "elixir"] ++
-        [Gleam.unitTests layout unit [(n,count,n `elem` skips) | (n,count) <- counts] | target == "gleam"])
+        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name exports (bodies ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite))) "generated" "test" :
+        [Elixir.unitTests layout unit [(n, allowance n, described n) | n <- allNames] | target == "elixir"] ++
+        [Gleam.unitTests layout unit [(n,suffixes,n `elem` skips) | (n,suffixes) <- counts] | target == "gleam"])
     benchmarkTest unit name label expression = do
       body <- Expr.renderExpression bits schema symbols
         (\identity -> error ("unbound BEAM benchmark binder: " ++ C.idText identity))
         (Definitions.external units symbols) expression
       let measure = E.remote "lawspec_beam_harness" "benchmark"
             [E.binary (C.idText (C.unitId unit)),E.binary label,E.lambda [] body]
-          test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (context ++ [measure]))]
+          test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (contextFor [measure] ++ [measure]))]
       pure (E.function (name ++ "_test_") [] [E.array
         [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
     single h = C.harnessSkip h /= Nothing || C.harnessKnownFailing h /= Nothing
     lawTests unit name planned
       | Just reason <- C.harnessSkip (C.propertyHarness (plannedProperty planned)) =
-          let label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName (plannedProperty planned)
-          in pure [E.function (name ++ "_test_") [] [E.array [E.tuple [E.string (label ++ " skipped"),
+          let law = plannedProperty planned
+              label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName law
+          in pure [E.linkComment (displayLabel (C.propertyName law) ++ ", skipped") (propertyLink law) <>
+            E.function (name ++ "_test_") [] [E.array [E.tuple [E.string (firstDescriptionOf plan planned),
             E.tuple [E.atom "skip",E.binary label,E.binary reason]]]]]
     lawTests unit name planned = do
       let law = plannedProperty planned
           parameters = map (C.quantifiedBinder) (C.propertyInputs law)
-          aliases = zip (map C.binderId parameters) ["_LsInput" ++ show i | i <- [0::Int ..]]
           resources = C.propertyResources law
-          resourceAliases = zip (map (C.binderId . C.resourceBinder) resources)
-            ["_LsResource" ++ show i | i <- [0::Int ..]]
+          -- Inputs and resources keep their source names.
+          sourceVariables = Names.variables Names.generatedVariables
+            (map C.binderName parameters ++ map (C.binderName . C.resourceBinder) resources)
+          aliases = zip (map C.binderId parameters) sourceVariables
+          resourceAliases = zip (map (C.binderId . C.resourceBinder) resources) (drop (length parameters) sourceVariables)
           local identity = maybe (error ("unbound BEAM law binder: " ++ C.idText identity)) id
             (lookup identity (aliases ++ resourceAliases))
           renderWith active = Expr.renderExpression bits active symbols local (Definitions.external units symbols)
           render = renderWith schema
           label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName law
+          shown = displayLabel (C.propertyName law)
+          lawLink = propertyLink law
+          -- The law's identity, written once.
+          macroName = map toUpper name
+          lawIdentity = D.text ("?" ++ macroName)
           harness = C.propertyHarness law
-          check result = E.remote "lawspec_beam_runtime" "require" [result,E.binary label]
+          check result = E.remote "lawspec_beam_runtime" "require" [result,lawIdentity]
+          -- An equation checks itself; other propositions are required true.
+          checkProposition p doc = case p of
+            C.Equation {} -> doc
+            _ -> check doc
           caseName = name ++ "_case"
-          rawName = name ++ "_body"
           resourceArguments = [E.array (map (D.text . snd) resourceAliases) | not (null resources)]
           -- A native handler made with a resource (ability A with T) is
           -- made once the case has acquired its T, inside the bracket.
@@ -164,7 +191,7 @@ emit target layout bindings plan = do
             C.ProductionHandler -> do
               a <- N.abilityOf units ability
               t <- C.abilityResource a
-              case [D.text name | (r,(_,name)) <- zip resources resourceAliases, C.binderType (C.resourceBinder r) == t] of
+              case [D.text n | (r,(_,n)) <- zip resources resourceAliases, C.binderType (C.resourceBinder r) == t] of
                 found : _ -> Just found
                 [] -> Nothing
             C.RecordingHandler inner -> resourceFor ability inner
@@ -174,39 +201,59 @@ emit target layout bindings plan = do
           installLate active = if null late then pure active else do
             made <- mapM (\(a,c,r) -> (,) (E.binary (C.abilityKey a)) <$> Effects.constructWith units active symbols (Just r) a c) late
             pure (E.remote "lawspec_beam_effects" "install" [active,E.record made])
-          raw active values = E.call rawName ([either error id (installLate active),symbols,values] ++ resourceArguments)
+          raw active values = E.call name ([either error id (installLate active),symbols,values] ++ resourceArguments)
           bracket active = bracketResources active (renderWith active) local resources
-          invoke values = E.call caseName [schema,symbols,values]
+          -- A law with no handlers, resources or workflows checks its body
+          -- directly; otherwise a case function sets them up first.
+          plainScope = all (C.isFail . fst) (C.propertyHandlers law)
+          plainCase = plainScope && null resources && not hasPolicies
+          invoke values = E.call (if plainCase then name else caseName) [schema,symbols,values]
           workflowScope body = if hasPolicies then E.remote "lawspec_beam_workflow" "with_test_runtime" [E.lambda [] body] else body
           nativeTimeout action = if target == "erlang"
             then E.tuple [E.atom "timeout", D.text (show ((runnerAllowance planned + 999) `div` 1000)), action]
             else action
-          test kind observations statements = nativeTimeout (E.tuple [E.string (label ++ " " ++ kind),
-            E.lambda [] (withHarness label kind harness (not (null resources)) observations (E.sequenceDoc (context ++ statements)))])
-      body <- Expr.assertion label render (C.propertyBody law)
-      choices <- Effects.factories units symbols early
+          descriptions = M.fromList (zip (caseSuffixes plan planned) (caseDescriptions plan planned))
+          -- Each case is a function named for it, linked to its source; the
+          -- law's test list runs them.
+          test suffix link observations statements =
+            let function = name ++ "__" ++ suffix
+                description = M.findWithDefault (shown ++ " " ++ suffix) suffix descriptions
+            in ( nativeTimeout (E.tuple [E.string description, D.text ("fun " ++ function ++ "/0")])
+               , E.linkComment description link <>
+                 E.function function [] [withHarness label (label ++ " " ++ suffix) harness (not (null resources)) observations
+                   (E.sequenceDoc (contextFor statements ++ statements))] )
+          scoped outer active statements
+            | plainScope = E.remote "lawspec_beam_runtime" "bind" [outer,E.lambda [active] statements]
+            | otherwise = E.remote "lawspec_beam_effects" "with_scope" [outer,either error id choicesDoc,E.lambda [active] statements]
+          choicesDoc = Effects.factories units symbols early
+      body <- Expr.assertionLabelled lawIdentity render (C.propertyBody law)
+      _ <- choicesDoc
       _ <- installLate schema
-      let scoped outer active statements = if all (C.isFail . fst) (C.propertyHandlers law)
-            then E.apply (E.lambda [active] statements) [outer]
-            else E.remote "lawspec_beam_effects" "with_scope" [outer,choices,E.lambda [active] statements]
-      examples <- forM (zip [0::Int ..] (C.propertyExamples law)) $ \(i,example) -> do
-        let exampleSchema = D.text "_LsExampleSchema"
+      let exampleSuffixes = take (length (C.propertyExamples law)) (caseSuffixes plan planned)
+      examples <- forM (zip exampleSuffixes (C.propertyExamples law)) $ \(suffix,example) -> do
+        let exampleSchema = if plainScope then schema else D.text "ExampleSchema"
             exampleRender = renderWith exampleSchema
+            exampleLink = locationLink <$> exampleLocation example
+            context' = shown ++ " example " ++ displayLabel (C.exampleName example)
         arguments <- forM parameters $ \parameter -> case lookup (C.binderId parameter) (C.exampleBindings example) of
           Nothing -> Left "missing BEAM example input"
           Just expression -> exampleRender expression
-        expectations <- mapM (Expr.assertion (label ++ " example " ++ C.exampleName example) exampleRender) (C.exampleExpectations example)
+        expectations <- forM (C.exampleExpectations example) $ \p -> do
+          let link = maybe exampleLink (Just . locationLink) (propositionLocation p)
+          checkProposition p <$> Expr.assertion (labelled context' link) exampleRender p
         let names = map (D.text . snd) aliases
-            assertion = E.apply (E.lambda [E.array names] (E.sequenceDoc
-              (map check (raw exampleSchema (E.array names) : expectations)))) [E.array arguments]
-        acquired <- bracket exampleSchema assertion
-        pure (test ("example " ++ show i ++ ": " ++ C.exampleName example) False [workflowScope (scoped schema exampleSchema acquired)])
-      let boundaryTests = [test ("boundary " ++ show i) False [check (invoke (E.array (map (E.value symbols) values)))]
+            statements = [E.assign v a | ((_,v),a) <- zip aliases arguments] ++
+              check (raw exampleSchema (E.array names)) : expectations
+        acquired <- bracket exampleSchema (E.sequenceDoc statements)
+        let body' = if plainScope && null resources && not hasPolicies then statements
+              else [workflowScope (if plainScope then acquired else scoped schema exampleSchema acquired)]
+        pure (test suffix exampleLink False body')
+      let boundaryTests = [test (boundaryTestSuffix i) lawLink False [check (invoke (E.array (map (E.value symbols) values)))]
             | (i,values) <- zip [0::Int ..] (maybe (boundaryCases planned) id (finiteCases planned))]
       randomTests <- case finiteCases planned of
         -- An exhaustive law has no random samples to satisfy cover. Still
         -- report zero observations; a cover clause must not silently pass.
-        Just _ | not (sampleFinite plan planned) -> pure [test "statistics" True [E.atom "ok"] | observed harness]
+        Just _ | not (sampleFinite plan planned) -> pure [test "statistics" lawLink True [E.atom "ok"] | observed harness]
         _ -> do
           generator <- Generators.inputs framework schema symbols plan local planned
           predicates <- mapM render (concatMap C.quantifiedPredicates (C.propertyInputs law))
@@ -224,21 +271,21 @@ emit target layout bindings plan = do
               remembered arguments = case descriptors of
                 Nothing -> invoke arguments
                 Just ds -> E.remote "lawspec_beam_search" "guard"
-                  [E.binary label,E.array (map E.binary ds),arguments,E.lambda [] (invoke arguments)]
-              callback = if not (observed harness) then E.lambda [D.text "_LsValues"] (remembered (D.text "_LsValues"))
+                  [lawIdentity,E.array (map E.binary ds),arguments,E.lambda [] (invoke arguments)]
+              callback = if not (observed harness) then E.lambda [D.text "Values"] (remembered (D.text "Values"))
                 else E.lambda [values] (E.remote "lawspec_beam_harness" "sample"
                   [E.lambda [] (E.tuple [E.array covers,E.array classes,E.array labels,score]),E.lambda [] (remembered values)])
-              condition = foldr (\a b -> D.text "(" <> a <> D.text " andalso " <> b <> D.text ")") (E.atom "true") predicates
-              replayCheck = if null predicates then check (invoke values) else D.group (D.text "case " <> condition <> D.text " of" <>
-                D.nest 4 (D.softline <> D.text "true -> " <> check (invoke values) <> D.text ";" <>
-                  D.softline <> D.text "false -> none") <> D.softline <> D.text "end")
+              condition = foldr1 (E.operator "andalso") predicates
+              replayCheck = if null predicates then check (invoke values) else
+                E.caseOf condition [(E.atom "true",check (invoke values)),(E.atom "false",E.atom "none")]
               replay = [E.remote "lawspec_beam_search" "replay"
-                [E.binary label,E.array (map E.binary ds),E.lambda [values] replayCheck] | Just ds <- [descriptors]]
-              propertyTest = test "property" (observed harness) (replay ++ [E.remote framework "check" [E.binary label,
+                [lawIdentity,E.array (map E.binary ds),E.lambda [values] replayCheck] | Just ds <- [descriptors]]
+              -- EUnit's five-second default covers a single test. A property
+              -- runs every sample plus shrinks; match ExUnit's one-minute
+              -- allowance.
+              propertyTest = test "property" lawLink (observed harness) (replay ++ [E.remote framework "check" [lawIdentity,
                 E.remote framework "forall" [E.remote framework "complete" [generator],
                   callback],options]])
-          -- EUnit's five-second default covers a single test. A property runs
-          -- every sample plus shrinks; match ExUnit's one-minute allowance.
           pure [propertyTest]
       searchTests <- case targetSearch plan planned of
         Nothing -> pure []
@@ -246,21 +293,21 @@ emit target layout bindings plan = do
           score <- render targetScore
           predicates <- mapM render (concatMap C.quantifiedPredicates (C.propertyInputs law))
           let values = E.array (map (D.text . snd) aliases)
-              condition = foldr (\a b -> D.text "(" <> a <> D.text " andalso " <> b <> D.text ")") (E.atom "true") predicates
+              condition = foldr1 (E.operator "andalso") predicates
               checked = E.sequenceDoc [check (invoke values),E.tuple [E.atom "score",score]]
-              guarded = if null predicates then checked else D.group (D.text "case " <> condition <> D.text " of" <>
-                D.nest 4 (D.softline <> D.text "true -> " <> checked <> D.text ";" <>
-                  D.softline <> D.text "false -> none") <> D.softline <> D.text "end")
-              searchTest = test "search" False [E.remote "lawspec_beam_search" "climb"
-                [E.binary label,E.array (map E.binary descriptors),E.lambda [values] guarded]]
-          pure [searchTest]
-      acquired <- bracket schema (raw schema (D.text "_LsValues"))
+              guarded = if null predicates then checked else
+                E.caseOf condition [(E.atom "true",checked),(E.atom "false",E.atom "none")]
+          pure [test "search" lawLink False [E.remote "lawspec_beam_search" "climb"
+            [lawIdentity,E.array (map E.binary descriptors),E.lambda [values] guarded]]]
+      acquired <- bracket schema (raw schema (D.text "Values"))
       let -- Validate explicitly requested draws before a deterministic failure
           -- can satisfy `known failing` and bypass strategy/coverage checks.
-          ordinaryItems
+          ordinaryPairs
             | C.harnessKnownFailing harness /= Nothing && sampleFinite plan planned =
                 randomTests ++ examples ++ boundaryTests ++ searchTests
             | otherwise = examples ++ boundaryTests ++ randomTests ++ searchTests
+          ordinaryItems = map fst ordinaryPairs
+          caseFunctions = map snd ordinaryPairs
           -- BEAM functions cannot keep more than 1024 closure values live
           -- while building a list. Construct large suites in small helpers,
           -- retaining one independently named test for every original case.
@@ -272,18 +319,81 @@ emit target layout bindings plan = do
           tests = case C.harnessKnownFailing harness of
             Nothing -> ordinary
             Just reason ->
-              let expected = E.tuple [E.string (label ++ " known failing"),
+              let expected = E.tuple [E.string (firstDescriptionOf plan planned),
                     E.lambda [] (E.remote "lawspec_beam_harness" "known_failing"
-                      [E.binary label,E.binary (label ++ " known failing"),E.binary reason,ordinary])]
+                      [lawIdentity,E.binary (label ++ " known failing"),E.binary reason,ordinary])]
               in E.array [nativeTimeout expected]
-      pure ([metadataDocument 100 "%%" planned <>
-        E.function rawName ([schema,symbols,E.array (map (D.text . snd) aliases)] ++ resourceArguments) [body],
-        E.function caseName [D.text "_LsBaseSchema",symbols,D.text "_LsValues"]
-          [workflowScope (scoped (D.text "_LsBaseSchema") schema acquired)],
-        E.function (name ++ "_test_") [] [tests]] ++ partDocs)
+          parameterList = E.array [E.variable v body | (_,v) <- aliases]
+          bodyDoc = E.define macroName (E.binary label) <> D.hardline <> D.hardline <>
+            E.comment (lawCommentLines planned) <>
+            E.function name ([E.variable "Schema" body,E.variable "Symbols" body,parameterList] ++
+              [E.array [E.variable v body | (_,v) <- resourceAliases] | not (null resources)]) [body]
+          caseDoc = E.function caseName [D.text (if plainScope then "Schema" else "BaseSchema"),symbols,D.text "Values"]
+            [workflowScope (if plainScope then acquired else scoped (D.text "BaseSchema") schema acquired)]
+      pure ([bodyDoc] ++ [caseDoc | not plainCase] ++ [E.function (name ++ "_test_") [] [tests]] ++ caseFunctions ++ partDocs)
 
     groupsOf _ [] = []
     groupsOf count values = let (group,rest) = splitAt count values in group : groupsOf count rest
+
+-- | The names of a law's cases, in the order its test list runs them:
+-- each example's own words, boundary_1, boundary_2, ..., then property,
+-- statistics or search. A skipped or known-failing law has one case.
+caseSuffixes :: Plan -> PlannedProperty -> [String]
+caseSuffixes plan planned
+  | C.harnessSkip harness /= Nothing = ["skipped"]
+  | C.harnessKnownFailing harness /= Nothing = ["known_failing"]
+  | otherwise = examples ++ boundarySuffixes ++ random ++ search
+  where
+    law = plannedProperty planned
+    harness = C.propertyHarness law
+    boundarySuffixes = map boundaryTestSuffix [0 .. length (maybe (boundaryCases planned) id (finiteCases planned)) - 1]
+    random = case finiteCases planned of
+      Just _ | not (sampleFinite plan planned) -> ["statistics" | observed harness]
+      _ -> ["property"]
+    search = ["search" | targetSearch plan planned /= Nothing]
+    examples = exampleTestSuffix "erlang" (["skipped", "known_failing", "statistics", "property", "search"] ++ boundarySuffixes)
+      (map C.exampleName (C.propertyExamples law))
+
+firstDescriptionOf :: Plan -> PlannedProperty -> String
+firstDescriptionOf plan planned = case caseDescriptions plan planned of
+  d : _ -> d
+  [] -> displayLabel (C.propertyName (plannedProperty planned))
+
+-- | What a reader sees of each case, in caseSuffixes' order: the law's
+-- label and the case's (|law| example |name|, |law| boundary 1). They are
+-- unique and short enough to name an ExUnit test.
+caseDescriptions :: Plan -> PlannedProperty -> [String]
+caseDescriptions plan planned = uniqueNames (map bounded (zipWith describe (caseSuffixes plan planned) (map Just examples ++ repeat Nothing)))
+  where
+    law = plannedProperty planned
+    shown = displayLabel (C.propertyName law)
+    examples = map (displayLabel . C.exampleName) (C.propertyExamples law)
+    describe suffix example = case (suffix, example) of
+      ("skipped", _) -> shown ++ " skipped"
+      ("known_failing", _) -> shown ++ " known failing"
+      ("property", _) -> shown ++ " property"
+      ("statistics", _) -> shown ++ " statistics"
+      ("search", _) -> shown ++ " search"
+      (_, Just e) | not (isBoundary suffix) -> shown ++ " example " ++ e
+      _ -> shown ++ " " ++ map (\c -> if c == '_' then ' ' else c) suffix
+    isBoundary suffix = take 9 suffix == "boundary_" && all (`elem` ['0'..'9']) (drop 9 suffix)
+    bounded text = if length text <= 200 then text else take 197 text ++ "..."
+
+-- | Where a proposition is written: its first expression's line.
+propositionLocation :: C.Proposition -> Maybe Location
+propositionLocation p = listToMaybe (mapMaybe (originLocation . C.expressionOrigin) (expressions p))
+  where
+    expressions q = case q of
+      C.Equation _ a b -> [a, b]
+      C.Implication a r -> a : expressions r
+      C.Conjunction ps -> concatMap expressions ps
+      C.Negation r -> expressions r
+      C.Quantified _ _ r -> expressions r
+
+-- | A case's function: the test's name, its case's after a double
+-- underscore, and a suffix (_case, _test).
+caseFunction :: String -> String -> String -> String
+caseFunction n suffix extra = (if null suffix then n else n ++ "__" ++ suffix) ++ extra
 
 observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||
@@ -368,3 +478,9 @@ bracketResources schema render local resources body = foldM wrap body (reverse r
         pure (E.remote "lawspec_beam_resources" "with_resource"
           [schema,E.lambda [] acquire,E.lambda [name] release,E.lambda [name] inner])
 
+
+-- | A law's source line; a law made by the compiler (<contract>) has none.
+propertyLink :: C.Property -> Maybe String
+propertyLink law = case Backend.propertyLink law of
+  Just ('<' : _) -> Nothing
+  link -> link

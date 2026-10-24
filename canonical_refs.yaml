@@ -346,6 +346,18 @@ google-style-guides:
   kind: article
   title: Google Style Guides
   locator: https://google.github.io/styleguide/
+erlfmt:
+  kind: article
+  title: erlfmt, an opinionated Erlang code formatter
+  locator: https://github.com/WhatsApp/erlfmt
+elixir-formatter:
+  kind: article
+  title: mix format
+  locator: https://hexdocs.pm/mix/Mix.Tasks.Format.html
+gleam-format:
+  kind: article
+  title: The Gleam formatter
+  locator: https://gleam.run/writing-gleam/command-line-reference/#format
 ruff-formatter:
   kind: article
   title: The Ruff Formatter

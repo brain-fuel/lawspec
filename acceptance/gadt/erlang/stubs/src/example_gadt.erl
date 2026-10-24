@@ -4,21 +4,22 @@
 
 -spec eval_number(lawspec_data:expr(integer())) -> integer().
 
-eval_number(_Argument0) -> erlang:error({not_implemented, <<"example.gadt::evalNumber"/utf8>>}).
+eval_number(_ExprInteger) -> erlang:error({not_implemented, <<"example.gadt::evalNumber">>}).
 
 -spec eval_truth(lawspec_data:expr(boolean())) -> boolean().
 
-eval_truth(_Argument0) -> erlang:error({not_implemented, <<"example.gadt::evalTruth"/utf8>>}).
+eval_truth(_ExprBool) -> erlang:error({not_implemented, <<"example.gadt::evalTruth">>}).
 
--spec eval_pair(lawspec_data:expr(lawspec_data:pair(integer(), boolean()))) ->
-    lawspec_data:pair(integer(), boolean()).
+-spec eval_pair(
+    lawspec_data:expr(lawspec_data:pair(integer(), boolean()))
+) -> lawspec_data:pair(integer(), boolean()).
 
-eval_pair(_Argument0) -> erlang:error({not_implemented, <<"example.gadt::evalPair"/utf8>>}).
+eval_pair(_ExprPairIntegerBool) -> erlang:error({not_implemented, <<"example.gadt::evalPair">>}).
 
 -spec fold(lawspec_data:expr(integer())) -> lawspec_data:expr(integer()).
 
-fold(_Argument0) -> erlang:error({not_implemented, <<"example.gadt::fold"/utf8>>}).
+fold(_ExprInteger) -> erlang:error({not_implemented, <<"example.gadt::fold">>}).
 
 -spec describe(lawspec_data:shown()) -> binary().
 
-describe(_Argument0) -> erlang:error({not_implemented, <<"example.gadt::describe"/utf8>>}).
+describe(_Shown) -> erlang:error({not_implemented, <<"example.gadt::describe">>}).

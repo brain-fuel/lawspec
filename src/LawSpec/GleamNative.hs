@@ -12,6 +12,9 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.Core.Types (freeExistentials)
 import Control.Monad (forM, unless)
 import Data.List (nub)
+import LawSpec.SourceLink (unitSourceFile)
+import qualified LawSpec.ElixirCode as X
+import LawSpec.Naming (typeWords)
 
 emitNative :: D.Layout -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitNative layout declarations units = do
@@ -26,7 +29,7 @@ emitNative layout declarations units = do
   let fields = [C.binderType f | d <- declarations, c <- C.dataConstructors d, f <- C.constructorFields c]
       dynamic = [D.text "import gleam/dynamic" | any (not . null . C.constructorExistentials) (concatMap C.dataConstructors declarations)]
       dataFile = Artifact "src/lawspec/data.gleam"
-        (D.render layout (G.fileDoc False (G.imports True fields ++ dynamic ++ dataTypes))) "generated" "source"
+        (D.render (G.layoutFor layout) (G.fileDoc False (G.imports True fields ++ dynamic ++ dataTypes))) "generated" "source"
   pure ([dataFile | not (null declarations)] ++ adapters ++ definitions)
   where
     named names identity = maybe (Left ("missing Gleam native name: " ++ C.idText identity)) Right (lookup identity names)
@@ -38,8 +41,16 @@ emitNative layout declarations units = do
       handlers <- mapM (Abilities.nativeType "gleam" units) (Effects.uses d)
       inputs <- mapM (G.nativeType False names []) args
       output <- G.nativeType False names [] result
-      pure ([D.text ((if unused then "_handler" else "handler") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] handlers] ++
-        [D.text ((if unused then "_argument" else "argument") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] inputs],output)
+      -- Arguments are named for their definition's parameters, or a
+      -- declaration's for their types; handlers for their abilities.
+      let parameterNames = case [def | u <- units, def <- C.unitDefinitions u, C.declarationId (C.definitionDeclaration def) == C.declarationId d] of
+            def : _ -> map C.binderName (C.definitionArguments def)
+            [] -> [unwords (typeWords t) | t <- args]
+          named = map G.variableName (X.variables (parameterNames ++
+            [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d]))
+          shown n = (if unused then "_" else "") ++ n ++ ": "
+      pure ([D.text (shown n) <> t | (n,t) <- zip (drop (length args) named) handlers] ++
+        [D.text (shown n) <> t | (n,t) <- zip named inputs],output)
     adapter names unit = do
       bodies <- forM (adapterDeclarations unit) $ \d -> do
         (args,result) <- signature names True d
@@ -50,8 +61,8 @@ emitNative layout declarations units = do
       let resourceTypes = [t | a <- Abilities.productionAbilities unit, Just t <- [C.abilityResource a]]
           body = G.fileDoc (not (Abilities.defaultUnit unit)) (imports ++ G.imports False (map C.declarationType (adapterDeclarations unit) ++ resourceTypes) ++ bodies ++ production)
           path = "src/" ++ E.gleamPath (C.unitId unit) ++ ".gleam"
-      pure (if Abilities.defaultUnit unit then Artifact path (D.render layout body) "generated" "source"
-        else AdapterArtifact path (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
+      pure (if Abilities.defaultUnit unit then Artifact path (D.render (G.layoutFor layout) body) "generated" "source"
+        else AdapterArtifact path (D.render (G.layoutFor layout) body) "user" "source" (D.render (D.Pretty 80) body))
     nativeUnit names unit = do
       let declarations' = map C.definitionDeclaration (C.unitDefinitions unit)
       bodies <- forM declarations' $ \d -> do
@@ -59,7 +70,7 @@ emitNative layout declarations units = do
         pure (G.external (E.moduleName (C.unitId unit) ++ "_definitions_ffi") (functionName d) (functionName d) args result)
       imports <- Abilities.gleamImports units (concatMap Effects.uses declarations')
       pure (Artifact ("src/" ++ E.gleamPath (C.unitId unit) ++ "/definitions.gleam")
-        (D.render layout (G.fileDoc False (imports ++ G.imports False (map C.declarationType declarations') ++ bodies))) "generated" "source")
+        (D.render (G.layoutFor layout) (G.fileDoc False (imports ++ G.imports False (map C.declarationType declarations') ++ bodies))) "generated" "source")
     dataType names d = do
       name <- E.pascal <$> named names (C.dataId d)
       let parameters = zip (C.dataParameters d) ["a" ++ show i | i <- [0::Int ..]]
@@ -80,13 +91,15 @@ emitNative layout declarations units = do
 
 -- | The checked case factories live in test-only Erlang modules. Every case
 -- gets a native Gleeunit function so a boundary or example cannot disappear.
-unitTests :: D.Layout -> C.Unit -> [(String,Int,Bool)] -> Artifact
+unitTests :: D.Layout -> C.Unit -> [(String,[String],Bool)] -> Artifact
 unitTests layout unit laws = Artifact ("test/" ++ E.moduleName (C.unitId unit) ++ "_lawspec_test.gleam")
-  (D.render layout (G.fileDoc False ([D.text "import gleam/dynamic",
+  (D.render (G.layoutFor layout) (G.fileDocFrom (unitSourceFile unit) ([D.text "import gleam/dynamic",
     G.external owner "lawspec_suite" "lawspec_suite" [] (D.text "dynamic.Dynamic"),
     G.function "lawspec_unit" [] (D.text "String") [G.string (C.idText (C.unitId unit))]] ++
     concat [if skipped then [G.external owner (name ++ "_skipped_cases") (name ++ "__skipped_test_") [] (D.text "dynamic.Dynamic")]
-      else [G.external owner (name ++ "_case_" ++ show i) (name ++ "__case_" ++ show i ++ "_test") [] (D.text "Nil")
-        | i <- [0..count-1]] | (name,count,skipped) <- laws]))) "generated" "test"
+      else [G.external owner (named name suffix "_case") (named name suffix "_test") [] (D.text "Nil")
+        | suffix <- suffixes] | (name,suffixes,skipped) <- laws]))) "generated" "test"
   where
     owner = E.moduleName (C.unitId unit) ++ "_lawspec_cases"
+    -- Each case's test is named for it (BeamProperties.caseFunction).
+    named name suffix extra = (if null suffix then name else name ++ "__" ++ suffix) ++ extra

@@ -16,54 +16,49 @@
 
 -spec runtime_exponential_delay(integer(), integer(), integer()) -> integer().
 
-runtime_exponential_delay(_Argument0, _Argument1, _Argument2) ->
-    erlang:error({not_implemented, <<"example.resilience::runtimeExponentialDelay"/utf8>>}).
+runtime_exponential_delay(_Integer, _Integer_2, _Integer_3) ->
+    erlang:error({not_implemented, <<"example.resilience::runtimeExponentialDelay">>}).
 
 -spec runtime_linear_delay(integer(), integer(), integer()) -> integer().
 
-runtime_linear_delay(_Argument0, _Argument1, _Argument2) ->
-    erlang:error({not_implemented, <<"example.resilience::runtimeLinearDelay"/utf8>>}).
+runtime_linear_delay(_Integer, _Integer_2, _Integer_3) ->
+    erlang:error({not_implemented, <<"example.resilience::runtimeLinearDelay">>}).
 
 -spec runtime_fibonacci_delay(integer(), integer()) -> integer().
 
-runtime_fibonacci_delay(_Argument0, _Argument1) ->
-    erlang:error({not_implemented, <<"example.resilience::runtimeFibonacciDelay"/utf8>>}).
+runtime_fibonacci_delay(_Integer, _Integer_2) ->
+    erlang:error({not_implemented, <<"example.resilience::runtimeFibonacciDelay">>}).
 
 -spec split_mix(0..18446744073709551615, -2147483648..2147483647) -> [0..18446744073709551615].
 
-split_mix(_Argument0, _Argument1) ->
-    erlang:error({not_implemented, <<"example.resilience::splitMix"/utf8>>}).
+split_mix(_UInt64, _Int32) -> erlang:error({not_implemented, <<"example.resilience::splitMix">>}).
 
 -spec full_jitter(0..18446744073709551615, integer()) -> integer().
 
-full_jitter(_Argument0, _Argument1) ->
-    erlang:error({not_implemented, <<"example.resilience::fullJitter"/utf8>>}).
+full_jitter(_UInt64, _Integer) ->
+    erlang:error({not_implemented, <<"example.resilience::fullJitter">>}).
 
 -spec retried_waits(-2147483648..2147483647) -> [integer()].
 
-retried_waits(_Argument0) ->
-    erlang:error({not_implemented, <<"example.resilience::retriedWaits"/utf8>>}).
+retried_waits(_Int32) -> erlang:error({not_implemented, <<"example.resilience::retriedWaits">>}).
 
 -spec rejected_waits(-2147483648..2147483647) -> [integer()].
 
-rejected_waits(_Argument0) ->
-    erlang:error({not_implemented, <<"example.resilience::rejectedWaits"/utf8>>}).
+rejected_waits(_Int32) -> erlang:error({not_implemented, <<"example.resilience::rejectedWaits">>}).
 
 -spec limited_at([integer()]) -> [boolean()].
 
-limited_at(_Argument0) -> erlang:error({not_implemented, <<"example.resilience::limitedAt"/utf8>>}).
+limited_at(_ListInteger) -> erlang:error({not_implemented, <<"example.resilience::limitedAt">>}).
 
 -spec compensations_for(-9223372036854775808..9223372036854775807) -> [binary()].
 
-compensations_for(_Argument0) ->
-    erlang:error({not_implemented, <<"example.resilience::compensationsFor"/utf8>>}).
+compensations_for(_Int64) ->
+    erlang:error({not_implemented, <<"example.resilience::compensationsFor">>}).
 
 -spec quote_timed_out(-9223372036854775808..9223372036854775807) -> boolean().
 
-quote_timed_out(_Argument0) ->
-    erlang:error({not_implemented, <<"example.resilience::quoteTimedOut"/utf8>>}).
+quote_timed_out(_Int64) -> erlang:error({not_implemented, <<"example.resilience::quoteTimedOut">>}).
 
 -spec quote_hedged(-9223372036854775808..9223372036854775807) -> boolean().
 
-quote_hedged(_Argument0) ->
-    erlang:error({not_implemented, <<"example.resilience::quoteHedged"/utf8>>}).
+quote_hedged(_Int64) -> erlang:error({not_implemented, <<"example.resilience::quoteHedged">>}).

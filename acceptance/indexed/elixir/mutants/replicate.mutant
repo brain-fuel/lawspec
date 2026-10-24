@@ -2,5 +2,5 @@
 <<<<<<<
 def replicate(0, _), do: %D.VecVNil{}
 =======
-def replicate(0, x), do: %D.VecVCons{value: %D.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec{head: x, tail: %D.VecVNil{}}}
+def replicate(0, x), do: %D.VecVCons{value: %D.VConsDetails{head: x, tail: %D.VecVNil{}}}
 >>>>>>>

@@ -10,15 +10,24 @@ init() ->
     BeamDir = filename:dirname(code:which(?MODULE)),
     %% Application layouts (Rebar, Mix, Gleam and releases) put ebin beside
     %% priv. The second path supports a standalone erlc output directory.
-    Candidates = [filename:join([filename:dirname(BeamDir), "priv", "lawspec_crypto_native"]),
-        filename:join([BeamDir, "priv", "lawspec_crypto_native"])],
+    Candidates = [
+        filename:join([filename:dirname(BeamDir), "priv", "lawspec_crypto_native"]),
+        filename:join([BeamDir, "priv", "lawspec_crypto_native"])
+    ],
     case [Path || Path <- Candidates, filelib:is_regular(Path ++ extension())] of
-        [Library | _] -> erlang:load_nif(Library, Version bsr 28);
-        [] -> {error, {load_failed,
-            "LawSpec crypto bridge is missing; run escript lawspec_crypto_build.escript before compiling and ship priv/ with the application"}}
+        [Library | _] ->
+            erlang:load_nif(Library, Version bsr 28);
+        [] ->
+            {error,
+                {load_failed,
+                    "LawSpec crypto bridge is missing; run escript lawspec_crypto_build.escript before compiling and ship priv/ with the application"}}
     end.
 
-extension() -> case os:type() of {win32, _} -> ".dll"; _ -> ".so" end.
+extension() ->
+    case os:type() of
+        {win32, _} -> ".dll";
+        _ -> ".so"
+    end.
 
 expand(_, _) -> erlang:nif_error(lawspec_crypto_native_not_loaded).
 encapsulate_test(_, _) -> erlang:nif_error(lawspec_crypto_native_not_loaded).

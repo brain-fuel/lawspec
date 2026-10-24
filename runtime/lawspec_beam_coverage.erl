@@ -17,21 +17,35 @@ start(#{<<"run">> := Run, <<"file">> := File, <<"metadata">> := Metadata}) ->
         %% Gleam's generated VM launcher is still on the boot process stack.
         %% Recompiling and later purging it would kill the VM during stop/0.
         %% It is compiler scaffolding, with no application source to measure.
-        Beams = [Beam || Beam <- filelib:wildcard(filename:join(Directory, "*.beam")),
-            not lists:suffix("@@main.beam", Beam)],
+        Beams = [
+            Beam
+         || Beam <- filelib:wildcard(filename:join(Directory, "*.beam")),
+            not lists:suffix("@@main.beam", Beam)
+        ],
         true = Beams =/= [],
-        Modules = [begin
-            {ok, Module} = cover:compile_beam(Beam),
-            #{name => atom_to_binary(Module), beam => unicode:characters_to_binary(filename:absname(Beam))}
-        end || Beam <- Beams],
+        Modules = [
+            begin
+                {ok, Module} = cover:compile_beam(Beam),
+                #{
+                    name => atom_to_binary(Module),
+                    beam => unicode:characters_to_binary(filename:absname(Beam))
+                }
+            end
+         || Beam <- Beams
+        ],
         #{run => Run, file => File, metadata => Metadata, modules => Modules}
-    catch Class:Reason:Stack ->
-        cover:stop(), erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            cover:stop(),
+            erlang:raise(Class, Reason, Stack)
     end.
 
-finish(none) -> ok;
+finish(none) ->
+    ok;
 finish(#{file := File, metadata := Metadata} = Run) ->
     try
         ok = cover:export(unicode:characters_to_list(File)),
         ok = file:write_file(Metadata, json:encode(maps:remove(metadata, Run)))
-    after cover:stop() end.
+    after
+        cover:stop()
+    end.

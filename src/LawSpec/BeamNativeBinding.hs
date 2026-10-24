@@ -185,8 +185,7 @@ emitBindings target layout bindings plan = do
           parts = referenceParts (resolvedNativeConstructor c)
           shape encode patternDoc = E.record
             [(E.atom "encode",E.lambda [E.array values] encode),
-             (E.atom "decode",D.group (D.text "fun(" <> patternDoc <> D.text ") -> " <>
-               E.tuple [E.atom "ok",E.array values] <> D.text "; (_) -> no_match end"))]
+             (E.atom "decode",E.funClauses [([patternDoc],E.tuple [E.atom "ok",E.array values]),([D.text "_"],E.atom "no_match")])]
       case target of
         "erlang" -> do
           unless (length parts == 1) (Left "Erlang native constructors require one atom or record name")
@@ -205,7 +204,7 @@ emitBindings target layout bindings plan = do
             let owner = E.atom ("Elixir." ++ intercalate "." parts)
                 entries = (E.atom "__struct__",owner) : zip (map E.atom fields) values
             pure (shape (E.remote "Elixir.Kernel" "struct!" [owner,E.record (zip (map E.atom fields) values)])
-              (D.delimit 4 "#{" "}" [k <> D.text " := " <> v | (k,v) <- entries]))
+              (D.delimit 4 "#{" "}" [E.field ":=" k v | (k,v) <- entries]))
         "gleam" -> pure (E.remote "lawspec_beam_schema" "constructor_shape"
           [E.lambda [E.array values] (E.remote "lawspec@native_constructors" ("make_" ++ show i) values),
            D.text (show (length fields))])
@@ -267,7 +266,7 @@ emitBindings target layout bindings plan = do
         pure (G.function ("make_" ++ show i) (map D.text values) result [invocation])
       let imports = [D.text ("import " ++ intercalate "/" parts ++ " as " ++ alias) | (parts,alias) <- aliases]
       pure (Artifact "src/lawspec/native_constructors.gleam"
-        (D.render layout (G.fileDoc False (imports ++ bodies))) "generated" "source")
+        (D.render (G.layoutFor layout) (G.fileDoc False (imports ++ bodies))) "generated" "source")
     capitalized (first:_) = isUpper first
     capitalized [] = False
 

@@ -104,8 +104,8 @@ function in the Erlang module `:lawspec_typed` over the same structs, lists,
 binaries and integers your code uses. Only `KeyVal` and `Set` values convert
 at its boundary, since typed code keeps them as maps and version 2 `:sets`.
 Integers are checked where their type bounds them, and `Text` is UTF-8
-measured in code points. Each function is named for its definition and a
-digest of its identity, so its name survives unrelated edits.
+measured in code points. Each function is named for its definition, with `_2` only when two
+would share a name, so its name survives unrelated edits.
 
 A spec handler whose clauses are all typed keeps its state in its cell's
 process and runs each operation there, so an operation copies only its
@@ -121,3 +121,23 @@ Resource acquisition and release run in a dedicated owner process; the test
 worker borrows the handle. Route operations on private native state back to
 that owner. See [BEAM ownership and cancellation](../../reference/language/resources.md#beam-ownership-and-cancellation)
 for the callback contract, owner-call helper and cleanup deadlines.
+
+## Formatting
+
+Output is what `mix format` (Elixir 1.20.4) writes with its default
+settings: two-space indentation and 98 columns. The shared Erlang modules
+follow `erlfmt` 1.8.0. LawSpec lays both out itself, so generation needs no
+formatter, and LawSpec's own acceptance checks every generated project with
+`mix format --check-formatted` and `erlfmt --check`. `--minify` allows a
+compact layout.
+
+## Names
+
+Generated Elixir uses the specification's names: an adapter's arguments are
+named for their types (`_money`), a checked definition's for its parameters,
+and an anonymous record is a struct named from where it is used (the payload
+of a `Declined` case is `LawSpec.Data.DeclinedDetails`). The test module names
+only its laws; `law/4` from the test runtime defines one ExUnit test per
+case, named for the law and the case (`|normalizers agree| example |spaces
+become hyphens|`, `|normalizers agree| boundary 1`). The cases themselves
+are the shared Erlang modules', whose names are the Erlang target's.

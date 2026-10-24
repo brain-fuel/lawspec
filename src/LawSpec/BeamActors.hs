@@ -34,17 +34,17 @@ emit target layout bits declarations units = do
       unitValue = E.atom (if target == "gleam" then "nil" else "ok")
       bridge direction ty value = do
         ref <- E.typeReference ty
-        pure (E.remote "lawspec_beam_schema" direction [value,ref,D.text "_LsSchema"])
+        pure (E.remote "lawspec_beam_schema" direction [value,ref,D.text "Schema"])
       checked available declaration arguments finish = do
         let (types, _) = C.functionType (C.declarationType declaration)
         name <- maybe (Left "missing checked BEAM actor adapter") Right (lookup (C.declarationId declaration) entries)
         values <- sequence [bridge "from_native" ty value | (ty,value) <- zip types arguments]
         out <- finish (D.text "_LsResult")
-        let call = E.remote "lawspec_definitions" name (D.text "_LsSchema" : D.text "_LsSymbols" : values)
+        let call = E.remote "lawspec_definitions" name (D.text "Schema" : D.text "Symbols" : values)
             body = E.sequenceDoc [D.text "_LsResult = " <> call,out]
             needed = [(a,v) | (a,v) <- available, a `elem` Effects.uses declaration]
         scoped <- if null needed then pure (E.sequenceDoc
-          [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [D.text "_LsSymbols"],body])
+          [D.text "Symbols = make_ref()",D.text "Schema = " <> E.remote "lawspec_data" "schema" [D.text "Symbols"],body])
           else Abilities.publicBody units needed body
         pure (E.apply (E.lambda [] scoped) [])
       allHandlers as = nub (concatMap (concatMap Effects.uses . actorDeclarations) as)
@@ -136,8 +136,8 @@ emit target layout bits declarations units = do
             descriptor d = E.binary (unwords (map snd (reverse forms) ++ [d]))
             wire ds r = E.record [(E.atom "arguments",E.array (map descriptor ds)),(E.atom "result",descriptor r)]
             signatures' = E.record [(E.binary (handlerName h),wire ds r) | (h,ds,r) <- handlers]
-            fresh = [D.text "_LsSymbols = make_ref()",
-              D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [D.text "_LsSymbols"]]
+            fresh = [D.text "Symbols = make_ref()",
+              D.text "Schema = " <> E.remote "lawspec_data" "schema" [D.text "Symbols"]]
             remoteModule = moduleName ++ "_remote"
             connect = Function "connect" [("node",nodeType),("address",text)] remoteOwn
               [E.call "connect_with_timeout" [variable "node",variable "address",D.text "5000"]]
@@ -236,7 +236,7 @@ isUnit :: C.Type -> Bool
 isUnit ty = ty == C.Constructor "Unit" []
 
 metadataPattern :: String -> D.Doc -> D.Doc
-metadataPattern name handlers = D.text "#{tag := " <> E.atom name <> D.text ", handlers := " <> handlers <> D.text "}"
+metadataPattern name handlers = D.delimit 4 "#{" "}" [E.field ":=" (E.atom "tag") (E.atom name), E.field ":=" (E.atom "handlers") handlers]
 
 actorModule :: Actor -> String
 actorModule a = "lawspec_actor_" ++ E.moduleName (C.unitId (actorUnit a)) ++ "_" ++ E.snake (actorName a)
@@ -308,8 +308,8 @@ actorImport = [D.text "import lawspec/actors"]
 render :: String -> D.Layout -> String -> String -> String -> String -> NativeType -> Maybe NativeType -> [Function] -> [Artifact]
 render target layout moduleName path elixirModule typeName rawType handleTy functions =
   Artifact ("src/" ++ moduleName ++ ".erl") (D.render layout erlang) "generated" "source" : case target of
-    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render layout elixir) "generated" "source"]
-    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render layout gleam) "generated" "source"]
+    "elixir" -> [Artifact ("lib/" ++ path ++ ".ex") (D.render (X.layoutFor layout) elixir) "generated" "source"]
+    "gleam" -> [Artifact ("src/" ++ path ++ ".gleam") (D.render (G.layoutFor layout) gleam) "generated" "source"]
     _ -> []
   where
     public = [f | f@(Function n _ _ _) <- functions, n /= "spec"]
@@ -323,12 +323,12 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     erlang = E.moduleDoc moduleName ([(n,length ps) | Function n ps _ _ <- functions] ++ [("child_spec",1) | lifecycle])
       ([D.text "-export_type([t/0]).",D.text "-opaque t() :: " <>
         maybe (erlType rawType) erlType handleTy <> D.text "."] ++
-       concat [ [D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
+       concat [ [E.spec n (map (erlType . snd) ps) (erlType result),
           E.function n (args ps) body] | Function n ps result body <- functions] ++
        [E.function "child_spec" [E.array (args startParameters)] [E.call "otp_child_spec" (args startParameters)] | lifecycle])
     elixir = X.moduleDoc elixirModule False
       ([D.text "@opaque t :: " <> maybe (exType rawType) exType handleTy] ++
-       concat [ [D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType result,
+       concat [ [X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
          X.function n (map (D.text . fst) ps)
            [X.remote (":" ++ moduleName) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- public, n /= "otp_child_spec"] ++
@@ -337,6 +337,6 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     gleam = G.fileDoc False
       (nub (concat [concatMap (imports . snd) ps ++ imports result | Function _ ps result _ <- public] ++
         maybe [] imports handleTy) ++
-       [D.text ("pub type " ++ typeName) <> maybe mempty ((D.text " = " <>) . gleamType) handleTy] ++
+       [maybe (D.text ("pub type " ++ typeName)) (G.typeAlias typeName . gleamType) handleTy] ++
        [G.external moduleName n (if n == "otp_child_spec" then "child_spec" else n)
          [D.text (p ++ ": ") <> gleamType t | (p,t) <- ps] (gleamType result) | Function n ps result _ <- public])

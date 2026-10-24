@@ -1,6 +1,6 @@
 @@ src/example_indexed.erl
 <<<<<<<
-{vec_v_cons, {record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec, V, flatten(R)}}
+{vec_v_cons, {v_cons_details, V, flatten(R)}}
 =======
-{vec_v_cons, {record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec, V, append(flatten(R), flatten(R))}}
+{vec_v_cons, {v_cons_details, V, append(flatten(R), flatten(R))}}
 >>>>>>>

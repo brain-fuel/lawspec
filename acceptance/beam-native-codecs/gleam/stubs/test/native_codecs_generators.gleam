@@ -1,10 +1,11 @@
 // User-owned LawSpec adapter. Implement these functions.
 
+import native_codecs as native_0
 import qcheck
 
-import native_codecs as native_0
-
-pub fn parcels(_child0: qcheck.Generator(a0)) -> qcheck.Generator(native_0.Parcel(a0)) {
+pub fn parcels(
+  _child0: qcheck.Generator(a0),
+) -> qcheck.Generator(native_0.Parcel(a0)) {
   panic as "Implement generator for native.codecs::type::Parcel"
 }
 

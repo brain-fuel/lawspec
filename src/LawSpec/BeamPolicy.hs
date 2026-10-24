@@ -46,14 +46,14 @@ wrapDefinition units schema symbols arguments definition body = case C.definitio
               (E.tuple [E.atom "exponential",integer delay,integer factor,optional integer cap])
             P.Fibonacci delay -> pure (E.tuple [E.atom "fibonacci",integer delay])
             P.Custom identity -> do
-              decided <- call identity [variable "_LsAttempt",variable "_LsError",
+              decided <- call identity [variable "Attempt",variable "Error",
                 E.tuple [E.atom "ls_data",E.binary "lawspec.time::type::Duration::Duration",
-                  E.array [variable "_LsPrevious"]]]
-              pure (E.tuple [E.atom "custom",E.lambda (map variable ["_LsAttempt","_LsError","_LsPrevious"])
+                  E.array [variable "Previous"]]]
+              pure (E.tuple [E.atom "custom",E.lambda (map variable ["Attempt","Error","Previous"])
                 (E.remote "lawspec_beam_policy" "retry_decision" [decided])])
           condition <- case P.retryWhen r of
             Nothing -> pure none
-            Just identity -> callback ["_LsError"] identity [variable "_LsError"]
+            Just identity -> callback ["Error"] identity [variable "Error"]
           let jitter = case P.retryJitter r of
                 P.NoJitter -> "none"; P.FullJitter -> "full"
                 P.EqualJitter -> "equal"; P.DecorrelatedJitter -> "decorrelated"
@@ -61,7 +61,7 @@ wrapDefinition units schema symbols arguments definition body = case C.definitio
             ("jitter",E.atom jitter),("when",condition)])
       compensate <- case P.policyCompensate policy of
         Nothing -> pure none
-        Just identity -> callback ["_LsValue"] identity [variable "_LsValue"]
+        Just identity -> callback ["Value"] identity [variable "Value"]
       gates <- policyGates policy
       pure (object [("key",E.binary (C.idText (C.declarationId (C.definitionDeclaration definition)))),
         ("stage",E.binary (P.policyStage policy)),("retry",retry),
@@ -71,20 +71,20 @@ wrapDefinition units schema symbols arguments definition body = case C.definitio
         ("hedge",optional (\h -> E.tuple [integer (P.hedgeDelay h),integer (P.hedgeMost h)]) (P.policyHedge policy))])
     policyGates policy = do
       breaker <- forM (P.policyBreaker policy) $ \b -> do
-        start <- callback ["_LsNow"] (P.breakerStart b) [variable "_LsNow"]
-        admit <- callback ["_LsState","_LsNow"] (P.breakerAdmit b) (map variable ["_LsState","_LsNow"])
-        finish <- callback ["_LsState","_LsNow","_LsSucceeded"] (P.breakerRecord b)
-          (map integer [P.breakerFailures b,P.breakerWindow b,P.breakerCooldown b] ++ map variable ["_LsState","_LsNow","_LsSucceeded"])
+        start <- callback ["Now"] (P.breakerStart b) [variable "Now"]
+        admit <- callback ["State","Now"] (P.breakerAdmit b) (map variable ["State","Now"])
+        finish <- callback ["State","Now","Succeeded"] (P.breakerRecord b)
+          (map integer [P.breakerFailures b,P.breakerWindow b,P.breakerCooldown b] ++ map variable ["State","Now","Succeeded"])
         pure (object [("kind",E.atom "breaker"),("start",start),("admit",admit),("finish",finish),("wait",none)])
       limit <- forM (P.policyLimit policy) $ \l -> do
         let numbers = map integer [P.limitCount l,P.limitPeriod l]
-        start <- callback ["_LsNow"] (P.limitStart l) (numbers ++ [variable "_LsNow"])
-        admit <- callback ["_LsState","_LsNow"] (P.limitAdmit l) (numbers ++ map variable ["_LsState","_LsNow"])
+        start <- callback ["Now"] (P.limitStart l) (numbers ++ [variable "Now"])
+        admit <- callback ["State","Now"] (P.limitAdmit l) (numbers ++ map variable ["State","Now"])
         pure (object [("kind",E.atom "limit"),("start",start),("admit",admit),("finish",none),("wait",waitDoc (P.limitWait l))])
       bulkhead <- forM (P.policyBulkhead policy) $ \b -> do
         let count = integer (P.bulkheadLimit b)
-        start <- callback ["_LsNow"] (P.bulkheadStart b) [count,variable "_LsNow"]
-        admit <- callback ["_LsState","_LsNow"] (P.bulkheadAdmit b) (count:map variable ["_LsState","_LsNow"])
-        finish <- callback ["_LsState","_LsNow","_LsSucceeded"] (P.bulkheadRelease b) [variable "_LsState"]
+        start <- callback ["Now"] (P.bulkheadStart b) [count,variable "Now"]
+        admit <- callback ["State","Now"] (P.bulkheadAdmit b) (count:map variable ["State","Now"])
+        finish <- callback ["State","_Now","_Succeeded"] (P.bulkheadRelease b) [variable "State"]
         pure (object [("kind",E.atom "bulkhead"),("start",start),("admit",admit),("finish",finish),("wait",waitDoc (P.bulkheadWait b))])
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)

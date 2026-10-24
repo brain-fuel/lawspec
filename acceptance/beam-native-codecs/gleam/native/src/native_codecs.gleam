@@ -1,6 +1,6 @@
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import lawspec/data.{Record5eebfa15fa6145a8da5c04a1c56125f8f3b2caeb2a02d9cb36e95342d4209998 as ChainPayload}
+import lawspec/data.{MoreDetails as ChainPayload}
 
 pub opaque type Parcel(a) { Private(a) }
 pub opaque type FlatChain(a) { Flat(List(a), Bool) }
