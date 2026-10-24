@@ -66,6 +66,9 @@ modelTestArtifacts target bits datas calls u
     scCallback body = D.group (D.text "(s, a) =>" <> D.nest 2 (D.softline <> ScalaLayout.call (takeWhile (/= '(') body)
       (map D.text (splitArguments (init (drop 1 (dropWhile (/= '(') body)))))))
     scString = ScalaLayout.scalaString
+    -- An array of one callback keeps it in its parentheses, as scalafmt does.
+    scArray [one] = D.text "Array[LawSpecRuntime.ModelCallback](" <> one <> D.text ")"
+    scArray many = ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" many
     -- A Java callback: (s, a) -> name(args), broken after the arrow.
     jCallback body = case break (== '>') body of
       (params, '>' : ' ' : call) -> D.group (D.text (params ++ ">") <> D.nest 4 (D.softline <> D.text call))
@@ -191,7 +194,7 @@ modelTestArtifacts target bits datas calls u
                    , ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" (maybe [] (\(r, f) -> [scCallback r, scCallback f]) (startCallbacks cs))
                    , ScalaLayout.call "Array[Array[LawSpecRuntime.ModelCallback]]" [ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" [scCallback r, scCallback f, maybe (D.text nil) scCallback w] | (r, f, w) <- commandCallbacks cs]
                    , maybe (D.text nil) scCallback (abstractCallback cs)
-                   , ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" (map scCallback (invariantCallbacks cs)) ])
+                   , scArray (map scCallback (invariantCallbacks cs)) ])
                , D.text "LawSpecRuntime.checkModel(model)" ] ++
                [ D.text "LawSpecRuntime.checkModelParallel(model)" | machineShared m ] ++
                [ ScalaLayout.call "LawSpecRuntime.checkScenario" [D.text "model", scString (programSpec p)] | p <- machineScenarios m ])

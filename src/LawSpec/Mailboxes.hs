@@ -702,13 +702,17 @@ scalaMailbox bits datas b = do
   let descriptorText = maybe "(unit)" fst wire
       typesText = maybe "" (unwords . map snd . reverse . snd) wire
       comment indentation = SL.comment (80 - indentation)
-      toNative value = D.text ("(if (logical) " ++ name ++ ".conversion().toNative(" ++ value ++ ".asInstanceOf[LawSpecRuntime.Value]) else " ++ value ++ ")") <>
-        D.text (".asInstanceOf[" ++ native ++ "]")
+      toNative value = D.text ("toNative(" ++ value ++ ")")
       members =
         [ D.text "def this() = this(LawSpecRuntime.Mailbox[Object](), false)"
+        , comment 2 "A received value in its native type." <>
+          SL.equalsBody (D.text ("private def toNative(value: Object): " ++ native))
+            (D.group (D.text "if (logical)" <> D.nest 2 (D.softline <>
+               SL.chain (D.text name) [("conversion", []), ("toNative", [D.text "value.asInstanceOf[LawSpecRuntime.Value]"])] <>
+               D.text (".asInstanceOf[" ++ native ++ "]")) <> D.softline <> D.text ("else value.asInstanceOf[" ++ native ++ "]")))
         , comment 2 "Queues value without waiting." <>
           SL.equalsBody (D.text ("def send(value: " ++ native ++ "): Unit"))
-            (SL.call "mailbox.send" [D.text ("if (logical) " ++ name ++ ".conversion().toLogical(value) else value.asInstanceOf[Object]")])
+            (SL.call "mailbox.send" [D.group (D.text ("if (logical) " ++ name ++ ".conversion().toLogical(value)") <> D.softline <> D.text "else value.asInstanceOf[Object]")])
         , comment 2 "The next message; waits up to timeout (forever when null), then throws IllegalStateException; throws ActorStopped once closed and empty." <>
           SL.parameters (D.text "def receive") [D.text "timeout: java.time.Duration = null"] <> D.text (": " ++ native ++ " = ") <>
           SL.block [D.text "val value = mailbox.receive(timeout)", toNative "value"]

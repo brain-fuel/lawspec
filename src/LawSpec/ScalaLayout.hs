@@ -29,6 +29,10 @@ call name values = case break (== '[') name of
   (path, typeArgs@('[' : _)) | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse path), not (null values) ->
     D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
       (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method ++ typeArgs)) values))]
+  -- A qualified call whose opening does not fit breaks before its method.
+  _ | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse name), not (null values), '(' `notElem` name ->
+      D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
+        (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method)) values))]
   _ -> callWith (D.text name) values
 
 callWith :: D.Doc -> [D.Doc] -> D.Doc
