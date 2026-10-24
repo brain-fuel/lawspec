@@ -676,6 +676,7 @@ library
       LawSpec.ElixirNative
       LawSpec.Emit
       LawSpec.Eval
+      LawSpec.Explain
       LawSpec.Flow
       LawSpec.Frontend
       LawSpec.GleamCode
@@ -1009,6 +1010,7 @@ test-suite lawspec-test
       EqSetOperationsSpec
       EqSetSpec
       ExactWideningSpec
+      ExplainSpec
       FieldDefinitionExpansionSpec
       FixtureSource
       FlowSpec

@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {explainLaw} from '../explain.mjs';
-import {createTypePresentation} from '../typed-presentation.mjs';
+import {explanations,explanationText,explanationViews} from './compiler-input.mjs';
 
 const compiler=await createCompiler();
 const path='test/fixtures/canonical-container-records.lawspec';
@@ -66,26 +65,10 @@ test('container explanations preserve the typed claim and distinguish planned ex
   const checked=await compiler.check({...options,sources:formatted.formattedSources});
   assert.deepEqual(checked.diagnostics,[]);
   assert.deepEqual(checked.dataTypes.map(row=>row.id),result.dataTypes.map(row=>row.id));
-  for(const law of result.laws)for(const view of ['developer','business','formal','evidence']) {
-    const explanation=explainLaw(law,result,view);
-    assert.equal(explanation.assertion,law.assertion);
-    assert.deepEqual(explanation.evidence,result.evidence.filter(row=>row.declaration===law.id));
-    assert.doesNotMatch(explanation.text,/lawspecRecordView/);
+  for(const view of explanationViews)for(const explanation of await explanations(compiler,{...options,sources},view)) {
+    assert.ok(result.laws.some(law=>law.id===explanation.law));
+    assert.doesNotMatch(explanationText(explanation),/lawspecRecordView/);
   }
 });
 
-test('presentation hides only compiler-marked representation calls with matching full signatures',async()=>{
-  const result=await compiler.check({...options,sources});
-  assert.deepEqual(result.diagnostics,[]);
-  const declaration=result.units.flatMap(unit=>unit.declarations).find(d=>d.representation==='structural-record-storage');
-  assert.ok(declaration);
-  const argument={type:declaration.type.parameter,origin:{kind:'generated',declaration:'example'},text:'readings',node:{kind:'local',id:'readings'}};
-  const expression={type:declaration.type.result,origin:{kind:'generated',declaration:'example'},text:'explicit checked storage call',node:{kind:'call',declaration:declaration.id,arguments:[argument]}};
-  const scope=new Map([['readings','readings']]);
-  assert.equal(createTypePresentation(result).expressionText(expression,scope),'readings');
-  const plain=structuredClone(result);
-  for(const unit of plain.units)for(const d of unit.declarations)delete d.representation;
-  assert.match(createTypePresentation(plain).expressionText(expression,scope),/lawspecRecordView/);
-  const mismatched={...expression,type:{kind:'constructor',name:'Bool',arguments:[]}};
-  assert.match(createTypePresentation(result).expressionText(mismatched,scope),/lawspecRecordView/);
-});
+// Compiler-marked representation calls in presentation: test/ExplainSpec.hs.

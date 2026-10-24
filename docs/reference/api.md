@@ -38,6 +38,7 @@ interface Compiler {
   format(input: FormatRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
+  explain(input: ExplainRequest): Promise<ExplainResult>;
   proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
 }
@@ -121,6 +122,56 @@ observe that method completing successfully before recording any of them as
 passed. A successful process that discovers no selected tests is insufficient.
 The `model` verification layer controls these checks independently of ordinary
 law tests. Omitting it preserves model declarations and public runtime APIs.
+
+### Explanations
+
+`explain` words checked laws in one of three views. It is the method behind
+`lawspec explain`, so the CLI and the API give the same result. The native and
+WASM compilers word a law identically.
+
+```ts
+type ExplainView = 'eng' | 'math' | 'dev';
+interface ExplainRequest extends CheckRequest {
+  view?: ExplainView;                       // default 'eng'
+  law?: string;                             // '<unit>::<law>'; default every law
+  evidence?: ObligationEvidence[];          // rows the host completed
+}
+interface ExplainResult {
+  schemaVersion?: 5;
+  diagnostics: Diagnostic[];
+  explanations?: Explanation[];
+  text?: string;                            // every section's lines, in order
+}
+interface Explanation {
+  view: ExplainView;
+  law: string;
+  name: string;
+  sections: ExplanationSection[];
+}
+interface ExplanationSection {
+  kind: ExplanationSectionKind;             // 'title', 'inputs', 'statement', ...
+  lines: string[];
+  cases?: ExplanationCase[];                // eng: union cases this section names
+}
+interface ExplanationCase {
+  type: string;                             // 'refund decision'
+  case: string;                             // 'review required'
+  cases: string[];                          // every case of that type
+}
+```
+
+- `view` selects plain English (`eng`), mathematical notation (`math`) or
+  LawSpec notation with types for programmers (`dev`). The `--view` option of
+  the [CLI](cli.md#explain) describes each view.
+- `text` is the explanations' lines joined by newlines, with a blank line
+  between laws. It is derived from `sections`.
+- Explaining changes no obligation. It reports no evidence status; use
+  `check` or `lawspec evidence` for that.
+- `evidence` replaces the evidence rows the dev view reads. The CLI passes
+  rows that carry recorded `nativeEvidence`.
+- A removed view (`developer`, `business`, `formal`, `evidence`), an unknown
+  view, or a `law` that matches nothing returns an `explain` diagnostic. This
+  happens before compilation.
 
 ### SMT tasks and solver execution
 
@@ -381,7 +432,7 @@ predicates into implications.
 
 Inputs carry their refinement `predicates`, which are authoritative, and
 `bounds`, which are derived generation hints `{operator, value}` over preceding
-inputs. `trace` lists the expansion steps that `lawspec explain` prints.
+inputs. `trace` lists the expansion steps that `lawspec explain --view dev` prints.
 
 Examples are `{name, bindings, expectations}`. Each binding is
 `{id, name, type, value}` with a `DataValue`; each expectation is an

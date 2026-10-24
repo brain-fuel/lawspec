@@ -939,3 +939,15 @@ DEC-parser-error-recovery:
   opened: 0.29.1
   decided: 0.29.1
   refs: [megaparsec-error-recovery]
+
+DEC-explain-registers:
+  status: decided
+  question: How should lawspec explain present a law, and where is the wording produced?
+  answer: |
+    Owner direction 2026-10-23. lawspec explain has three views, chosen with --view. eng is plain English for non-mathematicians and the default. math is mathematical notation. dev is LawSpec keyword notation with types, for programmers. --json prints the chosen view as records with view, law, name and ordered sections of lines; the human text is exactly every section's lines, joined. The former developer, business and formal views are removed without aliases, as the pre-1.0 contract allows; each is a diagnostic naming its replacement. The evidence view is removed: lawspec evidence <unit>::<law> already reports status, reason and native conformance; dev keeps configured witness and search settings and recorded native conformance.
+
+    eng wording is derived mechanically from the typed law and never invents nouns. Each top-level condition is one line. A bound input reads "this <input>" after its introduction, and a second field of the same subject in a comparison reads "its <field>". A function call reads "the <function words> for <arguments>". A union case reads the type's words and the quoted case's words, with payload fields as owned values ("this request's requested amount"). Sibling cases are not listed in the text; an eng section's JSON names them in cases. dev brackets terms only where the grammar's precedence needs them: implies < or < and < not < = < comparisons < + - < * / < application.
+
+    The compiler words every view (LawSpec.Explain) through an explain API method over its own expansion result, so the native and WASM cores agree byte for byte and the CLI and SDK give the same answer. This ports the former npm presentation; its dev output was checked byte-identical against the npm developer view on every example law before the owner's bracket and wording changes. The host only reads recorded native observations and passes the completed evidence rows in. Explanation is presentation: it changes no obligation, runs nothing and reports no evidence status.
+  opened: 0.30.0
+  decided: 0.30.0

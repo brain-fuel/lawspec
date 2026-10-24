@@ -91,11 +91,17 @@ end law
 end unit
 ```
 
-`lawspec explain` shows the final property:
+`lawspec explain` says what the law checks, in plain English:
 
 ```text
-for all (x :: Int32) . atoi (itoa (x)) = x
+Law: round trip
+applying {itoa} and then {atoi} recovers the original integer
+For every x (an Int32):
+  The atoi for the itoa for this x must be this x.
 ```
+
+`--view dev` shows the expanded property `atoi (itoa x) = x` with its
+examples. `--view math` uses mathematical notation.
 
 The generated tests check the example, signed 32-bit boundary cases and
 randomized inputs against your `itoa` and `atoi`, on whichever targets you

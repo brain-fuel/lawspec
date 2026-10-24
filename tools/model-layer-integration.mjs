@@ -93,14 +93,16 @@ await select(['property','examples'],source.replace(before,after));
 const laws=await test();assert.ok(laws.ok,JSON.stringify(laws));assert.equal(laws.ran.length,2);
 assert.ok(laws.ran.every(id=>!id.includes('::model::')&&!id.endsWith('::supervision')));
 const views=[];
-for(const view of ['developer','business','formal','evidence']){
+// Every register words the same law; dev also shows the recorded native
+// conformance, which lawspec evidence reports with the law's status.
+for(const view of ['eng','math','dev']){
   const rows=JSON.parse((await run(process.execPath,[cli,'explain',laws.ran[0].replace('::law::','::'),
     '--view',view,'--json'])).stdout);
-  assert.equal(rows.length,1);views.push(rows[0]);
-  assert.equal(rows[0].evidence[0].nativeEvidence.status,'passed');
+  assert.equal(rows.length,1);assert.equal(rows[0].view,view);views.push(rows[0]);
 }
-for(const view of views.slice(1))assert.deepEqual(view.evidence,views[0].evidence,'All views read the same completed evidence');
-assert.match(views.find(view=>view.view==='evidence').text,/Native conformance: passed/);
+assert.ok(views.every(view=>view.law===views[0].law));
+assert.match(views.find(view=>view.view==='dev').sections.find(section=>section.kind==='native-evidence').lines.join('\n'),/Native conformance: passed/);
+assert.ok(!views.filter(view=>view.view!=='dev').some(view=>view.sections.some(section=>section.kind==='native-evidence')));
 await select(['model']);
 const models=await test();assert.ok(models.ok,JSON.stringify(models));assert.equal(models.ran.length,5);
 assert.ok(models.ran.every(id=>id.includes('::model::')||id.endsWith('::supervision')));
@@ -200,10 +202,10 @@ if(language==='javascript'){
   await writeFile(resultsFile,JSON.stringify(recorded));
   harnessReplay=(await evidence()).find(item=>item.declaration===id);
   assert.equal(harnessReplay.status,'flaky');assert.deepEqual(harnessReplay.adequacy,adequacy);
-  for(const view of ['developer','business','formal','evidence']){
+  for(const view of ['eng','math','dev']){
     const rows=JSON.parse((await run(process.execPath,[cli,'explain',id.replace('::law::','::'),
       '--view',view,'--json'])).stdout);
-    assert.equal(rows[0].evidence[0].status,'flaky');assert.deepEqual(rows[0].evidence[0].adequacy,adequacy);
+    assert.equal(rows[0].view,view);assert.equal(rows[0].law,id);
   }
 }
 await writeFile(path.join(base,'receipt.json'),JSON.stringify({language,bits,minify,laws,models,failed,none,verified,rejected,empty,views,stale,repaired,interrupted,setupFailure,invalidObservation,harnessReplay},null,2)+'\n');

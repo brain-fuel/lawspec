@@ -6,8 +6,10 @@ import LawSpec.Code.Doc
 import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
-methods :: [(String, String)]
-methods = [("format", "FormatRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest")]
+-- | Each compiler method, its request and its response.
+methods :: [(String, String, String)]
+methods = [("format", "FormatRequest", "Result"), ("check", "CheckRequest", "Result"), ("expand", "CheckRequest", "Result"),
+  ("explain", "ExplainRequest", "ExplainResult"), ("proofTasks", "CheckRequest", "Result"), ("planGeneration", "GenerationRequest", "Result")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -55,7 +57,7 @@ api :: Doc
 api = text "import {loadCore} from './launcher.mjs';" <> softbreak <> softbreak <>
   text "export async function createCompiler() " <> braces
     (text "const call = await loadCore();" <> softbreak <>
-     text "return " <> object [method name | (name, _) <- methods] <> text ";")
+     text "return " <> object [method name | (name, _, _) <- methods] <> text ";")
   where
     method name = group (text (name ++ ": (input) =>") <>
       nest 4 (softline <> text "call" <>
@@ -257,6 +259,16 @@ declarations = joinWith (softbreak <> softbreak)
       (fields (analysisRow ++ [("fingerprint", "string"), ("status", "AnalysisCheckStatus"), ("reason", "string"), ("check", "AnalysisCheckStatus")]))
   , alias "AnalysisCheckStatus" (map quoted ["proved", "refuted", "exempted", "incomplete"])
   , interface "FormatRequest extends CheckRequest" (fields [("compile?", "boolean")])
+  , alias "ExplainView" (map quoted ["eng", "math", "dev"])
+  , interface "ExplainRequest extends CheckRequest"
+      (fields [("view?", "ExplainView"), ("law?", "string"), ("evidence?", "ObligationEvidence[]")])
+  , alias "ExplanationSectionKind" (map quoted
+      ["title", "documentary", "description", "inputs", "statement", "reason", "quantifiers", "formula",
+       "law", "trace", "strategies", "restrictions", "source", "examples", "native-evidence"])
+  , interface "ExplanationCase" (fields [("type", "string"), ("case", "string"), ("cases", "string[]")])
+  , interface "ExplanationSection" (fields [("kind", "ExplanationSectionKind"), ("lines", "string[]"), ("cases?", "ExplanationCase[]")])
+  , interface "Explanation" (fields [("view", "ExplainView"), ("law", "string"), ("name", "string"), ("sections", "ExplanationSection[]")])
+  , interface "ExplainResult" (fields [("schemaVersion?", "5"), ("diagnostics", "Diagnostic[]"), ("explanations?", "Explanation[]"), ("text?", "string")])
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
       [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
@@ -353,7 +365,7 @@ declarations = joinWith (softbreak <> softbreak)
       , record [("type", union (map quoted ["Nullable", "Optional"])), ("value", union [text "ScalarValue", text "null"])]
       ]
   , text "export interface Compiler " <> braces (joinWith softbreak
-      [text (name ++ "(input: " ++ request ++ "): Promise<Result>;") | (name, request) <- methods])
+      [text (name ++ "(input: " ++ request ++ "): Promise<" ++ response ++ ">;") | (name, request, response) <- methods])
   , text "export function createCompiler(): Promise<Compiler>;"
   ]
   where

@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {proveWithZ3,proofTaskFingerprint} from '../proof.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText,explanationViews} from './compiler-input.mjs';
 
 const compiler=await createCompiler();
 const z3=process.env.LAWSPEC_Z3??(spawnSync('z3',['-version'],{encoding:'utf8'}).status===0?'z3':null);
@@ -59,10 +59,10 @@ test('actual Z3 establishes nonlinear and dependent laws from rebuilt-WASM tasks
     assert.equal(proof.configuration.timeoutMs,5000);
     assert.equal(proof.machineBits,machineBits);
     assert.match(proof.reason,/trusts the typed translation and selected solver/);
-    for(const view of ['developer','business','formal','evidence']) {
-      const explanation=explainLaw(result.laws[0],result,view);
-      assert.equal(explanation.assertion,result.laws[0].assertion);
-      assert.deepEqual(explanation.evidence,result.evidence.filter(row=>row.declaration===result.laws[0].id));
+    for(const view of explanationViews) {
+      const [explanation]=await explanations(compiler,input,view);
+      assert.equal(explanation.law,result.laws[0].id);
+      assert.equal(explanation.view,view);
     }
   }
 });

@@ -1,10 +1,9 @@
-import {semanticFacts} from './compiler-input.mjs';
+import {semanticFacts,explanations,explanationViews} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
 import {createCompiler} from '../api.mjs';
 import {programTargets as targets} from '../templates.mjs';
-import {explainLaw} from '../explain.mjs';
 
 const compiler=await createCompiler();
 const canonical={schemaVersion:5,languageProfile:'1.0-rc.2'};
@@ -29,8 +28,12 @@ test('refund and stateful order examples retain their obligations, exact amounts
     const examples=await compiler.planGeneration({...input,target:'javascript',verification:{layers:['examples']}});
     assert.deepEqual(examples.diagnostics,[]);assert.equal(examples.tests.length,4);
     assert.equal(examples.tests.reduce((sum,entry)=>sum+entry.coverage.cases,0),40);
-    const views=['developer','business','formal','evidence'].map(view=>explainLaw(result.laws[0],result,view));
-    assert.ok(views.every(view=>JSON.stringify(view.evidence)===JSON.stringify(views[0].evidence)));
+    for(const view of explanationViews){
+      const shown=await explanations(compiler,input,view);
+      assert.deepEqual(shown.map(e=>e.law),result.laws.map(law=>law.id));
+      assert.ok(shown.every(e=>e.view===view));
+    }
+    assert.deepEqual((await compiler.check(input)).evidence,result.evidence);
     const invalid=await compiler.check({...input,sources:[...sources,{path:'invalid.lawspec',
       content:`unit invalid
 

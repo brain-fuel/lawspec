@@ -241,5 +241,6 @@ results with `expect <expression> = <literal>`.
   independently.
 
 A law may have no examples at all, but an example must have at least one
-`expect`. Use `lawspec explain` to see a law's expansion, the input names its
-examples must bind, and the expected results, without running any adapter.
+`expect`. Use `lawspec explain --view dev` to see a law's expansion, the input
+names its examples must bind, and the expected results, without running any
+adapter.

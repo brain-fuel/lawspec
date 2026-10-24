@@ -64,6 +64,7 @@ import qualified ImportSpec
 import qualified DischargeSpec
 import qualified AttestationSpec
 import qualified ApiContractSpec
+import qualified ExplainSpec
 import qualified DataShapeSpec
 import qualified GadtSpec
 import qualified FlowSpec
@@ -180,6 +181,7 @@ main = hspec $ do
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence
   AttestationSpec.test_attestationReportsWhereTestsRanWithoutChangingEvidence
   ApiContractSpec.test_compilerApiAnswersEveryRequestByItsDocumentedContract
+  ExplainSpec.test_explanationsWordOneTypedLawInEachRegister
   DataShapeSpec.test_dataTypesBecomeEachTargetsIdiomaticShape
   GadtSpec.test_gadtMatchesRefineTypesLocally
   FlowSpec.test_flowTypesThreadEachStateThroughItsCalls

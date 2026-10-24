@@ -32,9 +32,16 @@ ordinary checking and generation methods:
 | --- | --- |
 | `check(request)` | Checked units, data types, definitions, laws, contracts, refinements and evidence. |
 | `expand(request)` | The same, plus `expansions`: each law's final property as text. |
+| `explain(request)` | `explanations` and `text`: each law worded in the requested `view` (`eng`, `math` or `dev`), as `lawspec explain` prints it. |
 | `planGeneration(request)` | The same, plus `files`: every artifact with its path, content, ownership and placement. |
 
-All three return a result with a `diagnostics` array. An empty array means
+To explain one law in plain English:
+
+```js
+const { text } = await compiler.explain({ ...request, law: 'example.codec::codec', view: 'eng' });
+```
+
+Each method returns a result with a `diagnostics` array. An empty array means
 success. Diagnostics have a `code`, a `message` and a source location `at`, or
 `null`.
 

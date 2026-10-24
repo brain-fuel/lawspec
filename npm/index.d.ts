@@ -623,6 +623,57 @@ export interface FormatRequest extends CheckRequest {
   compile?: boolean;
 }
 
+export type ExplainView = 'eng' | 'math' | 'dev';
+
+export interface ExplainRequest extends CheckRequest {
+  view?: ExplainView;
+  law?: string;
+  evidence?: ObligationEvidence[];
+}
+
+export type ExplanationSectionKind =
+    'title' |
+    'documentary' |
+    'description' |
+    'inputs' |
+    'statement' |
+    'reason' |
+    'quantifiers' |
+    'formula' |
+    'law' |
+    'trace' |
+    'strategies' |
+    'restrictions' |
+    'source' |
+    'examples' |
+    'native-evidence';
+
+export interface ExplanationCase {
+  type: string;
+  case: string;
+  cases: string[];
+}
+
+export interface ExplanationSection {
+  kind: ExplanationSectionKind;
+  lines: string[];
+  cases?: ExplanationCase[];
+}
+
+export interface Explanation {
+  view: ExplainView;
+  law: string;
+  name: string;
+  sections: ExplanationSection[];
+}
+
+export interface ExplainResult {
+  schemaVersion?: 5;
+  diagnostics: Diagnostic[];
+  explanations?: Explanation[];
+  text?: string;
+}
+
 export interface GenerationRequest extends CheckRequest {
   target: Target;
   sourceDir?: string;
@@ -942,6 +993,7 @@ export interface Compiler {
   format(input: FormatRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
+  explain(input: ExplainRequest): Promise<ExplainResult>;
   proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
 }

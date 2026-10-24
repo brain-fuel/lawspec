@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {explainLaw} from '../explain.mjs';
+import {explanations,explanationText,explanationViews} from './compiler-input.mjs';
 
 const compiler=await createCompiler();
 const content=await readFile(new URL('../../test/fixtures/canonical-branch-admission.lawspec',import.meta.url),'utf8');
@@ -72,11 +72,9 @@ test('formatting and explanation preserve valid source and obligations without l
   assert.deepEqual(repeated.diagnostics,[]);
   assert.deepEqual(repeated.dataTypes.map(row=>row.id),result.dataTypes.map(row=>row.id));
   const before=structuredClone(result);
-  for(const law of result.laws)for(const view of ['developer','business','formal','evidence']) {
-    const explanation=explainLaw(law,result,view);
-    assert.equal(explanation.assertion,law.assertion);
-    assert.deepEqual(explanation.evidence,result.evidence.filter(row=>row.declaration===law.id));
-    assert.doesNotMatch(explanation.text,privateNames);
+  for(const view of explanationViews)for(const explanation of await explanations(compiler,{...options,sources},view)) {
+    assert.ok(result.laws.some(law=>law.id===explanation.law));
+    assert.doesNotMatch(explanationText(explanation),privateNames);
   }
   assert.deepEqual(result,before);
 });

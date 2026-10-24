@@ -59,8 +59,8 @@ is outside what LawSpec can see.
 
 ## Using the report
 
-`lawspec evidence` and the four `lawspec explain` views share the same typed
-obligations. Selected native tests start as **planned**. A completed native run
+`lawspec evidence` and the three `lawspec explain` views read the same typed
+obligations. Only `lawspec evidence` reports a law's status. Selected native tests start as **planned**. A completed native run
 can supply **property tested** evidence, or **exhaustively checked** evidence
 when every finite input was checked and the obligation contains no additional
 scoped quantifier search. A sampled model run does not prove every possible

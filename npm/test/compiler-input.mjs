@@ -54,3 +54,13 @@ export function semanticFacts(result) {
   };
   return withoutOrigins(facts);
 }
+
+// The compiler's explanations of every law in a request, or of one law. The
+// human text is exactly every section's lines, in order.
+export async function explanations(compiler, input, view, law) {
+  const result = await compiler.explain({...input, ...(view ? {view} : {}), ...(law ? {law} : {})});
+  if (result.diagnostics.length) throw new Error(JSON.stringify(result.diagnostics));
+  return result.explanations;
+}
+export const explanationText = explanation => explanation.sections.flatMap(section => section.lines).join('\n');
+export const explanationViews = ['eng', 'math', 'dev'];

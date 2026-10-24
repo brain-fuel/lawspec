@@ -29,21 +29,38 @@ Each `example` binds the law's input, `q`, to a value and states what to
 
 ## Read a law back
 
-`lawspec explain` shows what a law checks after its generic parts are
-expanded, including its examples:
+`lawspec explain` says in plain English what a law checks. Keep the law's
+`"|...|` name delimiters, and quote the whole selector for the shell:
 
 ```sh
-npx lawspec explain "lessons.pricing::ten or more drinks are discounted"
+npx lawspec explain 'lessons.pricing::"|ten or more drinks are discounted|'
 ```
 
 ```text
-lessons.pricing::ten or more drinks are discounted
-ten or more drinks are discounted
-=> for all (q :: Int32) . ((q >= 10) && (q <= 1000)) implies priceInCents (q) = (q * 225)
-example "a tray of ten"
-  q = 10
-  expect priceInCents (q) = 2250
+Law: ten or more drinks are discounted
+For every q (an Int32):
+  If all of these are true:
+    - this q is at least 10
+    - this q is at most 1000
+  then the price in cents for this q must be this q times 225.
 ```
+
+Add `--view dev` to see the law in LawSpec notation, with its examples:
+
+```text
+lessons.pricing::law::"|ten or more drinks are discounted|
+"|ten or more drinks are discounted|
+Inputs: q of type Int32
+q >= 10 and q <= 1000 implies priceInCents q = q * 225
+Source: laws/pricing.lawspec:24:1
+Examples: 1
+example "|a tray of ten|:
+  q = 10
+  expect priceInCents q = 2250
+end example
+```
+
+`--view math` gives the same law in mathematical notation.
 
 ## Implement the adapter
 
@@ -92,6 +109,7 @@ buy.
 
 - `implies` limits a law to the inputs it is about.
 - Examples pin concrete cases; each needs at least one `expect`.
-- `lawspec explain` shows exactly what a law checks.
+- `lawspec explain` shows exactly what a law checks: in plain English by
+  default, with `--view math` or with `--view dev`.
 
 Next: [algebraic laws](03-algebra.md).

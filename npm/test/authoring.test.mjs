@@ -1,10 +1,9 @@
 // Generated from templates/npm/test/authoring.test.mjs by lawspec-dev generate. Do not edit.
-import {semanticFacts} from './compiler-input.mjs';
+import {semanticFacts,explanations,explanationText,explanationViews} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PassThrough } from 'node:stream';
 import { serveLanguage, utf16Position } from '../lsp.mjs';
-import { explainLaw } from '../explain.mjs';
 
 test('documentary prelude function aliases retain declaration identities and ordinary scope priority',async()=>{
   const {createCompiler}=await import('../api.mjs');
@@ -242,108 +241,9 @@ end unit
   }
 });
 
-const law = { id: 'shop::law::identity', inputs: [{ name: 'amount', type: { kind: 'constructor', name: 'Integer', arguments: [] }, predicates: [] }],
-  assertion: { kind: 'equal', left: { text: 'refund amount' }, right: { text: 'Approved' } },
-  location: { file: 'shop.lawspec', line: 1, column: 1 }, trace: [], examples: [], description: 'A captured amount may be refunded.', rationale: '' };
-
-test('explanation views retain the same authoritative typed assertion and evidence', () => {
-  const result = { evidence: [{ declaration: law.id, status: 'not-verified', reason: 'No law verification layers selected.' }] };
-  for (const view of ['developer', 'business', 'formal', 'evidence']) {
-    const explanation = explainLaw(law, result, view);
-    assert.equal(explanation.assertion, law.assertion);
-    assert.deepEqual(explanation.evidence, result.evidence);
-  }
-  assert.match(explainLaw(law, result, 'business').text, /must be Approved/);
-  assert.match(explainLaw(law, result, 'evidence').text, /NOT-VERIFIED/);
-  const wholeLaw = { ...law, inputs: [{ ...law.inputs[0], type: { kind: 'constructor', name: 'BigUInt', arguments: [] } }] };
-  assert.match(explainLaw(wholeLaw, result, 'business').text, /amount of type Whole/);
-  assert.throws(() => explainLaw(law, result, 'other'), /Choose --view/);
-});
-
-test('explanation views preserve nested existential scope and negation', () => {
-  const assertion = { kind: 'not', body: { kind: 'exists',
-    binder: { id: 'witness', name: 'authorization', type: { kind: 'constructor', name: 'Bool', arguments: [] } },
-    predicates: [{ text: 'authorization = active' }], body: law.assertion } };
-  const scoped = { ...law, assertion };
-  assert.equal(explainLaw(scoped, {}, 'business').assertion, assertion);
-  assert.match(explainLaw(scoped, {}, 'business').text, /There must not exist authorization of type Bool where authorization = active/);
-  assert.match(explainLaw(scoped, {}, 'formal').text, /not \(there exists \(authorization of type Bool where authorization = active\) such that/);
-});
-
-test('documentary metadata remains separate from proposition identity and evidence', () => {
-  const metadata = { id: 'REVIEW-001', owner: 'Payments.Review' };
-  const documented = { ...law, metadata };
-  const result = { evidence: [{ declaration: law.id, status: 'not-verified', reason: 'No law checks selected.' }] };
-  for (const view of ['developer', 'business', 'formal', 'evidence']) {
-    const explanation = explainLaw(documented, result, view);
-    assert.equal(explanation.metadata, metadata);
-    assert.equal(explanation.law, law.id);
-    assert.equal(explanation.assertion, law.assertion);
-    assert.deepEqual(explanation.evidence, result.evidence);
-  }
-  assert.match(explainLaw(documented, result, 'business').text, /Requirement: REVIEW-001\nOwner: Payments.Review/);
-  assert.equal(explainLaw(documented, result, 'formal').text, explainLaw(law, result, 'formal').text);
-});
-
-test('documentary links remain finite in all explanation views without changing evidence', () => {
-  const references = [
-    { kind: 'law', target: { id: law.id, unit: 'shop', name: 'identity' }, selector: { kind: 'named-reference', name: '\"|policy|' } },
-    { kind: 'function', target: { id: 'shop::refund', unit: 'shop', name: 'refund' } },
-    { kind: 'external', name: '\"|policy|', resource: 'approved wording' },
-  ];
-  const documented = { ...law, references };
-  const result = { evidence: [{ declaration: law.id, status: 'incomplete', reason: 'A bounded miss is inconclusive.' }] };
-  for (const view of ['developer', 'business', 'formal', 'evidence']) {
-    const explanation = explainLaw(documented, result, view);
-    assert.equal(explanation.references, references);
-    assert.equal(explanation.assertion, law.assertion);
-    assert.deepEqual(explanation.evidence, result.evidence);
-  }
-  assert.match(explainLaw(documented, result, 'business').text, /Reference: ref law shop.identity references\.\"\|policy\|/);
-  assert.match(explainLaw(documented, result, 'developer').text, /Reference: ref function shop.refund/);
-  for (const view of ['formal', 'evidence']) assert.equal(explainLaw(documented, result, view).text, explainLaw(law, result, view).text);
-  assert.match(explainLaw({ ...law, references: ['legacy citation'] }, result, 'business').text, /Reference: legacy citation/);
-  const prelude = { ...law, references: [{ kind: 'law', target: { id: 'prelude::law::left inverse', unit: 'prelude', name: 'left inverse' } }] };
-  assert.match(explainLaw(prelude, result, 'business').text, /ref law prelude\."\|left inverse\|/);
-});
-
-test('configured witness strategies stay separate from propositions and completed evidence', () => {
-  const witnesses = [{ binder: 'shop::law::identity::logical::0', path: ['amount', 'answer'], expression: { text: 'amount + 1' } }];
-  const configured = { ...law, harness: { witnesses } };
-  const result = { evidence: [{ declaration: law.id, status: 'not-verified', reason: 'No law layers selected.' }] };
-  for (const view of ['developer', 'business', 'formal', 'evidence']) {
-    const explanation = explainLaw(configured, result, view);
-    assert.equal(explanation.witnesses, witnesses);
-    assert.equal(explanation.assertion, law.assertion);
-    assert.deepEqual(explanation.evidence, result.evidence);
-    if (['business', 'formal'].includes(view)) assert.equal(explanation.text, explainLaw(law, result, view).text);
-    else assert.match(explanation.text, /Configured witness \(not completed evidence\): definition.amount.answer = amount \+ 1/);
-  }
-});
-
-test('configured scoped searches retain the same obligation and evidence in every view', () => {
-  const searches = [{binder: 'shop::law::identity::logical::0', path: ['amount', 'answer'], strategy: 'answers'}];
-  const configured = {...law, harness: {searches}};
-  const result = {evidence: [{declaration: law.id, status: 'incomplete', reason: 'A bounded miss is inconclusive.'}]};
-  for (const view of ['developer', 'business', 'formal', 'evidence']) {
-    const explanation = explainLaw(configured, result, view);
-    assert.equal(explanation.searches, searches);
-    assert.equal(explanation.assertion, law.assertion);
-    assert.deepEqual(explanation.evidence, result.evidence);
-    if (['business', 'formal'].includes(view)) assert.equal(explanation.text, explainLaw(law, result, view).text);
-    else assert.match(explanation.text, /Configured search \(not completed evidence\): definition.amount.answer uses answers/);
-  }
-});
-
-test('explanation views present composed propositions from the typed logical tree', () => {
-  const exists = { kind: 'exists', binder: { id: 'a', name: 'approval', type: { kind: 'constructor', name: 'Bool', arguments: [] } },
-    predicates: [], body: law.assertion };
-  const disjunction = { kind: 'not', body: { kind: 'all', items: [{ kind: 'not', body: exists }, { kind: 'not', body: law.assertion }] } };
-  const implication = { kind: 'not', body: { kind: 'all', items: [exists, { kind: 'not', body: law.assertion }] } };
-  assert.match(explainLaw({ ...law, assertion: disjunction }, {}, 'formal').text, /\) or \(/);
-  assert.match(explainLaw({ ...law, assertion: implication }, {}, 'business').text, /If \(There must exist approval/);
-  assert.equal(explainLaw({ ...law, assertion: disjunction }, {}, 'business').assertion, disjunction);
-});
+// The presentation rules for synthetic typed laws (views, scope, metadata,
+// references, configured strategies and composed propositions) are compiler
+// tests: test/ExplainSpec.hs.
 
 test('LSP positions count UTF-16 units and expand parser tab columns', () => {
   const text = 'a😀b\n\t😀x\n';
@@ -366,8 +266,9 @@ test('contextual articles retain typed predicates, source positions and explanat
   assert.equal(predicate.text, 'enabled');
   assert.equal(predicate.node.id, worded.laws[0].inputs[0].id);
   assert.deepEqual(predicate.origin.span.start, {file: 'articles.lawspec', line: 2, column: line.indexOf('enabled', line.indexOf('the enabled')) + 1});
-  for (const view of ['business', 'formal', 'evidence'])
-    assert.equal(explainLaw(worded.laws[0], worded, view).text, explainLaw(plain.laws[0], plain, view).text);
+  const plainRequest = {...request, sources: [{...request.sources[0], content: request.sources[0].content.replace('the enabled', 'enabled')}]};
+  for (const view of ['eng', 'math'])
+    assert.equal(explanationText((await explanations(compiler, request, view))[0]), explanationText((await explanations(compiler, plainRequest, view))[0]));
   assert.equal(worded.evidence.find(e => e.stage === 'law').status, 'exhaustively-checked');
   const unselected = await compiler.check({...request, verification: {layers: []}});
   assert.deepEqual(unselected.diagnostics, []);
@@ -743,17 +644,15 @@ test('developer explanations retain concrete table inputs and every typed expect
   const {readFile} = await import('node:fs/promises');
   const compiler = await createCompiler();
   const content = await readFile(new URL('../starter-rc1.lawspec', import.meta.url), 'utf8');
-  const result = await compiler.expand({schemaVersion: 5, languageProfile: '1.0-rc.2',
-    sources: [{path: 'starter.lawspec', content}]});
+  const starter = {schemaVersion: 5, languageProfile: '1.0-rc.2', sources: [{path: 'starter.lawspec', content}]};
+  const result = await compiler.expand(starter);
   assert.deepEqual(result.diagnostics, []);
   const law = result.laws[0];
   assert.equal(law.examples.length, 3);
-  for (const view of ['developer', 'business', 'formal', 'evidence']) {
-    const shown = explainLaw(law, result, view);
-    assert.equal(shown.examples, law.examples);
-    assert.equal(shown.assertion, law.assertion);
-  }
-  const text = explainLaw(law, result, 'developer').text;
+  for (const view of explanationViews) assert.equal((await explanations(compiler, starter, view))[0].law, law.id);
+  const [developer] = await explanations(compiler, starter, 'dev');
+  const text = explanationText(developer);
+  assert.equal(developer.sections.find(section => section.kind === 'examples').lines[0], 'Examples: 3');
   assert.match(text, /x = -42/);
   assert.match(text, /expect itoa -42 = "-42"/);
   assert.match(text, /expect atoi "-42" = -42/);

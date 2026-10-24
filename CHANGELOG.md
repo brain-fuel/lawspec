@@ -206,6 +206,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `LawSpec.Code.Doc.flatReserve`: columns a flat layout keeps free without
   printing anything, as swift-format keeps one for the trailing comma an
   array gains when it breaks.
+- **Breaking:** `lawspec explain` has three views: `--view eng` (plain
+  English, the default), `--view math` (mathematical notation) and `--view dev`
+  (LawSpec notation with types, examples and native conformance). The values
+  `developer`, `business`, `formal` and `evidence` are removed. Each one is an
+  error that names its replacement: `dev`, `eng`, `math`, or
+  `lawspec evidence <unit>::<law>`.
+- `lawspec explain --json` prints the chosen view as records with `view`,
+  `law`, `name` and ordered `sections` of `lines`. The text output is derived
+  from them. Records no longer copy the typed assertion, inputs, examples or
+  evidence; `check --json` and `lawspec evidence --json` report those.
+- The compiler words explanations. The new `explain` method is in the API,
+  with `ExplainRequest`, `ExplainResult` and `Explanation` types. The CLI calls
+  it, so CLI and API give the same text, and the native and WASM compilers
+  agree byte for byte.
+- The dev view brackets terms only where LawSpec's precedence needs them, for
+  example `a > 0 and b implies f a = X`.
 
 ## [0.29.2] - 2026-10-22
 
