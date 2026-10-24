@@ -313,7 +313,7 @@ opening e = case e of
     | otherwise -> h ++ " " ++ opening body
   Block _ _ -> "{"
   Laid _ | laidBlock e -> "{"
-  Match s _ -> "match " ++ maybe "" id (flat s) ++ " {"
+  Match s _ -> "match " ++ maybe (opening s) (++ " {") (oneLine s)
   If c _ _ -> "if " ++ maybe "" id (flat c) ++ " {"
   Struct name _ -> name ++ " {"
   Try a -> opening a
