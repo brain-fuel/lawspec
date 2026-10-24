@@ -51,7 +51,7 @@ test_targetNamesNeverCollideWithKeywords = describe "target names" $ do
   it "are idempotent" $
     nativeName "java" (nativeName "java" "short") `shouldBe` "_short"
   it "escape definitions and adapters in emitted code and stubs" $ do
-    contents "java" "any" `shouldSatisfy` isInfixOf " _short("
+    contents "java" "any" `shouldSatisfy` isInfixOf " shortValue("
     contents "java" "user" `shouldSatisfy` isInfixOf " _class("
     contents "python" "user" `shouldSatisfy` isInfixOf "def _class("
     contents "python" "user" `shouldNotSatisfy` isInfixOf "short"
