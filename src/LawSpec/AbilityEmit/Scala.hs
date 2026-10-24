@@ -223,7 +223,7 @@ emit minify bits datas units = do
               | Just (_, toNative) <- direct result = [line (toNative ++ "(result)")]
               | otherwise = [L.chain resultCodec [("decode", [line (typedResult ++ ".encode(result)")])]]
         body <- failingBody owner op (outcome ++ returned)
-        pure (line "override " <> s <> line " = synchronized " <> block (D.joinWith D.hardline body))) (C.abilityOperations ability)
+        pure (L.equalsBody (line "override " <> s) (line "synchronized " <> block (D.joinWith D.hardline body)))) (C.abilityOperations ability)
       -- The state, read and replaced in its native types, and typed.
       accessors <- case (C.handlerState h, stateType) of
         (Just (t, _), Just typedType) -> do
@@ -235,7 +235,7 @@ emit minify bits datas units = do
                 Nothing -> ( L.chain stateCodec [("decode", [line (typedCodec ++ ".encode(this.state)")])]
                            , line "this.state = " <> L.call (typedCodec ++ ".decode") [L.chain stateCodec [("encode", [line "state"])]] )
           pure [ comment 4 "The handler's state, in its native types: a snapshot to show or keep." <>
-                 line "def currentState: " <> native <> line " = synchronized " <> block read'
+                 L.equalsBody (line "def currentState: " <> native) (line "synchronized " <> block read')
                , comment 4 "Replaces the handler's state: to force it, reset it or restore a snapshot." <>
                  L.parameters (line "def setState") [line "state: " <> native] <> line ": Unit = synchronized " <> block write'
                , comment 4 "The typed state, shared rather than copied." <>

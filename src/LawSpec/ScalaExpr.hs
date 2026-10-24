@@ -205,8 +205,8 @@ renderExpression declarations bits local external = render . flattenLets
         let fallback = D.text "case _ =>" <> D.nest 2 (D.hardline <> D.text "throw " <> call "IllegalArgumentException"
               [quoted "invalid checked match constructor"])
             body = D.text "tag match " <> D.block 2 (D.joinWith D.hardline (arms ++ [fallback]))
-            matching scrutineeDoc = D.multiline (call "LawSpecScalaCodecs.matching" [D.text schemaName,ref,scrutineeDoc,width,D.text "symbols"] <>
-              D.text " { (tag, fields) =>" <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}")
+            matching scrutineeDoc = D.multiline (L.callThen "LawSpecScalaCodecs.matching" [D.text schemaName,ref,scrutineeDoc,width,D.text "symbols"]
+              (D.text " { (tag, fields) =>" <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"))
         -- A computed scrutinee is bound first, so matches do not nest in
         -- each other's arguments.
         pure $ case expressionNode scrutinee of

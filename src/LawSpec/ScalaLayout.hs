@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, arrow, chainWith, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
+  ( scalaStyle, scalaString, arrow, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
@@ -25,8 +25,19 @@ scalaString = D.text . literalFor "scala"
 -- next line; a body of several lines (a block) starts after the arrow.
 arrow :: String -> D.Doc -> D.Doc
 arrow params body
-  | '\n' `elem` D.render D.Compact body = D.text (params ++ " => ") <> body
+  | take 1 flat == "{" = D.text (params ++ " => ") <> body
+  | '\n' `elem` flat = D.text (params ++ " =>") <> D.nest 2 (D.hardline <> body)
   | otherwise = D.group (D.text (params ++ " =>") <> D.nest 2 (D.softline <> body))
+  where flat = D.render D.Compact body
+
+-- | name(args) followed by what goes with it (a trailing lambda), indented
+-- with the call when the call breaks before its method.
+callThen :: String -> [D.Doc] -> D.Doc -> D.Doc
+callThen name values suffix = case break (== '.') (reverse name) of
+  (method@(_ : _), '.' : owner@(_ : _)) | not (null values), all (`notElem` name) ("([" :: String) ->
+    D.bestFit [callWith (D.text name) values <> suffix, D.prefixChoice (name ++ "(") (callWith (D.text name) values <> suffix)
+      (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method)) values <> suffix))]
+  _ -> callWith (D.text name) values <> suffix
 
 -- | name(a, b), or broken one argument a line.
 call :: String -> [D.Doc] -> D.Doc
