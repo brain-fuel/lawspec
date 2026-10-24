@@ -424,7 +424,7 @@ cexpr env scope e = case expressionNode e of
     Constructor n [] | n `elem` ["Text", "Bytes"] -> do
       (sa, xa) <- cexpr env scope a
       (sb, xb) <- cexpr env scope b
-      pure (sa ++ sb, D.text "<<(" <> xa <> D.text ")/binary, (" <> xb <> D.text ")/binary>>")
+      pure (sa ++ sb, D.group (D.text "<<" <> D.nest 4 (D.softbreak <> D.text "(" <> xa <> D.text ")/binary," <> D.softline <> D.text "(" <> xb <> D.text ")/binary") <> D.softbreak <> D.text ">>"))
     _ -> do
       (sa, xa) <- cexpr env scope a
       (sb, xb) <- cexpr env scope b

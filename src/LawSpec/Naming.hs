@@ -11,7 +11,7 @@ module LawSpec.Naming
 
 import Data.Char (isAlphaNum, isAscii, isDigit, isHexDigit, isLower, isUpper, toLower, toUpper)
 import qualified LawSpec.Core as C
-import Data.List (intercalate, stripPrefix, dropWhileEnd)
+import Data.List (intercalate, isPrefixOf, stripPrefix, dropWhileEnd)
 import qualified Data.Set as S
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.TestNames (lawWords, testIdentifier)
@@ -203,6 +203,10 @@ sourceDefinitionName name = unaliased (unspecialised name)
 -- | A type's words: List Int32 is list int32, a unit's Money is money.
 typeWords :: C.Type -> [String]
 typeWords ty = case ty of
+  -- An anonymous record's identity is its shape's digest: a record, told
+  -- apart by the digest's first eight digits (DEC-record-display-names).
+  C.Constructor n args | "lawspec::structural::" `isPrefixOf` n ->
+    ["record", take 8 (reverse (takeWhile (/= ':') (reverse n)))] ++ concat [typeWords t | C.TypeArgument t <- args]
   C.Constructor n args -> nameWords (lastSegment n) ++ concat [typeWords t | C.TypeArgument t <- args]
   C.TypeVariable _ -> ["value"]
   C.Arrow a b -> typeWords a ++ ["to"] ++ typeWords b

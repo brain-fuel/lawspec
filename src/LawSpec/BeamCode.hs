@@ -189,8 +189,9 @@ moduleHeader :: String -> String -> [(String,Int)] -> [D.Doc] -> D.Doc
 moduleHeader header name exports body = D.text header <> D.hardline <>
   D.text "-module(" <> atom name <> D.text ")." <> D.hardline <>
   D.text "-export(" <> array [atom n <> D.text ("/" ++ show arity) | (n,arity) <- exports] <>
-  D.text ")." <> D.hardline <> D.hardline <>
-  D.joinWith (D.hardline <> D.hardline) body <> D.hardline
+  D.text ")." <> D.hardline <>
+  -- A module with nothing in it ends at its exports, as erlfmt leaves it.
+  (if null body then mempty else D.hardline <> D.joinWith (D.hardline <> D.hardline) body <> D.hardline)
 
 -- | Both camelCase and acronym names get ordinary snake_case spellings.
 -- Collisions are diagnosed by the caller after this final normalization.
