@@ -856,7 +856,7 @@ armDoc (ArmOf pat guard body) = case unblocked body of
   where
     -- (a pattern that fits with its arrow stays on one line)
     patternDoc = case oneLine pat of
-      Just t -> D.prefixChoice (t ++ " =>") (D.text t) (expr pat)
+      Just t -> D.fitsIndented 0 (width (t ++ " =>")) (D.text t) (expr pat)
       Nothing -> expr pat
     headDoc = patternDoc <> maybe mempty (\g -> D.text " if " <> maybe (expr g) D.text (oneLine g)) guard <> D.text " =>"
     -- A block that only holds a value is that value.

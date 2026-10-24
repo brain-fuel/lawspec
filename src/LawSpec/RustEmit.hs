@@ -230,9 +230,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         statements [Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <>
           Doc.text ("pub mod " ++ name ++ ";") | (name, filename) <- sortOn fst modules] <> Doc.hardline)
       files = units ++ [Artifact "src/lawspec_native.rs"
-        (Doc.render layout (Doc.text "// Generated native conversions. Do not edit." <> Doc.hardline <>
-         Doc.text "#![allow(unused_imports, non_snake_case)]" <> Doc.hardline <>
-         Doc.text "use crate::lawspec_runtime as ls;" <> Doc.hardline <> nativeConversions <> Doc.hardline))
+        (Doc.render layout (Doc.text "// Generated native conversions. Do not edit." <>
+         (if mentions "ls" nativeConversions then Doc.hardline <> Doc.text "use crate::lawspec_runtime as ls;" else mempty) <>
+         (if null (Doc.render Doc.Compact nativeConversions) then mempty else Doc.hardline <> Doc.hardline <> nativeConversions) <> Doc.hardline))
         "generated" "source" | hasNativeTypes] ++ [Artifact "src/lawspec_data.rs" nativeData "generated" "source" | not (null planDataDeclarations)] ++ [Artifact "src/lawspec_schema.rs" schema "generated" "source" | hasSchema] ++
         [Artifact "src/lawspec_definitions.rs" definitions "generated" "source" | hasDefinitions] ++
         [Artifact "src/lawspec_abilities.rs" abilitySource "generated" "source" | hasAbilities] ++
@@ -849,7 +849,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                       Doc.text (show (harnessRepeat h)), Doc.text (show (harnessRetries h)),
                       if isProperty then Doc.text "&[" <> Doc.joinWith (Doc.text ", ") [Doc.text ("(" ++ show c ++ ", ") <> string l <> Doc.text ")" | Cover c l _ <- harnessCover h] <> Doc.text "]" else Doc.text "&[]",
                       Doc.text (if isProperty && observed h then "true" else "false")] runner
-                else withStack turned
+                -- (a test the harness orders waits for its turn, not its file)
+                else if null (turn k) then withStack turned else onStack "ls::on_stack" turned
             testsOf = case (harnessSkip h, harnessKnownFailing h) of
               (Just reason, _) -> [Doc.text "#[test]" <> Doc.hardline <> Doc.text ("#[ignore = " ++ q (shown ++ ": " ++ reason) ++ "]") <> Doc.hardline <>
                 Doc.text "fn skipped() {}"]
