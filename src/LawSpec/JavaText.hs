@@ -1,7 +1,7 @@
 -- | One-line Java code read back into its calls, so code built as text (the
 -- typed definitions) wraps as Google Java Style wraps it: a call's
 -- arguments break 4 deeper inside its parentheses. Strings, characters and
--- anything unbalanced are kept whole.
+-- anything unbalanced are kept whole, and so are type arguments.
 module LawSpec.JavaText (javaText) where
 
 import qualified LawSpec.Code.Doc as D
@@ -37,12 +37,28 @@ pieces s = case s of
     Just (glue (Token (q : literal)) ps, remaining)
   _ -> token
   where
-    token = let (t, after) = break (`elem` ("(),\"'" :: String)) s
+    token = let (t, after) = tokenOf s
             in if null t then Nothing else do
               (ps, remaining) <- pieces after
               Just (glue (Token t) ps, remaining)
     glue (Token a) (Token b : rest) = Token (a ++ b) : rest
     glue p rest = p : rest
+
+-- | Text up to the next parenthesis, comma or quote, a comma between type
+-- arguments (Pair<A, B>, a < right after a name) included.
+tokenOf :: String -> (String, String)
+tokenOf = go (0 :: Int) []
+  where
+    go depth acc s = case s of
+      '<' : rest | named acc -> go (depth + 1) ('<' : acc) rest
+      '>' : rest | depth > 0 -> go (depth - 1) ('>' : acc) rest
+      ',' : rest | depth > 0 -> go depth (',' : acc) rest
+      c : rest | c `notElem` ("(),\"'" :: String) -> go depth (c : acc) rest
+      _ -> (reverse acc, s)
+    named acc = case acc of
+      c : _ -> isWord c
+      [] -> False
+    isWord c = c `elem` ('.' : '_' : '$' : ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'])
 
 itemsOf :: String -> Maybe ([[Piece]], String)
 itemsOf s = do

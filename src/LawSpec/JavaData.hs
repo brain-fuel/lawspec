@@ -396,7 +396,7 @@ codecSource layout names declarations = do
         if nativeRepresentation "java" name == Nothing then pure [] else do
           native <- typeDoc (handlesOf declarations) names [] ty
           pure [D.text ("case " ++ show name ++ " -> ") <> call "schema.scalar" [quoted name, D.text "bits", native <> D.text ".class"] <> D.text ";"]) primitives
-      let dataCases = [D.text ("case " ++ show (C.idText (C.dataId d)) ++ " -> ") <>
+      let dataCases = [D.text "case " <> caseTag (C.idText (C.dataId d)) <> D.text " -> " <>
             call (codecName (nativeName names d)) (map D.text ["schema", "bits", "symbols"] ++
               [D.text ("arguments.get(" ++ show i ++ ")") | i <- [0 .. length (C.dataParameters d) - 1]]) <> D.text ";"
             | d <- declarations]
@@ -559,8 +559,12 @@ codecSource layout names declarations = do
               -- A refined case implements its refined interface; the schema
               -- has already checked it builds this type.
               result = D.text "yield " <> (if gadt then call "LawSpecSchema.cast" [built] else built) <> D.text ";"
-          pure (D.text "case " <> quoted (C.idText (C.constructorId value)) <> D.text " -> " <>
+          pure (D.text "case " <> caseTag (C.idText (C.constructorId value)) <> D.text " -> " <>
             D.block 2 (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++ [result])))
+
+-- | A case's tag, which a long literal splits (E.quoted).
+caseTag :: String -> D.Doc
+caseTag = E.quoted
 
 typeVariablesOf :: C.Type -> [C.Id]
 typeVariablesOf ty = case ty of

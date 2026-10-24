@@ -187,7 +187,7 @@ remoteArtifacts target calls plan = case (target, remotes) of
       , "    return node.evaluate(address, h, list(args), a, r, TYPES, timeout=timeout)" ])) ++ "\n"
     pyQuote = literalFor "python"
     descriptor d = E.call "_d" [E.quoted d]
-    jdescriptor d = "LawSpecRuntime.descriptor(" ++ literalFor "java" d ++ ")"
+    jdescriptor d = jcall "LawSpecRuntime.descriptor" [Doc.text (literalFor "java" d)]
     jcall n args = Doc.group (Doc.text (n ++ "(") <> Doc.nest 4 (Doc.softbreak <> Doc.commaSep args) <> Doc.text ")")
     -- Java: Allman braces with Google's other rules (LawSpec's Java profile).
     jquote = literalFor "java"
@@ -224,8 +224,8 @@ remoteArtifacts target calls plan = case (target, remotes) of
           jcall "new Entry" [Doc.text (jquote (remoteDigest r)), jcall "new LawSpecRuntime.Definition"
             [ Doc.group (Doc.text "args ->" <> Doc.nest 4 (Doc.softline <> jcall call
                 (Doc.text "new java.util.HashMap<String, Object>()" : [Doc.text ("args.get(" ++ show i ++ ")") | i <- [0 .. length (remoteArguments r) - 1]])))
-            , jcall "List.of" (map (Doc.text . jdescriptor) (remoteArguments r))
-            , Doc.text (jdescriptor (remoteResult r)) ]]] <> Doc.text ";")))
+            , jcall "List.of" (map jdescriptor (remoteArguments r))
+            , jdescriptor (remoteResult r) ]]] <> Doc.text ";")))
       | r <- remotes, Just call <- [callable r] ] ++
       [ "  }"
       , ""

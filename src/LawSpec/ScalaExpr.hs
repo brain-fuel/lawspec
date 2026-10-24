@@ -172,8 +172,12 @@ renderExpression declarations bits local external = render . flattenLets
         condition <- render c
         yes <- render a
         no <- render b
-        pure (D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
-          D.softline <> D.text "else" <> D.nest 2 (D.softline <> no)))
+        -- Branches that are blocks keep their braces on the if's lines.
+        let block doc = take 1 (D.render D.Compact doc) == "{"
+        pure (if block yes || block no
+          then L.condition "if" (runtime "truth" [condition]) <> D.text " " <> yes <> D.text " else " <> no
+          else D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
+            D.softline <> D.text "else" <> D.nest 2 (D.softline <> no)))
       -- A chain of one operator is one condition, broken after each.
       ShortCircuit op _ _ -> do
         operands <- mapM render (chainOf op term)

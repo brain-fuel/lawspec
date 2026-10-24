@@ -11542,6 +11542,12 @@ public final class LawSpecRuntime
             + ": a law names one with `using`, or runs under each lawful handler");
   }
 
+  /** The handler installed for the ability, as the ability's native interface. */
+  public static <T> T handler(Map<String, Object> symbols, String ability, Class<T> type)
+  {
+    return type.cast(handler(symbols, ability));
+  }
+
   public static Value raiseFailure(String ability, Value value)
   {
     throw new Failure(ability, value);

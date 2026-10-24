@@ -103,6 +103,10 @@ bind :: String -> D.Doc -> D.Doc
 bind name value = case break (== '(') flat of
   (opening, '(' : _) | '\n' `notElem` flat, all (`notElem` (" {" :: String)) opening ->
     D.bestFit [D.text (prefix ++ flat), D.prefixChoice (prefix ++ opening ++ "(") (D.text prefix <> value) broken]
+  -- An if goes on the line after the =, as scalafmt puts it.
+  _ | take 4 flat == "if (" -> if '\n' `elem` flat
+        then D.text ("val " ++ name ++ " =") <> D.nest 2 (D.hardline <> value)
+        else D.group broken
   -- A value of several lines (a block) starts after the =.
   _ | '\n' `elem` flat -> D.text prefix <> value
   _ -> D.group broken

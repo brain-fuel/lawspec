@@ -288,7 +288,7 @@ emitDefinitions style layout bits declarations units = do
                     -- A Unit adapter is void natively.
                     else failing adapter (if resultType == scalarType "Unit"
                       then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
-                      else resultCodec <> D.text ".encode(" <> call <> D.text ")")
+                      else D.group (resultCodec <> D.nest 4 (D.softbreak <> E.call ".encode" [call])))
             _ -> Left "unknown Java definition"
           signature = E.call ("public static Value " ++ methodName index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.hardline
@@ -345,14 +345,14 @@ emitDefinitions style layout bits declarations units = do
         | otherwise -> do
             codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits . expressionType) args
             resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits (expressionType expression)
-            let call = E.call (handlerOf (operationAbility op) ++ "." ++ operationName op)
-                  [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
+            let call = D.group (handlerDoc (operationAbility op) <> D.nest 4 (D.softbreak <> E.call ("." ++ operationName op)
+                  [E.call (D.render D.Compact codec ++ ".decode") [value] | (codec, value) <- zip codecs values]))
             -- An operation that fails with E: a native handler throws
             -- LawSpecRuntime.Fail with a native E, which becomes the failure.
             pure $ failingAs (maybe [] pure (findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd)) $
               if expressionType expression == scalarType "Unit"
               then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
-              else resultCodec <> D.text ".encode(" <> call <> D.text ")"
+              else D.group (resultCodec <> D.nest 4 (D.softbreak <> E.call ".encode" [call]))
       _ -> Left "not an operation"
     -- The operations typed definitions perform, each a method over dynamic
     -- values that typed code calls.
@@ -379,6 +379,11 @@ emitDefinitions style layout bits declarations units = do
              D.text "nativeValue -> " <> codec <> D.text ".encode((" <> native <> D.text ") nativeValue)", D.text "() -> " <> call]
       _ -> call
     -- A handler from symbols, as its ability's Java interface.
+    -- The handler installed for an ability, as its native interface.
+    handlerDoc ability = case findAbility units ability of
+      Just (_, a) -> E.call "LawSpecRuntime.handler"
+        [D.text "symbols", E.quoted (abilityKey ability), D.text (abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a ++ ".class")]
+      Nothing -> E.call "LawSpecRuntime.handler" [D.text "symbols", E.quoted (abilityKey ability)]
     handlerOf ability = "((" ++ maybe "Object" (\(_, a) -> abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a)
       (findAbility units ability) ++
       ") LawSpecRuntime.handler(symbols, " ++ show (abilityKey ability) ++ "))"

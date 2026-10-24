@@ -12,8 +12,29 @@ import Data.List (find)
 -- | Strings are Java string literals (LawSpec.Code.Literal), wrapped only
 -- at spaces, so no generated literal can end early or change meaning and no
 -- word is split. ref:DEC-native-string-literals
+-- | A string literal; a long one (a structural record's name, with its
+-- hash) is literals joined, split after a :: where the line is too narrow.
 quoted :: String -> D.Doc
-quoted = jvmString "java"
+quoted s = case pieces s of
+  first : rest@(_ : _) | length s > 60 ->
+    D.group (jvmString "java" first <> D.nest 4 (mconcat [D.softline <> D.text "+ " <> jvmString "java" p | p <- rest]))
+  _ -> jvmString "java" s
+  where
+    -- After each ::, merged while a piece stays within 36 characters; a
+    -- longer piece (a hash) in pieces of 32, so a deeply nested line fits.
+    pieces = merge . concatMap chunks . cuts
+    chunks t = if length t > 40 then takeWhile (not . null) (map (take 32) (iterate (drop 32) t)) else [t]
+    cuts t = case breakAfter t of
+      (a, []) -> [a]
+      (a, b) -> a : cuts b
+    breakAfter t = go [] t
+      where
+        go acc (':' : ':' : more) = (reverse (':' : ':' : acc), more)
+        go acc (c : more) = go (c : acc) more
+        go acc [] = (reverse acc, [])
+    merge (a : b : more) | length a + length b <= 36 = merge ((a ++ b) : more)
+    merge (a : more) = a : merge more
+    merge [] = []
 
 -- | Arguments wrap when a call is too wide, in the Java style LawSpec follows.
 -- ref:DEC-readable-output-default
@@ -205,7 +226,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
             arms <- mapM (dataBranch dataName) branches
             let body = D.text "switch (" <> D.text dataName <> D.text ".tag())" <> D.hardline <>
                   D.block 2 (D.joinWith D.hardline
-                    (arms ++ [D.group (D.text "default ->" <> D.nest 4 (D.softline <> D.text "throw new IllegalArgumentException(\"invalid constructor\");"))]))
+                    (arms ++ [D.group (D.text "default ->" <> D.nest 4 (D.softline <> D.text "throw " <> call "new IllegalArgumentException" [quoted "invalid constructor"] <> D.text ";"))]))
             pure (call (schemaName ++ ".match") [ref,value,bits,D.text "symbols",
               D.multiline (D.text (dataName ++ " ->") <> D.nest 4 (D.hardline <> body))])
           Constructor name _ -> do
