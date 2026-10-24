@@ -341,16 +341,16 @@ expr e = case e of
   -- the type's brackets (<T as Trait>::f), as rustfmt does.
   Call (Atom path) args
     | '<' : inner <- path, (ty, rest) <- breakAs inner, Just t@(Type _ (_ : _)) <- parseType ty ->
-        D.prefixChoice (path ++ "(") (D.text path <> arguments Nothing "(" ")" 60 args)
-          (D.text "<" <> typeBroken t <> D.text rest <> arguments Nothing "(" ")" 60 args)
+        D.prefixChoice (path ++ "(") (D.text path <> arguments path Nothing "(" ")" 60 args)
+          (D.text "<" <> typeBroken t <> D.text rest <> arguments path Nothing "(" ")" 60 args)
     where
       breakAs str = go "" str
       go acc r = case r of
         [] -> (reverse acc, "")
         _ | take 4 r == " as " -> (reverse acc, r)
         c : r' -> go (c : acc) r'
-  Call f args -> expr f <> arguments Nothing "(" ")" 60 args
-  Macro name open close args -> D.text name <> arguments Nothing open close 60 args
+  Call f args -> expr f <> arguments (maybe "    " id (flat f)) Nothing "(" ")" 60 args
+  Macro name open close args -> D.text name <> arguments name Nothing open close 60 args
   Method {} -> chain e
   Field {} -> chain e
   Try a | isChain a -> chain e
@@ -368,8 +368,10 @@ expr e = case e of
   If c a b -> ifDoc c a b
   -- rustfmt measures a match's head in bytes: a scrutinee with wide
   -- characters that fits by width puts its brace on the next line.
+  -- (its brace goes on the next line when a scrutinee on one line leaves
+  -- no room for it)
   Match scrutinee arms
-    | Just t <- flat scrutinee, any (> '\x7f') t ->
+    | Just t <- flat scrutinee ->
         oneOf [ D.utf8Text ("match " ++ t ++ " ") <> armsDoc arms
               , D.text ("match " ++ t) <> D.hardline <> armsDoc arms
               , D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms ]
@@ -395,9 +397,11 @@ oneOf = D.bestFit
 -- within the width limit; otherwise the last argument overflows (its
 -- opening stays on the call's line) when it cannot fit on a line of its
 -- own; otherwise one argument per line.
-arguments :: Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
-arguments _ open close _ [] = D.text (open ++ close)
-arguments cap open close limit args =
+-- (callee is what the arguments follow: rustfmt lets a broken chain
+-- overflow only a callee shorter than an indent, such as Ok)
+arguments :: String -> Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
+arguments _ _ open close _ [] = D.text (open ++ close)
+arguments callee cap open close limit args =
   case mapM oneLine args of
     Just texts | fitsArguments limit open args texts
                , maybe True (\c -> width (open ++ intercalate ", " texts ++ close) <= c) cap ->
@@ -427,7 +431,16 @@ arguments cap open close limit args =
     initialTexts = [t | Just t <- map oneLine initial]
     -- An operation overflows only outside a nested call's budget.
     overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial &&
-      (isNothing cap || not (isInfix lastArg))
+      (isNothing cap || not (isInfix lastArg)) && (width callee < 4 || not (brokenChain lastArg))
+    brokenChain x = case x of
+      Prefix _ a -> brokenChain a
+      Try a -> brokenChain a
+      Cast a _ -> brokenChain a
+      _ -> isChain x && maybe True ((> 60) . width) (flat x) && not (lastCallKept x)
+    -- (a chain kept on one line up to its last call, which breaks)
+    lastCallKept x = case (chainPrefix x, snd (unchain x)) of
+      (Just p, links@(_ : _)) | LinkCall name _ _ <- last links -> width (p ++ "." ++ name ++ "(") <= 60
+      _ -> False
     isInfix x = case x of
       Infix {} -> True
       _ -> False
@@ -516,8 +529,8 @@ castType t = case parseType t of
 overflowing :: Maybe Int -> Expr -> D.Doc
 overflowing cap e = case e of
   -- Its closing delimiter is counted too.
-  Call f args | Just name <- flat f -> D.text name <> arguments (subtract (width name + 1) <$> cap) "(" ")" 60 args
-  Macro name open close args -> D.text name <> arguments (subtract (width name + 1) <$> cap) open close 60 args
+  Call f args | Just name <- flat f -> D.text name <> arguments name (subtract (width name + 1) <$> cap) "(" ")" 60 args
+  Macro name open close args -> D.text name <> arguments name (subtract (width name + 1) <$> cap) open close 60 args
   Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
   Try a@(Call {}) -> overflowing (subtract 1 <$> cap) a <> D.text "?"
   -- An overflowing cast breaks inside its value, then before as.
@@ -556,8 +569,11 @@ chainWith root' links' e = case chainOneLine of
   where
     -- The chain's links after its (possibly extended) root decide its width.
     chainOneLine = case (flat e, mapM (either oneLine oneLineLink) root' >> mapM oneLineLink links') of
-      (Just t, Just _) | width t <= 60 || length (snd (unchain e)) <= 1 -> Just t
+      (Just t, Just _) | width t <= 60 || children <= 1 -> Just t
       _ -> Nothing
+    -- (each ? is a child of the chain too)
+    children = length links' + length [() | LinkCall _ _ True <- links'] + length [() | Left (Try _) <- root'] +
+      length [() | Right _ <- root']
     rootDoc = mconcat (map (either expr linkDoc) root')
     -- After a block-like root (if, match, a block), links do not indent.
     -- (so does a root that cannot be on one line: its last line closes it)
@@ -606,7 +622,7 @@ unchain e = go e []
 
 linkDoc :: Link -> D.Doc
 linkDoc l = case l of
-  LinkCall name args tried -> D.text ("." ++ name) <> arguments Nothing "(" ")" 60 args <> (if tried then D.text "?" else mempty)
+  LinkCall name args tried -> D.text ("." ++ name) <> arguments ("." ++ name) Nothing "(" ")" 60 args <> (if tried then D.text "?" else mempty)
   LinkField name tried -> D.text ("." ++ name ++ (if tried then "?" else ""))
 
 -- | A link on one line within its call's width limit.
