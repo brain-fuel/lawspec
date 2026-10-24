@@ -226,9 +226,9 @@ test('immutable cache integrity is checked even when a consumer has no lockfile'
 test('concurrent revision resolutions cannot overwrite one another through FETCH_HEAD', async t => {
   const root = await setup(t), repository = await contract(path.join(root, 'git'), 'example.library');
   await exec('git', ['init', '--quiet', repository]);await publish(repository, '1.0.0');
-  const warm = await consumer(path.join(root, 'warm'), {'example.library': {version: '^1.0.0', git: repository}});await resolve(warm);
   await contract(repository, 'example.library', '2.0.0');await publish(repository, '2.0.0');
-  const projects = await Promise.all(['1.0.0','2.0.0'].map(version=>consumer(path.join(root, version), {'example.library': {version, git: repository, rev: 'v'+version}})));
+  const versions = ['1.0.0','2.0.0','1.0.0','2.0.0'];
+  const projects = await Promise.all(versions.map((version,index)=>consumer(path.join(root, String(index)), {'example.library': {version, git: repository, rev: 'v'+version}})));
   const results = await Promise.all(projects.map(project=>resolve(project)));
-  assert.deepEqual(results.map(result=>result.packages[0].version), ['1.0.0','2.0.0']);
+  assert.deepEqual(results.map(result=>result.packages[0].version), versions);
 });
