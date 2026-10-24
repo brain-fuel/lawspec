@@ -475,9 +475,11 @@ emitPlanFormatted minify target Plan{..} = do
         -- Gradle compiles Java beside Kotlin only in src/main/java, as it
         -- does LawSpecRuntime.java.
         [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "kotlin" && usesHarness] ++
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecDraws.kt" (runtimeSource "kotlin-draws") "generated" "test" | target == "kotlin" && usesHarness] ++
         -- Scala: the harness's Java runtime, beside the shared runtime, and
         -- the shrink-tree generators the tests draw from.
         [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "scala" && usesHarness] ++
+        [Artifact "src/test/scala/lawspec/testing/LawSpecDraws.scala" (runtimeSource "scala-draws") "generated" "test" | target == "scala" && usesHarness] ++
         [Artifact "src/test/scala/lawspec/testing/LawSpecGen.scala" (runtimeSource "scala-strategies") "generated" "test" | needsRuntime && target == "scala"] ++
         [Artifact "src/test/scala/lawspec/testing/LawSpecScalaStrategies.scala" (runtimeSource "scala-data-strategies") "generated" "test" | needsRuntime && target == "scala"] ++
         [Artifact "src/main/scala/lawspec/runtime/LawSpecScala.scala" (runtimeSource "scala-native") "generated" "source" | needsRuntime && target == "scala" && null dataFiles] ++

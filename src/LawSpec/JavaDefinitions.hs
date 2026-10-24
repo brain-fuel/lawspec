@@ -2,6 +2,7 @@
 module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, emitScalaDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
 
 import LawSpec.Core.Stages (stageFailures)
+import LawSpec.JvmLets (flattenLets)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
 import Data.Char (isAlphaNum, toUpper)
@@ -228,7 +229,7 @@ emitDefinitions style layout bits declarations units = do
              D.text "return resultCodec.decode(result);"]
       pure (signature <> D.hardline <> D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline body)))
     implementation contracts (index,d0) = do
-      let d = d0 { definitionBody = freshenShadowed (definitionBody d0) }
+      let d = d0 { definitionBody = freshenShadowed (flattenLets (definitionBody d0)) }
           args = definitionArguments d
           binders = args ++ nestedBinders (definitionBody d)
           -- Binders keep their source names.

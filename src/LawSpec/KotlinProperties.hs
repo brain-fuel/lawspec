@@ -165,7 +165,7 @@ emitTests Config{..} unit laws = do
       [ "io.kotest.core.spec.style.StringSpec", "io.kotest.core.test.TestScope", "io.kotest.property.checkAll", "io.kotest.property.Arb"
       , "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecSchema", "lawspec.runtime.LawSpecDataSchema"
       , "lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecKotlinCodecs", "lawspec.testing.LawSpecKotlinStrategies"
-      , "lawspec.testing.LawSpecScalars", "lawspec.testing.LawSpecTesting"
+      , "lawspec.testing.LawSpecScalars", "lawspec.testing.LawSpecTesting", "lawspec.testing.LawSpecDraws"
       , "lawspec.testing.lawspecFlatMap", "lawspec.testing.lawspecList", "lawspec.testing.lawspecChoice" ] ++
       map ("io.kotest.property.arbitrary." ++) ["int","map","bind","filter","constant","element"]
     -- A case's handlers and fixtures are in symbols; a case with neither
@@ -264,16 +264,16 @@ emitTests Config{..} unit laws = do
     -- supplier per step.
     drawDoc inp strategy name d = case d of
       C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))))
-      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecTesting.oneOf" (text "random" : [L.lambda [] [expr v] | v <- values])))
+      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecDraws.oneOf" (text "random" : [L.lambda [] [expr v] | v <- values])))
       C.DrawFrequency alternatives -> do
         options <- mapM (\(k, (w, a)) -> do
           let n = name ++ "Option" ++ show k
           (defs, body) <- drawDoc inp strategy n a
           pure (defs ++ [bindLambda n body], text (show w ++ " to " ++ n))) (zip [1 :: Int ..] alternatives)
-        pure (concatMap fst options, DrawValue (call "LawSpecTesting.frequency" (text "random" : map snd options)))
+        pure (concatMap fst options, DrawValue (call "LawSpecDraws.frequency" (text "random" : map snd options)))
       C.DrawSuchThat inner binder predicate limit -> do
         (defs, candidate) <- named (name ++ "Candidate") inner
-        pure (defs, DrawValue (L.trailingCall "LawSpecTesting.suchThat" [candidate, number limit, quoted strategy]
+        pure (defs, DrawValue (L.trailingCall "LawSpecDraws.suchThat" [candidate, number limit, quoted strategy]
           [localName (C.binderId binder)] [truth (expr predicate)]))
       C.DrawBind _ _ _ -> do
         -- A chain of draws is one block of bindings, not a block per draw.

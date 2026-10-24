@@ -78,8 +78,8 @@ runtimeFiles =
   , ("haskell-transports", "LawSpecTransports.hs")
   , ("haskell-data-strategies", "LawSpecDataStrategies.hs"), ("rust", "lawspec_runtime.rs")
   , ("rust-strategies", "lawspec_strategies.rs"), ("kotlin-strategies", "LawSpecStrategies.kt")
-  , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt"), ("kotlin-scalars", "LawSpecKotlinScalars.kt"), ("kotlin-testing", "LawSpecKotlinTesting.kt")
-  , ("scala-scalars", "LawSpecScalaScalars.scala"), ("scala-testing", "LawSpecScalaTesting.scala")
+  , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt"), ("kotlin-scalars", "LawSpecKotlinScalars.kt"), ("kotlin-testing", "LawSpecKotlinTesting.kt"), ("kotlin-draws", "LawSpecKotlinDraws.kt")
+  , ("scala-scalars", "LawSpecScalaScalars.scala"), ("scala-testing", "LawSpecScalaTesting.scala"), ("scala-draws", "LawSpecScalaDraws.scala")
   , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt")
   -- Scala, over the shared JVM runtime.
   , ("scala-native", "LawSpecScala.scala"), ("scala-codecs", "LawSpecScalaCodecs.scala")

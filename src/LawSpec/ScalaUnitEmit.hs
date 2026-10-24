@@ -32,10 +32,15 @@ import LawSpec.Search (lawDescriptors, searchable)
 -- | The adapter object and test suite of one unit.
 emitScalaUnit :: Integer -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u allLaws = do
-  tests <- document <$> ScalaProperties.emitTests properties u ls
+  whole <- document <$> ScalaProperties.emitTests properties u ls
+  -- A unit whose tests would be one very long file has a file per law.
+  testArtifacts <- if minify || length (lines whole) <= 20000 then pure [Artifact testPath whole "generated" "test"] else do
+    (suite, traits) <- ScalaProperties.emitSplitTests properties u ls
+    pure (Artifact testPath (document suite) "generated" "test" :
+      [Artifact ("src/test/scala/" ++ directory ++ name ++ ".scala") (document doc) "generated" "test" | (name, doc) <- traits])
   stub <- either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right stubDoc
   models <- modelTestArtifacts "scala" bits dataDeclarations definitions u
-  pure (models ++ [Artifact stubPath stub "user" "source", Artifact testPath tests "generated" "test"])
+  pure (models ++ [Artifact stubPath stub "user" "source"] ++ testArtifacts)
   where
     document = Doc.render (Doc.selectLayout minify ScalaLayout.scalaStyle)
     java = either error id
@@ -46,6 +51,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     path = intercalate "/" (init parts ++ [cls])
     stubPath = "src/main/scala/" ++ path ++ ".scala"
     testPath = "src/test/scala/" ++ path ++ "LawSpecTest.scala"
+    directory = concatMap (++ "/") (init parts)
     qualifiedCls = if null pkg then cls else pkg ++ "." ++ cls
     adapterDeclarations = [d | d <- C.unitDeclarations u, C.declarationId d `notElem` map fst definitions]
     custom = ScalaData.requiresSchema dataDeclarations

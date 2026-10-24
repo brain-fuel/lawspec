@@ -4,7 +4,7 @@
 -- keep the source's binder names, and use the runtime's checks and
 -- generators (LawSpecTesting, LawSpecScalars), so a test file holds only
 -- its laws. ref:DEC-readable-output-default
-module LawSpec.ScalaProperties (Config(..), emitTests) where
+module LawSpec.ScalaProperties (Config(..), emitTests, emitSplitTests) where
 
 import LawSpec.Bounds (inputRange, drawRange)
 import qualified LawSpec.Core as C
@@ -98,7 +98,16 @@ comment indentation = mconcat . map (L.comment (80 - indentation))
 -- trees, so they run with the tools a Scala project already uses.
 -- ref:DEC-native-property-frameworks ref:DEC-scala-property-library
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
-emitTests Config{..} unit laws = do
+emitTests config unit laws = fst <$> emitTestsWith False config unit laws
+
+-- | A unit's tests in files of their own when one file would be too long to
+-- read (or for scalafmt to lay out): the object of shared values and the
+-- suite class, then each law's trait, named after the unit, in its own file.
+emitSplitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] (D.Doc, [(String, D.Doc)])
+emitSplitTests = emitTestsWith True
+
+emitTestsWith :: Bool -> Config -> Unit -> [Expanded] -> Either [Diagnostic] (D.Doc, [(String, D.Doc)])
+emitTestsWith split Config{..} unit laws = do
   let testNames = unitTestNames "scala" (map name laws)
   generated <- mapM (law testNames) (zip [0::Int ..] laws)
   let lawDocs = map snd generated
@@ -108,13 +117,13 @@ emitTests Config{..} unit laws = do
       -- a method's bytecode and a class's constant pool.
       lawFunctions = uniqueFunctions (map (functionName . name) laws ++ ["benchmark" ++ capital (functionName n) | (n, _) <- benchmarks])
       registrations = [(n, comments, doc) | (n, (comments, doc)) <- zip lawFunctions (lawDocs ++ map benchmark benchmarks)]
-      traitName n = capital n ++ "Law"
+      traitName n = (if split then className else "") ++ capital n ++ "Law"
       registration (n, comments, doc) = comments <>
         braced (D.group (text ("trait " ++ traitName n) <> D.nest 4 (D.softline <> text "extends AnyFunSuite" <>
           (if parallel then D.softline <> text "with lawspec.testing.LawSpecParallel" else mempty))))
           ([text "protected def registerTest(name: String)(body: => Unit): Unit" | orderRandom] ++
            [D.group (text ("def register" ++ capital n ++ "()") <> D.nest 4 (D.softbreak <> text ": Unit =")) <> text " " <> L.block [doc]])
-      parents = ["AnyFunSuite"] ++ ["lawspec.testing.LawSpecParallel" | parallel] ++ [testClass ++ "." ++ traitName n | (n, _, _) <- registrations]
+      parents = ["AnyFunSuite"] ++ ["lawspec.testing.LawSpecParallel" | parallel] ++ [(if split then "" else testClass ++ ".") ++ traitName n | (n, _, _) <- registrations]
       header = D.group (text ("class " ++ testClass) <> D.nest 4 (D.softline <> text ("extends " ++ head parents) <>
         mconcat [D.softline <> text ("with " ++ p) | p <- tail parents]))
       classBody = separate (statements ([text ("import " ++ testClass ++ ".*")] ++
@@ -125,24 +134,30 @@ emitTests Config{..} unit laws = do
         [call "lawspec.testing.LawSpecHarness.parallelism" [quoted unitLabel, quoted "tests on a thread per processor (LawSpecParallel)",
            text "Runtime.getRuntime().availableProcessors()"] | parallel] ++
         ordered [text ("register" ++ capital n ++ "()") | (n, _, _) <- registrations])
-      members = [text "// The machine profile's integer width." <> D.hardline <> text ("private val MachineBits = " ++ show machineBits)] ++
-        [text "private val Schema = LawSpecDataSchema.create()" | usesSchema] ++
+      members = [text "// The machine profile's integer width." <> D.hardline <> text (visibility ++ "val MachineBits = " ++ show machineBits)] ++
+        [text (visibility ++ "val Schema = LawSpecDataSchema.create()") | usesSchema] ++
         [statements [bind' n codec | (n, codec) <- codecs] | not (null codecs)] ++
-        map contract (contracts unit) ++ sharedCases ++ map registration registrations
+        map contract (contracts unit) ++ sharedCases ++ (if split then [] else map registration registrations)
       code = D.render D.Compact (separate ([doc | (_, _, doc) <- registrations] ++ sharedCases ++ map contract (contracts unit)))
       codecs = [(n, codec) | (n, codec) <- codecValues, n `elem` identifiers code]
-      bind' n codec = D.group (text ("private val " ++ n ++ " =") <> D.nest 2 (D.softline <> codec))
+      bind' n codec = D.group (text (visibility ++ "val " ++ n ++ " =") <> D.nest 2 (D.softline <> codec))
       usesSchema = "Schema" `elem` identifiers (code ++ " " ++ concatMap (D.render D.Compact . snd) codecs)
       body = separate [braced (text ("object " ++ testClass)) [separate members], header <> text " " <> L.block [classBody]]
       rendered = D.render D.Compact body
       used = identifiers rendered
-      imports = sort (nub ([i | i <- candidateImports, simpleName i `elem` used] ++
-        ["scala.jdk.CollectionConverters.*" | any (`elem` used) ["asScala", "asJava"]] ++ extraImports))
-  pure $ text ("// " ++ generatedHeader sourceFile) <> D.hardline <>
-    (if null packageName then mempty else text ("package " ++ packageName) <> D.hardline <> D.hardline) <>
-    (if null imports then mempty else statements [text ("import " ++ i) | i <- imports] <> D.hardline <> D.hardline) <>
-    body <> D.hardline
+      importsFor used' = sort (nub ([i | i <- candidateImports, simpleName i `elem` used'] ++
+        ["scala.jdk.CollectionConverters.*" | any (`elem` used') ["asScala", "asJava"]] ++ extraImports))
+      file imports content = text ("// " ++ generatedHeader sourceFile) <> D.hardline <>
+        (if null packageName then mempty else text ("package " ++ packageName) <> D.hardline <> D.hardline) <>
+        (if null imports then mempty else statements [text ("import " ++ i) | i <- imports] <> D.hardline <> D.hardline) <>
+        content <> D.hardline
+      -- A law's own file reads the shared values from the suite's object.
+      traitFile r@(n, _, _) =
+        let doc = registration r
+        in (traitName n, file (importsFor (identifiers (D.render D.Compact doc)) ++ [testClass ++ ".*"]) doc)
+  pure (file (importsFor used) body, if split then map traitFile registrations else [])
   where
+    visibility = if split then "" else "private "
     -- Binders keep their source names (LawSpec.JvmNames).
     inputId = local . C.binderId . C.quantifiedBinder
     localName = local
@@ -168,7 +183,7 @@ emitTests Config{..} unit laws = do
       , "lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecDataSchema", "lawspec.runtime.LawSpecRuntime"
       , "lawspec.runtime.LawSpecSchema", "lawspec.runtime.LawSpecScala", "lawspec.runtime.LawSpecScalaCodecs"
       , "lawspec.testing.Arb", "lawspec.testing.LawSpecProperty", "lawspec.testing.LawSpecScalaStrategies"
-      , "lawspec.testing.LawSpecScalars", "lawspec.testing.LawSpecTesting" ]
+      , "lawspec.testing.LawSpecScalars", "lawspec.testing.LawSpecTesting", "lawspec.testing.LawSpecDraws" ]
     -- A case's handlers and fixtures are in symbols; a case with neither
     -- does not make it.
     withSymbols docs = if "symbols" `elem` identifiers (D.render D.Compact (statements docs)) then symbols : docs else docs
@@ -267,13 +282,13 @@ emitTests Config{..} unit laws = do
     -- supplier per step.
     drawDoc inp strategy name d = case d of
       C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))))
-      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecTesting.oneOf" (text "random" : [supplier (expr v) | v <- values])))
+      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecDraws.oneOf" (text "random" : [supplier (expr v) | v <- values])))
       C.DrawFrequency alternatives -> do
         options <- mapM (\(k, (w, a)) -> do
           let n = name ++ "Option" ++ show k
           (defs, body) <- drawDoc inp strategy n a
           pure (defs ++ [method n (drawValue body)], text ("(" ++ show w ++ ", () => " ++ n ++ "())"))) (zip [1 :: Int ..] alternatives)
-        pure (concatMap fst options, DrawValue (call "LawSpecTesting.frequency" (text "random" : map snd options)))
+        pure (concatMap fst options, DrawValue (call "LawSpecDraws.frequency" (text "random" : map snd options)))
       C.DrawSuchThat inner binder predicate limit -> do
         (defs, candidate) <- named (name ++ "Candidate") inner
         pure (defs, DrawValue (harness "suchThat" [candidate,
@@ -326,7 +341,7 @@ emitTests Config{..} unit laws = do
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
           require stage ps = runtime "requireContract" [L.conjunction (map (truth . expr) ps),context stage ps]
           invocation = awaitResult (adapterName unit (C.contractDeclaration c)) (call (qualifiedAdapter ++ "." ++ adapterName unit (C.contractDeclaration c)) [nativeArgument ty (text n) | (n,ty) <- args])
-      in braced (L.parameters (text ("private def " ++ contractMethod (contractName c))) params <> text ": LawSpecRuntime.Value =")
+      in braced (L.parameters (text (visibility ++ "def " ++ contractMethod (contractName c))) params <> text ": LawSpecRuntime.Value =")
           [require "precondition" (contractPreconditions c),
            bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),text rn]
     qualifiedAdapter = if null packageName then className else packageName ++ "." ++ className
@@ -377,7 +392,7 @@ emitTests Config{..} unit laws = do
             [bracketed e [if sharedBoundaries then call helper [quoted context, text "symbols", valuesArray]
             else assertionDoc context (assertion e)]]) | (i,values) <- zip [0::Int ..] boundaryValues
             , let context = linked e (shown ++ " boundary " ++ show (i + 1))]
-          sharedDocs = [braced (L.parameters (text ("private def " ++ helper))
+          sharedDocs = [braced (L.parameters (text (visibility ++ "def " ++ helper))
               [text "context: String", text "symbols: LawSpecScala.Symbols", text "values: Array[LawSpecRuntime.Value]"] <> text ": Unit =")
             ([bind n (text ("values(" ++ show i ++ ")")) | (i,n) <- zip [0::Int ..] names] ++
               [contextualAssertion (const (text "context")) (assertion e)]) | sharedBoundaries, C.harnessSkip h == Nothing]
