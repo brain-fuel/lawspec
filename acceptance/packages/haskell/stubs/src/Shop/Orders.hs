@@ -1,32 +1,34 @@
--- User-owned LawSpec adapter.
+-- User-owned LawSpec adapter for shop.orders: implement each function.
 module Shop.Orders where
 
-import Prelude
-import qualified Prelude as P
-import qualified Data.Int as I
-import qualified Data.Word as W
-import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.Complex as C
-import qualified LawSpecRuntime as LS
+import qualified Data.Int as I
+import qualified Data.Text as T
+import qualified Data.Word as W
 import qualified LawSpecData as Data
+import qualified LawSpecRuntime as LS
+import Prelude
+import qualified Prelude as P
 
--- (shop.orders::type::Currency -> shop.domain::type::Currency)
+-- settlement :: shop.orders::type::Currency -> shop.domain::type::Currency —
+-- orders.lawspec:13
 settlement :: Data.ShopOrdersCurrency -> Data.ShopDomainCurrency
-settlement _ = error "settlement"
+settlement _ = P.error "settlement"
 
--- (shop.orders::type::Line -> shop.domain::type::Money)
+-- lineTotal :: shop.orders::type::Line -> shop.domain::type::Money —
+-- orders.lawspec:14
 lineTotal :: Data.Line -> Data.Money
-lineTotal _ = error "lineTotal"
+lineTotal _ = P.error "lineTotal"
 
--- (Int64 -> (Int64 -> Int64))
+-- cheaper :: Int64 -> Int64 -> Int64 — orders.lawspec:17
 cheaper :: I.Int64 -> I.Int64 -> I.Int64
-cheaper _ _ = error "cheaper"
+cheaper _ _ = P.error "cheaper"
 
--- (Int64 -> Int64)
+-- roundDown :: Int64 -> Int64 — orders.lawspec:18
 roundDown :: I.Int64 -> I.Int64
-roundDown _ = error "roundDown"
+roundDown _ = P.error "roundDown"
 
--- (Int64 -> shop.tax.v2x0x0.rates::type::Band)
+-- classify :: Int64 -> shop.tax.v2x0x0.rates::type::Band — orders.lawspec:19
 classify :: I.Int64 -> Data.ShopTaxV2x0x0RatesBand
-classify _ = error "classify"
+classify _ = P.error "classify"

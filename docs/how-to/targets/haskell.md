@@ -139,5 +139,29 @@ as its shrink limit.
 
 ## Formatting
 
-Output uses an 80-column layout with spaces. See
+Output is what `ormolu` writes: LawSpec lays it out itself, so generation
+needs no formatter, and LawSpec's own acceptance checks every generated
+project with `ormolu --mode check` (ormolu 0.9.0.0). Lines are kept near 80
+columns, which ormolu leaves as they are; expressions are printed by
+precedence, so an argument is parenthesised only when it is not an atom.
+`--minify` allows a compact layout. See
 [formatting](../../reference/formatting.md).
+
+## Names
+
+Generated code uses the specification's names. Binders keep their source
+names; a checked definition is a function named after it
+(`Definitions.feeModel`, `Typed.feeModel`), with `_2` only when two would
+share a name; typed conversions are named after their type (`toPayment`,
+`fromNativeListInt32`). A test is named after its law and example:
+`lawNormalizersAgree_spacesBecomeHyphensPunctuationIsPreserved`, and
+`_boundary1`, `_property`. An anonymous record is a data type named from
+where it is used: the payload of a `Push` case is `PushDetails`. Each test,
+definition and handler has a comment linking it to its source line, and text
+is written as Haskell string literals (`LS.textScalar "café"`).
+
+What every test shares is in the runtime: `LawSpecTesting.assertEqual`, the
+seeded Hedgehog check (`holds`), `LawSpecSchema.checked` and its kin, and
+`LawSpecCodecs.call1` to `call8`, which call an adapter with checked,
+evaluated arguments. A test module names its machine width (`machineBits`),
+schema and scalar codecs once, and imports only what it uses.

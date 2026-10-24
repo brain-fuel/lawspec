@@ -77,7 +77,7 @@ Generated native code uses highlight.js.
 | Python | `ruff format` with its default settings (88 columns), checked byte for byte by acceptance |
 | JavaScript, TypeScript | Prettier with its default settings (80 columns), checked byte for byte by acceptance |
 | Go | `gofmt` of a pinned Go release (1.26.5), checked byte for byte by acceptance |
-| Haskell | 80 columns, spaces for indentation |
+| Haskell | `ormolu` (0.9.0.0), near 80 columns, checked byte for byte by acceptance |
 | Rust | `rustfmt` |
 
 Generated scaffolds are readable too: `init` expands Maven POMs and Gradle

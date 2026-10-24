@@ -1,7 +1,7 @@
 expect: shipping gives a shipped order
 @@ src/Example/Matchers.hs
 <<<<<<<
-ship n = Data.OrderShipped (Data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911 (T.pack "post") n)
+ship n = Data.OrderShipped (Data.ShippedDetails (T.pack "post") n)
 =======
 ship n = Data.OrderPending n
 >>>>>>>

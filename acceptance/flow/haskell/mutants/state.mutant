@@ -1,6 +1,6 @@
 @@ src/Example/Flow.hs
 <<<<<<<
-pop (Data.StackPush (Data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be rest top)) = Data.PopFlow top rest
+pop (Data.StackPush (Data.PushDetails rest top)) = Data.PopFlow top rest
 =======
-pop stack@(Data.StackPush (Data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be _ top)) = Data.PopFlow top stack
+pop stack@(Data.StackPush (Data.PushDetails _ top)) = Data.PopFlow top stack
 >>>>>>>

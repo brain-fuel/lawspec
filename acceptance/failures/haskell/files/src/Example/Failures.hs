@@ -32,5 +32,5 @@ refund cents
 settle :: I.Int32 -> P.IO I.Int32
 settle cents
   | cents < 0 = E.throwIO (LS.Fail Data.PaymentErrorBlocked)
-  | cents == 0 = E.throwIO (LS.Fail (Data.PaymentErrorDeclined (Data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7 (T.pack "there is nothing to settle"))))
+  | cents == 0 = E.throwIO (LS.Fail (Data.PaymentErrorDeclined (Data.DeclinedDetails (T.pack "there is nothing to settle"))))
   | otherwise = P.pure cents

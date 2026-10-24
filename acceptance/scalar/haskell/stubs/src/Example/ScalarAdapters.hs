@@ -1,70 +1,71 @@
--- User-owned LawSpec adapter.
+-- User-owned LawSpec adapter for example.scalar_adapters: implement each function.
 module Example.ScalarAdapters where
 
-import Prelude
-import qualified Prelude as P
-import qualified Data.Int as I
-import qualified Data.Word as W
-import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.Complex as C
-import qualified LawSpecRuntime as LS
+import qualified Data.Int as I
+import qualified Data.Text as T
+import qualified Data.Word as W
 import qualified LawSpecData as Data
+import qualified LawSpecRuntime as LS
+import Prelude
+import qualified Prelude as P
 
--- (Char -> Char)
+-- echoChar :: Char -> Char — scalar_adapters.lawspec:2
 echoChar :: P.Char -> P.Char
-echoChar _ = error "echoChar"
+echoChar _ = P.error "echoChar"
 
--- (CodePoint -> CodePoint)
+-- echoCodePoint :: CodePoint -> CodePoint — scalar_adapters.lawspec:3
 echoCodePoint :: P.Char -> P.Char
-echoCodePoint _ = error "echoCodePoint"
+echoCodePoint _ = P.error "echoCodePoint"
 
--- (CodeUnit16 -> CodeUnit16)
+-- echoCodeUnit :: CodeUnit16 -> CodeUnit16 — scalar_adapters.lawspec:4
 echoCodeUnit :: W.Word16 -> W.Word16
-echoCodeUnit _ = error "echoCodeUnit"
+echoCodeUnit _ = P.error "echoCodeUnit"
 
--- (Bytes -> Bytes)
+-- echoBytes :: Bytes -> Bytes — scalar_adapters.lawspec:5
 echoBytes :: B.ByteString -> B.ByteString
-echoBytes _ = error "echoBytes"
+echoBytes _ = P.error "echoBytes"
 
--- (Complex64 -> Complex64)
+-- echoComplex :: Complex64 -> Complex64 — scalar_adapters.lawspec:6
 echoComplex :: (C.Complex P.Float) -> (C.Complex P.Float)
-echoComplex _ = error "echoComplex"
+echoComplex _ = P.error "echoComplex"
 
--- (Int8 -> Integer)
+-- successor :: Int8 -> Integer — scalar_adapters.lawspec:7
 successor :: I.Int8 -> LS.IntegerValue
-successor _ = error "successor"
+successor _ = P.error "successor"
 
--- (Int8 -> Int8)
+-- narrow :: Int8 -> Int8 — scalar_adapters.lawspec:8
 narrow :: I.Int8 -> I.Int8
-narrow _ = error "narrow"
+narrow _ = P.error "narrow"
 
--- (Decimal -> (Decimal -> Decimal))
+-- addDecimal :: Decimal -> Decimal -> Decimal — scalar_adapters.lawspec:9
 addDecimal :: LS.Decimal -> LS.Decimal -> LS.Decimal
-addDecimal _ _ = error "addDecimal"
+addDecimal _ _ = P.error "addDecimal"
 
--- (Symbol -> (Symbol -> Bool))
+-- sameSymbol :: Symbol -> Symbol -> Bool — scalar_adapters.lawspec:10
 sameSymbol :: LS.Symbol -> LS.Symbol -> P.Bool
-sameSymbol _ _ = error "sameSymbol"
+sameSymbol _ _ = P.error "sameSymbol"
 
--- (Utf16Text -> Utf16Text)
+-- echoRaw :: Utf16Text -> Utf16Text — scalar_adapters.lawspec:11
 echoRaw :: LS.Utf16Text -> LS.Utf16Text
-echoRaw _ = error "echoRaw"
+echoRaw _ = P.error "echoRaw"
 
--- (Optional (Nullable (Int8)) -> Optional (Nullable (Int8)))
+-- echoPresence :: Optional (Nullable (Int8)) -> Optional (Nullable (Int8)) —
+-- scalar_adapters.lawspec:12
 echoPresence ::
+  (LS.Optional (LS.Nullable I.Int8)) ->
   (LS.Optional (LS.Nullable I.Int8))
-  -> (LS.Optional (LS.Nullable I.Int8))
-echoPresence _ = error "echoPresence"
+echoPresence _ = P.error "echoPresence"
 
--- (Unit -> Unit)
+-- finish :: Unit -> Unit — scalar_adapters.lawspec:13
 finish :: () -> ()
-finish _ = error "finish"
+finish _ = P.error "finish"
 
--- (UInt64 -> UInt64)
+-- preserveBig :: UInt64 -> UInt64 — scalar_adapters.lawspec:14
 preserveBig :: W.Word64 -> W.Word64
-preserveBig _ = error "preserveBig"
+preserveBig _ = P.error "preserveBig"
 
--- (IntSize -> IntSize)
+-- machineEcho :: IntSize -> IntSize — scalar_adapters.lawspec:15
 machineEcho :: P.Int -> P.Int
-machineEcho _ = error "machineEcho"
+machineEcho _ = P.error "machineEcho"

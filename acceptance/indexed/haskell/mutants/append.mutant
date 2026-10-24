@@ -1,6 +1,6 @@
 @@ src/Example/Indexed.hs
 <<<<<<<
-append (Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec x xs)) ys = Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec x (append xs ys))
+append (Data.VecVCons (Data.VConsDetails x xs)) ys = Data.VecVCons (Data.VConsDetails x (append xs ys))
 =======
-append (Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec _ xs)) ys = append xs ys
+append (Data.VecVCons (Data.VConsDetails _ xs)) ys = append xs ys
 >>>>>>>

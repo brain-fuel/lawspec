@@ -227,9 +227,10 @@ application keeps it without naming it).
 The typed functions a handler's clauses call, and its start, are named from
 the definitions and the handler: a function's name is its definition's name,
 with a suffix only when two would otherwise share one, so an unrelated edit
-of the contract does not rename them. (Python, Go, JavaScript, TypeScript, F#, C# and the BEAM targets have these names from 0.30;
-the other targets keep a digest suffix until their readable-output release.) Generation depends only on the program: the compiler's cache
-the other targets keep a digest suffix until their readable-output release.) Generation depends only on the program: the compiler's cache
+of the contract does not rename them. (Python, Go, JavaScript, TypeScript,
+Haskell, F#, C# and the BEAM targets have these names from 0.30; the other
+targets keep a digest suffix until their readable-output release.)
+Generation depends only on the program: the compiler's cache
 is kept per compiler build, so a compiler rebuilt in place never reuses what
 another build made (`lawspec-dev bench kafka --deterministic` generates the
 model in process, with a cold and a warm cache, without one, and by the

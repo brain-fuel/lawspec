@@ -79,8 +79,15 @@ withNetworkModules target uses files
       | target == "haskell" && artifactPlacement a == "test" && "runIO (LS.useVirtualClock 0)" `isInfixOf` artifactContent a =
           a { artifactContent =
                 replace "runIO (LS.useVirtualClock 0)" "runIO (LS.useVirtualClock 0)\n  runIO LawSpecNetwork.install" $
-                replace "import qualified LawSpecRuntime as LS\n" "import qualified LawSpecRuntime as LS\nimport qualified LawSpecNetwork\n" (artifactContent a) }
+                withImport "import qualified LawSpecNetwork" (artifactContent a) }
       | otherwise = a
+    -- An import among the others, in ormolu's order (Prelude last).
+    withImport line content =
+      let (before, rest) = break (\l -> "import " `isPrefixOf` l && importKey l > importKey line) (lines content)
+      in unlines (before ++ [line] ++ rest)
+    importKey l = let ws = filter (/= "qualified") (drop 1 (words l)) in case ws of
+      m : _ -> (m == "Prelude", m)
+      [] -> (False, "")
     -- A test of a bound library crate uses the library's module.
     mountLibrary content = case [l | l <- lines content, "use " `isPrefixOf` l, "::lawspec_runtime;" `isInfixOf` l] of
       l : _ -> replace (l ++ "\n") (l ++ "\n" ++ replace "::lawspec_runtime;" "::lawspec_network;" l ++ "\n") content

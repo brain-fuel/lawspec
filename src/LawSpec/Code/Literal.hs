@@ -12,6 +12,7 @@ import Data.Char (ord)
 import qualified Data.IntMap.Strict as IM
 import Numeric (showHex)
 import LawSpec.DisplayWidthData (unprintableRanges)
+import LawSpec.HaskellUnicodeAge (newerThanGhc)
 
 -- | Which quote delimits a literal. Formatters such as ruff and Prettier pick
 -- the preferred quote unless the other needs fewer escapes.
@@ -106,7 +107,9 @@ stringSyntax target = case target of
     (\n -> if n < 0x10000 then "\\u" ++ hex 4 n else "\\U" ++ hex 8 n) (const Nothing)
   -- Haskell's \& ends a numeric escape before a following digit; decimal
   -- escapes are what show writes, so they are used throughout.
-  "haskell" -> StringSyntax (FixedQuote '"') (`lookup` common) (\n -> "\\" ++ show n ++ "\\&") (const Nothing)
+  -- GHC 9.10's lexer rejects characters newer than its Unicode 15.1.
+  "haskell" -> StringSyntax (FixedQuote '"') (`lookup` common) (\n -> "\\" ++ show n ++ "\\&")
+    (\c -> if newerThanGhc (ord c) then Just ("\\" ++ show (ord c) ++ "\\&") else Nothing)
   "erlang" -> StringSyntax (FixedQuote '"') (`lookup` common) (\n -> "\\x{" ++ showHex n "" ++ "}") (const Nothing)
   "elixir" -> StringSyntax (FixedQuote '"') (`lookup` common) (\n -> "\\u{" ++ showHex n "" ++ "}")
     (\c -> if c == '#' then Just "\\#" else Nothing)

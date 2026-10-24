@@ -1,4 +1,6 @@
-{-# LANGUAGE BangPatterns, ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- | Typed values for generated checked definitions and stateful spec
 -- handlers.
 --
@@ -16,7 +18,7 @@
 -- where typed and dynamic code meet. ref:DEC-typed-native-definitions
 module LawSpecFast where
 
-import Control.Exception (ErrorCall(..), throw, throwIO, try, evaluate, catch)
+import Control.Exception (ErrorCall (..), catch, evaluate, throw, throwIO, try)
 import qualified Data.ByteString as B
 import Data.Char (chr, ord)
 import qualified Data.Map.Strict as Map
@@ -24,7 +26,7 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Typeable (Typeable, cast)
 import Data.Word (Word8)
-import LawSpecRuntime (Scalar(..), Failure(..), Fail(..))
+import LawSpecRuntime (Fail (..), Failure (..), Scalar (..))
 import qualified LawSpecRuntime as LS
 
 -- | A list that shares its tail and knows its length.
@@ -60,7 +62,7 @@ outside :: String -> a
 outside t = throw (ErrorCall ("integer outside " ++ t ++ " range"))
 
 -- | An Integer into a bounded type, checked.
-narrow :: Num b => Integer -> Integer -> String -> Integer -> b
+narrow :: (Num b) => Integer -> Integer -> String -> Integer -> b
 narrow lo hi t v
   | v < lo || v > hi = outside t
   | otherwise = fromInteger v
@@ -87,7 +89,7 @@ bounds from to count =
   let clamp x = if x < 0 then 0 else if x > toInteger count then count else fromInteger x
       i = clamp from
       j = clamp to
-  in (i, if j < i then i else j)
+   in (i, if j < i then i else j)
 
 append :: List a -> List a -> List a
 append a b = foldr cons b (items a)
@@ -97,7 +99,7 @@ sliceList xs from to =
   let count = len xs
       (i, j) = bounds from to count
       rest = dropList i xs
-  in if j == count then rest else listOf (take (j - i) (items rest))
+   in if j == count then rest else listOf (take (j - i) (items rest))
   where
     dropList 0 ys = ys
     dropList _ Nil = Nil
@@ -141,7 +143,8 @@ utf8 t = B.pack (concatMap encode (T.unpack t))
       | n < 0x800 = [fromIntegral (0xc0 + n `div` 64), fromIntegral (0x80 + n `mod` 64)]
       | n < 0x10000 = [fromIntegral (0xe0 + n `div` 4096), fromIntegral (0x80 + (n `div` 64) `mod` 64), fromIntegral (0x80 + n `mod` 64)]
       | otherwise = [fromIntegral (0xf0 + n `div` 262144), fromIntegral (0x80 + (n `div` 4096) `mod` 64), fromIntegral (0x80 + (n `div` 64) `mod` 64), fromIntegral (0x80 + n `mod` 64)]
-      where n = ord c
+      where
+        n = ord c
 
 join :: T.Text -> List T.Text -> T.Text
 join separator parts = T.intercalate separator (items parts)
@@ -149,15 +152,15 @@ join separator parts = T.intercalate separator (items parts)
 regexMatches :: T.Text -> T.Text -> Bool
 regexMatches pattern text = either error id (LS.regexMatches (T.unpack pattern) (map ord (T.unpack text)))
 
-textOf :: Show a => a -> T.Text
+textOf :: (Show a) => a -> T.Text
 textOf = T.pack . show
 
 -- Maps and sets.
 
-lookupMap :: Ord k => k -> Map.Map k v -> Opt v
+lookupMap :: (Ord k) => k -> Map.Map k v -> Opt v
 lookupMap k m = maybe None Some (Map.lookup k m)
 
-keyValOf :: Ord k => (e -> k) -> (e -> v) -> List e -> Map.Map k v
+keyValOf :: (Ord k) => (e -> k) -> (e -> v) -> List e -> Map.Map k v
 keyValOf key value = foldl (\m e -> Map.insert (key e) (value e) m) Map.empty . items
 
 keysList :: Map.Map k v -> List k
@@ -169,7 +172,7 @@ valuesList = listOf . Map.elems
 entriesList :: (k -> v -> e) -> Map.Map k v -> List e
 entriesList entry = listOf . map (uncurry entry) . Map.toAscList
 
-setOf :: Ord a => List a -> Set.Set a
+setOf :: (Ord a) => List a -> Set.Set a
 setOf = Set.fromList . items
 
 -- Failures, as the dynamic code raises and catches them.
@@ -190,10 +193,11 @@ attempt ability body = do
 
 -- | A native handler's operation that fails with E: the native failure it
 -- throws becomes the failure.
-performing :: forall e a. Typeable e => String -> (e -> Scalar) -> IO a -> IO a
-performing ability convert action = action `catch` \problem@(Fail native) -> case cast native of
-  Just (value :: e) -> throwIO (Failure ability (convert value))
-  Nothing -> throwIO problem
+performing :: forall e a. (Typeable e) => String -> (e -> Scalar) -> IO a -> IO a
+performing ability convert action =
+  action `catch` \problem@(Fail native) -> case cast native of
+    Just (value :: e) -> throwIO (Failure ability (convert value))
+    Nothing -> throwIO problem
 
 -- Conversions with Scalar.
 

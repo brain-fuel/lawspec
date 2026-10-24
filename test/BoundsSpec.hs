@@ -38,4 +38,4 @@ test_generationStaysWithinRefinedBoundsOnEveryTarget = describe "refinement boun
     , ("go", "Range(1, 1000)")
     , ("java", "integers(1, 1000)")
     , ("kotlin", "1..1000")
-    , ("haskell", "(1) (1000)") ]
+    , ("haskell", "1 1000") ]

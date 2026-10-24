@@ -107,7 +107,24 @@ formatter target = do
         (\dir -> [root </> ".integration" </> t </> "node_modules/prettier/bin/prettier.cjs",
           "--check", "--no-config", "--no-editorconfig", "--ignore-path", dir </> ".no-ignore", dir])
         [".mjs", ".js", ".ts", ".mts"] ["test/locks" </> t </> "package-lock.json"]))
+    -- ormolu has no configuration; its version is pinned in
+    -- test/locks/haskell/ormolu.txt and checked before it runs.
+    "haskell" -> do
+      pinned <- takeWhile (not . isSpace) . dropWhile isSpace . unwords . filter (not . ("#" `isPrefixOf'`)) . lines
+        <$> readFile' (root </> "test/locks/haskell/ormolu.txt")
+      -- A file ormolu has passed is remembered by its content, so the
+      -- runtimes every project copies are checked once.
+      let cache = root </> ".artifacts/formatted-cache/ormolu-" ++ pinned
+          script = "found=$(ormolu --version | head -n 1); " ++
+            "if [ \"$found\" != \"ormolu " ++ pinned ++ "\" ]; then echo \"ormolu " ++ pinned ++ " is required; found: $found\"; exit 2; fi; " ++
+            "mkdir -p '" ++ cache ++ "'; " ++
+            "find \"$1\" -name '*.hs' | sort | while IFS= read -r f; do " ++
+            "h=$(shasum -a 256 \"$f\" | cut -d ' ' -f 1); " ++
+            "if [ ! -e '" ++ cache ++ "'/\"$h\" ]; then ormolu --mode check \"$f\" || exit 1; touch '" ++ cache ++ "'/\"$h\"; fi; done"
+      pure (Just (Formatter ("ormolu " ++ pinned) "sh" (\dir -> ["-c", script, "sh", dir]) [".hs"]
+        ["test/locks/haskell/ormolu.txt"]))
     _ -> pure Nothing
+  where isPrefixOf' p s = take (length p) s == p
 
 -- | The Fantomas version a dotnet tool manifest pins.
 fantomasVersion :: String -> String
