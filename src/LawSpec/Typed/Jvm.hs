@@ -339,7 +339,7 @@ dataDoc env d = do
       variants = dataConstructors d
       line = javaText
       header = if length (dataName d ++ idText (dataId d)) > 80
-        then D.joinWith D.hardline (map line ["/**", " * " ++ dataName d, " * (" ++ idText (dataId d) ++ ").", " */"])
+        then D.joinWith D.hardline (map line (["/**", " * " ++ dataName d] ++ [" * " ++ w | w <- idLines (idText (dataId d))] ++ [" */"]))
         else line ("/** " ++ dataName d ++ " (" ++ idText (dataId d) ++ "). */")
       codecParams = [("LawSpecFast.Codec<" ++ p ++ "> c" ++ show k) | (k, (_, p)) <- zip [0 :: Int ..] parameters]
       -- A plain key is a literal, which splits when long.
@@ -377,7 +377,7 @@ dataDoc env d = do
           , line ("public " ++ name ++ generics ++ " decode(LawSpecRuntime.Value value)") <> D.hardline <> D.block 2 (
               line "var d = LawSpecFast.fields(value);" <> D.hardline <>
               line "switch (d.tag())" <> D.hardline <> D.block 2 (D.joinWith D.hardline
-                (zipWith decodeArm variants fieldCodecs ++ [line ("default -> throw new IllegalArgumentException(\"expected " ++ dataName d ++ ", found \" + d.tag());")]))) ]) <> line ";" ])
+                (zipWith decodeArm variants fieldCodecs ++ [D.group (line "default ->" <> D.nest 4 (D.softline <> line "throw " <> jcall "new IllegalArgumentException" [E.quoted ("expected " ++ dataName d ++ ", found ") <> line " + d.tag()"] <> line ";"))]))) ]) <> line ";" ])
       toStringDoc c = line "@Override" <> D.hardline <> braced "public String toString()"
         (D.group (line ("return " ++ show (constructorName c) ++ " +") <> D.nest 4 (D.softline <>
           E.call "java.util.List.of" (map (line . fieldName) (constructorFields c)))) <> line ";")
@@ -636,9 +636,9 @@ cexpr env scope e
         let witness = "<" ++ lt ++ ", " ++ rt ++ ">"
             blockOf ss = D.hardline <> D.block 2 (D.joinWith D.hardline ss)
         pure ([ javaText (ty ++ " " ++ t ++ ";")
-              , javaText "try" <> blockOf (s ++ [javaText (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "right(") <> x <> javaText ");"]) <>
+              , javaText "try" <> blockOf (s ++ [relaid (javaText (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "right(") <> x <> javaText ");")]) <>
                 D.hardline <> javaText "catch (LawSpecRuntime.Failure failure)" <> blockOf
-                  [ braced ("if (!failure.ability.equals(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ "))") (javaText "throw failure;")
+                  [ braced ("if (!failure.ability.equals(" ++ show (abilityKey ref) ++ "))") (javaText "throw failure;")
                   , javaText (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "left(" ++ codec ++ ".decode(failure.value));") ] ], D.text t)
       Helper Append [a, b] -> do
         (sa, xa) <- cexpr env scope a
@@ -878,7 +878,7 @@ matchStatements env selfCall scope target value cases = do
         then do
           n <- fresh (binderName b)
           t <- lift' (javaType env False (binderType b))
-          pure (Just (binderId b, n), [javaText ("final " ++ t ++ " " ++ n ++ " = " ++ access ++ ";")])
+          pure (Just (binderId b, n), [relaid (javaText ("final " ++ t ++ " " ++ n ++ " = " ++ access ++ ";"))])
         else pure (Nothing, [])
       arm c accesses = do
         bound <- mapM (\(b, a) -> bindOne c b a) (zip (caseBinders c) accesses)
@@ -891,7 +891,7 @@ matchStatements env selfCall scope target value cases = do
       (s, x) <- cexpr env scope value
       t <- fresh "matched"
       jt <- lift' (javaType env False ty)
-      pure (s ++ [javaText ("final " ++ jt ++ " " ++ t ++ " = ") <> x <> javaText ";"], t)
+      pure (s ++ [relaid (javaText ("final " ++ jt ++ " " ++ t ++ " = ") <> x <> javaText ";")], t)
   let caseOf tag = [c | c <- cases, idText (caseConstructor c) == tag]
       two yesTag noTag condition yesAccess noAccess = do
         yes <- maybe (pure [javaText "throw LawSpecFast.unreachable();"]) (\c -> arm c yesAccess) (headMaybe (caseOf yesTag))
@@ -925,7 +925,7 @@ matchStatements env selfCall scope target value cases = do
                 cls = name ++ "." ++ variantName env d con ++ generic
             m <- fresh "case"
             body <- arm c [m ++ "." ++ fieldName f | f <- constructorFields con]
-            let cast = [javaText ("final " ++ cls ++ " " ++ m ++ " = (" ++ cls ++ ") " ++ subject ++ ";") | not (null (constructorFields con))]
+            let cast = [relaid (javaText ("final " ++ cls ++ " " ++ m ++ " = (" ++ cls ++ ") " ++ subject ++ ";")) | not (null (constructorFields con))]
             pure (javaText ("case " ++ show index ++ " -> ") <> blockOf (cast ++ body))
           pure (prelude ++ [javaText ("switch (" ++ subject ++ ".tag)") <> D.hardline <> blockOf (arms ++ [javaText "default -> throw LawSpecFast.unreachable();"])])
     _ -> lift' (Left ("typed Java: cannot match on " ++ show ty))
@@ -1032,7 +1032,9 @@ nativeHelper env kind index ty = do
   let name = kind ++ show index
       line = javaText
       -- A long result type puts the name on the next line.
-      fn result signature body = D.group (line "public static " <> JT.javaType result <> D.nest 4 (D.softline <> line signature)) <>
+      fn result signature body = (if length ("public static " ++ result ++ " " ++ signature) <= 98
+          then line ("public static " ++ result ++ " " ++ signature)
+          else line "public static " <> JT.javaType result <> D.nest 4 (D.hardline <> line signature)) <>
         D.hardline <> D.block 2 (D.joinWith D.hardline body)
   if kind == "toNative"
     then fn n (name ++ "(" ++ t ++ " x)") <$> toNative env ty
@@ -1370,3 +1372,11 @@ unqualify s = case s of
     strip w = case [r | p <- ["java.lang.", "lawspec.runtime."], Just r@(c : _) <- [stripPrefix p w], c `elem` ['A' .. 'Z'], '.' `notElem` takeWhile (/= '.') r] of
       r : _ -> r
       [] -> w
+
+-- | An identity for a comment, in lines broken after its ::, a hash alone.
+idLines :: String -> [String]
+idLines identity = case break (== ':') identity of
+  _ | length identity <= 80 -> ["(" ++ identity ++ ")."]
+  _ -> let (namespace, hash) = splitAtLast identity in ["(" ++ namespace, hash ++ ")."]
+  where
+    splitAtLast s = let cut = maximum (0 : [i + 2 | i <- [0 .. length s - 2], take 2 (drop i s) == "::"]) in splitAt cut s

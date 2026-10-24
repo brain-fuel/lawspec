@@ -8,6 +8,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.JvmLets (flattenLets)
 import LawSpec.JvmNames (jvmString)
 import Data.List (find)
+import Data.Char (isAlphaNum)
 
 -- | Strings are Java string literals (LawSpec.Code.Literal), wrapped only
 -- at spaces, so no generated literal can end early or change meaning and no
@@ -170,7 +171,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
         let (steps, final) = letChain term
         declarations <- mapM (\(binder, value) -> do
           argument <- render value
-          pure (D.group (D.text ("var " ++ local (binderId binder) ++ " =") <> D.nest 4 (D.softline <> argument)) <> D.text ";")) steps
+          pure (declare (local (binderId binder)) argument)) steps
         inner <- render final
         -- The block's lambda opens on the call's line, so a let costs one level.
         pure (D.multiline (D.text "LawSpecRuntime.block(() -> " <> D.block 2 (D.joinWith D.hardline (declarations ++ [D.text "return " <> inner <> D.text ";"])) <> D.text ")"))
@@ -297,3 +298,14 @@ listItems e = case expressionNode e of
   Construct tag [] | idText tag == "List::Nil" -> Just []
   Construct tag [item, rest] | idText tag == "List::Cons" -> (item :) <$> listItems rest
   _ -> Nothing
+
+-- | var name = value;: a call stays after the = while its opening fits
+-- there, breaking its arguments; anything else goes on the next line.
+declare :: String -> D.Doc -> D.Doc
+declare name value = case break (== '(') flat of
+  (opening@(_ : _), '(' : _) | all (\c -> isAlphaNum c || c `elem` ("._<>" :: String)) opening ->
+    D.prefixChoice ("var " ++ name ++ " = " ++ opening ++ "(") (D.text ("var " ++ name ++ " = ") <> value <> D.text ";") broken
+  _ -> broken
+  where
+    flat = D.render D.Compact value
+    broken = D.group (D.text ("var " ++ name ++ " =") <> D.nest 4 (D.softline <> value)) <> D.text ";"

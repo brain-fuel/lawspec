@@ -144,7 +144,7 @@ emitTests Config{..} unit laws = do
       imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map", "java.util.function.Supplier",
         "lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecDefinitionBodies",
         "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value", "lawspec.runtime.LawSpecSchema",
-        "lawspec.testing.LawSpecHarness", "org.jetbrains.jetCheck.Generator", "org.jetbrains.jetCheck.PropertyChecker",
+        "lawspec.testing.LawSpecDataStrategies", "lawspec.testing.LawSpecHarness", "org.jetbrains.jetCheck.Generator", "org.jetbrains.jetCheck.PropertyChecker",
         "org.junit.jupiter.api.Test"], usesSimple (simpleName name) rendered]
   pure $ text ("// " ++ generatedHeader sourceFile) <> D.hardline <> D.hardline <>
     (if null packageName then mempty else text ("package " ++ packageName ++ ";") <> D.hardline <> D.hardline) <>
@@ -404,8 +404,8 @@ emitTests Config{..} unit laws = do
               [bracketed e [if sharedBoundaries then statement (call boundaryHelper [quoted context,text "symbols",argumentValues])
                else boundaryCheck (const (quoted context))]]))
             | (i,values) <- zip [0::Int ..] boundaryValues, let context = linked e (shown ++ " boundary " ++ show (i + 1))]
-          sharedBoundaryDocs = [braced (text ("private void " ++ boundaryHelper ++ "(String context, Map<String, Object> symbols, Value[] values)" ++
-              (if stripPrefix "harness:" fn /= Nothing then " throws Throwable" else "")))
+          sharedBoundaryDocs = [braced (call ("private void " ++ boundaryHelper) [text "String context", text "Map<String, Object> symbols", text "Value[] values"] <>
+              text (if stripPrefix "harness:" fn /= Nothing then " throws Throwable" else ""))
             (statements ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] boundaryNames] ++
               [boundaryCheck (const (text "context"))]))
             | sharedBoundaries,C.harnessSkip h == Nothing]
@@ -459,7 +459,7 @@ emitTests Config{..} unit laws = do
           predicates = concatMap inputRefinements (inputs e)
           bindingsDoc = statements [text "var symbols = inputs.symbols();",
             text "var values = inputs.values();",fromValues (inputs e)]
-          captured = if nativeGenerators then call "lawspec.testing.LawSpecDataStrategies.capture" [base] else base
+          captured = if nativeGenerators then call "LawSpecDataStrategies.capture" [base] else base
           inputName = if nativeGenerators then "captured" else "inputs"
           unpack = [bind "inputs" (call "captured.requireValue" []) | nativeGenerators]
           strategy = if null predicates then captured else chain captured [("suchThat",
@@ -502,20 +502,20 @@ emitTests Config{..} unit laws = do
             value:_ -> call "Generator.constant" [expr value]
             [] | Just indexed <- generatorIndex plan ->
               -- The target is evaluated from inputs drawn earlier in this environment.
-              chain (call "lawspec.testing.LawSpecDataStrategies.checkedIndexedGenerator"
+              chain (call "LawSpecDataStrategies.checkedIndexedGenerator"
                 [text "SCHEMA",reference ty,text "MACHINE_BITS",number nodeBudget,
                  number (maxAttempts settings),text "symbols",
                  expr (indexedTarget indexed),equationsDoc (indexedEquations indexed),
                  scalar,if nativeGenerators then call "lawspec.testing.LawSpecNativeGenerators.factories" []
                    else call "java.util.Map.of" []])
-                [("map",[text "lawspec.testing.LawSpecDataStrategies.Checked::requireValue"])]
+                [("map",[text "LawSpecDataStrategies.Checked::requireValue"])]
             [] | nativeGenerators || constructorContracts -> chain
-              (call "lawspec.testing.LawSpecDataStrategies.checkedGenerator"
+              (call "LawSpecDataStrategies.checkedGenerator"
                 ([text "SCHEMA",reference ty,text "MACHINE_BITS",number nodeBudget,number (maxAttempts settings),
                  text "symbols",call "java.util.List.of" (seeds ++ hints),
                  scalar] ++
                 [call "lawspec.testing.LawSpecNativeGenerators.factories" [] | nativeGenerators]))
-              [("map",[D.group (text "lawspec.testing.LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
+              [("map",[D.group (text "LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
             [] -> hinted (generatorWithin (inputRange machineBits input) ty)
           -- Constant hints (regex samples, compared literals) are mixed in so
           -- a narrow refinement still meets the filter often enough.
