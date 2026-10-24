@@ -427,9 +427,14 @@ arguments callee cap open close limit args =
       Just texts | all simple args, all ((<= 10) . width) texts ->
         D.text open <> D.nest 4 (D.hardline <> D.flow [D.text (t ++ ",") | t <- texts]) <> D.hardline <> D.text close
       -- (each argument's lines leave room for its comma)
-      _ -> D.text open <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline) (map (D.narrow 1 . expr) args) <> D.text ",") <>
+      _ -> D.text open <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline) (map item args) <> D.text ",") <>
         D.hardline <> D.text close
     initial = init args
+    item a = case a of
+      If {} -> expr a
+      Match {} -> expr a
+      Block _ _ -> expr a
+      _ -> D.narrow 1 (expr a)
     -- A closure whose body's opening does not fit there overflows with its
     -- body in a block.
     lastArg = case last args of
