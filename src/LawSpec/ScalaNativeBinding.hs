@@ -114,7 +114,7 @@ emitBindings minify plan testing files = do
                 Just i -> do
                   receiver <- javaCast (args !! i) >>= maybe (Left ("an async method binding needs a bound handle type: " ++
                     C.idText (C.declarationId d))) Right
-                  pure (D.text "(" <> converted !! i <> D.text (".asInstanceOf[" ++ receiver ++ "])") <>
+                  pure (L.call ("LawSpecScala.cast[" ++ receiver ++ "]") [converted !! i] <>
                     E.call ("." ++ name) [v | (j,v) <- zip [0..] converted, j /= i])
                 Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
               _ -> do

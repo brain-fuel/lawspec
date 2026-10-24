@@ -456,7 +456,7 @@ emitCodecs mappings owner layout declarations = do
          D.text ("schema.codec[" ++ handleType ++ "](") <> D.nest 2 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
            [D.text "tpe", D.text "bits", D.text "symbols",
             arrow ("(value: " ++ handleType ++ ")") (D.text "LawSpecRuntime.handle(LawSpecSchema.key(tpe), value)"),
-            arrow "(value: LawSpecRuntime.Value)" (D.text ("LawSpecRuntime.handleTarget(value).asInstanceOf[" ++ handleType ++ "]"))]) <> D.hardline <> D.text ")"))
+            arrow "(value: LawSpecRuntime.Value)" (call ("LawSpecScala.cast[" ++ handleType ++ "]") [D.text "LawSpecRuntime.handleTarget(value)"])]) <> D.hardline <> D.text ")"))
       where handleType = maybe "scala.Any" id (C.dataNative declaration)
     definition names declaration = do
       name <- maybe (Left "unplanned Scala codec") Right (lookup (C.dataId declaration) names)

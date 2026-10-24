@@ -107,7 +107,8 @@ emitTests Config{..} unit laws = do
       registrations = [(n, comments, doc) | (n, (comments, doc)) <- zip lawFunctions (lawDocs ++ map benchmark benchmarks)]
       traitName n = capital n ++ "Law"
       registration (n, comments, doc) = comments <>
-        braced (text ("trait " ++ traitName n ++ " extends AnyFunSuite" ++ (if parallel then " with lawspec.testing.LawSpecParallel" else "")))
+        braced (D.group (text ("trait " ++ traitName n) <> D.nest 4 (D.softline <> text "extends AnyFunSuite" <>
+          (if parallel then D.softline <> text "with lawspec.testing.LawSpecParallel" else mempty))))
           ([text "protected def registerTest(name: String)(body: => Unit): Unit" | orderRandom] ++
            [D.group (text ("def register" ++ capital n ++ "()") <> D.nest 4 (D.softbreak <> text ": Unit =")) <> text " " <> L.block [doc]])
       parents = ["AnyFunSuite"] ++ ["lawspec.testing.LawSpecParallel" | parallel] ++ [testClass ++ "." ++ traitName n | (n, _, _) <- registrations]
@@ -195,11 +196,11 @@ emitTests Config{..} unit laws = do
     -- order the run's seed chooses.
     ordered docs
       | orderRandom =
-          [ text "private val tests = scala.collection.mutable.ArrayBuffer[(String, () => Unit)]()"
+          [ bind "tests" (text "scala.collection.mutable.ArrayBuffer[(String, () => Unit)]()")
           , text "protected def registerTest(name: String)(body: => Unit): Unit =" <> D.nest 2 (D.hardline <> text "tests += ((name, () => body))")
           , statements docs
-          , braced (text "for ((name, body) <- " <> call "lawspec.testing.LawSpecHarness.shuffled" [quoted unitLabel, text "tests.asJava"] <> text ".asScala)")
-              [text (finalRegister ++ "(name)(body())")] ]
+          , bind "shuffled" (L.chain (call "lawspec.testing.LawSpecHarness.shuffled" [quoted unitLabel, text "tests.asJava"]) [] <> text ".asScala")
+          , braced (text "for ((name, body) <- shuffled)") [text (finalRegister ++ "(name)(body())")] ]
       | otherwise = docs
     register = if orderRandom then "registerTest" else finalRegister
     -- A parallel unit's tests start together (lawspec.testing.LawSpecParallel).
@@ -251,7 +252,7 @@ emitTests Config{..} unit laws = do
             ([symbols] ++ draws ++ [text "(" <> call "List" [text (inputId inp) | inp <- inputs e] <> text ", symbols)"])
           predicates = concatMap inputRefinements defaults
           bindingsDoc = text "val (values, symbols) = inputs" : fromValues (inputs e)
-          strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunction (map (truth . expr) predicates)])
+          strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
@@ -439,7 +440,7 @@ emitTests Config{..} unit laws = do
       base <- foldM step (text "LawSpecScalaStrategies.cases()") (zip [0::Int ..] (generationPlan e))
       let predicates = concatMap inputRefinements (inputs e)
           strategy = if null predicates then base else L.trailing (call "LawSpecScalaStrategies.filterCases" [base,number (maxAttempts (generation e))]) ["inputs"]
-            (inputBindings (inputs e) ++ [L.conjunction (map (truth . expr) predicates)])
+            (inputBindings (inputs e) ++ [L.conjunctionStatement (map (truth . expr) predicates)])
           body = [text "val symbols = inputs.symbols", text "val values = inputs.requireValues()"] ++ fromValues (inputs e) ++ handlerInstalls e ++ [check]
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"] body]
     requiredSymbol plan
@@ -471,7 +472,7 @@ emitTests Config{..} unit laws = do
           base = call "LawSpecTesting.inputs" [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]
           predicates = concatMap inputRefinements (inputs e)
           bindingsDoc = text "val (values, symbols) = inputs" : fromValues (inputs e)
-          strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunction (map (truth . expr) predicates)])
+          strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
       in testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ handlerInstalls e ++ [check])]
     domain e (index,plan) = do
@@ -485,7 +486,7 @@ emitTests Config{..} unit laws = do
           seedFn = L.parameters mempty [text "javaValues: java.util.List[LawSpecRuntime.Value]", text "caseSeed: Integer"] <> text " => " <>
             L.block ([valuesOf | not (null prior)] ++ (if null prior then [] else fromValues prior) ++ [candidates])
           predicate = text "(javaValues: java.util.List[LawSpecRuntime.Value]) => " <> L.block
-            ([valuesOf] ++ fromValues (prior ++ [inp]) ++ [L.conjunction (map (truth . expr) (inputRefinements inp))])
+            ([valuesOf] ++ fromValues (prior ++ [inp]) ++ [L.conjunctionStatement (map (truth . expr) (inputRefinements inp))])
       pure (call "LawSpecRuntime.Domain" [seedFn,predicate])
     refinedProperty fn label e check = do
       domains <- mapM (domain e) (zip [0::Int ..] (generationPlan e))

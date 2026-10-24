@@ -117,7 +117,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
                               (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (Doc.text "java.util.Objects.toString(error.getMessage, \"\")")) b))]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in ScalaExpr.call "LawSpecRuntime.nativeFailures"
-             ([ScalaExpr.quoted (C.abilityKey ability), arrow "(nativeValue: Object)" (scNativeResult failure (Doc.text ("nativeValue.asInstanceOf[" ++ native ++ "]"))),
+             ([ScalaExpr.quoted (C.abilityKey ability), arrow "(nativeValue: Object)" (scNativeResult failure (ScalaExpr.call ("LawSpecScala.cast[" ++ native ++ "]") [Doc.text "nativeValue"])),
                arrow "()" call] ++ mapped)
       _ -> call
     orFail failing value = if null failing then value else ScalaExpr.call "LawSpecScala.orFail" [value]

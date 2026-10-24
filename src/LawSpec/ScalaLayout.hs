@@ -7,7 +7,7 @@
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
   ( scalaStyle, scalaString, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
-  , condition, conjunction, equalsBody, comment
+  , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -28,7 +28,8 @@ call name values = case break (== '[') name of
   -- when its opening does not fit, as scalafmt breaks a chain.
   (path, typeArgs@('[' : _)) | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse path), not (null values) ->
     D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
-      (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method ++ typeArgs)) values))]
+      (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.group (D.text ('.' : reverse method ++ "[") <>
+        D.nest 2 (D.softbreak <> D.text (init (drop 1 typeArgs))) <> D.softbreak <> D.text "]")) values))]
   -- A qualified call whose opening does not fit breaks before its method.
   _ | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse name), not (null values), '(' `notElem` name ->
       D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
@@ -133,6 +134,12 @@ condition keyword c = D.group (D.text (keyword ++ " (") <> D.nest 2 (D.softbreak
 conjunction :: [D.Doc] -> D.Doc
 conjunction [] = D.text "true"
 conjunction (x : xs) = D.group (x <> D.nest 2 (mconcat [D.text " &&" <> D.softline <> y | y <- xs]))
+
+-- | Conditions joined by && as a block's statement, where scalafmt does not
+-- indent the continuation.
+conjunctionStatement :: [D.Doc] -> D.Doc
+conjunctionStatement [] = D.text "true"
+conjunctionStatement (x : xs) = D.group (x <> mconcat [D.text " &&" <> D.softline <> y | y <- xs])
 
 -- | header = body, the body on its own line when it does not fit.
 equalsBody :: D.Doc -> D.Doc -> D.Doc
