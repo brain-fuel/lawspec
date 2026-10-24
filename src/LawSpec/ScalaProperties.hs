@@ -243,7 +243,7 @@ emitTests Config{..} unit laws = do
         let inp = domainInput plan
         case strategyOf inp of
           (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
-          [] -> pure (bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".sample(random).value"))) (generationPlan e)
+          [] -> pure (bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp))))) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
               L.conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
@@ -257,9 +257,11 @@ emitTests Config{..} unit laws = do
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
     chooser = text "(count: Int) => random.nextInt(count)"
+    -- A generator's value drawn from the property's random source.
+    sampled gen = L.chainWith gen [("sample", [text "random"])] (Just (text ".value"))
     supplier = L.arrow "()"
     drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".sample(random).value")
+      C.DrawAny ty aim -> pure (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)))
       C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "java.util.List.of[java.util.function.Supplier[LawSpecRuntime.Value]]" [supplier (expr v) | v <- values]])
       C.DrawFrequency alternatives -> do
         options <- mapM (\(w, a) -> (\doc -> call "lawspec.testing.LawSpecHarness.Weighted" [number w, supplier doc]) <$> drawDoc inp strategy a) alternatives
@@ -267,7 +269,7 @@ emitTests Config{..} unit laws = do
       C.DrawSuchThat inner binder predicate limit -> do
         doc <- drawDoc inp strategy inner
         pure (harness "suchThat" [supplier doc,
-          text ("((" ++ localName (C.binderId binder) ++ ": LawSpecRuntime.Value) => ") <> truth (expr predicate) <> text "): java.util.function.Predicate[LawSpecRuntime.Value]",
+          L.arrow ("(" ++ localName (C.binderId binder) ++ ": LawSpecRuntime.Value)") (truth (expr predicate)),
           number limit, quoted strategy])
       C.DrawBind binder from rest -> do
         fromDoc <- drawDoc inp strategy from

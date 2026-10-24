@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, arrow, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
+  ( scalaStyle, scalaString, arrow, chainWith, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
