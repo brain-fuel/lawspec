@@ -38,8 +38,9 @@ export interface ComponentDescriptor {
   targets: ComponentTarget[]; provides: ResolvedContract[]; requires: Record<string, ResolvedContract>;
   dependencies: unknown[]; laws: unknown[]; declarations: string[];
 }
-export function parseManifest(text: string, file?: string): ComponentManifest;
-export function writeManifest(value: ComponentManifest): string;
+/** Parses EDN data; readManifest also validates the component schema. */
+export function parseManifest(text: string, file?: string): Record<string, unknown>;
+export function writeManifest(value: ComponentManifest | Record<string, unknown>): string;
 export function readManifest(file: string): Promise<ComponentManifest>;
 export function findManifest(start?: string): Promise<string>;
 export function resolveComponent(file: string, options?: ResolutionOptions): Promise<ComponentDescriptor>;

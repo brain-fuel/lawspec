@@ -90,7 +90,7 @@ test('published component and completed evidence types resolve through package e
   t.after(() => rm(directory, {recursive: true, force: true}));
   const file = path.join(directory, 'consumer.mts');
   await writeFile(file, `
-import {resolveComponent, type ComponentManifest, type ComponentDescriptor} from 'lawspec/component';
+import {parseManifest, resolveComponent, type ComponentManifest, type ComponentDescriptor} from 'lawspec/component';
 import type {AttestationView, NativeExecutionAttempt} from 'lawspec';
 const manifest: ComponentManifest = {
   manifestVersion: 1, languageProfile: '1.0-rc.2', sources: ['src'],
@@ -99,6 +99,9 @@ const manifest: ComponentManifest = {
   dependencies: {api: {version: '^1.0.0', git: 'https://example.com/api.git'}},
 };
 const resolved: Promise<ComponentDescriptor> = resolveComponent('lawspec.edn', {locked: true});
+const raw = parseManifest('{}');
+// @ts-expect-error Parsing data alone does not establish a checked manifest.
+const unchecked: ComponentManifest = raw;
 declare const evidence: AttestationView;
 declare const attempt: NativeExecutionAttempt;
 const status: 'wired' | 'running' | 'completed' | undefined = evidence.run.execution?.status;
