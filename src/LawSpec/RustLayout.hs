@@ -234,8 +234,9 @@ overflowable count e = case e of
   Macro {} -> count == 1
   Method {} -> count == 1
   Struct {} -> count == 1
-  Match {} -> count == 1
-  If {} -> count == 1
+  -- (rustfmt keeps an overflowing match's or if's head on one line)
+  Match scrutinee _ -> count == 1 && isJust (oneLine scrutinee)
+  If c _ _ -> count == 1 && isJust (oneLine c)
   Try a -> overflowable count a
   Prefix _ a -> overflowable count a
   Cast a _ -> overflowable count a
