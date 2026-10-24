@@ -10,7 +10,7 @@ module LawSpec.Typed.Jvm (jvmPerformName, JvmTyped(..), JvmStyle(..), emitJvmTyp
 import Control.Monad (forM)
 import Control.Monad.State.Strict
 import Data.Char (isAlphaNum, isUpper, toLower)
-import Data.List (intercalate, isPrefixOf, nub)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -23,8 +23,13 @@ import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.ScalaData as ScalaData
+import LawSpec.ScalaText (scalaText)
+import LawSpec.JavaText (javaText)
+import qualified LawSpec.JavaText as JT
 import LawSpec.DataNames (isProduct, caseNames)
 import LawSpec.Time (isDurationType)
+import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmMethod)
+import LawSpec.RecordNames (recordDisplayNames)
 
 data JvmTyped = JvmTyped
   { jvmTypedSource :: String
@@ -92,7 +97,7 @@ fresh :: String -> M String
 fresh base = do
   s <- get
   put s { stCounter = stCounter s + 1 }
-  pure (sanitize base ++ "_" ++ show (stCounter s))
+  pure (jvmLocal "java" [] (sanitize base) ++ show (stCounter s))
 
 -- | A conversion helper of a kind (tonative, fromnative) for a type.
 helper :: String -> Type -> M String
@@ -107,6 +112,10 @@ helper kind ty = do
       pure i
   modify (\st -> st { stWanted = S.insert (kind, key) (stWanted st) })
   pure (kind ++ show index)
+
+-- | A header and its block, the brace on a line of its own.
+braced :: String -> D.Doc -> D.Doc
+braced header body = D.text header <> D.hardline <> D.block 2 body
 
 sanitize :: String -> String
 sanitize name = case [c | c <- map lower name, isAlphaNum c || c == '_'] of
@@ -128,14 +137,17 @@ lift' = lift
 -- | The static method of LawSpecDefinitionBodies that performs an operation
 -- for typed code, over dynamic values.
 jvmPerformName :: Operation -> String
-jvmPerformName op = "typedPerform_" ++ map (\c -> if isAlphaNum c then c else '_') (idText (operationId op))
+jvmPerformName op = jvmMethod "typedPerform" (idText (operationId op))
 
 emitJvmTyped :: JvmStyle -> [DataDeclaration] -> [Unit] -> Either String JvmTyped
 emitJvmTyped style declarations units = do
   let plan = typedPlanPerforming jvmScalars declarations units
       datas = typedData plan
       names = dataNames datas
-      functions = M.fromList [ (c, functionName c d) | (c, d) <- typedRepresentatives plan ]
+      -- Each typed function is named after its definition, numbered only
+      -- on a clash. ref:DEC-readable-generated-names
+      functions = M.fromList (zip (map fst (typedRepresentatives plan))
+        (fst (jvmClaimAll (S.fromList (javaKeywords ++ reservedMembers)) [functionName c d | (c, d) <- typedRepresentatives plan])))
       env = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions "" "LawSpecFast" style declarations
       -- Scala's conversions live outside LawSpecTyped, so they name it in full.
@@ -162,36 +174,39 @@ emitJvmTyped style declarations units = do
     (\t -> (,) t <$> codecExpression env [] t)
   -- Each typed stateful handler's start state, made in Java for Java and
   -- Kotlin alike.
-  let starting = [ (handlerId h, "start_" ++ stableSuffix (handlerId h), t, e)
-                 | h <- [x | x <- concatMap unitHandlers units, isTypedHandler plan x]
-                 , Just (t, e) <- [handlerState h] ]
+  let startable = [ (h, t, e) | h <- [x | x <- concatMap unitHandlers units, isTypedHandler plan x]
+                             , Just (t, e) <- [handlerState h] ]
+      startNames = fst (jvmClaimAll (S.fromList (M.elems functions ++ javaKeywords ++ reservedMembers))
+        [jvmLocal "java" [] ("start " ++ handlerName h) | (h, _, _) <- startable])
+      starting = [ (handlerId h, n, t, e) | ((h, t, e), n) <- zip startable startNames ]
   startDocs <- forM starting $ \(_, name, t, e) -> do
     jt <- javaType env True t
     (body, _) <- runStateT (cstmt env Nothing [] Return e) initial
-    pure (D.text ("public static " ++ jt ++ " " ++ name ++ "(java.util.Map<String, Object> symbols) ") <>
+    pure (javaText ("public static " ++ jt ++ " " ++ name ++ "(java.util.Map<String, Object> symbols)") <> D.hardline <>
       D.block 2 (D.joinWith D.hardline body))
   let boundaryNames = M.fromList [ (show t, "C" ++ show i) | (i, (t, _)) <- zip [0 :: Int ..] boundary ]
-      codecDocs = [ D.text ("public static final LawSpecFast.Codec<" ++ either (const "?") id (javaType env True t) ++ "> " ++ boundaryNames M.! show t ++ " =") <>
-                    D.nest 8 (D.hardline <> D.text (expr ++ ";")) | (t, expr) <- boundary ]
+      codecDocs = [ javaText "public static final " <> JT.javaType ("LawSpecFast.Codec<" ++ either (const "?") id (javaType env True t) ++ ">") <> javaText (" " ++ boundaryNames M.! show t ++ " =") <>
+                    D.nest 8 (D.hardline <> javaText (expr ++ ";")) | (t, expr) <- boundary ]
       helpers = entryHelpers env ++ orderingHelper env
-      line = D.text
-      source = line "// Generated by LawSpec. Do not edit." <> D.hardline <>
+      line = javaText
+      source = line "// Generated by LawSpec. Do not edit." <> D.hardline <> D.hardline <>
         line "package lawspec.runtime;" <> D.hardline <> D.hardline <>
         line "/** Typed checked definitions: see LawSpecFast. */" <> D.hardline <>
         line "@SuppressWarnings({\"unchecked\", \"rawtypes\", \"unused\"})" <> D.hardline <>
-        line "public final class LawSpecTyped " <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+        line "public final class LawSpecTyped" <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           ([line "private LawSpecTyped() {}"] ++ dataDocs ++ helpers ++ codecDocs ++ startDocs ++ functionDocs ++ [d | style /= ScalaStyle, d <- nativeDocs]))
-      scalaSource = if style /= ScalaStyle || null nativeDocs then "" else D.render (D.Pretty 100)
+      scalaSource = if style /= ScalaStyle || null nativeDocs then "" else D.render (D.PrettyPoints 80)
         (line "// Generated by LawSpec. Do not edit." <> D.hardline <>
          line "package lawspec.runtime" <> D.hardline <> D.hardline <>
-         line "/** Direct conversions between Scala's native types and typed checked definitions' (LawSpecTyped). */" <> D.hardline <>
+         line "// Direct conversions between Scala's native types and typed checked" <> D.hardline <>
+         line "// definitions' (LawSpecTyped)." <> D.hardline <>
          line "object LawSpecTypedScala " <> D.block 2 (D.joinWith (D.hardline <> D.hardline) nativeDocs)) ++ "\n"
       lookupFunction identity = do
         c <- definitionClass plan identity
         (\n -> typedClassName ++ "." ++ n) <$> M.lookup c functions
       outside = env { envPrefix = typedClassName ++ ".", envFast = "lawspec.runtime.LawSpecFast" }
   pure JvmTyped
-    { jvmTypedSource = D.render (D.Pretty 100) source ++ "\n"
+    { jvmTypedSource = unlines (map (reverse . dropWhile (== ' ') . reverse) (lines (D.render (D.Pretty 100) source)))
     , jvmTypedFunction = lookupFunction
     , jvmTypedType = javaType outside True
     , jvmTypedCodec = \t -> maybe (Left ("no typed codec for " ++ show t)) (Right . ((typedClassName ++ ".") ++)) (M.lookup (show t) boundaryNames)
@@ -204,7 +219,9 @@ emitJvmTyped style declarations units = do
     , jvmTypedScalaSource = scalaSource }
   where
     conversionOwner = if style == ScalaStyle then "lawspec.runtime.LawSpecTypedScala" else typedClassName
-    functionName _ d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
+    functionName _ d = jvmLocal "java" [] (shortName (declarationName (definitionDeclaration d)))
+    -- Names LawSpecTyped's own members use.
+    reservedMembers = words "keyValOf entriesOf ordering codec"
     shortName name =
       let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
       in reverse (dropHash (reverse unprefixed))
@@ -216,10 +233,11 @@ emitJvmTyped style declarations units = do
 dataNames :: [DataDeclaration] -> M.Map String String
 dataNames datas = M.fromList (snd (foldl pick (reserved, []) datas))
   where
+    display = M.map (filter (/= '_')) (recordDisplayNames datas)
     reserved = S.fromList (javaKeywords ++ words "LawSpecTyped LawSpecFast LawSpecRuntime Value Data String Long Boolean Object Integer Math Character Arrays Objects Override Number BigInteger Iterable Comparable Exception RuntimeException Unit")
     pick (taken, acc) d =
-      let base = identifier (dataName d)
-          chosen = firstOf [n | n <- base : [base ++ "_" ++ show k | k <- [2 :: Int ..]], n `S.notMember` taken]
+      let base = identifier (M.findWithDefault (dataName d) (dataId d) display)
+          chosen = firstOf [n | n <- base : [base ++ show k | k <- [2 :: Int ..]], n `S.notMember` taken]
       in (S.insert chosen taken, (idText (dataId d), chosen) : acc)
 
 fieldless :: DataDeclaration -> Bool
@@ -317,84 +335,96 @@ dataDoc env d = do
       generics = if null parameters then "" else "<" ++ intercalate ", " (map snd parameters) ++ ">"
       ranks = constructorRanks d
       rank c = fromMaybe 0 (lookup (constructorId c) ranks)
-      tagOf c = D.render D.Compact (E.quoted (idText (constructorId c)))
+      tagOf c = E.quoted (idText (constructorId c))
       variants = dataConstructors d
-      line = D.text
-      header = line ("/** " ++ dataName d ++ " (" ++ idText (dataId d) ++ "). */")
+      line = javaText
+      header = if length (dataName d ++ idText (dataId d)) > 80
+        then D.joinWith D.hardline (map line (["/**", " * " ++ dataName d] ++ [" * " ++ w | w <- idLines (idText (dataId d))] ++ [" */"]))
+        else line ("/** " ++ dataName d ++ " (" ++ idText (dataId d) ++ "). */")
       codecParams = [("LawSpecFast.Codec<" ++ p ++ "> c" ++ show k) | (k, (_, p)) <- zip [0 :: Int ..] parameters]
+      -- A plain key is a literal, which splits when long.
+      keyLiteral = if null parameters then E.quoted (idText (dataId d)) else line keyDoc
       keyDoc = if null parameters then show (idText (dataId d))
         else "LawSpecFast.dataKey(" ++ show (idText (dataId d)) ++ concat [", c" ++ show k | k <- [0 .. length parameters - 1]] ++ ")"
       codecParamMap = [(v, "c" ++ show k) | (k, (v, _)) <- zip [0 :: Int ..] parameters]
   fieldTypes <- forM variants $ \c -> forM (constructorFields c) $ \f -> javaTypeP env parameters False (binderType f)
   fieldCodecs <- forM variants $ \c -> forM (constructorFields c) $ \f -> codecExpression env codecParamMap (binderType f)
   let codecHead = if null parameters
-        then "public static final LawSpecFast.Codec<" ++ name ++ "> CODEC = codec();" ++ "\n\n" ++
-             "private static LawSpecFast.Codec<" ++ name ++ "> codec() "
-        else "public static " ++ generics ++ " LawSpecFast.Codec<" ++ name ++ generics ++ "> codec(" ++ intercalate ", " codecParams ++ ") "
+        then "private static LawSpecFast.Codec<" ++ name ++ "> codec()"
+        else "public static " ++ generics ++ " LawSpecFast.Codec<" ++ name ++ generics ++ "> codec"
       variantClass c = if isProductType d then name else name ++ "." ++ variantName env d c
       encodeArm c codecs = line ("case " ++ show (index c) ++ " -> ") <> D.block 2 (
         (if null (constructorFields c) then mempty else line ("var m = (" ++ variantClass c ++ generics ++ ") value;") <> D.hardline) <>
-        line ("return LawSpecFast.value(key, " ++ tagOf c ++ concat [", " ++ codec ++ ".encode(m." ++ fieldName f ++ ")" | (f, codec) <- zip (constructorFields c) codecs] ++ ");"))
-      decodeArm c codecs = line ("case " ++ tagOf c ++ " -> ") <> D.block 2 (line ("return " ++
-        construction c [codec ++ ".decode(d.fields().get(" ++ show k ++ "))" | (k, codec) <- zip [0 :: Int ..] codecs] ++ ";"))
+        line "return " <> jcall "LawSpecFast.value" (line "key" : tagOf c : [jcall (codec ++ ".encode") [line ("m." ++ fieldName f)] | (f, codec) <- zip (constructorFields c) codecs]) <> line ";")
+      decodeArm c codecs = line "case " <> tagOf c <> line " -> " <> D.block 2 (line "return " <>
+        construction c [jcall (codec ++ ".decode") [line ("d.fields().get(" ++ show k ++ ")")] | (k, codec) <- zip [0 :: Int ..] codecs] <> line ";")
       construction c args
-        | fieldless d = name ++ "." ++ variantName env d c
-        | otherwise = "new " ++ variantClass c ++ (if null parameters then "" else "<>") ++ "(" ++ intercalate ", " args ++ ")"
+        | fieldless d = line (name ++ "." ++ variantName env d c)
+        | otherwise = jcall ("new " ++ variantClass c ++ (if null parameters then "" else "<>")) args
       index c = length (takeWhile ((/= constructorId c) . constructorId) variants)
-      codecDoc = line codecHead <> D.block 2 (D.joinWith D.hardline
-        [ line ("String key = " ++ keyDoc ++ ";")
-        , line ("return new LawSpecFast.Codec<" ++ name ++ generics ++ ">() ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
-          [ line "public String key() { return key; }"
-          , line ("public LawSpecRuntime.Value encode(" ++ name ++ generics ++ " value) ") <> D.block 2
+      codecField = [line ("public static final LawSpecFast.Codec<" ++ name ++ "> CODEC = codec();") | null parameters]
+      codecSignature = if null parameters then line codecHead else jcall codecHead (map line codecParams)
+      codecDoc = D.joinWith (D.hardline <> D.hardline) (codecField ++ [codecSignature]) <> D.hardline <> D.block 2 (D.joinWith D.hardline
+        [ D.group (line "String key =" <> D.nest 4 (D.softline <> keyLiteral <> line ";"))
+        , line ("return new LawSpecFast.Codec<" ++ name ++ generics ++ ">()") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+          [ braced "public String key()" (line "return key;")
+          , line ("public LawSpecRuntime.Value encode(" ++ name ++ generics ++ " value)") <> D.hardline <> D.block 2
               (if fieldless d
-                then line ("return LawSpecFast.value(key, switch (value) { " ++ concat ["case " ++ variantName env d c ++ " -> " ++ tagOf c ++ "; " | c <- variants] ++ "});")
-                else line ("switch (" ++ (if isProductType d then "0" else "value.tag") ++ ") ") <> D.block 2 (D.joinWith D.hardline
+                then line "return switch (value)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
+                  [D.group (line ("case " ++ variantName env d c ++ " ->") <> D.nest 4 (D.softline <> jcall "LawSpecFast.value" [line "key", tagOf c])) <> line ";" | c <- variants]) <> line ";"
+                else line ("switch (" ++ (if isProductType d then "0" else "value.tag") ++ ")") <> D.hardline <> D.block 2 (D.joinWith D.hardline
                   (zipWith encodeArm variants fieldCodecs ++ [line "default -> throw LawSpecFast.unreachable();"])))
-          , line ("public " ++ name ++ generics ++ " decode(LawSpecRuntime.Value value) ") <> D.block 2 (
+          , line ("public " ++ name ++ generics ++ " decode(LawSpecRuntime.Value value)") <> D.hardline <> D.block 2 (
               line "var d = LawSpecFast.fields(value);" <> D.hardline <>
-              line "switch (d.tag()) " <> D.block 2 (D.joinWith D.hardline
-                (zipWith decodeArm variants fieldCodecs ++ [line ("default -> throw new IllegalArgumentException(\"expected " ++ dataName d ++ ", found \" + d.tag());")]))) ]) <> line ";" ])
+              line "switch (d.tag())" <> D.hardline <> D.block 2 (D.joinWith D.hardline
+                (zipWith decodeArm variants fieldCodecs ++ [D.group (line "default ->" <> D.nest 4 (D.softline <> line "throw " <> jcall "new IllegalArgumentException" [E.quoted ("expected " ++ dataName d ++ ", found ") <> line " + d.tag()"] <> line ";"))]))) ]) <> line ";" ])
+      toStringDoc c = line "@Override" <> D.hardline <> braced "public String toString()"
+        (D.group (line ("return " ++ show (constructorName c) ++ " +") <> D.nest 4 (D.softline <>
+          E.call "java.util.List.of" (map (line . fieldName) (constructorFields c)))) <> line ";")
       fieldsDoc c ts = D.joinWith D.hardline [line ("public final " ++ t ++ " " ++ fieldName f ++ ";") | (f, t) <- zip (constructorFields c) ts]
-      constructorDoc cls c ts superCall = line ("public " ++ cls ++ "(" ++ intercalate ", " [t ++ " " ++ fieldName f | (f, t) <- zip (constructorFields c) ts] ++ ") ") <>
+      constructorDoc cls c ts superCall = line ("public " ++ cls ++ "(" ++ intercalate ", " [t ++ " " ++ fieldName f | (f, t) <- zip (constructorFields c) ts] ++ ")") <> D.hardline <>
         D.block 2 (D.joinWith D.hardline (superCall ++ [line ("this." ++ fieldName f ++ " = " ++ fieldName f ++ ";") | f <- constructorFields c]))
-      equalsDoc cls c = line "@Override" <> D.hardline <> line "public boolean equals(Object other) " <> D.block 2
-        (line ("if (!(other instanceof " ++ cls ++ " o)) return false;") <> D.hardline <>
-         line ("return " ++ intercalate " && " ("true" : [fieldEquals (binderType f) (fieldName f) ("o." ++ fieldName f) | f <- constructorFields c]) ++ ";"))
-      hashDoc c = line "@Override" <> D.hardline <> line "public int hashCode() " <> D.block 2
+      equalsDoc cls c = line "@Override" <> D.hardline <> line "public boolean equals(Object other)" <> D.hardline <> D.block 2
+        (braced ("if (!(other instanceof " ++ cls ++ " o))") (line "return false;") <> D.hardline <>
+         (case [line (fieldEquals (binderType f) (fieldName f) ("o." ++ fieldName f)) | f <- constructorFields c] of
+            [] -> line "return true;"
+            first : rest -> line "return " <> D.group (first <> D.nest 4 (mconcat [D.softline <> line "&& " <> r | r <- rest])) <> line ";"))
+      hashDoc c = line "@Override" <> D.hardline <> line "public int hashCode()" <> D.hardline <> D.block 2
         (line ("return java.util.Objects.hash(" ++ intercalate ", " (show (rank c) : map fieldName (constructorFields c)) ++ ");"))
-      compareFieldsDoc cls c = line "int compareFields(Object other) " <> D.block 2 (D.joinWith D.hardline
+      compareFieldsDoc cls c = line "int compareFields(Object other)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
         ([line ("var o = (" ++ cls ++ ") other;") | not (null (constructorFields c))] ++
-         [line ("int c" ++ show k ++ " = " ++ fieldCompare (binderType f) (fieldName f) ("o." ++ fieldName f) ++ "; if (c" ++ show k ++ " != 0) return c" ++ show k ++ ";") | (k, f) <- zip [0 :: Int ..] (constructorFields c)] ++
+         concat [[line ("int c" ++ show k ++ " = " ++ fieldCompare (binderType f) (fieldName f) ("o." ++ fieldName f) ++ ";"),
+                  braced ("if (c" ++ show k ++ " != 0)") (line ("return c" ++ show k ++ ";"))] | (k, f) <- zip [0 :: Int ..] (constructorFields c)] ++
          [line "return 0;"]))
   pure $ header <> D.hardline <> if fieldless d
-    then line ("public enum " ++ name ++ " implements LawSpecFast.Ordered ") <> D.block 2 (D.joinWith D.hardline
-      [ line (intercalate ", " [variantName env d c ++ "(" ++ show (rank c) ++ ")" | c <- variants] ++ ";")
+    then line ("public enum " ++ name ++ " implements LawSpecFast.Ordered") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+      [ D.group (D.commaSep [line (variantName env d c ++ "(" ++ show (rank c) ++ ")") | c <- variants]) <> line ";"
       , line "private final int rank;"
-      , line (name ++ "(int rank) { this.rank = rank; }")
-      , line ("public int compareWith(Object other) { return Integer.compare(rank, ((" ++ name ++ ") other).rank); }")
+      , braced (name ++ "(int rank)") (line "this.rank = rank;")
+      , braced "public int compareWith(Object other)" (line ("return Integer.compare(rank, ((" ++ name ++ ") other).rank);"))
       , codecDoc ])
     else if isProductType d
     then let c = firstOf variants; ts = firstOf fieldTypes in
-      line ("public static final class " ++ name ++ generics ++ " implements LawSpecFast.Ordered ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+      line ("public static final class " ++ name ++ generics ++ " implements LawSpecFast.Ordered") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
         [ fieldsDoc c ts, constructorDoc name c ts [], equalsDoc name c, hashDoc c, compareFieldsDoc name c
-        , line "public int compareWith(Object other) { return this == other ? 0 : compareFields(other); }"
-        , line ("@Override public String toString() { return " ++ show (constructorName c) ++ " + java.util.List.of(" ++ intercalate ", " (map fieldName (constructorFields c)) ++ "); }")
+        , braced "public int compareWith(Object other)" (line "return this == other ? 0 : compareFields(other);")
+        , toStringDoc c
         , codecDoc ])
-    else line ("public abstract static class " ++ name ++ generics ++ " implements LawSpecFast.Ordered ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+    else line ("public abstract static class " ++ name ++ generics ++ " implements LawSpecFast.Ordered") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
       ([ line "public final int tag;"
-       , line ("private " ++ name ++ "(int tag) { this.tag = tag; }")
+       , braced ("private " ++ name ++ "(int tag)") (line "this.tag = tag;")
        , line ("private static final int[] RANKS = {" ++ intercalate ", " (map (show . rank) variants) ++ "};")
        , line "abstract int compareFields(Object other);"
-       , line ("public int compareWith(Object other) " ) <> D.block 2 (D.joinWith D.hardline
-           [ line "if (this == other) return 0;"
+       , line ("public int compareWith(Object other)") <> D.hardline <> D.block 2 (D.joinWith D.hardline
+           [ braced "if (this == other)" (line "return 0;")
            , line ("var o = (" ++ name ++ generics ++ ") other;")
-           , line "if (tag != o.tag) return Integer.compare(RANKS[tag], RANKS[o.tag]);"
+           , braced "if (tag != o.tag)" (line "return Integer.compare(RANKS[tag], RANKS[o.tag]);")
            , line "return compareFields(other);" ]) ] ++
-       [ line ("public static final class " ++ variantName env d c ++ generics ++ " extends " ++ name ++ generics ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+       [ line ("public static final class " ++ variantName env d c ++ generics ++ " extends " ++ name ++ generics ) <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
            ([fieldsDoc c ts | not (null ts)] ++
             [ constructorDoc (variantName env d c) c ts [line ("super(" ++ show (index c) ++ ");")]
             , equalsDoc (variantName env d c) c, hashDoc c, compareFieldsDoc (variantName env d c) c
-            , line ("@Override public String toString() { return " ++ show (constructorName c) ++ " + java.util.List.of(" ++ intercalate ", " (map fieldName (constructorFields c)) ++ "); }") ]))
+            , toStringDoc c ]))
        | (c, ts) <- zip variants fieldTypes ] ++ [codecDoc]))
 
 -- The typed representation is private, but its nested classes still obey
@@ -407,18 +437,18 @@ entryHelpers :: Env -> [D.Doc]
 entryHelpers env = case M.lookup (collectionsUnit ++ "::type::Entry") (envNames env) of
   Nothing -> []
   Just name ->
-    [ D.text ("public static <K, V> LawSpecFast.Map<K, V> keyValOf(LawSpecFast.List<" ++ name ++ "<K, V>> entries) ") <> D.block 2
-        (D.text "LawSpecFast.Map<K, V> map = LawSpecFast.Map.empty();" <> D.hardline <>
-         D.text ("for (" ++ name ++ "<K, V> e : entries) map = map.put(e.key, e.value);") <> D.hardline <> D.text "return map;")
-    , D.text ("public static <K, V> LawSpecFast.List<" ++ name ++ "<K, V>> entriesOf(LawSpecFast.Map<K, V> map) ") <> D.block 2
-        (D.text ("return map.toList((k, v) -> new " ++ name ++ "<>(k, v));")) ]
+    [ javaText ("public static <K, V> LawSpecFast.Map<K, V> keyValOf(LawSpecFast.List<" ++ name ++ "<K, V>> entries)") <> D.hardline <> D.block 2
+        (javaText "LawSpecFast.Map<K, V> map = LawSpecFast.Map.empty();" <> D.hardline <>
+         braced ("for (" ++ name ++ "<K, V> e : entries)") (javaText "map = map.put(e.key, e.value);") <> D.hardline <> javaText "return map;")
+    , javaText ("public static <K, V> LawSpecFast.List<" ++ name ++ "<K, V>> entriesOf(LawSpecFast.Map<K, V> map)") <> D.hardline <> D.block 2
+        (javaText ("return map.toList((k, v) -> new " ++ name ++ "<>(k, v));")) ]
 
 orderingHelper :: Env -> [D.Doc]
 orderingHelper env = case M.lookup (collectionsUnit ++ "::type::Ordering") (envNames env) of
   Nothing -> []
   Just name ->
-    [ D.text ("public static " ++ name ++ " ordering(int c) ") <> D.block 2
-        (D.text ("return c < 0 ? " ++ name ++ ".Less : c == 0 ? " ++ name ++ ".Equal : " ++ name ++ ".Greater;")) ]
+    [ javaText ("public static " ++ name ++ " ordering(int c)") <> D.hardline <> D.block 2
+        (javaText ("return c < 0 ? " ++ name ++ ".Less : c == 0 ? " ++ name ++ ".Equal : " ++ name ++ ".Greater;")) ]
 
 -- Functions.
 
@@ -443,12 +473,12 @@ functionDoc env c d = do
   body <- case M.lookup (declarationId declaration) (typedIntrinsics (envPlan env)) of
     Just intrinsic -> do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l, _), b) <- zip params (definitionArguments d)]
-      pure [D.text "return " <> x <> D.text ";"]
+      pure [javaText "return " <> x <> javaText ";"]
     Nothing -> cstmt env (if looping then selfCall else Nothing) scope Return (definitionBody d)
-  let signature = D.text ("public static " ++ resultType ++ " " ++ name ++ "(" ++
-        intercalate ", " (["java.util.Map<String, Object> symbols" | contextual] ++ [t ++ " " ++ l | (_, l, t) <- params]) ++ ") ")
-  pure (D.text ("/** " ++ idText (declarationId declaration) ++ " */") <> D.hardline <> signature <> D.block 2
-    (if looping then D.text "while (true) " <> D.block 2 (D.joinWith D.hardline body) else D.joinWith D.hardline body))
+  let signature = javaText ("public static " ++ resultType ++ " " ++ name ++ "(" ++
+        intercalate ", " (["java.util.Map<String, Object> symbols" | contextual] ++ [t ++ " " ++ l | (_, l, t) <- params]) ++ ")")
+  pure (javaText ("/** " ++ idText (declarationId declaration) ++ " */") <> D.hardline <> signature <> D.hardline <> D.block 2
+    (if looping then javaText "while (true)" <> D.hardline <> D.block 2 (D.joinWith D.hardline body) else D.joinWith D.hardline body))
 
 hasTailSelf :: Env -> Int -> Expr -> Bool
 hasTailSelf env c e = case expressionNode e of
@@ -460,8 +490,17 @@ hasTailSelf env c e = case expressionNode e of
   _ -> False
 
 deliver :: Target -> D.Doc -> D.Doc
-deliver Return x = D.text "return " <> x <> D.text ";"
-deliver (Assign v) x = D.text (v ++ " = ") <> x <> D.text ";"
+deliver Return x = relaid (javaText "return " <> x <> javaText ";")
+deliver (Assign v) x = relaid (javaText (v ++ " = ") <> x <> javaText ";")
+
+-- | A one-line statement built from pieces, read back into its calls so it
+-- wraps as Google Java Style wraps it; a declaration breaks after its = too.
+relaid :: D.Doc -> D.Doc
+relaid d = case D.render D.Compact d of
+  flat | '\n' `elem` flat -> d
+       | (declaration, '=' : ' ' : value) <- break (== '=') flat, " " `isSuffixOf` declaration, "final " `isPrefixOf` flat ->
+           D.group (javaText (init declaration ++ " =") <> D.nest 4 (D.softline <> javaText value))
+       | otherwise -> javaText flat
 
 -- | Statements delivering an expression's value to a target.
 cstmt :: Env -> Maybe (Int, [String]) -> Scope -> Target -> Expr -> M [D.Doc]
@@ -471,12 +510,12 @@ cstmt env selfCall scope target e = case expressionNode e of
     local <- fresh (binderName binder)
     ty <- lift' (javaType env False (binderType binder))
     rest <- cstmt env selfCall ((binderId binder, local) : scope) target body
-    pure (s ++ [D.text ("final " ++ ty ++ " " ++ local ++ " = ") <> x <> D.text ";"] ++ rest)
+    pure (s ++ [relaid (javaText ("final " ++ ty ++ " " ++ local ++ " = ") <> x <> javaText ";")] ++ rest)
   If c a b -> do
     (s, x) <- cexpr env scope c
     yes <- cstmt env selfCall scope target a
     no <- cstmt env selfCall scope target b
-    pure (s ++ [D.text "if (" <> x <> D.text ") " <> D.block 2 (D.joinWith D.hardline yes) <> D.text " else " <> D.block 2 (D.joinWith D.hardline no)])
+    pure (s ++ [javaText "if (" <> x <> javaText ")" <> D.hardline <> D.block 2 (D.joinWith D.hardline yes) <> D.hardline <> javaText "else" <> D.hardline <> D.block 2 (D.joinWith D.hardline no)])
   Helper Select [c, a, b] -> cstmt env selfCall scope target (e { expressionNode = If c a b })
   Match value cases -> matchStatements env selfCall scope target value cases
   ExternalCall i args
@@ -489,14 +528,14 @@ cstmt env selfCall scope target e = case expressionNode e of
           (s, x) <- cexpr env scope a
           t <- fresh "next"
           ty <- lift' (javaType env False (expressionType a))
-          pure (s ++ [D.text ("final " ++ ty ++ " " ++ t ++ " = ") <> x <> D.text ";"], D.text (p ++ " = " ++ t ++ ";"))
-        pure (concatMap fst evaluated ++ map snd evaluated ++ [D.text "continue;"])
-  Helper Unreachable _ -> pure [D.text "throw LawSpecFast.unreachable();"]
+          pure (s ++ [relaid (javaText ("final " ++ ty ++ " " ++ t ++ " = ") <> x <> javaText ";")], javaText (p ++ " = " ++ t ++ ";"))
+        pure (concatMap fst evaluated ++ map snd evaluated ++ [javaText "continue;"])
+  Helper Unreachable _ -> pure [javaText "throw LawSpecFast.unreachable();"]
   -- raise e delivers nothing: it throws.
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
     codec <- lift' (codecExpression env [] (expressionType x))
-    pure (s ++ [D.text ("throw new LawSpecRuntime.Failure(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ", " ++ codec ++ ".encode(") <> v <> D.text "));"])
+    pure (s ++ [javaText "throw new " <> jcall "LawSpecRuntime.Failure" [E.quoted (abilityKey ref), jcall (codec ++ ".encode") [v]] <> javaText ";"])
   _ -> do
     (s, x) <- cexpr env scope e
     pure (s ++ [deliver target x])
@@ -508,7 +547,7 @@ cexpr env scope e
       t <- fresh "value"
       ty <- lift' (javaType env False (expressionType e))
       s <- cstmt env Nothing scope (Assign t) e
-      pure (D.text (ty ++ " " ++ t ++ ";") : s, D.text t)
+      pure (javaText (ty ++ " " ++ t ++ ";") : s, D.text t)
   | otherwise = case expressionNode e of
       Constant s -> (,) [] <$> lift' (constant env (expressionType e) s)
       Local i -> do
@@ -526,22 +565,22 @@ cexpr env scope e
         | otherwise -> do
             c <- lift' (maybe (Left ("typed Java: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
             parts <- mapM (cexpr env scope) args
-            let context = [D.text "symbols" | isContextual (envPlan env) i]
-            pure (concatMap fst parts, D.text (envPrefix env ++ envFunctions env M.! c ++ "(") <> D.joinWith (D.text ", ") (context ++ map snd parts) <> D.text ")")
+            let context = [javaText "symbols" | isContextual (envPlan env) i]
+            pure (concatMap fst parts, jcall (envPrefix env ++ envFunctions env M.! c) (context ++ map snd parts))
       ShortCircuit op a b -> do
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
         if null sb
-          then pure (sa, D.text "(" <> xa <> D.text (if op == And then " && " else " || ") <> xb <> D.text ")")
+          then pure (sa, D.group (javaText "(" <> xa <> D.nest 4 (D.softline <> javaText (if op == And then "&& " else "|| ") <> xb) <> javaText ")"))
           else do
             t <- fresh "logic"
-            pure (sa ++ [D.text ("boolean " ++ t ++ ";"),
-              D.text "if (" <> (if op == And then xa else D.text "!" <> paren xa) <> D.text ") " <>
-                D.block 2 (D.joinWith D.hardline (sb ++ [D.text (t ++ " = ") <> xb <> D.text ";"])) <>
-                D.text (" else { " ++ t ++ " = " ++ (if op == And then "false" else "true") ++ "; }")], D.text t)
+            pure (sa ++ [javaText ("boolean " ++ t ++ ";"),
+              javaText "if (" <> (if op == And then xa else javaText "!" <> paren xa) <> javaText ")" <> D.hardline <>
+                D.block 2 (D.joinWith D.hardline (sb ++ [javaText (t ++ " = ") <> xb <> javaText ";"])) <> D.hardline <>
+                braced "else" (javaText (t ++ " = " ++ (if op == And then "false" else "true") ++ ";"))], D.text t)
       Unary Not a -> do
         (s, x) <- cexpr env scope a
-        pure (s, D.text "!" <> paren x)
+        pure (s, javaText "!" <> paren x)
       Unary Negate _ -> bigExpr env scope e
       Binary {} -> binary env scope e
       Convert _ target value
@@ -550,33 +589,33 @@ cexpr env scope e
       Helper Compare [a, b] -> do
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
-        pure (sa ++ sb, D.text (envPrefix env ++ "ordering(LawSpecFast.compare(") <> xa <> D.text ", " <> xb <> D.text "))")
+        pure (sa ++ sb, jcall (envPrefix env ++ "ordering") [jcall "LawSpecFast.compare" [xa, xb]])
       Helper Length [_] -> bigExpr env scope e
       Helper Unreachable _ -> do
         ty <- lift' (javaType env True (expressionType e))
-        pure ([D.text "if (true) throw LawSpecFast.unreachable();"], D.text ("(" ++ ty ++ ") null"))
-      Helper Checked _ -> pure ([], D.text "true")
+        pure ([braced "if (true)" (javaText "throw LawSpecFast.unreachable();")], javaText ("(" ++ ty ++ ") null"))
+      Helper Checked _ -> pure ([], javaText "true")
       AllElements value binder predicate -> do
         (sx, xs) <- cexpr env scope value
         t <- fresh "all"
         item <- fresh (binderName binder)
         jt <- lift' (javaType env False (binderType binder))
         (sp, p) <- cexpr env ((binderId binder, item) : scope) predicate
-        pure (sx ++ [ D.text ("boolean " ++ t ++ " = true;")
-                    , D.text ("for (final " ++ jt ++ " " ++ item ++ " : ") <> xs <> D.text ") " <> D.block 2 (D.joinWith D.hardline
-                        (sp ++ [D.text "if (!" <> paren p <> D.text (") { " ++ t ++ " = false; break; }")])) ], D.text t)
+        pure (sx ++ [ javaText ("boolean " ++ t ++ " = true;")
+                    , javaText ("for (final " ++ jt ++ " " ++ item ++ " : ") <> xs <> javaText ")" <> D.hardline <> D.block 2 (D.joinWith D.hardline
+                        (sp ++ [javaText "if (!" <> paren p <> javaText ")" <> D.hardline <> D.block 2 (javaText (t ++ " = false;") <> D.hardline <> javaText "break;")])) ], D.text t)
       Helper StartsWith [a, b] -> method "startsWith" a b
       Helper EndsWith [a, b] -> method "endsWith" a b
       Helper TextContains [a, b] -> method "contains" a b
       Helper RegexMatches [a, b] -> do
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
-        pure (sa ++ sb, D.text "LawSpecRuntime.regexMatches(" <> xa <> D.text ", " <> xb <> D.text ".codePoints().toArray())")
+        pure (sa ++ sb, jcall "LawSpecRuntime.regexMatches" [xa, xb <> javaText ".codePoints().toArray()"])
       -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
       Perform (Operation ref "raise") [x] | isFail ref -> do
         thrown <- raised ref x
         ty <- lift' (javaType env True (expressionType e))
-        pure (fst thrown ++ [D.text "if (true) " <> snd thrown], D.text ("(" ++ ty ++ ") null"))
+        pure (fst thrown ++ [javaText "if (true)" <> D.hardline <> D.block 2 (snd thrown)], javaText ("(" ++ ty ++ ") null"))
       -- An operation of another ability: the dynamic code's call of its
       -- handler in the context (LawSpecDefinitionBodies), over the
       -- arguments' dynamic values.
@@ -584,8 +623,8 @@ cexpr env scope e
         parts <- mapM (cexpr env scope) args
         codecs <- lift' (mapM (codecExpression env [] . expressionType) args)
         resultCodec <- lift' (codecExpression env [] (expressionType e))
-        pure (concatMap fst parts, D.text (resultCodec ++ ".decode(lawspec.runtime.LawSpecDefinitionBodies." ++ jvmPerformName op ++ "(") <>
-          D.joinWith (D.text ", ") (D.text "symbols" : [D.text (codec ++ ".encode(") <> x <> D.text ")" | (codec, x) <- zip codecs (map snd parts)]) <> D.text "))")
+        pure (concatMap fst parts, jcall (resultCodec ++ ".decode") [E.call ("LawSpecDefinitionBodies." ++ jvmPerformName op)
+          (javaText "symbols" : [jcall (codec ++ ".encode") [x] | (codec, x) <- zip codecs (map snd parts)])])
       -- attempt e: Right of e's value, or Left of the failure it raised.
       Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
         t <- fresh "attempted"
@@ -595,19 +634,19 @@ cexpr env scope e
         codec <- lift' (codecExpression env [] failure)
         (s, x) <- cexpr env scope body
         let witness = "<" ++ lt ++ ", " ++ rt ++ ">"
-            blockOf ss = D.block 2 (D.joinWith D.hardline ss)
-        pure ([ D.text (ty ++ " " ++ t ++ ";")
-              , D.text "try " <> blockOf (s ++ [D.text (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "right(") <> x <> D.text ");"]) <>
-                D.text " catch (LawSpecRuntime.Failure failure) " <> blockOf
-                  [ D.text ("if (!failure.ability.equals(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ")) throw failure;")
-                  , D.text (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "left(" ++ codec ++ ".decode(failure.value));") ] ], D.text t)
+            blockOf ss = D.hardline <> D.block 2 (D.joinWith D.hardline ss)
+        pure ([ javaText (ty ++ " " ++ t ++ ";")
+              , javaText "try" <> blockOf (s ++ [relaid (javaText (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "right(") <> x <> javaText ");")]) <>
+                D.hardline <> javaText "catch (LawSpecRuntime.Failure failure)" <> blockOf
+                  [ braced ("if (!failure.ability.equals(" ++ show (abilityKey ref) ++ "))") (javaText "throw failure;")
+                  , javaText (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "left(" ++ codec ++ ".decode(failure.value));") ] ], D.text t)
       Helper Append [a, b] -> do
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
         pure (sa ++ sb, case expressionType a of
-          Constructor "Text" [] -> paren (xa <> D.text " + " <> xb)
-          Constructor "Bytes" [] -> D.text "LawSpecFast.appendBytes(" <> xa <> D.text ", " <> xb <> D.text ")"
-          _ -> D.text "LawSpecFast.append(" <> xa <> D.text ", " <> xb <> D.text ")")
+          Constructor "Text" [] -> paren (xa <> javaText " + " <> xb)
+          Constructor "Bytes" [] -> jcall "LawSpecFast.appendBytes" [xa, xb]
+          _ -> jcall "LawSpecFast.append" [xa, xb])
       Helper Slice [x, from, to] -> do
         (sx, v) <- cexpr env scope x
         (si, i) <- index from
@@ -616,16 +655,16 @@ cexpr env scope e
               Constructor "Text" [] -> "LawSpecFast.sliceText"
               Constructor "Bytes" [] -> "LawSpecFast.sliceBytes"
               _ -> "LawSpecFast.slice"
-        pure (sx ++ si ++ sj, D.text (f ++ "(") <> v <> D.text ", " <> i <> D.text ", " <> j <> D.text ")")
+        pure (sx ++ si ++ sj, jcall (f) [v, i, j])
       Helper At [x, k] -> do
         (sx, v) <- cexpr env scope x
         (si, i) <- index k
         let f = if expressionType x == Constructor "Bytes" [] then "LawSpecFast.atBytes" else "LawSpecFast.at"
-        pure (sx ++ si, D.text (f ++ "(") <> v <> D.text ", " <> i <> D.text ")")
+        pure (sx ++ si, jcall (f) [v, i])
       Helper Range [lo, hi] -> do
         (sa, a) <- cexpr env scope lo
         (sb, b) <- cexpr env scope hi
-        pure (sa ++ sb, D.text "LawSpecFast.range(" <> a <> D.text ", " <> b <> D.text ")")
+        pure (sa ++ sb, jcall "LawSpecFast.range" [a, b])
       Helper Octets [b] -> one "LawSpecFast.octets" b
       Helper BytesOf [xs] -> one "LawSpecFast.bytesOf" xs
       Helper Utf8 [t] -> one "LawSpecFast.utf8" t
@@ -635,12 +674,12 @@ cexpr env scope e
       Helper Join [sep, parts] -> do
         (sa, a) <- cexpr env scope sep
         (sb, b) <- cexpr env scope parts
-        pure (sa ++ sb, D.text "LawSpecFast.join(" <> a <> D.text ", " <> b <> D.text ")")
+        pure (sa ++ sb, jcall "LawSpecFast.join" [a, b])
       _ -> lift' (Left ("typed Java: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     one f a = do
       (s, x) <- cexpr env scope a
-      pure (s, D.text (f ++ "(") <> x <> D.text ")")
+      pure (s, javaText (f ++ "(") <> x <> javaText ")")
     -- An Integer index, as a long (clamped).
     index a = do
       l <- longExpr env scope a
@@ -648,11 +687,11 @@ cexpr env scope e
         Just r -> pure r
         Nothing -> do
           (s, x) <- bigExpr env scope a
-          pure (s, D.text "LawSpecFast.index(" <> x <> D.text ")")
+          pure (s, javaText "LawSpecFast.index(" <> x <> javaText ")")
     raised ref x = do
       (s, v) <- cexpr env scope x
       codec <- lift' (codecExpression env [] (expressionType x))
-      pure (s, D.text ("throw new LawSpecRuntime.Failure(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ", " ++ codec ++ ".encode(") <> v <> D.text "));")
+      pure (s, javaText "throw new " <> jcall "LawSpecRuntime.Failure" [E.quoted (abilityKey ref), jcall (codec ++ ".encode") [v]] <> javaText ";")
     isComplexNode = case expressionNode e of
       Let {} -> True
       Match {} -> True
@@ -663,28 +702,33 @@ cexpr env scope e
     method name a b = do
       (sa, xa) <- cexpr env scope a
       (sb, xb) <- cexpr env scope b
-      pure (sa ++ sb, xa <> D.text ("." ++ name ++ "(") <> xb <> D.text ")")
+      pure (sa ++ sb, xa <> javaText ("." ++ name ++ "(") <> xb <> javaText ")")
 
 paren :: D.Doc -> D.Doc
-paren x = D.text "(" <> x <> D.text ")"
+paren x = javaText "(" <> x <> javaText ")"
+
+-- | name(a, b), its arguments wrapped 4 deeper when it does not fit, as
+-- Google Java Style wraps them.
+jcall :: String -> [D.Doc] -> D.Doc
+jcall name args = D.group (javaText (name ++ "(") <> D.nest 4 (D.softbreak <> D.commaSep args) <> javaText ")")
 
 constant :: Env -> Type -> Scalar -> Either String D.Doc
 constant env _ s = case s of
-  SBool b -> pure (D.text (if b then "true" else "false"))
-  SAbsent "Unit" -> pure (D.text (envFast env ++ ".Unit.UNIT"))
+  SBool b -> pure (javaText (if b then "true" else "false"))
+  SAbsent "Unit" -> pure (javaText (envFast env ++ ".Unit.UNIT"))
   SInteger "Integer" n
-    | n >= -(2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int) -> pure (D.text ("java.math.BigInteger.valueOf(" ++ longLiteral n ++ ")"))
-    | otherwise -> pure (D.text ("new java.math.BigInteger(\"" ++ show n ++ "\")"))
-  SInteger _ n -> pure (D.text (longLiteral n))
+    | n >= -(2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int) -> pure (javaText ("java.math.BigInteger.valueOf(" ++ longLiteral n ++ ")"))
+    | otherwise -> pure (javaText ("new java.math.BigInteger(\"" ++ show n ++ "\")"))
+  SInteger _ n -> pure (javaText (longLiteral n))
   SSequence "Text" units -> pure (E.quoted (map toEnum units))
-  SSequence "Bytes" units -> pure (D.text (envFast env ++ ".Bytes.of(" ++ intercalate ", " (map show units) ++ ")"))
+  SSequence "Bytes" units -> pure (javaText (envFast env ++ ".Bytes.of(" ++ intercalate ", " (map show units) ++ ")"))
   _ -> Left ("typed Java: unsupported constant " ++ show s)
 
 -- | An integer expression whose value is a long exactly: a bounded integer,
 -- a length or a small literal.
 longExpr :: Env -> Scope -> Expr -> M (Maybe ([D.Doc], D.Doc))
 longExpr env scope e = case (expressionNode e, expressionType e) of
-  (Constant (SInteger _ n), _) | n >= -(2 ^ (62 :: Int)) && n < 2 ^ (62 :: Int) -> pure (Just ([], D.text (longLiteral n)))
+  (Constant (SInteger _ n), _) | n >= -(2 ^ (62 :: Int)) && n < 2 ^ (62 :: Int) -> pure (Just ([], javaText (longLiteral n)))
   (Convert _ (Constructor "Integer" []) value, _) | isFixed (expressionType value) -> Just <$> cexpr env scope value
   (Helper Length [x], _) -> do
     (s, v) <- cexpr env scope x
@@ -694,37 +738,37 @@ longExpr env scope e = case (expressionNode e, expressionType e) of
 
 lengthOf :: Type -> D.Doc -> D.Doc
 lengthOf ty v = case ty of
-  Constructor "Text" [] -> D.text "(long) LawSpecFast.textLength(" <> v <> D.text ")"
-  Constructor "Bytes" [] -> D.text "(long) " <> v <> D.text ".length()"
-  _ -> D.text "(long) " <> v <> D.text ".size()"
+  Constructor "Text" [] -> javaText "(long) LawSpecFast.textLength(" <> v <> javaText ")"
+  Constructor "Bytes" [] -> javaText "(long) " <> v <> javaText ".length()"
+  _ -> javaText "(long) " <> v <> javaText ".size()"
 
 -- | An expression of type Integer, as a BigInteger.
 bigExpr :: Env -> Scope -> Expr -> M ([D.Doc], D.Doc)
 bigExpr env scope e = do
   l <- longExpr env scope e
   case l of
-    Just (s, x) -> pure (s, D.text "java.math.BigInteger.valueOf(" <> x <> D.text ")")
+    Just (s, x) -> pure (s, javaText "java.math.BigInteger.valueOf(" <> x <> javaText ")")
     Nothing -> case expressionNode e of
       Unary Negate a -> do
         (s, x) <- big a
-        pure (s, x <> D.text ".negate()")
+        pure (s, x <> javaText ".negate()")
       Binary op _ a b | not (isComparison op) -> do
         (sa, xa) <- big a
         (sb, xb) <- big b
         pure (sa ++ sb, case op of
-          Add -> xa <> D.text ".add(" <> xb <> D.text ")"
-          Subtract -> xa <> D.text ".subtract(" <> xb <> D.text ")"
-          Multiply -> xa <> D.text ".multiply(" <> xb <> D.text ")"
-          Quotient -> D.text "LawSpecFast.quot(" <> xa <> D.text ", " <> xb <> D.text ")"
-          Remainder -> D.text "LawSpecFast.rem(" <> xa <> D.text ", " <> xb <> D.text ")"
-          _ -> D.text "LawSpecFast.pow(" <> xa <> D.text ", " <> xb <> D.text ")")
+          Add -> xa <> javaText ".add(" <> xb <> javaText ")"
+          Subtract -> xa <> javaText ".subtract(" <> xb <> javaText ")"
+          Multiply -> xa <> javaText ".multiply(" <> xb <> javaText ")"
+          Quotient -> jcall "LawSpecFast.quot" [xa, xb]
+          Remainder -> jcall "LawSpecFast.rem" [xa, xb]
+          _ -> jcall "LawSpecFast.pow" [xa, xb])
       _ -> cexpr env scope e
   where
     big a = case expressionType a of
       Constructor "Integer" [] -> bigExpr env scope a
       _ -> do
         (s, x) <- cexpr env scope a
-        pure (s, D.text "java.math.BigInteger.valueOf(" <> x <> D.text ")")
+        pure (s, javaText "java.math.BigInteger.valueOf(" <> x <> javaText ")")
 
 binary :: Env -> Scope -> Expr -> M ([D.Doc], D.Doc)
 binary env scope e = case expressionNode e of
@@ -732,9 +776,9 @@ binary env scope e = case expressionNode e of
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
     let test = if primitiveType t
-          then paren xa <> D.text " == " <> paren xb
-          else D.text "java.util.Objects.equals(" <> xa <> D.text ", " <> xb <> D.text ")"
-    pure (sa ++ sb, if op == Equal then paren test else D.text "!" <> paren test)
+          then paren xa <> javaText " == " <> paren xb
+          else jcall "java.util.Objects.equals" [xa, xb]
+    pure (sa ++ sb, if op == Equal then paren test else javaText "!" <> paren test)
   Binary op (Numeric _) a b | isComparison op -> do
     let symbol = case op of Equal -> " == "; NotEqual -> " != "; Less -> " < "; LessEqual -> " <= "; Greater -> " > "; _ -> " >= "
     la <- longExpr env scope a
@@ -744,7 +788,7 @@ binary env scope e = case expressionNode e of
       _ -> do
         (sa, xa) <- bigExpr env scope (widen a)
         (sb, xb) <- bigExpr env scope (widen b)
-        pure (sa ++ sb, paren (xa <> D.text ".compareTo(" <> xb <> D.text ")" <> D.text symbol <> D.text "0"))
+        pure (sa ++ sb, paren (xa <> jcall ".compareTo" [xb] <> D.text symbol <> javaText "0"))
   _ -> bigExpr env scope e
   where
     widen a = case expressionType a of
@@ -768,7 +812,7 @@ convert env scope target value = case (target, expressionType value) of
           pure $ case (la, lb) of
             (Just (sa, xa), Just (sb, xb)) ->
               let f = case op of Add -> "add"; Subtract -> "subtract"; _ -> "multiply"
-              in Just (sa ++ sb, D.text ("LawSpecFast." ++ f ++ "(") <> xa <> D.text ", " <> xb <> D.text (", " ++ bounds ++ ")"))
+              in Just (sa ++ sb, jcall ("LawSpecFast." ++ f) [xa, xb, D.text bounds])
             _ -> Nothing
         _ -> pure Nothing
       case fused of
@@ -776,10 +820,10 @@ convert env scope target value = case (target, expressionType value) of
         Nothing -> do
           l <- longExpr env scope value
           case l of
-            Just (s, x) -> pure (s, D.text "LawSpecFast.narrow(" <> x <> D.text (", " ++ bounds ++ ")"))
+            Just (s, x) -> pure (s, javaText "LawSpecFast.narrow(" <> x <> javaText (", " ++ bounds ++ ")"))
             Nothing -> do
               (s, x) <- bigExpr env scope value
-              pure (s, D.text "LawSpecFast.narrow(" <> x <> D.text (", " ++ bounds ++ ")"))
+              pure (s, javaText "LawSpecFast.narrow(" <> x <> javaText (", " ++ bounds ++ ")"))
   _ -> lift' (Left ("typed Java: unsupported conversion to " ++ show target))
 
 construct :: Env -> Type -> Id -> [D.Doc] -> [Expr] -> M D.Doc
@@ -791,39 +835,39 @@ construct env ty tag values _ = do
   witnesses <- lift' (mapM (javaType env True) argumentsOf)
   let witness = "<" ++ intercalate ", " witnesses ++ ">"
   case (idText tag, values) of
-    ("List::Nil", []) -> pure (D.text (envFast env ++ ".List." ++ witness ++ "nil()"))
-    ("List::Cons", [h, t]) -> pure (D.text (envFast env ++ ".List." ++ witness ++ "cons(") <> h <> D.text ", " <> t <> D.text ")")
-    ("Maybe::Absent", []) -> pure (D.text (envFast env ++ ".Maybe." ++ witness ++ "absent()"))
-    ("Maybe::Present", [x]) -> pure (D.text (envFast env ++ ".Maybe." ++ witness ++ "present(") <> x <> D.text ")")
-    ("Either::Left", [x]) -> pure (D.text (envFast env ++ ".Either." ++ witness ++ "left(") <> x <> D.text ")")
-    ("Either::Right", [x]) -> pure (D.text (envFast env ++ ".Either." ++ witness ++ "right(") <> x <> D.text ")")
-    (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> pure (D.text (envPrefix env ++ "keyValOf(") <> items <> D.text ")")
-    (_, [items]) | Just ("Set", _) <- collectionArguments ty -> pure (D.text (envFast env ++ ".Set.of(") <> items <> D.text ")")
+    ("List::Nil", []) -> pure (javaText (envFast env ++ ".List." ++ witness ++ "nil()"))
+    ("List::Cons", [h, t]) -> pure (jcall (envFast env ++ ".List." ++ witness ++ "cons") [h, t])
+    ("Maybe::Absent", []) -> pure (javaText (envFast env ++ ".Maybe." ++ witness ++ "absent()"))
+    ("Maybe::Present", [x]) -> pure (javaText (envFast env ++ ".Maybe." ++ witness ++ "present(") <> x <> javaText ")")
+    ("Either::Left", [x]) -> pure (javaText (envFast env ++ ".Either." ++ witness ++ "left(") <> x <> javaText ")")
+    ("Either::Right", [x]) -> pure (javaText (envFast env ++ ".Either." ++ witness ++ "right(") <> x <> javaText ")")
+    (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> pure (javaText (envPrefix env ++ "keyValOf(") <> items <> javaText ")")
+    (_, [items]) | Just ("Set", _) <- collectionArguments ty -> pure (javaText (envFast env ++ ".Set.of(") <> items <> javaText ")")
     _ -> case M.lookup tag (envConstructors env) of
       Just (d, c) -> do
         let name = envPrefix env ++ envNames env M.! idText (dataId d)
             generic = if null witnesses then "" else witness
-        pure $ if fieldless d then D.text (name ++ "." ++ variantName env d c)
-          else if isProductType d then D.text ("new " ++ name ++ generic ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
-          else D.text ("new " ++ name ++ "." ++ variantName env d c ++ generic ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
+        pure $ if fieldless d then javaText (name ++ "." ++ variantName env d c)
+          else if isProductType d then jcall ("new " ++ name ++ generic) values
+          else jcall ("new " ++ name ++ "." ++ variantName env d c ++ generic) values
       Nothing -> lift' (Left ("typed Java: unknown constructor " ++ idText tag ++ " for " ++ boxed))
 
 intrinsicCall :: Env -> Intrinsic -> [(D.Doc, Type)] -> M D.Doc
 intrinsicCall env intrinsic args = case (intrinsic, map fst args) of
-  (KeyValOf, [es]) -> pure (D.text (envPrefix env ++ "keyValOf(") <> es <> D.text ")")
-  (KeyValLookup, [k, m]) -> pure (m <> D.text ".get(" <> k <> D.text ")")
-  (KeyValPut, [k, v, m]) -> pure (m <> D.text ".put(" <> k <> D.text ", " <> v <> D.text ")")
-  (KeyValDelete, [k, m]) -> pure (m <> D.text ".remove(" <> k <> D.text ")")
-  (KeyValKeys, [m]) -> pure (m <> D.text ".toList((k, v) -> k)")
-  (KeyValValues, [m]) -> pure (m <> D.text ".toList((k, v) -> v)")
-  (KeyValEntries, [m]) -> pure (D.text (envPrefix env ++ "entriesOf(") <> m <> D.text ")")
-  (SetOf, [xs]) -> pure (D.text "LawSpecFast.Set.of(" <> xs <> D.text ")")
-  (SetMember, [x, s]) -> pure (s <> D.text ".contains(" <> x <> D.text ")")
-  (SetInsert, [x, s]) -> pure (s <> D.text ".insert(" <> x <> D.text ")")
-  (SetRemove, [x, s]) -> pure (s <> D.text ".remove(" <> x <> D.text ")")
-  (SetUnion, [s, t]) -> pure (s <> D.text ".union(" <> t <> D.text ")")
-  (SetIntersection, [s, t]) -> pure (s <> D.text ".intersection(" <> t <> D.text ")")
-  (SetDifference, [s, t]) -> pure (s <> D.text ".difference(" <> t <> D.text ")")
+  (KeyValOf, [es]) -> pure (javaText (envPrefix env ++ "keyValOf(") <> es <> javaText ")")
+  (KeyValLookup, [k, m]) -> pure (m <> javaText ".get(" <> k <> javaText ")")
+  (KeyValPut, [k, v, m]) -> pure (m <> jcall ".put" [k, v])
+  (KeyValDelete, [k, m]) -> pure (m <> javaText ".remove(" <> k <> javaText ")")
+  (KeyValKeys, [m]) -> pure (m <> javaText ".toList((k, v) -> k)")
+  (KeyValValues, [m]) -> pure (m <> javaText ".toList((k, v) -> v)")
+  (KeyValEntries, [m]) -> pure (javaText (envPrefix env ++ "entriesOf(") <> m <> javaText ")")
+  (SetOf, [xs]) -> pure (javaText "LawSpecFast.Set.of(" <> xs <> javaText ")")
+  (SetMember, [x, s]) -> pure (s <> javaText ".contains(" <> x <> javaText ")")
+  (SetInsert, [x, s]) -> pure (s <> javaText ".insert(" <> x <> javaText ")")
+  (SetRemove, [x, s]) -> pure (s <> javaText ".remove(" <> x <> javaText ")")
+  (SetUnion, [s, t]) -> pure (s <> javaText ".union(" <> t <> javaText ")")
+  (SetIntersection, [s, t]) -> pure (s <> javaText ".intersection(" <> t <> javaText ")")
+  (SetDifference, [s, t]) -> pure (s <> javaText ".difference(" <> t <> javaText ")")
   _ -> lift' (Left ("typed Java: bad intrinsic " ++ show intrinsic))
 
 matchStatements :: Env -> Maybe (Int, [String]) -> Scope -> Target -> Expr -> [MatchCase] -> M [D.Doc]
@@ -834,7 +878,7 @@ matchStatements env selfCall scope target value cases = do
         then do
           n <- fresh (binderName b)
           t <- lift' (javaType env False (binderType b))
-          pure (Just (binderId b, n), [D.text ("final " ++ t ++ " " ++ n ++ " = " ++ access ++ ";")])
+          pure (Just (binderId b, n), [relaid (javaText ("final " ++ t ++ " " ++ n ++ " = " ++ access ++ ";"))])
         else pure (Nothing, [])
       arm c accesses = do
         bound <- mapM (\(b, a) -> bindOne c b a) (zip (caseBinders c) accesses)
@@ -847,12 +891,12 @@ matchStatements env selfCall scope target value cases = do
       (s, x) <- cexpr env scope value
       t <- fresh "matched"
       jt <- lift' (javaType env False ty)
-      pure (s ++ [D.text ("final " ++ jt ++ " " ++ t ++ " = ") <> x <> D.text ";"], t)
+      pure (s ++ [relaid (javaText ("final " ++ jt ++ " " ++ t ++ " = ") <> x <> javaText ";")], t)
   let caseOf tag = [c | c <- cases, idText (caseConstructor c) == tag]
       two yesTag noTag condition yesAccess noAccess = do
-        yes <- maybe (pure [D.text "throw LawSpecFast.unreachable();"]) (\c -> arm c yesAccess) (headMaybe (caseOf yesTag))
-        no <- maybe (pure [D.text "throw LawSpecFast.unreachable();"]) (\c -> arm c noAccess) (headMaybe (caseOf noTag))
-        pure (prelude ++ [D.text ("if (" ++ condition ++ ") ") <> blockOf yes <> D.text " else " <> blockOf no])
+        yes <- maybe (pure [javaText "throw LawSpecFast.unreachable();"]) (\c -> arm c yesAccess) (headMaybe (caseOf yesTag))
+        no <- maybe (pure [javaText "throw LawSpecFast.unreachable();"]) (\c -> arm c noAccess) (headMaybe (caseOf noTag))
+        pure (prelude ++ [javaText ("if (" ++ condition ++ ")") <> D.hardline <> blockOf yes <> D.hardline <> javaText "else" <> D.hardline <> blockOf no])
   case ty of
     Constructor "Maybe" _ -> two "Maybe::Present" "Maybe::Absent" (subject ++ ".isPresent()") [subject ++ ".get()"] []
     Constructor "Either" _ -> two "Either::Left" "Either::Right" (subject ++ ".isLeft()") [subject ++ ".left()"] [subject ++ ".right()"]
@@ -868,8 +912,8 @@ matchStatements env selfCall scope target value cases = do
         then do
           arms <- forM cases $ \c -> do
             body <- arm c []
-            pure (D.text ("case " ++ variantName env d (conOf c) ++ " -> ") <> blockOf body)
-          pure (prelude ++ [D.text ("switch (" ++ subject ++ ") ") <> blockOf (arms ++ [D.text "default -> throw LawSpecFast.unreachable();"])])
+            pure (javaText ("case " ++ variantName env d (conOf c) ++ " -> ") <> blockOf body)
+          pure (prelude ++ [javaText ("switch (" ++ subject ++ ")") <> D.hardline <> blockOf (arms ++ [javaText "default -> throw LawSpecFast.unreachable();"])])
         else if isProductType d
         then case cases of
           [c] -> (prelude ++) <$> arm c [subject ++ "." ++ fieldName f | f <- constructorFields (conOf c)]
@@ -881,9 +925,9 @@ matchStatements env selfCall scope target value cases = do
                 cls = name ++ "." ++ variantName env d con ++ generic
             m <- fresh "case"
             body <- arm c [m ++ "." ++ fieldName f | f <- constructorFields con]
-            let cast = [D.text ("final " ++ cls ++ " " ++ m ++ " = (" ++ cls ++ ") " ++ subject ++ ";") | not (null (constructorFields con))]
-            pure (D.text ("case " ++ show index ++ " -> ") <> blockOf (cast ++ body))
-          pure (prelude ++ [D.text ("switch (" ++ subject ++ ".tag) ") <> blockOf (arms ++ [D.text "default -> throw LawSpecFast.unreachable();"])])
+            let cast = [relaid (javaText ("final " ++ cls ++ " " ++ m ++ " = (" ++ cls ++ ") " ++ subject ++ ";")) | not (null (constructorFields con))]
+            pure (javaText ("case " ++ show index ++ " -> ") <> blockOf (cast ++ body))
+          pure (prelude ++ [javaText ("switch (" ++ subject ++ ".tag)") <> D.hardline <> blockOf (arms ++ [javaText "default -> throw LawSpecFast.unreachable();"])])
     _ -> lift' (Left ("typed Java: cannot match on " ++ show ty))
   where
     headMaybe xs = case xs of
@@ -983,54 +1027,59 @@ nativeHelper :: Env -> String -> Int -> Type -> M D.Doc
 nativeHelper env kind index ty | envStyle env == ScalaStyle = scalaHelper env kind index ty
 nativeHelper env kind index ty = do
   t <- lift' (javaType env True ty)
-  n <- lift' (nativeType env ty)
+  -- java.lang and this package's own names need no qualifier here.
+  n <- unqualify <$> lift' (nativeType env ty)
   let name = kind ++ show index
-      line = D.text
-      fn signature body = line ("public static " ++ signature ++ " ") <> D.block 2 (D.joinWith D.hardline body)
+      line = javaText
+      -- A long result type puts the name on the next line.
+      fn result signature body = (if length ("public static " ++ result ++ " " ++ signature) <= 98
+          then line ("public static " ++ result ++ " " ++ signature)
+          else line "public static " <> JT.javaType result <> D.nest 4 (D.hardline <> line signature)) <>
+        D.hardline <> D.block 2 (D.joinWith D.hardline body)
   if kind == "toNative"
-    then fn (n ++ " " ++ name ++ "(" ++ t ++ " x)") <$> toNative env ty
-    else fn (t ++ " " ++ name ++ "(" ++ n ++ " n)") <$> fromNative env ty
+    then fn n (name ++ "(" ++ t ++ " x)") <$> toNative env ty
+    else fn t (name ++ "(" ++ n ++ " n)") <$> fromNative env ty
 
 toNative :: Env -> Type -> M [D.Doc]
 toNative env ty = case ty of
-  Constructor "Bool" [] -> pure [D.text "return x;"]
-  Constructor "Text" [] -> pure [D.text "return x;"]
-  Constructor "Integer" [] -> pure [D.text "return x;"]
-  Constructor "Unit" [] -> pure [D.text (if envStyle env == KotlinStyle then "return kotlin.Unit.INSTANCE;" else "return LawSpecRuntime.absent(\"Unit\");")]
-  Constructor "Bytes" [] -> pure [D.text "return x.toArray();"]
-  _ | isFixed ty -> pure [D.text ("return " ++ narrowCast ty ++ "(long) x;")]
+  Constructor "Bool" [] -> pure [javaText "return x;"]
+  Constructor "Text" [] -> pure [javaText "return x;"]
+  Constructor "Integer" [] -> pure [javaText "return x;"]
+  Constructor "Unit" [] -> pure [javaText (if envStyle env == KotlinStyle then "return kotlin.Unit.INSTANCE;" else "return LawSpecRuntime.absent(\"Unit\");")]
+  Constructor "Bytes" [] -> pure [javaText "return x.toArray();"]
+  _ | isFixed ty -> pure [javaText ("return " ++ narrowCast ty ++ "(long) x;")]
   Constructor "List" [TypeArgument a] -> do
     c <- helper "toNative" a
     na <- lift' (nativeType env a)
-    pure [ D.text ("var out = new java.util.ArrayList<" ++ na ++ ">(x.size());")
-         , D.text ("for (var item : x) out.add(" ++ c ++ "(item));")
-         , D.text "return java.util.Collections.unmodifiableList(out);" ]
+    pure [ javaText ("var out = new java.util.ArrayList<" ++ na ++ ">(x.size());")
+         , braced "for (var item : x)" (javaText ("out.add(" ++ c ++ "(item));"))
+         , javaText "return java.util.Collections.unmodifiableList(out);" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "toNative" a
     na <- lift' (nativeType env a)
-    pure [ D.text ("if (x.isPresent()) return new LawSpecRuntime.Present<" ++ na ++ ">(" ++ c ++ "(x.get()));")
-         , D.text ("return new LawSpecRuntime.Absent<" ++ na ++ ">();") ]
+    pure [ braced ("if (x.isPresent())") (javaText ("return new LawSpecRuntime.Present<>(" ++ c ++ "(x.get()));"))
+         , javaText ("return new LawSpecRuntime.Absent<>();") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "toNative" a
     cr <- helper "toNative" b
     nl <- lift' (nativeType env a)
     nr <- lift' (nativeType env b)
-    pure [ D.text ("if (x.isLeft()) return new LawSpecRuntime.Left<" ++ nl ++ ", " ++ nr ++ ">(" ++ cl ++ "(x.left()));")
-         , D.text ("return new LawSpecRuntime.Right<" ++ nl ++ ", " ++ nr ++ ">(" ++ cr ++ "(x.right()));") ]
+    pure [ braced ("if (x.isLeft())") (javaText ("return new LawSpecRuntime.Left<>(" ++ cl ++ "(x.left()));"))
+         , javaText ("return new LawSpecRuntime.Right<>(" ++ cr ++ "(x.right()));") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "toNative" k
         cv <- helper "toNative" v
         nk <- lift' (nativeType env k)
         nv <- lift' (nativeType env v)
-        pure [ D.text ("var out = new java.util.LinkedHashMap<" ++ nk ++ ", " ++ nv ++ ">();")
-             , D.text ("x.forEach((k, v) -> out.put(" ++ ck ++ "(k), " ++ cv ++ "(v)));")
-             , D.text "return java.util.Collections.unmodifiableMap(out);" ]
+        pure [ javaText ("var out = new java.util.LinkedHashMap<" ++ nk ++ ", " ++ nv ++ ">();")
+             , javaText ("x.forEach((k, v) -> out.put(" ++ ck ++ "(k), " ++ cv ++ "(v)));")
+             , javaText "return java.util.Collections.unmodifiableMap(out);" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
         c <- helper "toNative" a
         na <- lift' (nativeType env a)
-        pure [ D.text ("var out = new java.util.LinkedHashSet<" ++ na ++ ">();")
-             , D.text ("for (var item : x.toList()) out.add(" ++ c ++ "(item));")
-             , D.text "return java.util.Collections.unmodifiableSet(out);" ]
+        pure [ javaText ("var out = new java.util.LinkedHashSet<" ++ na ++ ">();")
+             , braced "for (var item : x.toList())" (javaText ("out.add(" ++ c ++ "(item));"))
+             , javaText "return java.util.Collections.unmodifiableSet(out);" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         typedName = envNames env M.! n
@@ -1045,19 +1094,19 @@ toNative env ty = case ty of
       pure (\access -> h ++ "(" ++ access ++ ")")
     let made prefix c cs
           | null (constructorFields c) && kotlinObject d c = nativeVariant env d c base ++ ".INSTANCE"
-          | otherwise = "new " ++ nativeVariant env d c base ++ nativeGeneric ++ "(" ++ intercalate ", " [cv (prefix ++ fieldName f) | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ nativeVariant env d c base ++ diamond nativeGeneric ++ "(" ++ intercalate ", " [cv (prefix ++ fieldName f) | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if fieldless d
-      then pure [ D.text "switch (x) " <> D.block 2 (D.joinWith D.hardline
-                    ([D.text ("case " ++ variantName env d c ++ " -> { return " ++ made "" c [] ++ "; }") | c <- dataConstructors d] ++
-                     [D.text "default -> throw LawSpecFast.unreachable();"])) ]
+      then pure [ javaText "switch (x)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
+                    ([(javaText ("case " ++ variantName env d c ++ " -> {") <> D.nest 2 (D.hardline <> javaText ("return " ++ made "" c [] ++ ";")) <> D.hardline <> javaText "}") | c <- dataConstructors d] ++
+                     [javaText "default -> throw LawSpecFast.unreachable();"])) ]
       else if isProductType d
-        then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "x." c (firstOf converters) ++ ";")]
-        else pure [ D.text "switch (x.tag) " <> D.block 2 (D.joinWith D.hardline
-                      ([ D.text ("case " ++ show k ++ " -> ") <> D.block 2 (D.joinWith D.hardline
-                           ([D.text ("var y = (" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ ") x;") | not (null (constructorFields c))] ++
-                            [D.text ("return " ++ made "y." c cs ++ ";")]))
+        then let c = firstOf (dataConstructors d) in pure [javaText ("return " ++ made "x." c (firstOf converters) ++ ";")]
+        else pure [ javaText "switch (x.tag)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
+                      ([ javaText ("case " ++ show k ++ " -> ") <> D.block 2 (D.joinWith D.hardline
+                           ([javaText ("var y = (" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ ") x;") | not (null (constructorFields c))] ++
+                            [javaText ("return " ++ made "y." c cs ++ ";")]))
                        | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ] ++
-                       [D.text "default -> throw LawSpecFast.unreachable();"])) ]
+                       [javaText "default -> throw LawSpecFast.unreachable();"])) ]
   _ -> lift' (Left ("typed Java: no native conversion for " ++ show ty))
   where
     -- A Kotlin data object: a constructor without fields of a type without
@@ -1066,24 +1115,24 @@ toNative env ty = case ty of
 
 fromNative :: Env -> Type -> M [D.Doc]
 fromNative env ty = case ty of
-  Constructor "Bool" [] -> pure [D.text "return n;"]
-  Constructor "Text" [] -> pure [D.text "return n;"]
-  Constructor "Integer" [] -> pure [D.text "return n instanceof java.math.BigInteger b ? b : java.math.BigInteger.valueOf(((Number) n).longValue());"]
-  Constructor "Unit" [] -> pure [D.text "return LawSpecFast.Unit.UNIT;"]
-  Constructor "Bytes" [] -> pure [D.text "return new LawSpecFast.Bytes(n.clone());"]
-  _ | isFixed ty -> pure [D.text "return n.longValue();"]
+  Constructor "Bool" [] -> pure [javaText "return n;"]
+  Constructor "Text" [] -> pure [javaText "return n;"]
+  Constructor "Integer" [] -> pure [javaText "return n instanceof java.math.BigInteger b ? b : java.math.BigInteger.valueOf(((Number) n).longValue());"]
+  Constructor "Unit" [] -> pure [javaText "return LawSpecFast.Unit.UNIT;"]
+  Constructor "Bytes" [] -> pure [javaText "return new LawSpecFast.Bytes(n.clone());"]
+  _ | isFixed ty -> pure [javaText "return n.longValue();"]
   Constructor "List" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- lift' (javaType env True a)
-    pure [ D.text ("LawSpecFast.List<" ++ at ++ "> out = LawSpecFast.List.nil();")
-         , D.text "for (int i = n.size() - 1; i >= 0; i--) out = LawSpecFast.List.cons(" <> D.text (c ++ "(n.get(i)), out);")
-         , D.text "return out;" ]
+    pure [ javaText ("LawSpecFast.List<" ++ at ++ "> out = LawSpecFast.List.nil();")
+         , braced "for (int i = n.size() - 1; i >= 0; i--)" (javaText ("out = LawSpecFast.List.cons(" ++ c ++ "(n.get(i)), out);"))
+         , javaText "return out;" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- lift' (javaType env True a)
     na <- lift' (nativeType env a)
-    pure [ D.text ("if (n instanceof LawSpecRuntime.Present<" ++ na ++ "> j) return LawSpecFast.Maybe.<" ++ at ++ ">present(" ++ c ++ "(j.value()));")
-         , D.text ("return LawSpecFast.Maybe.<" ++ at ++ ">absent();") ]
+    pure [ braced ("if (n instanceof LawSpecRuntime.Present<" ++ na ++ "> j)") (javaText ("return LawSpecFast.Maybe.<" ++ at ++ ">present(" ++ c ++ "(j.value()));"))
+         , javaText ("return LawSpecFast.Maybe.<" ++ at ++ ">absent();") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "fromNative" a
     cr <- helper "fromNative" b
@@ -1091,23 +1140,23 @@ fromNative env ty = case ty of
     rt <- lift' (javaType env True b)
     nl <- lift' (nativeType env a)
     nr <- lift' (nativeType env b)
-    pure [ D.text ("if (n instanceof LawSpecRuntime.Left<" ++ nl ++ ", " ++ nr ++ "> l) return LawSpecFast.Either.<" ++ lt ++ ", " ++ rt ++ ">left(" ++ cl ++ "(l.value()));")
-         , D.text ("var r = (LawSpecRuntime.Right<" ++ nl ++ ", " ++ nr ++ ">) n;")
-         , D.text ("return LawSpecFast.Either.<" ++ lt ++ ", " ++ rt ++ ">right(" ++ cr ++ "(r.value()));") ]
+    pure [ braced ("if (n instanceof LawSpecRuntime.Left<" ++ nl ++ ", " ++ nr ++ "> l)") (javaText ("return LawSpecFast.Either.<" ++ lt ++ ", " ++ rt ++ ">left(" ++ cl ++ "(l.value()));"))
+         , javaText ("var r = (LawSpecRuntime.Right<" ++ nl ++ ", " ++ nr ++ ">) n;")
+         , javaText ("return LawSpecFast.Either.<" ++ lt ++ ", " ++ rt ++ ">right(" ++ cr ++ "(r.value()));") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "fromNative" k
         cv <- helper "fromNative" v
         kt <- lift' (javaType env True k)
         vt <- lift' (javaType env True v)
-        pure [ D.text ("LawSpecFast.Map<" ++ kt ++ ", " ++ vt ++ "> out = LawSpecFast.Map.empty();")
-             , D.text ("for (var e : n.entrySet()) out = out.put(" ++ ck ++ "(e.getKey()), " ++ cv ++ "(e.getValue()));")
-             , D.text "return out;" ]
+        pure [ javaText ("LawSpecFast.Map<" ++ kt ++ ", " ++ vt ++ "> out = LawSpecFast.Map.empty();")
+             , braced "for (var e : n.entrySet())" (jcall "out = out.put" [javaText (ck ++ "(e.getKey())"), javaText (cv ++ "(e.getValue())")] <> javaText ";")
+             , javaText "return out;" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
         c <- helper "fromNative" a
         at <- lift' (javaType env True a)
-        pure [ D.text ("LawSpecFast.Set<" ++ at ++ "> out = LawSpecFast.Set.empty();")
-             , D.text ("for (var item : n) out = out.insert(" ++ c ++ "(item));")
-             , D.text "return out;" ]
+        pure [ javaText ("LawSpecFast.Set<" ++ at ++ "> out = LawSpecFast.Set.empty();")
+             , braced "for (var item : n)" (javaText ("out = out.insert(" ++ c ++ "(item));"))
+             , javaText "return out;" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         typedName = envNames env M.! n
@@ -1123,14 +1172,14 @@ fromNative env ty = case ty of
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = typedName ++ "." ++ variantName env d c
-          | isProductType d = "new " ++ typedName ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
-          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | isProductType d = "new " ++ typedName ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if isProduct d
-      then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "n." c (firstOf converters) ++ ";")]
-      else pure ([ D.text ("if (n instanceof " ++ nativeVariant env d c base ++ ") ") <> D.block 2 (D.joinWith D.hardline
-                     ([D.text ("var y = (" ++ nativeVariant env d c base ++ nativeGeneric ++ ") n;") | not (null (constructorFields c))] ++
-                      [D.text ("return " ++ made "y." c cs ++ ";")]))
-                 | (c, cs) <- zip (dataConstructors d) converters ] ++ [D.text "throw LawSpecFast.unreachable();"])
+      then let c = firstOf (dataConstructors d) in pure [javaText ("return " ++ made "n." c (firstOf converters) ++ ";")]
+      else pure ([ javaText ("if (n instanceof " ++ nativeVariant env d c base ++ ")") <> D.hardline <> D.block 2 (D.joinWith D.hardline
+                     ([javaText ("var y = (" ++ nativeVariant env d c base ++ nativeGeneric ++ ") n;") | not (null (constructorFields c))] ++
+                      [javaText ("return " ++ made "y." c cs ++ ";")]))
+                 | (c, cs) <- zip (dataConstructors d) converters ] ++ [javaText "throw LawSpecFast.unreachable();"])
   _ -> lift' (Left ("typed Java: no native conversion for " ++ show ty))
 
 -- | The Java getter of a Kotlin property: isX stays, others get get.
@@ -1153,8 +1202,9 @@ scalaHelper env kind index ty = do
   n <- lift' (scalaNative env ty)
   body <- if kind == "toNative" then scalaToNative env ty else scalaFromNative env ty
   let name = kind ++ show index
-      signature = if kind == "toNative" then name ++ "(x: " ++ t ++ "): " ++ n else name ++ "(n: " ++ n ++ "): " ++ t
-  pure (D.text ("def " ++ signature ++ " = ") <> D.block 2 (D.joinWith D.hardline body))
+      (parameter, result) = if kind == "toNative" then ("x: " ++ t, n) else ("n: " ++ n, t)
+      signature = D.group (D.text ("def " ++ name ++ "(") <> D.nest 4 (D.softbreak <> scalaText parameter) <> D.softbreak <> D.text "): " <> scalaText result)
+  pure (signature <> D.text " = " <> D.block 2 (D.joinWith D.hardline body))
 
 -- | A typed form, in Scala's syntax: java.lang's names qualified.
 scalaTyped :: Env -> Type -> M String
@@ -1178,39 +1228,39 @@ scalaNative env = ScalaData.scalaDataType (envDeclarations env)
 
 scalaToNative :: Env -> Type -> M [D.Doc]
 scalaToNative env ty = case ty of
-  Constructor "Bool" [] -> pure [D.text "x.booleanValue"]
-  Constructor "Text" [] -> pure [D.text "x"]
-  Constructor "Integer" [] -> pure [D.text "scala.math.BigInt(x)"]
-  Constructor "Unit" [] -> pure [D.text "()"]
-  Constructor "Bytes" [] -> pure [D.text "scala.IArray.unsafeFromArray(x.toArray())"]
-  Constructor n [] | isFixed ty -> pure [D.text ("x.longValue" ++ fromMaybe "" (lookup n [("Int8", ".toByte"), ("Int16", ".toShort"), ("Int32", ".toInt"), ("UInt8", ".toShort"), ("UInt16", ".toInt")]))]
+  Constructor "Bool" [] -> pure [scalaText "x.booleanValue"]
+  Constructor "Text" [] -> pure [scalaText "x"]
+  Constructor "Integer" [] -> pure [scalaText "scala.math.BigInt(x)"]
+  Constructor "Unit" [] -> pure [scalaText "()"]
+  Constructor "Bytes" [] -> pure [scalaText "scala.IArray.unsafeFromArray(x.toArray())"]
+  Constructor n [] | isFixed ty -> pure [scalaText ("x.longValue" ++ fromMaybe "" (lookup n [("Int8", ".toByte"), ("Int16", ".toShort"), ("Int32", ".toInt"), ("UInt8", ".toShort"), ("UInt16", ".toInt")]))]
   Constructor "List" [TypeArgument a] -> do
     c <- helper "toNative" a
     na <- lift' (scalaNative env a)
-    pure [ D.text ("val out = scala.collection.immutable.List.newBuilder[" ++ na ++ "]")
-         , D.text ("x.forEach(item => out += " ++ c ++ "(item))")
-         , D.text "out.result()" ]
+    pure [ scalaText ("val out = scala.collection.immutable.List.newBuilder[" ++ na ++ "]")
+         , scalaText ("x.forEach(item => out += " ++ c ++ "(item))")
+         , scalaText "out.result()" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "toNative" a
-    pure [D.text ("if (x.isPresent) scala.Some(" ++ c ++ "(x.get)) else scala.None")]
+    pure [scalaText ("if (x.isPresent) scala.Some(" ++ c ++ "(x.get))"), scalaText "else scala.None"]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "toNative" a
     cr <- helper "toNative" b
-    pure [D.text ("if (x.isLeft) scala.util.Left(" ++ cl ++ "(x.left)) else scala.util.Right(" ++ cr ++ "(x.right))")]
+    pure [scalaText ("if (x.isLeft) scala.util.Left(" ++ cl ++ "(x.left))"), scalaText ("else scala.util.Right(" ++ cr ++ "(x.right))")]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "toNative" k
         cv <- helper "toNative" v
         nk <- lift' (scalaNative env k)
         nv <- lift' (scalaNative env v)
-        pure [ D.text ("val out = scala.collection.immutable.ListMap.newBuilder[" ++ nk ++ ", " ++ nv ++ "]")
-             , D.text ("x.forEach((k, v) => out += ((" ++ ck ++ "(k), " ++ cv ++ "(v))))")
-             , D.text "out.result()" ]
+        pure [ scalaText ("val out = scala.collection.immutable.ListMap.newBuilder[" ++ nk ++ ", " ++ nv ++ "]")
+             , scalaText ("x.forEach((k, v) => out += ((" ++ ck ++ "(k), " ++ cv ++ "(v))))")
+             , scalaText "out.result()" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
         c <- helper "toNative" a
         na <- lift' (scalaNative env a)
-        pure [ D.text ("val out = scala.collection.immutable.ListSet.newBuilder[" ++ na ++ "]")
-             , D.text ("x.toList().forEach(item => out += " ++ c ++ "(item))")
-             , D.text "out.result()" ]
+        pure [ scalaText ("val out = scala.collection.immutable.ListSet.newBuilder[" ++ na ++ "]")
+             , scalaText ("x.toList().forEach(item => out += " ++ c ++ "(item))")
+             , scalaText "out.result()" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         typedName = envPrefix env ++ envNames env M.! n
@@ -1227,56 +1277,60 @@ scalaToNative env ty = case ty of
           | singleton c = nativeCase c
           | otherwise = nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric) ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ ScalaData.escaped (fieldName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if fieldless d
-      then pure [ D.text "x match " <> D.block 2 (D.joinWith D.hardline
-                    [D.text ("case " ++ typedName ++ "." ++ variantName env d c ++ " => " ++ made "" c []) | c <- dataConstructors d]) ]
+      then pure [ scalaText "x match " <> D.block 2 (D.joinWith D.hardline
+                    [scalaText ("case " ++ typedName ++ "." ++ variantName env d c ++ " => " ++ made "" c []) | c <- dataConstructors d]) ]
       else if isProductType d
-        then let c = firstOf (dataConstructors d) in pure [D.text (made "x." c (firstOf converters))]
-        else pure [ D.text "x.tag match " <> D.block 2 (D.joinWith D.hardline
+        then let c = firstOf (dataConstructors d) in pure [scalaText (made "x." c (firstOf converters))]
+        else pure [ scalaText "x.tag match " <> D.block 2 (D.joinWith D.hardline
                       ([ D.text ("case " ++ show k ++ " => ") <> D.block 2 (D.joinWith D.hardline
-                           ([D.text ("val y = x.asInstanceOf[" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "]") | not (null (constructorFields c))] ++
-                            [D.text (made "y." c cs)]))
+                           ([scalaText ("val y = x.asInstanceOf[" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "]") | not (null (constructorFields c))] ++
+                            [scalaText (made "y." c cs)]))
                        | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ] ++
-                       [D.text "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
+                       [scalaText "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
   _ -> lift' (Left ("typed Scala: no native conversion for " ++ show ty))
 
 scalaFromNative :: Env -> Type -> M [D.Doc]
 scalaFromNative env ty = case ty of
-  Constructor "Bool" [] -> pure [D.text "java.lang.Boolean.valueOf(n)"]
-  Constructor "Text" [] -> pure [D.text "n"]
-  Constructor "Integer" [] -> pure [D.text "n.bigInteger"]
-  Constructor "Unit" [] -> pure [D.text "lawspec.runtime.LawSpecFast.Unit.UNIT"]
-  Constructor "Bytes" [] -> pure [D.text "lawspec.runtime.LawSpecFast.Bytes(scala.IArray.genericWrapArray(n).toArray)"]
-  _ | isFixed ty -> pure [D.text "java.lang.Long.valueOf(n.toLong)"]
+  Constructor "Bool" [] -> pure [scalaText "java.lang.Boolean.valueOf(n)"]
+  Constructor "Text" [] -> pure [scalaText "n"]
+  Constructor "Integer" [] -> pure [scalaText "n.bigInteger"]
+  Constructor "Unit" [] -> pure [scalaText "lawspec.runtime.LawSpecFast.Unit.UNIT"]
+  Constructor "Bytes" [] -> pure [scalaText "lawspec.runtime.LawSpecFast.Bytes(scala.IArray.genericWrapArray(n).toArray)"]
+  _ | isFixed ty -> pure [scalaText "java.lang.Long.valueOf(n.toLong)"]
   Constructor "List" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- scalaTyped env a
-    pure [ D.text ("var out = lawspec.runtime.LawSpecFast.List.nil[" ++ at ++ "]()")
-         , D.text ("n.reverseIterator.foreach(item => out = lawspec.runtime.LawSpecFast.List.cons(" ++ c ++ "(item), out))")
-         , D.text "out" ]
+    pure [ scalaText ("var out = lawspec.runtime.LawSpecFast.List.nil[" ++ at ++ "]()")
+         , scalaText ("n.reverseIterator.foreach(item => out = lawspec.runtime.LawSpecFast.List.cons(" ++ c ++ "(item), out))")
+         , scalaText "out" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- scalaTyped env a
-    pure [D.text ("n match { case scala.Some(v) => lawspec.runtime.LawSpecFast.Maybe.present[" ++ at ++ "](" ++ c ++ "(v)); case scala.None => lawspec.runtime.LawSpecFast.Maybe.absent[" ++ at ++ "]() }")]
+    pure [scalaText "n match " <> D.block 2 (D.joinWith D.hardline
+      [ scalaText ("case scala.Some(v) => lawspec.runtime.LawSpecFast.Maybe.present[" ++ at ++ "](" ++ c ++ "(v))")
+      , scalaText ("case scala.None => lawspec.runtime.LawSpecFast.Maybe.absent[" ++ at ++ "]()") ])]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "fromNative" a
     cr <- helper "fromNative" b
     lt <- scalaTyped env a
     rt <- scalaTyped env b
-    pure [D.text ("n match { case scala.util.Left(v) => lawspec.runtime.LawSpecFast.Either.left[" ++ lt ++ ", " ++ rt ++ "](" ++ cl ++ "(v)); case scala.util.Right(v) => lawspec.runtime.LawSpecFast.Either.right[" ++ lt ++ ", " ++ rt ++ "](" ++ cr ++ "(v)) }")]
+    pure [scalaText "n match " <> D.block 2 (D.joinWith D.hardline
+      [ scalaText ("case scala.util.Left(v) => lawspec.runtime.LawSpecFast.Either.left[" ++ lt ++ ", " ++ rt ++ "](" ++ cl ++ "(v))")
+      , scalaText ("case scala.util.Right(v) => lawspec.runtime.LawSpecFast.Either.right[" ++ lt ++ ", " ++ rt ++ "](" ++ cr ++ "(v))") ])]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "fromNative" k
         cv <- helper "fromNative" v
         kt <- scalaTyped env k
         vt <- scalaTyped env v
-        pure [ D.text ("var out = lawspec.runtime.LawSpecFast.Map.empty[" ++ kt ++ ", " ++ vt ++ "]()")
-             , D.text ("n.foreach((k, v) => out = out.put(" ++ ck ++ "(k), " ++ cv ++ "(v)))")
-             , D.text "out" ]
+        pure [ scalaText ("var out = lawspec.runtime.LawSpecFast.Map.empty[" ++ kt ++ ", " ++ vt ++ "]()")
+             , scalaText ("n.foreach((k, v) => out = out.put(" ++ ck ++ "(k), " ++ cv ++ "(v)))")
+             , scalaText "out" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
         c <- helper "fromNative" a
         at <- scalaTyped env a
-        pure [ D.text ("var out = lawspec.runtime.LawSpecFast.Set.empty[" ++ at ++ "]()")
-             , D.text ("n.foreach(item => out = out.insert(" ++ c ++ "(item)))")
-             , D.text "out" ]
+        pure [ scalaText ("var out = lawspec.runtime.LawSpecFast.Set.empty[" ++ at ++ "]()")
+             , scalaText ("n.foreach(item => out = out.insert(" ++ c ++ "(item)))")
+             , scalaText "out" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         typedName = envPrefix env ++ envNames env M.! n
@@ -1297,8 +1351,32 @@ scalaFromNative env ty = case ty of
         pattern c | singleton c = nativeCase c
                   | otherwise = "y: " ++ nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric ++ " @unchecked")
     if isProduct d
-      then let c = firstOf (dataConstructors d) in pure [D.text (made "n." c (firstOf converters))]
-      else pure [ D.text "(n: Any) match " <> D.block 2 (D.joinWith D.hardline
-                    ([D.text ("case " ++ pattern c ++ " => " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters] ++
-                     [D.text "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
+      then let c = firstOf (dataConstructors d) in pure [scalaText (made "n." c (firstOf converters))]
+      else pure [ scalaText "(n: Any) match " <> D.block 2 (D.joinWith D.hardline
+                    ([scalaText ("case " ++ pattern c ++ " => " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters] ++
+                     [scalaText "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
   _ -> lift' (Left ("typed Scala: no native conversion for " ++ show ty))
+
+-- | A constructor's type arguments where Java infers them: <> for any.
+diamond :: String -> String
+diamond arguments = if null arguments then "" else "<>"
+
+-- | A native type as LawSpecTyped (package lawspec.runtime) writes it.
+unqualify :: String -> String
+unqualify s = case s of
+  [] -> []
+  c : rest | not (isIdentifier c) -> c : unqualify rest
+  _ -> let (word, rest) = span (\x -> isIdentifier x || x == '.') s in strip word ++ unqualify rest
+  where
+    isIdentifier x = x `elem` ('_' : '$' : ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'])
+    strip w = case [r | p <- ["java.lang.", "lawspec.runtime."], Just r@(c : _) <- [stripPrefix p w], c `elem` ['A' .. 'Z'], '.' `notElem` takeWhile (/= '.') r] of
+      r : _ -> r
+      [] -> w
+
+-- | An identity for a comment, in lines broken after its ::, a hash alone.
+idLines :: String -> [String]
+idLines identity = case break (== ':') identity of
+  _ | length identity <= 80 -> ["(" ++ identity ++ ")."]
+  _ -> let (namespace, hash) = splitAtLast identity in ["(" ++ namespace, hash ++ ")."]
+  where
+    splitAtLast s = let cut = maximum (0 : [i + 2 | i <- [0 .. length s - 2], take 2 (drop i s) == "::"]) in splitAt cut s

@@ -126,6 +126,22 @@ filter sampling.
 
 ## Formatting
 
-Output follows the Google Android Kotlin style guide: four-space blocks and
-wrapped arguments, 100-column lines. The Java support files use Google Java
-Format. See [formatting](../../reference/formatting.md).
+Output is what ktfmt 0.64 writes in its kotlinlang style: four-space
+blocks, 100-column lines, a broken argument list one argument a line with a
+trailing comma. LawSpec lays it out itself, and its acceptance checks every
+generated project with `ktfmt --kotlinlang-style --dry-run
+--set-exit-if-changed`. The tests' generators and checks are in the runtime
+(`LawSpecScalars`, `LawSpecTesting`), so a test file holds only its laws.
+See [formatting](../../reference/formatting.md).
+
+## Names
+
+Generated code uses the specification's names. Locals keep their source
+names in Kotlin's camel case, checked definitions are named after the
+definition, and an anonymous record has a name from where it is used
+(`DeclinedDetails`) instead of `Record<digest>`. A test is named after its
+law and example, for instance `normalizersAgree_spacesBecomeHyphensPunctuationIs`, and boundaries are numbered from
+1. Each law's comment gives its name, source line, what it says and the
+statement its tests check; assertion messages name the law and example and
+link to the expectation's line. Text is written as the language's own string
+literal.

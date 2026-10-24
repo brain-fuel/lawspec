@@ -2,13 +2,15 @@ package lawspec
 
 import java.math.BigInteger
 import lawspec.runtime.LawSpecRuntime
-import lawspec.testing.{Arb, Rng, Tree}
+import lawspec.testing.{Arb, LawSpecScalars, Rng, Tree}
 import org.scalatest.funsuite.AnyFunSuite
 
 private case class RangeCase(
   name: String, bits: Int, lower: BigInteger, upper: BigInteger,
   generator: Arb[LawSpecRuntime.Value],
 )
+
+private val MachineBits = 64
 
 class BoundedGeneratorTest extends AnyFunSuite:
   private val cases = List(

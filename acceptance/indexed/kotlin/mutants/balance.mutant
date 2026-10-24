@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Arithmetic.kt
 <<<<<<<
-Perfect.Node(lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(value0.value.right), mirror(value0.value.left)))
+Perfect.Node(lawspec.data.NodeDetails(mirror(value0.value.right), mirror(value0.value.left)))
 =======
-Perfect.Node(lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(value0.value.right), Perfect.Leaf(0)))
+Perfect.Node(lawspec.data.NodeDetails(mirror(value0.value.right), Perfect.Leaf(0)))
 >>>>>>>

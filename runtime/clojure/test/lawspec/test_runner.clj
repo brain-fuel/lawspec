@@ -34,15 +34,15 @@
          "<testsuite name=\"" (escape ns-name) "\" tests=\"" (count cases) "\" failures=\"" (count-of :failures)
          "\" errors=\"" (count-of :errors) "\" skipped=\"" (count (filter #(:skipped (second %)) cases)) "\">\n"
          (apply str
-           (for [[test {:keys [time failures errors skipped]}] cases]
-             (str "  <testcase name=\"" (escape test) "\" classname=\"" (escape ns-name) "\" time=\"" (format "%.3f" (double (or time 0))) "\""
-                  (if (or skipped (seq failures) (seq errors))
-                    (str ">\n"
-                         (when skipped (str "    <skipped message=\"" (escape skipped) "\"/>\n"))
-                         (apply str (for [m failures] (str "    <failure message=\"" (escape (:message m)) "\">" (escape (:text m)) "</failure>\n")))
-                         (apply str (for [m errors] (str "    <error message=\"" (escape (:message m)) "\">" (escape (:text m)) "</error>\n")))
-                         "  </testcase>\n")
-                    "/>\n"))))
+                (for [[test {:keys [time failures errors skipped]}] cases]
+                  (str "  <testcase name=\"" (escape test) "\" classname=\"" (escape ns-name) "\" time=\"" (format "%.3f" (double (or time 0))) "\""
+                       (if (or skipped (seq failures) (seq errors))
+                         (str ">\n"
+                              (when skipped (str "    <skipped message=\"" (escape skipped) "\"/>\n"))
+                              (apply str (for [m failures] (str "    <failure message=\"" (escape (:message m)) "\">" (escape (:text m)) "</failure>\n")))
+                              (apply str (for [m errors] (str "    <error message=\"" (escape (:message m)) "\">" (escape (:text m)) "</error>\n")))
+                              "  </testcase>\n")
+                         "/>\n"))))
          "</testsuite>\n")))
 
 (defn- trace [x]

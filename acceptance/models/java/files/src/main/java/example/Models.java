@@ -21,7 +21,7 @@ public final class Models {
   }
 
   public static PushFlow push(byte value0, Stack value1) {
-    return new PushFlow(new Stack.Push(new lawspec.data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)));
+    return new PushFlow(new Stack.Push(new lawspec.data.PushDetails(value1, value0)));
   }
 
   // The flow signature guarantees a nonempty stack.

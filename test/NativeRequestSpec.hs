@@ -181,7 +181,7 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
           codes value `shouldBe` []
           mapM_ (show value `shouldContain`) fragments)
       [ ("python", ["async def priceOf(", "await "]), ("javascript", ["export async function priceOf(", "await "])
-      , ("typescript", ["Promise<number>", "await "]), ("java", [".thenApply(found ->", "CompletableFuture<java.lang.Long> count("])
+      , ("typescript", ["Promise<number>", "await "]), ("java", [".thenApply(found ->", "CompletableFuture<java.lang.Long>", "count("])
       , ("kotlin", ["suspend fun priceOf("]), ("go", ["LawSpecTask[int32]", ".Await()"])
       , ("rust", [".await"]), ("haskell", ["P.IO I.Int32", "P.fmap"]) ]
   it "bridges Go handle methods and constructors, holding a bound handle by pointer" $ do

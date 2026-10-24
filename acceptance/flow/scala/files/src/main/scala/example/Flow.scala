@@ -6,7 +6,7 @@ import lawspec.data.{PeekFlow, PopFlow, PushFlow, Stack}
 object Flow {
   // (Int8 -> (example.flow::type::Stack -> example.flow::type::PushFlow))
   def push(value0: scala.Byte, value1: lawspec.data.Stack): lawspec.data.PushFlow =
-    PushFlow(Stack.Push(lawspec.data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be(value1, value0)))
+    PushFlow(Stack.Push(lawspec.data.PushDetails(value1, value0)))
 
   // The flow signature guarantees a nonempty stack.
   // (example.flow::type::Stack -> example.flow::type::PopFlow)

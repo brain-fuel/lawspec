@@ -126,7 +126,7 @@ main = do
     generated <- plan (extra ++ native) (sources ++ vectors) target bits minify
     if check then checkDisk project generated else if formattedOnly then do
       writeProject suite target project (bits == 64 && not minify) minify generated
-      unless minify (formatted target project generated >>= mapM_ putStrLn)
+      unless minify (formatted suite target project generated >>= mapM_ putStrLn)
     else do
       writeProject suite target project (bits == 64 && not minify) minify generated
       mismatch <- if architecture then architectureMismatch target bits else pure False
@@ -146,7 +146,7 @@ main = do
           Just output -> mapM_ (putStrLn . (++ " (cached)")) output
           Nothing -> do
             let regenerate edited = planEither (extra ++ native) (edited ++ vectors) target bits minify
-            format <- if minify then pure [] else formatted target project generated
+            format <- if minify then pure [] else formatted suite target project generated
             output <- (format ++) <$> runSuite suite target project mutate (sources, regenerate, generated)
             when (mode /= Off) (storeResult key output)
 
@@ -367,13 +367,19 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
 
 -- | The formatted step: every generated source, the stubs adapters replace
 -- included, must be unchanged by the target's canonical formatter. The
--- compact profile is exempt; it is not laid out for reading.
-formatted :: String -> FilePath -> [Generated] -> IO [String]
-formatted target project generated = formatter target >>= \case
+-- compact profile is exempt; it is not laid out for reading. So is a file
+-- that acceptance/<suite>/<target>/unformatted.txt lists, one path and the
+-- reason (the formatter's upstream issue) per line, which the step reports.
+formatted :: String -> String -> FilePath -> [Generated] -> IO [String]
+formatted suite target project generated = formatter target >>= \case
   Nothing -> pure []
   Just f -> do
-    let staging = project </> ".lawspec-formatted"
-        sources = [g | g <- generated, any (`isSuffixOf` generatedPath g) (formatterExtensions f)]
+    let exemptions = "acceptance" </> suite </> target </> "unformatted.txt"
+    listed <- doesFileExist exemptions >>= \exists -> if exists then lines <$> readFile' exemptions else pure []
+    let exempt = [(path, dropWhile (== ' ') reason) | entry <- listed, (path, reason) <- [break (== ' ') entry], not (null path)]
+        staging = project </> ".lawspec-formatted"
+        sources = [g | g <- generated, any (`isSuffixOf` generatedPath g) (formatterExtensions f), generatedPath g `notElem` map fst exempt]
+        notes = [target ++ ": not formatted: " ++ path ++ " (" ++ reason ++ ")" | (path, reason) <- exempt]
     removePathForcibly staging
     forM_ sources $ \g -> writeAt (staging </> generatedPath g) (generatedContent g)
     (code, out, err) <- readCreateProcessWithExitCode (proc (formatterCommand f) (formatterArguments f staging)) ""
@@ -383,8 +389,8 @@ formatted target project generated = formatter target >>= \case
       hPutStrLn stderr (take 6000 (out ++ err))
       die (target ++ ": generated code differs from " ++ formatterName f ++ " (see " ++ project </> "formatted.log)")
     let line = target ++ ": formatted (" ++ formatterName f ++ ")"
-    putStrLn line
-    pure [line]
+    mapM_ putStrLn (notes ++ [line])
+    pure (notes ++ [line])
 
 -- | Regenerate without running anything and compare with the files on disk.
 checkDisk :: FilePath -> [Generated] -> IO ()

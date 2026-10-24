@@ -1,4 +1,4 @@
-expect: expect 
+expect: .lawspec:
 @@ src/main/groovy/example/BooleanFlags.groovy
 <<<<<<<
 *

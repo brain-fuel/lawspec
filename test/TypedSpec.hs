@@ -216,7 +216,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "ls.handler(symbols, ") (emitWebTyped True 64 declarations units)
       either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LS.handlerOf symbols") (emitHaskellTyped declarations units)
       either expectationFailure (\typed -> D.render D.Compact (rustTypedModule typed) `shouldSatisfy` isInfixOf "(&mut *ctx, vec![") (emitRustTyped declarations units)
-      either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform_") (emitJvmTyped JavaStyle declarations units)
+      either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform") (emitJvmTyped JavaStyle declarations units)
       either expectationFailure (\typed -> beamTypedSource typed `shouldSatisfy` maybe False (isInfixOf "lawspec_beam_effects:perform(")) (emitBeamTyped "erlang" [] declarations units)
   describe "typed names" $ do
     it "stay the same when unrelated definitions are added before them" $ do
@@ -255,8 +255,8 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
           expect label source needles = (label, filter (not . (`isInfixOf` source)) needles) `shouldBe` (label, [])
       expect "rust" (either error id (RustAbilities.emit False 64 declarations units)) ["pub fn try_append(", "pub fn state(&self)", "pub fn set_state(", "pub fn typed_state("]
       expect "go" (joined (GoAbilities.emit False 64 declarations units)) [") TryAppend(", ") State() ", ") SetState(", ") TypedState() "]
-      expect "java" (joined (JavaAbilities.emit False 64 declarations units)) [" tryAppend(", " state() ", "void setState(", " typedState() "]
-      expect "kotlin" (joined (KotlinAbilities.emit False 64 declarations units)) ["fun tryAppend(", "fun state(): ", "fun setState(", "fun typedState(): "]
+      expect "java" (joined (JavaAbilities.emit False 64 declarations units)) [" tryAppend(", " state()", "void setState(", " typedState()"]
+      expect "kotlin" (joined (KotlinAbilities.emit False 64 declarations units)) ["fun tryAppend(", "fun state(): ", "fun setState(", "fun typedState():"]
       expect "python" (joined (PythonAbilities.emit False 64 declarations units)) ["def try_append(", "def state(self)", "def set_state(self, state)", "def typed_state(self)"]
       expect "typescript" (joined (WebAbilities.emit True False 64 declarations units)) ["tryAppend(", "state()", "setState(state", "typedState()"]
       expect "haskell" (joined (HaskellAbilities.emit False 64 declarations units)) ["tryAppend ::", "storeSnapshot =", "storeRestore ="]

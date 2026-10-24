@@ -1,0 +1,63 @@
+<!--
+  LawSpec's Groovy layout, checked with CodeNarc 4.0.0: Allman braces with
+  Google Java Style's other rules, as for Java (java-checkstyle.xml), since
+  Groovy has no canonical formatter and Checkstyle cannot parse Groovy.
+  Opening braces of classes, methods and statements go on a line of their
+  own; a closure's or lambda's stays on its line. 2-space indent, 100
+  columns, Google's naming for generated names. A line that cannot wrap
+  (a string with no space, a feature's name) may exceed the limit. ref:DEC-readable-output-default
+-->
+<ruleset xmlns="http://codenarc.org/ruleset/1.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://codenarc.org/ruleset/1.0 http://codenarc.org/ruleset-schema.xsd">
+  <rule class="org.codenarc.rule.formatting.BracesForClassRule">
+    <property name="sameLine" value="false"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.BracesForMethodRule">
+    <property name="sameLine" value="false"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.BracesForIfElseRule">
+    <property name="sameLine" value="false"/>
+    <property name="elseOnSameLineAsClosingBrace" value="false"/>
+    <property name="elseOnSameLineAsOpeningBrace" value="false"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.BracesForForLoopRule">
+    <property name="sameLine" value="false"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.BracesForTryCatchFinallyRule">
+    <property name="sameLine" value="false"/>
+    <property name="catchOnSameLineAsClosingBrace" value="false"/>
+    <property name="catchOnSameLineAsOpeningBrace" value="false"/>
+    <property name="finallyOnSameLineAsClosingBrace" value="false"/>
+    <property name="finallyOnSameLineAsOpeningBrace" value="false"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.LineLengthRule">
+    <property name="length" value="100"/>
+    <property name="ignoreImportStatements" value="true"/>
+    <property name="ignorePackageStatements" value="true"/>
+    <property name="ignoreLineRegex" value="^\s*((\+ )?&quot;[^&quot; ]*&quot;[,;)]*|def &quot;[^&quot;]*&quot;\(\))$"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.IndentationRule">
+    <property name="spacesPerIndentLevel" value="2"/>
+  </rule>
+  <rule class="org.codenarc.rule.formatting.TrailingWhitespaceRule"/>
+  <rule class="org.codenarc.rule.formatting.ConsecutiveBlankLinesRule"/>
+  <rule class="org.codenarc.rule.formatting.MissingBlankLineAfterImportsRule"/>
+  <rule class="org.codenarc.rule.formatting.MissingBlankLineAfterPackageRule"/>
+  <rule class="org.codenarc.rule.formatting.FileEndsWithoutNewlineRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAfterCommaRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAfterIfRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAfterForRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAfterWhileRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAfterSwitchRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAfterCatchRule"/>
+  <rule class="org.codenarc.rule.formatting.SpaceAroundOperatorRule"/>
+  <rule class="org.codenarc.rule.naming.ClassNameRule"/>
+  <rule class="org.codenarc.rule.naming.VariableNameRule">
+    <property name="regex" value="[a-z][a-zA-Z0-9]*"/>
+    <property name="finalRegex" value="[a-z][a-zA-Z0-9]*"/>
+  </rule>
+  <rule class="org.codenarc.rule.naming.ParameterNameRule">
+    <property name="regex" value="[a-z][a-zA-Z0-9]*"/>
+  </rule>
+</ruleset>

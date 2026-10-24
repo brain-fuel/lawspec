@@ -22,6 +22,9 @@ groovyLiterals = code
                           in "//" ++ comment ++ (case after of '\n' : more -> '\n' : code more; _ -> code after)
       '/' : '*' : rest -> "/*" ++ blockComment rest
       '"' : '"' : '"' : rest -> "'''" ++ textBlock rest
+      -- A line that starts with + continues the line before: the + moves
+      -- to that line's end, which Groovy reads as unfinished.
+      '\n' : rest | (indent, '+' : ' ' : more) <- span (== ' ') rest -> " +\n" ++ indent ++ code more
       '\n' : rest | continues (dropWhile (== ' ') rest) -> ' ' : code (dropWhile (== ' ') rest)
       '"' : rest -> '\'' : string rest
       '\'' : rest | (literal, '\'' : after) <- character rest -> "((char) '" ++ literal ++ "')" ++ code after

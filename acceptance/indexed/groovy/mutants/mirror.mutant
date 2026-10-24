@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Arithmetic.groovy
 <<<<<<<
-new Perfect.Node(new lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(value0.value().right()), mirror(value0.value().left())))
+new Perfect.Node(new lawspec.data.NodeDetails(mirror(value0.value().right()), mirror(value0.value().left())))
 =======
-new Perfect.Node(new lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(value0.value().right()), value0.value().right()))
+new Perfect.Node(new lawspec.data.NodeDetails(mirror(value0.value().right()), value0.value().right()))
 >>>>>>>

@@ -15,7 +15,7 @@ object Models {
 
   // (Int8 -> (example.models::type::Stack -> example.models::type::PushFlow))
   def push(value0: scala.Byte, value1: lawspec.data.Stack): lawspec.data.PushFlow =
-    PushFlow(Stack.Push(lawspec.data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)))
+    PushFlow(Stack.Push(lawspec.data.PushDetails(value1, value0)))
 
   // The flow signature guarantees a nonempty stack.
   // (example.models::type::Stack -> example.models::type::PopFlow)

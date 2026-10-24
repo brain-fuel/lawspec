@@ -226,6 +226,46 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   formatted the same way. Acceptance runs `rustfmt --check` on every
   generated Rust project.
 
+- **Breaking: generated JVM names.** Java, Kotlin, Scala and Groovy keep
+  the specification's names: locals keep their source names in camel case,
+  checked definitions and typed helpers are named after the definition
+  instead of `evaluateN`, tests after the law and the example
+  (`normalizersAgree_spacesBecomeHyphensPunctuationIs`), and anonymous
+  records after where they are used (`PushDetails`) instead of
+  `Record<digest>`. Adapters and native code that use the old names must be
+  renamed.
+- Generated Java uses Allman braces with Google Java Style's other rules;
+  Kotlin is laid out as ktfmt 0.64 (kotlinlang style) lays it out; Scala as
+  scalafmt 3.11.5 (default configuration) accepts it; Groovy specifications
+  use Allman braces and pass CodeNarc; Clojure is laid out as cljfmt lays it
+  out. Acceptance checks each with its formatter (the formatted step):
+  Checkstyle 14.3.0, ktfmt, scalafmt, CodeNarc 4.0.0 and cljfmt 0.16.6.
+- JVM tests write text as the language's string literals, name the machine
+  width and schema once per file, and point each assertion at its source
+  line; each law's comment gives its name, source line and statement. The
+  Kotlin and Scala tests' scalar generators and checks moved into the
+  runtime (`LawSpecScalars`, `LawSpecTesting`), so a test file holds only its
+  laws. Groovy's Spock specifications are generated from the plan instead of
+  rewritten from the Java tests, and Clojure's tests show the law's
+  statement.
+- JVM property draws are flat: each sub-draw of a harness strategy is a
+  named function defined before its use (`gridCandidate`, `rowsOption1`),
+  drawn through `LawSpecDraws.oneOf`, `frequency` and `suchThat` (Kotlin,
+  Scala) or named suppliers (Java), instead of one nested closure per step.
+  Lets leave constructor arguments, match scrutinees and (in Java) strict
+  argument lists, and Java builds a value with its fields last
+  (`SCHEMA.construct(type, tag, bits, symbols, fields...)`), so nested
+  values indent once per level.
+- A Scala unit whose tests would exceed 20,000 lines gets a file per law
+  (`<Unit><Law>Law.scala`) beside its `<Unit>LawSpecTest` object, and a long
+  chain of one boolean operator is `LawSpecScala.anyOf`/`allOf`, which
+  scalafmt can lay out.
+- Acceptance's formatted step reads `acceptance/<suite>/<target>/unformatted.txt`:
+  a generated file it lists (path, then the reason) is not checked, and the
+  step reports it. Keywords' Java stub uses it: its `_class` adapter, the
+  documented escape of a Java keyword, is not a name Checkstyle's Google
+  rules accept.
+
 ### Added
 
 - Shared foundations for readable output on every target: a naming service,

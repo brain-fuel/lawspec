@@ -2,10 +2,9 @@
 package lawspec
 
 /**
- * The default handlers of lawspec.randomness. Random is the generator of
- * `seeded random n` (a 64-bit linear congruential generator, the same on
- * every target), started at the run's seed: LAWSPEC_SEED, or 0. SecureRandom
- * is the operating system's cryptographically secure generator.
+ * The default handlers of lawspec.randomness. Random is the generator of `seeded random n` (a
+ * 64-bit linear congruential generator, the same on every target), started at the run's seed:
+ * LAWSPEC_SEED, or 0. SecureRandom is the operating system's cryptographically secure generator.
  */
 object Randomness {
     fun randomStep(state: Long): Long = 6364136223846793005L * state + 1442695040888963407L

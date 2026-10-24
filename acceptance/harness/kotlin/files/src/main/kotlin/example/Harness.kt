@@ -1,12 +1,11 @@
 // User-owned LawSpec adapter.
 package example
 
-import lawspec.runtime.LawSpecRuntime
-
 object Harness {
     // (example.harness::type::Order -> Int32)
     // Ten percent off orders of more than ten items.
-    fun discount(value0: lawspec.data.Order): kotlin.Int = if (value0.items > 10) value0.total / 10 else 0
+    fun discount(value0: lawspec.data.Order): kotlin.Int =
+        if (value0.items > 10) value0.total / 10 else 0
 
     // (Int32 -> Int32)
     // To the nearest ten cents, halves down: known to break a law.

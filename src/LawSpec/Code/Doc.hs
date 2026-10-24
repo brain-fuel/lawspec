@@ -3,7 +3,7 @@
 -- code or rewrites whitespace inside tokens (including string literals).
 module LawSpec.Code.Doc
   ( Doc, Layout(..), text, utf8Text, utf8Length, displayWidth, hardline, softline, softbreak
-  , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment
+  , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment, mapText
   , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue, flatReserve
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
   , fitsIndented, fitsIndentedTwice, Preference(..), prefer, narrow, fullWidth
@@ -57,7 +57,9 @@ data Preference = NextLineValue Bool Int | ArmBody Bool | ChainLast (Maybe Int) 
 -- meaningful for Python, Haskell, Go, line comments, and preprocessor directives.
 -- PrettyDisplay measures width in display columns, as ruff and rustfmt do:
 -- an East Asian wide character takes two, a combining mark none.
-data Layout = Pretty Int | PrettyTabs Int | PrettyDisplay Int | Compact | CompactTabs deriving (Eq, Show)
+-- PrettyPoints fits groups as PrettyDisplay does but counts UTF-16 code
+-- units, as JVM formatters (ktfmt, scalafmt) measure a line.
+data Layout = Pretty Int | PrettyTabs Int | PrettyDisplay Int | PrettyPoints Int | Compact | CompactTabs deriving (Eq, Show)
 
 -- | Keep target-required indentation when explicitly flattening optional breaks.
 selectLayout :: Bool -> Layout -> Layout
@@ -223,6 +225,32 @@ multiline = Multiline
 -- arguments first, moving the member name only when the opening itself is long.
 prefixChoice :: String -> Doc -> Doc -> Doc
 prefixChoice = PrefixChoice
+
+-- | The document with each token's text transformed (qualifying a target's
+-- names, say) before layout, so line widths count the final text. Breaks
+-- and structure are unchanged.
+mapText :: (String -> String) -> Doc -> Doc
+mapText f doc = case doc of
+  Empty -> Empty
+  Text s -> Text (f s)
+  Utf8Text s -> Utf8Text (f s)
+  Append a b -> Append (mapText f a) (mapText f b)
+  Break replacement -> Break replacement
+  Nest n a -> Nest n (mapText f a)
+  Group a -> Group (mapText f a)
+  PrefixChoice prefix a b -> PrefixChoice (f prefix) (mapText f a) (mapText f b)
+  Multiline a -> Multiline (mapText f a)
+  Flow items -> Flow (map (mapText f) items)
+  FlowTail items -> FlowTail (map (mapText f) items)
+  FirstLineWidth n a -> FirstLineWidth n (mapText f a)
+  Hang n a b -> Hang n (mapText f a) (mapText f b)
+  WhenBroken a -> WhenBroken (mapText f a)
+  Parens a -> Parens (mapText f a)
+  BestFit alternatives -> BestFit (map (mapText f) alternatives)
+  Operation operands operators -> Operation (map (mapText f) operands) operators
+  Prefixed operator a -> Prefixed operator (mapText f a)
+  ParenthesiseIfFits a -> ParenthesiseIfFits (mapText f a)
+  Omittable operands operator a -> Omittable (map (mapText f) operands) operator (mapText f a)
 
 -- | Move a short right-hand side onto its own line when necessary. If it must
 -- wrap internally anyway, keep its opening on the same line as the prefix.
@@ -456,9 +484,12 @@ type Work = [(Int, Mode, Int, Doc)]
 render :: Layout -> Doc -> String
 render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
   where
-    pageWidth = case layout of Pretty width -> max 1 width; PrettyTabs width -> max 1 width; PrettyDisplay width -> max 1 width; _ -> maxBound
-    measure = case layout of PrettyDisplay _ -> displayWidth; _ -> length
-    prettierFits = case layout of PrettyDisplay _ -> True; _ -> False
+    pageWidth = case layout of Pretty width -> max 1 width; PrettyTabs width -> max 1 width; PrettyDisplay width -> max 1 width; PrettyPoints width -> max 1 width; _ -> maxBound
+    measure = case layout of
+      PrettyDisplay _ -> displayWidth
+      PrettyPoints _ -> sum . map (\c -> if ord c > 0xFFFF then 2 else 1)
+      _ -> length
+    prettierFits = case layout of PrettyDisplay _ -> True; PrettyPoints _ -> True; _ -> False
     initialMode = case layout of Compact -> Flat; CompactTabs -> Flat; _ -> Broken
     indentationText amount = case layout of
       PrettyTabs _ -> tabs amount

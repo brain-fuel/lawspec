@@ -62,7 +62,10 @@ extra-source-files:
     runtime/LawSpecSchema.java
     runtime/LawSpecKotlin.kt
     runtime/LawSpecKotlinCodecs.kt
+    runtime/LawSpecKotlinDraws.kt
+    runtime/LawSpecKotlinScalars.kt
     runtime/LawSpecKotlinStrategies.kt
+    runtime/LawSpecKotlinTesting.kt
     runtime/LawSpecStrategies.kt
     runtime/lawspec_codecs.go
     runtime/lawspec_data_strategies.go
@@ -581,6 +584,7 @@ library
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
+      LawSpec.CallText
       LawSpec.Capabilities
       LawSpec.CapabilityCheck
       LawSpec.CaseFold
@@ -712,9 +716,13 @@ library
       LawSpec.JavaNativeBinding
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
+      LawSpec.JavaText
+      LawSpec.JvmLets
+      LawSpec.JvmNames
       LawSpec.KotlinData
       LawSpec.KotlinDefinitions
       LawSpec.KotlinExpr
+      LawSpec.KotlinLayout
       LawSpec.KotlinNativeBinding
       LawSpec.KotlinProperties
       LawSpec.KotlinTestHelpers
@@ -771,10 +779,12 @@ library
       LawSpec.ScalaData
       LawSpec.ScalaDefinitions
       LawSpec.ScalaExpr
+      LawSpec.ScalaLayout
       LawSpec.ScalaNativeBinding
       LawSpec.ScalaProperties
       LawSpec.Scalar
       LawSpec.ScalaTestHelpers
+      LawSpec.ScalaText
       LawSpec.ScalaUnitEmit
       LawSpec.Scenario
       LawSpec.Search

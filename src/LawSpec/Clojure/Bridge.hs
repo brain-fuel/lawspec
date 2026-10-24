@@ -46,11 +46,16 @@ parseStub source = do
         | null (trimmed l) -> classItems [] rest
         | "//" `isPrefixOf` trimmed l -> classItems (pending ++ [trimmed l]) rest
         | "/**" `isPrefixOf` trimmed l -> let (doc, after) = comment ls in classItems (pending ++ doc) after
-        | Just header <- stripPrefix "public static final class " (trimmed l) -> do
-            let ws = words header
+        | Just first <- stripPrefix "public static final class " (trimmed l) -> do
+            -- The header may wrap before implements, its brace on a line of
+            -- its own.
+            let (continued, body) = break (\x -> "{" `isSuffixOf` trimmed x || "@" `isPrefixOf` trimmed x || "public" `isPrefixOf` trimmed x || "private" `isPrefixOf` trimmed x) rest
+                header = unwords (first : map trimmed continued)
+                ws = words (takeWhile (/= '{') header)
                 name = concat (take 1 ws)
-                interface = concat (take 1 (drop 2 ws))
-            (resource, operations, after) <- handlerItems False [] rest
+                interface = filter (/= ',') (concat (take 1 (drop 2 ws)))
+                rest' = if "{" `isSuffixOf` header then body else drop (length (takeWhile ((== "{") . trimmed) (take 1 body))) body
+            (resource, operations, after) <- handlerItems False [] rest'
             (Handler pending name interface resource operations :) <$> classItems [] after
         | "public static " `isPrefixOf` trimmed l -> do
             (operation, after) <- method ls
@@ -63,7 +68,7 @@ parseStub source = do
       l : rest
         | trimmed l == "}" -> Right (resource, operations, rest)
         | trimmed l == "public final java.lang.Object resource;" -> handlerItems True operations rest
-        | "public " `isPrefixOf` trimmed l, "(java.lang.Object resource) {" `isSuffixOf` l ->
+        | "public " `isPrefixOf` trimmed l, any (`isSuffixOf` l) ["(java.lang.Object resource) {", "(java.lang.Object resource)"] ->
             handlerItems resource operations (drop 1 (dropWhile ((/= "}") . trimmed) rest))
         | trimmed l == "@Override" -> do
             (operation, after) <- method rest
@@ -302,8 +307,9 @@ clojureStub unit ns bound (Stub _ _ _ allItems) = unlines $
 -- parameters, from its source (an abilities class's nested interface).
 interfaceMethods :: String -> String -> [Operation]
 interfaceMethods interface source =
-  case dropWhile ((/= ("public interface " ++ interface ++ " {")) . dropWhile isSpace) (lines source) of
-    _ : rest -> [ op | l <- statements (map (dropWhile isSpace) (takeWhile ((/= "}") . dropWhile isSpace) rest)), Just op <- [declaration l] ]
+  -- The interface's brace may be on its line or the next (Allman).
+  case dropWhile ((`notElem` ["public interface " ++ interface ++ " {", "public interface " ++ interface]) . dropWhile isSpace) (lines source) of
+    _ : rest -> [ op | l <- statements (map (dropWhile isSpace) (takeWhile ((/= "}") . dropWhile isSpace) (dropWhile ((== "{") . dropWhile isSpace) rest))), Just op <- [declaration l] ]
     [] -> []
   where
     -- A declaration may wrap: lines join up to its semicolon.

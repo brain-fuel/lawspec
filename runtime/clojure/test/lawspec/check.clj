@@ -24,8 +24,8 @@
   "A test.check generator of a LawSpec generator's cases."
   [^Generator g]
   (gen/->Generator
-    (fn [rnd size]
-      (tree (Draws$Case/generate g (random/rand-long rnd) (int size))))))
+   (fn [rnd size]
+     (tree (Draws$Case/generate g (random/rand-long rnd) (int size))))))
 
 (defn- message [result]
   (let [shrunk (:shrunk result)

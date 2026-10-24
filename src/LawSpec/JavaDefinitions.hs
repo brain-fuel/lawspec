@@ -1,11 +1,13 @@
 -- | Native entry points and checked implementation helpers for total definitions.
 module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, emitScalaDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
 
+import LawSpec.JavaText (javaText)
 import LawSpec.Core.Stages (stageFailures)
+import LawSpec.JvmLets (flattenStrictLets)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
-import Data.Char (isAlphaNum, toUpper)
-import Data.List (intercalate)
+import Data.Char (isAlphaNum, isDigit, toUpper)
+import Data.List (intercalate, stripPrefix)
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Typed.Plan (TypedPlan(..), sharedDefinitions, isContextual)
@@ -18,6 +20,9 @@ import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmPerformName)
+import qualified Data.Set as S
+import LawSpec.JvmNames (googleCase, jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved, jvmMethod)
+import LawSpec.Naming (readableDefinitionName)
 
 -- | The adapters orchestrations call, with their units.
 orchestratedAdapters :: [Unit] -> [(Id, (Id, Declaration))]
@@ -36,17 +41,17 @@ orchestratedAdapters units =
 -- | The Kotlin bridge method through which shared JVM bodies call a Kotlin
 -- adapter.
 kotlinAdapterBridge :: Id -> String
-kotlinAdapterBridge identity = "call_" ++ map (\c -> if isAlphaNum c then c else '_') (idText identity)
+kotlinAdapterBridge identity = jvmMethod "call" (idText identity)
 
 -- The Kotlin bridge method through which shared JVM bodies perform a Kotlin
 -- handler's operation.
 kotlinOperationBridge :: Operation -> String
-kotlinOperationBridge op = "perform_" ++ map (\c -> if isAlphaNum c then c else '_') (idText (operationId op))
+kotlinOperationBridge op = jvmMethod "perform" (idText (operationId op))
 
 -- The Kotlin bridge method through which shared JVM bodies make a Kotlin
 -- spec handler, for handle ... with h end.
 kotlinHandlerBridge :: Id -> String
-kotlinHandlerBridge h = "handler_" ++ map (\c -> if isAlphaNum c then c else '_') (idText h)
+kotlinHandlerBridge h = jvmMethod "handler" (idText h)
 
 -- The spec handlers checked definitions install with handle ... with h end.
 scopedHandlers :: [Unit] -> [Id]
@@ -69,9 +74,19 @@ performedOperations units = foldr (\x acc -> if x `elem` acc then acc else x : a
 -- | Generated tests call checked definitions by these names, so every test
 -- file agrees.
 definitionCalls :: [Unit] -> [(Id,String)]
-definitionCalls units = [(declarationId (definitionDeclaration d),
-  "lawspec.runtime.LawSpecDefinitionBodies.evaluate" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+definitionCalls units = [(identity, "lawspec.runtime.LawSpecDefinitionBodies." ++ method) | (identity, method) <- definitionMethods units]
+
+-- | Each checked definition's method, named after the definition (a
+-- specialised copy by its argument types), unique in declaration order.
+-- ref:DEC-readable-generated-names
+definitionMethods :: [Unit] -> [(Id, String)]
+definitionMethods units = zip (map (declarationId . definitionDeclaration) definitions)
+  (fst (jvmClaimAll (S.fromList (jvmReserved "java" ++ ["result"])) (map readable definitions)))
+  where
+    definitions = concatMap unitDefinitions units
+    readable d = let declaration = definitionDeclaration d
+                     (arguments, _) = functionType (declarationType declaration)
+                 in jvmLocal "java" [] (readableDefinitionName (declarationName declaration) arguments)
 
 -- | Checked definitions are emitted as ordinary Java code, so adapters and tests call
 -- the same proved implementation. ref:DEC-total-definitions
@@ -96,9 +111,9 @@ emitDefinitions style layout bits declarations units = do
   -- share one body; the others call it.
   let shared = sharedDefinitions units
       everyName = M.fromList [(declarationId (definitionDeclaration d), i) | (i, d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
-      delegate i d target = pure (E.call ("public static Value evaluate" ++ show i)
-        (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show k) | k <- [0 .. length (definitionArguments d) - 1]]) <> D.text " " <>
-        D.block 2 (D.text ("return evaluate" ++ show target ++ "(" ++ intercalate ", " ("symbols" : ["input" ++ show k | k <- [0 .. length (definitionArguments d) - 1]]) ++ ");")))
+      delegate i d target = pure (E.call ("public static Value " ++ methodName i)
+        (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show k) | k <- [0 .. length (definitionArguments d) - 1]]) <> D.hardline <>
+        D.block 2 (statement (E.call ("return " ++ methodName target) (D.text "symbols" : [D.text ("input" ++ show k) | k <- [0 .. length (definitionArguments d) - 1]]))))
   methods <- mapM (\(i, d) -> case M.lookup (declarationId (definitionDeclaration d)) shared >>= (`M.lookup` everyName) of
       Just target -> delegate i d target
       Nothing -> maybe (implementation contracts (i, d)) (bridge typed i d)
@@ -115,6 +130,9 @@ emitDefinitions style layout bits declarations units = do
   native <- if withNative then mapM (nativeUnit typed) (filter (not . null . unitDefinitions) units) else pure []
   pure (source : typedFiles ++ native)
   where
+    -- Each definition's method, by its index in the program.
+    methodName i = maybe ("evaluate" ++ show i) snd (lookup i (zip [0 :: Int ..] (definitionMethods units)))
+    statement doc = doc <> D.text ";"
     withNative = style == JavaStyle
     -- Kotlin and Scala adapters and handlers are reached through a bridge.
     adaptersObject = if style == ScalaStyle then "lawspec.runtime.LawSpecScalaAdapters." else "lawspec.runtime.LawSpecKotlinAdapters."
@@ -124,31 +142,32 @@ emitDefinitions style layout bits declarations units = do
       let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
       codecs <- mapM (jvmTypedCodec typed) argTypes
       resultCodec <- jvmTypedCodec typed resultType
-      let signature = E.call ("public static Value evaluate" ++ show index)
-            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0 .. length argTypes - 1]]) <> D.text " "
-          call = D.text (function ++ "(") <> D.joinWith (D.text ", ")
+      let signature = E.call ("public static Value " ++ methodName index)
+            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0 .. length argTypes - 1]]) <> D.hardline
+          call = E.call function
             ([D.text "symbols" | isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d))] ++
-             [D.text (codec ++ ".decode(input" ++ show i ++ ")") | (i, codec) <- zip [0 :: Int ..] codecs]) <> D.text ")"
-      pure (signature <> D.block 2 (D.text ("return " ++ resultCodec ++ ".encode(") <> call <> D.text ");"))
+             [E.call (codec ++ ".decode") [D.text ("input" ++ show i)] | (i, codec) <- zip [0 :: Int ..] codecs])
+      pure (signature <> D.block 2 (D.text "return " <> E.call (resultCodec ++ ".encode") [call] <> D.text ";"))
     assign name value = D.group (D.text ("var " ++ name ++ " =") <>
       D.nest 4 (D.softline <> value) <> D.text ";")
-    contextual identity body = D.text "try " <> D.block 2 body <>
+    contextual identity body = D.text "try" <> D.hardline <> D.block 2 body <> D.hardline <>
       -- A Fail ability's failure passes through, to the attempt that awaits it.
-      D.text " catch (lawspec.runtime.LawSpecRuntime.Failure failure) " <> D.block 2 (D.text "throw failure;") <>
-      D.text " catch (RuntimeException error) " <>
+      D.text "catch (lawspec.runtime.LawSpecRuntime.Failure failure)" <> D.hardline <> D.block 2 (D.text "throw failure;") <> D.hardline <>
+      D.text "catch (RuntimeException error)" <> D.hardline <>
       D.block 2 (assign "context" (E.quoted (idText identity ++ ": ")) <> D.hardline <>
         D.text "throw " <> E.call "new IllegalArgumentException"
           [D.text "context + error.getMessage()",D.text "error"] <> D.text ";")
     callees = definitionCalls units
     file package name imports methods = Artifact
       ("src/main/java/" ++ map (\c -> if c == '.' then '/' else c) package ++ "/" ++ name ++ ".java")
-      (D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
+      -- This package's classes need no qualifier.
+      (D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> D.hardline <>
         D.text ("package " ++ package ++ ";") <> D.hardline <> D.hardline <>
         D.joinWith D.hardline [D.text ("import " ++ item ++ ";") | item <- imports] <>
-        D.hardline <> D.hardline <> D.text ("public final class " ++ name ++ " ") <>
-        D.block 2 (D.joinWith (D.hardline <> D.hardline)
-          ([D.text ("private " ++ name ++ "() {}"),
-            D.text "private static final lawspec.runtime.LawSpecSchema _schema =" <>
+        D.hardline <> D.hardline <> D.text ("public final class " ++ name) <> D.hardline <>
+        D.block 2 (D.mapText (samePackage package) $ D.joinWith (D.hardline <> D.hardline)
+          ([D.text ("private " ++ name ++ "()") <> D.hardline <> D.text "{" <> D.hardline <> D.text "}",
+            D.text "private static final lawspec.runtime.LawSpecSchema SCHEMA =" <>
               D.nest 4 (D.hardline <> D.text "lawspec.runtime.LawSpecDataSchema.create();")] ++ methods)) <> D.hardline))
       "generated" "source"
     nativeUnit typed unit = do
@@ -170,11 +189,18 @@ emitDefinitions style layout bits declarations units = do
           nativeResult <- Native.javaDataTypeDoc declarations result
           let declaration = definitionDeclaration d
               parameters = D.text "Map<String, Object> symbols" : [ty <> D.text (" value" ++ show i) | (i, ty) <- zip [0::Int ..] nativeArgs]
-          pure (D.group (D.text "public static " <> nativeResult <> D.text (" " ++ declarationName declaration ++ "(") <>
-              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ") ") <>
-            D.block 2 (D.text ("return " ++ toNative ++ "(" ++ function ++ "(" ++
-              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "));")))
+          pure (D.group (D.text "public static " <> nativeResult <> D.text (" " ++ apiName declaration ++ "(") <>
+              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")") <> D.hardline <>
+            D.block 2 (D.text "return " <> E.call toNative [E.call function
+              [E.call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]] <> D.text ";"))
       | otherwise = nativeDynamic d
+    -- A definition's method: its name as Google Java Style writes it
+    -- (nOfStack is nofStack).
+    -- A definition's API name is jvmLocal's (nofStack, shortValue), or its
+    -- own in Google's case where jvmLocal would drop its digits.
+    apiName declaration = let n = declarationName declaration
+                              j = jvmLocal "java" [] n
+      in if filter isDigit j == filter isDigit n then j else googleCase n
     nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
@@ -192,13 +218,13 @@ emitDefinitions style layout bits declarations units = do
           installs = [E.call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
             E.call "java.util.Map.<String, Object>of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
             | not (null handlers)]
-          opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ declarationName declaration ++ "("
+          opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ apiName declaration ++ "("
           normalSignature = D.group (D.text "public static " <> nativeResult <>
-            D.text (" " ++ declarationName declaration ++ "(") <>
-            D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ") ")
+            D.text (" " ++ apiName declaration ++ "(") <>
+            D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")")
           wrappedSignature = D.text "public static " <> nativeResult <>
-            D.nest 4 (D.hardline <> D.text (declarationName declaration ++ "(") <>
-              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ") ")
+            D.nest 4 (D.hardline <> D.text (apiName declaration ++ "(") <>
+              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")")
           signature = D.prefixChoice opening normalSignature wrappedSignature
           input i codec = [assign ("codec" ++ show i) codec,
             D.text ("var argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ");")]
@@ -207,12 +233,14 @@ emitDefinitions style layout bits declarations units = do
             [assign "result" invocation,
              assign "resultCodec" resultCodec,
              D.text "return resultCodec.decode(result);"]
-      pure (signature <> D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline body)))
-    implementation contracts (index,d) = do
-      let args = definitionArguments d
+      pure (signature <> D.hardline <> D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline body)))
+    implementation contracts (index,d0) = do
+      let d = d0 { definitionBody = freshenShadowed (flattenStrictLets (definitionBody d0)) }
+          args = definitionArguments d
           binders = args ++ nestedBinders (definitionBody d)
-          names = [(binderId b,"value" ++ show i) | (i,b) <- zip [0::Int ..] binders]
-          local identity = maybe (error "unbound Java definition binder") id (lookup identity names)
+          -- Binders keep their source names.
+          names = jvmLocalTable "java" (jvmReserved "java" ++ ["result", "checkedResult", "failure", "kind"]) binders
+          local identity = maybe (error "unbound Java definition binder") id (M.lookup identity names)
           external expression values = case expressionNode expression of
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (D.text "symbols":values))
@@ -235,9 +263,9 @@ emitDefinitions style layout bits declarations units = do
             Handle (CatchFailure ability) _ | [body] <- values, Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType expression -> do
               let placeholder = Id "lawspec::attempt::value"
                   side tag ty = do
-                    made <- E.renderExpression declarations bits (\i -> if i == placeholder then "_value" else local i) external
+                    made <- E.renderExpression declarations bits (\i -> if i == placeholder then "value" else local i) external
                       (Expr (expressionType expression) (Construct (Id tag) [Expr ty (Local placeholder) (GeneratedFrom placeholder)]) (GeneratedFrom placeholder))
-                    pure (D.text "_value -> " <> made)
+                    pure (D.text "value -> " <> made)
               right <- side "Either::Right" result
               left <- side "Either::Left" failure
               pure (E.call "LawSpecRuntime.attempt" [E.quoted (abilityKey ability), D.text "() -> " <> body, right, left])
@@ -261,15 +289,15 @@ emitDefinitions style layout bits declarations units = do
                     then E.call "LawSpecRuntime.awaitStep" [D.text "symbols", D.text "() -> " <> call,
                       -- A Unit adapter's future completes with nothing (Void).
                       if resultType == scalarType "Unit"
-                        then D.text "_native -> lawspec.runtime.LawSpecRuntime.unit(() -> {})"
-                        else D.text "_native -> " <> resultCodec <> D.text ".encode(_native)"]
+                        then D.text "nativeValue -> lawspec.runtime.LawSpecRuntime.unit(() -> {})"
+                        else D.text "nativeValue -> " <> resultCodec <> D.text ".encode(nativeValue)"]
                     -- A Unit adapter is void natively.
                     else failing adapter (if resultType == scalarType "Unit"
                       then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
-                      else resultCodec <> D.text ".encode(" <> call <> D.text ")")
+                      else D.group (resultCodec <> D.nest 4 (D.softbreak <> E.call ".encode" [call])))
             _ -> Left "unknown Java definition"
-          signature = E.call ("public static Value evaluate" ++ show index)
-            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.text " "
+          signature = E.call ("public static Value " ++ methodName index)
+            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.hardline
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = [assign (local (binderId b)) (D.text ("input" ++ show i)) | (i,b) <- zip [0::Int ..] args]
@@ -283,7 +311,7 @@ emitDefinitions style layout bits declarations units = do
           failures <- forM (stageFailures d) $ \(kind, value) ->
             (\rendered' -> D.text ("case " ++ show kind ++ " -> ") <> rendered' <> D.text ";") <$>
               E.renderExpression declarations bits local external value
-          let fail' = if null failures then D.text "null" else D.text "kind -> switch (kind) " <> D.block 2 (D.joinWith D.hardline
+          let fail' = if null failures then D.text "null" else D.text "kind -> switch (kind)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
                 (failures ++ [D.text "default -> throw new IllegalStateException(\"unexpected stage failure: \" + kind);"]))
               key = case args of
                 argument : _ -> D.text (local (binderId argument))
@@ -323,14 +351,14 @@ emitDefinitions style layout bits declarations units = do
         | otherwise -> do
             codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits . expressionType) args
             resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits (expressionType expression)
-            let call = E.call (handlerOf (operationAbility op) ++ "." ++ operationName op)
-                  [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
+            let call = D.group (handlerDoc (operationAbility op) <> D.nest 4 (D.softbreak <> E.call ("." ++ operationName op)
+                  [E.call (D.render D.Compact codec ++ ".decode") [value] | (codec, value) <- zip codecs values]))
             -- An operation that fails with E: a native handler throws
             -- LawSpecRuntime.Fail with a native E, which becomes the failure.
             pure $ failingAs (maybe [] pure (findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd)) $
               if expressionType expression == scalarType "Unit"
               then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
-              else resultCodec <> D.text ".encode(" <> call <> D.text ")"
+              else D.group (resultCodec <> D.nest 4 (D.softbreak <> E.call ".encode" [call]))
       _ -> Left "not an operation"
     -- The operations typed definitions perform, each a method over dynamic
     -- values that typed code calls.
@@ -342,7 +370,7 @@ emitDefinitions style layout bits declarations units = do
         Perform op args -> do
           let values = [D.text ("input" ++ show k) | k <- [0 .. length args - 1]]
           body <- performDoc e values
-          pure (E.call ("public static Value " ++ jvmPerformName op) (D.text "Map<String, Object> symbols" : [D.text "Value " <> v | v <- values]) <> D.text " " <>
+          pure (E.call ("public static Value " ++ jvmPerformName op) (D.text "Map<String, Object> symbols" : [D.text "Value " <> v | v <- values]) <> D.hardline <>
             D.block 2 (D.text "return " <> body <> D.text ";"))
         _ -> Left "not an operation"
     performedIn e = case expressionNode e of
@@ -354,9 +382,14 @@ emitDefinitions style layout bits declarations units = do
         let codec = either error id (Native.javaCodecDocWithContext (D.text "symbols") declarations bits failure)
             native = either error id (Native.javaDataTypeDoc declarations failure)
         in E.call "LawSpecRuntime.nativeFailures" [E.quoted (abilityKey ability),
-             D.text "_native -> " <> codec <> D.text ".encode((" <> native <> D.text ") _native)", D.text "() -> " <> call]
+             D.text "nativeValue -> " <> codec <> D.text ".encode((" <> native <> D.text ") nativeValue)", D.text "() -> " <> call]
       _ -> call
     -- A handler from symbols, as its ability's Java interface.
+    -- The handler installed for an ability, as its native interface.
+    handlerDoc ability = case findAbility units ability of
+      Just (_, a) -> E.call "LawSpecRuntime.handler"
+        [D.text "symbols", E.quoted (abilityKey ability), D.text (abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a ++ ".class")]
+      Nothing -> E.call "LawSpecRuntime.handler" [D.text "symbols", E.quoted (abilityKey ability)]
     handlerOf ability = "((" ++ maybe "Object" (\(_, a) -> abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a)
       (findAbility units ability) ++
       ") LawSpecRuntime.handler(symbols, " ++ show (abilityKey ability) ++ "))"
@@ -418,8 +451,8 @@ emitDefinitions style layout bits declarations units = do
           (admit ++ "(symbols, " ++ n ++ ", state, LawSpecRuntime.integer64(now))") (Just (release ++ "(symbols, state)")) (waitCode (bulkheadWait b)))
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
     gate kind start admit finish wait = E.call "new LawSpecRuntime.Gate"
-      [E.quoted kind, D.text ("now -> " ++ start), D.text ("(state, now) -> " ++ admit),
-       D.text (maybe "null" ("(state, now, succeeded) -> " ++) finish), long wait]
+      [E.quoted kind, javaText ("now -> " ++ start), javaText ("(state, now) -> " ++ admit),
+       javaText (maybe "null" ("(state, now, succeeded) -> " ++) finish), long wait]
     integers numbers = intercalate ", " ["LawSpecRuntime.integer64(" ++ show n ++ ")" | n <- numbers]
     waitCode wait = case wait of
       Nothing -> -2
@@ -444,3 +477,37 @@ emitDefinitions style layout bits declarations units = do
       (a,_:rest) -> a : split delimiter rest
     capitalize [] = []
     capitalize (c:cs) = toUpper c : cs
+
+-- | Java forbids a local that shadows another in scope, even inside a
+-- lambda, so a binder rebound inside its own scope (a lowering may repeat
+-- one) gets an identity of its own there.
+freshenShadowed :: Expr -> Expr
+freshenShadowed = go S.empty
+  where
+    go scope e = case expressionNode e of
+      Let binder value body ->
+        let (binder', body') = fresh scope binder body
+            inner = S.insert (binderId binder') scope
+        in e { expressionNode = Let binder' (go inner value) (go inner body') }
+      Match value cases ->
+        e { expressionNode = Match (go scope value)
+          [ let (binders, body) = foldr (\b (bs, bd) -> let (b', bd') = fresh scope b bd in (b' : bs, bd')) ([], caseBody c) (caseBinders c)
+            in c { caseBinders = binders, caseBody = go (foldr (S.insert . binderId) scope binders) body }
+          | c <- cases ] }
+      _ -> mapChildren (go scope) e
+    fresh scope binder body
+      | binderId binder `S.member` scope =
+          let renamed = Id (idText (binderId binder) ++ "::shadow::" ++ show (S.size scope))
+          in (binder { binderId = renamed }, renameLocal (binderId binder) renamed body)
+      | otherwise = (binder, body)
+
+-- | Text with a class of the given package named without its package (not
+-- the package line itself, whose text has no class after it).
+samePackage :: String -> String -> String
+samePackage package text = go text
+  where
+    prefix = package ++ "."
+    go s = case s of
+      [] -> []
+      _ | Just rest@(c : _) <- stripPrefix prefix s, c `elem` ['A' .. 'Z'] -> go rest
+      c : rest -> c : go rest

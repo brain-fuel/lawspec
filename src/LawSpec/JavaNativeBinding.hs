@@ -39,7 +39,7 @@ emitBindings minify plan testing files = do
   methods <- mapM codecMethod [(i,d) | (i,d) <- zip [0::Int ..] declarations, builtin (C.idText (C.dataId d)) == Nothing]
   let support = Artifact "src/main/java/lawspec/runtime/LawSpecNativeCodecs.java"
         (render (D.text "package lawspec.runtime;" <> D.hardline <> D.hardline <>
-          D.text "public final class LawSpecNativeCodecs " <> D.block 2
+          D.text "public final class LawSpecNativeCodecs" <> D.hardline <> D.block 2
           (D.joinWith (D.hardline <> D.hardline)
             (D.text "private LawSpecNativeCodecs() {}":methods)))) "generated" "source"
   bridges <- fmap concat $ forM (plannedUnits testing) $ \p -> do
@@ -57,9 +57,9 @@ emitBindings minify plan testing files = do
         argTypes <- mapM (J.javaDataTypeDoc declarations) args
         resultType <- J.javaDataTypeDoc declarations result
         canonical <- mapM (J.javaCodecDocWithContext (D.text "symbols") declarations bits) args
-        native <- mapM (codec [] (D.text "_schema") (D.text (show bits))) args
+        native <- mapM (codec [] (D.text "SCHEMA") (D.text (show bits))) args
         canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
-        nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
+        nativeResult <- codec [] (D.text "SCHEMA") (D.text (show bits)) result
         nativeResultType <- nativeType [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
             -- An adapter that uses abilities gets their handlers first, as
@@ -87,14 +87,14 @@ emitBindings minify plan testing files = do
           _ -> pure Nothing
         let resultBody
               | result == C.scalarType "Unit" = application <> D.text ";"
-              | static = D.text "var result = " <> application <> D.text ";" <> D.hardline <> returned
+              | static = assigned (D.text "var result") application <> D.hardline <> returned
               -- A method's null is Nothing; anything else is Just.
               | Just element <- maybeElement =
-                  D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
+                  assigned (D.text "java.lang.Object found") application <> D.hardline <>
                   nativeResultType <> D.text " result = found == null" <> D.nest 4 (D.hardline <>
                     D.text "? new lawspec.runtime.LawSpecRuntime.Absent<>()" <> D.hardline <>
                     D.text ": new lawspec.runtime.LawSpecRuntime.Present<>((" <> element <> D.text ") found);") <> D.hardline <> returned
-              | otherwise = nativeResultType <> D.text " result = (" <> nativeResultType <> D.text ") " <> application <> D.text ";" <> D.hardline <> returned
+              | otherwise = assigned (nativeResultType <> D.text " result") (D.group (D.text "(" <> nativeResultType <> D.text ")" <> D.nest 4 (D.softline <> application))) <> D.hardline <> returned
         -- An async bridge converts the native task's result once it completes.
         -- A constructor is called at once, and its bridge returns a completed task.
         let async = C.declarationAsync d
@@ -110,15 +110,15 @@ emitBindings minify plan testing files = do
               | static = method canonicalResult "decode" [method nativeResult "encode" [found]]
               | otherwise = method canonicalResult "decode" [method nativeResult "encode" [D.text "(" <> nativeResultType <> D.text ") " <> found]]
             asyncBody = case ref of
-              ConstructorCall _ -> D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
+              ConstructorCall _ -> assigned (D.text "java.lang.Object found") application <> D.hardline <>
                 D.text "return " <> future <> D.text ".completedFuture(" <> converted' (D.text "found") <> D.text ");"
               _ -> D.text "return " <> application <>
                 D.text ".thenApply(found -> " <> D.nest 4 (converted' (D.text "found")) <> D.text ");"
-        pure (D.text "public static " <> (if async then future <> D.text "<" <> boxedResult <> D.text ">"
+        pure (D.group (D.text "public static " <> (if async then future <> D.text "<" <> boxedResult <> D.text ">"
           else if unit then D.text "void" else resultType) <>
-          D.text " " <> call (C.declarationName d) ([t <> D.text " " <> v | (t,v) <- handlerParams] ++ [t <> D.text " " <> v | (t,v) <- zip argTypes values]) <>
-          D.text " " <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
-            D.text "try " <> D.block 2 (if async then asyncBody else resultBody) <> D.text " catch (IllegalArgumentException | IllegalStateException | ClassCastException | ArithmeticException error) " <>
+          D.nest 4 (D.softline <> call (C.declarationName d) ([t <> D.text " " <> v | (t,v) <- handlerParams] ++ [t <> D.text " " <> v | (t,v) <- zip argTypes values]))) <>
+          D.hardline <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
+            D.text "try" <> D.hardline <> D.block 2 (if async then asyncBody else resultBody) <> D.hardline <> D.group (D.text "catch (" <> D.nest 4 (D.softbreak <> D.group (D.text "IllegalArgumentException" <> D.nest 4 (mconcat [D.softline <> D.text ("| " ++ e) | e <- ["IllegalStateException", "ClassCastException", "ArithmeticException error"]]))) <> D.text ")") <> D.hardline <>
             D.block 2 (D.text "throw " <> call "new IllegalArgumentException"
               [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.getMessage()",D.text "error"] <> D.text ";")))
       -- Each bound production handler, wrapped in the generated interface:
@@ -129,27 +129,27 @@ emitBindings minify plan testing files = do
           types <- mapM (J.javaDataTypeDoc declarations) args
           resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else J.javaDataTypeDoc declarations result
           canonical <- mapM (J.javaCodecDocWithContext (D.text "symbols") declarations bits) args
-          native <- mapM (codec [] (D.text "_schema") (D.text (show bits))) args
+          native <- mapM (codec [] (D.text "SCHEMA") (D.text (show bits))) args
           canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
-          nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
+          nativeResult <- codec [] (D.text "SCHEMA") (D.text (show bits)) result
           let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
               invocation = call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
               body = if result == C.scalarType "Unit" then invocation <> D.text ";"
                 else D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [invocation]] <> D.text ";"
           pure (D.text "@Override" <> D.hardline <> D.text "public " <> resultType <> D.text " " <>
-            call op [t <> D.text " " <> v | (t,v) <- zip types values] <> D.text " " <>
+            call op [t <> D.text " " <> v | (t,v) <- zip types values] <> D.hardline <>
             D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <> body))
         let name = interfaceName a ++ "Bound"
         pure (D.text ("/** The bound production handler of " ++ C.abilityName a ++ ", " ++ reference r ++ ", as the generated interface. */") <> D.hardline <>
-          D.text ("public static final class " ++ name ++ " implements " ++ interfaceType' a ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+          D.text ("public static final class " ++ name ++ " implements " ++ interfaceType' a ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
             ([D.text ("private final " ++ reference r ++ " inner = new " ++ reference r ++ "();")] ++ operations)))
       let parts = split '.' (unitName unit)
           name = concatMap cap (split '_' (last parts))
           package = intercalate "." (init parts)
           path = "src/main/java/" ++ concatMap (++ "/") (init parts) ++ name ++ ".java"
           header = if null package then mempty else D.text ("package " ++ package ++ ";") <> D.hardline <> D.hardline
-          source = header <> D.text ("public final class " ++ name ++ " ") <> D.block 2
-            (D.group (D.text "private static final lawspec.runtime.LawSpecSchema _schema =" <>
+          source = header <> D.text ("public final class " ++ name ++ "") <> D.hardline <> D.block 2
+            (D.group (D.text "private static final lawspec.runtime.LawSpecSchema SCHEMA =" <>
              D.nest 4 (D.softline <> D.text "lawspec.runtime.LawSpecDataSchema.create();")) <>
              D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers))
       pure [Artifact path (render source) "generated" "source"]
@@ -174,7 +174,7 @@ emitBindings minify plan testing files = do
         native <- nativeType [] ty
         bridge <- codec [] (D.text "schema") (D.text "bits") ty
         tyRef <- E.reference ty
-        pure (D.text "if (type.equals(" <> tyRef <> D.text ")) " <> D.block 2
+        pure (D.text "if (type.equals(" <> tyRef <> D.text "))" <> D.hardline <> D.block 2
           (D.joinWith D.hardline (children ++
             [applied "Generator" [native] <> D.text " source = " <>
               call (reference (resolvedGeneratorFactory generator)) [D.text ("child" ++ show i) | i <- [0..length args-1]] <> D.text ";",
@@ -183,18 +183,18 @@ emitBindings minify plan testing files = do
         call ("factory" ++ show index) (map D.text
           ["LawSpecSchema schema", "LawSpecSchema.Named type", "int bits", "java.util.Map<String, Object> symbols",
            "java.util.List<Generator<lawspec.runtime.LawSpecRuntime.Value>> arguments"]) <>
-        D.text " " <> D.block 2 (D.joinWith D.hardline (branches ++
+        D.hardline <> D.block 2 (D.joinWith D.hardline (branches ++
           [D.text "throw new IllegalArgumentException(\"unplanned native generator instantiation: \" + type);"])))
     let entries = [call "java.util.Map.<String, LawSpecDataStrategies.NativeFactory>entry"
           [E.quoted (C.idText (resolvedGeneratorType generator)),D.text ("LawSpecNativeGenerators::factory" ++ show i)] |
             (i,generator) <- zip [0::Int ..] generators]
-        registry = D.text "public static java.util.Map<String, LawSpecDataStrategies.NativeFactory> factories() " <>
+        registry = D.text "public static java.util.Map<String, LawSpecDataStrategies.NativeFactory> factories()" <> D.hardline <>
           D.block 2 (D.text "return " <> call "java.util.Map.ofEntries" entries <> D.text ";")
         helper = Artifact "src/test/java/lawspec/testing/LawSpecNativeGenerators.java" (render
           (D.text "package lawspec.testing;" <> D.hardline <> D.hardline <>
            D.text "import lawspec.runtime.LawSpecSchema;" <> D.hardline <>
            D.text "import org.jetbrains.jetCheck.Generator;" <> D.hardline <> D.hardline <>
-           D.text "public final class LawSpecNativeGenerators " <> D.block 2
+           D.text "public final class LawSpecNativeGenerators" <> D.hardline <> D.block 2
             (D.joinWith (D.hardline <> D.hardline)
              (D.text "private LawSpecNativeGenerators() {}":registry:factoryMethods)))) "generated" "test"
     emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
@@ -224,7 +224,7 @@ emitBindings minify plan testing files = do
     mappings = resolvedTypes representations
     generators = resolvedGenerators representations
     layout = D.selectLayout minify (D.Pretty 100)
-    render doc = D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> doc <> D.hardline)
+    render doc = D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> D.hardline <> doc <> D.hardline)
     reference = intercalate "." . referenceParts
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
@@ -313,13 +313,13 @@ emitBindings minify plan testing files = do
                 D.text " " <> call methodName
                   [applied "org.jetbrains.jetCheck.Generator" [D.text t] <> D.text (" argument" ++ show i) |
                     (i,(_,(t,_))) <- zip [0::Int ..] parameters]
-          pure (signature <> D.text " " <> D.block 2 (D.text "throw " <>
+          pure (signature <> D.hardline <> D.block 2 (D.text "throw " <>
             call "new java.lang.UnsupportedOperationException"
               [E.quoted ("Implement generator for " ++ C.idText (resolvedGeneratorType generator))] <> D.text ";"))
         pure (Artifact ("src/test/java/" ++ path ++ ".java") (D.render (D.Pretty 100)
           (D.text "// User-owned native generator factories. Implement before running properties." <>
            D.hardline <> D.text ("package " ++ intercalate "." (init parts) ++ ";") <> D.hardline <> D.hardline <>
-           D.text ("public final class " ++ name ++ " ") <> D.block 2
+           D.text ("public final class " ++ name ++ "") <> D.hardline <> D.block 2
              (D.text ("private " ++ name ++ "() {}") <> D.hardline <> D.hardline <>
               D.joinWith (D.hardline <> D.hardline) bodies) <> D.hardline)) "user" "test")
     codec ps schema width ty = case ty of
@@ -349,7 +349,7 @@ emitBindings minify plan testing files = do
       native <- nativeName d
       pure (D.text "public static " <> applied "LawSpecSchema.Codec" [D.text native] <> D.text " " <>
         call ("type" ++ show i) [D.text "LawSpecSchema schema",D.text "int bits",D.text "java.util.Map<String, Object> symbols"] <>
-        D.text " " <> D.block 2 (D.text ("var type = new LawSpecSchema.Named(" ++ D.render D.Compact (E.quoted (C.idText (C.dataId d))) ++ ");") <> D.hardline <>
+        D.hardline <> D.block 2 (D.text ("var type = new LawSpecSchema.Named(" ++ D.render D.Compact (E.quoted (C.idText (C.dataId d))) ++ ");") <> D.hardline <>
           D.text "return schema.codec(" <> D.nest 4
             (D.hardline <> D.joinWith (D.text "," <> D.hardline)
               [D.text "type",D.text "bits",D.text "symbols",
@@ -382,7 +382,7 @@ emitBindings minify plan testing files = do
                       (zip (zip codecs fields) (maybe [] id (mapped >>= resolvedFieldPaths)))]
                 root=call "schema.construct" [D.text "type",E.quoted (C.idText (C.constructorId c)),
                   call "java.util.List.of" packed,D.text "bits",D.text "symbols"]
-                encode=D.text ("if (value.getClass() == "++base++".class) ")<>D.block 2
+                encode=D.text ("if (value.getClass() == "++base++".class)")<>D.hardline<>D.block 2
                   (D.text "var item = ("<>applied base args<>D.text ") value;"<>D.hardline<>
                    D.joinWith D.hardline (locals++[D.text "return "<>root<>D.text ";"]))
                 project []=D.text "value"
@@ -403,7 +403,7 @@ emitBindings minify plan testing files = do
                   E.quoted (C.idText (C.constructorId c) ++ "." ++ C.binderName logical)] |
                     (bridge,field,logical) <- zip3 codecs nativeFields (C.constructorFields c)]
                 encode = D.text "if (" <> (if unit then D.text ("value == " ++ base)
-                  else D.text ("value.getClass() == " ++ base ++ ".class")) <> D.text ") " <>
+                  else D.text ("value.getClass() == " ++ base ++ ".class")) <> D.text ")" <> D.hardline <>
                   D.block 2 ((if unit then mempty else D.text "var item = (" <> applied base args <> D.text ") value;" <> D.hardline) <>
                     D.text "return " <> call "schema.construct" [D.text "type",E.quoted (C.idText (C.constructorId c)),call "java.util.List.of" encoded,D.text "bits",D.text "symbols"] <> D.text ";")
                 decoded = [method bridge "decode" [D.text ("data.fields().get(" ++ show n ++ ")")] | (n,bridge) <- zip [0::Int ..] codecs]
@@ -415,22 +415,22 @@ emitBindings minify plan testing files = do
             D.joinWith D.hardline (map fst arms ++ [failure]))
           decoder = D.text "value -> " <> D.block 2 (if null arms then failure else
             D.text "var data = (LawSpecRuntime.Data) value.data();" <> D.hardline <>
-            D.text "return switch (data.tag()) " <> D.block 2
+            D.text "return switch (data.tag())" <> D.hardline <> D.block 2
               (D.joinWith D.hardline (map snd arms ++ [D.text "default -> " <> failure])) <> D.text ";")
       (setup, encodeBody, decodeBody) <- case mapping d >>= resolvedCodec of
         Nothing -> pure (mempty, encoder, decoder)
         Just hook -> do
           name <- J.javaDataName declarations (C.dataId d)
           let simple = last (split '.' name)
-              codecName = case simple of [] -> "dataCodec"; first:rest -> toLower first : rest ++ "Codec"
+              codecName = J.javaCodecName simple
               canonical = call ("LawSpecDataCodecs." ++ codecName)
                 ([D.text "schema",D.text "bits",D.text "symbols"] ++
                  [call "schema.supported" [D.text (v ++ ".type()"),D.text "bits",D.text "symbols"] |
                    (_,(_,v)) <- ps])
               converters methodName = [D.text (v ++ "::" ++ methodName) | (_,(_,v)) <- ps]
               contextual direction expression = D.text "value -> " <> D.block 2
-                (D.text "try " <> D.block 2 (D.text "return " <> expression <> D.text ";") <>
-                 D.text " catch (RuntimeException error) " <> D.block 2
+                (D.text "try" <> D.hardline <> D.block 2 (D.text "return " <> expression <> D.text ";") <>
+                 D.hardline <> D.text "catch (RuntimeException error)" <> D.hardline <> D.block 2
                   (D.text "throw " <> call "new IllegalArgumentException"
                     [E.quoted ("native codec " ++ C.idText (C.dataId d) ++ " " ++ direction ++ ": ") <>
                       D.text " + error.getMessage()",D.text "error"] <> D.text ";"))
@@ -456,4 +456,8 @@ emitBindings minify plan testing files = do
         applied "LawSpecSchema.Codec" [native] <> D.text " " <> call ("type" ++ show i)
           ([D.text "LawSpecSchema schema",D.text "int bits",D.text "java.util.Map<String, Object> symbols"] ++
            [applied "LawSpecSchema.Codec" [D.text t] <> D.text (" " ++ v) | (_,(t,v)) <- ps]) <>
-        D.text " " <> D.block 2 body)
+        D.hardline <> D.block 2 body)
+
+-- | name = value;, the value on the next line when the line is too long.
+assigned :: D.Doc -> D.Doc -> D.Doc
+assigned name value = D.group (name <> D.text " =" <> D.nest 4 (D.softline <> value)) <> D.text ";"

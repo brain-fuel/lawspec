@@ -1,22 +1,21 @@
 // User-owned LawSpec adapter.
 package shop
 
-import lawspec.runtime.LawSpecRuntime
-
 object Orders {
-    // (shop.orders::type::Currency -> shop.domain::type::Currency)
+    // settlement :: (shop.orders::type::Currency -> shop.domain::type::Currency) —
+    // orders.lawspec:13
     fun settlement(value0: lawspec.data.ShopOrdersCurrency): lawspec.data.ShopDomainCurrency =
         TODO("settlement")
 
-    // (shop.orders::type::Line -> shop.domain::type::Money)
+    // lineTotal :: (shop.orders::type::Line -> shop.domain::type::Money) — orders.lawspec:14
     fun lineTotal(value0: lawspec.data.Line): lawspec.data.Money = TODO("lineTotal")
 
-    // (Int64 -> (Int64 -> Int64))
+    // cheaper :: (Int64 -> (Int64 -> Int64)) — orders.lawspec:17
     fun cheaper(value0: kotlin.Long, value1: kotlin.Long): kotlin.Long = TODO("cheaper")
 
-    // (Int64 -> Int64)
+    // roundDown :: (Int64 -> Int64) — orders.lawspec:18
     fun roundDown(value0: kotlin.Long): kotlin.Long = TODO("roundDown")
 
-    // (Int64 -> shop.tax.v2x0x0.rates::type::Band)
+    // classify :: (Int64 -> shop.tax.v2x0x0.rates::type::Band) — orders.lawspec:19
     fun classify(value0: kotlin.Long): lawspec.data.ShopTaxV2x0x0RatesBand = TODO("classify")
 }

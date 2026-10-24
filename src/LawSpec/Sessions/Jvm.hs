@@ -11,6 +11,7 @@
 -- use (LawSpecRuntime.claimEnd).
 module LawSpec.Sessions.Jvm (emit) where
 
+import LawSpec.JavaText (javaLayout)
 import Control.Monad (foldM)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, isInfixOf, stripPrefix)
@@ -18,8 +19,12 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.JavaData (javaDataType, identifier, javaCodecDocWithContext)
-import LawSpec.KotlinData (kotlinCodecDocWithContext, kotlinDataType)
-import LawSpec.ScalaData (scalaCodecDocWithContext, scalaDataType)
+import LawSpec.KotlinData (kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType)
+import LawSpec.ScalaData (scalaCodecDocWithContext, scalaCodecDocIn, scalaDataType)
+import qualified LawSpec.ScalaLayout as SL
+import qualified LawSpec.KotlinLayout as KL
+import LawSpec.JvmNames (javadoc)
+import qualified LawSpec.JavaExpr as E
 import LawSpec.MachineSpec (describe)
 import LawSpec.Scalar (isInteger)
 
@@ -132,6 +137,10 @@ networkSource target bits datas sessions session = do
       -- Kotlin's and Scala's codecs are their own objects, which the Java
       -- protocol class reaches through a generated conversions object.
       kotlin = target `elem` ["kotlin", "scala"]
+      partPiece (i, part@(_, _, p)) = case p of
+        EndOf q -> let start = firstStart datas sessions q in
+          E.call "new LawSpecRuntime.EndPart" [D.text ("c -> new " ++ start ++ "(c)"), D.text ("e -> ((" ++ start ++ ") e).handOver()"), D.text (C.sessionName q ++ "::wire")]
+        _ -> D.text (partDoc (i, part))
       partDoc (i, (_, _, p)) = case p of
         Scalar n -> "LawSpecRuntime.scalarConversion(" ++ show n ++ ", " ++ show bits ++ ")"
         Codec _ | kotlin -> name ++ "Conversions.conversion" ++ show i ++ "()"
@@ -145,87 +154,86 @@ networkSource target bits datas sessions session = do
     else pure Nothing
   pure (
     [ "" ] ++
-    [ l | not (null codecs), not kotlin, l <- ["  private static final lawspec.runtime.LawSpecSchema _schema =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
+    [ l | not (null codecs), not kotlin, l <- ["  private static final lawspec.runtime.LawSpecSchema SCHEMA =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
     [ "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (unwords (map snd (reverse table))) ++ ");"
     , ""
     , "  /** Each step's descriptor and conversion, from the first end. */"
-    , "  static LawSpecRuntime.Wire wire() {"
+    , "  static LawSpecRuntime.Wire wire()"
+    , "  {"
     , "    var symbols = new java.util.HashMap<String, Object>();" ] ++
     [ "    var codec" ++ show i ++ " = " ++ c ++ ";" | not kotlin, (i, c, _) <- codecs ] ++
-    [ "    return new LawSpecRuntime.Wire("
-    , "        java.util.List.of(" ++ intercalate ", "
-        ["new LawSpecRuntime.Step(" ++ (if sends then "true" else "false") ++ ", LawSpecRuntime.descriptor(" ++ show d ++ "))" | (sends, d, _) <- parts] ++ "),"
-    , "        java.util.Arrays.<Object>asList(" ++ intercalate ", " (map partDoc (zip [0 ..] parts)) ++ "),"
-    , "        TYPES);"
-    , "  }"
+    wrapAt 4 (D.text "return " <> E.call "new LawSpecRuntime.Wire"
+      [ E.call "java.util.List.of" [E.call "new LawSpecRuntime.Step" [D.text (if sends then "true" else "false"), E.call "LawSpecRuntime.descriptor" [D.text (show d)]] | (sends, d, _) <- parts]
+      , E.call "java.util.Arrays.<Object>asList" (map partPiece (zip [0 ..] parts))
+      , D.text "TYPES" ] <> D.text ";") ++
+    [ "  }"
     , ""
     , "  /**"
     , "   * The first end of a channel named name on node, which another node dials at {node"
     , "   * address}/name. An end sent over it to another node moves there (a local end stays and is"
     , "   * relayed by this node)."
     , "   */"
-    , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name) {"
+    , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name)"
+    , "  {"
     , "    var w = wire();"
-    , "    return new First." ++ first ++ "(new LawSpecRuntime.NativeChannel(node.listen(name, w.steps(), w.values()), w.parts()));"
-    , "  }"
+    ] ++ wrapAt 4 (D.text "return " <> E.call ("new First." ++ first) [E.call "new LawSpecRuntime.NativeChannel" [D.text "node.listen(name, w.steps(), w.values())", D.text "w.parts()"]] <> D.text ";") ++
+    [ "  }"
     , ""
     , "  /** The second end of the channel listening at address on another node. */"
-    , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address) {"
+    , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address)"
+    , "  {"
     , "    var w = wire();"
     , "    var steps = new java.util.ArrayList<LawSpecRuntime.Step>();"
-    , "    for (var s : w.steps()) steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
-    , "    return new Second." ++ second ++ "(new LawSpecRuntime.NativeChannel(node.dial(address, steps, w.values()), w.parts()));"
-    , "  }" ], kotlinFile)
+    , "    for (var s : w.steps())"
+    , "    {"
+    , "      steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
+    , "    }"
+    ] ++ wrapAt 4 (D.text "return " <> E.call ("new Second." ++ second) [E.call "new LawSpecRuntime.NativeChannel" [D.text "node.dial(address, steps, w.values())", D.text "w.parts()"]] <> D.text ";") ++
+    [ "  }" ], kotlinFile)
   where
     scalaConversions name codecs = do
-      functions <- mapM (\(i, c, t) -> do
+      functions <- mapM (\(i, _, t) -> do
         native <- scalaDataType datas t
-        pure [ ""
-             , "  def conversion" ++ show i ++ "(): LawSpecRuntime.Conversion = {"
-             , "    val symbols = LawSpecScala.symbols()"
-             , "    val codec = " ++ c
-             , "    LawSpecRuntime.conversion[" ++ native ++ "]((value: " ++ native ++ ") => codec.encode(value), (value: LawSpecRuntime.Value) => codec.decode(value))"
-             , "  }" ]) codecs
-      pure $ unlines $
-        [ "// Generated by LawSpec from protocol " ++ name ++ ". Do not edit."
-        , "package lawspec.sessions"
-        , ""
-        , "import lawspec.runtime.{LawSpecDataCodecs, LawSpecDataSchema, LawSpecRuntime, LawSpecSchema, LawSpecScala, LawSpecScalaCodecs}"
-        , ""
-        , "/** Conversions of protocol " ++ name ++ "'s data steps, for its ends between nodes. */"
-        , "object " ++ name ++ "Conversions {"
-        , "  private val schema: LawSpecSchema = LawSpecDataSchema.create()"
-        , "  private val bits = " ++ show bits ] ++ concat functions ++ [ "}" ]
+        codec <- scalaCodecDocIn ("Schema", "MachineBits") (D.text "symbols") datas t
+        pure (D.text ("def conversion" ++ show i ++ "(): LawSpecRuntime.Conversion = ") <> SL.block
+          [ D.text "val symbols = LawSpecScala.symbols()"
+          , SL.bind "codec" codec
+          , SL.call ("LawSpecRuntime.conversion[" ++ native ++ "]")
+              [D.text ("(value: " ++ native ++ ") => codec.encode(value)"), D.text "(value: LawSpecRuntime.Value) => codec.decode(value)"] ])) codecs
+      let members = [D.text "private val Schema = LawSpecDataSchema.create()", D.text ("private val MachineBits = " ++ show bits)] ++ functions
+          code = D.render D.Compact (D.joinWith D.hardline members)
+          imports = [ "import lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecRuntime", "LawSpecScala", "LawSpecScalaCodecs"], (c ++ ".") `isInfixOf` code ]
+      pure $ D.render SL.scalaStyle $
+        D.text ("// Generated by LawSpec from protocol " ++ name ++ ". Do not edit.") <> D.hardline <>
+        D.text "package lawspec.sessions" <> D.hardline <> D.hardline <>
+        D.joinWith D.hardline (map D.text imports) <> D.hardline <> D.hardline <>
+        SL.comment 80 ("Conversions of protocol " ++ name ++ "'s data steps, for its ends between nodes.") <>
+        D.text ("object " ++ name ++ "Conversions ") <> SL.block [D.joinWith (D.hardline <> D.hardline) members] <> D.hardline
     kotlinConversions name codecs = do
-      functions <- mapM (\(i, c, t) -> do
+      functions <- mapM (\(i, _, t) -> do
         native <- kotlinDataType datas t
-        pure [ ""
-             , "    @JvmStatic"
-             , "    fun conversion" ++ show i ++ "(): LawSpecRuntime.Conversion {"
-             , "        val symbols = mutableMapOf<String, Any>()"
-             , "        val codec = " ++ c
-             , "        return LawSpecRuntime.conversion<" ++ native ++ ">({ codec.encode(it) }, { codec.decode(it) })"
-             , "    }" ]) codecs
-      let body = unlines (concat functions)
-          imports = [ "import lawspec.runtime." ++ x | x <- ["LawSpecDataCodecs", "LawSpecKotlinCodecs"], (x ++ ".") `isInfixOf` body ] ++
-                    [ "import lawspec.runtime.LawSpecDataSchema" ]
-      pure $ unlines $
-        [ "// Generated by LawSpec from protocol " ++ name ++ ". Do not edit."
-        , "package lawspec.sessions"
-        , ""
-        , "import lawspec.runtime.LawSpecRuntime" ] ++ imports ++
-        [ ""
-        , "/** Conversions of protocol " ++ name ++ "'s data steps, for its ends between nodes. */"
-        , "object " ++ name ++ "Conversions {"
-        , "    private val schema = LawSpecDataSchema.create()"
-        , "    private const val bits = " ++ show bits ] ++ concat functions ++ [ "}" ]
+        codec <- kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") datas t
+        pure (D.text "@JvmStatic" <> D.hardline <> D.text ("fun conversion" ++ show i ++ "(): LawSpecRuntime.Conversion ") <> KL.block
+          [ D.text "val symbols = mutableMapOf<String, Any>()"
+          , KL.bind "codec" codec
+          , D.text "return " <> KL.call ("LawSpecRuntime.conversion<" ++ native ++ ">") [KL.lambda [] [D.text "codec.encode(it)"], KL.lambda [] [D.text "codec.decode(it)"]] ])) codecs
+      let members = [D.text "private val SCHEMA = LawSpecDataSchema.create()" <> D.hardline <> D.text ("private const val MACHINE_BITS = " ++ show bits)] ++ functions
+          code = D.render D.Compact (D.joinWith D.hardline members)
+          imports = [ "import lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecKotlinCodecs", "LawSpecRuntime"], (c ++ ".") `isInfixOf` code ]
+      pure $ D.render KL.kotlinStyle $
+        D.text ("// Generated by LawSpec from protocol " ++ name ++ ". Do not edit.") <> D.hardline <>
+        D.text "package lawspec.sessions" <> D.hardline <> D.hardline <>
+        D.joinWith D.hardline (map D.text imports) <> D.hardline <> D.hardline <>
+        javadoc 100 ("Conversions of protocol " ++ name ++ "'s data steps, for its ends between nodes.") <> D.hardline <>
+        D.text ("object " ++ name ++ "Conversions ") <> KL.block [D.joinWith (D.hardline <> D.hardline) members] <> D.hardline
 
 protocolSource :: [C.DataDeclaration] -> [C.Session] -> [String] -> C.Session -> Either String String
 protocolSource datas sessions network session = do
   firstEnd <- endSource "First" "first" 0 (endSteps True session)
   secondEnd <- endSource "Second" "second" 1 (endSteps False session)
-  pure $ unlines $
+  pure $ javaLayout $ unlines $
     [ "// Generated by LawSpec from protocol " ++ name ++ ". Do not edit."
+    , ""
     , "package lawspec.sessions;"
     , ""
     , "import java.util.concurrent.atomic.AtomicBoolean;"
@@ -238,14 +246,16 @@ protocolSource datas sessions network session = do
     , " * Each end class is an end before one step: taking the step returns the next end,"
     , " * and an end can be used only once."
     , " */"
-    , "public final class " ++ name ++ " {"
+    , "public final class " ++ name
+    , "{"
     , "  private " ++ name ++ "() {}"
     , ""
     , "  /** Both ends of a fresh channel. */"
     , "  public record Ends(First." ++ start True ++ " first, Second." ++ start False ++ " second) {}"
     , ""
     , "  /** Opens a fresh in-memory channel and returns its two ends. */"
-    , "  public static Ends open() {"
+    , "  public static Ends open()"
+    , "  {"
     , "    var channel = LawSpecRuntime.channel();"
     , "    return new Ends(new First." ++ start True ++ "(channel), new Second." ++ start False ++ "(channel));"
     , "  }" ] ++ network ++
@@ -263,7 +273,8 @@ protocolSource datas sessions network session = do
       positions <- mapM (position label side names) (zip3 [0 :: Int ..] (map Just ends ++ [Nothing]) names)
       pure $
         [ "  /** The " ++ label ++ " end: it " ++ summary ends ++ ". */"
-        , "  public static final class " ++ className ++ " {"
+        , "  public static final class " ++ className
+        , "  {"
         , "    private " ++ className ++ "() {}"
         ] ++ concatMap ("" :) positions ++ ["  }"]
 
@@ -272,23 +283,27 @@ protocolSource datas sessions network session = do
           moved = if index /= 0 || side /= (0 :: Int) then [] else
             [ ""
             , "      /** Hands this end, unused, to a send; this object becomes used. */"
-            , "      " ++ cls ++ " moved() {"
+            , "      " ++ cls ++ " moved()"
+            , "      {"
             , "        LawSpecRuntime.claimEnd(used);"
             , "        return new " ++ cls ++ "(channel);"
             , "      }"
             , ""
             , "      /** This unused end's channel, to send to another node; this object becomes used. */"
-            , "      LawSpecRuntime.Channel handOver() {"
+            , "      LawSpecRuntime.Channel handOver()"
+            , "      {"
             , "        LawSpecRuntime.claimEnd(used);"
             , "        return channel;"
             , "      }" ]
           header doc =
             [ "    /** " ++ doc ++ " */"
-            , "    public static final class " ++ cls ++ " {"
+            , "    public static final class " ++ cls
+            , "    {"
             , "      private final LawSpecRuntime.Channel channel;"
             , "      private final AtomicBoolean used = new AtomicBoolean();"
             , ""
-            , "      " ++ cls ++ "(LawSpecRuntime.Channel channel) {"
+            , "      " ++ cls ++ "(LawSpecRuntime.Channel channel)"
+            , "      {"
             , "        this.channel = channel;"
             , "      }" ]
       case step of
@@ -296,7 +311,8 @@ protocolSource datas sessions network session = do
         -- (a protocol with no steps) is handed over as it is.
         Nothing -> pure $
           [ "    /** The " ++ label ++ " end after its last step: the protocol is done. */"
-          , "    public static final class Done {"
+          , "    public static final class Done"
+          , "    {"
           , "      Done(LawSpecRuntime.Channel channel) {}" ] ++
           (if null moved then [] else ["", "      Done moved() {", "        return this;", "      }"]) ++
           ["    }"]
@@ -308,16 +324,17 @@ protocolSource datas sessions network session = do
                 | stepSends s =
                     [ ""
                     , "      /** Sends " ++ described ++ " and returns the next end. */"
-                    , "      public " ++ next ++ " send(" ++ parameter ++ " value) {"
+                    , "      public " ++ next ++ " send(" ++ parameter ++ " value)"
+                    , "      {"
                     , "        LawSpecRuntime.claimEnd(used);"
                     , "        channel.send(" ++ show side ++ ", " ++ sent ++ ");"
                     , "        return new " ++ next ++ "(channel);"
                     , "      }" ]
                 | otherwise =
                     [ ""
-                    , "      /** Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up. */"
-                    ] ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
-                    [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive() {"
+                    ] ++ jdoc 6 ("Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up.") ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
+                    [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive()"
+                    , "      {"
                     , "        LawSpecRuntime.claimEnd(used);"
                     , "        var value = (" ++ boxed ++ ") channel.receive(" ++ show side ++ ");"
                     , "        return new LawSpecRuntime.Received<>(value, new " ++ next ++ "(channel));"
@@ -326,8 +343,9 @@ protocolSource datas sessions network session = do
                 (if stepSends s then "sends " else "receives ") ++ described ++ "."
               abandon =
                 [ ""
-                , "      /** Gives up the conversation: the other end's receives throw PeerFailed after what was sent. */"
-                , "      public void abandon() {"
+                ] ++ jdoc 6 "Gives up the conversation: the other end's receives throw PeerFailed after what was sent." ++
+                [ "      public void abandon()"
+                , "      {"
                 , "        LawSpecRuntime.claimEnd(used);"
                 , "        channel.abandon(" ++ show side ++ ");"
                 , "      }" ]
@@ -340,6 +358,14 @@ protocolSource datas sessions network session = do
       Nothing -> do
         boxed <- shorten <$> javaDataType datas t
         pure (boxed, maybe boxed id (lookup boxed unboxed), "value")
+
+-- | A Javadoc comment at an indentation, wrapped within 100 columns.
+jdoc :: Int -> String -> [String]
+jdoc indent text = wrapAt indent (javadoc (100 - indent) text)
+
+-- | A document's lines at an indentation, laid out within 100 columns.
+wrapAt :: Int -> D.Doc -> [String]
+wrapAt indent doc = map (replicate indent ' ' ++) (lines (D.render (D.Pretty (100 - indent)) doc))
 
 article :: String -> String
 article word | '\'' `elem` word = word

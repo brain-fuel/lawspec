@@ -1,0 +1,164 @@
+-- | One-line Java code read back into its calls, so code built as text (the
+-- typed definitions) wraps as Google Java Style wraps it: a call's
+-- arguments break 4 deeper inside its parentheses. Strings, characters and
+-- anything unbalanced are kept whole, and so are type arguments.
+module LawSpec.JavaText (javaText, javaLayout, javaType) where
+
+import qualified LawSpec.Code.Doc as D
+import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
+
+data Piece = Token String | Parens [[Piece]]
+
+-- | The code as a document.
+javaText :: String -> D.Doc
+javaText s = case pieces s of
+  Just (ps, "") -> laid ps
+  _ -> D.text s
+
+-- | Pieces as a document: a long qualified call breaks before its method
+-- when its opening does not fit.
+laid :: [Piece] -> D.Doc
+laid ps = case ps of
+  Token t : p@(Parens _) : rest
+    | (callee, lead) <- calleeOf t, length callee > 30
+    , (receiver@(_ : _), method@(_ : _)) <- splitLast callee ->
+        D.text lead <> D.prefixChoice (callee ++ "(") (D.text callee <> piece p)
+          (D.group (D.text receiver <> D.nest 4 (D.softbreak <> D.text ('.' : method) <> piece p))) <> laid rest
+  p : rest -> piece p <> laid rest
+  [] -> mempty
+  where
+    calleeOf t = let callee = reverse (takeWhile (\c -> c `elem` ('.' : '_' : ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'])) (reverse t))
+                 in (callee, take (length t - length callee) t)
+    splitLast n = case break (== '.') (reverse n) of
+      (method, '.' : receiver) -> (reverse receiver, reverse method)
+      _ -> ([], [])
+
+piece :: Piece -> D.Doc
+piece p = case p of
+  Token t -> D.text t
+  Parens [] -> D.text "()"
+  Parens items -> D.group (D.text "(" <> D.nest 4 (D.softbreak <> D.commaSep (map laid items)) <> D.text ")")
+
+pieces :: String -> Maybe ([Piece], String)
+pieces s = case s of
+  [] -> Just ([], [])
+  c : _ | c `elem` ("),{}" :: String) -> if c `elem` ("{}" :: String) then token else Just ([], s)
+  '(' : rest -> do
+    (items, after) <- itemsOf rest
+    case after of
+      ')' : more -> do
+        (ps, remaining) <- pieces more
+        Just (Parens items : ps, remaining)
+      _ -> Nothing
+  q : rest | q `elem` ("\"'" :: String) -> do
+    (literal, after) <- quoted q rest
+    (ps, remaining) <- pieces after
+    Just (glue (Token (q : literal)) ps, remaining)
+  _ -> token
+  where
+    token = let (t, after) = tokenOf s
+            in if null t then Nothing else do
+              (ps, remaining) <- pieces after
+              Just (glue (Token t) ps, remaining)
+    glue (Token a) (Token b : rest) = Token (a ++ b) : rest
+    glue p rest = p : rest
+
+-- | Text up to the next parenthesis, comma or quote, a comma between type
+-- arguments (Pair<A, B>, a < right after a name) included.
+tokenOf :: String -> (String, String)
+tokenOf = go (0 :: Int) []
+  where
+    go depth acc s = case s of
+      '<' : rest | named acc -> go (depth + 1) ('<' : acc) rest
+      '>' : rest | depth > 0 -> go (depth - 1) ('>' : acc) rest
+      ',' : rest | depth > 0 -> go depth (',' : acc) rest
+      c : rest | c `notElem` ("(),\"'" :: String) -> go depth (c : acc) rest
+      _ -> (reverse acc, s)
+    named acc = case acc of
+      c : _ -> isWord c
+      [] -> False
+    isWord c = c `elem` ('.' : '_' : '$' : ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'])
+
+itemsOf :: String -> Maybe ([[Piece]], String)
+itemsOf s = do
+  (first, rest) <- pieces s
+  case rest of
+    ',' : ' ' : more -> do
+      (others, after) <- itemsOf more
+      Just (first : others, after)
+    _ -> Just ([first | not (null first)], rest)
+
+quoted :: Char -> String -> Maybe (String, String)
+quoted q s = case s of
+  '\\' : c : rest -> do
+    (t, r) <- quoted q rest
+    pure ('\\' : c : t, r)
+  c : rest | c == q -> Just ([q], rest)
+  c : rest -> do
+    (t, r) <- quoted q rest
+    pure (c : t, r)
+  [] -> Nothing
+
+-- | Java written line by line, laid out in LawSpec's Java profile: a block's
+-- brace on a line of its own (Allman; a lambda's and an array's stay), and
+-- a line too long for 100 columns re-laid by its calls or, for a comment,
+-- wrapped at words.
+javaLayout :: String -> String
+javaLayout = unlines . concatMap (fit . dropWhileEndSpace) . concatMap allman . lines
+  where
+    dropWhileEndSpace = reverse . dropWhile (== ' ') . reverse
+    allman l =
+      let (indent, body) = span (== ' ') l
+          opens = " {" `isSuffixOf` body && not ("-> {" `isSuffixOf` body) && not ("[] {" `isSuffixOf` body)
+            && not ("= {" `isSuffixOf` body) && not ("({" `isSuffixOf` body) && not ("//" `isPrefixOf` body) && not ("*" `isPrefixOf` body)
+          header = take (length body - 2) body
+      in case () of
+        _ | opens, "} " `isPrefixOf` header -> [indent ++ "}", indent ++ drop 2 header, indent ++ "{"]
+          | opens -> [indent ++ header, indent ++ "{"]
+          | otherwise -> [l]
+    fit l
+      | length l <= 100 = [l]
+      | otherwise =
+          let (indent, body) = span (== ' ') l
+              width = 100 - length indent
+          in case () of
+            _ | "/** " `isPrefixOf` body, " */" `isSuffixOf` body ->
+                  [indent ++ "/**"] ++ map ((indent ++ " * ") ++) (wrap (width - 3) (words (drop 4 (take (length body - 3) body)))) ++ [indent ++ " */"]
+              | "// " `isPrefixOf` body -> map ((indent ++ "// ") ++) (wrap (width - 3) (words (drop 3 body)))
+              | "* " `isPrefixOf` body -> map ((indent ++ "* ") ++) (wrap (width - 2) (words (drop 2 body)))
+              | "\"" `isInfixOf` body && not (balanced body) -> [l]
+              | otherwise -> map (\x -> if null x then x else indent ++ x) (lines (D.render (D.Pretty width) (javaText body)))
+    balanced body = case pieces body of
+      Just (_, "") -> True
+      _ -> False
+    wrap width ws = go ws
+      where
+        go [] = []
+        go (w : rest) = let (line', more) = fill w rest in line' : go more
+        fill acc (w : rest) | length acc + 1 + length w <= width = fill (acc ++ " " ++ w) rest
+        fill acc rest = (acc, rest)
+
+-- | A Java type, its type arguments breaking 4 deeper when it is too long
+-- (Pair<A, B> as Pair< A, B > over three lines).
+javaType :: String -> D.Doc
+javaType t = case break (== '<') t of
+  (name@(_ : _), '<' : rest) | Just arguments <- closing rest ->
+    D.group (D.text (name ++ "<") <> D.nest 4 (D.softbreak <> D.joinWith (D.text "," <> D.softline) (map javaType (topLevel arguments))) <> D.text ">")
+  _ -> D.text t
+  where
+    -- The arguments when the type ends at its first < 's match.
+    closing s = let (inside, after) = matched (0 :: Int) [] s in if after == ">" then Just inside else Nothing
+    matched depth acc s = case s of
+      '<' : more -> matched (depth + 1) ('<' : acc) more
+      '>' : more | depth == 0 -> (reverse acc, '>' : more)
+                 | otherwise -> matched (depth - 1) ('>' : acc) more
+      c : more -> matched depth (c : acc) more
+      [] -> (reverse acc, [])
+    topLevel s = go (0 :: Int) [] s
+      where
+        go _ acc [] = [reverse acc]
+        go depth acc (c : more)
+          | c == ',' && depth == 0 = reverse acc : go depth [] (dropWhile (== ' ') more)
+          | c == '<' = go (depth + 1) (c : acc) more
+          | c == '>' = go (depth - 1) (c : acc) more
+          | otherwise = go depth (c : acc) more

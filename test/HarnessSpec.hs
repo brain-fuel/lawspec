@@ -267,7 +267,7 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
   it "names tests after law labels, uniquely, and carries tags in the manifest" $ do
     unitTestNames "python" ["a law", "a law", "1 more"] `shouldBe` ["test_a_law", "test_a_law_2", "test_law_1_more"]
     unitTestNames "go" ["a law"] `shouldBe` ["TestALaw"]
-    unitTestNames "java" ["a law"] `shouldBe` ["lawALaw"]
+    unitTestNames "java" ["a law"] `shouldBe` ["law"]
     unitTestNames "rust" ["a law"] `shouldBe` ["law_a_law"]
     case compiled (harness ["  for law \"|reflexive|", "    tags fast, unit\nend for law"]) of
       Left ds -> expectationFailure (show ds)

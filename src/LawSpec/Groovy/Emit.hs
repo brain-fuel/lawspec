@@ -8,60 +8,87 @@
 module LawSpec.Groovy.Emit (groovyFromJava, groovyLayout, groovyTestTitle, groovySourceDirectory, groovyTestDirectory) where
 
 import Data.Char (isAlphaNum, isDigit, isUpper, toLower, toUpper)
-import Data.List (isInfixOf, isSuffixOf, stripPrefix)
+import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, stripPrefix)
 import Data.Maybe (listToMaybe)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..), Diagnostic(..), mapArtifactContent)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..))
 import LawSpec.TestNames (unitTestNames, lawWords, kindSuffix)
-import LawSpec.Groovy.Source (groovyLiterals, idiomaticGroovy)
-import LawSpec.Groovy.Spock (spockSpecification, specClassName, needsJavaBody, javaBodySpecification)
+import LawSpec.Groovy.Source (idiomaticGroovy)
+import LawSpec.Groovy.Spock (Feature(..), spockSpecification, specClassName, classSpecification)
+import LawSpec.JavaProperties (TestCase(..), testCases)
+import LawSpec.Backend (prettyExpandedWith, sourceNames)
+import LawSpec.Common (Location(..))
+import LawSpec.Core.Machine (machineName)
+import LawSpec.Naming (displayLabel)
+import LawSpec.SourceLink (generatedHeader, labelled, locationLink, unitSourceFile)
 import LawSpec.GroovySources (groovySource)
 
 groovySourceDirectory, groovyTestDirectory :: String
 groovySourceDirectory = "src/main/groovy"
 groovyTestDirectory = "src/test/groovy"
 
--- | The Groovy project from the Java target's files for the same plan.
+-- | The Groovy project from the Java target's files for the same plan: the
+-- Java model and its JUnit test classes, user adapters as Groovy classes,
+-- and a Spock specification per test class, emitted from the plan.
 groovyFromJava :: Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
 groovyFromJava plan javaFiles = do
   let converted = concatMap convert javaFiles
       ordered = any ((== "src/test/java/lawspec/testing/LawSpecOrder.java") . artifactPath) javaFiles
       parallel = any ((== "src/test/resources/junit-platform.properties") . artifactPath) javaFiles
-      runtime = any (("lawspec.testing.LawSpecGroovy." `isInfixOf`) . artifactContent) converted
-  -- Resolve tail decisions before exposing the converted stream. Otherwise
-  -- their thunks retain every original Java character until the last file has
-  -- been consumed, alongside the complete converted project.
-  ordered `seq` parallel `seq` runtime `seq` pure (converted ++
+      specifications = concatMap specification javaFiles
+      runner = any (("LawSpecGroovy" `isInfixOf`) . artifactContent) specifications
+  ordered `seq` parallel `seq` pure (converted ++ specifications ++
     [ Artifact "src/test/groovy/lawspec/testing/LawSpecGroovy.groovy" (groovySource "LawSpecGroovy.groovy") "generated" "test"
-    | runtime ] ++
+    | runner ] ++
     [ Artifact "src/test/groovy/lawspec/testing/LawSpecRandomOrder.groovy" (groovySource "LawSpecRandomOrder.groovy") "generated" "test" | ordered ] ++
     [ Artifact "src/test/resources/SpockConfig.groovy" (groovySource "SpockConfig.groovy") "generated" "test" | parallel ])
   where
+    -- The Java test classes keep their JUnit marks, which LawSpecOrder and
+    -- junit-platform.properties serve; Spock's are on the specifications.
     convert a
-      | path `elem` ["src/test/java/lawspec/testing/LawSpecOrder.java", "src/test/resources/junit-platform.properties"] = []
       | ownership a == "user", Just rest <- stripPrefix "src/main/java/" path, ".java" `isSuffixOf` rest =
           [(mapArtifactContent idiomaticGroovy a) { artifactPath = groovySourceDirectory ++ "/" ++ groovyFile rest }]
-      | Just rest <- stripPrefix "src/test/java/" path, ".java" `isSuffixOf` rest, "@Test" `isInfixOf` artifactContent a =
-          let className = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse rest)))
-              directory = take (length rest - length className - 5) rest
-              (body, specification) = javaBodySpecification className (title path) (artifactContent a)
-              bodyArtifact = a { artifactPath = "src/test/java/" ++ directory ++ className ++ "Body.java", artifactContent = body }
-              specificationArtifact = a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy",
-                                          artifactContent = specification }
-          in if needsJavaBody (artifactContent a)
-             -- Materialize both records before exposing the first. A deferred
-             -- record update for the wrapper would otherwise retain a's
-             -- original Java content until after the complete body is emitted.
-             then bodyArtifact `seq` specificationArtifact `seq` [bodyArtifact, specificationArtifact]
-             else [a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy"
-                     , artifactContent = spockSpecification className (title path) (groovyLiterals (artifactContent a)) }]
       | otherwise = [a]
       where path = artifactPath a
     groovyFile rest = take (length rest - 5) rest ++ ".groovy"
-    -- A unit's test methods are named after its laws (LawSpec.TestNames).
-    title path name = maybe (spaced name) (\u -> groovyTestTitle u name)
-      (listToMaybe [pu | pu <- plannedUnits plan, javaTestPath (C.idText (C.unitId (plannedUnit pu))) == path])
+    -- A Java test class's specification, beside it in the Groovy tests.
+    specification a
+      | Just rest <- stripPrefix "src/test/java/" (artifactPath a), ".java" `isSuffixOf` rest, ownership a == "generated" =
+          let className = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse rest)))
+              directory = take (length rest - length className - 5) rest
+              package = intercalate "." (filter (not . null) (splitOn '/' directory))
+              file content = [Artifact (groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy") content "generated" "test"]
+              lawUnit = listToMaybe [pu | pu <- plannedUnits plan, javaTestPath (C.idText (C.unitId (plannedUnit pu))) == artifactPath a]
+              modelUnit = listToMaybe [plannedUnit pu | pu <- plannedUnits plan, javaModelPath (C.idText (C.unitId (plannedUnit pu))) == artifactPath a]
+          in case (lawUnit, modelUnit) of
+              (Just pu, _) -> file (lawSpecification package className pu)
+              (_, Just u) -> file (modelSpecification package className u)
+              _ | "@Test" `isInfixOf` artifactContent a && "lawspec/testing/" `notElem` [take 16 rest] ->
+                    file (classSpecification "Generated by LawSpec. Do not edit." package className)
+                | otherwise -> []
+      | otherwise = []
+    lawSpecification package className pu =
+      let u = plannedUnit pu
+          laws = [p | p <- plannedProperties pu, C.idText (C.unitId u) == fst (splitText "::law::" (C.idText (C.propertyId (plannedProperty p))))]
+          settings = C.unitHarnessSettings u
+          features = [ Feature (groovyTestTitle pu (caseMethod c)) (comment c previous) (caseSkipped c) (caseMethod c)
+                     | (c, previous) <- zip cases (Nothing : map Just cases) ]
+          cases = testCases u laws
+          comment c previous = case caseLaw c of
+            Just p | fmap (fmap lawId . caseLaw) previous /= Just (Just (lawId p)) -> [labelled (displayLabel (C.propertyName (plannedProperty p))) (lawLink p), statement p]
+            _ -> []
+          lawId = C.propertyId . plannedProperty
+      in spockSpecification (generatedHeader (unitSourceFile u)) package className
+           ("The laws of " ++ C.idText (C.unitId u) ++ ", run by " ++ className ++ "'s JUnit tests.")
+           (maybe False C.harnessOrderRandom settings) (maybe False C.harnessParallel settings) features
+    modelSpecification package className u =
+      spockSpecification "Generated by LawSpec. Do not edit." package className
+        ("The models of " ++ C.idText (C.unitId u) ++ ", run by " ++ className ++ "'s JUnit tests.") False False
+        ([ Feature (spaced method) [] Nothing method | m <- C.unitMachines u, let method = "model" ++ capital (machineName m) ] ++
+         [ Feature "supervision" [] Nothing "supervision" | not (null (C.unitSupervisors u)) ])
+    lawLink p = let l = C.propertyLocation (plannedProperty p) in if null (file l) then Nothing else Just (locationLink l)
+    statement p = map (\c -> if c < ' ' then ' ' else c) (prettyExpandedWith True (sourceNames (plannedProperty p)) p)
 
 -- | A project's own source and test directories, when it names them: the
 -- Java model and the Groovy sources move together, as Gradle compiles them
@@ -112,3 +139,25 @@ javaTestPath unit = "src/test/java/" ++ concatMap (++ "/") (init parts) ++ capit
     splitOn c s = case break (== c) s of
       (a, []) -> [a]
       (a, _ : b) -> a : splitOn c b
+
+-- The Java model test file of a unit (LawSpec.ModelTests).
+javaModelPath :: String -> String
+javaModelPath unit = take (length lawPath - length ("LawSpecTest.java" :: String)) lawPath ++ "ModelTest.java"
+  where lawPath = javaTestPath unit
+
+capital :: String -> String
+capital (c : cs) = toUpper c : cs
+capital [] = []
+
+splitOn :: Char -> String -> [String]
+splitOn c s = case break (== c) s of
+  (a, []) -> [a]
+  (a, _ : b) -> a : splitOn c b
+
+-- | Text before and after the first separator.
+splitText :: String -> String -> (String, String)
+splitText separator = go []
+  where
+    go before rest | separator `isPrefixOf` rest = (reverse before, drop (length separator) rest)
+    go before (c : rest) = go (c : before) rest
+    go before [] = (reverse before, [])

@@ -1,77 +1,94 @@
 // User-owned LawSpec adapter.
+
 package example;
 
 import lawspec.runtime.LawSpecRuntime.Value;
 
-public final class ScalarAdapters {
-  // (Char -> Char)
-  public static String echoChar(String value0) {
+public final class ScalarAdapters
+{
+  // echoChar :: (Char -> Char) — scalar_adapters.lawspec:2
+  public static String echoChar(String value0)
+  {
     throw new UnsupportedOperationException("echoChar -> Char");
   }
 
-  // (CodePoint -> CodePoint)
-  public static int echoCodePoint(int value0) {
+  // echoCodePoint :: (CodePoint -> CodePoint) — scalar_adapters.lawspec:3
+  public static int echoCodePoint(int value0)
+  {
     throw new UnsupportedOperationException("echoCodePoint -> CodePoint");
   }
 
-  // (CodeUnit16 -> CodeUnit16)
-  public static char echoCodeUnit(char value0) {
+  // echoCodeUnit :: (CodeUnit16 -> CodeUnit16) — scalar_adapters.lawspec:4
+  public static char echoCodeUnit(char value0)
+  {
     throw new UnsupportedOperationException("echoCodeUnit -> CodeUnit16");
   }
 
-  // (Bytes -> Bytes)
-  public static byte[] echoBytes(byte[] value0) {
+  // echoBytes :: (Bytes -> Bytes) — scalar_adapters.lawspec:5
+  public static byte[] echoBytes(byte[] value0)
+  {
     throw new UnsupportedOperationException("echoBytes -> Bytes");
   }
 
-  // (Complex64 -> Complex64)
-  public static Value echoComplex(Value value0) {
+  // echoComplex :: (Complex64 -> Complex64) — scalar_adapters.lawspec:6
+  public static Value echoComplex(Value value0)
+  {
     throw new UnsupportedOperationException("echoComplex -> Complex64");
   }
 
-  // (Int8 -> Integer)
-  public static Number successor(byte value0) {
+  // successor :: (Int8 -> Integer) — scalar_adapters.lawspec:7
+  public static Number successor(byte value0)
+  {
     throw new UnsupportedOperationException("successor -> Integer");
   }
 
-  // (Int8 -> Int8)
-  public static byte narrow(byte value0) {
+  // narrow :: (Int8 -> Int8) — scalar_adapters.lawspec:8
+  public static byte narrow(byte value0)
+  {
     throw new UnsupportedOperationException("narrow -> Int8");
   }
 
-  // (Decimal -> (Decimal -> Decimal))
+  // addDecimal :: (Decimal -> (Decimal -> Decimal)) — scalar_adapters.lawspec:9
   public static java.math.BigDecimal addDecimal(
-      java.math.BigDecimal value0, java.math.BigDecimal value1) {
+      java.math.BigDecimal value0, java.math.BigDecimal value1)
+  {
     throw new UnsupportedOperationException("addDecimal -> Decimal");
   }
 
-  // (Symbol -> (Symbol -> Bool))
-  public static boolean sameSymbol(Value value0, Value value1) {
+  // sameSymbol :: (Symbol -> (Symbol -> Bool)) — scalar_adapters.lawspec:10
+  public static boolean sameSymbol(Value value0, Value value1)
+  {
     throw new UnsupportedOperationException("sameSymbol -> Bool");
   }
 
-  // (Utf16Text -> Utf16Text)
-  public static String echoRaw(String value0) {
+  // echoRaw :: (Utf16Text -> Utf16Text) — scalar_adapters.lawspec:11
+  public static String echoRaw(String value0)
+  {
     throw new UnsupportedOperationException("echoRaw -> Utf16Text");
   }
 
-  // (Optional (Nullable (Int8)) -> Optional (Nullable (Int8)))
-  public static Value echoPresence(Value value0) {
-    throw new UnsupportedOperationException("echoPresence -> Optional (Nullable (Int8))");
+  // echoPresence :: (Optional (Nullable (Int8)) -> Optional (Nullable (Int8))) —
+  // scalar_adapters.lawspec:12
+  public static Value echoPresence(Value value0)
+  {
+    throw new UnsupportedOperationException("echoPresence -> Optional (Nullable " + "(Int8))");
   }
 
-  // (Unit -> Unit)
-  public static void finish(Value value0) {
+  // finish :: (Unit -> Unit) — scalar_adapters.lawspec:13
+  public static void finish(Value value0)
+  {
     throw new UnsupportedOperationException("finish -> Unit");
   }
 
-  // (UInt64 -> UInt64)
-  public static java.math.BigInteger preserveBig(java.math.BigInteger value0) {
+  // preserveBig :: (UInt64 -> UInt64) — scalar_adapters.lawspec:14
+  public static java.math.BigInteger preserveBig(java.math.BigInteger value0)
+  {
     throw new UnsupportedOperationException("preserveBig -> UInt64");
   }
 
-  // (IntSize -> IntSize)
-  public static Value machineEcho(Value value0) {
+  // machineEcho :: (IntSize -> IntSize) — scalar_adapters.lawspec:15
+  public static Value machineEcho(Value value0)
+  {
     throw new UnsupportedOperationException("machineEcho -> IntSize");
   }
 }

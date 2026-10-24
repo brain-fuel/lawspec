@@ -150,5 +150,25 @@ measured.
 
 ## Formatting
 
-Output uses braces, two-space blocks and 100-column lines. See
+Output is what scalafmt 3.11.5 accepts with its default configuration
+(Scala 3 dialect): two-space blocks, 80-column lines, a broken argument list
+one argument a line with no trailing comma, and a chain of calls broken
+before each dot. LawSpec lays it out itself, and its acceptance checks every
+generated project with `scalafmt --test`. The tests' generators and checks
+are in the runtime (`LawSpecScalars`, `LawSpecTesting`, and `LawSpecDraws`
+for harness strategies), so a test file holds only its laws. A unit whose
+tests would exceed 20,000 lines has a file per law, `<Unit><Law>Law.scala`,
+whose trait reads the shared values from the `<Unit>LawSpecTest` object. See
 [formatting](../../reference/formatting.md).
+
+## Names
+
+Generated code uses the specification's names. Locals keep their source
+names in Scala's camel case, checked definitions are named after the
+definition, and an anonymous record has a name from where it is used
+(`DeclinedDetails`) instead of `Record<digest>`. A test is named after its
+law and example, for instance `normalizersAgree_spacesBecomeHyphensPunctuationIs`, and boundaries are numbered from
+1. Each law's comment gives its name, source line, what it says and the
+statement its tests check; assertion messages name the law and example and
+link to the expectation's line. Text is written as the language's own string
+literal.

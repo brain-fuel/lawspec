@@ -61,7 +61,10 @@ import LawSpec.TargetNames (nativeName, phraseNativeName, allTargetKeywords)
 import qualified LawSpec.Targets as Targets
 import qualified LawSpec.ArtifactEmit as ArtifactEmit
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum, isHexDigit)
-import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
+import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf, isInfixOf)
+import qualified LawSpec.JavaTestHelpers as JavaTestHelpers
+import qualified LawSpec.KotlinLayout as KotlinLayout
+import qualified LawSpec.ScalaLayout as ScalaLayout
 import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
@@ -414,20 +417,20 @@ emitPlanFormatted minify target Plan{..} = do
                ("test/","LawSpecTesting.hs","haskell-testing","test")]])
         else if target == "kotlin" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-            (KotlinData.emitKotlinDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
+            (KotlinData.emitKotlinDataWithProfile planMachineBits (layout KotlinLayout.kotlinStyle) planDataDeclarations)
         else if target == "scala" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-            (ScalaData.emitScalaDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
+            (ScalaData.emitScalaDataWithProfile planMachineBits (layout ScalaLayout.scalaStyle) planDataDeclarations)
         else Right []
   definitionFiles <- if target == "java"
     then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
       (JavaDefinitions.emitJavaDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
     else if target == "kotlin"
       then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-        (KotlinDefinitions.emitKotlinDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
+        (KotlinDefinitions.emitKotlinDefinitions (layout KotlinLayout.kotlinStyle) planMachineBits planDataDeclarations units)
     else if target == "scala"
       then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-        (ScalaDefinitions.emitScalaDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
+        (ScalaDefinitions.emitScalaDefinitions (layout ScalaLayout.scalaStyle) planMachineBits planDataDeclarations units)
       else if target == "python"
         then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
           (PythonDefinitions.emitPythonDefinitions (layout pythonLayout) planMachineBits planDataDeclarations units)
@@ -453,6 +456,10 @@ emitPlanFormatted minify target Plan{..} = do
         _ -> Artifact "src/lawspec_runtime.mjs" (runtimeSource "javascript") "generated" "source"
       files = concat emitted ++ dataFiles ++ definitionFiles ++
         [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" | target == "java" && not (null dataFiles)] ++
+        -- Java: the scalar generators the tests draw from, for the machine's
+        -- width, once per project rather than in every test.
+        [Artifact "src/test/java/lawspec/testing/LawSpecScalars.java" javaScalars "generated" "test"
+          | target == "java" && any (("LawSpecScalars" `isInfixOf`) . artifactContent) (concat emitted)] ++
         [Artifact "tests/lawspec_data_strategies.py" (runtimeSource "python-data-strategies") "generated" "test" | target == "python" && not (null dataFiles)] ++
         -- The harness plane's runtime, for programs with a harness.
         [Artifact "tests/lawspec_harness.py" (runtimeSource "python-harness") "generated" "test" | target == "python" && usesHarness] ++
@@ -469,9 +476,11 @@ emitPlanFormatted minify target Plan{..} = do
         -- Gradle compiles Java beside Kotlin only in src/main/java, as it
         -- does LawSpecRuntime.java.
         [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "kotlin" && usesHarness] ++
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecDraws.kt" (runtimeSource "kotlin-draws") "generated" "test" | target == "kotlin" && usesHarness] ++
         -- Scala: the harness's Java runtime, beside the shared runtime, and
         -- the shrink-tree generators the tests draw from.
         [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "scala" && usesHarness] ++
+        [Artifact "src/test/scala/lawspec/testing/LawSpecDraws.scala" (runtimeSource "scala-draws") "generated" "test" | target == "scala" && usesHarness] ++
         [Artifact "src/test/scala/lawspec/testing/LawSpecGen.scala" (runtimeSource "scala-strategies") "generated" "test" | needsRuntime && target == "scala"] ++
         [Artifact "src/test/scala/lawspec/testing/LawSpecScalaStrategies.scala" (runtimeSource "scala-data-strategies") "generated" "test" | needsRuntime && target == "scala"] ++
         [Artifact "src/main/scala/lawspec/runtime/LawSpecScala.scala" (runtimeSource "scala-native") "generated" "source" | needsRuntime && target == "scala" && null dataFiles] ++
@@ -485,7 +494,13 @@ emitPlanFormatted minify target Plan{..} = do
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecKotlinStrategies.kt" (runtimeSource "kotlin-data-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
         -- TCP and HTTP transports for nodes (the network package).
         [Artifact "src/LawSpecTransports.hs" (runtimeSource "haskell-transports") "generated" "source" | needsRuntime && target == "haskell"] ++
-        [Artifact "src/test/kotlin/lawspec/testing/LawSpecStrategies.kt" (runtimeSource "kotlin-strategies") "generated" "test" | needsRuntime && target == "kotlin"]
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecStrategies.kt" (runtimeSource "kotlin-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        -- Kotlin: the scalar generators the tests draw from, in the runtime.
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecScalars.kt" (runtimeSource "kotlin-scalars") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        [Artifact "src/test/kotlin/lawspec/testing/LawSpecTesting.kt" (runtimeSource "kotlin-testing") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        -- Scala: the scalar generators and checks the tests use, in the runtime.
+        [Artifact "src/test/scala/lawspec/testing/LawSpecScalars.scala" (runtimeSource "scala-scalars") "generated" "test" | needsRuntime && target == "scala"] ++
+        [Artifact "src/test/scala/lawspec/testing/LawSpecTesting.scala" (runtimeSource "scala-testing") "generated" "test" | needsRuntime && target == "scala"]
   unless (target `notElem` ["python","javascript","typescript"] || all
     (\u -> map toLower (head (split '.' (unitName u))) `notElem`
       ["lawspec_runtime","lawspec_schema","lawspec_data","lawspec_data_strategies","lawspec_definitions","lawspec_definition_bodies"]) units)
@@ -496,12 +511,15 @@ emitPlanFormatted minify target Plan{..} = do
   pure files
   where
     layout = Doc.selectLayout minify
+    javaScalars = Doc.render (layout (Doc.Pretty 100)) (JavaTestHelpers.scalarsDoc (Just "Generated by LawSpec. Do not edit.")
+      planMachineBits (JavaTestHelpers.generatorDoc planMachineBits 0 "" (const False) (const mempty) prettyType))
     usesHarness = any ((/= Nothing) . C.unitHarnessSettings . plannedUnit) plannedUnits
     usesParallel = any (maybe False C.harnessParallel . C.unitHarnessSettings . plannedUnit) plannedUnits
     -- order random on Java: JUnit's methods in an order the run's seed
     -- (LAWSPEC_SEED) chooses, printed so the order can be replayed.
     javaOrder = unlines
       [ "// Generated by LawSpec. Do not edit."
+      , ""
       , "package lawspec.testing;"
       , ""
       , "import java.util.Comparator;"
@@ -510,14 +528,24 @@ emitPlanFormatted minify target Plan{..} = do
       , "import org.junit.jupiter.api.MethodOrdererContext;"
       , ""
       , "/** order random: the class's tests in an order the run's seed chooses. */"
-      , "public final class LawSpecOrder implements MethodOrderer {"
+      , "public final class LawSpecOrder implements MethodOrderer"
+      , "{"
       , "  @Override"
-      , "  public void orderMethods(MethodOrdererContext context) {"
+      , "  public void orderMethods(MethodOrdererContext context)"
+      , "  {"
       , "    long seed = LawSpecHarness.orderSeed();"
       , "    var methods = context.getMethodDescriptors();"
       , "    methods.sort(Comparator.comparing(MethodDescriptor::getDisplayName));"
-      , "    java.util.Collections.shuffle(methods, new java.util.Random(seed ^ context.getTestClass().getName().hashCode()));"
-      , "    System.out.println(\"order random seed \" + seed + \" (\" + context.getTestClass().getSimpleName() + \"): LAWSPEC_SEED=\" + seed + \" replays this order\");"
+      , "    java.util.Collections.shuffle("
+      , "        methods, new java.util.Random(seed ^ context.getTestClass().getName().hashCode()));"
+      , "    System.out.println("
+      , "        \"order random seed \""
+      , "            + seed"
+      , "            + \" (\""
+      , "            + context.getTestClass().getSimpleName()"
+      , "            + \"): LAWSPEC_SEED=\""
+      , "            + seed"
+      , "            + \" replays this order\");"
       , "  }"
       , "}" ]
     definitionCalls = JavaDefinitions.definitionCalls (map plannedUnit plannedUnits)

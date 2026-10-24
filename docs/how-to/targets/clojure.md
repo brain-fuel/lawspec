@@ -164,3 +164,8 @@ harness runtime.
 
 `npx lawspec test` selects the tests of the laws an edit can affect with the
 runner's `--select namespace/prefix`.
+
+Each test's `testing` block shows the law's statement with source names, and
+a comment above the law's first test links to its source line. Generated
+Clojure is laid out as cljfmt 0.16.6 lays it out, and LawSpec's acceptance
+checks every generated project with `cljfmt check`.

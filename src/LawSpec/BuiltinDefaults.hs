@@ -11,6 +11,7 @@
 -- unit). @@VECTORS@@ is the vectors' text, inside a raw string literal.
 module LawSpec.BuiltinDefaults (withBuiltinDefaults, adapterPath, vectorTestPath) where
 
+import qualified LawSpec.JavaExpr as JavaExpr
 import Data.Char (toUpper)
 import Data.List (intercalate, isPrefixOf)
 import qualified LawSpec.Core as C
@@ -22,6 +23,8 @@ import LawSpec.PythonTypes (pythonDataType)
 import LawSpec.WebTypes (webDataType)
 import LawSpec.GoData (goDataType)
 import LawSpec.JavaData (javaDataType)
+import qualified LawSpec.Code.Doc as Doc
+import LawSpec.JvmNames (jvmString)
 import LawSpec.KotlinData (kotlinDataType)
 import LawSpec.ScalaData (scalaDataType)
 import LawSpec.HaskellData (haskellDataType)
@@ -155,13 +158,21 @@ vectorTestPath target = case target of
 -- @@VECTOR_LIST@@ is the same list's items laid out as ormolu lays out a
 -- list, after its opening bracket.
 fill :: String -> [C.DataDeclaration] -> String -> String -> String
-fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
+fill target _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
   . replace "@@VECTOR_LIST@@" vectorList
   where
     vectors = defaultSource "vectors.txt"
     items = ["\"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
-    vectorLines = intercalate ",\n" (map ("    " ++) items)
     vectorList = intercalate ",\n    " items
+    vectorLines = intercalate ",\n" [vectorLine l | l <- lines vectors, not (null l), take 1 l /= "#"] ++
+      -- ktfmt ends a broken argument list with a comma.
+      (if target == "kotlin" then "," else "")
+    -- Java's lines wrap at the vectors' spaces, within LawSpec's Java
+    -- profile's 100 columns.
+    vectorLine l
+      | target == "java" = Doc.render (Doc.Pretty 100) (Doc.text "    " <> Doc.nest 4 (JavaExpr.quoted l))
+      | target == "kotlin" = "                \"" ++ l ++ "\""
+      | otherwise = "    \"" ++ l ++ "\""
 
 replace :: String -> String -> String -> String
 replace old new = go

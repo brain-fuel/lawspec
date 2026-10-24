@@ -2,9 +2,8 @@
 package lawspec
 
 /**
- * The default handlers of lawspec.logging: the platform logger
- * (System.Logger) named "lawspec". Laws that inspect what was logged use
- * `recording Log`.
+ * The default handlers of lawspec.logging: the platform logger (System.Logger) named "lawspec".
+ * Laws that inspect what was logged use `recording Log`.
  */
 object Logging {
     private val logger: java.lang.System.Logger = java.lang.System.getLogger("lawspec")
@@ -12,12 +11,13 @@ object Logging {
     /** Logs to the "lawspec" platform logger, at the matching level. */
     class LogHandler : lawspec.abilities.lawspec.Logging.Log {
         override fun logMessage(value0: @@LogLevel@@, value1: kotlin.String) {
-            val level = when (value0) {
-                @@LogLevel/Debug@@ -> java.lang.System.Logger.Level.DEBUG
-                @@LogLevel/Warning@@ -> java.lang.System.Logger.Level.WARNING
-                @@LogLevel/Error@@ -> java.lang.System.Logger.Level.ERROR
-                else -> java.lang.System.Logger.Level.INFO
-            }
+            val level =
+                when (value0) {
+                    @@LogLevel/Debug@@ -> java.lang.System.Logger.Level.DEBUG
+                    @@LogLevel/Warning@@ -> java.lang.System.Logger.Level.WARNING
+                    @@LogLevel/Error@@ -> java.lang.System.Logger.Level.ERROR
+                    else -> java.lang.System.Logger.Level.INFO
+                }
             logger.log(level, value1)
         }
     }
