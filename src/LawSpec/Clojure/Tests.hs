@@ -52,6 +52,9 @@ lawCases className source =
         -- The cases are made by reflection, so their class is public.
         | Just rest' <- stripPrefix ("class " ++ casesClassName className ++ " ") l ->
             let (java, tests) = go skip rest in (("public class " ++ casesClassName className ++ " " ++ rest') : java, tests)
+        -- Its brace on the next line (Allman).
+        | l == "class " ++ casesClassName className ->
+            let (java, tests) = go skip rest in (("public class " ++ casesClassName className) : java, tests)
         | trimmed l == "@Test", next : rest' <- rest, Just name <- testMethod next ->
             let (java, tests) = go Nothing rest' in (public next : java, (name, skip) : tests)
         | Just after <- stripPrefix "@Test " (trimmed l), Just name <- testMethod after ->

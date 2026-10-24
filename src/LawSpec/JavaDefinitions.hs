@@ -6,7 +6,7 @@ import LawSpec.Core.Stages (stageFailures)
 import LawSpec.JvmLets (flattenStrictLets)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
-import Data.Char (isAlphaNum, toUpper)
+import Data.Char (isAlphaNum, isDigit, toUpper)
 import Data.List (intercalate, stripPrefix)
 import LawSpec.Common
 import LawSpec.Core
@@ -196,10 +196,11 @@ emitDefinitions style layout bits declarations units = do
       | otherwise = nativeDynamic d
     -- A definition's method: its name as Google Java Style writes it
     -- (nOfStack is nofStack).
-    -- A definition's API name is its own in Google's case (nofStack); a
-    -- Java keyword gets jvmLocal's spelling (shortValue).
+    -- A definition's API name is jvmLocal's (nofStack, shortValue), or its
+    -- own in Google's case where jvmLocal would drop its digits.
     apiName declaration = let n = declarationName declaration
-      in if n `elem` jvmReserved "java" then jvmLocal "java" [] n else googleCase n
+                              j = jvmLocal "java" [] n
+      in if filter isDigit j == filter isDigit n then j else googleCase n
     nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)

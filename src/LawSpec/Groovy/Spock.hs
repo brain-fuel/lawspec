@@ -8,7 +8,7 @@
 -- ref:DEC-groovy-property-library
 module LawSpec.Groovy.Spock (Feature(..), specClassName, spockSpecification, classSpecification) where
 
-import Data.List (isSuffixOf)
+import Data.List (intercalate, isSuffixOf)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
 
@@ -52,7 +52,7 @@ spockSpecification generated package testClass description orderRandom parallel 
   where
     feature f =
       mconcat (map (D.lineComment 98 "// ") (featureComment f)) <>
-      maybe mempty (\reason -> D.text "@spock.lang.Ignore(" <> string reason <> D.text ")" <> D.hardline) (featureSkipped f) <>
+      maybe mempty (\reason -> D.text "@spock.lang.Ignore(" <> reasonText reason <> D.text ")" <> D.hardline) (featureSkipped f) <>
       D.text "def " <> string (featureTitle f) <> D.text "()" <> D.hardline <>
       D.block 2 (case featureSkipped f of
         Just _ -> D.text "expect: true"
@@ -72,3 +72,26 @@ classSpecification generated package testClass =
       , mempty
       , D.text "where:"
       , D.text ("method << LawSpecGroovy.tests(" ++ testClass ++ ")") ])) <> D.hardline
+
+-- | An annotation's text: a long one is a triple-quoted literal continued
+-- with \ at its line ends, its later lines unindented (a continued literal
+-- keeps their spaces), so each line stays within 100 columns.
+reasonText :: String -> D.Doc
+reasonText reason
+  | length reason <= 70 = string reason
+  | otherwise = D.text ("\'\'\'" ++ intercalate "\\\n" (pieces (concatMap escape reason)) ++ "\'\'\'")
+  where
+    escape c = case c of
+      '\\' -> "\\\\"
+      '\'' -> "\\'"
+      _ -> [c]
+    -- Words to about 70 characters a line, each line ending in a space.
+    pieces text = go (words' text)
+      where
+        go [] = []
+        go ws = let (line, rest) = fill [] 0 ws in concat line : go rest
+        fill acc n (w : more) | null acc || n + length w <= 70 = fill (acc ++ [w]) (n + length w) more
+        fill acc _ more = (acc, more)
+    words' t = case break (== ' ') t of
+      (w, ' ' : more) -> (w ++ " ") : words' more
+      (w, _) -> [w | not (null w)]
