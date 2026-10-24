@@ -73,7 +73,7 @@ type M = State St
 -- semantic. A name here moves the field's whole content to that stream.
 presentationFields :: M.Map String Stream
 presentationFields = M.fromList $
-  [ (f, Names) | f <- [ "declarationId", "declarationName", "dataId", "dataName", "constructorId", "constructorName"
+  [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "dataId", "dataName", "constructorId", "constructorName"
                       , "abilityName", "handlerId", "handlerName", "propertyId", "propertyName", "contractDeclaration"
                       , "sessionId", "sessionName", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
   [ (f, Docs) | f <- [ "declarationOrigin", "dataOrigin", "constructorOrigin", "expressionOrigin", "abilityOrigin"
@@ -89,9 +89,9 @@ encode :: Encode a => Resolver -> a -> Encoded
 encode resolver value = finish (execState (tag semanticVersion >> enc resolver value) start)
 
 -- | An adapter has no body: its identity is the native code it binds, so
--- its qualified name is semantic too.
-encodeAdapter :: Encode a => Resolver -> Id -> a -> Encoded
-encodeAdapter resolver identity value = finish (execState (tag semanticVersion >> tag "adapter" >> text (idText identity) >> enc resolver value) start)
+-- its qualified name and native source are semantic too.
+encodeAdapter :: Encode a => Resolver -> String -> a -> Encoded
+encodeAdapter resolver binding value = finish (execState (tag semanticVersion >> tag "adapter" >> text binding >> enc resolver value) start)
 
 start :: St
 start = St mempty mempty mempty Semantic M.empty M.empty 0 0 False

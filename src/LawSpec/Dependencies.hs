@@ -93,7 +93,7 @@ dependencyGraph dataDeclarations units = Graph edges identities constructors nod
     encodeNode resolver node = case node of
       DataNode name -> maybe empty (Identity.encode resolver) (M.lookup (Id name) dataTable)
       DeclNode i -> case (M.lookup i declarationTable, M.lookup i contractTable, M.lookup i definitionTable) of
-        (Just d, c, Nothing) -> Identity.encodeAdapter resolver i (d, c)
+        (Just d, c, Nothing) -> Identity.encodeAdapter resolver (idText i ++ " " ++ show (declarationSource d)) (d, c)
         (Just d, c, f) -> Identity.encode resolver (d, c, f)
         _ -> empty
       HandlerNode i -> maybe empty (Identity.encode resolver) (M.lookup i handlers)

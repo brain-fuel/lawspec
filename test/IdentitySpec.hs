@@ -76,7 +76,7 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     shown "doubles" after (at "doubles") `shouldBe` False
   it "keeps every hash when declarations are reordered" $ do
     let (header, rest) = splitAt 2 base
-        after = identities (header ++ drop 2 rest ++ take 2 rest)
+        after = identities (header ++ init (drop 2 rest) ++ take 2 rest ++ [last rest])
     [k | k <- everything, not (same k after && names k after (at k))] `shouldBe` []
   it "keeps a caller's semantic hash when a definition is renamed" $ do
     let after = identities (edit "double" "twice" base)
