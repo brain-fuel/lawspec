@@ -10,23 +10,17 @@ import lawspec.data.Rest
 import lawspec.data.Row
 
 object Arithmetic {
-    private fun length(row: Row): Long =
-        when (row) {
-            Row.End -> 0
-            is Row.Cell -> 1 + length(row.value.tail)
-        }
+    private fun length(row: Row): Long = when (row) {
+        Row.End -> 0
+        is Row.Cell -> 1 + length(row.value.tail)
+    }
 
-    fun mirror(value0: Perfect): Perfect =
-        when (value0) {
-            is Perfect.Leaf -> value0
-            is Perfect.Node ->
-                Perfect.Node(
-                    lawspec.data.NodeDetails(mirror(value0.value.right), mirror(value0.value.left))
-                )
-        }
+    fun mirror(value0: Perfect): Perfect = when (value0) {
+        is Perfect.Leaf -> value0
+        is Perfect.Node -> Perfect.Node(lawspec.data.NodeDetails(mirror(value0.value.right), mirror(value0.value.left)))
+    }
 
-    fun area(value0: Grid): BigInteger =
-        BigInteger.valueOf(length(value0.value.rows) * length(value0.value.columns))
+    fun area(value0: Grid): BigInteger = BigInteger.valueOf(length(value0.value.rows) * length(value0.value.columns))
 
     fun duplicate(value0: Row): Halves = Halves(lawspec.data.HalvesDetails(value0, value0))
 
