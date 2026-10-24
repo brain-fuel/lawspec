@@ -6,7 +6,7 @@ module LawSpec.Code.Doc
   , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment
   , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
-  , fitsIndented, fitsIndentedTwice, Preference(..), prefer, narrow
+  , fitsIndented, fitsIndentedTwice, Preference(..), prefer, narrow, fullWidth
   ) where
 
 import Data.List (intersperse, sort)
@@ -41,6 +41,8 @@ data Doc
   | FitsIndented Int Int Doc Doc
   | Prefer Preference Doc Doc Doc Doc
   | Narrow Int Doc
+  -- The page's whole width again, inside a narrowed document.
+  | FullWidth Doc
   | FitsIndentedTwice Int Doc Doc
   | StopHere
   deriving (Eq, Show)
@@ -380,6 +382,10 @@ prefer = Prefer
 narrow :: Int -> Doc -> Doc
 narrow = Narrow
 
+-- | A document with the page's whole width, whatever narrows around it.
+fullWidth :: Doc -> Doc
+fullWidth = FullWidth
+
 -- | rustfmt: the first layout when a line of the given width, after the
 -- current indentation counted twice, fits (as rustfmt measures a long
 -- signature's closing line before its brace), else the second.
@@ -501,6 +507,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               CompactTabs -> first
               _ -> if 2 * indentation + width <= margin then first else second
         in layoutWork column ((indentation, mode, margin, chosen):rest)
+      FullWidth a -> layoutWork column ((indentation, mode, pageWidth, a):rest)
       Narrow n a -> case layout of
         Compact -> layoutWork column ((indentation, mode, margin, a):rest)
         CompactTabs -> layoutWork column ((indentation, mode, margin, a):rest)
@@ -642,6 +649,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       BestFit alternatives -> fits column ((indentation, mode, margin, head alternatives):rest)
       Prefer _ _ _ sameLayout _ -> fits column ((indentation, mode, margin, sameLayout):rest)
       Narrow n a -> fits column ((indentation, mode, max 1 (margin - n), a):rest)
+      FullWidth a -> fits column ((indentation, mode, pageWidth, a):rest)
       FitsIndentedTwice width first second -> fits column ((indentation, mode, margin,
         if 2 * indentation + width <= margin then first else second):rest)
       FitsIndented offset width first second -> fits column ((indentation, mode, margin,
@@ -695,6 +703,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
           FitsIndented _ _ first second -> line flat first && line flat second
           Prefer _ _ _ first second -> line flat first && line flat second
           Narrow _ a -> line flat a
+          FullWidth a -> line flat a
           StopHere -> True
           FitsIndentedTwice _ first second -> line flat first && line flat second
           Operation operands operators -> line flat (parenthesised (operationBody operands operators))

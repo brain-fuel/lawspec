@@ -438,7 +438,7 @@ arguments callee cap open close limit args =
       If {} -> expr a
       Match {} -> expr a
       Block _ _ -> expr a
-      _ -> D.narrow 1 (expr a)
+      _ -> D.fullWidth (D.narrow 1 (expr a))
     -- A closure whose body's opening does not fit there overflows with its
     -- body in a block.
     lastArg = case last args of
@@ -693,7 +693,9 @@ infixDoc e = case (flat e, e) of
 
 blockDoc :: [Stmt] -> Maybe Expr -> D.Doc
 blockDoc [] Nothing = D.text "{}"
-blockDoc ss tailExpr = D.text "{" <> D.nest 4 (D.hardline <> stmts ss tailExpr) <> D.hardline <> D.text "}"
+-- (a block's statements have the whole width, however its expression is
+-- placed)
+blockDoc ss tailExpr = D.text "{" <> D.nest 4 (D.fullWidth (D.hardline <> stmts ss tailExpr)) <> D.hardline <> D.text "}"
 
 -- | Statements, then the block's value.
 stmts :: [Stmt] -> Maybe Expr -> D.Doc
@@ -736,8 +738,7 @@ letDoc binding e =
     let head' = D.text (binding ++ " =")
         value = expr e <> D.text ";"
         sameValue = D.text " " <> value
-        -- (an if or match on the next line leaves room for the semicolon)
-        nextValue = D.nest 4 (D.hardline <> (if matched then D.narrow 1 (expr e) <> D.text ";" else value))
+        nextValue = D.nest 4 (D.hardline <> value)
         -- (a match whose scrutinee breaks on the let's line goes to the
         -- next line when its scrutinee is on one line there)
         matched = case e of
@@ -774,7 +775,8 @@ ifDocOf elseIf c a b = case (flat (If c a b), b) of
     opened = case oneLine c of
       Just t | elseIf -> D.fitsIndented 0 (width ("if " ++ t ++ " {"))
         (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{", brokenCondition]) brokenCondition
-      Just t -> oneOf [D.text ("if " ++ t ++ " {"), brokenCondition]
+      -- (rustfmt counts a chain's last ? twice)
+      Just t -> oneOf [(if triedChain c then D.narrow 1 else id) (D.text ("if " ++ t ++ " {")), brokenCondition]
       Nothing -> D.text "if " <> expr c <> closer
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
