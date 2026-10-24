@@ -5,6 +5,7 @@ import LawSpec.Core
 import qualified LawSpec.Core.Schema as Schema
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
+import LawSpec.JvmLets (flattenLets)
 import LawSpec.JvmNames (jvmString)
 import Data.List (find)
 
@@ -85,7 +86,7 @@ renderExpressionWithContext = renderExpressionWithSchema "SCHEMA"
 renderExpressionWithSchema :: String -> [DataDeclaration] -> D.Doc -> (Type -> Either String D.Doc)
   -> (Type -> Either String D.Doc) -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpressionWithSchema schemaName declarations bits reference typeKey local external = render
+renderExpressionWithSchema schemaName declarations bits reference typeKey local external = render . flattenLets
   where
     runtime name = call ("LawSpecRuntime." ++ name)
     custom (Constructor name args) = any ((== Id name) . dataId) declarations ||

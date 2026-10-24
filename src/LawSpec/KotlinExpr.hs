@@ -8,6 +8,7 @@ import qualified LawSpec.JavaData as Java
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinLayout as L
+import LawSpec.JvmLets (flattenLets)
 
 -- | Strings are Kotlin literals ($ escaped), never split: ktfmt leaves a
 -- long one whole. ref:DEC-native-string-literals
@@ -97,7 +98,7 @@ renderExpression declarations bits = renderExpressionIn ("_schema", D.text (show
 -- caller's names.
 renderExpressionIn :: (String, D.Doc) -> [DataDeclaration] -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpressionIn scope@(schema, width) declarations local external = render
+renderExpressionIn scope@(schema, width) declarations local external = render . flattenLets
   where
     checked' = checkedIn scope declarations
     key = quoted . Java.javaDataKey
@@ -129,13 +130,14 @@ renderExpressionIn scope@(schema, width) declarations local external = render
         pure (runtime "allElements" [argument, L.lambda [local (binderId binder)] [body]])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
-      Let binder value body -> do
-        argument <- render value
-        inner <- render body
-        -- Kotlin's inline stdlib let expands an entire finite search into
-        -- one JVM method. The shared JVM helper preserves the same strict
-        -- binding while giving each callback a separate bytecode method.
-        pure (runtime "let" [argument, L.lambda [local (binderId binder)] [inner]])
+      -- A chain of lets is a block of declarations in one callback (the
+      -- shared JVM helper keeps it a bytecode method of its own, which
+      -- Kotlin's inline run would not).
+      Let {} -> do
+        let (steps, final) = letChain term
+        declarations <- mapM (\(binder, value) -> L.bind (local (binderId binder)) <$> render value) steps
+        inner <- render final
+        pure (L.trailing (D.text "LawSpecRuntime.block") [] (declarations ++ [inner]))
       -- A text literal is already its type's value.
       Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
         expressionType term == scalarType n -> scalarLiteral (expressionType term) value
@@ -196,6 +198,9 @@ renderExpressionIn scope@(schema, width) declarations local external = render
             body = D.text "when (tag) " <> D.block 4 (D.joinWith D.hardline (arms ++ [fallback]))
         pure (D.multiline (L.callThen "LawSpecKotlinCodecs.match" [D.text schema,ref,value,width,D.text "symbols"]
           (D.text " " <> L.lambda ["tag", "fields"] [body])))
+    letChain e = case expressionNode e of
+      Let binder value body -> let (steps, final) = letChain body in ((binder, value) : steps, final)
+      _ -> ([], e)
     chainOf op e = case expressionNode e of
       ShortCircuit op' a b | op' == op -> chainOf op a ++ chainOf op b
       _ -> [e]

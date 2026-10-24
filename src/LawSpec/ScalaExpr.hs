@@ -10,6 +10,7 @@ import qualified LawSpec.JavaData as Java
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.ScalaLayout as L
+import LawSpec.JvmLets (flattenLets)
 
 -- | Strings are escaped for Scala here, once, so no generated literal can end
 -- early or change meaning.
@@ -101,7 +102,7 @@ scalarLiteral ty value = case value of
 -- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpression declarations bits local external = render
+renderExpression declarations bits local external = render . flattenLets
   where
     width = const (D.text bitsName) bits
     key = quoted . Java.javaDataKey
@@ -135,12 +136,16 @@ renderExpression declarations bits local external = render
         pure (runtime "allElements" [argument, lambda [(local (binderId binder), valueType)] body])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
-      Let binder value body -> do
-        argument <- render value
-        inner <- render body
-        -- A block keeps a finite search in one JVM method. Reuse the shared
-        -- strict binding helper so callbacks compile into separate methods.
-        pure (runtime "let" [argument,lambda [(local (binderId binder),valueType)] inner])
+      -- A chain of lets is a block of declarations in one callback, which
+      -- the shared JVM helper keeps a bytecode method of its own.
+      Let {} -> do
+        let chained e = case expressionNode e of
+              Let b v rest -> let (steps, final) = chained rest in ((b, v) : steps, final)
+              _ -> ([], e)
+            (steps, final) = chained term
+        declarations <- mapM (\(binder, value) -> L.bind (local (binderId binder)) <$> render value) steps
+        inner <- render final
+        pure (L.trailing (D.text "LawSpecRuntime.block") ["()"] (declarations ++ [inner]))
       -- A text literal is already its type's value.
       Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
         expressionType term == scalarType n -> scalarLiteral (expressionType term) value
