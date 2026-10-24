@@ -28,7 +28,7 @@ import LawSpec.Api (dispatch)
 import LawSpec.CoreEmit (emitPlan, targets)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import qualified LawSpec.NativeRequest as NB
-import LawSpec.Blake3 (blake3Hex)
+import LawSpec.Blake3 (blake3Hex, hashMany, hexOf)
 
 source :: String -> Source
 source body = Source "canonical.lawspec" ("unit example.canonical\n\n" ++ body ++ "\nend unit\n")
@@ -1462,3 +1462,13 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     case eitherDecode vectors >>= parseEither parseVectors of
       Left problem -> expectationFailure problem
       Right cases -> mapM_ (\(n,hash) -> blake3Hex (B.pack (take n (cycle [0..250]))) `shouldBe` hash) cases
+  it "agrees with goforge's blake3sum, one input at a time and in a batch" $ do
+    vectors <- BL.readFile "test/fixtures/blake3sum.json"
+    let parseVectors :: Value -> Parser [(Int,String)]
+        parseVectors = withObject "vectors" (\o -> o .: "cases" >>= mapM (withObject "case" (\c -> (,) <$> c .: "input_len" <*> c .: "hash")))
+    case eitherDecode vectors >>= parseEither parseVectors of
+      Left problem -> expectationFailure problem
+      Right cases -> do
+        let inputs = [B.pack (take n (cycle [0..250])) | (n,_) <- cases]
+        map blake3Hex inputs `shouldBe` map snd cases
+        map hexOf (hashMany inputs) `shouldBe` map snd cases
