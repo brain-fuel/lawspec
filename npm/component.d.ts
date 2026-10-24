@@ -6,6 +6,7 @@ export interface ComponentTarget {
   name?: string; language: import('./index.js').Target; root: string;
   sourceDir?: string; testDir?: string;
   python?: string; maven?: string; gradle?: string; rustc?: string; cargo?: string;
+  scala?: string; swift?: string; clojure?: string; dotnet?: string;
   nativeBindings?: import('./index.js').NativeBindings;
 }
 export interface ComponentManifest {

@@ -68,3 +68,17 @@ test('descriptions validate native bindings even with optional verification disa
   await writeFile(file, writeManifest({...project, verification: {layers: []}, targets: [{language: 'javascript', root: '.', nativeBindings: {functions: [{declaration: 'example::missing', native: ['example', 'read']}]}}]}));
   await assert.rejects(resolveComponent(file), /missing|unknown|binding/i);
 });
+
+test('absolute component locations keep WASI caches inside the component without duplicating host paths', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  await mkdir(path.join(root, 'laws'));
+  await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nfunction answer (u :: Unit) -> Int32 is 42 end function\nend unit\n');
+  await writeFile(file, writeManifest(project));
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  const {readdir} = await import('node:fs/promises');
+  await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `import {resolveComponent} from ${JSON.stringify(new URL('../component.mjs', import.meta.url).href)}; await resolveComponent(${JSON.stringify(file)});`], {cwd: root});
+  assert.ok((await readdir(path.join(root, '.lawspec/cache'))).some(name => /^[a-f0-9]{16}$/.test(name)));
+  const entries = await readdir(root);
+  assert.ok(!entries.includes('Users') && !entries.includes('var') && !entries.includes('private'));
+});

@@ -1,7 +1,7 @@
 // Generated from templates/npm/component.mjs by lawspec-dev generate. Do not edit.
 import {toEDNString} from 'edn-data';
 import {EDNListParser} from 'edn-data/dist/parse.js';
-import {readFile, stat, lstat} from 'node:fs/promises';
+import {readFile, stat, lstat, mkdir, writeFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {loadCore} from './launcher.mjs';
@@ -137,7 +137,17 @@ export async function componentInput(file, options = {}) {
 export async function resolveComponent(file, options = {}) {
   const {manifest, root, input, dependencies} = await componentInput(file, options);
   const compiler = await createCompiler();
-  const checked = await compiler.check({...input, verification: {layers: []}});
+  const relativeCache = path.relative(await realpath(process.cwd()), path.join(await realpath(root), '.lawspec', 'cache'));
+  let cacheDirectory;
+  if (manifest.cache !== false && relativeCache !== '..' && !relativeCache.startsWith('..' + path.sep) && !path.isAbsolute(relativeCache)) {
+    const build = contentDigest(await readFile(new URL('./core.wasm', import.meta.url))).slice(0, 16);
+    cacheDirectory = path.join(relativeCache, build).split(path.sep).join('/');
+    await mkdir(path.join(process.cwd(), cacheDirectory), {recursive: true});
+    await writeFile(path.join(process.cwd(), relativeCache, '.gitignore'), '*\n');
+  }
+  const request = {...input, verification: {layers: []},
+    ...(cacheDirectory === undefined ? {} : {cacheDirectory})};
+  const checked = await compiler.check(request);
   if (checked.diagnostics?.length) {
     const error = new Error(checked.diagnostics.map(item => item.message).join('\n'));
     error.diagnostics = checked.diagnostics;
@@ -145,7 +155,7 @@ export async function resolveComponent(file, options = {}) {
   }
   for (const target of manifest.targets ?? []) {
     if (target.nativeBindings === undefined) continue;
-    const bound = await compiler.check({...input, verification: {layers: []}, nativeBindings: target.nativeBindings});
+    const bound = await compiler.check({...request, nativeBindings: target.nativeBindings});
     if (bound.diagnostics?.length) {
       const error = new Error(bound.diagnostics.map(item => item.message).join('\n'));
       error.diagnostics = bound.diagnostics;
@@ -158,8 +168,12 @@ export async function resolveComponent(file, options = {}) {
   ]);
   const contracts = new Map(Object.entries(dependencies.lock.roots).map(([name,id]) => [name, dependencies.lock.packages.find(item => item.id === id)]));
   if (manifest.package) {
-    const {packageDigest} = await import('./component-packages.mjs');
-    contracts.set(manifest.package.name, {...manifest.package, digest: await packageDigest(root)});
+    const {packageDigest, resolvedPackageDigest} = await import('./component-packages.mjs');
+    contracts.set(manifest.package.name, {...manifest.package, digest: resolvedPackageDigest(await packageDigest(root),
+      Object.fromEntries(Object.entries(dependencies.lock.roots).map(([name,id]) => {
+        const selected = dependencies.lock.packages.find(entry => entry.id === id);
+        return [name, dependencies.identities.find(entry => entry.name === selected.name && entry.version === selected.version).digest];
+      })))});
   }
   for (const [name, requirement] of [...Object.entries(manifest.requires ?? {}), ...(manifest.provides ?? []).map((value, index) => [`provides[${index}]`, value])]) {
     if (!contracts.has(requirement.contract)) fail(`${name}: contract ${requirement.contract} is not resolved`, file);

@@ -192,7 +192,7 @@ rejected. Local dependencies remain editable and their current content enters
 the component fingerprint.
 
 `lawspec package --output contract.tgz` checks and packs a package deterministically.
-The archive includes its manifest, declared law sources and `:assets`. It excludes
+The archive includes its manifest, declared law sources, `:assets` and bundled path dependencies within its root. Published path dependencies cannot escape that root; editable local sibling packages remain supported during development. It excludes
 generated consumers and build outputs unless declared as assets. Publish it using
 your archive hosting tools, or publish the package directory with Git tags.
 There is no LawSpec package registry.
@@ -204,7 +204,7 @@ native code and data that must contribute to the component fingerprint.
 
 `lawspec describe --json` returns the checked `lawspec-component` version 1
 descriptor, including component identity, fingerprint, targets, resolved contract
-versions and digests, requirements and declaration identities. Its SDK interface
+versions and contract-closure digests, requirements and declaration identities. Physical archive/cache integrity remains separate from the resolved transitive contract identity. Its SDK interface
 is exported from `lawspec/component`. Mandatory definition and native-binding
 validation runs even when optional law verification is disabled.
 

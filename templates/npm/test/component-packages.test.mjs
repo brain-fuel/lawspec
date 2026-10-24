@@ -88,7 +88,8 @@ test('Git tags select the highest matching version; locks survive new tags and s
   await contract(repository, 'example.library', '1.2.0');
   await publish(repository, '1.2.0');
   assert.equal((await resolve(project, {locked: true, offline: true})).packages[0].version, '1.1.0');
-  assert.equal((await resolve(project, {update: 'example.library'})).packages[0].version, '1.2.0');
+  const updated = await exec(process.execPath, [new URL('../bin/lawspec.mjs', import.meta.url).pathname, 'update', 'example.library', '--config', project.file, '--json'], {cwd: path.dirname(project.file)});
+  assert.equal(JSON.parse(updated.stdout).packages[0].version, '1.2.0');
   const lock = parseManifest(await readFile(path.join(root, 'consumer/lawspec.lock.edn'), 'utf8'));
   assert.equal(lock.packages[0].version, '1.2.0');
 });
@@ -157,4 +158,54 @@ test('invalid lock entries are rejected before dependency loading', async t => {
   const project = await consumer(path.join(root, 'consumer'), {});
   await writeFile(path.join(root, 'consumer/lawspec.lock.edn'), writeManifest({format: 'lawspec-lock', version: 1, roots: {}, selections: {}, packages: [null]}));
   await assert.rejects(resolve(project), /Invalid LawSpec lockfile/);
+});
+
+test('resolved contract digests include the selected transitive contract closure', async t => {
+  const root = await setup(t);
+  const results = [];
+  for (const [name,version] of [['a','1.0.0'], ['b','1.1.0']]) {
+    await contract(path.join(root,name,'leaf'), 'example.leaf', version);
+    await contract(path.join(root,name,'parent'), 'example.parent', '1.0.0', {'example.leaf': {version: '^1.0.0', path: '../leaf'}});
+    const project = await consumer(path.join(root,name,'consumer'), {'example.parent': {version: '^1.0.0', path: '../parent'}});
+    results.push((await resolve(project)).identities.find(value => value.name === 'example.parent'));
+  }
+  assert.equal(results[0].contentDigest, results[1].contentDigest);
+  assert.notEqual(results[0].digest, results[1].digest);
+});
+
+test('bundled published path dependencies retain portable locks across consumers and caches', async t => {
+  const root = await setup(t), directory = await contract(path.join(root, 'package'), 'example.parent', '1.0.0', {'example.leaf': {version: '^1.0.0', path: 'vendor/leaf'}});
+  await contract(path.join(directory, 'vendor/leaf'), 'example.leaf');
+  const packed = await packComponent(path.join(directory, 'lawspec.edn'), path.join(root, 'parent.tgz'));
+  const bytes = await readFile(packed.file);
+  const server = createServer((_, response) => response.end(bytes));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {server.closeAllConnections(); return new Promise(resolve => server.close(resolve));});
+  const specification = {'example.parent': {version: '^1.0.0', archive: `http://127.0.0.1:${server.address().port}/parent.tgz`, sha256: packed.sha256}};
+  const first = await consumer(path.join(root, 'first'), specification);
+  const original = await resolve(first);
+  const embedded = original.lock.packages.find(value => value.name === 'example.leaf');
+  assert.equal(embedded.source.kind, 'embedded');
+  assert.equal(embedded.source.path, 'vendor/leaf');
+  const second = await consumer(path.join(root, 'second'), specification);
+  await writeFile(path.join(root, 'second/lawspec.lock.edn'), await readFile(path.join(root, 'first/lawspec.lock.edn')));
+  process.env.LAWSPEC_CACHE_DIR = path.join(root, 'second-cache');
+  const relocated = await resolve(second, {locked: true});
+  assert.deepEqual(relocated.lock, original.lock);
+  assert.deepEqual(relocated.identities, original.identities);
+  assert.deepEqual((await resolve(second, {locked: true, offline: true})).identities, original.identities);
+});
+
+test('published archives cannot follow development path dependencies outside their root', async t => {
+  const root = await setup(t), directory = await contract(path.join(root, 'package'), 'example.parent', '1.0.0', {'example.leaf': {version: '^1.0.0', path: '../leaf'}});
+  await contract(path.join(root, 'leaf'), 'example.leaf');
+  await assert.rejects(packComponent(path.join(directory, 'lawspec.edn'), path.join(root, 'refused.tgz')), /dependency leaves its root/);
+  const unsafe = path.join(root, 'unsafe.tgz');
+  await tar.c({cwd: directory, file: unsafe, gzip: true}, ['lawspec.edn', 'laws']);
+  const bytes = await readFile(unsafe);
+  const server = createServer((_, response) => response.end(bytes));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {server.closeAllConnections(); return new Promise(resolve => server.close(resolve));});
+  const project = await consumer(path.join(root, 'consumer'), {'example.parent': {version: '^1.0.0', archive: `http://127.0.0.1:${server.address().port}/unsafe.tgz`, sha256: contentDigest(bytes)}});
+  await assert.rejects(resolve(project), /dependency leaves its downloaded root/);
 });

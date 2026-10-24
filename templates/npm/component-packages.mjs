@@ -28,7 +28,9 @@ function validateLock(lock) {
     ids.add(entry.id);
     const source = entry.source;
     if (source.kind === 'path') {if (typeof source.path !== 'string') invalid();}
-    else if (['git', 'archive'].includes(source.kind)) {
+    else if (source.kind === 'embedded') {
+      if (typeof source.parent !== 'string' || typeof source.path !== 'string' || !/^[a-f0-9]{64}$/.test(entry.digest)) invalid();
+    } else if (['git', 'archive'].includes(source.kind)) {
       if (typeof source.url !== 'string' || !/^[a-f0-9]{64}$/.test(entry.digest)) invalid();
       if (source.kind === 'git' && !/^[a-f0-9]{40,64}$/.test(source.commit)) invalid();
       if (source.kind === 'archive' && !/^[a-f0-9]{64}$/.test(source.sha256)) invalid();
@@ -56,13 +58,17 @@ async function filesUnder(root) {
   return files;
 }
 
+export const resolvedPackageDigest = (content, dependencies) => Object.keys(dependencies).length ? contentDigest(canonical({content, dependencies})) : content;
+
 export async function packageDigest(root) {
   const manifest = await readManifest(path.join(root, manifestName));
   const files = await packageFiles(root, manifest);
   return contentDigest(canonical(await Promise.all(files.map(async file => [file, contentDigest(await readFile(path.join(root, file)))]))));
 }
 
-async function packageFiles(root, manifest) {
+async function packageFiles(root, manifest, {publish = false, packageRoot = root} = {}, ancestry = []) {
+  if (ancestry.includes(root)) throw new Error('Package dependency cycle while collecting published files');
+  ancestry = [...ancestry, root];
   const selected = new Set([manifestName]);
   const realRoot = await realpath(root);
   for (const entry of [...manifest.sources, ...(manifest.assets ?? [])]) {
@@ -83,6 +89,18 @@ async function packageFiles(root, manifest) {
     if (info.isSymbolicLink()) throw new Error(`Published package asset is a symbolic link: ${entry}`);
     if (info.isDirectory()) for (const nested of await filesUnder(location)) selected.add(path.relative(root, path.join(location, nested)));
     else selected.add(entry);
+  }
+  for (const dependency of Object.values(manifest.dependencies ?? {})) {
+    if (!dependency?.path) continue;
+    const location = path.resolve(root, dependency.path);
+    if (!inside(packageRoot, location)) {
+      if (publish) throw new Error(`Published package dependency leaves its root: ${dependency.path}`);
+      continue;
+    }
+    if (!inside(await realpath(packageRoot), await realpath(location))) throw new Error('Published dependency leaves its root through a symbolic link');
+    const nested = await readManifest(path.join(location, manifestName));
+    for (const file of await packageFiles(location, nested, {publish, packageRoot}, ancestry))
+      selected.add(path.relative(root, path.join(location, file)));
   }
   return [...selected].sort();
 }
@@ -109,7 +127,7 @@ export async function resolveDependencies(file, manifest, options = {}) {
   const previous = previousText === null ? null : parseManifest(previousText, path.join(root, lockName));
   if (previous) validateLock(previous);
   const oldSelections = previous?.selections ?? {}, selections = {}, entries = new Map(), packages = new Map(), identities = new Map();
-  const local = new Map(), localSeen = new Set();
+  const local = new Map(), localSeen = new Set(), locations = new Map();
 
   async function localCandidates(directory, owner) {
     for (const name of owner.packages ?? []) {
@@ -168,12 +186,37 @@ export async function resolveDependencies(file, manifest, options = {}) {
     return {directory, source};
   }
 
-  async function materialize(name, specification, directory, old) {
+  function immutableOwner(owner) {
+    let current = owner;
+    while (entries.get(current)?.source.kind === 'embedded') current = entries.get(current).source.parent;
+    return entries.has(current) && entries.get(current).source.kind !== 'path' ? current : null;
+  }
+
+  async function localSource(location, owner) {
+    const parent = immutableOwner(owner);
+    if (!parent) return {directory: location, source: {kind: 'path', path: path.relative(root, location) || '.'}};
+    const directory = locations.get(parent);
+    if (!inside(directory, location) || !inside(await realpath(directory), await realpath(location)))
+      throw new Error('Published package dependency leaves its downloaded root');
+    return {directory: location, source: {kind: 'embedded', parent, path: path.relative(directory, location) || '.'}};
+  }
+
+  async function materialize(name, specification, directory, old, owner) {
     const refresh = options.update === true || options.update === name;
     if (old && !refresh && canonical(old.request) === canonical(specification)) {
       const entry = previous.packages.find(item => item.id === old.package);
       if (!entry) throw new Error(`Lockfile references missing package ${old.package}`);
-      if (entry.source.kind === 'path') return {directory: path.resolve(root, entry.source.path), source: entry.source};
+      if (entry.source.kind === 'path') {
+        if (immutableOwner(owner)) throw new Error('Lockfile contains a non-portable published path; run lawspec update');
+        return {directory: path.resolve(root, entry.source.path), source: entry.source};
+      }
+      if (entry.source.kind === 'embedded') {
+        const parent = locations.get(entry.source.parent);
+        if (!parent || entry.source.parent !== immutableOwner(owner)) throw new Error('Invalid embedded package parent in lockfile');
+        const loaded = await localSource(path.resolve(parent, entry.source.path), owner);
+        if (await packageDigest(loaded.directory) !== entry.digest) throw new Error(`Cached embedded contract content changed: ${name}`);
+        return loaded;
+      }
       return downloaded(entry.source, entry);
     }
     if (locked) throw new Error(`Lockfile must change for ${name}; run lawspec fetch without --locked`);
@@ -182,11 +225,11 @@ export async function resolveDependencies(file, manifest, options = {}) {
       const accepted = await packageVersions(specification, candidates.map(item => item.manifest.package.version));
       const chosen = candidates.find(item => item.manifest.package.version === accepted[0]);
       if (!chosen) throw new Error(`requires ${name} ${specification}, but ${candidates.length === 1 ? 'version ' + candidates[0].manifest.package.version + ' is supplied' : 'no supplied version satisfies it'}`);
-      return {directory: chosen.directory, source: {kind: 'path', path: path.relative(root, chosen.directory) || '.'}};
+      return localSource(chosen.directory, owner);
     }
     if (specification.path) {
       const location = path.resolve(directory, specification.path);
-      return {directory: location, source: {kind: 'path', path: path.relative(root, location) || '.'}};
+      return localSource(location, owner);
     }
     if (specification.archive) return downloaded({kind: 'archive', url: specification.archive, sha256: specification.sha256});
     if (offline) throw new Error(`Offline: resolving ${name} requires a lockfile`);
@@ -213,7 +256,7 @@ export async function resolveDependencies(file, manifest, options = {}) {
 
   async function resolve(name, specification, directory, owner, ancestry) {
     const key = owner + '::' + name, old = oldSelections[key];
-    const loaded = await materialize(name, specification, directory, old);
+    const loaded = await materialize(name, specification, directory, old, owner);
     const described = await readManifest(path.join(loaded.directory, manifestName));
     if (!described.package || described.package.name !== name) throw new Error(`Dependency ${name} has a different package identity`);
     const version = described.package.version;
@@ -230,6 +273,7 @@ export async function resolveDependencies(file, manifest, options = {}) {
     const entry = {id, name, version, source: loaded.source, ...(loaded.source.kind === 'path' ? {} : {digest}), dependencies: {}};
     entries.set(id, entry);
     identities.set(id, identity);
+    locations.set(id, loaded.directory);
     await localCandidates(loaded.directory, described);
     for (const [dependency, child] of Object.entries(described.dependencies ?? {}).sort())
       entry.dependencies[dependency] = await resolve(dependency, child, loaded.directory, id, [...ancestry, id]);
@@ -244,15 +288,26 @@ export async function resolveDependencies(file, manifest, options = {}) {
     if (locked && canonical(lock) !== canonical(previous)) throw new Error('Lockfile is out of date; run lawspec fetch');
     if (!locked && canonical(lock) !== canonical(previous)) await atomicWrite(path.join(root, lockName), writeManifest(lock));
   }
+  const semantic = new Map();
+  const closure = id => {
+    if (!semantic.has(id)) semantic.set(id, resolvedPackageDigest(identities.get(id).digest,
+      Object.fromEntries(Object.entries(entries.get(id).dependencies).map(([name,child]) => [name, closure(child)]))));
+    return semantic.get(id);
+  };
+  const resolvedIdentities = [...identities].map(([id,value]) => ({...value, contentDigest: value.digest, digest: closure(id)}));
+  for (const identity of resolvedIdentities) {
+    const alternatives = resolvedIdentities.filter(other => other.name === identity.name && other.version === identity.version);
+    if (alternatives.some(other => other.digest !== identity.digest)) throw new Error(`Ambiguous resolved contract closure for ${identity.name} ${identity.version}`);
+  }
   const ordered = values => [...values].sort((a,b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
-  return {packages: ordered(packages.values()), identities: ordered(identities.values()), lock};
+  return {packages: ordered(packages.values()), identities: ordered(resolvedIdentities), lock};
 }
 
 export async function packComponent(file, output) {
   if (path.basename(file) !== manifestName) throw new Error('Published packages require the canonical lawspec.edn filename');
   const manifest = await readManifest(file), root = path.dirname(path.resolve(file));
   if (!manifest.package) throw new Error('lawspec package --output requires a package identity');
-  const selected = await packageFiles(root, manifest);
+  const selected = await packageFiles(root, manifest, {publish: true});
   await mkdir(path.dirname(path.resolve(output)), {recursive: true});
   await tar.c({cwd: root, file: path.resolve(output), gzip: true, portable: true, mtime: new Date(0), noDirRecurse: true}, selected);
   return {file: path.resolve(output), sha256: contentDigest(await readFile(output)), package: manifest.package};

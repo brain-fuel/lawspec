@@ -786,7 +786,7 @@
     "src/LawSpec/Collections.hs": "6a18460a4bbf1e74a971b9c8a58071ea0bcf57cb9eef3742ea0878dab2e028c1",
     "src/LawSpec/Common.hs": "a9ad307ccf2bb9accad655c2795ca3276d5de58d86cbaaf423aff4dea45dee83",
     "src/LawSpec/Compile.hs": "426afe82644b11d5d173fb9acd4d258f96ec8c48637ec7e5d87ffb3e90b01e87",
-    "src/LawSpec/Component.hs": "b9efa538be99813c58bba972e2fb3818810dfaa30db7ceaaeedf37ede8e3219b",
+    "src/LawSpec/Component.hs": "50666b165eada95692d821713df3a8b212783780653c3b4531bacbbaf2d51c95",
     "src/LawSpec/Core.hs": "f4c5c8738a7b8c1510498ed48e41fbcac92020d28a891c9c7fdec348e39b108b",
     "src/LawSpec/Core/CapabilityScope.hs": "0f419bc299253e04684dfda7b127d9731032512fec78090892684a7b50004b52",
     "src/LawSpec/Core/Counterexample.hs": "a4ceef54be7e2c2830328afc9520b545bb124e6f2e9db63b36d3a0b227085724",
@@ -1025,7 +1025,7 @@
     "wasm/cabal.project": "91ad752c055a034fff42bf1815125ce2174630a41859fe8d5c571e9a12e50b7d",
     "wasm/cabal.project.freeze": "e067df77442b8111c97b3f12cc215af5ca69668aa65f95f3ff90110c22933170",
     "wasm/lawspec-wasm.cabal": "2c15eb1728f2e26de232818c633437297d5d218ecac5fd9b694b574282f37a2c",
-    "npm/core.wasm": "d13956b23903a90920d565c412579ca2be00030f2aca7517b70caea331922f55",
+    "npm/core.wasm": "d1d3f252eb77c3f1b30666fff8806a291579652fdfcf93614fc8cb470177bc7c",
     "npm/core_jsffi.js": "8a054ebf8dbac0402fad17c7399e444c22645bf62cc804bba0058cb9b312b6df",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
     "npm/index.d.ts": "49b088786e08eeaf6916689823054f0c64ed08e695bbb07c0e1a076a67e71f8b"

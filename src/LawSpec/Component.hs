@@ -98,7 +98,7 @@ strings at values = [at ++ " must contain nonempty strings" | any invalid (toLis
 
 target :: Int -> Value -> [String]
 target index (Object value) = unknown at
-  ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "nativeBindings"] value ++
+  ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings"] value ++
   [at ++ ".language is unsupported" | M.lookup "language" value `notElem` map (Just . String . T.pack) targets] ++
   [at ++ ".root must be a nonempty path" | case M.lookup "root" value of Just (String root) -> T.null root; _ -> True]
   where at = "targets[" ++ show index ++ "]"

@@ -607,12 +607,15 @@ async function runTests(compiler, input, selected, roots, config) {
     await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
     // Each attempt at a law the attestation touches names the run it was
     // made in, whatever its outcome.
-    if (attestation) for (const entry of stale)
-      if (attested.has(entry.law) && attempts[entry.law]) attempts[entry.law] = { ...attempts[entry.law], environment: attestation.run.id };
+    if (attestation) for (const entry of stale) {
+      if (!seedOf.has(entry.law) || !attempts[entry.law]) continue;
+      attempts[entry.law] = {...attempts[entry.law], executionRun: attestation.run.id,
+        ...(attested.has(entry.law) ? {environment: attestation.run.id} : {})};
+    }
     // Each attestation a recorded law ran under is kept with the results.
     const attestations = Object.fromEntries(Object.entries({ ...(previous.attestations ?? {}),
       ...(attestation ? { [attestation.run.id]: attestation } : {}) })
-      .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id)));
+      .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id || run.executionRun === id)));
     await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,
       ...(Object.keys(attestations).length ? { attestations } : {}) }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
@@ -750,7 +753,7 @@ async function main() {
     return;
   }
   if (options.compile && verb !== "fmt") throw new Error("--compile applies to fmt");
-  if (verb !== "fmt" && positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))
+  if (verb !== "fmt" && positional.length > (["explain", "evidence", "update"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
   if (verb === "examples") {
     if (

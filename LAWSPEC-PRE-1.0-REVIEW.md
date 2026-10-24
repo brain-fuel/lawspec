@@ -40,6 +40,27 @@ usable by other deployment tools. Evidence carries architecture, contract,
 implementation and run identities, distinguishes planned wiring from completed
 execution, and identifies real-provider versus fixture results.
 
+### Component manifests and CALM execution — 24 October 2026
+
+For the component integration increment, the owner selected unified
+EDN manifests, named lawspec.edn, replacing both project and package JSON
+configuration immediately. Older JSON manifests are rejected without migration
+or fallback. This supersedes historical configuration-2 references below for
+ordinary file-based consumers; compiler API schema 5 and profile 1.0-rc.2 remain.
+
+Each independently built component has its own manifest. LawSpec checks its
+contracts and resolves local, Git and integrity-checked archive dependencies
+with a portable lawspec.lock.edn. The checked lawspec-component descriptor is
+Ironframe's public input; Ironframe neither interprets EDN nor scrapes generated
+code. CALM nodes may provide and require contracts simultaneously. Compatibility
+includes the selected transitive contract closure, not just root package bytes.
+
+Ironframe owns wiring, environment bindings and native integration lifecycles.
+Fresh execution identities distinguish actual runs from old observations and
+planned wiring; component identity is distinct from published contract identity.
+This increment does not sign off other gates, provider fidelity, performance
+budgets or the deferred human and external adoption requirements.
+
 | Order | Required completion gate | Status at adoption |
 | --- | --- | --- |
 | 1 | Upgrade LawTwin's 0.23 compiler pin, contracts, configuration, OpenAPI importer and generated consumers to 0.26; recheck the historical gap report; replace source scraping with supported embedding interfaces; pass Kafka/HTTP conformance, replay and mutation controls. | Open. |
