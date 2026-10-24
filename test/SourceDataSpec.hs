@@ -385,7 +385,7 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
         contents `shouldSatisfy` isInfixOf "value0: lawspec.data.Tree<kotlin.Byte>"
         contents `shouldSatisfy` isInfixOf "LawSpecKotlinStrategies.generator"
         contents `shouldSatisfy` isInfixOf "LawSpecDataCodecs.treeCodec"
-        contents `shouldSatisfy` isInfixOf "_schema.validate"
+        contents `shouldSatisfy` isInfixOf "SCHEMA.validate"
 
   it "rejects Kotlin adapters that shadow JVM runtime classes" $ do
     forM_ ["lawspec.runtime.law_spec_schema", "kotlin.example"] $ \unit -> do

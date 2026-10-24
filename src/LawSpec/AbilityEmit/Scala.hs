@@ -140,7 +140,7 @@ emit minify bits datas units = do
       Just failing@(C.AbilityRef _ [failure]) -> do
         failureCodec <- codec failure
         pure [line "try " <> block (D.joinWith D.hardline (init statements ++ [L.call "scala.util.Right" [last statements]])) <>
-          line " catch " <> block (line "case failure: LawSpecRuntime.Failure" <> D.nest 2 (D.softline <> line ("if failure.ability == " ++ show (C.abilityKey failing) ++ " =>")) <>
+          line " catch " <> block (D.group (line "case failure: LawSpecRuntime.Failure" <> D.nest 4 (D.softline <> line ("if failure.ability == " ++ show (C.abilityKey failing) ++ " =>"))) <>
             D.nest 2 (D.hardline <> L.call "scala.util.Left" [L.chain failureCodec [("decode", [line "failure.value"])]]))]
       _ -> pure statements
     specHandler u h = do
@@ -239,9 +239,9 @@ emit minify bits datas units = do
                , comment 4 "Replaces the handler's state: to force it, reset it or restore a snapshot." <>
                  L.parameters (line "def setState") [line "state: " <> native] <> line ": Unit = synchronized " <> block write'
                , comment 4 "The typed state, shared rather than copied." <>
-                 L.equalsBody (line ("def typedState: " ++ typedType)) (line "synchronized { state }")
+                 L.equalsBody (line "def typedState: " <> scalaText typedType) (line "synchronized { state }")
                , comment 4 "Replaces the typed state." <>
-                 L.parameters (line "def setTypedState") [line ("state: " ++ typedType)] <> line ": Unit = synchronized " <> block (line "this.state = state") ]
+                 L.parameters (line "def setTypedState") [line "state: " <> scalaText typedType] <> line ": Unit = synchronized " <> block (line "this.state = state") ]
         _ -> pure []
       pure (comment 2 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <>
         classHeader ("class " ++ name ++ "(private val symbols: LawSpecScala.Symbols)") [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] <>

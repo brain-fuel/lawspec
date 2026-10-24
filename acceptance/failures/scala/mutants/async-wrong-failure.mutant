@@ -1,7 +1,11 @@
 expect: settling nothing is declined, and says why
 @@ src/main/scala/example/Failures.scala
 <<<<<<<
-      else if (value0 == 0) Left(PaymentError.Declined(lawspec.data.DeclinedDetails("there is nothing to settle")))
+        Left(
+          PaymentError.Declined(
+            lawspec.data.DeclinedDetails("there is nothing to settle")
+          )
+        )
 =======
-      else if (value0 == 0) Left(PaymentError.Blocked)
+        Left(PaymentError.Blocked)
 >>>>>>>

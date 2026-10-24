@@ -233,7 +233,7 @@ emitTests Config{..} unit laws = do
              text (if k == "_property" && observed h then "true" else "false"), harnessBody (harnessValue (fn ++ k))]] | k <- kinds]
         | otherwise -> docs
     benchmark (n, b) = (mempty, braced (call register [quoted ("benchmark " ++ n)]) (withSymbols
-      [harness "benchmark" [quoted n, text "(() => { val measured = " <> expr b <> text "; () }): lawspec.testing.LawSpecHarness.Body"]]))
+      [harness "benchmark" [quoted n, L.arrow "()" (L.block [bind "measured" (expr b), text "()"])]]))
     -- A property whose inputs harness strategies draw, from the property's
     -- random source; their values' refinements are checked in the property.
     harnessProperty fn label e check = do
