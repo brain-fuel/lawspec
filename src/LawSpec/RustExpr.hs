@@ -369,8 +369,10 @@ renderWith declarations bits schema typeReference typeKey callees = render
     -- was called.
     callDoc name label args values
       | all simple args = called (L.call name [L.atom "ctx", L.vecOf values])
-      | otherwise = L.Block [L.Let argument value | (argument,value) <- zip arguments values]
-          (Just (called (L.call name [L.atom "ctx", L.vecOf (map L.atom arguments)])))
+      -- An argument that reads the context is bound first, as the call
+      -- borrows it; so is each before it, keeping their order.
+      | otherwise = boundWhen (mentions "ctx" . L.expr) (zip arguments values)
+          (\vs -> called (L.call name [L.atom "ctx", L.vecOf vs]))
       where
         arguments = ["argument_" ++ show i | i <- [1 .. length values]]
         called made = tried (L.call "ls::called" [L.atom (quoted label), made])
@@ -410,11 +412,13 @@ renderWith declarations bits schema typeReference typeKey callees = render
 -- first (and so is each before it, keeping the order they are evaluated
 -- in); the others are written in place.
 bound :: [(String, L.Expr)] -> ([L.Expr] -> L.Expr) -> L.Expr
-bound operands use =
-  let blocks = [i | (i, (_, v)) <- zip [0 :: Int ..] operands, isBlock v]
+bound = boundWhen (\v -> case v of
+  L.Block _ _ -> True
+  _ -> False)
+
+boundWhen :: (L.Expr -> Bool) -> [(String, L.Expr)] -> ([L.Expr] -> L.Expr) -> L.Expr
+boundWhen needs operands use =
+  let blocks = [i | (i, (_, v)) <- zip [0 :: Int ..] operands, needs v]
       lastBlock = if null blocks then -1 else maximum blocks
       named = [(i <= lastBlock, n, v) | (i, (n, v)) <- zip [0 ..] operands]
-      isBlock v = case v of
-        L.Block _ _ -> True
-        _ -> False
   in L.letIn [L.Let n v | (True, n, v) <- named] (use [if b then L.atom n else v | (b, n, v) <- named])

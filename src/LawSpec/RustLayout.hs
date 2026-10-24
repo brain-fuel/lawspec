@@ -765,6 +765,8 @@ armsDoc arms = D.text "{" <> D.nest 4 (D.hardline <> D.joinWith D.hardline (map 
 
 armDoc :: Arm -> D.Doc
 armDoc (Arm pat guard body) = armDoc (ArmOf (Atom pat) guard body)
+-- (a block of only its value is that value)
+armDoc (ArmOf pat guard (Block [] (Just inner))) = armDoc (ArmOf pat guard inner)
 armDoc (ArmOf pat (Just guard) body)
   | Just p <- flat pat, Just g <- oneLine guard, not (isBlock body) =
       D.prefixChoice (p ++ " if " ++ g ++ " => {") (armDoc (ArmOf (Atom (p ++ " if " ++ g)) Nothing body))
