@@ -44,6 +44,18 @@ test('readManifest reports independent manifest validation failures', async t =>
   await assert.rejects(readManifest(file), error => error.diagnostics.length >= 3);
 });
 
+test('dependency source fields reject wrong types and source-incompatible options', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  for (const dependency of [
+    {version: '^1.0.0', git: false},
+    {version: '^1.0.0', path: 'api', rev: 'main'},
+    {version: '^1.0.0', git: 'https://example.com/api.git', tagPrefix: 1},
+  ]) {
+    await writeFile(file, writeManifest({...project, dependencies: {api: dependency}}));
+    await assert.rejects(readManifest(file), /nonempty string|Git dependency|tagPrefix/);
+  }
+});
+
 test('resolved component describes checked laws, fingerprints and declaration reliance', async t => {
   const root = await directory(t), file = path.join(root, 'lawspec.edn');
   await mkdir(path.join(root, 'laws'));

@@ -209,3 +209,25 @@ test('published archives cannot follow development path dependencies outside the
   const project = await consumer(path.join(root, 'consumer'), {'example.parent': {version: '^1.0.0', archive: `http://127.0.0.1:${server.address().port}/unsafe.tgz`, sha256: contentDigest(bytes)}});
   await assert.rejects(resolve(project), /dependency leaves its downloaded root/);
 });
+
+test('immutable cache integrity is checked even when a consumer has no lockfile', async t => {
+  const root = await setup(t), repository = await contract(path.join(root, 'git'), 'example.library');
+  await exec('git', ['init', '--quiet', repository]);await publish(repository, '1.0.0');
+  const project = await consumer(path.join(root, 'consumer'), {'example.library': {version: '^1.0.0', git: repository}});
+  const first = await resolve(project), source = first.identities[0].source;
+  const {canonical} = await import('../component.mjs');
+  const directory = path.join(process.env.LAWSPEC_CACHE_DIR, contentDigest(canonical(source)));
+  await writeFile(path.join(directory, 'laws/model.lawspec'), 'unit example.library\nfunction answer (u :: Unit) -> Int32 is 99 end function\nend unit\n');
+  await rm(path.join(root, 'consumer/lawspec.lock.edn'));
+  await assert.rejects(resolve(project), /Cached contract content changed/);
+});
+
+test('concurrent revision resolutions cannot overwrite one another through FETCH_HEAD', async t => {
+  const root = await setup(t), repository = await contract(path.join(root, 'git'), 'example.library');
+  await exec('git', ['init', '--quiet', repository]);await publish(repository, '1.0.0');
+  const warm = await consumer(path.join(root, 'warm'), {'example.library': {version: '^1.0.0', git: repository}});await resolve(warm);
+  await contract(repository, 'example.library', '2.0.0');await publish(repository, '2.0.0');
+  const projects = await Promise.all(['1.0.0','2.0.0'].map(version=>consumer(path.join(root, version), {'example.library': {version, git: repository, rev: 'v'+version}})));
+  const results = await Promise.all(projects.map(project=>resolve(project)));
+  assert.deepEqual(results.map(result=>result.packages[0].version), ['1.0.0','2.0.0']);
+});

@@ -110,6 +110,12 @@ dependency name (Object value) = unknown ("dependencies." ++ name)
   ["version", "path", "git", "rev", "tagPrefix", "subdir", "archive", "sha256"] value ++
   dependency name (maybe Null id (M.lookup "version" value)) ++
   [name ++ ": give exactly one of path, git or archive" | length (filter (`M.member` value) ["path", "git", "archive"]) /= 1] ++
+  [name ++ "." ++ K.toString field ++ " must be a nonempty string" |
+    field <- ["path", "git", "rev", "subdir", "archive"], Just entry <- [M.lookup field value],
+    case entry of String text -> T.null text; _ -> True] ++
+  [name ++ ".tagPrefix must be a string" | Just entry <- [M.lookup "tagPrefix" value], case entry of String _ -> False; _ -> True] ++
+  [name ++ "." ++ K.toString field ++ " applies only to a Git dependency" |
+    field <- ["rev", "tagPrefix", "subdir"], M.member field value, not (M.member "git" value)] ++
   [name ++ ": an archive requires a SHA-256 digest" | M.member "archive" value, case M.lookup "sha256" value of
     Just (String digest) -> T.length digest /= 64 || not (T.all (`elem` ("0123456789abcdef" :: String)) digest)
     _ -> True]

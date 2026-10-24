@@ -213,16 +213,27 @@ declarations = joinWith (softbreak <> softbreak)
        -- Where its tests ran, when an environment attestation touches it.
        fields [("exemption?", "Exemption")] ++
        fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]"),
-               ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]"),
+               ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]"), ("environmentOutcome?", "NativeOutcome"),
                ("nativeEvidence?","NativeConformanceEvidence"),("adequacy?","NativeAdequacy[]"),
                ("plannedEvidence?","{status: DischargeStatus; reason: string}")])
-  , interface "AttestedRun" (fields [("id", "string"), ("startedAt", "string"), ("recordedAt", "string")])
-  , interface "AttestedStandIn" (fields [("identity", "string"), ("version", "string"), ("conformance", "string"), ("historyDigest?", "string")])
+  , interface "AttestedRun" (fields [("id", "string"), ("startedAt", "string"), ("recordedAt", "string"), ("execution?", "AttestedExecution")])
+  , interface "AttestedExecution" (fields [("status", "'wired' | 'running' | 'completed'"), ("exitCode?", "number"), ("finishedAt?", "string")])
+  , interface "AttestedArchitecture" (fields [("document", "string"), ("digest", "string"), ("uniqueId?", "string"),
+      ("decorators?", "string"), ("decoratorsDigest?", "string"), ("topologyDigest?", "string"), ("elements?", "string[]")])
+  , interface "AttestedComponent extends PackageVersion" (fields [("fingerprint", "string"), ("[key: string]", "unknown")])
+  , interface "AttestedCompletion" (fields [("reached", "boolean"), ("historyDigest?", "string"), ("historyEntries?", "number")])
+  , interface "AttestedContract" (fields [("package", "string"), ("version", "string"), ("abilities?", "string[]"), ("digest?", "string")])
+  , interface "AttestedImplementation" (fields [("kind", "string"), ("product", "string"), ("version", "string"), ("commit?", "string"), ("imageDigest?", "string")])
+  , interface "AttestedApplication" (fields [("node", "string"), ("contract?", "AttestedContract"), ("implementation", "AttestedImplementation"),
+      ("component?", "AttestedComponent")])
+  , interface "AttestedStandIn" (fields [("identity", "string"), ("version", "string"), ("conformance", "string"), ("historyDigest?", "string"), ("historyEntries?", "number"), ("standsInFor?", "AttestedContract")])
   , interface "AttestedDependency"
       ((fields [("dependency", "string"), ("endpoint", "string"), ("reached", "boolean")]) ++
-       [("kind", union (map quoted ["real", "stand-in"]))] ++ fields [("standIn?", "AttestedStandIn")])
+       [("kind", union (map quoted ["real", "stand-in"]))] ++ fields [("standIn?", "AttestedStandIn"), ("node?", "string"), ("edge?", "string"), ("contract?", "AttestedContract"),
+         ("implementation?", "AttestedImplementation"), ("completed?", "AttestedCompletion")])
   , interface "AttestationView"
-      (fields [("environment", "string"), ("run", "AttestedRun"), ("producer?", "PackageVersion")] ++
+      (fields [("environment", "string"), ("run", "AttestedRun"), ("producer?", "PackageVersion"), ("application?", "AttestedApplication"),
+        ("architecture?", "AttestedArchitecture")] ++
        [("dependencies", array (group (text "(AttestedDependency &" <> nest 2 (softline <> record (fields [("obligations", "string[]"), ("plannedObligations", "string[]")])) <> text ")")))])
   , interface "PackageVersion" (fields [("name", "string"), ("version", "string")])
   , interface "Package" (fields [("name", "string"), ("version", "string"), ("dependencies?", "Record<string, string>"), ("sources", "Source[]")])
@@ -303,7 +314,7 @@ declarations = joinWith (softbreak <> softbreak)
       ("at","string"),("outcome","NativeOutcome"),("profile","NativeExecutionProfile"),
       ("check","NativeExecutionCheck"),("coverage","NativeCheckCoverage"),("tests","NativeCompletedTest[]"),
       ("invocation","NativeInvocation"),("verification","'native-execution'"),
-      ("searchCompleteness","'not-established'")])
+      ("searchCompleteness","'not-established'"), ("executionRun?", "string"), ("environment?", "string")])
   , alias "RecordedNativeExecutionAttempt"
       [text "Omit<NativeExecutionAttempt, 'outcome'> &" <> nest 2 (softline <>
         record [("outcome",union [text "NativeOutcome",quoted "known-failing"])])]

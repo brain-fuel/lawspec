@@ -4,6 +4,7 @@ import {promisify} from 'node:util';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import os from 'node:os';
+import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import * as tar from 'tar';
 import {readManifest, parseManifest, writeManifest, manifestName, lockName, packageVersions, dependencyRanges, contentDigest, canonical} from './component.mjs';
@@ -151,16 +152,21 @@ export async function resolveDependencies(file, manifest, options = {}) {
     const present = await git(['--git-dir', repository, 'cat-file', '-e', `${source.commit}^{commit}`]).then(() => true, () => false);
     if (!present) {
       if (offline) throw new Error(`Offline: Git revision ${source.commit} is not cached`);
-      await git(['--git-dir', repository, 'fetch', '--quiet', '--no-tags', source.url, source.commit]);
+      await git(['--git-dir', repository, 'fetch', '--quiet', '--no-tags', '--no-write-fetch-head', '--', source.url, source.commit]);
     }
     return git(['--git-dir', repository, 'archive', '--format=tar', source.subdir ? `${source.commit}:${source.subdir}` : source.commit], {encoding: 'buffer'});
   }
 
   async function downloaded(source, known) {
-    const id = contentDigest(canonical(source)), directory = path.join(cache, id);
+    const id = contentDigest(canonical(source)), directory = path.join(cache, id), marker = path.join(cache, id + '.sha256');
     if (await optional(path.join(directory, manifestName)) !== null) {
-      if (known && await packageDigest(directory) !== known.digest) throw new Error(`Cached contract content changed: ${known.name} ${known.version}`);
-      return {directory, source};
+      const expected = known?.digest ?? (await optional(marker))?.trim();
+      if (expected) {
+        if (!/^[a-f0-9]{64}$/.test(expected) || await packageDigest(directory) !== expected) throw new Error(`Cached contract content changed: ${known?.name ?? source.url}`);
+        await atomicWrite(marker, expected + '\n');
+        return {directory, source};
+      }
+      if (offline) throw new Error(`Offline: cached contract integrity is unavailable for ${source.url}`);
     }
     if (offline && source.kind === 'archive') throw new Error(`Offline: ${source.url} is not cached`);
     let bytes;
@@ -179,8 +185,11 @@ export async function resolveDependencies(file, manifest, options = {}) {
     try {
       await unpack(bytes, temporary);
       await readManifest(path.join(temporary, manifestName));
+      const digest = await packageDigest(temporary);
       try { await rename(temporary, directory); }
       catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error; }
+      if (await packageDigest(directory) !== digest) throw new Error(`Cached contract content changed: ${source.url}`);
+      await atomicWrite(marker, digest + '\n');
     } finally { await rm(temporary, {recursive: true, force: true}); }
     if (known && await packageDigest(directory) !== known.digest) throw new Error(`Downloaded contract content differs from lock: ${known.name}`);
     return {directory, source};
@@ -249,8 +258,12 @@ export async function resolveDependencies(file, manifest, options = {}) {
     const repository = path.join(cache, 'git', contentDigest(specification.git));
     await mkdir(repository, {recursive: true});
     if (await optional(path.join(repository, 'HEAD')) === null) await git(['init', '--bare', '--quiet', repository]);
-    await git(['--git-dir', repository, 'fetch', '--quiet', '--no-tags', specification.git, ref]);
-    const commit = (await git(['--git-dir', repository, 'rev-parse', 'FETCH_HEAD^{commit}'])).trim();
+    const fetched = 'refs/lawspec/' + randomUUID();
+    let commit;
+    try {
+      await git(['--git-dir', repository, 'fetch', '--quiet', '--no-tags', '--no-write-fetch-head', '--', specification.git, ref + ':' + fetched]);
+      commit = (await git(['--git-dir', repository, 'rev-parse', fetched + '^{commit}'])).trim();
+    } finally { await git(['--git-dir', repository, 'update-ref', '-d', fetched]); }
     return downloaded({kind: 'git', url: specification.git, commit, ...(tagVersion ? {tagVersion} : {}), ...(specification.subdir ? {subdir: specification.subdir} : {})});
   }
 

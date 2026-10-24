@@ -44,8 +44,8 @@ This project checks application-owned payment types against the shared LawSpec
 model. Money maps to Price, currency variants have application names, and the
 archive preserves distinct present and absent payments.
 
-The specification uses the canonical language profile. The version 2 project
-configuration selects its verification layers explicitly. Most targets bind
+The specification uses the canonical language profile. The component manifest
+selects its verification layers explicitly. Most targets bind
 application-owned domain types; C#, Clojure and Prolog use the generated model data
 and bind the application's functions and generators.
 
