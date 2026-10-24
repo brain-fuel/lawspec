@@ -53,6 +53,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   laws. Groovy's Spock specifications are generated from the plan instead of
   rewritten from the Java tests, and Clojure's tests show the law's
   statement.
+- JVM property draws are flat: each sub-draw of a harness strategy is a
+  named function defined before its use (`gridCandidate`, `rowsOption1`),
+  drawn through `LawSpecDraws.oneOf`, `frequency` and `suchThat` (Kotlin,
+  Scala) or named suppliers (Java), instead of one nested closure per step.
+  Lets leave constructor arguments, match scrutinees and (in Java) strict
+  argument lists, and Java builds a value with its fields last
+  (`SCHEMA.construct(type, tag, bits, symbols, fields...)`), so nested
+  values indent once per level.
+- A Scala unit whose tests would exceed 20,000 lines gets a file per law
+  (`<Unit><Law>Law.scala`) beside its `<Unit>LawSpecTest` object, and a long
+  chain of one boolean operator is `LawSpecScala.anyOf`/`allOf`, which
+  scalafmt can lay out.
+- Acceptance's formatted step reads `acceptance/<suite>/<target>/unformatted.txt`:
+  a generated file it lists (path, then the reason) is not checked, and the
+  step reports it. Keywords' Java stub uses it: its `_class` adapter, the
+  documented escape of a Java keyword, is not a name Checkstyle's Google
+  rules accept.
 
 ### Added
 

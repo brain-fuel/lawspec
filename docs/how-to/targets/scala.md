@@ -155,8 +155,11 @@ Output is what scalafmt 3.11.5 accepts with its default configuration
 one argument a line with no trailing comma, and a chain of calls broken
 before each dot. LawSpec lays it out itself, and its acceptance checks every
 generated project with `scalafmt --test`. The tests' generators and checks
-are in the runtime (`LawSpecScalars`, `LawSpecTesting`), so a test file holds
-only its laws. See [formatting](../../reference/formatting.md).
+are in the runtime (`LawSpecScalars`, `LawSpecTesting`, and `LawSpecDraws`
+for harness strategies), so a test file holds only its laws. A unit whose
+tests would exceed 20,000 lines has a file per law, `<Unit><Law>Law.scala`,
+whose trait reads the shared values from the `<Unit>LawSpecTest` object. See
+[formatting](../../reference/formatting.md).
 
 ## Names
 

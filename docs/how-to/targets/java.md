@@ -136,7 +136,12 @@ Output uses Allman braces with Google Java Style's other rules: two-space
 blocks and 100-column lines. LawSpec lays it out itself, and its acceptance
 checks every generated project with Checkstyle 14.3.0 and the profile in
 `acceptance/formatters/java-checkstyle.xml` (Google's checks with braces on
-their own lines). See [formatting](../../reference/formatting.md).
+their own lines). A literal too long for its line is split into joined
+literals (after a `::`, at spaces, or a hash in pieces), and a long
+qualified call breaks before its method. The one exception is a keyword's
+adapter such as `_class`, which the formatted step reports instead of
+checking (`acceptance/keywords/java/unformatted.txt`). See
+[formatting](../../reference/formatting.md).
 
 ## Names
 
