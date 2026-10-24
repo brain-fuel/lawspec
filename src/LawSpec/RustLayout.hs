@@ -227,6 +227,7 @@ overflowable :: Int -> Expr -> Bool
 overflowable count e = case e of
   Closure {} -> True
   Block _ _ -> True
+  Laid _ | laidBlock e -> True
   -- A single operation breaks before its operators inside the call.
   Infix {} -> count == 1
   Call {} -> count == 1
@@ -309,6 +310,7 @@ opening e = case e of
     | not (multilineBody body), isNothing (oneLine body) -> h ++ " {"
     | otherwise -> h ++ " " ++ opening body
   Block _ _ -> "{"
+  Laid _ | laidBlock e -> "{"
   Match s _ -> "match " ++ maybe "" id (flat s) ++ " {"
   If c _ _ -> "if " ++ maybe "" id (flat c) ++ " {"
   Struct name _ -> name ++ " {"
@@ -329,6 +331,7 @@ opening e = case e of
 blocky :: Expr -> Bool
 blocky e = case e of
   Block _ _ -> True
+  Laid _ -> laidBlock e
   Closure {} -> True
   _ -> False
 
@@ -904,4 +907,11 @@ callRoot :: Expr -> Bool
 callRoot e = case e of
   Call {} -> True
   Try a -> callRoot a
+  _ -> False
+
+-- | A laid-out block (a value built in statements): as overflowable as a
+-- block.
+laidBlock :: Expr -> Bool
+laidBlock e = case e of
+  Laid d -> let t = D.render D.Compact d in take 1 t == "{" && '\n' `elem` D.render (D.styleLayout (D.styleFor "rust")) d
   _ -> False
