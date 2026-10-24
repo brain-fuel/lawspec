@@ -58,8 +58,13 @@
   <module name="LineLength">
     <property name="fileExtensions" value="java"/>
     <property name="max" value="100"/>
+    <!-- Google Java Style 4.4: lines where obeying the limit is not
+         possible. LawSpec breaks a string literal only at its spaces, so a
+         piece holding one word of 40 or more characters (a wire identity)
+         stays whole; a call or a declaration's head that is one name and
+         its opening parenthesis has no break before its arguments. -->
     <property name="ignorePattern"
-             value="^package.*|^import.*|href\s*=\s*&quot;[^&quot;]*&quot;|http://|https://|ftp://|^\s*(\+ )?&quot;[^&quot; ]*&quot;[,;)]*$"/>
+             value="^package.*|^import.*|href\s*=\s*&quot;[^&quot;]*&quot;|http://|https://|ftp://|^\s*(\+ )?&quot;[^&quot; ]*&quot;[,;)]*$|^\s*(\+ )?&quot;[^&quot;]*[^&quot; ]{40,}[^&quot;]*&quot;[,;)]*$|^\s*[\w.]+\($|^\s*public static [\w.&lt;&gt;, ?]+ \w+\($"/>
   </module>
   <!--  Suppression to prevent LineLength Check from flagging lines in Text-blocks -->
   <module name="SuppressWithPlainTextCommentFilter">

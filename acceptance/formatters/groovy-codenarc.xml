@@ -35,7 +35,10 @@
     <property name="length" value="100"/>
     <property name="ignoreImportStatements" value="true"/>
     <property name="ignorePackageStatements" value="true"/>
-    <property name="ignoreLineRegex" value="^\s*((\+ )?&quot;[^&quot; ]*&quot;[,;)]*|def &quot;[^&quot;]*&quot;\(\))$"/>
+    <!-- As the Java profile: a string piece holding one word of 40 or more
+         characters, or a call head with nothing to break before its
+         arguments, cannot be made shorter. -->
+    <property name="ignoreLineRegex" value="^\s*((\+ )?&quot;[^&quot; ]*&quot;[,;)]*|(\+ )?&quot;[^&quot;]*[^&quot; ]{40,}[^&quot;]*&quot;[,;)]*|[\w.]+\(|def &quot;[^&quot;]*&quot;\(\))$"/>
   </rule>
   <rule class="org.codenarc.rule.formatting.IndentationRule">
     <property name="spacesPerIndentLevel" value="2"/>

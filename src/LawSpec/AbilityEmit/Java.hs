@@ -10,6 +10,7 @@ import Data.List (intercalate)
 import Control.Monad (forM)
 import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
+import LawSpec.JvmNames (jvmLocal)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
 import qualified LawSpec.JavaData as Native
@@ -110,7 +111,7 @@ emit minify bits datas units = do
           evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
           pure [line "this.state = " <> E.call evaluate [line "symbols", line "LawSpecRuntime.absent(\"Unit\")"] <> line ";"]
         Just (_, start) -> do
-          value <- E.renderExpression datas bits localName (\_ _ -> Left "a handler's start value calls nothing") start
+          value <- E.renderExpression datas bits (jvmLocal "java" [] . localName) (\_ _ -> Left "a handler's start value calls nothing") start
           pure [line "this.state = " <> value <> line ";"]
       let name = specName h
       methods <- mapM (\(op, ty) -> do

@@ -1,0 +1,5 @@
+# Formatter exemptions Stage C removes. Each line: suite target path. Stage C is
+# done when this list is empty and every acceptance/<suite>/<target>/unformatted.txt
+# entry marked "temporary — removed by Stage C" is gone.
+rc1-existence scala src/test/scala/example/rc1/AuthorizationSnapshotsLawSpecTest.scala
+minor-stateful-initializers java src/main/java/lawspec/runtime/LawSpecDefinitionBodies.java
