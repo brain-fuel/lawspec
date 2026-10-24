@@ -87,14 +87,14 @@ emitBindings minify plan testing files = do
           _ -> pure Nothing
         let resultBody
               | result == C.scalarType "Unit" = application <> D.text ";"
-              | static = D.text "var result = " <> application <> D.text ";" <> D.hardline <> returned
+              | static = assigned (D.text "var result") application <> D.hardline <> returned
               -- A method's null is Nothing; anything else is Just.
               | Just element <- maybeElement =
-                  D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
+                  assigned (D.text "java.lang.Object found") application <> D.hardline <>
                   nativeResultType <> D.text " result = found == null" <> D.nest 4 (D.hardline <>
                     D.text "? new lawspec.runtime.LawSpecRuntime.Absent<>()" <> D.hardline <>
                     D.text ": new lawspec.runtime.LawSpecRuntime.Present<>((" <> element <> D.text ") found);") <> D.hardline <> returned
-              | otherwise = nativeResultType <> D.text " result = (" <> nativeResultType <> D.text ") " <> application <> D.text ";" <> D.hardline <> returned
+              | otherwise = assigned (nativeResultType <> D.text " result") (D.text "(" <> nativeResultType <> D.text ") " <> application) <> D.hardline <> returned
         -- An async bridge converts the native task's result once it completes.
         -- A constructor is called at once, and its bridge returns a completed task.
         let async = C.declarationAsync d
@@ -110,13 +110,13 @@ emitBindings minify plan testing files = do
               | static = method canonicalResult "decode" [method nativeResult "encode" [found]]
               | otherwise = method canonicalResult "decode" [method nativeResult "encode" [D.text "(" <> nativeResultType <> D.text ") " <> found]]
             asyncBody = case ref of
-              ConstructorCall _ -> D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
+              ConstructorCall _ -> assigned (D.text "java.lang.Object found") application <> D.hardline <>
                 D.text "return " <> future <> D.text ".completedFuture(" <> converted' (D.text "found") <> D.text ");"
               _ -> D.text "return " <> application <>
                 D.text ".thenApply(found -> " <> D.nest 4 (converted' (D.text "found")) <> D.text ");"
-        pure (D.text "public static " <> (if async then future <> D.text "<" <> boxedResult <> D.text ">"
+        pure (D.group (D.text "public static " <> (if async then future <> D.text "<" <> boxedResult <> D.text ">"
           else if unit then D.text "void" else resultType) <>
-          D.text " " <> call (C.declarationName d) ([t <> D.text " " <> v | (t,v) <- handlerParams] ++ [t <> D.text " " <> v | (t,v) <- zip argTypes values]) <>
+          D.nest 4 (D.softline <> call (C.declarationName d) ([t <> D.text " " <> v | (t,v) <- handlerParams] ++ [t <> D.text " " <> v | (t,v) <- zip argTypes values]))) <>
           D.hardline <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
             D.text "try" <> D.hardline <> D.block 2 (if async then asyncBody else resultBody) <> D.hardline <> D.group (D.text "catch (" <> D.nest 4 (D.softbreak <> D.group (D.text "IllegalArgumentException" <> D.nest 4 (mconcat [D.softline <> D.text ("| " ++ e) | e <- ["IllegalStateException", "ClassCastException", "ArithmeticException error"]]))) <> D.text ")") <> D.hardline <>
             D.block 2 (D.text "throw " <> call "new IllegalArgumentException"
@@ -457,3 +457,7 @@ emitBindings minify plan testing files = do
           ([D.text "LawSpecSchema schema",D.text "int bits",D.text "java.util.Map<String, Object> symbols"] ++
            [applied "LawSpecSchema.Codec" [D.text t] <> D.text (" " ++ v) | (_,(t,v)) <- ps]) <>
         D.hardline <> D.block 2 body)
+
+-- | name = value;, the value on the next line when the line is too long.
+assigned :: D.Doc -> D.Doc -> D.Doc
+assigned name value = D.group (name <> D.text " =" <> D.nest 4 (D.softline <> value)) <> D.text ";"
