@@ -576,7 +576,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         body <- render [] core
         pure (Doc.text "#[test]" <> Doc.hardline <> function ("benchmark_" ++ intercalate "_" (lawWords n)) [] "ls::Result<()>"
           (statements $ [Doc.text "let ctx = &mut ls::Context::testing();"] ++ installs ++ [
-            invoke "lawspec_harness::benchmark" [string n, Doc.text "|| " <> block (statements [binding "_measured" body, Doc.text "Ok(())"])]]))
+            closureCall "lawspec_harness::benchmark" [string n] (Doc.text "|| " <> block (statements [binding "_measured" body, Doc.text "Ok(())"]))]))
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
         either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames (modelTestUnit plan unit))
       let testNames = unitTestNames "rust" (map (propertyName . plannedProperty) plannedProperties)
@@ -765,7 +765,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                               binding "result" (invoke "valid" (Doc.text "&mut case.context.clone()" : tupleArgs)),
                               Doc.text "result.unwrap_or_else(|e| panic!(\"{e}\"))"]
                         else [Doc.text ("case.values.len() == " ++ show (length names))])))))
-                , binding "strategy" (invoke "strategy.prop_filter" [string (shown ++ " refinement"),Doc.text "refinement"])
+                , RL.stmt (RL.Let "strategy" (RL.method (RL.atom "strategy") "prop_filter" [RL.Laid (string (shown ++ " refinement")), RL.atom "refinement"]))
                 , binding "config" (Doc.text "proptest::test_runner::Config " <> block (statements
                     ([Doc.text ("cases: " ++ show (cases (propertyGeneration p)) ++ ","),
                      Doc.text ("max_global_rejects: " ++ show (maxAttempts (propertyGeneration p)) ++ ",")] ++
@@ -778,8 +778,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                     block (statements ([Doc.text "if let Some(error) = case.error " <> block
                       (Doc.text "return Err(proptest::test_runner::TestCaseError::fail(error));") | hasFieldContracts] ++
                       -- What the case covers, classifies and labels.
-                      [statement (invoke "observe" (Doc.text "&mut case.context" : tupleArgs) <>
-                        Doc.text ".map_err(proptest::test_runner::TestCaseError::fail)?") | observed (propertyHarness p)] ++
+                      [RL.stmt (RL.Semi (RL.try' (RL.method (RL.call "observe" (RL.atom "&mut case.context" : map RL.Laid tupleArgs))
+                        "map_err" [RL.atom "proptest::test_runner::TestCaseError::fail"]))) | observed (propertyHarness p)] ++
                       [binding "result" (lawCall "&mut case.context" tupleArgs)] ++
                       -- A failing case's inputs go to the failure database.
                       [conditional (Doc.text "result.is_err()") (statement (invoke "ls::search_remember" [string (unitName ++ "::" ++ label),
