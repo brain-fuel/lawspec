@@ -547,9 +547,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             -- An adapter that fails with E: its native code calls ls::fail
             -- with a native E (or panics with what lawspec.json maps).
             called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
-              (Just native, ability@(AbilityRef _ [failure]) : _) -> invoke ("ls::native_failures::<" ++ native ++ ", _>")
-                [string (abilityKey ability), Doc.text "|native| ls::IntoValue::into_value(native)", Doc.text "|| " <> plain,
-                 Doc.text (Paths.mappedFailures planMachineBits (NR.bindingRustCrate bindings) (unitFailureBindings unit) failure)]
+              (Just native, ability@(AbilityRef _ [failure]) : _) -> RL.expr (RL.call ("ls::native_failures::<" ++ native ++ ", _>")
+                [RL.Laid (string (abilityKey ability)), RL.closure "|native|" (RL.call "ls::IntoValue::into_value" [RL.atom "native"]), RL.closure "||" (RL.Laid plain),
+                 Paths.mappedFailures planMachineBits (NR.bindingRustCrate bindings) (unitFailureBindings unit) failure])
               _ -> plain
             wrapped = invoke (if typeName result == "CodeUnit16" then "ls::Value::CodeUnit16" else "ls::IntoValue::into_value") [Doc.text "native_result"]
         ref <- schemaType result
