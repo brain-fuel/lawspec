@@ -6,7 +6,7 @@
 module LawSpec.Naming
   ( Casing(..), NameKind(..), nameWords, cased, casingFor, escapeKeyword, reservedFor
   , nativeIdentifier, Scope, emptyScope, scopeWith, claim, claimAll, uniqueNames
-  , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, typeWords
+  , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, typeWords
   ) where
 
 import Data.Char (isAlphaNum, isAscii, isDigit, isHexDigit, isLower, isUpper, toLower, toUpper)
@@ -184,6 +184,21 @@ readableDefinitionName name arguments = case stripPrefix "lawspec_" name of
   Just rest | (digits@(_ : _), '_' : base) <- span isHexDigit (reverse rest), length digits >= 8 ->
     intercalate "_" (filter (not . null) (map (map toLower) (nameWords (reverse base)) ++ concatMap typeWords arguments))
   _ -> name
+
+-- | A called definition's name as the spec writes it, for text about a law:
+-- a specialised copy (lawspec_lawspecCollectionsSetOf_9446af497e0eb47e) is
+-- named by the definition it copies, and a collections operation the
+-- implicit import copies (lawspecCollectionsSetOf) by its own name (setOf).
+sourceDefinitionName :: String -> String
+sourceDefinitionName name = unaliased (unspecialised name)
+  where
+    unspecialised n = case stripPrefix "lawspec_" n of
+      Just rest | (digits@(_ : _), '_' : base) <- span isHexDigit (dropWhile (== '_') (reverse rest)), length digits >= 8 ->
+        reverse base
+      _ -> n
+    unaliased n = case stripPrefix "lawspecCollections" n of
+      Just (c : cs) | isUpper c -> toLower c : cs
+      _ -> n
 
 -- | A type's words: List Int32 is list int32, a unit's Money is money.
 typeWords :: C.Type -> [String]

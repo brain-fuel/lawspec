@@ -42,7 +42,7 @@ text _ = ""
 named :: String -> String -> String
 named target name = case target of
   "python" -> "def " ++ name ++ "__"
-  "prolog" -> "test('" ++ name ++ "')"
+  "prolog" -> "test(" ++ name ++ ")"
   "go" -> "func " ++ name ++ "_"
   "rust" -> "fn " ++ name ++ "()"
   "haskell" -> "\"" ++ name ++ "_"
@@ -53,7 +53,7 @@ named target name = case target of
 modelNamed :: String -> String -> String
 modelNamed target name = case target of
   "python" -> "def " ++ name ++ "("
-  "prolog" -> "test('" ++ name ++ "')"
+  "prolog" -> "test(" ++ name ++ ")"
   "go" -> "func " ++ name ++ "("
   "rust" -> "fn " ++ name ++ "()"
   "haskell" -> "\"" ++ name ++ "\""

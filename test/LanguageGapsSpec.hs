@@ -258,7 +258,7 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
       kotlin <- contents <$> emitted "kotlin"
       kotlin `shouldSatisfy` ("lawspecChoice(Arb.element(run{" `isInfixOf`)
       haskell <- contents <$> emitted "haskell"
-      haskell `shouldSatisfy` ("(Gen.choice([Gen.element" `isInfixOf`)
+      haskell `shouldSatisfy` ("Gen.choice[Gen.element" `isInfixOf`)
       java <- contents <$> emitted "java"
       java `shouldSatisfy` ("Generator.<Value>anyOf(Generator.<Value>sampledFrom" `isInfixOf`)
   describe "Python packages" $

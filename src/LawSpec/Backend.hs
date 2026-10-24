@@ -13,7 +13,7 @@ import qualified Data.Map.Strict as M
 import Numeric (showHex)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Code.Literal (printable)
-import LawSpec.Naming (displayLabel)
+import LawSpec.Naming (displayLabel, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, locationLink)
 
 -- | Emitters were written against these names; the aliases keep their code
@@ -195,7 +195,7 @@ prettyExprWith readable local = prettyExpr' where
     intercalate ", " [local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate
       | (binder,predicate) <- predicates] ++ "]"
   C.Local n -> local n
-  C.ExternalCall n args -> unwords (declarationName n:map argument args)
+  C.ExternalCall n args -> unwords ((if readable then sourceDefinitionName else id) (declarationName n):map argument args)
   C.Binary op _ a b -> "(" ++ prettyExpr' a ++ " " ++ C.binaryName op ++ " " ++ prettyExpr' b ++ ")"
   C.Unary op a -> show op ++ "(" ++ prettyExpr' a ++ ")"
   C.ShortCircuit op a b -> "(" ++ prettyExpr' a ++ " " ++ show op ++ " " ++ prettyExpr' b ++ ")"
