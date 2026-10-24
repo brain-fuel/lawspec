@@ -3,5 +3,7 @@ expect-any: a till gives back what it takes| [native] | small payments go throug
 <<<<<<<
         Cash { cents: money.cents }
 =======
-        Cash { cents: money.cents + 1 }
+        Cash {
+            cents: money.cents + 1,
+        }
 >>>>>>>

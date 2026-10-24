@@ -31,7 +31,10 @@ pub fn listening(ports: &dyn crate::lawspec_abilities::lawspec_host::Ports, valu
 // LawSpec: (Int32 -> Bool)
 pub fn charge(log: &dyn crate::lawspec_abilities::lawspec_logging::Log, value0: i32) -> bool {
     if value0 % 2 == 0 {
-        log.logMessage(crate::lawspec_data::LogLevel::Info, format!("charged {value0}"));
+        log.logMessage(
+            crate::lawspec_data::LogLevel::Info,
+            format!("charged {value0}"),
+        );
         true
     } else {
         false

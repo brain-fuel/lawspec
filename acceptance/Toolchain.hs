@@ -129,6 +129,12 @@ formatter target = do
     -- project: generated code must be what it writes.
     "swift" -> pure (Just (Formatter ("swift-format " ++ swiftFormatVersion) "sh"
       (\dir -> ["-c", swiftFormatCheck, "swift-format-check", dir, swiftFormatVersion]) [".swift"] []))
+    -- rustfmt's default configuration at the projects' edition (2024),
+    -- from the pinned toolchain; rustup installs its rustfmt component.
+    -- Files are checked one by one, as cargo fmt would, in a fixed order.
+    "rust" -> pure (Just (Formatter ("rustfmt " ++ rustfmtToolchain) "sh"
+      (\dir -> ["-c", "find \"$0\" -name '*.rs' | LC_ALL=C sort | xargs rustup run " ++ rustfmtToolchain ++
+        " rustfmt --check --edition 2024 2>&1 || exit 1", dir]) [".rs"] []))
     _ -> pure Nothing
   where isPrefixOf' p s = take (length p) s == p
 
@@ -162,6 +168,11 @@ swiftFormatCheck = unlines
   , "mkdir \"$work/copy\" && cp -R \"$dir\"/. \"$work/copy\""
   , "swift format format --configuration \"$work/configuration.json\" --in-place --recursive \"$work/copy\" || exit 2"
   , "diff -ru \"$dir\" \"$work/copy\"" ]
+
+-- | The Rust toolchain whose rustfmt lays out generated Rust. It is part of
+-- the acceptance cache key, as this file is.
+rustfmtToolchain :: String
+rustfmtToolchain = "1.97.1"
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

@@ -1,6 +1,6 @@
 @@ src/shop/domain.rs
 <<<<<<<
-    Money { currency: value0, cents }
+        currency: value0,
 =======
-    Money { currency: ShopDomainCurrency::Usd, cents }
+        currency: ShopDomainCurrency::Usd,
 >>>>>>>

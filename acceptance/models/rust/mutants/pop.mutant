@@ -1,6 +1,6 @@
 @@ src/example/models.rs
 <<<<<<<
-        Stack::Push { value } => PopFlow { result: value.top, state: *value.rest },
+            state: *value.rest,
 =======
-        Stack::Push { value } => PopFlow { result: value.top, state: Stack::Push { value } },
+            state: Stack::Push { value },
 >>>>>>>

@@ -11,14 +11,28 @@ fn vectors(kind: &str) -> Vec<Vec<String>> {
         .lines()
         .map(|line| line.split_whitespace().collect::<Vec<_>>())
         .filter(|fields| fields.first() == Some(&kind))
-        .map(|fields| fields[1..].iter().map(|f| if *f == "-" { String::new() } else { f.to_string() }).collect())
+        .map(|fields| {
+            fields[1..]
+                .iter()
+                .map(|f| {
+                    if *f == "-" {
+                        String::new()
+                    } else {
+                        f.to_string()
+                    }
+                })
+                .collect()
+        })
         .collect();
     assert!(!found.is_empty(), "no {kind} vectors");
     found
 }
 
 fn unhex(text: &str) -> Vec<u8> {
-    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap()).collect()
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+        .collect()
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -45,42 +59,83 @@ fn sha3_256() {
 #[test]
 fn shake256() {
     for v in vectors("shake256") {
-        assert_eq!(hex(&primitives::shake256(&unhex(&v[0]), v[1].parse().unwrap())), v[2]);
+        assert_eq!(
+            hex(&primitives::shake256(&unhex(&v[0]), v[1].parse().unwrap())),
+            v[2]
+        );
     }
 }
 
 #[test]
 fn aes_256_gcm() {
     for v in vectors("aes-256-gcm") {
-        let sealed = primitives::aes_256_gcm_encrypt(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]), &unhex(&v[3]));
+        let sealed = primitives::aes_256_gcm_encrypt(
+            &unhex(&v[0]),
+            &unhex(&v[1]),
+            &unhex(&v[2]),
+            &unhex(&v[3]),
+        );
         assert_eq!(hex(&sealed), format!("{}{}", v[4], v[5]));
-        assert_eq!(primitives::aes_256_gcm_decrypt(&unhex(&v[0]), &unhex(&v[1]), &sealed, &unhex(&v[3])), Some(unhex(&v[2])));
-        assert_eq!(primitives::aes_256_gcm_decrypt(&unhex(&v[0]), &unhex(&v[1]), &flipped(&sealed), &unhex(&v[3])), None);
+        assert_eq!(
+            primitives::aes_256_gcm_decrypt(&unhex(&v[0]), &unhex(&v[1]), &sealed, &unhex(&v[3])),
+            Some(unhex(&v[2]))
+        );
+        assert_eq!(
+            primitives::aes_256_gcm_decrypt(
+                &unhex(&v[0]),
+                &unhex(&v[1]),
+                &flipped(&sealed),
+                &unhex(&v[3])
+            ),
+            None
+        );
     }
 }
 
 #[test]
 fn ml_kem_768_key_generation() {
     for v in vectors("mlkem768-keygen") {
-        assert_eq!(sha3(&primitives::ml_kem_768_public_key(&unhex(&format!("{}{}", v[0], v[1])))), v[2]);
+        assert_eq!(
+            sha3(&primitives::ml_kem_768_public_key(&unhex(&format!(
+                "{}{}",
+                v[0], v[1]
+            )))),
+            v[2]
+        );
     }
 }
 
 #[test]
 fn ml_kem_768_encapsulation() {
     for v in vectors("mlkem768-encaps") {
-        let (ciphertext, secret) = primitives::ml_kem_768_encapsulate_with(&unhex(&v[0]), &unhex(&v[1]));
-        assert_eq!((hex(&ciphertext), hex(&secret)), (v[2].clone(), v[3].clone()));
+        let (ciphertext, secret) =
+            primitives::ml_kem_768_encapsulate_with(&unhex(&v[0]), &unhex(&v[1]));
+        assert_eq!(
+            (hex(&ciphertext), hex(&secret)),
+            (v[2].clone(), v[3].clone())
+        );
     }
 }
 
 #[test]
 fn ml_kem_768_decapsulation() {
     for v in vectors("mlkem768-decaps") {
-        assert_eq!(hex(&primitives::ml_kem_768_decapsulate_expanded(&unhex(&v[0]), &unhex(&v[1]))), v[2]);
+        assert_eq!(
+            hex(&primitives::ml_kem_768_decapsulate_expanded(
+                &unhex(&v[0]),
+                &unhex(&v[1])
+            )),
+            v[2]
+        );
     }
     for v in vectors("mlkem768-decaps-seed") {
-        assert_eq!(hex(&primitives::ml_kem_768_decapsulate(&unhex(&v[0]), &unhex(&v[1]))), v[2]);
+        assert_eq!(
+            hex(&primitives::ml_kem_768_decapsulate(
+                &unhex(&v[0]),
+                &unhex(&v[1])
+            )),
+            v[2]
+        );
     }
 }
 
@@ -94,24 +149,51 @@ fn ml_dsa_65_key_generation() {
 #[test]
 fn ml_dsa_65_verification() {
     for v in vectors("mldsa65-verify") {
-        assert_eq!(primitives::ml_dsa_65_verify(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[3]), &unhex(&v[2])), v[4] == "true");
+        assert_eq!(
+            primitives::ml_dsa_65_verify(
+                &unhex(&v[0]),
+                &unhex(&v[1]),
+                &unhex(&v[3]),
+                &unhex(&v[2])
+            ),
+            v[4] == "true"
+        );
     }
 }
 
 #[test]
 fn ml_dsa_65_deterministic_signature() {
     for v in vectors("mldsa65-sign-seed") {
-        assert_eq!(hex(&primitives::ml_dsa_65_sign(&unhex(&v[0]), &unhex(&v[1]), &[], true)), v[2]);
+        assert_eq!(
+            hex(&primitives::ml_dsa_65_sign(
+                &unhex(&v[0]),
+                &unhex(&v[1]),
+                &[],
+                true
+            )),
+            v[2]
+        );
         let public = primitives::ml_dsa_65_public_key(&unhex(&v[0]));
-        assert!(primitives::ml_dsa_65_verify(&public, &unhex(&v[1]), &unhex(&v[2]), &[]));
-        assert!(!primitives::ml_dsa_65_verify(&public, &flipped(&unhex(&v[1])), &unhex(&v[2]), &[]));
+        assert!(primitives::ml_dsa_65_verify(
+            &public,
+            &unhex(&v[1]),
+            &unhex(&v[2]),
+            &[]
+        ));
+        assert!(!primitives::ml_dsa_65_verify(
+            &public,
+            &flipped(&unhex(&v[1])),
+            &unhex(&v[2]),
+            &[]
+        ));
     }
 }
 
 #[test]
 fn slh_dsa_shake_128f_key_generation() {
     for v in vectors("slhdsa128f-keygen") {
-        let (public, secret) = primitives::slh_dsa_key_pair(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]));
+        let (public, secret) =
+            primitives::slh_dsa_key_pair(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]));
         assert_eq!(hex(&public), v[3]);
         assert_eq!(sha3(&secret), v[4]);
     }
@@ -120,17 +202,36 @@ fn slh_dsa_shake_128f_key_generation() {
 #[test]
 fn slh_dsa_shake_128f_verification() {
     for v in vectors("slhdsa128f-verify") {
-        assert_eq!(primitives::slh_dsa_verify(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[3]), &unhex(&v[2])), v[4] == "true");
-        assert!(!primitives::slh_dsa_verify(&unhex(&v[0]), &flipped(&unhex(&v[1])), &unhex(&v[3]), &unhex(&v[2])));
+        assert_eq!(
+            primitives::slh_dsa_verify(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[3]), &unhex(&v[2])),
+            v[4] == "true"
+        );
+        assert!(!primitives::slh_dsa_verify(
+            &unhex(&v[0]),
+            &flipped(&unhex(&v[1])),
+            &unhex(&v[3]),
+            &unhex(&v[2])
+        ));
     }
 }
 
 #[test]
 fn slh_dsa_shake_128f_round_trip() {
     for v in vectors("slhdsa128f-keygen") {
-        let (public, secret) = primitives::slh_dsa_key_pair(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]));
+        let (public, secret) =
+            primitives::slh_dsa_key_pair(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]));
         let signature = primitives::slh_dsa_sign(&secret, b"LawSpec", &[]);
-        assert!(primitives::slh_dsa_verify(&public, b"LawSpec", &signature, &[]));
-        assert!(!primitives::slh_dsa_verify(&public, b"LawSpeC", &signature, &[]));
+        assert!(primitives::slh_dsa_verify(
+            &public,
+            b"LawSpec",
+            &signature,
+            &[]
+        ));
+        assert!(!primitives::slh_dsa_verify(
+            &public,
+            b"LawSpeC",
+            &signature,
+            &[]
+        ));
     }
 }

@@ -37,7 +37,10 @@ pub fn openTally(value0: ()) -> Tally {
 
 pub fn add(value0: Tally, value1: u8) -> Pair<i64, Tally> {
     let after = value0.count + i64::from(value1);
-    Pair { first: after, second: Tally { count: after } }
+    Pair {
+        first: after,
+        second: Tally { count: after },
+    }
 }
 
 pub async fn remoteAdds(value0: u8) -> i64 {
@@ -75,10 +78,15 @@ pub async fn remoteLedger(value0: i32) -> i64 {
     let here = ls::net::Node::new(ls::net::TcpTransport::local().unwrap());
     let there = ls::net::Node::new(ls::net::TcpTransport::local().unwrap());
     let ledger = LedgerMailbox::serve(&there, "ledger").unwrap();
-    let sender = LedgerMailbox::connect(&here, &format!("{}/ledger", there.address()), Duration::from_secs(5));
+    let sender = LedgerMailbox::connect(
+        &here,
+        &format!("{}/ledger", there.address()),
+        Duration::from_secs(5),
+    );
     sender.send(i64::from(value0)).unwrap();
     sender.send(i64::from(value0)).unwrap();
-    let total = ledger.receive(Some(Duration::from_secs(5))).unwrap() + ledger.receive(Some(Duration::from_secs(5))).unwrap();
+    let total = ledger.receive(Some(Duration::from_secs(5))).unwrap()
+        + ledger.receive(Some(Duration::from_secs(5))).unwrap();
     // receive within: nothing more comes, so it gives None in time.
     let more = ledger.receive_within(Duration::from_millis(20)).unwrap();
     here.close();
@@ -109,12 +117,15 @@ pub async fn remoteHandoff(value0: i32) -> i64 {
 
 pub async fn remoteHandoffOnward(value0: i32) -> i64 {
     use crate::lawspec_sessions::{answering, passing};
-    let network = ls::net::MemoryNetwork::new(value0 as u64 & 0xFFFF, 0.1, 0.1, Duration::from_millis(5));
+    let network =
+        ls::net::MemoryNetwork::new(value0 as u64 & 0xFFFF, 0.1, 0.1, Duration::from_millis(5));
     let [a, b, c, d] = ["a", "b", "c", "d"].map(|n| ls::net::Node::new(network.transport(n)));
     // A conversation between A and C, which sends at once; A's end moves to
     // B, then to D, and answers from there.
     let first = answering::listen(&a, "answering").unwrap();
-    let second = answering::dial(&c, &format!("{}/answering", a.address())).unwrap().send(value0);
+    let second = answering::dial(&c, &format!("{}/answering", a.address()))
+        .unwrap()
+        .send(value0);
     let to_b = passing::listen(&a, "to-b").unwrap();
     let at_b = passing::dial(&b, &format!("{}/to-b", a.address())).unwrap();
     let _ = to_b.send(first);
@@ -138,29 +149,51 @@ pub async fn sealedOnTheWire(value0: i32) -> bool {
     // A definition evaluated on another node: its request names the
     // definition's content hash, which shows on the wire only in the clear.
     let name = "example.distribution::shifted";
-    let digest = crate::lawspec_remote::digest(name).expect("a remote definition").as_bytes().to_vec();
+    let digest = crate::lawspec_remote::digest(name)
+        .expect("a remote definition")
+        .as_bytes()
+        .to_vec();
     let mut seen = [false, false];
     for (i, insecure) in [false, true].into_iter().enumerate() {
-        let network = ls::net::MemoryNetwork::new(value0 as u64 & 0xFFFF, 0.0, 0.0, Duration::ZERO).with_recording();
-        let make = |node: &str| if insecure { network.insecure_transport_for_tests(node) } else { network.transport(node) };
+        let network = ls::net::MemoryNetwork::new(value0 as u64 & 0xFFFF, 0.0, 0.0, Duration::ZERO)
+            .with_recording();
+        let make = |node: &str| {
+            if insecure {
+                network.insecure_transport_for_tests(node)
+            } else {
+                network.transport(node)
+            }
+        };
         let here = ls::net::Node::new(make("here"));
         let there = ls::net::Node::new(make("there"));
         crate::lawspec_remote::serve(&there).unwrap();
-        let result = crate::lawspec_remote::evaluate(&here, &there.address(), name, &[ls::IntoValue::into_value(value0)]);
+        let result = crate::lawspec_remote::evaluate(
+            &here,
+            &there.address(),
+            name,
+            &[ls::IntoValue::into_value(value0)],
+        );
         here.close();
         there.close();
         let Ok(result) = result else { return false };
-        let Ok(result) = <i64 as ls::FromValue>::from_value(result) else { return false };
+        let Ok(result) = <i64 as ls::FromValue>::from_value(result) else {
+            return false;
+        };
         if result != i64::from(value0) + 1000 {
             return false;
         }
-        seen[i] = network.recorded().iter().any(|record| record.windows(digest.len()).any(|w| w == digest.as_slice()));
+        seen[i] = network
+            .recorded()
+            .iter()
+            .any(|record| record.windows(digest.len()).any(|w| w == digest.as_slice()));
     }
     seen == [false, true]
 }
 
 pub fn handshakeAgrees(value0: String) -> bool {
     let fields: Vec<&str> = value0.split(' ').collect();
-    let &[a, b, c, d, e, f, g, h, i, j, k, l, m] = fields.as_slice() else { return false };
+    let &[a, b, c, d, e, f, g, h, i, j, k, l, m] = fields.as_slice() else {
+        return false;
+    };
     crate::lawspec_network::handshake_vector(a, b, c, d, e, f, g, h, i, j, k, l, m)
 }

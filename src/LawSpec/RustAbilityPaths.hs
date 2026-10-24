@@ -6,8 +6,10 @@ module LawSpec.RustAbilityPaths (moduleOf, moduleOfName, foreignOwners, performB
 import Data.Char (isAlphaNum)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import LawSpec.Naming (NameKind(..), nativeIdentifier)
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.RustLayout as L
 import LawSpec.AbilityNames
 
 -- A unit's module in lawspec_abilities.
@@ -38,20 +40,24 @@ performBridges units =
 -- An operation's bridge function: perform_<op>, or for a parameterized
 -- ability's instance, perform_<Instance>_<op>.
 bridgeName :: C.Ability -> String -> String
-bridgeName a op = if null (C.abilityArguments a) then op else interfaceName a ++ "_" ++ op
+bridgeName a op = nativeIdentifier "rust" FunctionName (if null (C.abilityArguments a) then op else interfaceName a ++ " " ++ op)
 
 -- The panic payloads lawspec.json maps to failures of this type, as the
 -- last argument of ls::native_failures: each payload type T becomes its
 -- constructor, given T's Debug text when the constructor takes a message.
-mappedFailures :: Int -> Maybe String -> [C.FailureBinding] -> C.Type -> String
-mappedFailures bits library bindings failure = "vec![" ++ concat
-  [ "Box::new(|payload: &(dyn std::any::Any + Send)| payload.downcast_ref::<" ++ path (C.failureNative b) ++ ">().map(|error| " ++
-    "crate::lawspec_schema::schema().and_then(|schema| schema.validate(ls::construct_data(" ++ show (C.idText (C.failureConstructor b)) ++ ", vec![" ++
-    intercalate ", " (C.mapFailureFields (\_ tag fields -> "ls::construct_data(" ++ show (C.idText tag) ++ ", vec![" ++ intercalate ", " fields ++ "])") "ls::Value::Text(format!(\"{error:?}\"))" b) ++ "]), &" ++ reference ++ ", " ++ show bits ++
-    ")).unwrap_or_else(|error| std::panic::panic_any(error)))) as ls::MappedFailure, "
-  | b <- bindings, C.failureType b == failure ] ++ "]"
+mappedFailures :: Int -> Maybe String -> [C.FailureBinding] -> C.Type -> L.Expr
+mappedFailures bits library bindings failure = L.vecOf
+  [ L.cast (L.call "Box::new" [L.closure "|payload: &(dyn std::any::Any + Send)|"
+      (L.method (L.method (L.atom "payload") ("downcast_ref::<" ++ path (C.failureNative b) ++ ">") []) "map" [L.closure "|error|" (validated b)])])
+      "ls::MappedFailure"
+  | b <- bindings, C.failureType b == failure ]
   where
-    reference = D.render D.Compact (either error id (E.reference failure))
+    validated b = L.method (L.method (L.call "crate::lawspec_schema::schema" []) "and_then"
+        [L.closure "|schema|" (L.method (L.atom "schema") "validate" [construct (C.failureConstructor b) (fields b), L.prefix "&" (L.Laid reference), L.atom (show bits)])])
+      "unwrap_or_else" [L.closure "|error|" (L.call "std::panic::panic_any" [L.atom "error"])]
+    construct tag values = L.call "ls::construct_data" [L.atom (show (C.idText tag)), L.vecOf values]
+    fields = C.mapFailureFields (\_ tag values -> construct tag values) (L.call "ls::Value::Text" [L.macroCall "format" [L.atom "\"{error:?}\""]])
+    reference = either error id (E.reference failure)
     path parts = concatMap (\(i, p) -> (if i > (0 :: Int) then "::" else "") ++ (if i == 0 && p == "crate" then maybe p id library else p)) (zip [0 ..] parts)
 
 -- The trait of an ability, from the crate root.

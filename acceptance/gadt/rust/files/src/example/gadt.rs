@@ -26,16 +26,24 @@ pub fn evalTruth(value0: Expr<bool>) -> bool {
 // Both's halves have existential types, which a Rust enum cannot name: they
 // arrive as checked values, decoded at the types this one implies.
 pub fn evalPair(value0: Expr<Pair<ls::Integer, bool>>) -> Pair<ls::Integer, bool> {
-    let Expr::Both { value, .. } = value0 else { unreachable!("not an Expr<Pair>") };
-    let payload: crate::lawspec_data::Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e<ls::Integer, bool> =
+    let Expr::Both { value, .. } = value0 else {
+        unreachable!("not an Expr<Pair>")
+    };
+    let payload: crate::lawspec_data::BothDetails<ls::Integer, bool> =
         ls::FromValue::from_value(value).expect("a paired expression");
     let first = payload.first;
     let second = payload.second;
-    Pair { first: evalNumber(*first).into(), second: evalTruth(*second) }
+    Pair {
+        first: evalNumber(*first).into(),
+        second: evalTruth(*second),
+    }
 }
 
 pub fn fold(value0: Expr<ls::Integer>) -> Expr<ls::Integer> {
-    Expr::Number { value: evalNumber(value0).into(), _lawspec_marker: std::marker::PhantomData }
+    Expr::Number {
+        value: evalNumber(value0).into(),
+        _lawspec_marker: std::marker::PhantomData,
+    }
 }
 
 pub fn describe(value0: Shown) -> String {

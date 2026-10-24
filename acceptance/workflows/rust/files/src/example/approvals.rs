@@ -6,18 +6,35 @@ use crate::lawspec_runtime as ls;
 /// during this call overlapped in time. Run one after the other they cannot
 /// overlap, however loaded the machine is.
 pub async fn approvedQuickly(value0: i64) -> bool {
-    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::RealClock::default()), 0));
+    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(
+        Box::new(ls::RealClock::default()),
+        0,
+    ));
     let started = std::time::Instant::now();
     let _ = crate::lawspec_definitions::example_workflows::approve(ctx, Order { number: value0 });
-    let ran: Vec<_> = crate::example_workflows::SPANS.lock().unwrap().iter().copied().filter(|span| span.0 >= started).collect();
-    value0 != -1 || ran.iter().enumerate().any(|(i, a)| ran[i + 1..].iter().any(|b| a.0 < b.1 && b.0 < a.1))
+    let ran: Vec<_> = crate::example_workflows::SPANS
+        .lock()
+        .unwrap()
+        .iter()
+        .copied()
+        .filter(|span| span.0 >= started)
+        .collect();
+    value0 != -1
+        || ran
+            .iter()
+            .enumerate()
+            .any(|(i, a)| ran[i + 1..].iter().any(|b| a.0 < b.1 && b.0 < a.1))
 }
 
 /// Approves an order: the messages of its failures, as reported.
 pub async fn approvalErrors(value0: i64) -> Vec<String> {
     crate::example_workflows::FINISHED.lock().unwrap().clear();
-    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::RealClock::default()), 0));
-    let result = crate::lawspec_definitions::example_workflows::approve(ctx, Order { number: value0 });
+    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(
+        Box::new(ls::RealClock::default()),
+        0,
+    ));
+    let result =
+        crate::lawspec_definitions::example_workflows::approve(ctx, Order { number: value0 });
     let mut messages = Vec::new();
     if let Ok(ls::Either::Left(ApproveError::ApproveFailures { error: failures })) = result {
         for failure in failures {

@@ -86,7 +86,7 @@ test("selects whole test names, so law 1 never selects law 10", () => {
   assert.match("TestLaw10_Property", new RegExp(go[0].args.at(-1)));
   assert.doesNotMatch("TestLaw10_Property", new RegExp(go[0].args.at(-1).replace("TestLaw1|TestLaw10", "TestLaw1")));
   const rust = invocations({ language: "rust" }, [law(1, "tests/example_unit_lawspec.rs", undefined, "rust")]);
-  assert.deepEqual(rust[0].args, ["test", "--test", "example_unit_lawspec", "--", "--exact", "law_law_1"]);
+  assert.deepEqual(rust[0].args, ["test", "--test", "example_unit_lawspec", "--", "law_law_1::"]);
   const kotlin = invocations({ language: "kotlin" }, [law(1, "src/test/kotlin/example/UnitLawSpecTest.kt", undefined, "kotlin")]);
   const pattern = new RegExp(`^${kotlin[0].env["kotest.filter.tests"].replace("*", ".*?")}$`);
   assert.ok(pattern.test("lawLaw1_property: example.unit::law 1"));
@@ -304,7 +304,7 @@ test("reads Go events, Rust results and hspec examples", async () => {
     '{"Action":"run","Test":"TestLaw1_Property"}\n{"Action":"pass","Test":"TestLaw0_Example0","Package":"p"}\n'), [0]);
   const rust = [law(0, "tests/u_lawspec.rs", undefined, "rust"), law(3, "tests/u_lawspec.rs", undefined, "rust")];
   assert.deepEqual(await ranLaws({ language: "rust" }, rust, undefined,
-    "running 1 test\ntest law_law_3 ... ok\n\ntest result: ok. 1 passed\n"), [3]);
+    "running 2 tests\ntest law_law_3::example_1 ... ok\ntest law_law_3::property ... ok\ntest law_law_30::property ... ok\n\ntest result: ok. 3 passed\n"), [3]);
   const haskell = [law(0, "test/Example/UnitSpec.hs", undefined, "haskell"), law(1, "test/Example/OtherSpec.hs", undefined, "haskell")];
   assert.deepEqual(await ranLaws({ language: "haskell" }, haskell, undefined,
     "Example.Unit\n  lawLaw0_example0 [✔]\n  lawLaw0_property: example.unit::law 0 [✔]\nExample.Other\n\nFinished in 0.01 seconds\n2 examples, 0 failures\n"), [0]);

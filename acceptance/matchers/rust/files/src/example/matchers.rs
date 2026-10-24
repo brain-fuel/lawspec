@@ -37,5 +37,10 @@ pub fn slug(value0: String) -> String {
 
 // LawSpec: (Int32 -> example.matchers::type::Order)
 pub fn ship(value0: i32) -> crate::lawspec_data::Order {
-    crate::lawspec_data::Order::Shipped { value: crate::lawspec_data::Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911 { id: value0, carrier: "post".into() } }
+    crate::lawspec_data::Order::Shipped {
+        value: crate::lawspec_data::ShippedDetails {
+            id: value0,
+            carrier: "post".into(),
+        },
+    }
 }

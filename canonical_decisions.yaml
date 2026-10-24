@@ -381,6 +381,15 @@ DEC-haskell-ormolu-layout:
   decided: 0.30.0
   refs: [ormolu]
 
+DEC-rust-readable-output:
+  status: decided
+  question: How does generated Rust meet the readable-output decisions?
+  answer: |
+    Generated Rust equals rustfmt's output (1.97.1, edition 2024, default configuration), checked in acceptance with the pinned toolchain's rustfmt --check. LawSpec lays the code out itself with a Rust layout module (LawSpec.RustLayout): emitters build an expression's structure and the module applies rustfmt's widths (100 columns; 60 for a call's arguments, an array's items and a chain of several links; 18 for a struct literal's fields; 50 for a one-line if-else), its overflow of a last argument (with the 60-column budget of a nested call), its choice of a let's or a match arm's value on the same or the next line, and its last-link rule for chains. Where rustfmt's choice is hard to follow, the emitters write simpler statements (one decoded value a statement, handlers bound with their trait type instead of a cast). Each law is a module of tests named after it (law_<words>), with one #[test] per example, per boundary case and for its generated cases, or one exhaustive test for finite cases; a skipped or known-failing law stays one test. Generated files carry no blanket allow attributes: shared modules a test crate mounts carry #[allow(dead_code, unused_imports)] on the mount, and a function or struct that keeps a camel-case source name carries #[allow(non_snake_case)] on itself. Boilerplate lives in the runtimes: proptest's seed and failure database (ls_gen), expectations and call errors (ls::expect_equal, ls::called), handler locking (ls::locked, ls::answered), remote definitions and session listening.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [rustfmt]
+
 DEC-adapter-ownership:
   status: decided
   question: Which files does generation own, and how does it avoid overwriting user code?

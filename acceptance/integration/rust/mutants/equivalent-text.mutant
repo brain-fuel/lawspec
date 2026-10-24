@@ -1,6 +1,6 @@
 @@ src/example/alternatives.rs
 <<<<<<<
-format!("{x}")
+    format!("{x}")
 =======
-"broken".to_owned()
+    "broken".to_owned()
 >>>>>>>

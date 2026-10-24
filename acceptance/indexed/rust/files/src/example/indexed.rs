@@ -1,15 +1,23 @@
 // User-owned LawSpec adapter.
+use crate::lawspec_data::BinDetails as BinaryNode;
+use crate::lawspec_data::VConsDetails as VectorCell;
 use crate::lawspec_data::{Tree, Vec};
-use crate::lawspec_data::Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec as VectorCell;
-use crate::lawspec_data::Recorde00f7d8e028cf6be6e08b4ed1f9853199bee01cf39e5a2faa3e38b8ad29bf271 as BinaryNode;
 use crate::lawspec_runtime as ls;
 
 fn nil<T>() -> Vec<T> {
-    Vec::VNil { _lawspec_marker: std::marker::PhantomData }
+    Vec::VNil {
+        _lawspec_marker: std::marker::PhantomData,
+    }
 }
 
 fn prepend<T>(head: T, tail: Vec<T>) -> Vec<T> {
-    Vec::VCons { value: Box::new(VectorCell { head, tail: Box::new(tail) }), _lawspec_marker: std::marker::PhantomData }
+    Vec::VCons {
+        value: Box::new(VectorCell {
+            head,
+            tail: Box::new(tail),
+        }),
+        _lawspec_marker: std::marker::PhantomData,
+    }
 }
 
 pub fn replicate(value0: ls::BigUint, value1: i8) -> Vec<i8> {
@@ -31,8 +39,9 @@ pub fn append(value0: Vec<i8>, value1: Vec<i8>) -> Vec<i8> {
 
 pub fn zip(value0: Vec<i8>, value1: Vec<bool>) -> Vec<bool> {
     match (value0, value1) {
-        (Vec::VCons { value: first, .. }, Vec::VCons { value: second, .. }) =>
-            prepend(second.head, zip(*first.tail, *second.tail)),
+        (Vec::VCons { value: first, .. }, Vec::VCons { value: second, .. }) => {
+            prepend(second.head, zip(*first.tail, *second.tail))
+        }
         _ => nil(),
     }
 }

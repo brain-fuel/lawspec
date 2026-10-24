@@ -9,12 +9,16 @@ pub struct SteadyClock {
 
 /// Makes the bound Clock.
 pub fn steady_clock() -> SteadyClock {
-    SteadyClock { inner: crate::lawspec_time::ClockHandler, readings: std::sync::atomic::AtomicI64::new(0) }
+    SteadyClock {
+        inner: crate::lawspec_time::ClockHandler,
+        readings: std::sync::atomic::AtomicI64::new(0),
+    }
 }
 
 impl Clock for SteadyClock {
     fn now(&self) -> crate::lawspec_data::Instant {
-        self.readings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.readings
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.now()
     }
 

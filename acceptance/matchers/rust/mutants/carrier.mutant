@@ -1,7 +1,7 @@
 expect: the carrier is never empty
 @@ src/example/matchers.rs
 <<<<<<<
-carrier: "post".into()
+            carrier: "post".into(),
 =======
-carrier: "".into()
+            carrier: "".into(),
 >>>>>>>

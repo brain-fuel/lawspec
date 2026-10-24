@@ -1,6 +1,6 @@
 @@ src/example/indexed.rs
 <<<<<<<
-prepend(second.head, zip(*first.tail, *second.tail)),
+            prepend(second.head, zip(*first.tail, *second.tail))
 =======
-zip(*first.tail, *second.tail),
+            zip(*first.tail, *second.tail)
 >>>>>>>

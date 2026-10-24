@@ -1,6 +1,6 @@
 @@ src/shop/orders.rs
 <<<<<<<
-value0 < 10000 {
+    } else if value0 < 10000 {
 =======
-value0 < 100000 {
+    } else if value0 < 100000 {
 >>>>>>>

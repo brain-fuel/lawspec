@@ -1,6 +1,13 @@
 @@ src/example/arithmetic.rs
 <<<<<<<
-Pairs { value: value0 }
+    Pairs { value: value0 }
 =======
-Pairs { value: Row::Cell { value: Box::new(RowCell { head: 0, tail: Box::new(value0) }) } }
+    Pairs {
+        value: Row::Cell {
+            value: Box::new(RowCell {
+                head: 0,
+                tail: Box::new(value0),
+            }),
+        },
+    }
 >>>>>>>

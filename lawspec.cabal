@@ -764,6 +764,7 @@ library
       LawSpec.RustDefinitions
       LawSpec.RustEmit
       LawSpec.RustExpr
+      LawSpec.RustLayout
       LawSpec.RustNativeBinding
       LawSpec.RustNativeGenerators
       LawSpec.Scaffold

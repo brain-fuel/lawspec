@@ -20,6 +20,9 @@ import LawSpec.Code.Literal (literalFor)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.HaskellDefinitions (sortedImports)
+import qualified LawSpec.Code.Doc as Doc
+import LawSpec.Code.Literal (literalFor)
+import qualified LawSpec.RustLayout as RL
 
 data Callbacks = Callbacks
   { startCallbacks :: Maybe (String, String)
@@ -251,24 +254,23 @@ rustModelTests bits datas calls u = (++ supervision) <$> mapM test (C.unitMachin
           , "}" ]
       | not (null (C.unitSupervisors u)) ]
     wrap name _ = "lawspec_definitions::" ++ name ++ " as ls::ModelCallback"
+    -- Laid out as rustfmt lays it out (LawSpec.RustLayout).
     test m = do
       (spec, cs) <- prepare bits datas calls u wrap m
-      pure $ unlines
-        [ "#[test]"
-        , "fn model_" ++ machineName m ++ "() {"
-        , "    let model = ls::Model {"
-        , "        spec: " ++ show spec ++ ","
-        , "        start: [" ++ maybe "" (\(r, f) -> r ++ ", " ++ f) (startCallbacks cs) ++ "],"
-        , "        commands: vec![" ++ intercalate ", " ["(" ++ r ++ ", " ++ f ++ ", " ++ maybe "None" (\w' -> "Some(" ++ w' ++ ")") w ++ ")" | (r, f, w) <- commandCallbacks cs] ++ "],"
-        , "        abstract_state: " ++ maybe "None" (\a -> "Some(" ++ a ++ ")") (abstractCallback cs) ++ ","
-        , "        invariants: vec![" ++ intercalate ", " (invariantCallbacks cs) ++ "],"
-        , "    };"
-        , "    if let Err(message) = ls::with_stack(move || ls::check_model(&model)" ++
-            (if machineShared m then ".and_then(|_| ls::check_model_parallel(&model))" else "") ++
-            concat [".and_then(|_| ls::check_scenario(&model, " ++ show (programSpec p) ++ "))" | p <- machineScenarios m] ++ ") {"
-        , "        panic!(\"{}\", message);"
-        , "    }"
-        , "}" ]
+      let rust = Doc.render (Doc.styleLayout (Doc.styleFor "rust"))
+          model = RL.struct "ls::Model"
+            [ ("spec", RL.atom (literalFor "rust" spec))
+            , ("start", RL.Macro "" "[" "]" (maybe [] (\(r, f) -> [RL.atom r, RL.atom f]) (startCallbacks cs)))
+            , ("commands", RL.vecOf [RL.Macro "" "(" ")" [RL.atom r, RL.atom f, maybe (RL.atom "None") (\w' -> RL.call "Some" [RL.atom w']) w] | (r, f, w) <- commandCallbacks cs])
+            , ("abstract_state", maybe (RL.atom "None") (\a -> RL.call "Some" [RL.atom a]) (abstractCallback cs))
+            , ("invariants", RL.vecOf (map RL.atom (invariantCallbacks cs))) ]
+          checks = foldl (\acc next -> RL.method acc "and_then" [RL.closure "|_|" next]) (RL.call "ls::check_model" [RL.atom "&model"])
+            ([RL.call "ls::check_model_parallel" [RL.atom "&model"] | machineShared m] ++
+             [RL.call "ls::check_scenario" [RL.atom "&model", RL.atom (literalFor "rust" (programSpec p))] | p <- machineScenarios m])
+          failed = RL.If (RL.prefix "let Err(message) = " (RL.call "ls::with_stack" [RL.closure "move ||" checks]))
+            (RL.Block [RL.Semi (RL.macroCall "panic" [RL.atom "\"{}\"", RL.atom "message"])] Nothing) Nothing
+      pure (rust (Doc.text "#[test]" <> Doc.hardline <> RL.function ("fn model_" ++ machineName m) [] ""
+        (RL.stmts [RL.Let "model" model, RL.Do failed] Nothing)) ++ "\n")
 
 split :: String -> [String]
 split = splitOn '.'

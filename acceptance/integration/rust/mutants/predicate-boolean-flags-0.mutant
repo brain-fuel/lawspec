@@ -1,9 +1,10 @@
-expect: expect 
+expect: .lawspec:
 @@ src/example/boolean_flags.rs
 <<<<<<<
 *
 =======
 #![allow(non_snake_case)]
-pub fn flipFlag(x:bool)->bool {x}
-
+pub fn flipFlag(x: bool) -> bool {
+    x
+}
 >>>>>>>

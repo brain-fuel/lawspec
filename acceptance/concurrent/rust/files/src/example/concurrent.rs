@@ -16,7 +16,10 @@ static MAPS: Registry<HashMap<i8, i64>> = LazyLock::new(|| Mutex::new(HashMap::n
 
 fn new<T: Default>(registry: &Registry<T>) -> i32 {
     let id = IDS.fetch_add(1, Ordering::SeqCst);
-    registry.lock().unwrap().insert(id, Arc::new(Mutex::new(T::default())));
+    registry
+        .lock()
+        .unwrap()
+        .insert(id, Arc::new(Mutex::new(T::default())));
     id
 }
 

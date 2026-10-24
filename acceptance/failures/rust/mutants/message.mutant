@@ -1,7 +1,7 @@
 expect: odd amounts are declined, and say why
 @@ src/example/failures.rs
 <<<<<<<
-"an odd amount"
+                value: "an odd amount".into(),
 =======
-"an uneven amount"
+                value: "an uneven amount".into(),
 >>>>>>>

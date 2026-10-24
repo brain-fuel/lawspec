@@ -130,4 +130,27 @@ the test instead of rejecting the sample. `maxAttempts` bounds rejection.
 
 ## Formatting
 
-Output matches `rustfmt`. Generated projects do not need rustfmt.
+Output is what `rustfmt` writes with its default settings at edition 2024:
+four-space indentation, 100 columns, and its rules for breaking calls,
+chains and match arms. LawSpec lays it out itself, so generation needs no
+formatter, and LawSpec's own acceptance checks every generated project with
+the pinned toolchain's `rustfmt --check`. Generated files carry no blanket
+`allow` attributes: a test crate's mounted shared modules allow the parts
+it does not use, and a function that keeps a definition's camel-case name
+says so on the function.
+
+## Names and tests
+
+Generated code uses the specification's names. Inputs, resources and the
+binders inside a law keep their source names; a checked definition's entry
+is named after it in snake case (`feeModel` is `fee_model`), with `_2` only
+when two would share a name. Each law is a module of tests named after it,
+with one test per example, one per boundary case and one for its generated
+cases (or all of its finite cases): `law_normalizers_agree::property`,
+`law_normalizers_agree::spaces_become_hyphens_punctuation_is_preserved`,
+`law_normalizers_agree::boundary_1`. `cargo test law_normalizers_agree::`
+runs one law. An anonymous record is a type named from where it is used: the
+payload of a `Declined` case is `DeclinedDetails`. Each law, test and
+adapter call has a comment linking it to its source line, text is written as
+Rust string literals, and an expectation that fails names its law, its
+example and the line it is written on.

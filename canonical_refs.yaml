@@ -378,6 +378,10 @@ prettier-rationale:
   kind: article
   title: Prettier, Rationale
   locator: https://prettier.io/docs/rationale
+rustfmt:
+  kind: article
+  title: rustfmt configuration (default settings)
+  locator: https://rust-lang.github.io/rustfmt/
 ruff-formatter:
   kind: article
   title: The Ruff Formatter

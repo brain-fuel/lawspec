@@ -1,6 +1,6 @@
 @@ src/example/atoi_codec.rs
 <<<<<<<
-value.parse().unwrap()
+    value.parse().unwrap()
 =======
-0
+    0
 >>>>>>>

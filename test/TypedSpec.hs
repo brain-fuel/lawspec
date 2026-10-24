@@ -236,14 +236,13 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       namesOf before `shouldBe` namesOf after
       either (const False) (all (\(a, (b, c)) -> a /= Nothing && b /= Nothing && c /= Nothing)) (namesOf before) `shouldBe` True
   describe "generated Rust in a dependent crate" $
-    it "allows the lints its generated shapes would raise, so a dependent build shows no warnings" $ withProgram $ \p -> do
+    -- (the acceptance suites build every crate and check it has no warnings)
+    it "allows no lints wholesale: its generated shapes raise none" $ withProgram $ \p -> do
       let declarations = C.programDataDeclarations p
-          lints = ["unused_imports", "unreachable_patterns", "non_snake_case"]
       case (emitRustDefinitions (D.Pretty 100) 64 declarations (C.programUnits p), emitRustData (D.Pretty 100) declarations) of
         (Right definitions, Right datas) -> do
-          let header text = concat (take 3 (lines text))
-          header definitions `shouldSatisfy` (\h -> all (`isInfixOf` h) lints)
-          header datas `shouldSatisfy` (\h -> all (`isInfixOf` h) lints)
+          definitions `shouldNotSatisfy` isInfixOf "#![allow"
+          datas `shouldNotSatisfy` isInfixOf "#![allow"
         (Left e, _) -> expectationFailure e
         (_, Left e) -> expectationFailure e
   describe "embedded handlers" $

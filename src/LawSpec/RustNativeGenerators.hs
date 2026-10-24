@@ -166,7 +166,7 @@ emitGenerators declarations plan roots = do
   let entries = [D.text ("(" ++ show (C.idText (resolvedGeneratorType generator)) ++
         ", _lawspec_native_generator_" ++ show index ++ " as ls_gen::NativeFactory)") |
         (index,generator) <- generators]
-      registry = D.text "fn _lawspec_native_generators() -> ls::Result<ls_gen::NativeGenerators> " <>
+      registry = D.text "fn native_generators() -> ls::Result<ls_gen::NativeGenerators> " <>
         D.block 4 (call "ls_gen::NativeGenerators::new"
           [D.text "vec!" <> D.delimitTrailing 4 "[" "]" entries])
   pure (D.joinWith (D.hardline <> D.hardline) (registry:functions))

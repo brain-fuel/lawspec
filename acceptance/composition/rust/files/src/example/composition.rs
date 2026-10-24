@@ -17,7 +17,10 @@ fn logs(value: &crate::lawspec_data::Store) -> &Arc<LogStore> {
 
 // LawSpec: (Unit -> example.composition::type::Store)
 pub fn openStore(value0: ()) -> crate::lawspec_data::Store {
-    ls::Handle::new(Arc::new(LogStore { logs: Mutex::new(HashMap::new()), open: Mutex::new(true) }))
+    ls::Handle::new(Arc::new(LogStore {
+        logs: Mutex::new(HashMap::new()),
+        open: Mutex::new(true),
+    }))
 }
 
 // LawSpec: (example.composition::type::Store -> Unit)
@@ -38,7 +41,11 @@ impl LogsHandler {
 
 impl crate::lawspec_abilities::example_composition::Logs for LogsHandler {
     fn create(&self, value0: std::string::String) -> () {
-        logs(&self.resource).logs.lock().unwrap().insert(value0, vec![]);
+        logs(&self.resource)
+            .logs
+            .lock()
+            .unwrap()
+            .insert(value0, vec![]);
     }
 
     fn append(&self, value0: std::string::String, value1: std::string::String) -> i64 {
@@ -69,7 +76,12 @@ impl ReaderHandler {
 
 impl crate::lawspec_abilities::example_composition::Reader for ReaderHandler {
     fn size(&self, value0: std::string::String) -> std::option::Option<i64> {
-        logs(&self.resource).logs.lock().unwrap().get(&value0).map(|records| records.len() as i64)
+        logs(&self.resource)
+            .logs
+            .lock()
+            .unwrap()
+            .get(&value0)
+            .map(|records| records.len() as i64)
     }
 }
 
@@ -81,7 +93,10 @@ pub struct WriterHandler {
 
 impl WriterHandler {
     pub fn new(resource: crate::lawspec_data::Store) -> Self {
-        Self { resource, last: Mutex::new(None) }
+        Self {
+            resource,
+            last: Mutex::new(None),
+        }
     }
 }
 

@@ -3,5 +3,7 @@ expect-any: a receipt is for the amount captured| [native] | [recording native]
 <<<<<<<
         crate::lawspec_data::Receipt { cents: value0 }
 =======
-        crate::lawspec_data::Receipt { cents: if value0 < 1000 { value0 } else { value0 - 1 } }
+        crate::lawspec_data::Receipt {
+            cents: if value0 < 1000 { value0 } else { value0 - 1 },
+        }
 >>>>>>>

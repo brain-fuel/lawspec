@@ -23,7 +23,10 @@ pub fn openStore(value0: ()) -> crate::lawspec_data::Store {
     if OPEN_COUNT.fetch_add(1, Ordering::SeqCst) >= 3 {
         panic!("too many open stores: one was never closed");
     }
-    ls::Handle::new(Arc::new(Store { items: Mutex::new(HashMap::new()), open: Mutex::new(true) }))
+    ls::Handle::new(Arc::new(Store {
+        items: Mutex::new(HashMap::new()),
+        open: Mutex::new(true),
+    }))
 }
 
 // LawSpec: (example.resources::type::Store -> Unit)
@@ -66,12 +69,18 @@ pub fn size(value0: crate::lawspec_data::Store) -> i32 {
 
 // LawSpec: (Text -> (Int32 -> Unit))
 pub fn writeNote(value0: String, value1: i32) -> () {
-    std::fs::write(std::path::Path::new(&value0).join("note.txt"), value1.to_string()).unwrap();
+    std::fs::write(
+        std::path::Path::new(&value0).join("note.txt"),
+        value1.to_string(),
+    )
+    .unwrap();
 }
 
 // LawSpec: (Text -> Maybe (Int32))
 pub fn readNote(value0: String) -> Option<i32> {
-    std::fs::read_to_string(std::path::Path::new(&value0).join("note.txt")).ok().map(|t| t.parse().unwrap())
+    std::fs::read_to_string(std::path::Path::new(&value0).join("note.txt"))
+        .ok()
+        .map(|t| t.parse().unwrap())
 }
 
 // LawSpec: (Int32 -> Bool)
@@ -88,7 +97,9 @@ pub fn setGreeting(value0: i32) -> () {
 
 // LawSpec: (Unit -> Maybe (Int32))
 pub fn greeting(value0: ()) -> Option<i32> {
-    std::env::var("LAWSPEC_EXAMPLE_GREETING").ok().map(|t| t.parse().unwrap())
+    std::env::var("LAWSPEC_EXAMPLE_GREETING")
+        .ok()
+        .map(|t| t.parse().unwrap())
 }
 
 // A pool that is costly to open: this test binary may open only one, so the
@@ -109,7 +120,10 @@ pub fn openPool(value0: ()) -> crate::lawspec_data::Pool {
     if POOLS_OPENED.fetch_add(1, Ordering::SeqCst) >= 1 {
         panic!("a second pool was opened: the harness should share it");
     }
-    ls::Handle::new(Arc::new(Pool { amount: Mutex::new(0), open: Mutex::new(true) }))
+    ls::Handle::new(Arc::new(Pool {
+        amount: Mutex::new(0),
+        open: Mutex::new(true),
+    }))
 }
 
 // LawSpec: (example.resources::type::Pool -> Unit)

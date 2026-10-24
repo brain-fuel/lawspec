@@ -3,5 +3,7 @@ expect: negative amounts are blocked
 <<<<<<<
             return crate::lawspec_data::Decision::Block;
 =======
-            return crate::lawspec_data::Decision::Decline { value: "negative".into() };
+            return crate::lawspec_data::Decision::Decline {
+                value: "negative".into(),
+            };
 >>>>>>>

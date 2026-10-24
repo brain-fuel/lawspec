@@ -1,6 +1,8 @@
 // Scaffolded by LawSpec. User-owned; never overwritten.
 #![allow(non_snake_case)]
-use crate::lawspec_data::{Line, Money, Quantity, ShopDomainCurrency, ShopOrdersCurrency, ShopTaxV2x0x0RatesBand};
+use crate::lawspec_data::{
+    Line, Money, Quantity, ShopDomainCurrency, ShopOrdersCurrency, ShopTaxV2x0x0RatesBand,
+};
 
 pub fn settlement(value0: ShopOrdersCurrency) -> ShopDomainCurrency {
     match value0 {
@@ -13,7 +15,10 @@ pub fn lineTotal(value0: Line) -> Money {
     let Line { price, quantity } = value0;
     let Money { currency, cents } = price;
     let Quantity { value: count } = quantity;
-    Money { currency, cents: (cents * i64::from(count)).min(100000000) }
+    Money {
+        currency,
+        cents: (cents * i64::from(count)).min(100000000),
+    }
 }
 
 pub fn cheaper(value0: i64, value1: i64) -> i64 {
