@@ -448,13 +448,17 @@ arguments callee cap open close limit args =
       a -> a
     initialTexts = [t | Just t <- map oneLine initial]
     -- An operation overflows only outside a nested call's budget.
-    overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial &&
+    -- (a macro's single match overflows however its head breaks)
+    macroMatch = case (args, lastArg) of
+      ([_], Match {}) -> take 1 (reverse callee) == "!"
+      _ -> False
+    overflowLast = (overflowable (length args) lastArg || macroMatch) && all (isJust . oneLine) initial &&
       (isNothing cap || not (isInfix lastArg)) && (width callee < 4 || not (brokenChain lastArg || forcedChain lastArg))
     -- (rustfmt keeps a chain of several links that overflows a longer
     -- callee on one line, so it does not overflow there)
     forcedChain x = case x of
       Try a -> forcedChain a
-      Method {} -> length (snd (unchain x)) >= 2
+      Method {} -> length (snd (unchain x)) + (if rootTried x then 1 else 0) >= 2
       _ -> False
     brokenChain x = case x of
       Prefix _ a -> brokenChain a
@@ -679,13 +683,19 @@ flatLink l = case l of
 -- | Operands joined by one operator break before each operator, indented.
 infixDoc :: Expr -> D.Doc
 infixDoc e = case (flat e, e) of
-  (Just t, _) -> oneOf [D.text t, broken]
+  (Just t, _) -> oneOf ([D.text t] ++ if null closing then [broken] else closing)
   -- An operation whose right operand is a block keeps the block's opening
   -- on the operator's line.
   (Nothing, Infix _ op a b@(Block _ _)) | Just l <- oneLine a -> D.text (l ++ " " ++ op ++ " ") <> expr b
   _ -> broken
   where
     (first, rest) = operands e
+    -- (a left operand that is a broken call keeps one short right operand
+    -- after its closing bracket)
+    closing = case rest of
+      [(op, x)] | callRoot first, Just r <- oneLine x, Just f <- oneLine first ->
+        [D.text f <> D.nest 4 (D.hardline <> D.text (op ++ " ") <> expr x), expr first <> D.text (" " ++ op ++ " " ++ r)]
+      _ -> []
     broken = expr first <> D.nest 4 (mconcat [D.hardline <> D.text (op ++ " ") <> expr x | (op, x) <- rest])
     operands x = case x of
       Infix p op a b -> let (f, r) = sameLevel p a in (f, r ++ [(op, b)])
