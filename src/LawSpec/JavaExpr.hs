@@ -49,8 +49,16 @@ quoted s = case pieces s of
 -- | Arguments wrap when a call is too wide, in the Java style LawSpec follows.
 -- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
-call name args = D.group (D.text (name ++ "(") <>
-  D.nest 4 (D.softbreak <> D.group (D.commaSep args)) <> D.text ")")
+call name args
+  -- A long qualified name breaks before its method when its opening does
+  -- not fit.
+  | length name > 40, (receiver@(_ : _), '.' : method@(_ : _)) <- breakLast name
+  , all (\c -> isAlphaNum c || c `elem` ("._" :: String)) name =
+      D.prefixChoice (name ++ "(") (plain name) (D.group (D.text receiver <> D.nest 4 (D.softbreak <> plain ("." ++ method))))
+  | otherwise = plain name
+  where
+    plain n = D.group (D.text (n ++ "(") <> D.nest 4 (D.softbreak <> D.group (D.commaSep args)) <> D.text ")")
+    breakLast n = let (after, before) = break (== '.') (reverse n) in (reverse (drop 1 before), if null before then [] else '.' : reverse after)
 
 -- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
@@ -238,6 +246,13 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
         value <- render scrutinee
         let dataName = "matched" ++ show (length (show term))
         case expressionType scrutinee of
+          -- A match that only selects a field of a one-constructor value
+          -- is the field.
+          Constructor name _ | [d] <- [d | d <- declarations, dataId d == Id name], [_] <- dataConstructors d
+                             , [branch] <- branches, Local selected <- expressionNode (caseBody branch)
+                             , Just index <- lookup selected (zip (map binderId (caseBinders branch)) [0 :: Int ..]) -> do
+            ref <- reference (expressionType scrutinee)
+            pure (call (schemaName ++ ".field") [ref, value, quoted (idText (caseConstructor branch)), D.text (show index), bits, D.text "symbols"])
           Constructor name _ | any ((== Id name) . dataId) declarations -> do
             ref <- reference (expressionType scrutinee)
             arms <- mapM (dataBranch dataName) branches

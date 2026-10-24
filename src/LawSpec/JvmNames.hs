@@ -11,7 +11,7 @@ module LawSpec.JvmNames
   ) where
 
 import Data.Char (isAlphaNum, isDigit, toLower, toUpper)
-import Data.List (dropWhileEnd)
+import Data.List (dropWhileEnd, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified LawSpec.Core as C
@@ -40,7 +40,9 @@ jvmLocal target reserved source
       candidate ++ if length candidate == 1 then "2" else "Value"
   | otherwise = candidate
   where
-    candidate = googleCase (dropWhileEnd (== '_') (localIdentifier target source))
+    candidate = googleCase (dropWhileEnd (== '_') (localIdentifier target source'))
+    -- A record view's field is a view; its hash would only widen the line.
+    source' = if target == "java" && "lawspec::record-view::" `isPrefixOf` source then "view" else source
 
 -- Google Java Style's local names have a lower-case second letter (aValue
 -- would read as an abbreviation): a single leading letter word joins the

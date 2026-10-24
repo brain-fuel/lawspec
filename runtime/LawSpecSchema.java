@@ -1147,6 +1147,24 @@ public final class LawSpecSchema
     return validate(type, new Value(key(type), new Data(tag, fields)), bits, symbols, false);
   }
 
+  /** A field of a value whose type has one constructor: a match that only selects. */
+  public Value field(
+      Named type, Value value, String tag, int index, int bits, Map<String, Object> symbols)
+  {
+    return match(
+        type,
+        value,
+        bits,
+        symbols,
+        data -> {
+          if (!data.tag().equals(tag))
+          {
+            throw new IllegalArgumentException("invalid constructor");
+          }
+          return data.fields().get(index);
+        });
+  }
+
   public Value match(Named type, Value value, int bits, Function<Data, Value> branch)
   {
     return match(type, value, bits, new HashMap<>(), branch);
