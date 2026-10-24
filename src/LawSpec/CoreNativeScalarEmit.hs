@@ -986,8 +986,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.sourceFile = unitSourceFile u
       }
     -- A handler as the ability's Java interface.
-    javaHandler ability = Doc.group (Doc.text ("((" ++ javaInterface ability ++ ")") <>
-      Doc.nest 4 (Doc.softline <> JavaExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability)]) <> Doc.text ")")
+    javaHandler ability = JavaExpr.call "LawSpecRuntime.handler"
+      [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability), Doc.text (javaInterface ability ++ ".class")]
     javaConstruct' ty tag fields
       | custom ty = JavaExpr.call "SCHEMA.construct" ([javaRef ty,JavaExpr.quoted tag,javaBits,Doc.text "symbols"] ++ fields)
       | otherwise = javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted tag,JavaExpr.array fields]
@@ -1019,8 +1019,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
         Right (jvmFailingAs (operationFailure op) (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") nativeValue"))) "nativeValue -> "
-          (javaNativeResult (expressionType term) (javaHandler (C.operationAbility op) <> JavaExpr.call ("." ++ C.operationName op)
-            [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))
+          (javaNativeResult (expressionType term) (Doc.group (javaHandler (C.operationAbility op) <> Doc.nest 4 (Doc.softbreak <> JavaExpr.call ("." ++ C.operationName op)
+            [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = Doc.text "value -> " <> javaConstruct' (expressionType term) tag [javaChecked ty (Doc.text "value")]

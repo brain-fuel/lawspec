@@ -10,7 +10,7 @@ module LawSpec.Typed.Jvm (jvmPerformName, JvmTyped(..), JvmStyle(..), emitJvmTyp
 import Control.Monad (forM)
 import Control.Monad.State.Strict
 import Data.Char (isAlphaNum, isUpper, toLower)
-import Data.List (intercalate, isPrefixOf, nub)
+import Data.List (intercalate, isPrefixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -236,7 +236,7 @@ dataNames datas = M.fromList (snd (foldl pick (reserved, []) datas))
     reserved = S.fromList (javaKeywords ++ words "LawSpecTyped LawSpecFast LawSpecRuntime Value Data String Long Boolean Object Integer Math Character Arrays Objects Override Number BigInteger Iterable Comparable Exception RuntimeException Unit")
     pick (taken, acc) d =
       let base = identifier (M.findWithDefault (dataName d) (dataId d) display)
-          chosen = firstOf [n | n <- base : [base ++ "_" ++ show k | k <- [2 :: Int ..]], n `S.notMember` taken]
+          chosen = firstOf [n | n <- base : [base ++ show k | k <- [2 :: Int ..]], n `S.notMember` taken]
       in (S.insert chosen taken, (idText (dataId d), chosen) : acc)
 
 fieldless :: DataDeclaration -> Bool
@@ -1013,7 +1013,8 @@ nativeHelper :: Env -> String -> Int -> Type -> M D.Doc
 nativeHelper env kind index ty | envStyle env == ScalaStyle = scalaHelper env kind index ty
 nativeHelper env kind index ty = do
   t <- lift' (javaType env True ty)
-  n <- lift' (nativeType env ty)
+  -- java.lang and this package's own names need no qualifier here.
+  n <- unqualify <$> lift' (nativeType env ty)
   let name = kind ++ show index
       line = javaText
       -- A long result type puts the name on the next line.
@@ -1040,15 +1041,15 @@ toNative env ty = case ty of
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "toNative" a
     na <- lift' (nativeType env a)
-    pure [ braced ("if (x.isPresent())") (javaText ("return new LawSpecRuntime.Present<" ++ na ++ ">(" ++ c ++ "(x.get()));"))
-         , javaText ("return new LawSpecRuntime.Absent<" ++ na ++ ">();") ]
+    pure [ braced ("if (x.isPresent())") (javaText ("return new LawSpecRuntime.Present<>(" ++ c ++ "(x.get()));"))
+         , javaText ("return new LawSpecRuntime.Absent<>();") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "toNative" a
     cr <- helper "toNative" b
     nl <- lift' (nativeType env a)
     nr <- lift' (nativeType env b)
-    pure [ braced ("if (x.isLeft())") (javaText ("return new LawSpecRuntime.Left<" ++ nl ++ ", " ++ nr ++ ">(" ++ cl ++ "(x.left()));"))
-         , javaText ("return new LawSpecRuntime.Right<" ++ nl ++ ", " ++ nr ++ ">(" ++ cr ++ "(x.right()));") ]
+    pure [ braced ("if (x.isLeft())") (javaText ("return new LawSpecRuntime.Left<>(" ++ cl ++ "(x.left()));"))
+         , javaText ("return new LawSpecRuntime.Right<>(" ++ cr ++ "(x.right()));") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         ck <- helper "toNative" k
         cv <- helper "toNative" v
@@ -1077,10 +1078,10 @@ toNative env ty = case ty of
       pure (\access -> h ++ "(" ++ access ++ ")")
     let made prefix c cs
           | null (constructorFields c) && kotlinObject d c = nativeVariant env d c base ++ ".INSTANCE"
-          | otherwise = "new " ++ nativeVariant env d c base ++ nativeGeneric ++ "(" ++ intercalate ", " [cv (prefix ++ fieldName f) | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ nativeVariant env d c base ++ diamond nativeGeneric ++ "(" ++ intercalate ", " [cv (prefix ++ fieldName f) | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if fieldless d
       then pure [ javaText "switch (x)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
-                    ([javaText ("case " ++ variantName env d c ++ " -> { return " ++ made "" c [] ++ "; }") | c <- dataConstructors d] ++
+                    ([(javaText ("case " ++ variantName env d c ++ " -> {") <> D.nest 2 (D.hardline <> javaText ("return " ++ made "" c [] ++ ";")) <> D.hardline <> javaText "}") | c <- dataConstructors d] ++
                      [javaText "default -> throw LawSpecFast.unreachable();"])) ]
       else if isProductType d
         then let c = firstOf (dataConstructors d) in pure [javaText ("return " ++ made "x." c (firstOf converters) ++ ";")]
@@ -1155,8 +1156,8 @@ fromNative env ty = case ty of
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = typedName ++ "." ++ variantName env d c
-          | isProductType d = "new " ++ typedName ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
-          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | isProductType d = "new " ++ typedName ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if isProduct d
       then let c = firstOf (dataConstructors d) in pure [javaText ("return " ++ made "n." c (firstOf converters) ++ ";")]
       else pure ([ javaText ("if (n instanceof " ++ nativeVariant env d c base ++ ")") <> D.hardline <> D.block 2 (D.joinWith D.hardline
@@ -1329,8 +1330,8 @@ scalaFromNative env ty = case ty of
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = typedName ++ "." ++ variantName env d c
-          | isProductType d = "new " ++ typedName ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
-          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | isProductType d = "new " ++ typedName ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
         pattern c | singleton c = nativeCase c
                   | otherwise = "y: " ++ nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric ++ " @unchecked")
     if isProduct d
@@ -1339,3 +1340,19 @@ scalaFromNative env ty = case ty of
                     ([scalaText ("case " ++ pattern c ++ " => " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters] ++
                      [scalaText "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
   _ -> lift' (Left ("typed Scala: no native conversion for " ++ show ty))
+
+-- | A constructor's type arguments where Java infers them: <> for any.
+diamond :: String -> String
+diamond arguments = if null arguments then "" else "<>"
+
+-- | A native type as LawSpecTyped (package lawspec.runtime) writes it.
+unqualify :: String -> String
+unqualify s = case s of
+  [] -> []
+  c : rest | not (isIdentifier c) -> c : unqualify rest
+  _ -> let (word, rest) = span (\x -> isIdentifier x || x == '.') s in strip word ++ unqualify rest
+  where
+    isIdentifier x = x `elem` ('_' : '$' : ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'])
+    strip w = case [r | p <- ["java.lang.", "lawspec.runtime."], Just r@(c : _) <- [stripPrefix p w], c `elem` ['A' .. 'Z'], '.' `notElem` takeWhile (/= '.') r] of
+      r : _ -> r
+      [] -> w

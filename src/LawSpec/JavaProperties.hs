@@ -11,7 +11,7 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.Char (isAlphaNum, toLower, toUpper)
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate, isPrefixOf, stripPrefix)
 import LawSpec.TestNames (unitTestNames, lawWords)
 import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase)
 import LawSpec.Naming (displayLabel)
@@ -72,7 +72,10 @@ number = text . show
 statement x = x <> text ";"
 returned x = statement (text "return " <> x)
 bind n x = D.group (text ("var " ++ n ++ " =") <> D.nest 4 (D.softline <> x) <> text ";")
-lambda parameters body = D.group (text (parameters ++ " ->") <> D.nest 4 (D.softline <> body))
+-- A body that is a block opens on the lambda's line.
+lambda parameters body
+  | "LawSpecRuntime.block(() -> {" `isPrefixOf` D.render D.Compact body = text (parameters ++ " -> ") <> body
+  | otherwise = D.group (text (parameters ++ " ->") <> D.nest 4 (D.softline <> body))
 closure parameters body = D.multiline (text (parameters ++ " -> ") <> block body)
 chain base methods = D.group (D.nest 4 base <> D.nest 4
   (mconcat [D.softbreak <> call ("." ++ name) args | (name,args) <- methods]))
@@ -308,7 +311,7 @@ emitTests Config{..} unit laws = do
         supplier n value = D.group (text ("Supplier<Value> " ++ n ++ " =") <> D.nest 4 (D.softline <> value) <> text ";")
     drawValue body = case body of
       DrawValue v -> v
-      DrawSteps steps v -> runtime "block" [D.multiline (text "() -> " <> block (statements (steps ++ [returned v])))]
+      DrawSteps steps v -> D.multiline (text "LawSpecRuntime.block(() -> " <> block (statements (steps ++ [returned v])) <> text ")")
     -- LAWSPEC_SEED fixes jetCheck's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = braced (text "private static PropertyChecker.Parameters checker()") (statements

@@ -21,9 +21,18 @@ quoted s = case pieces s of
   _ -> jvmString "java" s
   where
     -- After each ::, merged while a piece stays within 36 characters; a
-    -- longer hash in pieces of 32, so a deeply nested line fits.
+    -- longer hash in pieces of 32 and longer text at its spaces, so a
+    -- deeply nested line fits.
     pieces = merge . concatMap chunks . cuts
-    chunks t = if length t > 40 && all (`elem` ("0123456789abcdef:" :: String)) t then takeWhile (not . null) (map (take 32) (iterate (drop 32) t)) else [t]
+    chunks t
+      | length t <= 40 = [t]
+      | all (`elem` ("0123456789abcdef:" :: String)) t = takeWhile (not . null) (map (take 32) (iterate (drop 32) t))
+      | ' ' `elem` t = afterSpaces t
+      | otherwise = [t]
+    -- Text in words, each with the space after it.
+    afterSpaces t = case break (== ' ') t of
+      (w, ' ' : more) -> (w ++ " ") : afterSpaces more
+      (w, _) -> [w | not (null w)]
     cuts t = case breakAfter t of
       (a, []) -> [a]
       (a, b) -> a : cuts b
@@ -163,7 +172,8 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
           argument <- render value
           pure (D.group (D.text ("var " ++ local (binderId binder) ++ " =") <> D.nest 4 (D.softline <> argument)) <> D.text ";")) steps
         inner <- render final
-        pure (runtime "block" [D.multiline (D.text "() -> " <> D.block 2 (D.joinWith D.hardline (declarations ++ [D.text "return " <> inner <> D.text ";"])))])
+        -- The block's lambda opens on the call's line, so a let costs one level.
+        pure (D.multiline (D.text "LawSpecRuntime.block(() -> " <> D.block 2 (D.joinWith D.hardline (declarations ++ [D.text "return " <> inner <> D.text ";"])) <> D.text ")"))
       Construct tag args -> do
         values <- mapM render args
         if custom (expressionType term) && idText tag `notElem` ["List::Nil","List::Cons"]
@@ -173,7 +183,12 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
             pure (call (schemaName ++ ".construct") ([ref,quoted (idText tag),bits,D.text "symbols"] ++ values))
           else do
             key <- typeKey (expressionType term)
-            pure (runtime "construct" [key,quoted (idText tag),array values])
+            -- A list written out is its items, not a cell per item.
+            case listItems term of
+              Just items | idText tag == "List::Cons" -> do
+                rendered <- mapM render items
+                pure (runtime "list" [key, call "java.util.List.of" rendered])
+              _ -> pure (runtime "construct" [key,quoted (idText tag),array values])
       ExternalCall _ args -> mapM render args >>= external term
       -- Ability nodes go to the caller, which knows where handlers are.
       Perform _ args -> mapM render args >>= external term
@@ -229,7 +244,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
                   D.block 2 (D.joinWith D.hardline
                     (arms ++ [D.group (D.text "default ->" <> D.nest 4 (D.softline <> D.text "throw " <> call "new IllegalArgumentException" [quoted "invalid constructor"] <> D.text ";"))]))
             pure (call (schemaName ++ ".match") [ref,value,bits,D.text "symbols",
-              D.multiline (D.text (dataName ++ " ->") <> D.nest 4 (D.hardline <> body))])
+              D.multiline (D.text (dataName ++ " -> ") <> body)])
           Constructor name _ -> do
             (helper,tags) <- case name of
               "List" -> pure ("matchList",["List::Nil","List::Cons"])
@@ -276,3 +291,9 @@ javaDataKey (Constructor name args) = case [t | TypeArgument t <- args] of
   types -> name ++ concatMap (\t -> " (" ++ javaDataKey t ++ ")") types
 javaDataKey ty = show ty
 
+-- | The items of a list built from cells, when it ends in the empty list.
+listItems :: Expr -> Maybe [Expr]
+listItems e = case expressionNode e of
+  Construct tag [] | idText tag == "List::Nil" -> Just []
+  Construct tag [item, rest] | idText tag == "List::Cons" -> (item :) <$> listItems rest
+  _ -> Nothing

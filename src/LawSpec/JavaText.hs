@@ -2,9 +2,10 @@
 -- typed definitions) wraps as Google Java Style wraps it: a call's
 -- arguments break 4 deeper inside its parentheses. Strings, characters and
 -- anything unbalanced are kept whole, and so are type arguments.
-module LawSpec.JavaText (javaText) where
+module LawSpec.JavaText (javaText, javaLayout) where
 
 import qualified LawSpec.Code.Doc as D
+import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
 
 data Piece = Token String | Parens [[Piece]]
 
@@ -79,3 +80,41 @@ quoted q s = case s of
     (t, r) <- quoted q rest
     pure (c : t, r)
   [] -> Nothing
+
+-- | Java written line by line, laid out in LawSpec's Java profile: a block's
+-- brace on a line of its own (Allman; a lambda's and an array's stay), and
+-- a line too long for 100 columns re-laid by its calls or, for a comment,
+-- wrapped at words.
+javaLayout :: String -> String
+javaLayout = unlines . concatMap (fit . dropWhileEndSpace) . concatMap allman . lines
+  where
+    dropWhileEndSpace = reverse . dropWhile (== ' ') . reverse
+    allman l =
+      let (indent, body) = span (== ' ') l
+          opens = " {" `isSuffixOf` body && not ("-> {" `isSuffixOf` body) && not ("[] {" `isSuffixOf` body)
+            && not ("= {" `isSuffixOf` body) && not ("({" `isSuffixOf` body) && not ("//" `isPrefixOf` body) && not ("*" `isPrefixOf` body)
+          header = take (length body - 2) body
+      in case () of
+        _ | opens, "} " `isPrefixOf` header -> [indent ++ "}", indent ++ drop 2 header, indent ++ "{"]
+          | opens -> [indent ++ header, indent ++ "{"]
+          | otherwise -> [l]
+    fit l
+      | length l <= 100 = [l]
+      | otherwise =
+          let (indent, body) = span (== ' ') l
+              width = 100 - length indent
+          in case () of
+            _ | "/** " `isPrefixOf` body, " */" `isSuffixOf` body ->
+                  [indent ++ "/**"] ++ map ((indent ++ " * ") ++) (wrap (width - 3) (words (drop 4 (take (length body - 3) body)))) ++ [indent ++ " */"]
+              | "// " `isPrefixOf` body -> map ((indent ++ "// ") ++) (wrap (width - 3) (words (drop 3 body)))
+              | "\"" `isInfixOf` body && not (balanced body) -> [l]
+              | otherwise -> map (\x -> if null x then x else indent ++ x) (lines (D.render (D.Pretty width) (javaText body)))
+    balanced body = case pieces body of
+      Just (_, "") -> True
+      _ -> False
+    wrap width ws = go ws
+      where
+        go [] = []
+        go (w : rest) = let (line', more) = fill w rest in line' : go more
+        fill acc (w : rest) | length acc + 1 + length w <= width = fill (acc ++ " " ++ w) rest
+        fill acc rest = (acc, rest)
