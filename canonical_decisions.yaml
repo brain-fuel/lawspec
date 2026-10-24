@@ -809,7 +809,8 @@ DEC-operation-result-checks:
   refs: [ada-2022-predicates, spark-ug]
 
 DEC-smtlib-encoding-versions:
-  status: decided
+  status: superseded
+  by: DEC-smt-semantic-receipts
   question: The Z3 translation will grow (data types, text, recursion, counterexamples). How do existing solver receipts keep their meaning as it grows?
   answer: |
     lawspec-smtlib-v1 is frozen byte for byte (gate 5 decision 2). A task v1 supports keeps its script, task fingerprint and program fingerprint, so its receipt stays current with no re-run. Any task that needs a new feature is lawspec-smtlib-v2. The compiler tracks the encoding a task needs (Core.Smt `requires`, the newest encoding any feature it uses requires); v1 features never call it, and the task, its script header and its fingerprint name the encoding. A refused task names v1, the encoding that refused it. test/SmtFrozenSpec.hs checks a frozen corpus (test/fixtures/smt-v1: copies of the rc1 examples, Chapter 6, the arithmetic demonstration and the SmtSpec laws, at 32 and 64 bits, through the API's proofTasks method as lawspec prove gets them): every frozen ready task is unchanged, a frozen refused task becomes ready only as v2, and no new v1 task appears. Because the program fingerprint binds the whole checked program, a compiler change that alters a corpus program's Core also fails the test; that is a receipt change and needs its own decision. The precedent is Why3's versioned drivers and session files, which record the prover and transformation a proof used so a replay can tell a changed goal from an unchanged one, and SMT-LIB's own versioned standard. The Node host accepts only v1 until v2 has features and a protocol; increment 4 adds both.
@@ -932,7 +933,7 @@ DEC-gate-5-receipt:
   question: |
     What does gate 5 deliver, and what does it leave explicit?
   answer: |
-    The gate 5 receipt in LAWSPEC-PRE-1.0-REVIEW.md (Gate 5 proof work, 22 October 2026) records the supported fragments, their trust boundaries, the retained portfolio items 13.1, 13.3 to 13.8 and 14.10 with their fixtures and tests, the limits kept explicit, and the owner-confirmed syntax: history laws say the complete history holds P or the history so far holds P, and model time advances only through an explicit wait command, in ticks of the greatest common divisor of the deadline and one hour. A deadline without that command is unsupported. Mandatory admission stays Fourier-Motzkin only; v1 receipts are frozen; new work is lawspec-smtlib-v2; there is no kernel-checked tier (owner decision 4). The owner signed off gate 5 on 22 October 2026, accepting these fragments, trust boundaries, limits and portfolio results, and accepting the full-Unicode Text encoding (DEC-smt-text) in place of the refusal above U+2FFFF.
+    The gate 5 receipt in LAWSPEC-PRE-1.0-REVIEW.md (Gate 5 proof work, 22 October 2026) records the supported fragments, their trust boundaries, the retained portfolio items 13.1, 13.3 to 13.8 and 14.10 with their fixtures and tests, the limits kept explicit, and the owner-confirmed syntax: history laws say the complete history holds P or the history so far holds P, and model time advances only through an explicit wait command, in ticks of the greatest common divisor of the deadline and one hour. A deadline without that command is unsupported. Mandatory admission stays Fourier-Motzkin only; v1 receipts were frozen until 0.30.0, when DEC-smt-semantic-receipts replaced the freeze with per-law semantic fingerprints; new work is lawspec-smtlib-v2; there is no kernel-checked tier (owner decision 4). The owner signed off gate 5 on 22 October 2026, accepting these fragments, trust boundaries, limits and portfolio results, and accepting the full-Unicode Text encoding (DEC-smt-text) in place of the refusal above U+2FFFF.
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, spark-ug, z3]
@@ -969,3 +970,40 @@ DEC-explain-registers:
     The compiler words every view (LawSpec.Explain) through an explain API method over its own expansion result, so the native and WASM cores agree byte for byte and the CLI and SDK give the same answer. This ports the former npm presentation; its dev output was checked byte-identical against the npm developer view on every example law before the owner's bracket and wording changes. The host only reads recorded native observations and passes the completed evidence rows in. Explanation is presentation: it changes no obligation, runs nothing and reports no evidence status.
   opened: 0.30.0
   decided: 0.30.0
+
+DEC-content-identity:
+  status: decided
+  question: |
+    Compiler memos, test results, acceptance results, proof receipts and remote names hashed show or Binary output, which includes spans, names and docs. Renaming a local or reformatting invalidated most of them. What identifies a definition or a law?
+  answer: |
+    Two hashes per node, computed once per program in the dependency graph (LawSpec.Dependencies, encoded by LawSpec.Core.Identity). The semantic hash is BLAKE3-256 over the tagged, versioned lawspec.semantic.v1 encoding of checked Core: binders and type variables are positions in traversal order, references to types, constructors, declarations, abilities and handlers are their targets' semantic hashes (a constructor is its type's hash and position), names, identity spellings, docs, rationale, trace links, origins and spans are not written, and literals are normalized as structural records already are (LawSpec.Core.RecordIdentity). Strongly connected groups are hashed as one: members are ordered by their hash with group references hidden, then by name only among identical shapes, and each member's hash is the group hash and its position. The presentation hash covers exactly what the semantic hash leaves out and is a Merkle hash over the presentation hashes of what the node reaches. Hashing is structural, never up to computation: 2 + 2 and 4 differ. Semantic hashes key behaviour-only results: lawspec test results (with the compiler build, target, toolchain, recorded values and adapters, never generated file bytes), acceptance results (with build, toolchain, adapters and mutants, beside the existing generated-bytes key that keeps early cutoff across compiler changes), proof receipts (DEC-smt-semantic-receipts) and remote content hashes (DEC-remote-semantic-identity). A memo whose result shows names (plan, expansion, emit) is keyed by both hashes, so an unrelated edit no longer invalidates it, and a doc edit rewrites comments but reruns nothing. Precedents: Rune's checked-core BLAKE3 hashes with De Bruijn binders, names as display metadata, SCC group hashing and the rule against hashing up to computation; Unison's name-erased hashes with positional arguments and cycles ordered by member hash; Dhall's semantic integrity hash, whose alpha part LawSpec takes and whose beta part it refuses by Rune's rule; Salsa and rustc's red-green early cutoff; Lake, Bazel and Nix input-hash keys. Trust boundary: a semantic hash is only as complete as the encoding. Every Core field is either encoded or listed as presentation in one place (LawSpec.Core.Identity.presentationFields), and the invariance tests check both directions. A semantic collision between two differently named nodes is intended (they behave alike); any key whose value shows names includes the presentation hash.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [rune-content-hashing, unison-hashing, dhall-semantic-hash, rustc-red-green, salsa, lean-lake, bazel-remote-caching, nix-content-addressed]
+
+DEC-blake3-port:
+  status: decided
+  question: The pure Haskell BLAKE3 built lists for every block and indexed them with !!. Content identity now hashes every node of every program. How is BLAKE3 made fast without diverging between native and WASM?
+  answer: |
+    LawSpec.Blake3 stays pure Haskell, shared by the native and WASM builds, and follows goforge's blake3sum design: unboxed Word32 state threaded through a fully unrolled compression function, message words read straight from the input bytes without intermediate lists, one compression for an input of one block, the BLAKE3 left-complete tree for longer inputs, and a batch hashMany for many small inputs (sequential, since the WASM build has no threads; blake3sum parallelises the same API across cores). SIMD kernels and multi-message transposition are not ported: they need assembly or host imports, which would break native and WASM agreement. The port is checked against the official BLAKE3 test vectors (test/fixtures/blake3-256.json) and against blake3sum's CLI output, and RecordIdentity descriptors keep their digests byte for byte. SHA-256 (LawSpec.Digest) remains only where an external format requires it. Benchmark numbers are recorded in the 0.30.0 CHANGELOG entry.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [blake3sum, blake3-spec]
+
+DEC-smt-semantic-receipts:
+  status: decided
+  question: lawspec-smtlib-v1 receipts were frozen byte for byte, and every task's program fingerprint bound the whole Binary-encoded program, so a local rename or an unrelated edit made every receipt stale. What binds a receipt now?
+  answer: |
+    The owner chose to replace v1 (2026-10-24), overriding DEC-smtlib-encoding-versions and the v1 freeze in DEC-gate-5-receipt. Each task carries a per-law lawFingerprint in place of programFingerprint: BLAKE3 over the encoding name, the machine width, the law's proof settings and the law's semantic hash (DEC-content-identity), which already covers exactly what the law reaches. The taskFingerprint still binds the script, owner and declaration so the Node host can check a task's integrity, but receipts are reused by lawFingerprint and solver identity, so a local rename, a reformat or an unrelated edit keeps a receipt current while a behaviour edit does not. Receipts are recomputed once under the new identity; there is no migration before 1.0. test/SmtFrozenSpec.hs no longer freezes bytes: it checks that lawFingerprints are unchanged by renaming locals, reformatting and editing docs, and changed by a behaviour edit. The precedent is Why3's session files, which match a goal by its shape rather than its text, and Rune's proof certificates keyed by content hash. Trust boundary: the translation is a function of semantic Core, so an encoder change that changes a script's meaning must change the encoding name; the alpha-invariance test does not enforce that, review does.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [why3, z3, rune-content-hashing]
+
+DEC-remote-semantic-identity:
+  status: decided
+  question: Remote evaluation named a definition by a SHA3-256 Merkle hash over show output, so a rename or reformat changed the name other nodes ask for. What is a definition's remote identity?
+  answer: |
+    Its semantic hash (DEC-content-identity), written blake3-semantic-1: then 64 hexadecimal digits. The prefix names the algorithm and the encoding version, so a node never compares hashes of two kinds; this is a wire-format version bump from sha3-256:, with no migration before 1.0. Two nodes agree on a hash exactly when they hold behaviourally identical Core, whatever it is called.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [unison-hashing, rune-content-hashing]

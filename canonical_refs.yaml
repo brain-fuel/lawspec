@@ -647,3 +647,44 @@ unicode-utf32:
   kind: article
   title: Unicode 17.0.0, Chapter 3, UTF-32BE encoding scheme (D99)
   locator: https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-3/
+
+rune-content-hashing:
+  kind: package
+  title: "Rune: content hashes, SCC hashing and the proof cache (goforge rune core/hash.go, store/scc.gp, lessons/08)"
+  locator: https://goforge.dev/rune
+blake3sum:
+  kind: package
+  title: "blake3sum: BLAKE3 library and b3sum-compatible CLI with a batch HashMany API"
+  locator: https://goforge.dev/blake3sum
+blake3-spec:
+  kind: article
+  title: "The BLAKE3 specification and official test vectors"
+  locator: https://github.com/BLAKE3-team/BLAKE3
+unison-hashing:
+  kind: article
+  title: "Unison: the big idea (content-addressed code) and unison-hashing-v2 ABT cycle hashing"
+  locator: https://www.unison-lang.org/docs/the-big-idea/
+dhall-semantic-hash:
+  kind: article
+  title: "Dhall standard: semantic integrity checks over the alpha-beta-normal form"
+  locator: https://github.com/dhall-lang/dhall-lang/blob/master/standard/imports.md
+rustc-red-green:
+  kind: article
+  title: "rustc dev guide: incremental compilation and the red-green algorithm"
+  locator: https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation.html
+salsa:
+  kind: package
+  title: "Salsa: incremental recomputation with early cutoff"
+  locator: https://github.com/salsa-rs/salsa
+lean-lake:
+  kind: package
+  title: "Lake, the Lean 4 build system: input-hash traces"
+  locator: https://github.com/leanprover/lean4/tree/master/src/lake
+bazel-remote-caching:
+  kind: article
+  title: "Bazel: remote caching and content-addressed action keys"
+  locator: https://bazel.build/remote/caching
+nix-content-addressed:
+  kind: article
+  title: "Nix: content-addressed store objects"
+  locator: https://nix.dev/manual/nix/latest/store/store-object/content-address
