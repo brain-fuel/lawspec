@@ -257,7 +257,7 @@ emitTests Config{..} unit laws = do
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
     chooser = text "(count: Int) => random.nextInt(count)"
-    supplier doc = D.group (text "() =>" <> D.nest 2 (D.softline <> doc))
+    supplier = L.arrow "()"
     drawDoc inp strategy d = case d of
       C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".sample(random).value")
       C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "java.util.List.of[java.util.function.Supplier[LawSpecRuntime.Value]]" [supplier (expr v) | v <- values]])

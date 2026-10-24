@@ -403,7 +403,7 @@ emitCodecs mappings owner layout declarations = do
     -- case pattern => body, the body on a line of its own, so scalafmt aligns
     -- no arrows.
     arm pattern body = pattern <> D.text " =>" <> D.nest 2 (D.hardline <> body)
-    arrow params body = D.group (D.text (params ++ " =>") <> D.nest 2 (D.softline <> body))
+    arrow = L.arrow
     -- The native codec of any instantiated type, built at run time: a GADT
     -- case's existential fields learn their types from the value's own type.
     dynamicCodec names = do

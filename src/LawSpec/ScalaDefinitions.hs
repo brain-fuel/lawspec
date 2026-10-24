@@ -121,7 +121,7 @@ emitScalaDefinitions layout bits declarations units = do
         pure [Artifact "src/main/scala/lawspec/runtime/LawSpecScalaAdapters.scala" (D.render layout content) "generated" "source"]
     callees = Jvm.definitionCalls units
     call = L.call
-    arrow params body = D.group (D.text (params ++ " =>") <> D.nest 2 (D.softline <> body))
+    arrow = L.arrow
     -- A handler from symbols, as its ability's interface.
     handlerOf ability interface = call ("LawSpecScala.handler[" ++ interface ++ "]") [D.text "symbols", E.quoted (abilityKey ability)]
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value))

@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
+  ( scalaStyle, scalaString, arrow, call, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
@@ -20,6 +20,13 @@ scalaStyle = D.PrettyPoints 80
 -- | A string literal.
 scalaString :: String -> D.Doc
 scalaString = D.text . literalFor "scala"
+
+-- | params => body: on the line when it fits, otherwise the body on the
+-- next line; a body of several lines (a block) starts after the arrow.
+arrow :: String -> D.Doc -> D.Doc
+arrow params body
+  | '\n' `elem` D.render D.Compact body = D.text (params ++ " => ") <> body
+  | otherwise = D.group (D.text (params ++ " =>") <> D.nest 2 (D.softline <> body))
 
 -- | name(a, b), or broken one argument a line.
 call :: String -> [D.Doc] -> D.Doc

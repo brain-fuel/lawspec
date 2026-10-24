@@ -93,7 +93,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     scNativeResult ty value = ScalaLayout.chain (codecOf ty) [("encode", [value])]
     scHandler ability = ScalaExpr.call ("LawSpecScala.handler[" ++ scInterface ability ++ "]") [Doc.text "symbols", ScalaExpr.quoted (C.abilityKey ability)]
     -- params => body, the body on its own line when it does not fit.
-    arrow params body = Doc.group (Doc.text (params ++ " =>") <> Doc.nest 2 (Doc.softline <> body))
+    arrow = ScalaLayout.arrow
     -- An ability's pieces are its owner's: the trait, the production handler
     -- (in the owner's adapter object) and the recording.
     scInterface ability = maybe "Any" (\a -> ScalaAbilities.abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability)
