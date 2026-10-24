@@ -439,8 +439,12 @@ arguments callee cap open close limit args =
       _ -> isChain x && maybe True ((> 60) . width) (flat x) && not (lastCallKept x)
     -- (a chain kept on one line up to its last call, which breaks)
     lastCallKept x = case (chainPrefix x, snd (unchain x)) of
-      (Just p, links@(_ : _)) | LinkCall name _ _ <- last links -> width (p ++ "." ++ name ++ "(") <= 60
+      (Just p, links@(_ : _)) | LinkCall name args _ <- last links -> width (p ++ "." ++ name ++ "(" ++ inner args) <= 60
       _ -> False
+    -- (with the opening of a single argument that overflows it)
+    inner as = case as of
+      [a] | nestedCall a -> opening a
+      _ -> ""
     isInfix x = case x of
       Infix {} -> True
       _ -> False
