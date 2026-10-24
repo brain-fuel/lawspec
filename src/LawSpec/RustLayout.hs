@@ -732,7 +732,8 @@ letDoc binding e =
     let head' = D.text (binding ++ " =")
         value = expr e <> D.text ";"
         sameValue = D.text " " <> value
-        nextValue = D.nest 4 (D.hardline <> value)
+        -- (an if or match on the next line leaves room for the semicolon)
+        nextValue = D.nest 4 (D.hardline <> (if matched then D.narrow 1 (expr e) <> D.text ";" else value))
         -- (a match whose scrutinee breaks on the let's line goes to the
         -- next line when its scrutinee is on one line there)
         matched = case e of

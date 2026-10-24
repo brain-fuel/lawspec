@@ -450,17 +450,17 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           -- written; the runtime says how the values differ.
           proposition names label p = case p of
             Equation _ a b -> do
-              x <- render names a
-              y <- render names b
+              x <- renderL names a
+              y <- renderL names b
               let context = either id (\l -> labelled l (listToMaybe (mapMaybe (writtenLink . expressionOrigin) [a, b]))) label
               pure (statements
-                [ binding "actual" x
-                , binding "expected" y
+                [ RL.stmt (RL.Let "actual" x)
+                , RL.stmt (RL.Let "expected" y)
                 , statement (invoke "ls::expect_equal" [Doc.text "&actual", Doc.text "&expected", string context] <> Doc.text "?")])
             Implication g body -> do
-              guard <- render names g
+              guard <- renderL names g
               inner <- proposition names label body
-              pure (statements [binding "condition" guard,
+              pure (statements [RL.stmt (RL.Let "condition" guard),
                 conditional (Doc.text "condition.boolean()?") inner])
             Conjunction ps -> statements <$> mapM (proposition names label) ps
             Quantified _ _ _ -> Left "a scoped proposition requires complete search planning before native emission"
