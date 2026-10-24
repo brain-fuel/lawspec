@@ -232,7 +232,7 @@ emitJvmTyped style declarations units = do
 dataNames :: [DataDeclaration] -> M.Map String String
 dataNames datas = M.fromList (snd (foldl pick (reserved, []) datas))
   where
-    display = recordDisplayNames datas
+    display = M.map (filter (/= '_')) (recordDisplayNames datas)
     reserved = S.fromList (javaKeywords ++ words "LawSpecTyped LawSpecFast LawSpecRuntime Value Data String Long Boolean Object Integer Math Character Arrays Objects Override Number BigInteger Iterable Comparable Exception RuntimeException Unit")
     pick (taken, acc) d =
       let base = identifier (M.findWithDefault (dataName d) (dataId d) display)

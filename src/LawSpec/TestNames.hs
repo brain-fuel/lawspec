@@ -67,9 +67,11 @@ testIdentifier target ws = case target of
   -- JUnit names are; "law" leads only a keyword or a leading digit.
   -- A one-letter word (a, i) is left out between others, as camel case
   -- would make it an abbreviation (gatewayAReceipt).
-  t | t `elem` ["java", "kotlin", "scala"] -> case (case filter (\w -> length w > 1 || all isDigit w) ws of [] -> ws; kept -> kept) of
-    w : rest | w `notElem` targetKeywords "java" && w `notElem` targetKeywords t -> w ++ concatMap capital rest
-    _ -> "law" ++ concatMap capital ws
+  t | t `elem` ["java", "kotlin", "scala"] ->
+    let kept = case filter (\w -> length w > 1 || all isDigit w) ws of [] -> ws; words' -> words'
+    in case kept of
+      w : rest | w `notElem` targetKeywords "java" && w `notElem` targetKeywords t -> w ++ concatMap capital rest
+      _ -> "law" ++ concatMap capital kept
   _ -> "law" ++ concatMap capital ws
   where capital (c : cs) = toUpper c : cs
         capital [] = []

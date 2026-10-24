@@ -13,12 +13,15 @@ import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.Char (isAlphaNum, toLower, toUpper)
 import Data.List (intercalate, stripPrefix)
 import LawSpec.TestNames (unitTestNames, lawWords)
-import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod)
+import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase)
 import LawSpec.Naming (displayLabel)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, originLocation, exampleLocation)
 
 -- | What the Java test emitter needs besides the plan: names, layout and
 -- bindings, gathered so the emitter takes one argument.
+-- A drawn value, or the declarations that draw it and then its value.
+data DrawBody = DrawValue D.Doc | DrawSteps [D.Doc] D.Doc
+
 data Config = Config
   { packageName :: String
   -- An async adapter's call, awaited.
@@ -87,7 +90,7 @@ data TestCase = TestCase { caseMethod :: String, caseSkipped :: Maybe String, ca
 -- | The JUnit tests emitTests writes for a unit, in their order.
 testCases :: Unit -> [Expanded] -> [TestCase]
 testCases unit laws = concat (zipWith cases (unitTestNames "java" (map name laws)) laws) ++
-  [ TestCase ("benchmark" ++ concatMap capital (lawWords n)) Nothing Nothing
+  [ TestCase ("benchmark" ++ concatMap capital (filter ((> 1) . length) (lawWords n))) Nothing Nothing
   | (n, _) <- maybe [] C.harnessBenchmarks (C.unitHarnessSettings unit) ]
   where
     capital (c : cs) = toUpper c : cs
@@ -124,15 +127,15 @@ emitTests Config{..} unit laws = do
         -- mailboxes read the Clock handler a law installs.
         [braced (text "static") (statements (text "LawSpecRuntime.useVirtualClock(0);" :
           [text "lawspec.Time.registerClock();" | installsClock unit]))] ++
-        [braced (text "static") (statement (call "lawspec.testing.LawSpecHarness.parallelism"
+        [braced (text "static") (statement (call "LawSpecHarness.parallelism"
           [quoted (unitName unit), quoted "threads (JUnit concurrent execution)", text "Runtime.getRuntime().availableProcessors()"])) | parallel] ++
         map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
       body = separate members
       rendered = D.render D.Compact body
-      imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map",
+      imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map", "java.util.function.Supplier",
         "lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecDefinitionBodies",
         "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value", "lawspec.runtime.LawSpecSchema",
-        "org.jetbrains.jetCheck.Generator", "org.jetbrains.jetCheck.PropertyChecker",
+        "lawspec.testing.LawSpecHarness", "org.jetbrains.jetCheck.Generator", "org.jetbrains.jetCheck.PropertyChecker",
         "org.junit.jupiter.api.Test"], usesSimple (simpleName name) rendered]
   pure $ text ("// " ++ generatedHeader sourceFile) <> D.hardline <> D.hardline <>
     (if null packageName then mempty else text ("package " ++ packageName ++ ";") <> D.hardline <> D.hardline) <>
@@ -183,7 +186,12 @@ emitTests Config{..} unit laws = do
       (Just rest, hook) -> braced (text ("void " ++ harnessMethod rest ++ "() throws Throwable")) (hooked hook body)
       (Nothing, Just hook) -> throwingTest name (hooked (Just hook) body)
       (Nothing, Nothing) -> junitTest name body
-    harnessMethod rest = "harness" ++ capitalised rest
+    -- A harness body is an ordinary method, so its name has no underscore.
+    harnessMethod rest = "harness" ++ capitalised (camel rest)
+    camel s = case s of
+      '_' : c : more -> toUpper c : camel more
+      c : more -> c : camel more
+      [] -> []
     capitalised (c : cs) = toUpper c : cs
     capitalised [] = []
     hooked hook body = maybe body (\(before, after) -> statements ([before, body] ++ after)) hook
@@ -212,26 +220,26 @@ emitTests Config{..} unit laws = do
     observations e =
       let h = C.propertyHarness (original e)
           label = owner e ++ "::" ++ name e
-      in [statement (call "lawspec.testing.LawSpecHarness.observe" [quoted label,
+      in [statement (call "LawSpecHarness.observe" [quoted label,
             strings [l | C.Cover _ l _ <- C.harnessCover h], booleans [truth (expr w) | C.Cover _ _ w <- C.harnessCover h],
             strings [l | (_, l) <- C.harnessClassify h], booleans [truth (expr c) | (c, _) <- C.harnessClassify h],
-            text "new Value[] {" <> D.commaSep (map expr (C.harnessLabels h)) <> text "}"]) | observed h] ++
-         [statement (call "lawspec.testing.LawSpecHarness.target" [expr score, quoted label]) | Just score <- [C.harnessTarget h]]
+            E.array (map expr (C.harnessLabels h))]) | observed h] ++
+         [statement (call "LawSpecHarness.target" [expr score, quoted label]) | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
     harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
       (Just reason, _) -> [text "@org.junit.jupiter.api.Disabled(" <> quoted (label ++ ": " ++ reason) <> text ")" <> D.hardline <>
         junitTest (fn ++ "_skipped") mempty]
-      (_, Just reason) -> docs ++ [junitTest (fn ++ "_knownFailing") (statement (call "lawspec.testing.LawSpecHarness.knownFailing"
+      (_, Just reason) -> docs ++ [junitTest (fn ++ "_knownFailing") (statement (call "LawSpecHarness.knownFailing"
         [quoted label, quoted (fn ++ "_knownFailing"), quoted reason,
          call "java.util.List.<lawspec.testing.LawSpecHarness.Body>of" [text ("this::" ++ harnessMethod (fn ++ k)) | k <- kinds]]))]
-      _ | runSettings h -> docs ++ [throwingTest (fn ++ k) (statement (call "lawspec.testing.LawSpecHarness.run"
+      _ | runSettings h -> docs ++ [throwingTest (fn ++ k) (statement (call "LawSpecHarness.run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              text "new int[] {" <> D.commaSep [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h] <> text "}",
              strings [l | k == "_property", C.Cover _ l _ <- C.harnessCover h],
              text (if k == "_property" && observed h then "true" else "false"), text ("this::" ++ harnessMethod (fn ++ k))])) | k <- kinds]
         | otherwise -> docs
-    benchmark (n, body) = throwingTest ("benchmark" ++ concatMap capital (lawWords n)) (withSymbols [
-      statement (call "lawspec.testing.LawSpecHarness.benchmark" [quoted n, closure "()" (statement (text "var measured = " <> expr body))])])
+    benchmark (n, body) = throwingTest ("benchmark" ++ concatMap capital (filter ((> 1) . length) (lawWords n))) (withSymbols [
+      statement (call "LawSpecHarness.benchmark" [quoted n, closure "()" (statement (text "var measured = " <> expr body))])])
     capital (c : cs) = toEnum (fromEnum c - (if c >= 'a' && c <= 'z' then 32 else 0)) : cs
     capital [] = []
     -- A property whose inputs harness strategies draw: the strategies draw
@@ -243,14 +251,14 @@ emitTests Config{..} unit laws = do
       draws <- mapM (\plan -> do
         let inp = domainInput plan
         case strategyOf inp of
-          (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
-          [] -> pure (bind (inputId inp) (call "environment.<Value>generate" [generatorWithin (inputRange machineBits inp) (inputType inp)]))) (generationPlan e)
+          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> drawDoc inp strategy (inputId inp) d
+          [] -> pure [bind (inputId inp) (call "environment.<Value>generate" [generatorWithin (inputRange machineBits inp) (inputType inp)])]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
-          strategyChecks = [statement (call "lawspec.testing.LawSpecHarness.checkDrawn" [quoted strategy, quoted (inputName inp),
+          strategyChecks = [statement (call "LawSpecHarness.checkDrawn" [quoted strategy, quoted (inputName inp),
               conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)])
             | inp <- inputs e, (strategy, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
           base = call "Generator.from" [closure "environment" (statements
-            ([symbols] ++ draws ++ [returned (call "new LawSpecRuntime.Inputs" [call "java.util.List.of" [text (inputId inp) | inp <- inputs e], text "symbols"])]))]
+            ([symbols] ++ concat draws ++ [returned (call "new LawSpecRuntime.Inputs" [call "java.util.List.of" [text (inputId inp) | inp <- inputs e], text "symbols"])]))]
           predicates = concatMap inputRefinements defaults
           bindingsDoc = statements [text "var symbols = inputs.symbols();", text "var values = inputs.values();", fromValues (inputs e)]
           generator = if null predicates then base else chain base [("suchThat",
@@ -259,26 +267,48 @@ emitTests Config{..} unit laws = do
         [("withIterationCount",[number (cases (generation e))]),
          ("forAll",[generator, closure "inputs" (statements ([bindingsDoc] ++ strategyChecks ++ handlerInstalls e ++ [check, returned (text "true")]))])]
     -- A choice among n: a wide draw, reduced, so the weights hold.
-    chooser = text "count -> environment.generate(Generator.integers(0, java.lang.Integer.MAX_VALUE)) % count"
-    drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (call "environment.<Value>generate" [maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)])
-      C.DrawOneOf _ values -> pure (call "lawspec.testing.LawSpecHarness.oneOf" [chooser,
-        call "java.util.List.<java.util.function.Supplier<Value>>of" [lambda "()" (expr v) | v <- values]])
+    chooser = lambda "count" (call "environment.generate" [call "Generator.integers" [text "0", text "java.lang.Integer.MAX_VALUE"]] <> text " % count")
+    -- A draw is the suppliers it needs, each naming one sub-draw and
+    -- declared before its use, then its value: draws stay flat rather than
+    -- nesting a lambda per step.
+    drawDoc inp strategy name d = case d of
+      C.DrawAny ty aim -> pure ([], DrawValue (call "environment.<Value>generate" [maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)]))
+      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecHarness.oneOf" [chooser,
+        call "List.<Supplier<Value>>of" [lambda "()" (expr v) | v <- values]]))
       C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, a) -> (\doc -> call "new lawspec.testing.LawSpecHarness.Weighted" [number w, lambda "()" doc]) <$> drawDoc inp strategy a) alternatives
-        pure (call "lawspec.testing.LawSpecHarness.frequency" [chooser, call "java.util.List.of" options])
+        options <- mapM (\(k, (w, a)) -> do
+          (defs, option) <- named (googleCase (name ++ "Option" ++ show k)) a
+          pure (defs, call "new LawSpecHarness.Weighted" [number w, option])) (zip [1 :: Int ..] alternatives)
+        pure (concatMap fst options, DrawValue (call "LawSpecHarness.frequency" [chooser, call "java.util.List.of" (map snd options)]))
       C.DrawSuchThat inner binder predicate limit -> do
-        doc <- drawDoc inp strategy inner
-        pure (call "lawspec.testing.LawSpecHarness.suchThat" [lambda "()" doc, lambda (localName (C.binderId binder)) (truth (expr predicate)), number limit, quoted strategy])
+        (defs, candidate) <- named (googleCase (name ++ "Candidate")) inner
+        pure (defs, DrawValue (call "LawSpecHarness.suchThat" [candidate, lambda (localName (C.binderId binder)) (truth (expr predicate)), number limit, quoted strategy]))
       -- draw x, then the rest knowing x: a block of declarations.
       C.DrawBind {} -> do
         let chainOf d' = case d' of
               C.DrawBind binder from rest -> let (steps, final) = chainOf rest in ((binder, from) : steps, final)
               _ -> ([], d')
             (steps, final) = chainOf d
-        declarations <- mapM (\(binder, from) -> bind (localName (C.binderId binder)) <$> drawDoc inp strategy from) steps
-        finalDoc <- drawDoc inp strategy final
-        pure (runtime "block" [D.multiline (text "() -> " <> block (statements (declarations ++ [returned finalDoc])))])
+        declarations <- mapM (\(binder, from) -> do
+          let n = localName (C.binderId binder)
+          (defs, body) <- drawDoc inp strategy n from
+          pure (defs ++ [bind n (drawValue body)])) steps
+        (finalDefs, finalBody) <- drawDoc inp strategy name final
+        pure ([], DrawSteps (concat declarations ++ finalDefs) (drawValue finalBody))
+      where
+        -- A sub-draw passed on as a supplier: a plain draw stays inline;
+        -- anything larger is a named supplier, declared before its use.
+        named n sub = do
+          (defs, body) <- drawDoc inp strategy n sub
+          pure $ case (sub, body) of
+            (C.DrawAny _ _, DrawValue v) -> (defs, lambda "()" v)
+            (_, DrawValue v) -> (defs ++ [supplier n (lambda "()" v)], text n)
+            -- A supplier of several steps opens its block on its own line.
+            (_, DrawSteps steps v) -> (defs ++ [D.multiline (text ("Supplier<Value> " ++ n ++ " = () -> ") <> block (statements (steps ++ [returned v]))) <> text ";"], text n)
+        supplier n value = D.group (text ("Supplier<Value> " ++ n ++ " =") <> D.nest 4 (D.softline <> value) <> text ";")
+    drawValue body = case body of
+      DrawValue v -> v
+      DrawSteps steps v -> runtime "block" [D.multiline (text "() -> " <> block (statements (steps ++ [returned v])))]
     -- LAWSPEC_SEED fixes jetCheck's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = braced (text "private static PropertyChecker.Parameters checker()") (statements
@@ -359,7 +389,7 @@ emitTests Config{..} unit laws = do
             [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values]
           boundaryNames = map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           boundaryCheck context = contextualAssertion context (assertion e)
-          argumentValues = text "new Value[] {" <> D.commaSep (map text boundaryNames) <> text "}"
+          argumentValues = E.array (map text boundaryNames)
           boundaryDocs = [testFunction (fn ++ "_" ++ boundaryTestName i)
             (withSymbols (boundarySetup values ++
               [bracketed e [if sharedBoundaries then statement (call boundaryHelper [quoted context,text "symbols",argumentValues])

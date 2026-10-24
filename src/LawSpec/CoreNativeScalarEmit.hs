@@ -949,7 +949,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       V.DataValue ty tag fields -> do
         rendered <- mapM javaValueLiteral fields
         pure $ if custom ty then JavaExpr.call "SCHEMA.construct"
-          [javaRef ty,JavaExpr.quoted (C.idText tag),JavaExpr.call "java.util.List.of" rendered,javaBits,Doc.text "symbols"]
+          ([javaRef ty,JavaExpr.quoted (C.idText tag),javaBits,Doc.text "symbols"] ++ rendered)
           else javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted (C.idText tag),JavaExpr.array rendered]
       V.PresenceValue ty payload -> do
         rendered <- traverse javaValueLiteral payload
@@ -989,7 +989,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaHandler ability = Doc.group (Doc.text ("((" ++ javaInterface ability ++ ")") <>
       Doc.nest 4 (Doc.softline <> JavaExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability)]) <> Doc.text ")")
     javaConstruct' ty tag fields
-      | custom ty = JavaExpr.call "SCHEMA.construct" [javaRef ty,JavaExpr.quoted tag,JavaExpr.call "java.util.List.of" fields,javaBits,Doc.text "symbols"]
+      | custom ty = JavaExpr.call "SCHEMA.construct" ([javaRef ty,JavaExpr.quoted tag,javaBits,Doc.text "symbols"] ++ fields)
       | otherwise = javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted tag,JavaExpr.array fields]
     javaEqual ty a b
       | custom ty = JavaExpr.call "SCHEMA.equal" [javaRef ty,a,b,javaBits,Doc.text "symbols"]

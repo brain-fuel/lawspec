@@ -1,8 +1,9 @@
 -- | Native data declarations follow the resolved-plan/renderer separation used
 -- by Go+. Public fields retain native types; runtime Value is only the bridge
 -- for primitive domains with no faithful Java representation.
-module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaCodecDocIn, javaDataName, identifier) where
+module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaCodecDocIn, javaDataName, identifier, javaCodecName) where
 
+import LawSpec.JvmNames (googleCase)
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
@@ -35,7 +36,8 @@ type Names = [(String, String)]
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
-  let display = recordDisplayNames declarations
+  -- Google's type names have no underscore (Record_2416ebe3 is Record2416ebe3).
+  let display = M.map (filter (/= '_')) (recordDisplayNames declarations)
       sourceNames = [(C.idText (C.dataId d), M.findWithDefault (C.dataName d) (C.dataId d) display) | d <- declarations]
       sourceNamesCounts = caseInsensitiveCounts sourceNames
       qualifiedCounts = caseInsensitiveCounts qualified
@@ -367,9 +369,16 @@ collectionCodec call schema short children rest = case short of
   "KeyVal" -> call (schema ++ ".keyVal") (children ++ rest)
   _ -> call (schema ++ ".sequence") (D.text (show short) : children ++ rest)
 
+-- | A data type's codec method: Google's names allow no two capitals
+-- together, so VConsDetails's is vconsDetailsCodec.
+javaCodecName :: String -> String
+javaCodecName = codecName
+
 codecName :: String -> String
 codecName [] = "dataCodec"
-codecName (first:rest) = toLower first : rest ++ "Codec"
+codecName name = googleCase (lowerFirst name ++ "Codec")
+  where lowerFirst (first:rest) = toLower first : rest
+        lowerFirst [] = []
 
 codecSource :: D.Layout -> Names -> [C.DataDeclaration] -> Either String String
 codecSource layout names declarations = do

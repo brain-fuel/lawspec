@@ -422,7 +422,7 @@ emitBindings minify plan testing files = do
         Just hook -> do
           name <- J.javaDataName declarations (C.dataId d)
           let simple = last (split '.' name)
-              codecName = case simple of [] -> "dataCodec"; first:rest -> toLower first : rest ++ "Codec"
+              codecName = J.javaCodecName simple
               canonical = call ("LawSpecDataCodecs." ++ codecName)
                 ([D.text "schema",D.text "bits",D.text "symbols"] ++
                  [call "schema.supported" [D.text (v ++ ".type()"),D.text "bits",D.text "symbols"] |

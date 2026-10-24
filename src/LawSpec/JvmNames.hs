@@ -7,7 +7,7 @@
 -- spaces. ref:DEC-readable-generated-names ref:DEC-native-string-literals
 module LawSpec.JvmNames
   ( jvmReserved, jvmLocal, jvmClaim, jvmClaimAll, jvmLocalTable, jvmString, jvmStringChunks
-  , exampleTestNames, boundaryTestName, contractMethod, javadoc, jvmMethod
+  , exampleTestNames, boundaryTestName, contractMethod, javadoc, jvmMethod, googleCase
   ) where
 
 import Data.Char (isAlphaNum, isDigit, toLower, toUpper)

@@ -21,9 +21,9 @@ quoted s = case pieces s of
   _ -> jvmString "java" s
   where
     -- After each ::, merged while a piece stays within 36 characters; a
-    -- longer piece (a hash) in pieces of 32, so a deeply nested line fits.
+    -- longer hash in pieces of 32, so a deeply nested line fits.
     pieces = merge . concatMap chunks . cuts
-    chunks t = if length t > 40 then takeWhile (not . null) (map (take 32) (iterate (drop 32) t)) else [t]
+    chunks t = if length t > 40 && all (`elem` ("0123456789abcdef:" :: String)) t then takeWhile (not . null) (map (take 32) (iterate (drop 32) t)) else [t]
     cuts t = case breakAfter t of
       (a, []) -> [a]
       (a, b) -> a : cuts b
@@ -45,7 +45,7 @@ call name args = D.group (D.text (name ++ "(") <>
 -- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array values = D.group (D.text "new Value[] {" <>
-  D.nest 2 (D.softbreak <> D.group (D.commaSep values)) <> D.softbreak <> D.text "}")
+  D.nest 4 (D.softbreak <> D.joinWith (D.text "," <> D.softline) values) <> D.softbreak <> D.text "}")
 
 -- | Runtime checks name a type by a schema reference built from Core.
 reference :: Type -> Either String D.Doc
@@ -169,7 +169,8 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey local 
         if custom (expressionType term) && idText tag `notElem` ["List::Nil","List::Cons"]
           then do
             ref <- reference (expressionType term)
-            pure (call (schemaName ++ ".construct") [ref,quoted (idText tag),call "java.util.List.of" values,bits,D.text "symbols"])
+            -- The fields come last, so a nested value is indented once per level.
+            pure (call (schemaName ++ ".construct") ([ref,quoted (idText tag),bits,D.text "symbols"] ++ values))
           else do
             key <- typeKey (expressionType term)
             pure (runtime "construct" [key,quoted (idText tag),array values])

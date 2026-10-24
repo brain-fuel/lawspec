@@ -1126,6 +1126,13 @@ public final class LawSpecSchema
     }
   }
 
+  /** A constructor's value from its fields, listed last, as generated code builds one. */
+  public Value construct(
+      Named type, String tag, int bits, Map<String, Object> symbols, Value... fields)
+  {
+    return construct(type, tag, List.of(fields), bits, symbols);
+  }
+
   public Value construct(Named type, String tag, List<Value> fields, int bits)
   {
     return construct(type, tag, fields, bits, new HashMap<>());
