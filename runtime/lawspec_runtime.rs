@@ -38,6 +38,12 @@ pub fn with_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) 
         .or_default()
         .clone();
     let _serial = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    on_stack(body)
+}
+
+/// Runs a generated test on a thread with a large stack, without waiting for
+/// the file's other tests: for tests the harness orders itself.
+pub fn on_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> T {
     std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
         .spawn(body)

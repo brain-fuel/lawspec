@@ -299,8 +299,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
     -- the case has acquired its T.
     handlerInstalls owner p =
       [RL.stmt (RL.Let (sharedName h) (RL.call "std::sync::Arc::new" [RL.call ("lawspec_abilities::" ++ Abilities.moduleOf owner ++ "::" ++ specName h ++ "::new") [RL.atom "ctx"]])) | h <- sharedOf owner p] ++
-      installsWith owner (made owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c == Nothing]
-    lateInstalls owner p = installsWith owner (made owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c /= Nothing]
+      installsWith owner (made [] owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c == Nothing]
+    -- (made with the resources' locals, in the order the law names them)
+    lateInstalls owner p locals = installsWith owner (made locals owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c /= Nothing]
     installsFor owner = installsWith owner (\_ _ _ -> Nothing)
     installsWith owner making handlers = case [(a, c) | (a, c) <- handlers, not (isFail a)] of
       [] -> []
@@ -318,13 +319,13 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       ProductionHandler -> do
         (_, ability) <- findAbility allUnits a
         t <- abilityResource ability
-        listToMaybe [(t, "resource" ++ show i) | (i, r) <- zip [0 :: Int ..] (propertyResources p), binderType (resourceBinder r) == t]
+        listToMaybe [(t, i) | (i, r) <- zip [0 :: Int ..] (propertyResources p), binderType (resourceBinder r) == t]
       RecordingHandler inner -> resourceFor p a inner
       SpecHandler _ -> Nothing
-    made owner p a trait c = case c of
+    made locals owner p a trait c = case c of
       SpecHandler _ | Just h <- specOf owner c, h `elem` sharedOf owner p ->
         Just (RL.method (RL.atom (sharedName h)) "clone" [])
-      ProductionHandler | Just (t, local) <- resourceFor p a c, Just (_, ability) <- findAbility allUnits a ->
+      ProductionHandler | Just (t, index) <- resourceFor p a c, local <- locals !! index, Just (_, ability) <- findAbility allUnits a ->
         let native = either error id (NativeData.rustDataType planDataDeclarations t)
             reference = either error id (schemaType t)
             owned = if ownerName ability == idText (unitId owner) then "adapter" else Abilities.moduleOfName (ownerName ability)
@@ -604,7 +605,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               [Doc.text (unusedAs n used ++ ": ls::Value") | (_,n) <- names]
         -- A law's resources: each case acquires them, then runs, then
         -- releases them, the last first, even when the case fails or panics.
-        let bracket inner [] = pure (statements (lateInstalls unit p ++ inner))
+        let bracket inner [] = pure (statements (lateInstalls unit p (map snd resourceNames) ++ inner))
             -- A shared resource (share R per ...): the runtime keeps one per
             -- scope key, resets it before each later use, holds it for this
             -- case until its guard drops, and releases it at exit.
@@ -873,8 +874,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       let adapterItems = Doc.joinWith blank (stubs ++ productions)
           adapterDoc = statements ([Doc.text (if generatedAdapter then "// " ++ generatedHeader (unitSourceFile unit)
               else "// Scaffolded by LawSpec" ++ maybe "" (" from " ++) (unitSourceFile unit) ++ ". User-owned; never overwritten.")] ++
-            [Doc.text "use crate::lawspec_runtime as ls;" | mentions "ls" adapterItems] ++
-            [Doc.text "use crate::lawspec_native::*;" | generatedAdapter && hasNativeTypes]) <>
+            -- (in rustfmt's order)
+            [Doc.text "use crate::lawspec_native::*;" | generatedAdapter && hasNativeTypes] ++
+            [Doc.text "use crate::lawspec_runtime as ls;" | mentions "ls" adapterItems]) <>
             (if null stubs && null productions then mempty else blank <> adapterItems) <> Doc.hardline
           -- The definitions file calls workflow steps by their crate paths;
           -- this unit's own module is already mounted as adapter.
@@ -1024,15 +1026,20 @@ written link = if take 1 link == "<" then Nothing else Just link
 -- | A test's body on a thread with room for deep values.
 -- | A closure running body under ls::with_stack: rustfmt puts a body that
 -- breaks over lines in braces.
+-- The harness orders these tests itself, so they run on their own
+-- stacks without waiting for the file's other tests (ls::on_stack).
 stackClosure :: Doc.Doc -> Doc.Doc
 stackClosure body
-  | Doc.render Doc.Compact body == "Ok(())" = Doc.text "|| " <> withStack body
-  | otherwise = Doc.text "|| " <> block (withStack body)
+  | Doc.render Doc.Compact body == "Ok(())" = Doc.text "|| " <> onStack "ls::on_stack" body
+  | otherwise = Doc.text "|| " <> block (onStack "ls::on_stack" body)
 
 withStack :: Doc.Doc -> Doc.Doc
-withStack body
-  | Doc.render Doc.Compact body == "Ok(())" = Doc.text "ls::with_stack(|| Ok(()))"
-  | otherwise = Doc.text "ls::with_stack(|| " <> block body <> Doc.text ")"
+withStack = onStack "ls::with_stack"
+
+onStack :: String -> Doc.Doc -> Doc.Doc
+onStack runner body
+  | Doc.render Doc.Compact body == "Ok(())" = Doc.text (runner ++ "(|| Ok(()))")
+  | otherwise = Doc.text (runner ++ "(|| ") <> block body <> Doc.text ")"
 
 -- | A call whose last argument is a closure: rustfmt keeps the closure's
 -- opening on the call's line when the other arguments fit there.

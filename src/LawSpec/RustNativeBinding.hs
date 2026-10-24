@@ -288,8 +288,8 @@ emitCall bits declarations plan handlers declaration native = do
       receiverType <- rustReference (resolvedNativeType binding)
       method <- rustReference (NativeRef [name])
       -- The handle lends its native value; a method never takes it over.
-      pure ([D.group (D.text ("let _native_self: &" ++ receiverType ++ " = value" ++ show receiver ++ ".native()") <>
-          D.nest 4 (D.softbreak <> D.text ".unwrap_or_else(|error| panic!(\"{}\", error));"))],
+      pure ([L.stmt (L.Let ("_native_self: &" ++ receiverType) (L.method (L.method (L.atom ("value" ++ show receiver)) "native" [])
+          "unwrap_or_else" [L.closure "|error|" (L.macroCall "panic" [L.atom "\"{}\"", L.atom "error"])]))],
         D.text ("_native_self." ++ method), [a | a@(i,_) <- indexed, i /= receiver])
   values <- mapM (\(i,ty) -> convert env [] Nothing True ty (D.text ("value" ++ show i))) passed
   types <- mapM (nativeTypeName env [] . snd) passed
