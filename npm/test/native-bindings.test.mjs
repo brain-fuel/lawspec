@@ -146,7 +146,7 @@ end unit
       assert.match(stub.content,/export function bytes/);
       if(target==='typescript') {
         assert.match(stub.content,/Arbitrary<Array<T0>>/);
-        assert.match(stub.content,/from '\.\.\/\.\.\/\.\.\/library\/domain\/lawspec_data.js'/);
+        assert.match(stub.content,/from "\.\.\/\.\.\/\.\.\/library\/domain\/lawspec_data.js"/);
       }
       await applyWrites([await planWrites(directory,files)]);
       const implementation='// application-owned fast-check arbitraries\n';

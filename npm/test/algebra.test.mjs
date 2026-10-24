@@ -184,7 +184,7 @@ end unit
     await writeFile(adapter, good);
     assert.match((await run()).stdout, /GUARDS=1\s/);
     await writeFile(adapter, good.replace("return x+y;", "return y;"));
-    await assert.rejects(run(), (e) => e.code === 1 && /expect operation/.test(e.stdout));
+    await assert.rejects(run(), (e) => e.code === 1 && /compound\.lawspec:\d+ \| actual=/.test(e.stdout));
     await writeFile(
       adapter,
       good
