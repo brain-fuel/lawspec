@@ -235,7 +235,8 @@ overflowable count e = case e of
   Method {} -> count == 1
   Struct {} -> count == 1
   -- (rustfmt keeps an overflowing match's or if's head on one line)
-  Match scrutinee _ -> count == 1 && isJust (oneLine scrutinee)
+  -- (or a block's opening)
+  Match scrutinee _ -> count == 1 && (isJust (oneLine scrutinee) || blocky scrutinee)
   If c _ _ -> count == 1 && isJust (oneLine c)
   Try a -> overflowable count a
   Prefix _ a -> overflowable count a
