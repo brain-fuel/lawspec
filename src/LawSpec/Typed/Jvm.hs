@@ -1346,8 +1346,8 @@ scalaFromNative env ty = case ty of
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = typedName ++ "." ++ variantName env d c
-          | isProductType d = "new " ++ typedName ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
-          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ diamond typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | isProductType d = "new " ++ typedName ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
         pattern c | singleton c = nativeCase c
                   | otherwise = "y: " ++ nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric ++ " @unchecked")
     if isProduct d

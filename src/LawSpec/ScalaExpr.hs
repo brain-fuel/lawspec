@@ -227,5 +227,7 @@ renderExpression declarations bits local external = render . flattenLets
       body <- render (caseBody matched)
       let bindings = [D.text ("val " ++ local (binderId binder) ++ " = fields(" ++ show index ++ ")")
             | (index,binder) <- zip [0::Int ..] (caseBinders matched)]
+      -- A body that is a block is the arm's block, not one inside it.
       pure (D.text ("case " ++ Native.scalaQuoted (idText (caseConstructor matched)) ++ " => ") <>
-        D.block 2 (D.joinWith D.hardline (bindings ++ [body])))
+        if null bindings && take 1 (D.render D.Compact body) == "{" then body
+        else D.block 2 (D.joinWith D.hardline (bindings ++ [body])))
