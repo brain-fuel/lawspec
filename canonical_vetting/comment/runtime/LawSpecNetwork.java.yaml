@@ -40,8 +40,8 @@ decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecN
 decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/method/kemKeyPair:
   digest: sha256:d2c9b448d8b7e595
   verdict: pending
-decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/method/w:
-  digest: sha256:5854a0579e400499
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/method/lengthPrefixed:
+  digest: sha256:551b2835741cdf43
   verdict: pending
 decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureSession:
   digest: sha256:72756ee87cc69f50

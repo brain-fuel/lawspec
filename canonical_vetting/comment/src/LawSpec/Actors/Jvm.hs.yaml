@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/data/Wire:
 decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/adapterClass:
   digest: sha256:fcd650559ac20ef7
   verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/adapterFunction:
+  digest: sha256:884aa01c00ad6ef7
+  verdict: pending
 decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/emit:
   digest: sha256:2479be8cacb3819f
   verdict: pending

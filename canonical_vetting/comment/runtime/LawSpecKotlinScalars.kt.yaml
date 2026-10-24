@@ -1,0 +1,24 @@
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars:
+  digest: sha256:e6b0fa375428fc02
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/bounded:
+  digest: sha256:76c7ebbb74f98797
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/either:
+  digest: sha256:071ad4a7b8164916
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/generator:
+  digest: sha256:804fe76b91627fd3
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/list:
+  digest: sha256:f404959ea26e73c5
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/maybe:
+  digest: sha256:bc8e773b02ee15e4
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/present:
+  digest: sha256:3d8897485c1f56ba
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinScalars.kt/object/LawSpecScalars/function/small:
+  digest: sha256:11aebf7a05bf1ec4
+  verdict: pending

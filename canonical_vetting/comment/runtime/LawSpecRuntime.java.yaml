@@ -433,8 +433,14 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/binary:
   digest: sha256:06fbc964eb725e7b
   verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/block:
+  digest: sha256:fd25e362be3a2669
+  verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/channel:
   digest: sha256:22fa72ef4266000e
+  verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/check:
+  digest: sha256:bfe80068670a1a7a
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/checkModel:
   digest: sha256:3b46e14eeb749b7f
@@ -508,6 +514,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/handleTarget:
   digest: sha256:548330f773c1197b
   verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/handler#2:
+  digest: sha256:5d4dc0e3273c16e3
+  verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/happenedBefore:
   digest: sha256:ca647bb840fc7398
   verdict: pending
@@ -528,6 +537,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/linearizesHistory:
   digest: sha256:4e68a47f184212b5
+  verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/nativeBindingFailure:
+  digest: sha256:e7d5a599d8373fdb
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/nativeFailures:
   digest: sha256:dffce57166b4a690
@@ -622,6 +634,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/splitAddress:
   digest: sha256:f77dbdeeeeb14745
   verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/text:
+  digest: sha256:2c49b523f786aa4c
+  verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/textValue:
   digest: sha256:eefb596b6c1193f9
   verdict: pending
@@ -681,6 +696,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/record/Hedge:
   digest: sha256:f7715b35989b36e5
+  verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/record/Inputs:
+  digest: sha256:5d72afb508a94c3f
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/record/MappedFailure:
   digest: sha256:70b8dcfcb981810a

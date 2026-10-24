@@ -139,6 +139,9 @@ ledger/DEC-incremental-compilation:
 ledger/DEC-indexed-families-as-evidence:
   digest: sha256:ee9366fe364cd399
   verdict: pending
+ledger/DEC-jvm-readable-output:
+  digest: sha256:2b7541a218b812db
+  verdict: pending
 ledger/DEC-law-set-analysis:
   digest: sha256:7b2190bf82b9eded
   verdict: pending

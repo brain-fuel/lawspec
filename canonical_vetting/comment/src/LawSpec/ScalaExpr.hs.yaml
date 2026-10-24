@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/rend
 decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/scalarLiteral:
   digest: sha256:aed6fbffff626763
   verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/schemaName:
+  digest: sha256:1785584aaa185dac
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/valueType:
   digest: sha256:0aa89f12fbc52ce8
   verdict: pending

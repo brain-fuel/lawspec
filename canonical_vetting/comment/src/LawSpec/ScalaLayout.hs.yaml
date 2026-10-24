@@ -1,0 +1,54 @@
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout:
+  digest: sha256:86679600ebf8ecf3
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/arrow:
+  digest: sha256:549f27a146d5f17a
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/bind:
+  digest: sha256:ff8db5ef0c93d8aa
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/block:
+  digest: sha256:0fcae5910e422b48
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/call:
+  digest: sha256:f731e40f096bff19
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/callThen:
+  digest: sha256:4564796858de0f01
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/chain:
+  digest: sha256:774ceeb73e8c784c
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/comment:
+  digest: sha256:d9ef1f9156e69317
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/condition:
+  digest: sha256:32442878f9c1c87e
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/conjunction:
+  digest: sha256:0ed6953c4f6cb3f5
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/conjunctionStatement:
+  digest: sha256:f85652fdaed6a658
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/equalsBody:
+  digest: sha256:449a6e0528278a60
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/lambda:
+  digest: sha256:96c78286075ed05a
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/parameters:
+  digest: sha256:47ba60452982101e
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/scalaString:
+  digest: sha256:b4f731199e6e5b27
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/trailing:
+  digest: sha256:2a77d587c2a26de6
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/trailingChain:
+  digest: sha256:bcfc305a244f2d3d
+  verdict: pending
+"decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/trailingChain'":
+  digest: sha256:bf9e60ac02bcc657
+  verdict: pending

@@ -1,0 +1,63 @@
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout:
+  digest: sha256:46ec9e35819a9f22
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/arguments:
+  digest: sha256:1b64994b53bb1dc2
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/bind:
+  digest: sha256:35d15a76e437c6de
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/block:
+  digest: sha256:0fcae5910e422b48
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/call:
+  digest: sha256:f731e40f096bff19
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/callThen:
+  digest: sha256:310a8b058608f150
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/callWithSuffix:
+  digest: sha256:770aef3e48d22dc4
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/cast:
+  digest: sha256:c69bc40d30375be2
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/castCall:
+  digest: sha256:aba865c8853e315d
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/chain:
+  digest: sha256:4445386718e959d8
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/condition:
+  digest: sha256:09df566bed375d8d
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/equalsBody:
+  digest: sha256:6a344563803a8f11
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/escapedPath:
+  digest: sha256:6f4d6c20922f9408
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/kotlinString:
+  digest: sha256:b4f731199e6e5b27
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/lambda:
+  digest: sha256:3250860ba2ad6894
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/operators:
+  digest: sha256:48b264dfa6fcd2c3
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/pairTo:
+  digest: sha256:4b7fd1e3fa8d15ae
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/qualifiedCall:
+  digest: sha256:e37918ea6829d129
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/selects:
+  digest: sha256:4a7d7b50f02cc06d
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/trailing:
+  digest: sha256:919feded60c41c59
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/trailingCall:
+  digest: sha256:152d40b65c1631d4
+  verdict: pending

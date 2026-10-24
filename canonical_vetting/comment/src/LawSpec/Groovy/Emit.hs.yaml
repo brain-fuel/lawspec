@@ -13,3 +13,6 @@ decision/haskell/src/LawSpec/Groovy/Emit.hs/module/LawSpec.Groovy.Emit/function/
 decision/haskell/src/LawSpec/Groovy/Emit.hs/module/LawSpec.Groovy.Emit/function/spaced:
   digest: sha256:6520a4f6b108bb74
   verdict: pending
+decision/haskell/src/LawSpec/Groovy/Emit.hs/module/LawSpec.Groovy.Emit/function/splitText:
+  digest: sha256:e5d0324d6c7b98c0
+  verdict: pending

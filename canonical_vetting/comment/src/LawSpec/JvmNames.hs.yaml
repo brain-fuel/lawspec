@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames:
+  digest: sha256:ad4578e48eccd11b
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/boundaryTestName:
+  digest: sha256:e7967e1bf62491e1
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/contractMethod:
+  digest: sha256:47505dcdb3ea187d
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/exampleTestNames:
+  digest: sha256:2322171bb38d525b
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/javadoc:
+  digest: sha256:fa09d402c0fd5524
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmClaim:
+  digest: sha256:b7a64f69085f357d
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmLocal:
+  digest: sha256:3643197303f52f65
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmLocalTable:
+  digest: sha256:c2b2ec2e7516252a
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmMethod:
+  digest: sha256:f4c968080a44f0f6
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmReserved:
+  digest: sha256:ab5b306662758592
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmString:
+  digest: sha256:353b789667b84a4d
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmStringChunks:
+  digest: sha256:192f2c2e434fbc51
+  verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/shortened:
+  digest: sha256:76018b3f465b4fa5
+  verdict: pending

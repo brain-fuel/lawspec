@@ -1,0 +1,21 @@
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting:
+  digest: sha256:cab7cd762b1febdf
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting/function/check:
+  digest: sha256:4f3b02bbd11bee17
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting/function/check#2:
+  digest: sha256:00f826d5adac992e
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting/function/config:
+  digest: sha256:37077c61061ab75e
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting/function/filter:
+  digest: sha256:3df089500b6e78f6
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting/function/inputs:
+  digest: sha256:524591ab7a4ed5de
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinTesting.kt/object/LawSpecTesting/function/map:
+  digest: sha256:1d73858ca30227c7
+  verdict: pending

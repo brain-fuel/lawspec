@@ -1,11 +1,17 @@
 decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties:
   digest: sha256:c770a5f6f5afc5b9
   verdict: pending
-decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/data/Config:
-  digest: sha256:0efe7491558a44d8
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/data/DrawBody:
+  digest: sha256:e101c24ba284eea8
   verdict: pending
-decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/closure:
-  digest: sha256:4d570400e04ad4f9
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/braced:
+  digest: sha256:d81d7a06dcf29dbf
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/comment:
+  digest: sha256:09f543f773110a43
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/emitSplitTests:
+  digest: sha256:f83fdde5d827aed2
   verdict: pending
 decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/emitTests:
   digest: sha256:80354b94bbe44d3f

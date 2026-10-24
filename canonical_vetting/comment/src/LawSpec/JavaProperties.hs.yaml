@@ -1,9 +1,21 @@
 decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties:
   digest: sha256:cd244eab4dab181f
   verdict: pending
-decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/data/Config:
-  digest: sha256:a8f68307a9f40745
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/data/DrawBody:
+  digest: sha256:94185cb66e0ef7d8
+  verdict: pending
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/data/TestCase:
+  digest: sha256:0c208492b699ea51
+  verdict: pending
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/function/braced:
+  digest: sha256:0414d9be0d7f38ce
   verdict: pending
 decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/function/emitTests:
   digest: sha256:804327a0a1d7b444
+  verdict: pending
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/function/exampleSuffixesOf:
+  digest: sha256:8561d5b934c3147f
+  verdict: pending
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/function/testCases:
+  digest: sha256:0f764256e3b1cb61
   verdict: pending

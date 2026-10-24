@@ -4,6 +4,18 @@ decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala:
 decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/class/Symbol:
   digest: sha256:4e61e27ea5253031
   verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/allOf:
+  digest: sha256:12a136d1c543fa4d
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/anyOf:
+  digest: sha256:9d198a25c1660710
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/cast:
+  digest: sha256:f138c51436cc141d
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/handler:
+  digest: sha256:23fa5cf9da9cf58c
+  verdict: pending
 decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/orFail:
   digest: sha256:cd45865d17da07cb
   verdict: pending

@@ -10,8 +10,14 @@ decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/ca
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/checked:
   digest: sha256:e88b5f8c58326200
   verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/checkedIn:
+  digest: sha256:94e13ffc748eacc1
+  verdict: pending
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/codec:
   digest: sha256:1301df2666b2cd46
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/codecIn:
+  digest: sha256:aba81a6555369f2d
   verdict: pending
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/quoted:
   digest: sha256:275781853a2f3375
@@ -21,6 +27,9 @@ decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/re
   verdict: pending
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/renderExpression:
   digest: sha256:9d76aa9f3728d69b
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/renderExpressionIn:
+  digest: sha256:f9371f71e73e9ef7
   verdict: pending
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/scalarLiteral:
   digest: sha256:fa5ecf7fbe1a4cdd

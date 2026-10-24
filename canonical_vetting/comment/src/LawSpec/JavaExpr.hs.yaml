@@ -7,8 +7,14 @@ decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/array:
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/call:
   digest: sha256:5449eb5200e2a76e
   verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/declare:
+  digest: sha256:e3142821990404bd
+  verdict: pending
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/javaDataKey:
   digest: sha256:eaa66ee2d9226329
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/listItems:
+  digest: sha256:c54d7517235c2457
   verdict: pending
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/quoted:
   digest: sha256:b8ac0ddbaa2b52e8
@@ -16,11 +22,17 @@ decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/quoted
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/reference:
   digest: sha256:8f72f696ea871622
   verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/referenceIn:
+  digest: sha256:ceab4536dc579c19
+  verdict: pending
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/renderExpression:
   digest: sha256:526269bab08b3302
   verdict: pending
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/renderExpressionWithContext:
   digest: sha256:c6698bad974979dd
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/renderExpressionWithSchema:
+  digest: sha256:bfb7091a54d5238b
   verdict: pending
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/scalarLiteral:
   digest: sha256:def0789517dc0aea

@@ -1,0 +1,12 @@
+decision/scala/runtime/LawSpecScalaTesting.scala/object/LawSpecTesting:
+  digest: sha256:46150a3ca6a69979
+  verdict: pending
+decision/scala/runtime/LawSpecScalaTesting.scala/object/LawSpecTesting/def/check:
+  digest: sha256:351f822c29335ab9
+  verdict: pending
+decision/scala/runtime/LawSpecScalaTesting.scala/object/LawSpecTesting/def/check#2:
+  digest: sha256:00f826d5adac992e
+  verdict: pending
+decision/scala/runtime/LawSpecScalaTesting.scala/object/LawSpecTesting/def/inputs:
+  digest: sha256:82e960c0f27c59ea
+  verdict: pending

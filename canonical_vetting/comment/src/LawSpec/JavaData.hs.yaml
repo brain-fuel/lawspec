@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData:
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/builtinFree:
   digest: sha256:90c5d68752690b58
   verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/caseTag:
+  digest: sha256:e9a335bf3568aaa4
+  verdict: pending
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/collectionCodec:
   digest: sha256:f96ecf52a711e8f0
   verdict: pending
@@ -28,8 +31,14 @@ decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCo
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodecDoc:
   digest: sha256:69d59a4e164c5348
   verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodecDocIn:
+  digest: sha256:43c378b9f6cfadfa
+  verdict: pending
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodecDocWithContext:
   digest: sha256:7d033e7299abbce9
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodecName:
+  digest: sha256:d61b5e048e453225
   verdict: pending
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaConstructorClass:
   digest: sha256:86476269d5ed083f

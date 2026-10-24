@@ -1,0 +1,12 @@
+decision/kotlin/runtime/LawSpecKotlinDraws.kt/object/LawSpecDraws:
+  digest: sha256:d7c13039dbc907dd
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinDraws.kt/object/LawSpecDraws/function/frequency:
+  digest: sha256:91cf2027c696a4a6
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinDraws.kt/object/LawSpecDraws/function/oneOf:
+  digest: sha256:94979c1a98b06f8c
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinDraws.kt/object/LawSpecDraws/function/suchThat:
+  digest: sha256:2d803baca53bf453
+  verdict: pending

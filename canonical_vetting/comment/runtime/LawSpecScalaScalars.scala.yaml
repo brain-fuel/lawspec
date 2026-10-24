@@ -1,0 +1,24 @@
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars:
+  digest: sha256:8712cfa10b324763
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/bounded:
+  digest: sha256:1c515edf764cf79c
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/either:
+  digest: sha256:071ad4a7b8164916
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/generator:
+  digest: sha256:804fe76b91627fd3
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/list:
+  digest: sha256:f404959ea26e73c5
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/maybe:
+  digest: sha256:bc8e773b02ee15e4
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/present:
+  digest: sha256:3d8897485c1f56ba
+  verdict: pending
+decision/scala/runtime/LawSpecScalaScalars.scala/object/LawSpecScalars/def/small:
+  digest: sha256:11aebf7a05bf1ec4
+  verdict: pending

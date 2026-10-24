@@ -85,6 +85,9 @@ decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/lambda
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/lineComment:
   digest: sha256:d07d96696db5a52c
   verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/mapText:
+  digest: sha256:3fe370c9477461fa
+  verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/multiline:
   digest: sha256:531b420bc009aa64
   verdict: pending

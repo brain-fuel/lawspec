@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/ko
 decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinCodecDoc:
   digest: sha256:1e92e8390af41242
   verdict: pending
+decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinCodecDocIn:
+  digest: sha256:6d78ba39c1fc1f5b
+  verdict: pending
 decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinCodecDocWithContext:
   digest: sha256:bf31fbdc6c6ac2f7
   verdict: pending
@@ -39,6 +42,9 @@ decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/ko
   verdict: pending
 decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinNativeCodecDoc:
   digest: sha256:f6e2310081aa838c
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinNativeCodecDocIn:
+  digest: sha256:e03a25a055138236
   verdict: pending
 decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinNativeTypeDoc:
   digest: sha256:8a93087a0eafa171

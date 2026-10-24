@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/JvmLets.hs/module/LawSpec.JvmLets:
+  digest: sha256:65b18ef06e88b886
+  verdict: pending
+decision/haskell/src/LawSpec/JvmLets.hs/module/LawSpec.JvmLets/function/flattenStrictLets:
+  digest: sha256:7f99eed2489307f6
+  verdict: pending

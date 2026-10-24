@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions:
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/definitionCalls:
   digest: sha256:0583ee10e7fdfbfe
   verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/definitionMethods:
+  digest: sha256:afb07248025b869c
+  verdict: pending
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/emitJavaDefinitions:
   digest: sha256:edd7926a3b435ee0
   verdict: pending
@@ -13,9 +16,15 @@ decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/f
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/emitScalaDefinitionBodies:
   digest: sha256:6bbd8783b3abaff3
   verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/freshenShadowed:
+  digest: sha256:098af2450a3b45b6
+  verdict: pending
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/kotlinAdapterBridge:
   digest: sha256:1b06320b74905627
   verdict: pending
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/orchestratedAdapters:
   digest: sha256:c598053dc9245e46
+  verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/samePackage:
+  digest: sha256:735d61224e3a35a0
   verdict: pending

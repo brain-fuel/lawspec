@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/JavaText.hs/module/LawSpec.JavaText:
+  digest: sha256:dc696c14591f1029
+  verdict: pending
+decision/haskell/src/LawSpec/JavaText.hs/module/LawSpec.JavaText/function/javaLayout:
+  digest: sha256:92ce35546f40ae51
+  verdict: pending
+decision/haskell/src/LawSpec/JavaText.hs/module/LawSpec.JavaText/function/javaText:
+  digest: sha256:9f7c030cb1921443
+  verdict: pending
+decision/haskell/src/LawSpec/JavaText.hs/module/LawSpec.JavaText/function/javaType:
+  digest: sha256:fef040edf3afbc9b
+  verdict: pending
+decision/haskell/src/LawSpec/JavaText.hs/module/LawSpec.JavaText/function/laid:
+  digest: sha256:5189ff46e2d1c08f
+  verdict: pending
+decision/haskell/src/LawSpec/JavaText.hs/module/LawSpec.JavaText/function/tokenOf:
+  digest: sha256:296ad2d76ee9204b
+  verdict: pending

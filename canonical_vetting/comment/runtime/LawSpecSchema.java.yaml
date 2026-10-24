@@ -19,8 +19,17 @@ decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSc
 decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/cast:
   digest: sha256:3413df7eb29c7667
   verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/check#2:
+  digest: sha256:418cb5b1c0c3c485
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/construct:
+  digest: sha256:368df73e351df3a9
+  verdict: pending
 decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/duration:
   digest: sha256:8522767bd3262a6c
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/field:
+  digest: sha256:c562d0386d5e5cbd
   verdict: pending
 decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/fieldType:
   digest: sha256:3e4d2aa25a0c7301

@@ -1,18 +1,18 @@
 decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock:
   digest: sha256:2b057945ea5d7663
   verdict: pending
-decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/castLambdas:
-  digest: sha256:b03f01d9b5500c63
+decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/data/Feature:
+  digest: sha256:c27600c85a2d6f3c
   verdict: pending
-decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/replaceWord:
-  digest: sha256:13b5103ce3133f23
+decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/classSpecification:
+  digest: sha256:ced256ba68af79d0
+  verdict: pending
+decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/reasonText:
+  digest: sha256:066b759edc3edfbb
   verdict: pending
 decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/specClassName:
   digest: sha256:c570a24354a70be9
   verdict: pending
 decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/spockSpecification:
   digest: sha256:35af711c4efad2a7
-  verdict: pending
-decision/haskell/src/LawSpec/Groovy/Spock.hs/module/LawSpec.Groovy.Spock/function/typedLists:
-  digest: sha256:a717ae813d12cfdc
   verdict: pending

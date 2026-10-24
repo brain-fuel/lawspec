@@ -10,6 +10,9 @@ decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/hask
 decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/jvm:
   digest: sha256:5a63fdb5ccbc48a6
   verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/kotlinMailbox:
+  digest: sha256:6fdc2b93f5747d89
+  verdict: pending
 decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/mailboxArtifacts:
   digest: sha256:ceb84676c8debef4
   verdict: pending

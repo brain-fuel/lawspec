@@ -10,6 +10,9 @@ decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/data/St:
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/bigExpr:
   digest: sha256:a837d0de9f52f901
   verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/braced:
+  digest: sha256:df363c3d26b75e8a
+  verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/cexpr:
   digest: sha256:5eb5fdf0ff4eda93
   verdict: pending
@@ -19,14 +22,23 @@ decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/code
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/cstmt:
   digest: sha256:f822cf7f0eeddbf6
   verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/diamond:
+  digest: sha256:b830df1dbd119727
+  verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/fieldEquals:
   digest: sha256:0778ae241ebca77a
   verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/helper:
   digest: sha256:c53584d349a677d7
   verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/idLines:
+  digest: sha256:32d4da938e9c403e
+  verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/javaType:
   digest: sha256:a8a2f9fe11619d76
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/jcall:
+  digest: sha256:eb31a021eeec8200
   verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/jvmPerformName:
   digest: sha256:e6d1e324bad30758
@@ -55,9 +67,15 @@ decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nati
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeVariant:
   digest: sha256:4f3b91bd3edd5094
   verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/relaid:
+  digest: sha256:619531596b90728e
+  verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaHelper:
   digest: sha256:83da55c5cc69342c
   verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaTyped:
   digest: sha256:2eee84c38638c1e9
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/unqualify:
+  digest: sha256:fe46b9834d9b25ef
   verdict: pending

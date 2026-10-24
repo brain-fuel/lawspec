@@ -1,8 +1,14 @@
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData:
   digest: sha256:c9e6a2cd33f09876
   verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/applied:
+  digest: sha256:a3c49fa95e74e258
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/builtinFree:
   digest: sha256:257372201c4e340e
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/codecDocUsingOwner:
+  digest: sha256:a0b5bd4e5e84f2b2
   verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/emitScalaCodecs:
   digest: sha256:874036963aba36ef
@@ -28,11 +34,17 @@ decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/requ
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/rootQualified:
   digest: sha256:bb3f8643fc92d8b1
   verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/rootQualifiedDoc:
+  digest: sha256:748b726253c84a38
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodec:
   digest: sha256:79691360f6119714
   verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecDoc:
   digest: sha256:1e92e8390af41242
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecDocIn:
+  digest: sha256:007348fca0128d0a
   verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecDocWithContext:
   digest: sha256:6650bdd3f33a4f79
@@ -48,6 +60,9 @@ decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scal
   verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaNativeCodecDoc:
   digest: sha256:aab60e7db4f18159
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaNativeCodecDocIn:
+  digest: sha256:c7110c18835f2146
   verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaNativeTypeDoc:
   digest: sha256:8a93087a0eafa171

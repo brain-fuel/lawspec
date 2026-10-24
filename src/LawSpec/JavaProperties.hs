@@ -64,6 +64,7 @@ separate = D.joinWith (D.hardline <> D.hardline)
 block = D.block 2
 -- | A declaration or statement and its block, the brace on a line of its
 -- own (Allman, as LawSpec's Java profile asks).
+braced :: D.Doc -> D.Doc -> D.Doc
 braced header body = header <> D.hardline <> block body
 call = E.call
 quoted = E.quoted
