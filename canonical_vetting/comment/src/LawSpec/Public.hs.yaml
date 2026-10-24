@@ -7,6 +7,15 @@ decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/expression
 decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/programView:
   digest: sha256:6509e208f89b6495
   verdict: pending
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/textIn:
+  digest: sha256:2e9916adc27c0a20
+  verdict: pending
 decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/typeView:
   digest: sha256:f248da7562ab7c7b
+  verdict: pending
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/valueView:
+  digest: sha256:6c25c5ea975ad0b8
+  verdict: pending
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/viewIn:
+  digest: sha256:3ea29a6bbf68c963
   verdict: pending

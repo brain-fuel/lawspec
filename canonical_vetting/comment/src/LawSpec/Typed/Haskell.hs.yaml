@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell:
+  digest: sha256:6b7a6ec218825fbe
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/data/St:
+  digest: sha256:6c7a3651b0a1f2a0
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/cexpr:
+  digest: sha256:92542a447b802ade
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/dataDoc:
+  digest: sha256:c8dedac355a527c9
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/enterFunction:
+  digest: sha256:34fe61fa446c825b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/fallbackNames:
+  digest: sha256:6f6b665fac676260
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/fresh:
+  digest: sha256:951ee05b575df7ef
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/helper:
+  digest: sha256:92cef13c5fc34d47
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/integral:
+  digest: sha256:488b82fd38d5f394
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/literal:
+  digest: sha256:ff4055348dd5412f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/moduleReserved:
+  digest: sha256:310163b19ebafebf
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/narrowTo:
+  digest: sha256:87be2945b6c7ede6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/returned:
+  digest: sha256:bb256add5002fd2c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/strictLet:
+  digest: sha256:47407bb48118414f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Haskell.hs/module/LawSpec.Typed.Haskell/function/typeNameWords:
+  digest: sha256:0df8ae52955f6f20
+  verdict: pending

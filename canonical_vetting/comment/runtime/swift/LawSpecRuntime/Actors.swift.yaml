@@ -1,0 +1,114 @@
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/Inbox:
+  digest: sha256:feb5bce5024821f7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/Inbox/func/receive:
+  digest: sha256:5fc2613316bfe540
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/Origin:
+  digest: sha256:6afbe17251964b68
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/Reply:
+  digest: sha256:67f20999fd85c0f8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/Tree:
+  digest: sha256:8fe737344f11ad19
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/TreeNode/var/incarnation:
+  digest: sha256:41c13782f3bd8ecc
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/class/TreeNode/var/initial:
+  digest: sha256:df25e998d444e230
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Event:
+  digest: sha256:f4f3cd86d63915ae
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Lifetime:
+  digest: sha256:0f0d3e9360e5b7b0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Lifetime/case/permanent:
+  digest: sha256:7f8369078fc513c0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Lifetime/case/temporary:
+  digest: sha256:9fe6ad09fa2e3bc2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Lifetime/case/transient:
+  digest: sha256:864bfbf53b4d3078
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Spec:
+  digest: sha256:3c2b7ea28bd26bba
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/enum/Strategy:
+  digest: sha256:782915cfaea3950e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/actor:
+  digest: sha256:c6757ba9224db5d6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/actorOf:
+  digest: sha256:1a1aa9b1819c2b76
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/call:
+  digest: sha256:d7a46db3651c54e0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/child:
+  digest: sha256:6a9d0d70d6b1ffa6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/children:
+  digest: sha256:89cd6021028248a2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/crash:
+  digest: sha256:e2c2deb626ae733e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/decide:
+  digest: sha256:eb33036af60dbeb3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/enqueue:
+  digest: sha256:59287ab32a99ee50
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/failed:
+  digest: sha256:816297a88f5baf05
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/halt:
+  digest: sha256:c452b221c79f5082
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/kill:
+  digest: sha256:20e6d270701d7250
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/link:
+  digest: sha256:2738aa7b4ce5652e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/monitor:
+  digest: sha256:5e5c4fbe698911f4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/receiveEvent:
+  digest: sha256:04e9b701172ef79c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/restartCount:
+  digest: sha256:8c9d0b991f80d08f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/restartGroup:
+  digest: sha256:93db2dd6f39e42f3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/start:
+  digest: sha256:01156f377b1b0cd6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/state:
+  digest: sha256:c470da22c50e7d83
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/stop:
+  digest: sha256:1e8702314da37d94
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/supervisor:
+  digest: sha256:172964c2e4626053
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/tell:
+  digest: sha256:040d63995e40e444
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/withSpec:
+  digest: sha256:8fc9a97e49cddad9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/func/worker:
+  digest: sha256:d971b4dbdd3711f7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Actors.swift/enum/Actors/struct/Handle:
+  digest: sha256:e987628cde63dcdc
+  verdict: pending

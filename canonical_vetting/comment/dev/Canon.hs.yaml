@@ -16,3 +16,9 @@ decision/haskell/dev/Canon.hs/module/Canon/function/link:
 decision/haskell/dev/Canon.hs/module/Canon/function/linkTarget:
   digest: sha256:c3eb44478a0c05cd
   verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/taxBinary:
+  digest: sha256:98a8a2b986fe63b0
+  verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/taxCommand:
+  digest: sha256:22ee248ea8ec189b
+  verdict: pending

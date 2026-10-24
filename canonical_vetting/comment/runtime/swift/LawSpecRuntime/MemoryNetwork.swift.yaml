@@ -1,0 +1,30 @@
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/class/MemoryNetwork/func/addressOf:
+  digest: sha256:562239c983f43533
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/class/MemoryNetwork/func/partition:
+  digest: sha256:e745c79a0689488d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/class/MemoryNetwork/func/recorded:
+  digest: sha256:943f32f1426c116b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/class/MemoryNetwork/func/register:
+  digest: sha256:3d90ce4612941992
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/class/MemoryNetwork/func/send:
+  digest: sha256:1e14c06e3024fa38
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/struct/MemoryEvent:
+  digest: sha256:b6de0ed50bfc268b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/struct/MemoryEvent/let/delaySlots:
+  digest: sha256:a33313343a9d5ddc
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/struct/MemoryOptions:
+  digest: sha256:2aa53fed31a2a16b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/struct/NetworkFailure:
+  digest: sha256:06d9fa6f41757778
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MemoryNetwork.swift/typealias/PacketReceiver:
+  digest: sha256:b0fcff58ab71eeed
+  verdict: pending

@@ -1,0 +1,102 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel:
+  digest: sha256:44cb8ea0a7fe9afe
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel/member/Await:
+  digest: sha256:b9e62770c44a57ef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel/member/CloseSide:
+  digest: sha256:6913438f66ef648a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel/member/Discard:
+  digest: sha256:11360b2368338a78
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel/member/Move:
+  digest: sha256:4025f10891c6874e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel/member/Open:
+  digest: sha256:4616b8351e9ca857
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionChannel/member/Reissue:
+  digest: sha256:ff9bbc996b9e70dd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionEnd:
+  digest: sha256:e7f124060d03673f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/class/SessionTask:
+  digest: sha256:8472ab245568c0b1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions:
+  digest: sha256:04ece90ab286c66b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/abandon:
+  digest: sha256:dd5aadbf8d8d9cf7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/address:
+  digest: sha256:8aa2b09dc5dc35c9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/cancel:
+  digest: sha256:5b18a0737b0c0822
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/dial:
+  digest: sha256:eeced07a5b779263
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/freshName:
+  digest: sha256:f317f956a8443435
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/join:
+  digest: sha256:9e9c866972fef386
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/listen:
+  digest: sha256:929554284aeb1bdd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/networkStart:
+  digest: sha256:a39d541366af4577
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/offer:
+  digest: sha256:94e8000384fa91aa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/openPair:
+  digest: sha256:64233464d6c600a4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/receiveEnd:
+  digest: sha256:6271f7f12a437d21
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/receiveValue:
+  digest: sha256:d3f81a1f84d720e9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/send:
+  digest: sha256:26862de15800da6c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/sendEnd:
+  digest: sha256:9099846a3b449f6a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/spawn:
+  digest: sha256:24d46cecdb2b8aa6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/specification:
+  digest: sha256:14650130da21666e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/take:
+  digest: sha256:95fec92dc19a41c8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/transfer:
+  digest: sha256:67096c6c11bffe98
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/validate:
+  digest: sha256:28fac0b0ac860351
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/withOwned:
+  digest: sha256:ceee1b4f157cfc91
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/module/Sessions/function/withPair:
+  digest: sha256:f52f0f63bc97d91e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/record/SessionSpec:
+  digest: sha256:06181fb12c4b7bc7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/record/SessionStep:
+  digest: sha256:032f902bb7e6af3d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Sessions.fs/namespace/LawSpec.Runtime/union/SessionPart:
+  digest: sha256:3bf612c380424d06
+  verdict: pending

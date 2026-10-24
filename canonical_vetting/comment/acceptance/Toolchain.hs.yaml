@@ -1,11 +1,26 @@
 decision/haskell/acceptance/Toolchain.hs/module/Toolchain:
   digest: sha256:d3b1c91073d4c79c
   verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/data/Formatter:
+  digest: sha256:a4610d7232f18f9b
+  verdict: pending
 decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/compileFailure:
   digest: sha256:be953ac45863fae7
   verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/fantomasVersion:
+  digest: sha256:1331ab8343f33cd4
+  verdict: pending
 decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/mutantArguments:
   digest: sha256:72f494d559b78801
+  verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/stripAnsi:
+  digest: sha256:7c65c44b1cde35c8
+  verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/swiftFormatCheck:
+  digest: sha256:f2a0dc76d809cf3d
+  verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/swiftFormatVersion:
+  digest: sha256:d280712d7ebe76bc
   verdict: pending
 decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/toolchain:
   digest: sha256:b2ee7e9ae6293bce

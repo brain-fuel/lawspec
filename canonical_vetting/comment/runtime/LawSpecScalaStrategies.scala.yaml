@@ -1,0 +1,21 @@
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies:
+  digest: sha256:73c670ab783bd4d2
+  verdict: pending
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies/case_class/Case:
+  digest: sha256:d754bf042de56af3
+  verdict: pending
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies/case_class/Checked:
+  digest: sha256:acb62ae0a833a57b
+  verdict: pending
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies/class/IndexTerm:
+  digest: sha256:d661aca0f30b8668
+  verdict: pending
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies/class/IndexTerm/def/evaluate:
+  digest: sha256:fa5f3cfa1afa9ce4
+  verdict: pending
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies/def/indexedGenerator:
+  digest: sha256:2237b554845636ec
+  verdict: pending
+decision/scala/runtime/LawSpecScalaStrategies.scala/object/LawSpecScalaStrategies/trait/NativeFactory:
+  digest: sha256:2f02793cc563288b
+  verdict: pending

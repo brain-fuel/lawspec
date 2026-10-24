@@ -1,0 +1,90 @@
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/class/Locked:
+  digest: sha256:981fad10b2026aec
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/class/Locked/func/with:
+  digest: sha256:cb2ee524022b59b9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/class/SymbolContext:
+  digest: sha256:614dead0e82c65ef
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/binary:
+  digest: sha256:d3e278f3714d582b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/bounds:
+  digest: sha256:342fba0e3151c940
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/codePoints:
+  digest: sha256:c0fe10a09bc5741b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/compareBytes:
+  digest: sha256:0215d658d594a5d5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/compareText:
+  digest: sha256:d73a72a3896f6747
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/compareValues:
+  digest: sha256:a6df8ef885a2e3b5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/complexOf:
+  digest: sha256:89ce5f4725a5285d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/convert:
+  digest: sha256:004d151a17b976a7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/equal:
+  digest: sha256:6e7fda4c89bf56b1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/exact:
+  digest: sha256:44fa777ff7a1d86e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/finiteDecimal:
+  digest: sha256:dd33df57955d6f8a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/floatBinary:
+  digest: sha256:638d09ae55c4bb93
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/floatClass:
+  digest: sha256:d72eea492a3a2ea7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/floatCompare:
+  digest: sha256:c483fc42f553e556
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/floatFromRatio:
+  digest: sha256:9fe6e79305679f6a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/helper:
+  digest: sha256:78477de39ac8b41c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/isIntegerType:
+  digest: sha256:e58f1d8dcf0d2097
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/isWellFormed:
+  digest: sha256:be123778816f302d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/negate:
+  digest: sha256:6dbd7a2f632fffff
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/newSymbol:
+  digest: sha256:06b29b1276b0252c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/ratio:
+  digest: sha256:c4f32294909c2904
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/symbol:
+  digest: sha256:e50f6a57a27093a1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/textOfPoints:
+  digest: sha256:e64b4cdf7473679d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/toFloat:
+  digest: sha256:110d1dacbe5becc0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/typeKey:
+  digest: sha256:b26084b6b69369f6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/typeOf:
+  digest: sha256:770293adbdd34e9e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Scalar.swift/enum/Scalar/func/validate:
+  digest: sha256:082ebbbdb88a0e41
+  verdict: pending

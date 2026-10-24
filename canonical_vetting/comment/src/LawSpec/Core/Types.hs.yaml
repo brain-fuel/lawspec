@@ -13,8 +13,14 @@ decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/ch
 decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/compatibleConstructors:
   digest: sha256:8ed6750070cb51bc
   verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorBindingsAt:
+  digest: sha256:08c4cad3ac8c0aeb
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorCompatibility:
   digest: sha256:b4f64db53d924cd9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorFieldPath:
+  digest: sha256:c87362e3b58d27d3
   verdict: pending
 decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorFieldsAt:
   digest: sha256:5e14946e83592b48

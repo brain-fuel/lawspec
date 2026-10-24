@@ -10,6 +10,15 @@ decision/haskell/src/LawSpec/Api.hs/module/LawSpec.Api/function/sharedRequest:
 decision/haskell/src/LawSpec/Api.hs/module/LawSpec.Api/function/stagesTable:
   digest: sha256:58c32a50a6fb22f1
   verdict: pending
+decision/haskell/src/LawSpec/Api.hs/module/LawSpec.Api/function/withAttestation:
+  digest: sha256:563851c373f89e95
+  verdict: pending
+decision/haskell/src/LawSpec/Api.hs/module/LawSpec.Api/function/withMatchWarnings:
+  digest: sha256:6dd19c69e3b95795
+  verdict: pending
+decision/haskell/src/LawSpec/Api.hs/module/LawSpec.Api/function/withModelTasks:
+  digest: sha256:5f62985b386a5190
+  verdict: pending
 decision/haskell/src/LawSpec/Api.hs/module/LawSpec.Api/function/withTests:
   digest: sha256:3e7b0cb822315c10
   verdict: pending

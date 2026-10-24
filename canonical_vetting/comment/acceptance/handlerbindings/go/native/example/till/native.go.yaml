@@ -1,0 +1,21 @@
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go:
+  digest: sha256:90fe461c2b3d3038
+  verdict: pending
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go/function/NewNativeTill:
+  digest: sha256:4692d8b0149f648e
+  verdict: pending
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go/function/Pay:
+  digest: sha256:1efb5b99165be3bc
+  verdict: pending
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go/type/BadAmount:
+  digest: sha256:272194f36570b179
+  verdict: pending
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go/type/CardDeclined:
+  digest: sha256:08a33bd18d8b2e9c
+  verdict: pending
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go/type/Cash:
+  digest: sha256:b435539c334b10b8
+  verdict: pending
+decision/go/acceptance/handlerbindings/go/native/example/till/native.go/type/NativeTill:
+  digest: sha256:d9f164fde44f4a6b
+  verdict: pending

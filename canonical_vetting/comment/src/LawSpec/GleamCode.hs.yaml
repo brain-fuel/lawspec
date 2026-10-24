@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode:
+  digest: sha256:bead9a8ebddeccdc
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/call:
+  digest: sha256:6e9dbca2842f623c
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/external:
+  digest: sha256:fbb5c50ecdd1c279
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/fileDocFrom:
+  digest: sha256:03f41193d98950bd
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/fileWith:
+  digest: sha256:77340431dae25ab9
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/fnType:
+  digest: sha256:7fd684d5fa871c92
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/function:
+  digest: sha256:1ebaff8bc8110f75
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/huggedLambda:
+  digest: sha256:d76ebab02356e2c0
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/lambda:
+  digest: sha256:fca13d167d21d0c9
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/layoutFor:
+  digest: sha256:a145a34ef904c095
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/string:
+  digest: sha256:004fca48f9337983
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/typeAlias:
+  digest: sha256:b3250992967f47c9
+  verdict: pending
+decision/haskell/src/LawSpec/GleamCode.hs/module/LawSpec.GleamCode/function/variableName:
+  digest: sha256:64485b10106badac
+  verdict: pending

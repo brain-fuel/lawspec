@@ -1,0 +1,60 @@
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis:
+  digest: sha256:a4611dab54797671
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/data/Claims:
+  digest: sha256:390558d1a0ebbae3
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/data/Clause:
+  digest: sha256:cf1fa908e877d31b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/data/Context:
+  digest: sha256:324c480d3565be88
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/data/Exemption:
+  digest: sha256:057b09d3ea7300d7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/data/Until:
+  digest: sha256:78ab6957d017bd05
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/analyse:
+  digest: sha256:70f49e2c78bc2621
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/analysedFunctions:
+  digest: sha256:930530946218968c
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/assumptions:
+  digest: sha256:85ed876d4039073a
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/canonical:
+  digest: sha256:7f3a3786b3ea6722
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/clausesFor:
+  digest: sha256:716ff09b80150a8a
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/covered:
+  digest: sha256:d77e86d1f028d55d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/coveredBy:
+  digest: sha256:22026f994018aa8a
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/decide:
+  digest: sha256:d0ca0d6a7a158519
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/domain:
+  digest: sha256:8509b396ecb7ac03
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/enumerate:
+  digest: sha256:3aee8f04e823b797
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/enumerateFrom:
+  digest: sha256:a87e32f75ec12b42
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/generated:
+  digest: sha256:0d274d93b751d2d8
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/lawLimit:
+  digest: sha256:b667c6cac76908ac
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawAnalysis.hs/module/LawSpec.Core.LawAnalysis/function/value:
+  digest: sha256:b5290b6af7999a0f
+  verdict: pending

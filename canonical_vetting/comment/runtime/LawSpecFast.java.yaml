@@ -1,0 +1,78 @@
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast:
+  digest: sha256:710474380d7f8fec
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Bytes:
+  digest: sha256:3946a0330450a510
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Either:
+  digest: sha256:8a9bc99b2a76af1e
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/List:
+  digest: sha256:f806fdce09b5c383
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Map:
+  digest: sha256:20cd99987b3106e2
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Map/method/forEach:
+  digest: sha256:ec8f842aefd38e33
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Map/method/toList:
+  digest: sha256:b369694d7e13c719
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Maybe:
+  digest: sha256:6456297e5287891c
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Outcome:
+  digest: sha256:8b00048d42e26a8b
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Outcome/method/failed:
+  digest: sha256:f7fc9b93ad3cbc24
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Outcome/method/failure#2:
+  digest: sha256:f4dfd74ddf0dacfe
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Outcome/method/value:
+  digest: sha256:8437580c4ac61844
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/class/Set:
+  digest: sha256:59713d5179402157
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/enum/Unit:
+  digest: sha256:dd6b0c10bb8bd8ad
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/interface/Codec:
+  digest: sha256:6f625768dfbc5ce7
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/interface/Ordered:
+  digest: sha256:833c0de4969b9c80
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/append:
+  digest: sha256:11e04941331ca1cb
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/compare:
+  digest: sha256:2daea0447d77f4c8
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/compareText:
+  digest: sha256:76eff73816a99e3b
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/dataKey:
+  digest: sha256:e3609830967e4f04
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/fields:
+  digest: sha256:c2c5429bdf072bae
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/index:
+  digest: sha256:73009805124852d3
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/integer:
+  digest: sha256:3ec40fbf4db4bd20
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/items:
+  digest: sha256:85ecdbbe523cdcec
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/narrow:
+  digest: sha256:ef9f9a8ad39925cd
+  verdict: pending
+decision/java/runtime/LawSpecFast.java/package/lawspec.runtime/class/LawSpecFast/method/slice:
+  digest: sha256:fa4d1b0a577a4e47
+  verdict: pending

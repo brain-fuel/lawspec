@@ -31,9 +31,6 @@ decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/native
 decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/remoteCalls:
   digest: sha256:ca340af1c0b2cc8d
   verdict: pending
-decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/schemaImport:
-  digest: sha256:d86ba4b0343af970
-  verdict: pending
 decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/targets:
   digest: sha256:a7cd30493b6feeb6
   verdict: pending

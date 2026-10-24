@@ -19,6 +19,9 @@ decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/
 decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/GeneratorBinding:
   digest: sha256:fa6f429dac9becd5
   verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/NativeLayout:
+  digest: sha256:8c85bb881b1e3be5
+  verdict: pending
 decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ResolvedBindings:
   digest: sha256:1ed387c020773311
   verdict: pending
@@ -37,6 +40,9 @@ decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/
 decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/emptyBindings:
   digest: sha256:425c3ccaa0a2482e
   verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/nativeLayoutPaths:
+  digest: sha256:983fcf72c28eb3a0
+  verdict: pending
 decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/reachableGeneratorTypes:
   digest: sha256:bcda144dbe4ecb9e
   verdict: pending
@@ -45,6 +51,9 @@ decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/funct
   verdict: pending
 decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/usesMachineRepresentation:
   digest: sha256:8c7edd94e1e8c427
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/usesNativeLayout:
+  digest: sha256:32f1241cfa42ccfd
   verdict: pending
 decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/newtype/NativeRef:
   digest: sha256:6f0bf08985d500d1

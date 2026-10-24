@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/ScalaNativeBinding.hs/module/LawSpec.ScalaNativeBinding:
+  digest: sha256:5d80f0589664723d
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaNativeBinding.hs/module/LawSpec.ScalaNativeBinding/function/emitBindings:
+  digest: sha256:7663a6ad5ff74ac1
+  verdict: pending

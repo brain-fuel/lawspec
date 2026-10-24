@@ -1,6 +1,12 @@
 decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections:
   digest: sha256:a420993a645ce4ae
   verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/boundedArithmeticBlock:
+  digest: sha256:35f254f501a90ae9
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/boundedArithmeticDefinition:
+  digest: sha256:811c387bedbd3cb0
+  verdict: pending
 decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionContainer:
   digest: sha256:f7bcb3b03553ce4f
   verdict: pending

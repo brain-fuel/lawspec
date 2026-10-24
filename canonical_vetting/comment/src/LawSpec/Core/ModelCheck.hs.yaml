@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck:
+  digest: sha256:e2a5a78758ca5217
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/data/Fairness:
+  digest: sha256:ad481a4ffcbff38e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/data/Formula:
+  digest: sha256:495d4d8d4a3fcdfc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/data/Outcome:
+  digest: sha256:8261e0ee2ce80105
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/data/System:
+  digest: sha256:a6c28028b3e8d078
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/data/Verdict:
+  digest: sha256:3fd998ef73878b4d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/acceptance:
+  digest: sha256:d0a9a0387535bfe6
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/cycleThrough:
+  digest: sha256:c98819a19ceb7c28
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/fairComponent:
+  digest: sha256:402c8e7f0e666be1
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/judge:
+  digest: sha256:76392bdf4e387623
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/pathTo:
+  digest: sha256:48880047d617b948
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/sccs:
+  digest: sha256:14ca8aa3d165218d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/search:
+  digest: sha256:0da37fc4ec735427
+  verdict: pending

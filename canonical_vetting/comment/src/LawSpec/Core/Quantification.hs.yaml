@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification:
+  digest: sha256:d0ce61037f8b1174
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/lowerWitnessProof:
+  digest: sha256:010648cc6a41e765
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/lowerWitnessProposition:
+  digest: sha256:041829b309187450
+  verdict: pending

@@ -7,6 +7,9 @@ decision/rust/runtime/lawspec_strategies.rs/enum/IndexTerm:
 decision/rust/runtime/lawspec_strategies.rs/function/bounded_integer:
   digest: sha256:3e1935c8fc8c63de
   verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/checked_indexed_strategy:
+  digest: sha256:2186c18b1062b037
+  verdict: pending
 decision/rust/runtime/lawspec_strategies.rs/function/checked_schema_strategy:
   digest: sha256:d2aefccc1ce64213
   verdict: pending

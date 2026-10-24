@@ -1,0 +1,39 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario:
+  digest: sha256:461a368c0a45839c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/check:
+  digest: sha256:1a78306dcf2796ed
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/checkWith:
+  digest: sha256:e2b9fabc0c540c5a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/divide:
+  digest: sha256:4e7faf3359dfeb21
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/execute:
+  digest: sha256:69f8be899fa3e000
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/read:
+  digest: sha256:122e0b8d89469fed
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/runOnce:
+  digest: sha256:580f73011d406056
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/schedules:
+  digest: sha256:acf5cb4a6fe411c9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/function/victim:
+  digest: sha256:ad59401c7159ac2a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/record/Options:
+  digest: sha256:8bf1dc9c0e5c4713
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/record/Program:
+  digest: sha256:9a399eccf78f1d89
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/record/Report:
+  digest: sha256:93856fcb15f6382a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Scenario.fs/module/LawSpec.Testing.Scenario/union/Act:
+  digest: sha256:32da6b6a0d9afd93
+  verdict: pending

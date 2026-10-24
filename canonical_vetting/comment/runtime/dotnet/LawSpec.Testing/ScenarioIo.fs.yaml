@@ -1,0 +1,27 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo:
+  digest: sha256:6c10a028d823c659
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/class/Hub:
+  digest: sha256:51fd1eb5bb3471a7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/class/Hub/member/Call:
+  digest: sha256:6f79c0fdf59bf3c5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/class/Hub/member/Receive:
+  digest: sha256:cc024c3eb48bd77d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/class/Hub/member/Wake:
+  digest: sha256:b16e0e54a5bde9bf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/function/withIo:
+  digest: sha256:d8f9b45345e4a239
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/record/Child:
+  digest: sha256:f1f4c7506cd19fb0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/record/IoOptions:
+  digest: sha256:03b2566fe856fba7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ScenarioIo.fs/module/LawSpec.Testing.ScenarioIo/union/Received:
+  digest: sha256:6608e19d4edc27ac
+  verdict: pending

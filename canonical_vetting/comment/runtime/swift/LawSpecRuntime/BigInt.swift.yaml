@@ -1,0 +1,75 @@
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/extension/Character/var/letterValue:
+  digest: sha256:69e6e9736b515a56
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/extension/UInt64/var/twosComplementMagnitude:
+  digest: sha256:c2dfbcc636c291c9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt:
+  digest: sha256:ac331befc5d77db7
+  verdict: pending
+"decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/>>":
+  digest: sha256:c542a5e6c1b05282
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/compare:
+  digest: sha256:f5e0762d258ff837
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/complementWords:
+  digest: sha256:ebbdcfccf6f75a21
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/divideByWord:
+  digest: sha256:1bba9184444990e8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/divideMagnitudes:
+  digest: sha256:a2de2102e770fe86
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/exactly:
+  digest: sha256:85814ae8b2060cd5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/floorDivided:
+  digest: sha256:a72085ed5224a304
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/gcd:
+  digest: sha256:15bfd953dfcf6b12
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/multipliedAdding:
+  digest: sha256:ccaa769e7da6066c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/power:
+  digest: sha256:471d2bb159e759e6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/quotientAndRemainder:
+  digest: sha256:8b36c84ef8e1b30f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/subtractMagnitudes:
+  digest: sha256:d4f72629e4cc0e2a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/toString:
+  digest: sha256:262f483955e5fe6d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/truncated:
+  digest: sha256:c3e56c59231f408a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/func/truncatedTo:
+  digest: sha256:8ea3af901de54c9c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/init/init#5:
+  digest: sha256:e7f2e7b963a732b7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/init/init#6:
+  digest: sha256:43561e3e5e19e64a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/var/bitLength:
+  digest: sha256:a31bf6d0a42acf55
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/var/doubleValue:
+  digest: sha256:03b054ef13a9b47f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/var/negative:
+  digest: sha256:10d69c714a96d76f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/var/signum:
+  digest: sha256:f5e0762d258ff837
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/BigInt.swift/struct/BigInt/var/words:
+  digest: sha256:57469184385313d6
+  verdict: pending

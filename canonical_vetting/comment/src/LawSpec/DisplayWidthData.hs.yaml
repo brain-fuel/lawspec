@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/DisplayWidthData.hs/module/LawSpec.DisplayWidthData/function/displayWidthRanges:
+  digest: sha256:fdc4efe131f594f2
+  verdict: pending
+decision/haskell/src/LawSpec/DisplayWidthData.hs/module/LawSpec.DisplayWidthData/function/unprintableRanges:
+  digest: sha256:142dc78be5ae1271
+  verdict: pending

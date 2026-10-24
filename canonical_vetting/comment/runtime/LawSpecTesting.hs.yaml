@@ -1,0 +1,18 @@
+decision/haskell/runtime/LawSpecTesting.hs/module/LawSpecTesting:
+  digest: sha256:b0efa1124c57e98d
+  verdict: pending
+decision/haskell/runtime/LawSpecTesting.hs/module/LawSpecTesting/function/assertEqual:
+  digest: sha256:648740b0b4770e17
+  verdict: pending
+decision/haskell/runtime/LawSpecTesting.hs/module/LawSpecTesting/function/check:
+  digest: sha256:6d90019a18c4d0c2
+  verdict: pending
+decision/haskell/runtime/LawSpecTesting.hs/module/LawSpecTesting/function/holds:
+  digest: sha256:36fae105cc07d6ce
+  verdict: pending
+decision/haskell/runtime/LawSpecTesting.hs/module/LawSpecTesting/function/holdsFor:
+  digest: sha256:d414da8c20a6627d
+  verdict: pending
+decision/haskell/runtime/LawSpecTesting.hs/module/LawSpecTesting/function/shown:
+  digest: sha256:5b55cfbfe1391b06
+  verdict: pending

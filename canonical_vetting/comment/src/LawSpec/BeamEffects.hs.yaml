@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/BeamEffects.hs/module/LawSpec.BeamEffects:
+  digest: sha256:4e532d726e0481fc
+  verdict: pending
+decision/haskell/src/LawSpec/BeamEffects.hs/module/LawSpec.BeamEffects/function/constructWith:
+  digest: sha256:35fac6c3b04fbc4a
+  verdict: pending
+decision/haskell/src/LawSpec/BeamEffects.hs/module/LawSpec.BeamEffects/function/entries:
+  digest: sha256:48b61ddb935c3faf
+  verdict: pending

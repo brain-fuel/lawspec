@@ -1,0 +1,12 @@
+decision/csharp/acceptance/abilities/csharp/files/src/Example/Shop.cs/namespace/Example/class/Shop/method/LogHandler:
+  digest: sha256:549e00ca5032daca
+  verdict: pending
+decision/csharp/acceptance/abilities/csharp/files/src/Example/Shop.cs/namespace/Example/class/Shop/method/MeterHandler:
+  digest: sha256:ee5dfd94ed08f07d
+  verdict: pending
+decision/csharp/acceptance/abilities/csharp/files/src/Example/Shop.cs/namespace/Example/class/Shop/method/StoreInt32Handler:
+  digest: sha256:178ad5336dcc0569
+  verdict: pending
+decision/csharp/acceptance/abilities/csharp/files/src/Example/Shop.cs/namespace/Example/class/Shop/method/StoreTextHandler:
+  digest: sha256:8e1fee302575c762
+  verdict: pending

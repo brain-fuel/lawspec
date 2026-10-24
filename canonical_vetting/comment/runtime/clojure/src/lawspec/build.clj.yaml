@@ -1,0 +1,12 @@
+decision/clojure/runtime/clojure/src/lawspec/build.clj:
+  digest: sha256:da66554a191a7fe8
+  verdict: pending
+"decision/clojure/runtime/clojure/src/lawspec/build.clj/function/compile-java!":
+  digest: sha256:72c233617845fc6d
+  verdict: pending
+"decision/clojure/runtime/clojure/src/lawspec/build.clj/function/javac!":
+  digest: sha256:1c1fa6b24394470c
+  verdict: pending
+"decision/clojure/runtime/clojure/src/lawspec/build.clj/function/use-classes!":
+  digest: sha256:280b47fb2e3702e5
+  verdict: pending

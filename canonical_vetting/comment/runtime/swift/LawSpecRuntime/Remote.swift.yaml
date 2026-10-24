@@ -1,0 +1,15 @@
+decision/swift/runtime/swift/LawSpecRuntime/Remote.swift/enum/Remote/func/call:
+  digest: sha256:65b0a3121c84ee3a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Remote.swift/enum/Remote/func/connect:
+  digest: sha256:95334a8ed4931959
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Remote.swift/enum/Remote/func/serve:
+  digest: sha256:2c90d14784ddd87e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Remote.swift/struct/RemoteClient:
+  digest: sha256:1d7c46afd871bd4c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Remote.swift/struct/RemoteEntry:
+  digest: sha256:b7395f972349bade
+  verdict: pending

@@ -1,0 +1,60 @@
+decision/go/runtime/lawspec_fast.go:
+  digest: sha256:3e7723d34558d7e4
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfAppend:
+  digest: sha256:4dc1f30ac75ec974
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfCmpText:
+  digest: sha256:5537239d3f78b6ab
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfData:
+  digest: sha256:f8d076dbe73dde35
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfEach:
+  digest: sha256:624df8e219505598
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfIndex:
+  digest: sha256:4de6fb3023f221df
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfItems:
+  digest: sha256:8dbc3596cbc63b0b
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfNarrow:
+  digest: sha256:e58143416146b876
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfNarrowInt:
+  digest: sha256:5119e3b0f8726533
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfSliceList:
+  digest: sha256:fd6e2260ec0df915
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/function/lsfToList:
+  digest: sha256:4aadba4eed97d5ca
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/method/Quot:
+  digest: sha256:36090b39b237e75a
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/LawSpecRaised:
+  digest: sha256:eea66375aea65f30
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfEither:
+  digest: sha256:1f775c9618b177c7
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfInt:
+  digest: sha256:e6b6be7d99279fdf
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfList:
+  digest: sha256:a3f72273b47a208d
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfLock:
+  digest: sha256:0de0d0bbffe61f37
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfMap:
+  digest: sha256:fc06dd0257e6ed23
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfMaybe:
+  digest: sha256:2d51d5826558b8d3
+  verdict: pending
+decision/go/runtime/lawspec_fast.go/type/lsfUnit:
+  digest: sha256:6d9ca8aa3dd490b7
+  verdict: pending

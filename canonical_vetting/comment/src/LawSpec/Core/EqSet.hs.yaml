@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Core/EqSet.hs/module/LawSpec.Core.EqSet:
+  digest: sha256:867c18cd50fa2894
+  verdict: pending
+decision/haskell/src/LawSpec/Core/EqSet.hs/module/LawSpec.Core.EqSet/function/distinctMembers:
+  digest: sha256:de7b960417631630
+  verdict: pending
+decision/haskell/src/LawSpec/Core/EqSet.hs/module/LawSpec.Core.EqSet/function/eqSetDeclaration:
+  digest: sha256:2f14276e61273609
+  verdict: pending
+decision/haskell/src/LawSpec/Core/EqSet.hs/module/LawSpec.Core.EqSet/function/finiteMemberSequences:
+  digest: sha256:bdb064c41a4787b8
+  verdict: pending
+decision/haskell/src/LawSpec/Core/EqSet.hs/module/LawSpec.Core.EqSet/function/sameMembers:
+  digest: sha256:2c8d90902deee5b7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/EqSet.hs/module/LawSpec.Core.EqSet/function/validateEqSetDeclaration:
+  digest: sha256:f9efe196d4c526e4
+  verdict: pending

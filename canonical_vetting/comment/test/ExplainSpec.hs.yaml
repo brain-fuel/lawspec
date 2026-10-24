@@ -1,0 +1,9 @@
+decision/haskell/test/ExplainSpec.hs/module/ExplainSpec:
+  digest: sha256:b23e8f66724b9435
+  verdict: pending
+decision/haskell/test/ExplainSpec.hs/module/ExplainSpec/function/render:
+  digest: sha256:b85a57fa386787aa
+  verdict: pending
+decision/haskell/test/ExplainSpec.hs/module/ExplainSpec/function/typeText:
+  digest: sha256:548c558c19d602e1
+  verdict: pending

@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties:
+  digest: sha256:0f139932115c1f54
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/data/Piece:
+  digest: sha256:475f27eca2159f5b
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/function/emitNativeGenerators:
+  digest: sha256:8e649762516a302a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/function/emitRootSuites:
+  digest: sha256:58d3e5b4a063b346
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/function/emitTests:
+  digest: sha256:9a334b4254cc2064
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/function/generators:
+  digest: sha256:3adcfdadcef4c5d9
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/function/shortPath:
+  digest: sha256:2816e528e6cc78f5
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Properties.hs/module/LawSpec.Swift.Properties/function/testAttribute:
+  digest: sha256:db754a53e56d483a
+  verdict: pending

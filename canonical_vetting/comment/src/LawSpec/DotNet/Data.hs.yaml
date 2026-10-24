@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data:
+  digest: sha256:c6a955196a60b731
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/codec:
+  digest: sha256:719d37cb9b09f6c9
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/comparedParameters:
+  digest: sha256:1679394a3f8e9456
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/emitData:
+  digest: sha256:e45ab1f09cb7f713
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/emitSchema:
+  digest: sha256:3fb1a5f8b93e9bd7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/listText:
+  digest: sha256:6ed3025c04de2ba5
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/nativeCollection:
+  digest: sha256:2d07f26a51eb1ed1
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/nativeType:
+  digest: sha256:d6ef48a7cf36cdb2
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/function/unqualify:
+  digest: sha256:9f19c5685fe1cf6e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Data.hs/module/LawSpec.DotNet.Data/type/Names:
+  digest: sha256:1b40cff21cf20728
+  verdict: pending

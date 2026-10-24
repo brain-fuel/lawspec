@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink:
+  digest: sha256:9d8b359abc52feb6
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/exampleLocation:
+  digest: sha256:4c2c168e9cf111bc
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/generatedHeader:
+  digest: sha256:f3a7c518e8f07b1c
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/goGeneratedMarker:
+  digest: sha256:d05a101413f74fb7
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/labelled:
+  digest: sha256:7477225097150351
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/locationLink:
+  digest: sha256:6ebd18c60ed009f2
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/originLocation:
+  digest: sha256:61b446757c0e4068
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/sourceLink:
+  digest: sha256:fc7f1ce05365c24a
+  verdict: pending
+decision/haskell/src/LawSpec/SourceLink.hs/module/LawSpec.SourceLink/function/unitSourceFile:
+  digest: sha256:b310a63b12729948
+  verdict: pending

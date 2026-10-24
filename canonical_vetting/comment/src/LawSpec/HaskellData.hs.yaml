@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData:
   digest: sha256:ba41a1f7c86fa47e
   verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/codecExpressionWith:
+  digest: sha256:b9ccab24a548734e
+  verdict: pending
 decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/emitHaskellCodecs:
   digest: sha256:73f2f1f8cfd048e5
   verdict: pending
@@ -31,8 +34,20 @@ decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/
 decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellNativeTypeWithParameters:
   digest: sha256:8a93087a0eafa171
   verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/moduleImports:
+  digest: sha256:ff970848a6fed9ba
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/moduleText:
+  digest: sha256:c6591a7912c35060
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/referenceExpr:
+  digest: sha256:dadc483fa1d5cd9d
+  verdict: pending
 decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/selectorsFor:
   digest: sha256:54f614bde9405129
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/sortedImports:
+  digest: sha256:758582e95759d7ba
   verdict: pending
 decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/witnessBinders:
   digest: sha256:9a6b41f71a5d97c7

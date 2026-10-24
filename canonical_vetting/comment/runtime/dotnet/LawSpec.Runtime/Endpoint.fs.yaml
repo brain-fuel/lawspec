@@ -1,0 +1,27 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint:
+  digest: sha256:59ea4dc93c7dc0dc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Address:
+  digest: sha256:42869ed74c6a6e0a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Cancel:
+  digest: sha256:e48e2aa8f86fbf8f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Offer:
+  digest: sha256:cd3c5d0b0ccccc45
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Receive:
+  digest: sha256:1ba66523daf9e1cb
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/ReceiveAsync:
+  digest: sha256:78d039db6ab826bf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Stop:
+  digest: sha256:67ff9e9d9360e991
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Take:
+  digest: sha256:ab00cddf7825d1e1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Endpoint.fs/namespace/LawSpec.Runtime/class/Endpoint/member/Wake:
+  digest: sha256:12bda78451150e9c
+  verdict: pending

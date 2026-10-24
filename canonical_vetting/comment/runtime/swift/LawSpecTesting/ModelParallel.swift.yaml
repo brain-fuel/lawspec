@@ -1,0 +1,42 @@
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/allowed:
+  digest: sha256:371e695cc8362a38
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/candidates:
+  digest: sha256:82a20cd100b058ca
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/check:
+  digest: sha256:6b79fc120fb39444
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/checkWith:
+  digest: sha256:e10a8ad021758898
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/consistent:
+  digest: sha256:776da64bdbf50ece
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/describeCase:
+  digest: sha256:378ed9dfb67be779
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/execute:
+  digest: sha256:92bce2188f007503
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/findOrder:
+  digest: sha256:cfd83f66668e705c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/generateCase:
+  digest: sha256:ddfd53c3b1314be2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/func/shrinkCase:
+  digest: sha256:6ef61d921e6cf3e4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/struct/CallFailure:
+  digest: sha256:a871eed60f622c01
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/struct/Options:
+  digest: sha256:baebf9c940d45f45
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/typealias/Case:
+  digest: sha256:f16d4df2c648026e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ModelParallel.swift/enum/ModelParallel/typealias/Event:
+  digest: sha256:715eaa07e59aa598
+  verdict: pending

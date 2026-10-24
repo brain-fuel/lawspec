@@ -1,0 +1,6 @@
+decision/rust/acceptance/failures/rust/files/src/example/failures.rs:
+  digest: sha256:43c666e2b91b1733
+  verdict: pending
+decision/rust/acceptance/failures/rust/files/src/example/failures.rs/struct/GatewayHandler:
+  digest: sha256:9fd3557ad8a20e61
+  verdict: pending

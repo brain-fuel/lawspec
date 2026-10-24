@@ -1,0 +1,6 @@
+decision/haskell/test/TemporalSpec.hs/module/TemporalSpec:
+  digest: sha256:4c80e10bcc8410e1
+  verdict: pending
+decision/haskell/test/TemporalSpec.hs/module/TemporalSpec/function/test_temporalPropositionsAndBudgetsAreCheckedOverTheClock:
+  digest: sha256:79510082a0e01ebd
+  verdict: pending

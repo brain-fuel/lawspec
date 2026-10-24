@@ -1,0 +1,186 @@
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code:
+  digest: sha256:7117d2d89a1167b6
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/BigLit:
+  digest: sha256:7ef43e5fbf6f3262
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Call:
+  digest: sha256:baad3919dbacc03e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Code:
+  digest: sha256:9cb5cabceb63599a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Do:
+  digest: sha256:0115531c0df1e1de
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/If:
+  digest: sha256:117249658dbf2a3f
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Invoke:
+  digest: sha256:003b64821dde345a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/LongStr:
+  digest: sha256:60ef80c5dad41de2
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Pure:
+  digest: sha256:c6ca6ab388456b0f
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Raw:
+  digest: sha256:a3da138134b11ba8
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/Statement:
+  digest: sha256:5ca019a5f2f011c4
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Sink:
+  digest: sha256:b723a37d21f8bca2
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Stmt:
+  digest: sha256:b908b2b875636e7a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/applied:
+  digest: sha256:3a111fbb938d77b7
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/appliedWith:
+  digest: sha256:c37ab7e33be5ac02
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/arrayDoc:
+  digest: sha256:64838d3dba1385ee
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/atomic:
+  digest: sha256:d0a47a5b6efaeace
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/bindTo:
+  digest: sha256:96eef525b6e00329
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/blockDoc:
+  digest: sha256:4abf7b06bc44e359
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/brokenList:
+  digest: sha256:5f7c1d392de27cc8
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/callDoc:
+  digest: sha256:bbcd42c1183ec443
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/callee:
+  digest: sha256:a58802eb19c340c7
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/closure:
+  digest: sha256:3e3f47a164eaec06
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/closureDoc:
+  digest: sha256:c948baa08869846a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/closureHeader:
+  digest: sha256:2791e816d390a62e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/codecCall:
+  digest: sha256:8782420ddae3895d
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/codecDoc:
+  digest: sha256:0ed290d4d3419690
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/comment:
+  digest: sha256:1b33b943a12f096c
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/distinct:
+  digest: sha256:b9d6f3d8803b749e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/fileHeader:
+  digest: sha256:fb86544876d7f2b2
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/flatten:
+  digest: sha256:60a5c53a86432087
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/fresh:
+  digest: sha256:81b4b34fb20572f4
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/hangExpr:
+  digest: sha256:7a6e52fb5ac48578
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/hangValue:
+  digest: sha256:ff36a6e45da849ca
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/hangValueWith:
+  digest: sha256:79f9fad5541617e2
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/holdsLambda:
+  digest: sha256:8a313363d6087a17
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/indentation:
+  digest: sha256:ea3aa30c76c9ff88
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/inert:
+  digest: sha256:8f3fd8bdb475276c
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/inlineBoth:
+  digest: sha256:d485be1dc8502c4a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/intLiteral:
+  digest: sha256:6b2b36304c29b424
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/isInline:
+  digest: sha256:53d95a0227d6f3e9
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/longStringLiteral:
+  digest: sha256:707dcc455a68c176
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/mentions:
+  digest: sha256:a30ae13a1eede28a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/nameReceivers:
+  digest: sha256:a9848d16156df3ee
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/namesIn:
+  digest: sha256:221bc7818a56e950
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/packedArray:
+  digest: sha256:91f6cab92ae35933
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/renderBody:
+  digest: sha256:4b99f4b6af049f74
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/renderExpr:
+  digest: sha256:89e7526c50c36aa6
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/renderStatements:
+  digest: sha256:26066cb57cf3369f
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/returnsVoid:
+  digest: sha256:48f013725840d899
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/signature:
+  digest: sha256:3a873894db0fb34e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/sourceDoc:
+  digest: sha256:c0ae7d3bd0d9e88d
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/spansLines:
+  digest: sha256:4972af5e27bcd68b
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/statements:
+  digest: sha256:32ea704d38549ce5
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/stringLiteral:
+  digest: sha256:b1fed3beeadba6dd
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/swiftLayout:
+  digest: sha256:8e10693a713df37d
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/throws:
+  digest: sha256:4ac52907cc97f95e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/trailing:
+  digest: sha256:7f44a99700764985
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/typeDeclaration:
+  digest: sha256:be9b94a0b98695e0
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/voidFunctions:
+  digest: sha256:9cafdc72a590be37
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/newtype/Ty:
+  digest: sha256:c317316a4a234903
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/type/Fresh:
+  digest: sha256:95444fbb0c78b3ea
+  verdict: pending

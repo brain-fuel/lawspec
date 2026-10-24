@@ -1,0 +1,6 @@
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Checkout.fs/module/Lessons.Checkout/function/charge:
+  digest: sha256:bbef0c9ec69908d9
+  verdict: pending
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Checkout.fs/module/Lessons.Checkout/function/validate:
+  digest: sha256:d93fd06d0f709962
+  verdict: pending

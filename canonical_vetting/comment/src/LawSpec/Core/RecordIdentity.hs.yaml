@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity:
+  digest: sha256:1758546624aab1cf
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/data/RecordField:
+  digest: sha256:321c44031f88ac9b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/constructRecord:
+  digest: sha256:cf672572b78b2b90
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/dependencyFingerprint:
+  digest: sha256:d5b39f3f0e129d17
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/describeRecord:
+  digest: sha256:b04a5e43cef57eb3
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/instantiateRecordDeclaration:
+  digest: sha256:1e3be50a51bafb70
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/internRecordDeclarations:
+  digest: sha256:2fb770582faccf29
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/internRecordWith:
+  digest: sha256:8c1100eaf057be48
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/makeRecordDeclaration:
+  digest: sha256:72835609858517ea
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/rebuildRecordDeclaration:
+  digest: sha256:495b595b2bdfdca2
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordIdentity.hs/module/LawSpec.Core.RecordIdentity/function/validateRecordDeclaration:
+  digest: sha256:b9de07aba07e06f4
+  verdict: pending

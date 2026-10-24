@@ -1,0 +1,114 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors:
+  digest: sha256:57d9f9845ad2bcd3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/class/Handle:
+  digest: sha256:e987628cde63dcdc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/class/Inbox:
+  digest: sha256:feb5bce5024821f7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/class/Inbox/member/Receive:
+  digest: sha256:5fc2613316bfe540
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/class/Node/member/Incarnation:
+  digest: sha256:41c13782f3bd8ecc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/class/Node/member/Init:
+  digest: sha256:df25e998d444e230
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/class/Tree:
+  digest: sha256:d102a9cee5c81433
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/actor:
+  digest: sha256:395ae04ea55251fd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/actorOf:
+  digest: sha256:1a1aa9b1819c2b76
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/call:
+  digest: sha256:d7a46db3651c54e0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/child:
+  digest: sha256:6a9d0d70d6b1ffa6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/children:
+  digest: sha256:89cd6021028248a2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/crash:
+  digest: sha256:e2c2deb626ae733e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/decide:
+  digest: sha256:b2a88c22fb15ed3c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/failed:
+  digest: sha256:5f8ee5ce20280a2c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/halt:
+  digest: sha256:c452b221c79f5082
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/kill:
+  digest: sha256:20e6d270701d7250
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/link:
+  digest: sha256:2738aa7b4ce5652e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/metadata:
+  digest: sha256:7dd6cf4330fde19b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/monitor:
+  digest: sha256:5e5c4fbe698911f4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/receiveEvent:
+  digest: sha256:04e9b701172ef79c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/restartCount:
+  digest: sha256:8c9d0b991f80d08f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/restartGroup:
+  digest: sha256:93db2dd6f39e42f3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/start:
+  digest: sha256:01156f377b1b0cd6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/state:
+  digest: sha256:c470da22c50e7d83
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/stop:
+  digest: sha256:1e8702314da37d94
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/supervisor:
+  digest: sha256:143e061b3edf235e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/tell:
+  digest: sha256:040d63995e40e444
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/withMetadata:
+  digest: sha256:edca9143b6b81d97
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/withSpec:
+  digest: sha256:8fc9a97e49cddad9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/function/worker:
+  digest: sha256:5f67c0cf789b1144
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Event:
+  digest: sha256:f4f3cd86d63915ae
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Lifetime:
+  digest: sha256:0f0d3e9360e5b7b0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Lifetime/case/Permanent:
+  digest: sha256:7f8369078fc513c0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Lifetime/case/Temporary:
+  digest: sha256:9fe6ad09fa2e3bc2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Lifetime/case/Transient:
+  digest: sha256:864bfbf53b4d3078
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Spec:
+  digest: sha256:3c2b7ea28bd26bba
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Actors.fs/module/LawSpec.Runtime.Actors/union/Strategy:
+  digest: sha256:782915cfaea3950e
+  verdict: pending

@@ -1,0 +1,9 @@
+decision/swift/acceptance/failures/swift/files/src/Example/Failures.swift/extension/Example.Failures/func/gatewayHandler:
+  digest: sha256:9fd3557ad8a20e61
+  verdict: pending
+decision/swift/acceptance/failures/swift/files/src/Example/Failures.swift/extension/Example.Failures/func/refund:
+  digest: sha256:784478b2bc057411
+  verdict: pending
+decision/swift/acceptance/failures/swift/files/src/Example/Failures.swift/extension/Example.Failures/func/settle:
+  digest: sha256:784478b2bc057411
+  verdict: pending

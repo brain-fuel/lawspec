@@ -1,0 +1,48 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp:
+  digest: sha256:7ceb2057ea219583
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn:
+  digest: sha256:65d487dded8809c9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/F2:
+  digest: sha256:a1d572cc1f767ed3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/Invoke:
+  digest: sha256:babf4a131d645d9f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/List:
+  digest: sha256:e70afd16c3d78b02
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/ListOf:
+  digest: sha256:c85eb129befb931b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/None:
+  digest: sha256:cfad01600bd8387f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/Run:
+  digest: sha256:fe6840ba46b71c82
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/Some:
+  digest: sha256:fd71b7e5545a8f9b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Fn/member/Tuple:
+  digest: sha256:e02de6afe1ee00b1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Maybe:
+  digest: sha256:5c43fc4a9bdf8fd0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Maybe/member/GetOrElse:
+  digest: sha256:3b8aac6ad04c62f6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Maybe/member/Match:
+  digest: sha256:be218c7e42969ff3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Maybe/member/OfObj:
+  digest: sha256:bf1ff1e8707ec4c6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/Outcome:
+  digest: sha256:a1a0ee409843777a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/CSharp.fs/namespace/LawSpec.CSharp/class/V:
+  digest: sha256:7f87e957e6815093
+  verdict: pending

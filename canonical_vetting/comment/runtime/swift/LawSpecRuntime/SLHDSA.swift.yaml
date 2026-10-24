@@ -1,0 +1,21 @@
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f:
+  digest: sha256:87f35f79c1f721e9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f/func/keyGen:
+  digest: sha256:fce5d4bb4582f929
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f/func/sign:
+  digest: sha256:af2d8603e55827e4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f/func/split:
+  digest: sha256:36e802e9cecb301c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f/func/tweak:
+  digest: sha256:7850c798102a4bb5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f/func/verify:
+  digest: sha256:f01d5cffb2aaf86e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SLHDSA.swift/enum/SLHDSAShake128f/struct/Address:
+  digest: sha256:64c119289d2ecc30
+  verdict: pending

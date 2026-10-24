@@ -16,6 +16,15 @@ decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/lookup
 decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/namesFor:
   digest: sha256:4148080fa8e523af
   verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/q:
+  digest: sha256:56444cc1ff961c38
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/reference:
+  digest: sha256:96220cf8494b5d22
+  verdict: pending
+"decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/referenceExpr'":
+  digest: sha256:b9c99a978287195a
+  verdict: pending
 decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/requiresSchema:
   digest: sha256:047cef9b3e0c5f5a
   verdict: pending
@@ -34,11 +43,17 @@ decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDat
 decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataTypeDoc:
   digest: sha256:07c5666ba2e06832
   verdict: pending
-decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataTypeDocWith:
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataTypeOf:
+  digest: sha256:07c5666ba2e06832
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataTypeOfWith:
   digest: sha256:f4fe7f5d89363560
   verdict: pending
 decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webTypeReference:
   digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webTypeReferenceDoc:
+  digest: sha256:32604bceedd92ddc
   verdict: pending
 decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/type/Handles:
   digest: sha256:7307c598e80d4e99

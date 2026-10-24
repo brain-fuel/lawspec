@@ -1,0 +1,9 @@
+decision/rust/acceptance/minor-native-failure-products/rust/native/src/till_native.rs:
+  digest: sha256:90fe461c2b3d3038
+  verdict: pending
+decision/rust/acceptance/minor-native-failure-products/rust/native/src/till_native.rs/function/pay:
+  digest: sha256:31951dc63c5c4c0d
+  verdict: pending
+decision/rust/acceptance/minor-native-failure-products/rust/native/src/till_native.rs/struct/NativeTill:
+  digest: sha256:08a9f176debe606a
+  verdict: pending

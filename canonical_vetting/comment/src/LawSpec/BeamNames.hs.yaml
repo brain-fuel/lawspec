@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames:
+  digest: sha256:6d2b8d97eed30aac
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/abilityEntries:
+  digest: sha256:de6b5861c041c208
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/definitionEntries:
+  digest: sha256:27737c9066998044
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/erlangReserved:
+  digest: sha256:f6757318c9eaac00
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/functionAtom:
+  digest: sha256:6ddbf565a6504dd8
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/generatedVariables:
+  digest: sha256:156537c22fb6181a
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/variableName:
+  digest: sha256:ffed7a034a8ba8d3
+  verdict: pending
+decision/haskell/src/LawSpec/BeamNames.hs/module/LawSpec.BeamNames/function/variables:
+  digest: sha256:c93488aa694f4c6c
+  verdict: pending

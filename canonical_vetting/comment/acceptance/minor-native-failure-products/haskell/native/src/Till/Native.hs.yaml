@@ -1,0 +1,12 @@
+decision/haskell/acceptance/minor-native-failure-products/haskell/native/src/Till/Native.hs/module/Till.Native:
+  digest: sha256:850aa76251d221f0
+  verdict: pending
+decision/haskell/acceptance/minor-native-failure-products/haskell/native/src/Till/Native.hs/module/Till.Native/data/Cash:
+  digest: sha256:23bfcd57e285eb17
+  verdict: pending
+decision/haskell/acceptance/minor-native-failure-products/haskell/native/src/Till/Native.hs/module/Till.Native/data/NativeTill:
+  digest: sha256:08a9f176debe606a
+  verdict: pending
+decision/haskell/acceptance/minor-native-failure-products/haskell/native/src/Till/Native.hs/module/Till.Native/function/pay:
+  digest: sha256:232be44f913b59b3
+  verdict: pending

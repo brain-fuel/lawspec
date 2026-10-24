@@ -1,0 +1,54 @@
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp:
+  digest: sha256:f4160adb591a5665
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/data/St:
+  digest: sha256:2a1456bbafecb093
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/cexpr:
+  digest: sha256:5ea412d1e45dc228
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/codecMember:
+  digest: sha256:21feeb9605e52c54
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/compiledName:
+  digest: sha256:8ce436e64b67fa2e
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/constant:
+  digest: sha256:c6e8104a99419b16
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/construct:
+  digest: sha256:99588162801c07be
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/cstmt:
+  digest: sha256:308b9cca0e9a6dc6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/dotnetTypedDeclarations:
+  digest: sha256:e065bf0aba7dc492
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/enterFunction:
+  digest: sha256:134b3f93dd819602
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/exact:
+  digest: sha256:fa7b0e19308bc589
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/fresh:
+  digest: sha256:b6a3b2ca192e36b6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/isRecord:
+  digest: sha256:b1850762dba9fc36
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/literal:
+  digest: sha256:e3b4466bb2f10c2f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/moduleReserved:
+  digest: sha256:7c2bc9866bdf3b08
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/narrow:
+  digest: sha256:86f2988a1be95dc8
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/orderingOf:
+  digest: sha256:5c1c89a4a7fc9f2f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/FSharp.hs/module/LawSpec.Typed.FSharp/function/plainConversion:
+  digest: sha256:9356fc386f3acf78
+  verdict: pending

@@ -1,0 +1,42 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel:
+  digest: sha256:3b6c5c2c987bdc2f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/abbreviation/Case:
+  digest: sha256:f16d4df2c648026e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/abbreviation/Event:
+  digest: sha256:715eaa07e59aa598
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/allowed:
+  digest: sha256:371e695cc8362a38
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/candidates:
+  digest: sha256:82a20cd100b058ca
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/check:
+  digest: sha256:6b79fc120fb39444
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/checkWith:
+  digest: sha256:e10a8ad021758898
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/consistent:
+  digest: sha256:776da64bdbf50ece
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/describeCase:
+  digest: sha256:378ed9dfb67be779
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/execute:
+  digest: sha256:60ef81edeb920682
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/findOrder:
+  digest: sha256:cfd83f66668e705c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/generateCase:
+  digest: sha256:ddfd53c3b1314be2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/function/shrinkCase:
+  digest: sha256:6ef61d921e6cf3e4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ModelParallel.fs/module/LawSpec.Testing.ModelParallel/record/Options:
+  digest: sha256:baebf9c940d45f45
+  verdict: pending

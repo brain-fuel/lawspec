@@ -1,9 +1,18 @@
 decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend:
   digest: sha256:8433829ac4ae319e
   verdict: pending
+decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/baseName:
+  digest: sha256:4de247556085941e
+  verdict: pending
 decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/compileCore:
   digest: sha256:b9cd128310f54790
   verdict: pending
 decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/elaborate:
   digest: sha256:41695cd92b5fb884
+  verdict: pending
+decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/elaborateWithSourceDeclarations:
+  digest: sha256:29c706d1a037c0cc
+  verdict: pending
+decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/sourcePropertyId:
+  digest: sha256:981ed3d1b07f5075
   verdict: pending

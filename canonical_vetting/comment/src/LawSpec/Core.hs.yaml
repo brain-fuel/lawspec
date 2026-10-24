@@ -115,6 +115,18 @@ decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/isConcrete:
 decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/isPure:
   digest: sha256:f2c776a10f1e7280
   verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/lowerFieldNodes:
+  digest: sha256:bd39730b30aac8af
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/lowerProgramFields:
+  digest: sha256:ef1d5bf35a6edf04
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/operationResultCheck:
+  digest: sha256:cc0e8aac5605c7bf
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/operationResultChecked:
+  digest: sha256:2900b81b5633cbe3
+  verdict: pending
 decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/propertyExpressions:
   digest: sha256:af98c0efa79af538
   verdict: pending
@@ -123,6 +135,12 @@ decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/propositionExp
   verdict: pending
 decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/scalarType:
   digest: sha256:06b2783dafd6e261
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/traverseChildren:
+  digest: sha256:5db20c4b30b0afaf
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/newtype/Counting:
+  digest: sha256:9e6cf429bcec0a67
   verdict: pending
 decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/newtype/Id:
   digest: sha256:0047bfeed151e397

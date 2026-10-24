@@ -10,11 +10,17 @@ decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/asyncFun
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/declarationName:
   digest: sha256:5f5d824a0659d0b0
   verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/expressionBinders:
+  digest: sha256:28baefaaffa266dc
+  verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/functions:
   digest: sha256:de6995da86843c1e
   verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/generationPlan:
   digest: sha256:3500ce1cad590455
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/lawCommentLines:
+  digest: sha256:69b8a36380e47aef
   verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/localName:
   digest: sha256:8292ce3a4172e9c9
@@ -34,20 +40,38 @@ decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/owner:
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyExpanded:
   digest: sha256:904ec7b010949502
   verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyExpandedWith:
+  digest: sha256:998702f8e00ef97d
+  verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyExpr:
   digest: sha256:de4e0e038cdaba01
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyExprWith:
+  digest: sha256:a8d4a1b22dde5ac4
   verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyType:
   digest: sha256:38ac40f61f383d62
   verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/propertyBinders:
+  digest: sha256:d0f8d6be3e87a429
+  verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/propertyKind:
   digest: sha256:9b4bf6357d346649
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/propertyLink:
+  digest: sha256:d2ce4131cae1c0a2
   verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/propositionText:
   digest: sha256:1b49dea53f4c3148
   verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/readableScalar:
+  digest: sha256:81060f3ddf7fe612
+  verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/scalarTypeKey:
   digest: sha256:d008a3183743f0ff
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/sourceNames:
+  digest: sha256:8b372ac42ae2db53
   verdict: pending
 decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/splitOnce:
   digest: sha256:b7464a0963b265cf

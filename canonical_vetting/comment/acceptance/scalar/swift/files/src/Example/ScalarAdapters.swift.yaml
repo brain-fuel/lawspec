@@ -1,0 +1,42 @@
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/addDecimal:
+  digest: sha256:c668c2ecb66a08a9
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoBytes:
+  digest: sha256:901195b4b0ead0cf
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoChar:
+  digest: sha256:d1847b0de4d0eeb9
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoCodePoint:
+  digest: sha256:eacb49af0ee32f29
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoCodeUnit:
+  digest: sha256:6648217d7a25c5f2
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoComplex:
+  digest: sha256:3cf0dbbd577180b0
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoPresence:
+  digest: sha256:d3057748b07cec6f
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/echoRaw:
+  digest: sha256:e9dc6b393516191f
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/finish:
+  digest: sha256:49ca03bcc0c4ad51
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/machineEcho:
+  digest: sha256:156bb03346fb1369
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/narrow:
+  digest: sha256:179c6008d0f1000f
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/preserveBig:
+  digest: sha256:0ad6c9a38ee83604
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/sameSymbol:
+  digest: sha256:0039b14b3153e22f
+  verdict: pending
+decision/swift/acceptance/scalar/swift/files/src/Example/ScalarAdapters.swift/extension/Example.ScalarAdapters/func/successor:
+  digest: sha256:cc7d5e34f971f8dd
+  verdict: pending

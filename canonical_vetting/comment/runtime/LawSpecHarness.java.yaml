@@ -1,0 +1,33 @@
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/class/HarnessError:
+  digest: sha256:69425907fecf0799
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/interface/Body:
+  digest: sha256:bcbc798f42b88137
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/benchmark:
+  digest: sha256:8ead2e8ff5319ae4
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/checkDrawn:
+  digest: sha256:e014ea0150eca581
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/frequency:
+  digest: sha256:559acb3d7cc6fbf6
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/knownFailing:
+  digest: sha256:b24ece9efb3b9e45
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/orderSeed:
+  digest: sha256:e7e610411aa2fa81
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/parallelism:
+  digest: sha256:48bdebf7f4876c16
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/run:
+  digest: sha256:872ea0769cac1d08
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/shuffled:
+  digest: sha256:577f04f3d3d91caa
+  verdict: pending
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/target:
+  digest: sha256:0898bd82fc247265
+  verdict: pending

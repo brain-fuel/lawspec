@@ -1,0 +1,42 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property:
+  digest: sha256:aae7819a57f4cfdf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/class/Outcome:
+  digest: sha256:9c989dc3aba3d49a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/exception/Aborted:
+  digest: sha256:c051a7e2f9f92586
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/boundaries:
+  digest: sha256:f1ab091ae4015bd2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/check:
+  digest: sha256:30b180a6750c93a2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/checkDrawn:
+  digest: sha256:0908bc14da700e57
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/generation:
+  digest: sha256:c687943829725e99
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/generationWith:
+  digest: sha256:d10bdeeddfa38ca2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/rndOf:
+  digest: sha256:99e27befbe954e52
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/runSeed:
+  digest: sha256:cfa2818621902416
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/settings:
+  digest: sha256:cbae0178ff8c9e08
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/function/suchThat:
+  digest: sha256:10c1fc0f4e1b758b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/record/Settings:
+  digest: sha256:2d5f75ccde2a42c6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Property.fs/module/LawSpec.Testing.Property/value/maxSize:
+  digest: sha256:e722182b1360508b
+  verdict: pending

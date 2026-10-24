@@ -1,0 +1,30 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime:
+  digest: sha256:2005b7c53d444366
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/function/fromNative:
+  digest: sha256:116943d518fe04aa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/function/handle:
+  digest: sha256:46ce920e276e457c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/function/map:
+  digest: sha256:58e4e0b3f46b6a6a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/function/set:
+  digest: sha256:3cfa560497f71fbf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/function/toNative:
+  digest: sha256:8f90bfeb2605e067
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/value/bytes:
+  digest: sha256:6c1817e95d790ef3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/value/duration:
+  digest: sha256:bda72c2396dc015b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/module/Codec/value/portable:
+  digest: sha256:6c26f46b36b61023
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Codecs.fs/namespace/LawSpec.Runtime/record/Codec:
+  digest: sha256:5ba3341d7aed4b96
+  verdict: pending

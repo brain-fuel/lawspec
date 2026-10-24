@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/DotNet/Handlers.hs/module/LawSpec.DotNet.Handlers:
+  digest: sha256:b0b6d76bfe5af33f
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Handlers.hs/module/LawSpec.DotNet.Handlers/function/emitHandlers:
+  digest: sha256:2f44af0b8857a625
+  verdict: pending

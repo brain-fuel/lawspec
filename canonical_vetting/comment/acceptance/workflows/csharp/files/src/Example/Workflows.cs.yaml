@@ -1,0 +1,9 @@
+decision/csharp/acceptance/workflows/csharp/files/src/Example/Workflows.cs/namespace/Example/class/Workflows/field/Finished:
+  digest: sha256:961f17676263e7ce
+  verdict: pending
+decision/csharp/acceptance/workflows/csharp/files/src/Example/Workflows.cs/namespace/Example/class/Workflows/field/Spans:
+  digest: sha256:23e452ac1a890bf1
+  verdict: pending
+decision/csharp/acceptance/workflows/csharp/files/src/Example/Workflows.cs/namespace/Example/class/Workflows/method/Overlapped:
+  digest: sha256:9f82d2bb28911d13
+  verdict: pending

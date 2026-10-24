@@ -1,0 +1,9 @@
+decision/go/acceptance/builtins/go/native/lawspec/time/steady.go:
+  digest: sha256:ae16f9380dfdf32c
+  verdict: pending
+decision/go/acceptance/builtins/go/native/lawspec/time/steady.go/function/NewSteadyClock:
+  digest: sha256:efce255a7317a58f
+  verdict: pending
+decision/go/acceptance/builtins/go/native/lawspec/time/steady.go/type/SteadyClock:
+  digest: sha256:0df3c3bf4b39b4ab
+  verdict: pending

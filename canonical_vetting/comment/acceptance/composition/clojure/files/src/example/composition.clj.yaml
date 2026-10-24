@@ -1,0 +1,12 @@
+decision/clojure/acceptance/composition/clojure/files/src/example/composition.clj:
+  digest: sha256:8b7341488ff4f47e
+  verdict: pending
+decision/clojure/acceptance/composition/clojure/files/src/example/composition.clj/function/logs-handler:
+  digest: sha256:06c84987e093876b
+  verdict: pending
+decision/clojure/acceptance/composition/clojure/files/src/example/composition.clj/function/reader-handler:
+  digest: sha256:5a7e9604e8c13c6d
+  verdict: pending
+decision/clojure/acceptance/composition/clojure/files/src/example/composition.clj/function/writer-handler:
+  digest: sha256:6e62a9081fd552d2
+  verdict: pending

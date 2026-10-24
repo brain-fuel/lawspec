@@ -1,0 +1,36 @@
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr:
+  digest: sha256:1d6b2f3f78312fcb
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/data/Context:
+  digest: sha256:6580f11ebdd04c7c
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/assertion:
+  digest: sha256:368999a5c273f7d4
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/literal:
+  digest: sha256:e65a50fa17d001f1
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/proposition:
+  digest: sha256:6a90fa3c408cdbd5
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/render:
+  digest: sha256:c96bd6865111716d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/reservedLocals:
+  digest: sha256:28a2c225313c2fa3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/sourceLocal:
+  digest: sha256:558feae82be17d8d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/truth:
+  digest: sha256:e22f194f17753250
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/typeRef:
+  digest: sha256:2f928c089e463564
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/value:
+  digest: sha256:0b735cab2bd9c434
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Expr.hs/module/LawSpec.DotNet.Expr/function/valueCall:
+  digest: sha256:0003cc95b5ab9bb5
+  verdict: pending

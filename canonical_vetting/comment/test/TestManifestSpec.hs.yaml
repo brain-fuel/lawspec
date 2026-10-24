@@ -1,9 +1,6 @@
 decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec:
   digest: sha256:2f58ceaaf588bcbd
   verdict: pending
-decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec/function/joined:
-  digest: sha256:56bd017cdce53811
-  verdict: pending
 decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec/function/named:
   digest: sha256:594519c31331761f
   verdict: pending

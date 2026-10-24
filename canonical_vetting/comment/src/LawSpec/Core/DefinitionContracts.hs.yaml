@@ -7,3 +7,9 @@ decision/haskell/src/LawSpec/Core/DefinitionContracts.hs/module/LawSpec.Core.Def
 decision/haskell/src/LawSpec/Core/DefinitionContracts.hs/module/LawSpec.Core.DefinitionContracts/function/definitionContracts:
   digest: sha256:961538b2b3ed57ea
   verdict: pending
+decision/haskell/src/LawSpec/Core/DefinitionContracts.hs/module/LawSpec.Core.DefinitionContracts/function/validateEmissionDefinitions:
+  digest: sha256:1d642ef946071c99
+  verdict: pending
+decision/haskell/src/LawSpec/Core/DefinitionContracts.hs/module/LawSpec.Core.DefinitionContracts/function/validateNativeEmissionDefinitions:
+  digest: sha256:77d6b450b036584a
+  verdict: pending

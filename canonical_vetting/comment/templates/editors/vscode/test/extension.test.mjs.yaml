@@ -1,0 +1,9 @@
+decision/javascript/templates/editors/vscode/test/extension.test.mjs/method/constructor:
+  digest: sha256:f37cc4b485550b9f
+  verdict: pending
+decision/javascript/templates/editors/vscode/test/extension.test.mjs/method/start:
+  digest: sha256:f79b1795eb897eb5
+  verdict: pending
+decision/javascript/templates/editors/vscode/test/extension.test.mjs/method/stop:
+  digest: sha256:eb852644ffd5ceb1
+  verdict: pending

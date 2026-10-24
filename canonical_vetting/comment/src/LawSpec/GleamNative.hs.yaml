@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/GleamNative.hs/module/LawSpec.GleamNative:
+  digest: sha256:6500d9a46c1fb288
+  verdict: pending
+decision/haskell/src/LawSpec/GleamNative.hs/module/LawSpec.GleamNative/function/unitTests:
+  digest: sha256:0fa0cb6675b99981
+  verdict: pending

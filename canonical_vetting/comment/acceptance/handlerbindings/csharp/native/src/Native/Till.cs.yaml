@@ -1,0 +1,12 @@
+decision/csharp/acceptance/handlerbindings/csharp/native/src/Native/Till.cs/namespace/Till/class/BadAmount:
+  digest: sha256:5a8137913ece0b8c
+  verdict: pending
+decision/csharp/acceptance/handlerbindings/csharp/native/src/Native/Till.cs/namespace/Till/class/CardDeclined:
+  digest: sha256:a7a3d2e598ecb018
+  verdict: pending
+decision/csharp/acceptance/handlerbindings/csharp/native/src/Native/Till.cs/namespace/Till/class/NativeTill:
+  digest: sha256:f4bbee7a3216f049
+  verdict: pending
+decision/csharp/acceptance/handlerbindings/csharp/native/src/Native/Till.cs/namespace/Till/class/Payments:
+  digest: sha256:634e79a52ee5784f
+  verdict: pending

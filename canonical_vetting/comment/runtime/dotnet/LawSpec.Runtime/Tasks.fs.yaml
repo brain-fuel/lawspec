@@ -1,0 +1,27 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks:
+  digest: sha256:24c0fe190ca5c82f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/class/Scope:
+  digest: sha256:8d36bbbbf9caa3d1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/class/Scope/member/Close:
+  digest: sha256:d7505a44dc08476a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/class/Scope/member/Own:
+  digest: sha256:a8b80c1a0f55588e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/function/check:
+  digest: sha256:d2093c298916d80c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/function/currentScope:
+  digest: sha256:66f7a79a8fc1b6e2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/function/start:
+  digest: sha256:075355124bfc8a8c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/function/token:
+  digest: sha256:3a14d8dfdb750ed3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Tasks.fs/module/LawSpec.Runtime.Tasks/function/withScope:
+  digest: sha256:4d954c360d7eb232
+  verdict: pending

@@ -7,11 +7,20 @@ decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/coreType:
   digest: sha256:142945032a18b5a1
   verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/coreTypeWithRecords:
+  digest: sha256:fe54668bb7ae3f81
+  verdict: pending
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateContract:
   digest: sha256:ec2cc6d0111a33fc
   verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateContractWithRecords:
+  digest: sha256:d99af20c080ce68c
+  verdict: pending
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateDefinitionUnit:
   digest: sha256:cde3be4b0bdd4ff8
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateDefinitionUnitWithRecords:
+  digest: sha256:110785a267427709
   verdict: pending
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateExpression:
   digest: sha256:5c73ab6ebbfaa926
@@ -19,8 +28,14 @@ decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateResolved:
   digest: sha256:4c0c9d654fb6739a
   verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateResolvedIn:
+  digest: sha256:e717de9885650d39
+  verdict: pending
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateResolvedWithData:
   digest: sha256:46308d07d2d653d0
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateResolvedWithRecords:
+  digest: sha256:6b863ee63906cb7e
   verdict: pending
 decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/equation:
   digest: sha256:772a6df08cf0b6f0

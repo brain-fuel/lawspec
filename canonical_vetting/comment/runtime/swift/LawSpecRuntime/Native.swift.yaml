@@ -1,0 +1,51 @@
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/enum/Either:
+  digest: sha256:7d87f1aef252cd87
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/enum/Nullable:
+  digest: sha256:7af696d28084867d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/enum/Undefinable:
+  digest: sha256:f21baa5e0048e816
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/AnyHandle:
+  digest: sha256:65c89f5d04704e69
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Complex128:
+  digest: sha256:7c5f2570ca4441a5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Complex64:
+  digest: sha256:9bb28674cc681ee8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/ExactDecimal:
+  digest: sha256:99c88aae0a74bfa8
+  verdict: pending
+"decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/ExactDecimal/func/*":
+  digest: sha256:4d30ef4384d79e9e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/ExactDecimal/func/+:
+  digest: sha256:10280e4f5fb2d664
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/ExactDecimal/func/-:
+  digest: sha256:51fc67ab7b435f9c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/ExactDecimal/func/aligned:
+  digest: sha256:3c0087aee3467307
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Null:
+  digest: sha256:521fb026b1194fef
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Rational:
+  digest: sha256:810c44b442dcf91d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Rational/init/init:
+  digest: sha256:59374abd6a11b66c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Symbol:
+  digest: sha256:c9ad38ea259ca557
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Undefined:
+  digest: sha256:2f3727e832c8dbc1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Native.swift/struct/Unit:
+  digest: sha256:b23095f757e75195
+  verdict: pending

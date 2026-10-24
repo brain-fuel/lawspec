@@ -1,0 +1,36 @@
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/class/RequestCell:
+  digest: sha256:658e0ca067998b14
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/class/ScenarioNetwork:
+  digest: sha256:00aeeae7d923845e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/class/ScenarioNetwork/func/event:
+  digest: sha256:b088820deb76f82e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/class/ScenarioNetwork/func/replied:
+  digest: sha256:e1f87d54c88e71e1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/class/ScenarioNetwork/func/send:
+  digest: sha256:fd2390c56f2c033e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/enum/ScenarioDestination:
+  digest: sha256:7c3efef9e16b444b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/enum/ScenarioIncoming:
+  digest: sha256:085c0b68ac70d7a2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/enum/ScenarioOutcome:
+  digest: sha256:4035bac0d72cc0f9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/enum/ScenarioPayload:
+  digest: sha256:bb7074c5d93a6551
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/struct/ScenarioFault:
+  digest: sha256:f27b76f73a4c9149
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/struct/ScenarioStats:
+  digest: sha256:726b1bf7ae4a6874
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioNetwork.swift/typealias/ScenarioClock:
+  digest: sha256:481b187d3acf6c96
+  verdict: pending

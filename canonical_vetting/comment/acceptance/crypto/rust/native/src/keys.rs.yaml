@@ -1,0 +1,9 @@
+decision/rust/acceptance/crypto/rust/native/src/keys.rs:
+  digest: sha256:2608c613528fed7f
+  verdict: pending
+decision/rust/acceptance/crypto/rust/native/src/keys.rs/function/counting_exchange:
+  digest: sha256:d283121e6836abc9
+  verdict: pending
+decision/rust/acceptance/crypto/rust/native/src/keys.rs/function/counting_signer:
+  digest: sha256:2b9386805651cf6f
+  verdict: pending

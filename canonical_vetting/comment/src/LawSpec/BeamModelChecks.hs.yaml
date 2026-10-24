@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/BeamModelChecks.hs/module/LawSpec.BeamModelChecks:
+  digest: sha256:401f453a472cd727
+  verdict: pending
+decision/haskell/src/LawSpec/BeamModelChecks.hs/module/LawSpec.BeamModelChecks/function/checkObligations:
+  digest: sha256:8bd58d345e25b215
+  verdict: pending

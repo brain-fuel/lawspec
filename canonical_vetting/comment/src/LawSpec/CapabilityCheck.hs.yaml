@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/CapabilityCheck.hs/module/LawSpec.CapabilityCheck:
+  digest: sha256:7a75b8100f57d5cd
+  verdict: pending
+decision/haskell/src/LawSpec/CapabilityCheck.hs/module/LawSpec.CapabilityCheck/function/checkCapability:
+  digest: sha256:3af002931a67f1da
+  verdict: pending

@@ -1,0 +1,12 @@
+decision/haskell/test/ModelCheckSpec.hs/module/ModelCheckSpec:
+  digest: sha256:57da8dab9a024936
+  verdict: pending
+decision/haskell/test/ModelCheckSpec.hs/module/ModelCheckSpec/function/row:
+  digest: sha256:959ff1385b5e4ca6
+  verdict: pending
+decision/haskell/test/ModelCheckSpec.hs/module/ModelCheckSpec/function/settled:
+  digest: sha256:2aa0df0ef6ad2477
+  verdict: pending
+decision/haskell/test/ModelCheckSpec.hs/module/ModelCheckSpec/function/toggle:
+  digest: sha256:95a31cdddb3c9e39
+  verdict: pending

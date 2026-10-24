@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode:
+  digest: sha256:51ed9e72a9318eeb
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/function:
+  digest: sha256:72254819c334d66e
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/integer:
+  digest: sha256:a91691a68742f445
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/layoutFor:
+  digest: sha256:d13ae79e73866d56
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/moduleDocFrom:
+  digest: sha256:d5d7edde47da9658
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/splitTop:
+  digest: sha256:242d134f285a8e45
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/typeAttribute:
+  digest: sha256:a19c9a37f177e897
+  verdict: pending
+decision/haskell/src/LawSpec/ElixirCode.hs/module/LawSpec.ElixirCode/function/variables:
+  digest: sha256:bac660a2df7fd61a
+  verdict: pending

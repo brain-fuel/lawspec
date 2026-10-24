@@ -1,0 +1,87 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects:
+  digest: sha256:e0195d1f89aa265a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/abbreviation/Clause:
+  digest: sha256:31277bfb18266a06
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/abbreviation/StatefulClause:
+  digest: sha256:1c5120bb48496ea8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/class/Cell:
+  digest: sha256:b382af1cbb29c53c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/class/Cell/member/Update:
+  digest: sha256:f00d3f7aca1a568d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/class/Log:
+  digest: sha256:20d2f295aaac53c3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/class/Scope:
+  digest: sha256:56c2a1749e8b3cb4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/attempt:
+  digest: sha256:bb74f3f6772064b3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/countCalls:
+  digest: sha256:8cb4a0a170fc7704
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/handler:
+  digest: sha256:ab43d29efa2c09a1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/handlerState:
+  digest: sha256:7c86abeb2044c2eb
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/install:
+  digest: sha256:50f55c5fc86e7c8c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/invoke:
+  digest: sha256:e2b16dda2d657526
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/mapException:
+  digest: sha256:8dc235c3907ccc6e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/nativeFailures:
+  digest: sha256:d2afd85fe81ff370
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/nativeTry:
+  digest: sha256:1a6e8372dcdd175a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/newCell:
+  digest: sha256:411d7a832e76a990
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/ofResult:
+  digest: sha256:3c58076f2e978c28
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/perform:
+  digest: sha256:7266ac563fa037cf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/raiseFailure:
+  digest: sha256:b474a540f0415bea
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/recording:
+  digest: sha256:f4bfaf0699209b9b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/recover:
+  digest: sha256:b116695517d79a4d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/resourceRequired:
+  digest: sha256:7e82053716871e99
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/setHandlerState:
+  digest: sha256:99f1862dffab6230
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/shared:
+  digest: sha256:c70723f2e80111a6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/stateful:
+  digest: sha256:88659faca64b5457
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/stateless:
+  digest: sha256:792174541eed0761
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/function/withScope:
+  digest: sha256:dbaad4167c08cfc8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Effects.fs/module/LawSpec.Runtime.Effects/interface/IOrigin:
+  digest: sha256:1ff73a0018858d6d
+  verdict: pending

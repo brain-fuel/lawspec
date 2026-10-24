@@ -1,0 +1,6 @@
+decision/python/acceptance/resources/python/files/src/example/resources.py/class/Pool:
+  digest: sha256:4d8be5d94e7e73c4
+  verdict: pending
+decision/python/acceptance/resources/python/files/src/example/resources.py/class/Store:
+  digest: sha256:e7d8341f24207371
+  verdict: pending

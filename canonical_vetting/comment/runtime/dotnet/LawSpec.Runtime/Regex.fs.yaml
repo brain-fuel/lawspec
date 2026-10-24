@@ -1,0 +1,18 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Regex.fs/module/LawSpec.Runtime.Regex:
+  digest: sha256:c779db291b951b36
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Regex.fs/module/LawSpec.Runtime.Regex/function/compile:
+  digest: sha256:018fa3fcd3991c53
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Regex.fs/module/LawSpec.Runtime.Regex/function/matches:
+  digest: sha256:748ed3e621c36717
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Regex.fs/module/LawSpec.Runtime.Regex/function/run:
+  digest: sha256:9cdbadf70ae5998d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Regex.fs/module/LawSpec.Runtime.Regex/union/Node:
+  digest: sha256:d17399247e9e490f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Regex.fs/module/LawSpec.Runtime.Regex/union/Node/case/Set:
+  digest: sha256:1ce5a31052a4a537
+  verdict: pending

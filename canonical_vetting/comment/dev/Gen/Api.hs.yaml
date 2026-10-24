@@ -4,3 +4,6 @@ decision/haskell/dev/Gen/Api.hs/module/Gen.Api:
 decision/haskell/dev/Gen/Api.hs/module/Gen.Api/function/braces:
   digest: sha256:a65002d394bfc9b6
   verdict: pending
+decision/haskell/dev/Gen/Api.hs/module/Gen.Api/function/methods:
+  digest: sha256:26bea864267f8734
+  verdict: pending

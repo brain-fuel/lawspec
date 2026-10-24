@@ -1,0 +1,9 @@
+decision/swift/acceptance/resilience/swift/files/src/Example/Limits.swift/class/Quotes:
+  digest: sha256:acc8abd92ba12c1f
+  verdict: pending
+decision/swift/acceptance/resilience/swift/files/src/Example/Limits.swift/extension/Example.Limits/func/fetchQuote:
+  digest: sha256:3756c5d4ef4a3550
+  verdict: pending
+decision/swift/acceptance/resilience/swift/files/src/Example/Limits.swift/extension/Example.Limits/func/hedgeQuote:
+  digest: sha256:92e070d4ffd53fa4
+  verdict: pending

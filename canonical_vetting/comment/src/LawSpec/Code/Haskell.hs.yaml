@@ -1,0 +1,90 @@
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell:
+  digest: sha256:b34fe0658ed821b3
+  verdict: pending
+"decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/(<+)":
+  digest: sha256:4ac8d5732b7a14bf
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/argument:
+  digest: sha256:25f4cb60caae2c9c
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/bare:
+  digest: sha256:f08c90f5c7a17276
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/bracketed:
+  digest: sha256:ebf6b0abec38968c
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/call:
+  digest: sha256:c3f4a8d0dc697089
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/camelName:
+  digest: sha256:954a2f72e0bce1c4
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/comment:
+  digest: sha256:25b6a66f18ce5195
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/declaration:
+  digest: sha256:3cb1a48b5228fe57
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/dollar:
+  digest: sha256:164e690614402c8b
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/dollarIn:
+  digest: sha256:4d9acaa8064a53c5
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/expression:
+  digest: sha256:c0af1a1f097e466d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/flat:
+  digest: sha256:9edb015200c6c95e
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/function:
+  digest: sha256:6144b07509e80029
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/groupable:
+  digest: sha256:2d0fe6d4e5a6212d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/hanging:
+  digest: sha256:fee1c79d84107bf4
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/hangs:
+  digest: sha256:5226fcd95455a765
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/layout:
+  digest: sha256:3827e745c75ea0e2
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/localName:
+  digest: sha256:7700ace846cbcae7
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/multi:
+  digest: sha256:0d98958844efbb44
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/node:
+  digest: sha256:aad48333911f38f6
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/operand:
+  digest: sha256:d3ec93aa1a77ddd6
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/operator:
+  digest: sha256:da093e7ed968ee78
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/parenthesised:
+  digest: sha256:13710797923f2e1c
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/recordDeclaration:
+  digest: sha256:a747bccffba7642a
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/signature:
+  digest: sha256:128688aabf27d720
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/statements:
+  digest: sha256:830bc474dd65e9ba
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/string:
+  digest: sha256:6b3877ffe8a79702
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/uniqueArguments:
+  digest: sha256:8259a5011fb6d025
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Haskell.hs/module/LawSpec.Code.Haskell/function/uniqueValues:
+  digest: sha256:dc5473b0960a2425
+  verdict: pending

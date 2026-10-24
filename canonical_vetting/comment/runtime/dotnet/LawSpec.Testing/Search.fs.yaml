@@ -1,0 +1,18 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Search.fs/module/LawSpec.Testing.Search:
+  digest: sha256:9f16df569cb251ef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Search.fs/module/LawSpec.Testing.Search/function/climb:
+  digest: sha256:87b22cb62be024d4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Search.fs/module/LawSpec.Testing.Search/function/guard:
+  digest: sha256:3a0995ceccf0c2aa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Search.fs/module/LawSpec.Testing.Search/function/moves:
+  digest: sha256:f2692a6cf8ae6aef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Search.fs/module/LawSpec.Testing.Search/function/remember:
+  digest: sha256:27eea13dad79e5dc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Search.fs/module/LawSpec.Testing.Search/function/replay:
+  digest: sha256:4d76c8123987b939
+  verdict: pending

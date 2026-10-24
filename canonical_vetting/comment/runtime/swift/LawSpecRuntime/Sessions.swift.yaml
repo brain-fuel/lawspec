@@ -1,0 +1,117 @@
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/OwnedEnds:
+  digest: sha256:a23eaca76448e602
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/OwnedEnds/func/discardAll:
+  digest: sha256:b355947dcacdb214
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/advance:
+  digest: sha256:9fbfb2f2e6d0f4db
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/await:
+  digest: sha256:b9e62770c44a57ef
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/closeSide:
+  digest: sha256:6913438f66ef648a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/discard:
+  digest: sha256:11360b2368338a78
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/move:
+  digest: sha256:4025f10891c6874e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/open:
+  digest: sha256:4616b8351e9ca857
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionChannel/func/reissue:
+  digest: sha256:ff9bbc996b9e70dd
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionEnd:
+  digest: sha256:e7f124060d03673f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionTask:
+  digest: sha256:8472ab245568c0b1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionTask/func/wait:
+  digest: sha256:1376a1203db58105
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/class/SessionWaiter:
+  digest: sha256:2cb8c2c9615f8879
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/SessionPart:
+  digest: sha256:3bf612c380424d06
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions:
+  digest: sha256:04ece90ab286c66b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/abandon:
+  digest: sha256:dd5aadbf8d8d9cf7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/address:
+  digest: sha256:8aa2b09dc5dc35c9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/cancel:
+  digest: sha256:5b18a0737b0c0822
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/dial:
+  digest: sha256:eeced07a5b779263
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/freshName:
+  digest: sha256:f317f956a8443435
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/join:
+  digest: sha256:f888a52c46379987
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/listen:
+  digest: sha256:fa654348195ab50d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/networkStart:
+  digest: sha256:a39d541366af4577
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/offer:
+  digest: sha256:94e8000384fa91aa
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/openPair:
+  digest: sha256:64233464d6c600a4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/receiveEnd:
+  digest: sha256:6271f7f12a437d21
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/receiveValue:
+  digest: sha256:d3f81a1f84d720e9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/send:
+  digest: sha256:26862de15800da6c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/sendEnd:
+  digest: sha256:9099846a3b449f6a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/spawn:
+  digest: sha256:24d46cecdb2b8aa6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/specification:
+  digest: sha256:14650130da21666e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/take:
+  digest: sha256:95fec92dc19a41c8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/track:
+  digest: sha256:fc93b47956e76064
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/transfer:
+  digest: sha256:b4b9c909ce161927
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/untrack:
+  digest: sha256:3e95dc8d7bf0fb5f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/validate:
+  digest: sha256:28fac0b0ac860351
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/enum/Sessions/func/withOwned:
+  digest: sha256:e9590410186af133
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/struct/SessionSpec:
+  digest: sha256:06181fb12c4b7bc7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Sessions.swift/struct/SessionStep:
+  digest: sha256:032f902bb7e6af3d
+  verdict: pending

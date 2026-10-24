@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/RecordNames.hs/module/LawSpec.RecordNames:
+  digest: sha256:1242dbb968289a93
+  verdict: pending
+decision/haskell/src/LawSpec/RecordNames.hs/module/LawSpec.RecordNames/data/RecordContext:
+  digest: sha256:46796330b37dbaae
+  verdict: pending
+decision/haskell/src/LawSpec/RecordNames.hs/module/LawSpec.RecordNames/function/recordDisplayNames:
+  digest: sha256:261618dd44596596
+  verdict: pending
+decision/haskell/src/LawSpec/RecordNames.hs/module/LawSpec.RecordNames/function/recordDisplayNamesWith:
+  digest: sha256:c95e1931af30eb1d
+  verdict: pending

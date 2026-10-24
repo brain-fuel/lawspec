@@ -1,0 +1,60 @@
+decision/go/acceptance/resources/go/files/example/resources/adapter.go:
+  digest: sha256:5ae48b3e5e66df54
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/CanListen:
+  digest: sha256:3eabbe91bcdc79ce
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/ClearStore:
+  digest: sha256:1ef469eb12d29abe
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/ClosePool:
+  digest: sha256:503cc5eb78ad2a1b
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/CloseStore:
+  digest: sha256:94607be460f96535
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/DrainPool:
+  digest: sha256:d6d690c77ef8d51d
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/Fill:
+  digest: sha256:16d0df2631cb23e6
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/Get:
+  digest: sha256:b5468fd5c413d0a4
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/Greeting:
+  digest: sha256:cb2079d39353f8ce
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/IsOpen:
+  digest: sha256:22f7ff8da8594c36
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/Level:
+  digest: sha256:e919fc848b02dc67
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/OpenPool:
+  digest: sha256:08f57251faf4c07b
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/OpenStore:
+  digest: sha256:78d3cfb71e1a4580
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/Put:
+  digest: sha256:ebb296aa746a49f9
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/ReadNote:
+  digest: sha256:885af8b45ae42a7f
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/SetGreeting:
+  digest: sha256:6160fd31066601c8
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/Size:
+  digest: sha256:ada59773c395f7f0
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/function/WriteNote:
+  digest: sha256:4cbf2e56c9cc7c71
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/type/pool:
+  digest: sha256:28a074cdaf5bcf45
+  verdict: pending
+decision/go/acceptance/resources/go/files/example/resources/adapter.go/type/store:
+  digest: sha256:56ba19805b48b9f9
+  verdict: pending

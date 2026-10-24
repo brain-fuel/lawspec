@@ -1,0 +1,3 @@
+decision/haskell/acceptance/failures/haskell/files/src/Example/Failures.hs/module/Example.Failures/function/gatewayHandler:
+  digest: sha256:9fd3557ad8a20e61
+  verdict: pending

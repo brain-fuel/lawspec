@@ -1,0 +1,18 @@
+decision/swift/runtime/swift/LawSpecRuntime/Transport.swift/enum/Transport:
+  digest: sha256:1b1dbfd2f44a2e0c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Transport.swift/enum/Transports/func/advertise:
+  digest: sha256:b357cc77a07059c2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Transport.swift/enum/Transports/func/insecureMemoryForTests:
+  digest: sha256:ab3ae2e90bd1f429
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Transport.swift/enum/Transports/func/memory:
+  digest: sha256:f1f93f6b7ea61e06
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Transport.swift/enum/Transports/func/open:
+  digest: sha256:4b22c9bf1326590b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Transport.swift/protocol/PacketTransport:
+  digest: sha256:9b3a5b9cd940df79
+  verdict: pending

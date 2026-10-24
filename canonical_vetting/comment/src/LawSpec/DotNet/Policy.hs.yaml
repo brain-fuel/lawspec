@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/DotNet/Policy.hs/module/LawSpec.DotNet.Policy:
+  digest: sha256:17a018e659862fba
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Policy.hs/module/LawSpec.DotNet.Policy/function/usesPolicies:
+  digest: sha256:5d3353aa4c45e3b3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Policy.hs/module/LawSpec.DotNet.Policy/function/withTestRuntime:
+  digest: sha256:b0c411ae26aee9b9
+  verdict: pending

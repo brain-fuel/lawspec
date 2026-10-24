@@ -1,0 +1,12 @@
+decision/swift/acceptance/resilience/swift/files/src/Example/Resilience.swift/extension/Example.Resilience/func/compensationsFor:
+  digest: sha256:617c31c35e317216
+  verdict: pending
+decision/swift/acceptance/resilience/swift/files/src/Example/Resilience.swift/extension/Example.Resilience/func/limitedAt:
+  digest: sha256:edd61e81615677e8
+  verdict: pending
+decision/swift/acceptance/resilience/swift/files/src/Example/Resilience.swift/extension/Example.Resilience/func/quoteHedged:
+  digest: sha256:b7a1db271aa997d3
+  verdict: pending
+decision/swift/acceptance/resilience/swift/files/src/Example/Resilience.swift/extension/Example.Resilience/func/quoteTimedOut:
+  digest: sha256:4e8af0c816e20c23
+  verdict: pending

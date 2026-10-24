@@ -1,0 +1,6 @@
+decision/swift/acceptance/resources/swift/files/src/Example/Resources.swift/class/PoolState:
+  digest: sha256:7579b1314b18e13f
+  verdict: pending
+decision/swift/acceptance/resources/swift/files/src/Example/Resources.swift/class/StoreState:
+  digest: sha256:9e3302129887804f
+  verdict: pending

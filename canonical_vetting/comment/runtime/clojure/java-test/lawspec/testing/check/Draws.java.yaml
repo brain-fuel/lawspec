@@ -1,0 +1,15 @@
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Draws.java/package/lawspec.testing.check/class/Draws:
+  digest: sha256:046993345e183988
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Draws.java/package/lawspec.testing.check/class/Draws/class/Case:
+  digest: sha256:32826576910561e5
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Draws.java/package/lawspec.testing.check/class/Draws/class/Case/method/generate:
+  digest: sha256:aa975d467687276d
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Draws.java/package/lawspec.testing.check/class/Draws/class/Case/method/shrinks:
+  digest: sha256:16b4ddf34fa8f76a
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Draws.java/package/lawspec.testing.check/class/Draws/method/draw:
+  digest: sha256:cfbee0cab1c05b97
+  verdict: pending

@@ -1,0 +1,21 @@
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback:
+  digest: sha256:8d778be2f48478ae
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback/func/centered:
+  digest: sha256:acff60553961d3c5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback/func/keyGen:
+  digest: sha256:664424786d67c4d1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback/func/pack:
+  digest: sha256:00ce751f872b6e4c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback/func/packBetween:
+  digest: sha256:a80099c790143dd0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback/func/sign:
+  digest: sha256:40bc230c9dda22e1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLDSA.swift/enum/MLDSA65Fallback/let/zetas:
+  digest: sha256:641ba3b66e781436
+  verdict: pending

@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties:
+  digest: sha256:42d232e440ddfccc
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/emitNativeGenerators:
+  digest: sha256:967d1149892c9b9e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/emitTests:
+  digest: sha256:9a334b4254cc2064
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/generatedLocals:
+  digest: sha256:bf162ad2ec36effd
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/generators:
+  digest: sha256:3adcfdadcef4c5d9
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/propositionLink:
+  digest: sha256:c172ed8589f4fca6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/sourceLinkOf:
+  digest: sha256:c55342f5d49d5502
+  verdict: pending

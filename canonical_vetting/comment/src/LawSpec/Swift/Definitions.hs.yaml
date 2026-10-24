@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions:
+  digest: sha256:c46f18637a9a9409
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/adapterDeclarations:
+  digest: sha256:803c13740e937057
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/declarationFailure:
+  digest: sha256:091b4b5ea6064d65
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/emitAdapters:
+  digest: sha256:f310a4f925c3bf85
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/emitApi:
+  digest: sha256:366025939a515901
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/entryFunctionIn:
+  digest: sha256:a5511bf44f59e678
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/hasModule:
+  digest: sha256:2799447fb80034ff
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/isUnit:
+  digest: sha256:16083dc046f73a0e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/nativeSignature:
+  digest: sha256:15e639dd3f622bac
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/signatureDoc:
+  digest: sha256:87f95b32a253bbe9
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/function/signatureText:
+  digest: sha256:b9c51d1aa99008fe
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/type/Calls:
+  digest: sha256:0338e2d0645aa697
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Definitions.hs/module/LawSpec.Swift.Definitions/type/TypedCall:
+  digest: sha256:ef41c90e2ba197f1
+  verdict: pending

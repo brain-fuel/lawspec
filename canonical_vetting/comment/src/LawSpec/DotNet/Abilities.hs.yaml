@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities:
+  digest: sha256:a173b7093e26ae40
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/emitBridges:
+  digest: sha256:dafa02a2835fc2dd
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/emitDefaults:
+  digest: sha256:fde94dbe78ebda54
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/emitInterfaces:
+  digest: sha256:394e78085919eccc
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/failingKey:
+  digest: sha256:a48a2d6b8d3d1937
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/failureOf:
+  digest: sha256:7c0f1d4522987ac4
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/nativeResult:
+  digest: sha256:5e4544902e2c7432
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/operationSignatureFor:
+  digest: sha256:dae9d3765e626b40
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/productionStubs:
+  digest: sha256:cdc88da9b460e51d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Abilities.hs/module/LawSpec.DotNet.Abilities/function/unitFactories:
+  digest: sha256:3e0c2457346ae3e5
+  verdict: pending

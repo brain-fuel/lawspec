@@ -1,0 +1,126 @@
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout:
+  digest: sha256:d0493c3fa21580d3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F:
+  digest: sha256:729a88cf05453faf
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/A:
+  digest: sha256:b3105a5cafce0322
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Annotated:
+  digest: sha256:bef737a679b4fe2b
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/App:
+  digest: sha256:b8d505c94f7fbfbb
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Block:
+  digest: sha256:7fba35450f804284
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Fun:
+  digest: sha256:c724614b87b9478d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Infix:
+  digest: sha256:a311a06d9d985b2a
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Match:
+  digest: sha256:3a02a5c71962dc5a
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Method:
+  digest: sha256:0729eab03bbfb711
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Paren:
+  digest: sha256:61d91721bdde3cba
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Prefix:
+  digest: sha256:b40af52040fa7f8c
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/F/constructor/Record:
+  digest: sha256:644159c703a3c2fc
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/data/Stmt:
+  digest: sha256:ba8e11c7ae6aaa88
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/atom:
+  digest: sha256:3c1df5e0e02e6ec6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/bindingW:
+  digest: sha256:186e4304170dc869
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/block:
+  digest: sha256:da8dbef7d11978a5
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/blockW:
+  digest: sha256:da8dbef7d11978a5
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/bodyW:
+  digest: sha256:a1c35986a44c18d3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/breakLast:
+  digest: sha256:5a98c9872655c407
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/chain:
+  digest: sha256:229632c6319508cb
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/closing:
+  digest: sha256:0c20c642f1204e05
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/columns:
+  digest: sha256:3824ae44a2230814
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/conditionalW:
+  digest: sha256:b1d1122cdf59df63
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/dottedLines:
+  digest: sha256:970d815088fbb8d0
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/expr:
+  digest: sha256:4c755b935230e964
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/exprW:
+  digest: sha256:b899220bcf17f3f7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/fieldW:
+  digest: sha256:1e2d9023683ad467
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/flat:
+  digest: sha256:12c0d26b6c596020
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/functionW:
+  digest: sha256:24971cb0441b37c6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/item:
+  digest: sha256:d78cffd7bb73c3b3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/itemW:
+  digest: sha256:d78cffd7bb73c3b3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/linesDoc:
+  digest: sha256:32ffcce4b3831ecc
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/matchLinesW:
+  digest: sha256:4e97e01f21b79c40
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/methodLike:
+  digest: sha256:b21d0521c088a516
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/needsParens:
+  digest: sha256:912e0fa1200a69d8
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/opening:
+  digest: sha256:c01f086f5c844962
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/parenthesised:
+  digest: sha256:43b40b3398de6d58
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/separated:
+  digest: sha256:f70412e4b96abcd9
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/separatedBy:
+  digest: sha256:1d474cd2a5765493
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/function/typeHeader:
+  digest: sha256:89222aedfc87fa1e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Layout.hs/module/LawSpec.DotNet.Layout/type/Lines:
+  digest: sha256:63787c1e287122ab
+  verdict: pending

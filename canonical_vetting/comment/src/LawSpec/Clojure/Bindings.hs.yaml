@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Clojure/Bindings.hs/module/LawSpec.Clojure.Bindings:
+  digest: sha256:89388aab65c41c7f
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bindings.hs/module/LawSpec.Clojure.Bindings/function/splitBindings:
+  digest: sha256:e2de489c98d6db3c
+  verdict: pending

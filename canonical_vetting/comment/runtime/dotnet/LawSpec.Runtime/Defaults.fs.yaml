@@ -1,0 +1,15 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Defaults.fs/module/LawSpec.Runtime.Defaults:
+  digest: sha256:395f7bb97f66cb6f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Defaults.fs/module/LawSpec.Runtime.Defaults/function/handler:
+  digest: sha256:8bb8a00d3b833c67
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Defaults.fs/module/LawSpec.Runtime.Defaults/function/nowMicros:
+  digest: sha256:0873c2920d22b6a9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Defaults.fs/module/LawSpec.Runtime.Defaults/function/sleepMicros:
+  digest: sha256:246b291c49acc622
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Defaults.fs/module/LawSpec.Runtime.Defaults/value/cryptoHandler:
+  digest: sha256:0f16e6bd3f1806a4
+  verdict: pending

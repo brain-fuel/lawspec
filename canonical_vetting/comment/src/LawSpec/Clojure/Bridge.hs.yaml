@@ -1,0 +1,42 @@
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge:
+  digest: sha256:2ba8db570bae9ffa
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/data/Operation:
+  digest: sha256:f6658c276ee38f40
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/data/Stub:
+  digest: sha256:a08fddb596f38a32
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/boundHandlerJava:
+  digest: sha256:54b573f21647c9a2
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/bridgeJava:
+  digest: sha256:e3820fa23b167eb4
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/clojureCore:
+  digest: sha256:f4551a5f344d3b68
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/clojureName:
+  digest: sha256:a5f9459446e643ad
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/clojurePath:
+  digest: sha256:541645bc05a85693
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/clojureStub:
+  digest: sha256:dfe4a3a8d459fb94
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/interfaceMethods:
+  digest: sha256:ac10081da7027f53
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/kebab:
+  digest: sha256:a83490bac295ec07
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/namespaceOf:
+  digest: sha256:48d41d7dd3c34175
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/parseStub:
+  digest: sha256:d231bf1ba6e7e48e
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Bridge.hs/module/LawSpec.Clojure.Bridge/function/splitTop:
+  digest: sha256:58d6023adc86aaf0
+  verdict: pending

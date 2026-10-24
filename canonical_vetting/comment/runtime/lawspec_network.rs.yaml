@@ -1,0 +1,51 @@
+decision/rust/runtime/lawspec_network.rs:
+  digest: sha256:69f26b34a29e627e
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/handshake_vector:
+  digest: sha256:7e7695f722dc40c2
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/identity:
+  digest: sha256:b28b9d424d4ef7fe
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/install:
+  digest: sha256:27cf9fc4f062fc18
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/network_config:
+  digest: sha256:248667a1d07d829c
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/node:
+  digest: sha256:1cc4c3bf6449c4f6
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/open_frame:
+  digest: sha256:047024e0c4cb6346
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/seal_frame:
+  digest: sha256:82e86b09b03d9145
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/function/session_key:
+  digest: sha256:ff4b9b416e15b382
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/impl/NodeIdentity/function/configured:
+  digest: sha256:6582156429407c94
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/impl/NodeIdentity/function/fingerprint:
+  digest: sha256:b8f2cd1defd0d8e8
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/impl/NodeIdentity/function/generate:
+  digest: sha256:b3ee2a2bc85522aa
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/impl/NodeIdentity/function/sign:
+  digest: sha256:9a4b5a00af528933
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/module/pq/function/ml_dsa_65_sign:
+  digest: sha256:5ac5b8b446817d9f
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/module/pq/function/ml_kem_768_encapsulate:
+  digest: sha256:456c5dfaed93c78c
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/module/pq/function/random_bytes:
+  digest: sha256:92a13cf6ec993ee5
+  verdict: pending
+decision/rust/runtime/lawspec_network.rs/struct/NodeIdentity:
+  digest: sha256:76763fa231903d90
+  verdict: pending

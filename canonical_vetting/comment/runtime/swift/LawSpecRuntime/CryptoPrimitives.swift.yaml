@@ -1,0 +1,75 @@
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives:
+  digest: sha256:9a3b2035ab18bec7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/aes256GcmDecrypt:
+  digest: sha256:3842b9301a56954f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/aes256GcmEncrypt:
+  digest: sha256:f2a227567e4b023a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/deriveAeadKey:
+  digest: sha256:ae9317c5cccbc653
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mldsaExpand:
+  digest: sha256:d61e1546b7c17a55
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mldsaPublic:
+  digest: sha256:73c958131f84fe55
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mldsaSign:
+  digest: sha256:8b1d414e11da92d9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mldsaSignWith:
+  digest: sha256:42be87d3ff486553
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mldsaVerifyWith:
+  digest: sha256:37b99de067f436ef
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mlkemDecapsulate:
+  digest: sha256:09820ace61cdaa9d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mlkemDecapsulateExpanded:
+  digest: sha256:008ba4612c92a54d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mlkemEncapsulate:
+  digest: sha256:b1dfdd5a85255ef9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mlkemEncapsulateWith:
+  digest: sha256:4d5c2aaba36117cb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mlkemExpand:
+  digest: sha256:23a3c6a6faac1865
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/mlkemKeyPair:
+  digest: sha256:004fc788a993dcc9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/randomBytes:
+  digest: sha256:22f205d32405c043
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/seal:
+  digest: sha256:2fdb3bb6288c6acd
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/sha3:
+  digest: sha256:45e60e2d0259bfa2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/shake:
+  digest: sha256:9737b224cad70a03
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/slhKeyPair:
+  digest: sha256:6d54849b52c6dfdd
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/slhKeyPairOf:
+  digest: sha256:22e9a02589e42ea7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/slhSignWith:
+  digest: sha256:6754a9c40c7ec1e2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/slhVerifyWith:
+  digest: sha256:a4647d56cf96c5f6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/enum/CryptoPrimitives/func/unseal:
+  digest: sha256:79d42c576cec147e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/CryptoPrimitives.swift/struct/CryptoFailure:
+  digest: sha256:d9cfc6e1d9818bf3
+  verdict: pending

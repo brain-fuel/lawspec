@@ -1,0 +1,6 @@
+decision/haskell/dev/Gen/Unicode.hs/module/Gen.Unicode:
+  digest: sha256:49b6328e1dd95b75
+  verdict: pending
+decision/haskell/dev/Gen/Unicode.hs/module/Gen.Unicode/function/displayWidthData:
+  digest: sha256:7ee30026bf542ec9
+  verdict: pending

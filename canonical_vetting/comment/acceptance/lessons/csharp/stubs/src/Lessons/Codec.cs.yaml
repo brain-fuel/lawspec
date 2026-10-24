@@ -1,0 +1,6 @@
+decision/csharp/acceptance/lessons/csharp/stubs/src/Lessons/Codec.cs/namespace/Lessons/class/Codec/method/FormatQuantity:
+  digest: sha256:0fb5d5e53f481a08
+  verdict: pending
+decision/csharp/acceptance/lessons/csharp/stubs/src/Lessons/Codec.cs/namespace/Lessons/class/Codec/method/ParseQuantity:
+  digest: sha256:f5e93aaa646cf86c
+  verdict: pending

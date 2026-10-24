@@ -1,0 +1,6 @@
+decision/csharp/acceptance/lessons/csharp/stubs/src/Lessons/Checkout.cs/namespace/Lessons/class/Checkout/method/Charge:
+  digest: sha256:138d79933302954a
+  verdict: pending
+decision/csharp/acceptance/lessons/csharp/stubs/src/Lessons/Checkout.cs/namespace/Lessons/class/Checkout/method/Validate:
+  digest: sha256:4fd46ffa19f02a81
+  verdict: pending

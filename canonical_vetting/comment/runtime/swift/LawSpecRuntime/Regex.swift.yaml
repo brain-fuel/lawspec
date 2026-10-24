@@ -1,0 +1,18 @@
+decision/swift/runtime/swift/LawSpecRuntime/Regex.swift/enum/Regex/enum/Node:
+  digest: sha256:d17399247e9e490f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Regex.swift/enum/Regex/enum/Node/case/set:
+  digest: sha256:1ce5a31052a4a537
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Regex.swift/enum/Regex/func/compile:
+  digest: sha256:018fa3fcd3991c53
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Regex.swift/enum/Regex/func/matches:
+  digest: sha256:748ed3e621c36717
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Regex.swift/enum/Regex/func/run:
+  digest: sha256:9cdbadf70ae5998d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Regex.swift/enum/Regex/struct/Parser:
+  digest: sha256:92dafe1833ec754a
+  verdict: pending

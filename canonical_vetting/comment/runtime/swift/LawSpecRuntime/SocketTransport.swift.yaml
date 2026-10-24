@@ -1,0 +1,60 @@
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/class/SocketTransport:
+  digest: sha256:92aae88300c373de
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/class/SocketTransport/func/next:
+  digest: sha256:ff4b0bdaf1590bf0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/class/SocketTransport/func/send:
+  digest: sha256:9ecd5b8b13d25984
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/class/SocketTransport/func/work:
+  digest: sha256:2d808acee4084821
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketKind:
+  digest: sha256:a8a5ae26608e935e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketProtocol/enum/Head:
+  digest: sha256:9d15a956b35251be
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketProtocol/func/address:
+  digest: sha256:a5e323eecb8f0c75
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketProtocol/func/endpoint:
+  digest: sha256:3d68e64daedb184e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketProtocol/func/header:
+  digest: sha256:f187dbce2b3e008f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketProtocol/func/host:
+  digest: sha256:4225ba0348adce2d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/SocketProtocol/func/reply:
+  digest: sha256:d138e82c48d8d119
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets:
+  digest: sha256:5958778dd2e6f2d1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/accept:
+  digest: sha256:6c4d9402530d5365
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/connect:
+  digest: sha256:154555e641f190a2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/listen:
+  digest: sha256:2b2d1ca12c4e009e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/read:
+  digest: sha256:530a7b89d08213ae
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/readExactly:
+  digest: sha256:518d0b6ba4f21552
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/resolve:
+  digest: sha256:323ef855fcc2aaa8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/wait:
+  digest: sha256:49046b9b34c42369
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SocketTransport.swift/enum/Sockets/func/write:
+  digest: sha256:07b310d899e4d0c7
+  verdict: pending

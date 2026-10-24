@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/ProofSettings.hs/module/LawSpec.ProofSettings:
+  digest: sha256:fe66497f262f7617
+  verdict: pending
+decision/haskell/src/LawSpec/ProofSettings.hs/module/LawSpec.ProofSettings/data/Partial:
+  digest: sha256:f1482fc0883a1485
+  verdict: pending
+decision/haskell/src/LawSpec/ProofSettings.hs/module/LawSpec.ProofSettings/function/combine:
+  digest: sha256:216a4ecfa78674b9
+  verdict: pending
+decision/haskell/src/LawSpec/ProofSettings.hs/module/LawSpec.ProofSettings/function/plan:
+  digest: sha256:2b4a4a15233f6225
+  verdict: pending

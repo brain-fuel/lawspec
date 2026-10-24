@@ -1,0 +1,12 @@
+decision/clojure/runtime/clojure/test/lawspec/check.clj:
+  digest: sha256:01c8c3318cb75f22
+  verdict: pending
+decision/clojure/runtime/clojure/test/lawspec/check.clj/function/generator:
+  digest: sha256:d51d46348b006e34
+  verdict: pending
+decision/clojure/runtime/clojure/test/lawspec/check.clj/function/quick-check:
+  digest: sha256:73d05f33c08fdc69
+  verdict: pending
+decision/clojure/runtime/clojure/test/lawspec/check.clj/function/tree:
+  digest: sha256:c234532d549ec044
+  verdict: pending

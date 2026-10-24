@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects:
+  digest: sha256:48e0f18e837a8402
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/abilities:
+  digest: sha256:f0f1ab3c7cda8213
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/abilityNamespace:
+  digest: sha256:bfda17f8f65a8e66
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/bridgeName:
+  digest: sha256:e190009e9b865c92
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/defaultUnits:
+  digest: sha256:29639d57b1bd7f0e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/external:
+  digest: sha256:54a5aba414eeb142
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/factories:
+  digest: sha256:ab4cf0192cccf564
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/factory:
+  digest: sha256:4a2d18c375166cad
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/factoryWith:
+  digest: sha256:918c8604ff400bc1
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/interfaceType:
+  digest: sha256:1b7d0f849827ed9d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/operationMember:
+  digest: sha256:ab3687c00ee41408
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/productionFunction:
+  digest: sha256:595e86141436e9fd
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/specFunction:
+  digest: sha256:81fa8b2f10ec3db6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/uses:
+  digest: sha256:974eb696afcbd218
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Effects.hs/module/LawSpec.DotNet.Effects/function/withHandlers:
+  digest: sha256:959ae8c3e7366fb0
+  verdict: pending

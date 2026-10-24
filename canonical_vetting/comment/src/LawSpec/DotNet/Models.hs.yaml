@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/DotNet/Models.hs/module/LawSpec.DotNet.Models:
+  digest: sha256:d4ac24cb41f8aea7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Models.hs/module/LawSpec.DotNet.Models/function/withText:
+  digest: sha256:3b34eaa550dc206f
+  verdict: pending

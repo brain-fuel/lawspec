@@ -1,0 +1,39 @@
+decision/go/runtime/lawspec_harness.go:
+  digest: sha256:ee59fe3d93e4ecf2
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessBenchmark:
+  digest: sha256:9e245772a508f378
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessCheckDrawn:
+  digest: sha256:9e3d87d8325ce137
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessChoose:
+  digest: sha256:962ae1d7d480a897
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessHarnessMessage:
+  digest: sha256:ff63f0f6ba219437
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessKey:
+  digest: sha256:8d8b0984f1b74adf
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessKnownFailing:
+  digest: sha256:cb953069e419d566
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessOnce:
+  digest: sha256:67a9ddad6b1a634c
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessParallelism:
+  digest: sha256:70edeff774050c21
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessRun:
+  digest: sha256:872ea0769cac1d08
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessShuffle:
+  digest: sha256:00dcf291b0b6aeb9
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/function/lsHarnessTarget:
+  digest: sha256:e25d0e73f0ea6c03
+  verdict: pending
+decision/go/runtime/lawspec_harness.go/type/lsHarnessT:
+  digest: sha256:87f6cfebeb1c7440
+  verdict: pending

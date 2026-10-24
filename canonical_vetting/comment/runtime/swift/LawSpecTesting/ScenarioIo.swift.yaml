@@ -1,0 +1,24 @@
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/class/ScenarioHub:
+  digest: sha256:7ea7723e39e28c32
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/class/ScenarioHub/func/call:
+  digest: sha256:39e8fd7ce24eb62b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/class/ScenarioHub/func/receive:
+  digest: sha256:cc024c3eb48bd77d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/class/ScenarioHub/func/wake:
+  digest: sha256:b16e0e54a5bde9bf
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/enum/ScenarioIo/func/withIo:
+  digest: sha256:d8f9b45345e4a239
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/enum/ScenarioReceived:
+  digest: sha256:6608e19d4edc27ac
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/struct/ScenarioChild:
+  digest: sha256:f1f4c7506cd19fb0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ScenarioIo.swift/struct/ScenarioIoOptions:
+  digest: sha256:03b2566fe856fba7
+  verdict: pending

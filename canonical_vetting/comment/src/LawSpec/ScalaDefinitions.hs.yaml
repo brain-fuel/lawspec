@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/ScalaDefinitions.hs/module/LawSpec.ScalaDefinitions:
+  digest: sha256:7dccac936b380a49
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaDefinitions.hs/module/LawSpec.ScalaDefinitions/function/adapterResult:
+  digest: sha256:36eea45c16eae577
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaDefinitions.hs/module/LawSpec.ScalaDefinitions/function/emitScalaDefinitions:
+  digest: sha256:d157f18de76c1e16
+  verdict: pending

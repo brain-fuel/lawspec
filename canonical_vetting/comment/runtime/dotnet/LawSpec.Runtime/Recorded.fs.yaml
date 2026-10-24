@@ -1,0 +1,9 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Recorded.fs/module/LawSpec.Runtime.Recorded:
+  digest: sha256:c9342480d2170f53
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Recorded.fs/module/LawSpec.Runtime.Recorded/function/renderPlain:
+  digest: sha256:620c27b8285c1221
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Recorded.fs/module/LawSpec.Runtime.Recorded/function/text:
+  digest: sha256:c01388fbb1a2385e
+  verdict: pending

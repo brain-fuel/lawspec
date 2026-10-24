@@ -1,0 +1,12 @@
+decision/swift/runtime/swift/LawSpecRuntime/Crypto.swift/enum/Crypto/func/checked:
+  digest: sha256:75c03894bfc8f0ec
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Crypto.swift/enum/Crypto/func/handler:
+  digest: sha256:cb12f855dc33a582
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Crypto.swift/enum/Crypto/func/install:
+  digest: sha256:6f6b177dc714a926
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Crypto.swift/enum/Crypto/func/slhDsaSignatureHandler:
+  digest: sha256:5e5e1531e336effa
+  verdict: pending

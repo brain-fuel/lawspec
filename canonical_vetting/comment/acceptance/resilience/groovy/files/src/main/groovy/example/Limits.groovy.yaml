@@ -1,0 +1,6 @@
+decision/groovy/acceptance/resilience/groovy/files/src/main/groovy/example/Limits.groovy/class/Limits/method/fetchQuote:
+  digest: sha256:3756c5d4ef4a3550
+  verdict: pending
+decision/groovy/acceptance/resilience/groovy/files/src/main/groovy/example/Limits.groovy/class/Limits/method/hedgeQuote:
+  digest: sha256:92e070d4ffd53fa4
+  verdict: pending

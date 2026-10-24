@@ -1,0 +1,6 @@
+decision/go/acceptance/scheduling/go/files/example/overlap/adapter.go:
+  digest: sha256:b98a07b2f4bdc733
+  verdict: pending
+decision/go/acceptance/scheduling/go/files/example/overlap/adapter.go/function/Nap:
+  digest: sha256:0a70bae8f8b04019
+  verdict: pending

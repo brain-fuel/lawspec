@@ -4,6 +4,12 @@ decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties:
 decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties/data/Config:
   digest: sha256:ed3134470486bd76
   verdict: pending
+decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties/data/Statement:
+  digest: sha256:e54f2a2e3aa6823b
+  verdict: pending
+decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties/function/bitsDoc:
+  digest: sha256:253e6f1d4deed034
+  verdict: pending
 decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties/function/emitTests:
   digest: sha256:1d9b332b3c0b3552
   verdict: pending

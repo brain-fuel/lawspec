@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Swift/Entries.hs/module/LawSpec.Swift.Entries:
+  digest: sha256:752aeba3b7f7cda7
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Entries.hs/module/LawSpec.Swift.Entries/data/Entry:
+  digest: sha256:663eb6610d82e50f
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Entries.hs/module/LawSpec.Swift.Entries/function/numbered:
+  digest: sha256:db46efa27700271a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Entries.hs/module/LawSpec.Swift.Entries/function/orderedUnits:
+  digest: sha256:fba0ddf963816c6d
+  verdict: pending

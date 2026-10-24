@@ -1,0 +1,15 @@
+decision/python/tools/artifact-targets.py:
+  digest: sha256:4e634feb201b0c91
+  verdict: pending
+decision/python/tools/artifact-targets.py/function/canon_parse:
+  digest: sha256:2b39a22ffe907019
+  verdict: pending
+decision/python/tools/artifact-targets.py/function/check_yaml_text:
+  digest: sha256:fd86f1929ad580aa
+  verdict: pending
+decision/python/tools/artifact-targets.py/function/formatted:
+  digest: sha256:358d3ba594c2a138
+  verdict: pending
+decision/python/tools/artifact-targets.py/function/tofu:
+  digest: sha256:c1dd1a5fda3c675e
+  verdict: pending

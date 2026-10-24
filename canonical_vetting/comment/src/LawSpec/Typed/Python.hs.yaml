@@ -1,0 +1,78 @@
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python:
+  digest: sha256:144378a2a5c630a3
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/applyD:
+  digest: sha256:3f3fbd0577741bc5
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/comparer:
+  digest: sha256:d97cc4a75a503078
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/comprehension:
+  digest: sha256:57fd78299d1831ed
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/dataValue:
+  digest: sha256:e68877700e349604
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/enterFunction:
+  digest: sha256:134b3f93dd819602
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/helper:
+  digest: sha256:1dbaeb9a8d576f1f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/helperPurpose:
+  digest: sha256:bfb4c4455a99e089
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/importFrom:
+  digest: sha256:0ed26eb466fc8757
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/infixD:
+  digest: sha256:091f8c946ec46ad0
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/nativeDirect:
+  digest: sha256:dbba62110cf836d0
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/nativeIn:
+  digest: sha256:79712f995436c035
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/paren:
+  digest: sha256:f471199a3b6766c2
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/plainEq:
+  digest: sha256:c1be56ae53e1ced4
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/plainOrd:
+  digest: sha256:cc2ca1a869f79680
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/prettyTypeOf:
+  digest: sha256:5d33de20033f7999
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/returnAll:
+  digest: sha256:b683eeb4bf3a32e7
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/returnTernary:
+  digest: sha256:cf7a1e98c54590c7
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/runtimeNames:
+  digest: sha256:141c13f20219ce56
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/sameDynamic:
+  digest: sha256:950f59a6b98f6581
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/shownName:
+  digest: sha256:2eb0f7983c44aedb
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/tagTable:
+  digest: sha256:10a1e73b4e1ce1d5
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/ternary:
+  digest: sha256:569eb9c8f7255341
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/tuple:
+  digest: sha256:ce4c002401df6922
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/typeSlug:
+  digest: sha256:c0ffde10b64c2bcf
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Python.hs/module/LawSpec.Typed.Python/function/v:
+  digest: sha256:60fcf3d2e9def6d8
+  verdict: pending

@@ -1,0 +1,15 @@
+decision/swift/runtime/swift/LawSpecTesting/Search.swift/enum/Search/func/climb:
+  digest: sha256:cd03e3f42d5e4430
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Search.swift/enum/Search/func/guardCase:
+  digest: sha256:3a0995ceccf0c2aa
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Search.swift/enum/Search/func/moves:
+  digest: sha256:f2692a6cf8ae6aef
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Search.swift/enum/Search/func/remember:
+  digest: sha256:27eea13dad79e5dc
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Search.swift/enum/Search/func/replay:
+  digest: sha256:4d76c8123987b939
+  verdict: pending

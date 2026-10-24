@@ -1,0 +1,39 @@
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/extension/PersistentList/struct/Iterator:
+  digest: sha256:693b4b3ccb4e515e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList:
+  digest: sha256:6987debc93b2fab5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/func/+:
+  digest: sha256:ec408382ab432399
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/func/item:
+  digest: sha256:62d03ecf74f14cfe
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/func/prepending:
+  digest: sha256:4672e9f81c10a225
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/func/reversed:
+  digest: sha256:0afd89acbe624c15
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/func/slice:
+  digest: sha256:c62ff5b3b2cf6291
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/init/init#2:
+  digest: sha256:2cf0bfa4ab9d0013
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/init/init#3:
+  digest: sha256:4a77de6be218aae9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/let/count:
+  digest: sha256:e06c8bbfc37ada4e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/var/first:
+  digest: sha256:8452f0e603910f8a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/var/isEmpty:
+  digest: sha256:a4b0836ffcec6a8a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/PersistentList.swift/struct/PersistentList/var/rest:
+  digest: sha256:85fb6fb8d754f70f
+  verdict: pending

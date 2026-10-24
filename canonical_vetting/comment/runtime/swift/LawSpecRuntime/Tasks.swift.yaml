@@ -1,0 +1,30 @@
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Ambient:
+  digest: sha256:fe1042235538311c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Ambient/func/capture:
+  digest: sha256:89822ef5096ff8d2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Ambient/func/restore:
+  digest: sha256:116e4b9a935cf668
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Ambient/func/with:
+  digest: sha256:95284f7ea31a4ee1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Tasks/class/Scope:
+  digest: sha256:61cab4222c94e69f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Tasks/class/Scope/func/close:
+  digest: sha256:d7505a44dc08476a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Tasks/class/Scope/var/isClosed:
+  digest: sha256:537bae9900839f51
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Tasks/func/check:
+  digest: sha256:5962c9c7b3b11c78
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Tasks/func/currentScope:
+  digest: sha256:d724fdc2858fb7f9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Tasks.swift/enum/Tasks/func/withScope:
+  digest: sha256:4d954c360d7eb232
+  verdict: pending

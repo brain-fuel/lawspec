@@ -7,6 +7,12 @@ decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/emitWebD
 decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/emitWebDataWithProfile:
   digest: sha256:bdba2275043ac27c
   verdict: pending
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/printWith:
+  digest: sha256:0c547a11c3989164
+  verdict: pending
 decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/replace:
   digest: sha256:478e63327c8b026d
+  verdict: pending
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/testStrategies:
+  digest: sha256:2054fe381700836e
   verdict: pending

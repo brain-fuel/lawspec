@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/
 decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonHashable:
   digest: sha256:e6269eeac1bf4ad6
   verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonLayout:
+  digest: sha256:37f48d8bd59bafed
+  verdict: pending
 decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonTypeReference:
   digest: sha256:0354d4a42448185b
   verdict: pending

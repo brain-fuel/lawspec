@@ -1,0 +1,36 @@
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/func/anyHandle:
+  digest: sha256:f9256cca1509d03d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/func/handle:
+  digest: sha256:795ce5854b83c2f7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/func/invalid:
+  digest: sha256:08c1d2b5df371ec2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/func/keyVal:
+  digest: sha256:975554d021c5a771
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/func/optional:
+  digest: sha256:ab4de490565cef34
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/func/set:
+  digest: sha256:193bc72f325becd3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/let/char:
+  digest: sha256:8848d90d4c3d1105
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/let/duration:
+  digest: sha256:7e2c9647bed7189b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/let/intSize:
+  digest: sha256:4395ffbec944d0f7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/let/portable:
+  digest: sha256:6c26f46b36b61023
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/enum/Codecs/let/uintSize:
+  digest: sha256:b864c59a93a19e80
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Codecs.swift/struct/Codec:
+  digest: sha256:5ba3341d7aed4b96
+  verdict: pending

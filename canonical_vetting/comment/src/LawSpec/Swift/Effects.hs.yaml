@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects:
+  digest: sha256:59f183a85cd27a88
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/abilities:
+  digest: sha256:f0f1ab3c7cda8213
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/abilityNamespace:
+  digest: sha256:98ade34b18d334ad
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/bridgeName:
+  digest: sha256:a240eb949e029a0c
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/defaultUnits:
+  digest: sha256:29639d57b1bd7f0e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/external:
+  digest: sha256:54a5aba414eeb142
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/factories:
+  digest: sha256:ab4cf0192cccf564
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/factory:
+  digest: sha256:4a2d18c375166cad
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/factoryWith:
+  digest: sha256:918c8604ff400bc1
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/operationMember:
+  digest: sha256:958eacef7decd09a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/productionFunction:
+  digest: sha256:6d3296b9eda55eee
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/protocolType:
+  digest: sha256:370cbd25e1b0a518
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/specFunction:
+  digest: sha256:0ea46bc7cdfc1c3a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/uses:
+  digest: sha256:974eb696afcbd218
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Effects.hs/module/LawSpec.Swift.Effects/function/withHandlers:
+  digest: sha256:959ae8c3e7366fb0
+  verdict: pending

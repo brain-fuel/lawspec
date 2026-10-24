@@ -1,0 +1,12 @@
+decision/haskell/test/SchedulerSpec.hs/module/SchedulerSpec:
+  digest: sha256:c23cd89ee9dc8ea7
+  verdict: pending
+decision/haskell/test/SchedulerSpec.hs/module/SchedulerSpec/function/overlaps:
+  digest: sha256:fd44a2424005458e
+  verdict: pending
+decision/haskell/test/SchedulerSpec.hs/module/SchedulerSpec/function/run:
+  digest: sha256:0cc96fec84a8731f
+  verdict: pending
+decision/haskell/test/SchedulerSpec.hs/module/SchedulerSpec/function/test_parallelStepsNeverShareWhatTheyClaim:
+  digest: sha256:c09a8407131f9f7a
+  verdict: pending

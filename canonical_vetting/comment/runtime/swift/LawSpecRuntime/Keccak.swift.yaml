@@ -1,0 +1,21 @@
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/enum/Keccak:
+  digest: sha256:84bd25e6b529653a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/struct/KeccakSponge:
+  digest: sha256:71a8d11d607def79
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/struct/KeccakSponge/func/absorb:
+  digest: sha256:ba3357ca377c4a83
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/struct/KeccakSponge/func/permute:
+  digest: sha256:d0d3f4adfbb90b04
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/struct/KeccakSponge/func/squeeze:
+  digest: sha256:92f167b32164cdfc
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/struct/KeccakSponge/let/rate:
+  digest: sha256:cd980d3e1853508e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Keccak.swift/struct/KeccakSponge/let/suffix:
+  digest: sha256:c84a3bc04a019d63
+  verdict: pending

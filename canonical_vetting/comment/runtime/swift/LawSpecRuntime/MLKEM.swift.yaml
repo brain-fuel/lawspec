@@ -1,0 +1,27 @@
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback:
+  digest: sha256:5205fdead5395f89
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/func/decapsulate:
+  digest: sha256:b37fdfd06c5fad75
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/func/encapsulate:
+  digest: sha256:da5a07c81dfbea20
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/func/keyGen:
+  digest: sha256:4c6b627f0f60d81b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/func/sampleCBD:
+  digest: sha256:d3eb2457e664a4a0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/func/sampleNTT:
+  digest: sha256:e11eba1242228bac
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/func/validPublicKey:
+  digest: sha256:5e6d433aba08050b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/let/gammas:
+  digest: sha256:32d9231136dc8cbf
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/MLKEM.swift/enum/MLKEM768Fallback/let/zetas:
+  digest: sha256:1a00da4ef66abea7
+  verdict: pending

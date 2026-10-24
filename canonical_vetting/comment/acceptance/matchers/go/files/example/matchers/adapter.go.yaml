@@ -1,0 +1,18 @@
+decision/go/acceptance/matchers/go/files/example/matchers/adapter.go:
+  digest: sha256:69698e79eecb0540
+  verdict: pending
+decision/go/acceptance/matchers/go/files/example/matchers/adapter.go/function/Average:
+  digest: sha256:8d29927b881580b5
+  verdict: pending
+decision/go/acceptance/matchers/go/files/example/matchers/adapter.go/function/Ship:
+  digest: sha256:4315cd74de5c29b1
+  verdict: pending
+decision/go/acceptance/matchers/go/files/example/matchers/adapter.go/function/Slug:
+  digest: sha256:e007f7f2d3d2105e
+  verdict: pending
+decision/go/acceptance/matchers/go/files/example/matchers/adapter.go/function/SortItems:
+  digest: sha256:1323525e024e2449
+  verdict: pending
+decision/go/acceptance/matchers/go/files/example/matchers/adapter.go/function/UniqueTags:
+  digest: sha256:c2519b47696df9ec
+  verdict: pending

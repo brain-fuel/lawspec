@@ -1,6 +1,9 @@
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema:
   digest: sha256:2f501af106f9f6c4
   verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/class/Scope:
+  digest: sha256:d1c03d548d908e78
+  verdict: pending
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/data/IndexTerm:
   digest: sha256:6ff4b0c8b7e52a03
   verdict: pending
@@ -13,6 +16,15 @@ decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/data/Schema:
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/allPayloadsWith:
   digest: sha256:6df1da3ac602d178
   verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/allSatisfy:
+  digest: sha256:a01a909d8ea729c8
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/built:
+  digest: sha256:d846c783d0bee98f
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/checked:
+  digest: sha256:2350d0caa6e0fe9c
+  verdict: pending
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/evalIndexTerm:
   digest: sha256:98ba501633f7526e
   verdict: pending
@@ -22,14 +34,26 @@ decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/fieldTyp
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/fieldTypeAt:
   digest: sha256:f8d7347ce86724ee
   verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/firstArgument:
+  digest: sha256:81a1c037cd6ef3ef
+  verdict: pending
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/indexOf:
   digest: sha256:3dd3e0990a3f1470
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/literal:
+  digest: sha256:1521eb1048a4ce7d
   verdict: pending
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/match:
   digest: sha256:c20627ed71abdb9a
   verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/nativeProfileTypes:
+  digest: sha256:4228d230fda6cdda
+  verdict: pending
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/refine:
   digest: sha256:70dc5c5f50602762
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/same:
+  digest: sha256:93495960842f23c4
   verdict: pending
 decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/shallowChecked:
   digest: sha256:6ff16e249dcf7d81

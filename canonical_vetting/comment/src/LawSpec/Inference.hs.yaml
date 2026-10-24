@@ -25,6 +25,9 @@ decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/chec
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/checkInferred:
   digest: sha256:4d0ee8e2dcfa4ec2
   verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/collectionLiteral:
+  digest: sha256:6b0b3da05b487c7f
+  verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/collectionName:
   digest: sha256:a08afff15001574b
   verdict: pending
@@ -49,14 +52,38 @@ decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/cont
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/coreVariables:
   digest: sha256:0e90c124dd82a24d
   verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/dataIndex:
+  digest: sha256:edd93b05fe33740e
+  verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/definitionEnvironment:
   digest: sha256:5f8aebcd61d58fa0
   verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/definitionType:
   digest: sha256:280d6fd24d4b79fc
   verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/distinct:
+  digest: sha256:3ce8a2f9a7119c8f
+  verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/environmentTypes:
   digest: sha256:529e2705743ae72b
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/fieldConstructor:
+  digest: sha256:f06ae127f911e207
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/fieldDesugar:
+  digest: sha256:156c6aa839eb5161
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/fieldShape:
+  digest: sha256:457ef0ac60e44209
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/fieldType:
+  digest: sha256:b8c8cb22dd383c35
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/finiteCollectionElement:
+  digest: sha256:83eb53c5e25d49f7
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/fixedSignatures:
+  digest: sha256:be37043260b9a400
   verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/fresh:
   digest: sha256:7ef6cf7854a23742
@@ -75,6 +102,9 @@ decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/inst
   verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/instantiateShape:
   digest: sha256:3e9c47e786b242cd
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/isFieldNode:
+  digest: sha256:f439584348f46609
   verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/isLiteral:
   digest: sha256:154b712223abf3b1
@@ -121,6 +151,9 @@ decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/scal
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/schemeType:
   digest: sha256:dbbe1b240db413ce
   verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/shapeOf:
+  digest: sha256:3313a5d9f03d2c91
+  verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/structuralLiteral:
   digest: sha256:debd28d8b117b45e
   verdict: pending
@@ -142,11 +175,17 @@ decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/type
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/typedExpressionWithSchemes:
   digest: sha256:b2a97a6e82a35cf2
   verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/typesNamed:
+  digest: sha256:dd08930bfefeb059
+  verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/unify:
   digest: sha256:2decb1798f0c02c1
   verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/withContext:
   digest: sha256:6c59bae9201570a7
+  verdict: pending
+decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/withDataDeclarations:
+  digest: sha256:72431b95d76a5db1
   verdict: pending
 decision/haskell/src/LawSpec/Inference.hs/module/LawSpec.Inference/function/withGivens:
   digest: sha256:3c90ed9c89d5054e

@@ -1,0 +1,6 @@
+decision/clojure/acceptance/harness/clojure/files/src/example/harness.clj:
+  digest: sha256:cd95c0a344086224
+  verdict: pending
+decision/clojure/acceptance/harness/clojure/files/src/example/harness.clj/function/ledger-handler:
+  digest: sha256:7b5f652c450b508b
+  verdict: pending

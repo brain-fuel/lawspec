@@ -1,0 +1,15 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Schedule.fs/namespace/LawSpec.Testing:
+  digest: sha256:262d8bb504a0bf46
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Schedule.fs/namespace/LawSpec.Testing/class/SeededMethodOrder:
+  digest: sha256:820b18a3e644da4d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Schedule.fs/namespace/LawSpec.Testing/class/SeededOrder:
+  digest: sha256:fc5897267bcdef6e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Schedule.fs/namespace/LawSpec.Testing/module/Schedule/function/order:
+  digest: sha256:4f52d265c43f2b6d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Schedule.fs/namespace/LawSpec.Testing/module/Schedule/function/seed:
+  digest: sha256:11d9413c68e4e259
+  verdict: pending

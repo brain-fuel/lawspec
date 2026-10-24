@@ -1,0 +1,63 @@
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm:
+  digest: sha256:1d755af44e8a28d4
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/data/JvmStyle:
+  digest: sha256:6d4ca2ba3425a0ca
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/data/St:
+  digest: sha256:c95a668547c277b6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/bigExpr:
+  digest: sha256:a837d0de9f52f901
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/cexpr:
+  digest: sha256:5eb5fdf0ff4eda93
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/codecExpression:
+  digest: sha256:7705e4165012ed9a
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/cstmt:
+  digest: sha256:f822cf7f0eeddbf6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/fieldEquals:
+  digest: sha256:0778ae241ebca77a
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/helper:
+  digest: sha256:c53584d349a677d7
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/javaType:
+  digest: sha256:a8a2f9fe11619d76
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/jvmPerformName:
+  digest: sha256:e6d1e324bad30758
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/jvmScalars:
+  digest: sha256:c1268d47491ea05a
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/kotlinGetter:
+  digest: sha256:b8723bbf7acc28bc
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/longExpr:
+  digest: sha256:d2a2247bfa8860d4
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/narrowCast:
+  digest: sha256:8a64d9d6f02655dc
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeBase:
+  digest: sha256:d6f60dc8ae7de648
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeDirect:
+  digest: sha256:5f13dc8c6e3d0f75
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeType:
+  digest: sha256:fca41617ab0f6017
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeVariant:
+  digest: sha256:4f3b91bd3edd5094
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaHelper:
+  digest: sha256:83da55c5cc69342c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaTyped:
+  digest: sha256:2eee84c38638c1e9
+  verdict: pending

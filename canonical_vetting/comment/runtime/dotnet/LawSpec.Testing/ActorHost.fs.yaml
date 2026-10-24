@@ -1,0 +1,6 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ActorHost.fs/module/LawSpec.Testing.ActorHost:
+  digest: sha256:124d3b42d6561b13
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/ActorHost.fs/module/LawSpec.Testing.ActorHost/value/host:
+  digest: sha256:91cb6e7b0ab170d5
+  verdict: pending

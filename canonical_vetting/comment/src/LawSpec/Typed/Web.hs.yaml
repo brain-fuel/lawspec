@@ -1,0 +1,51 @@
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web:
+  digest: sha256:81c0057b58235e2a
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/annotated:
+  digest: sha256:22a3ecf0413585e1
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/cast:
+  digest: sha256:672ce1de3fa89e1b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/classNames:
+  digest: sha256:84ebe4c6e59f443f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/collected:
+  digest: sha256:0ca0ccc804cb40ac
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/enterFunction:
+  digest: sha256:134b3f93dd819602
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/entryAccess:
+  digest: sha256:592de2fd0d1b081e
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/fieldsAB:
+  digest: sha256:14af1c5d5d2a2ba1
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/function:
+  digest: sha256:3a23a3bbebc9e305
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/helperBase:
+  digest: sha256:44b147777acaf488
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/helperPurpose:
+  digest: sha256:bfb4c4455a99e089
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/integerLiteral:
+  digest: sha256:a30d3bd7f96f7065
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/nativeDirect:
+  digest: sha256:4b543ec26be3689a
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/plainEq:
+  digest: sha256:8e1433d1d8f5cee3
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/prettyTypeOf:
+  digest: sha256:5d33de20033f7999
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/property:
+  digest: sha256:317db59f42fa2fde
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Web.hs/module/LawSpec.Typed.Web/function/typeSlug:
+  digest: sha256:a7727088d88075f0
+  verdict: pending

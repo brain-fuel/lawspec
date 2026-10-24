@@ -1,0 +1,15 @@
+decision/swift/acceptance/abilities/swift/files/src/Example/Shop.swift/extension/Example.Shop/func/logHandler:
+  digest: sha256:9b566b5169132773
+  verdict: pending
+decision/swift/acceptance/abilities/swift/files/src/Example/Shop.swift/extension/Example.Shop/func/meterHandler:
+  digest: sha256:6e1e8fcfec8fdcad
+  verdict: pending
+decision/swift/acceptance/abilities/swift/files/src/Example/Shop.swift/extension/Example.Shop/func/refund:
+  digest: sha256:784478b2bc057411
+  verdict: pending
+decision/swift/acceptance/abilities/swift/files/src/Example/Shop.swift/extension/Example.Shop/func/storeInt32Handler:
+  digest: sha256:bac643f0a8ee27c9
+  verdict: pending
+decision/swift/acceptance/abilities/swift/files/src/Example/Shop.swift/extension/Example.Shop/func/storeTextHandler:
+  digest: sha256:c59faa060b3c1f8b
+  verdict: pending

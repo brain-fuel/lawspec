@@ -1,0 +1,12 @@
+decision/haskell/test/SmtTextSpec.hs/module/SmtTextSpec:
+  digest: sha256:fdc829be0f860735
+  verdict: pending
+decision/haskell/test/SmtTextSpec.hs/module/SmtTextSpec/function/patterns:
+  digest: sha256:7e50a30b861144ae
+  verdict: pending
+decision/haskell/test/SmtTextSpec.hs/module/SmtTextSpec/function/provedLaws:
+  digest: sha256:444cabddebbccb79
+  verdict: pending
+decision/haskell/test/SmtTextSpec.hs/module/SmtTextSpec/function/texts:
+  digest: sha256:8028aae09893febf
+  verdict: pending

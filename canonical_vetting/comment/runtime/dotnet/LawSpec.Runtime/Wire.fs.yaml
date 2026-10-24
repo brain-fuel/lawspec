@@ -1,0 +1,39 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire:
+  digest: sha256:f38c2e4830d44216
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/bytesList:
+  digest: sha256:8654d6de3529d3f6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/channel:
+  digest: sha256:686cfba3326c2a67
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/encodeFrame:
+  digest: sha256:a0035a2852664853
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/fields:
+  digest: sha256:e2d3f65d803edf5e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/frameTo:
+  digest: sha256:14806244cc2b806f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/hex:
+  digest: sha256:608cfc36b36781d4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/readFields:
+  digest: sha256:d811a49c0271d7be
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/readFrame:
+  digest: sha256:ec647a5f6ba4462e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/readTextList:
+  digest: sha256:ae993864e6657a65
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/splitAddress:
+  digest: sha256:5ae89cef6036a91a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/function/texts:
+  digest: sha256:9ddfe2edcba5dc51
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Wire.fs/module/LawSpec.Runtime.Wire/record/Frame:
+  digest: sha256:466f21b9005e91b7
+  verdict: pending

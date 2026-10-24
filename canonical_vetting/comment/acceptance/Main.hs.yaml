@@ -13,6 +13,9 @@ decision/haskell/acceptance/Main.hs/module/Main/function/checkDisk:
 decision/haskell/acceptance/Main.hs/module/Main/function/conformance:
   digest: sha256:0a0f8ea6cbefdd20
   verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/formatted:
+  digest: sha256:c557cbb894a819cd
+  verdict: pending
 decision/haskell/acceptance/Main.hs/module/Main/function/harnessInputs:
   digest: sha256:853f47dd95bba308
   verdict: pending

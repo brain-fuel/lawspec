@@ -1,0 +1,6 @@
+decision/fsharp/acceptance/resilience/fsharp/files/src/Example/Resilience.fs/module/Example.Resilience/function/compensationsFor:
+  digest: sha256:617c31c35e317216
+  verdict: pending
+decision/fsharp/acceptance/resilience/fsharp/files/src/Example/Resilience.fs/module/Example.Resilience/function/limitedAt:
+  digest: sha256:edd61e81615677e8
+  verdict: pending

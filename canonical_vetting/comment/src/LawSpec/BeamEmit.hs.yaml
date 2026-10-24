@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/BeamEmit.hs/module/LawSpec.BeamEmit:
+  digest: sha256:d956c448879098b5
+  verdict: pending
+decision/haskell/src/LawSpec/BeamEmit.hs/module/LawSpec.BeamEmit/function/validatePlan:
+  digest: sha256:bc6aed5638f43638
+  verdict: pending

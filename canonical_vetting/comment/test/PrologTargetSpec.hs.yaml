@@ -1,0 +1,6 @@
+decision/haskell/test/PrologTargetSpec.hs/module/PrologTargetSpec:
+  digest: sha256:e093db0a84c9373e
+  verdict: pending
+decision/haskell/test/PrologTargetSpec.hs/module/PrologTargetSpec/function/test_prologEmitter:
+  digest: sha256:f0590e7795e9c268
+  verdict: pending

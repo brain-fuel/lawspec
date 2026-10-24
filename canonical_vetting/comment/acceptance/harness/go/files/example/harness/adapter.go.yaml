@@ -1,0 +1,18 @@
+decision/go/acceptance/harness/go/files/example/harness/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/harness/go/files/example/harness/adapter.go/function/Book:
+  digest: sha256:125682fe55d6520c
+  verdict: pending
+decision/go/acceptance/harness/go/files/example/harness/adapter.go/function/Discount:
+  digest: sha256:3d5947a3cf93e877
+  verdict: pending
+decision/go/acceptance/harness/go/files/example/harness/adapter.go/function/NewLedgerHandler:
+  digest: sha256:d74c2bfe686f2cb5
+  verdict: pending
+decision/go/acceptance/harness/go/files/example/harness/adapter.go/function/RoundCents:
+  digest: sha256:bda076b6376e8e80
+  verdict: pending
+decision/go/acceptance/harness/go/files/example/harness/adapter.go/type/LedgerHandler:
+  digest: sha256:9e71454028c16f50
+  verdict: pending

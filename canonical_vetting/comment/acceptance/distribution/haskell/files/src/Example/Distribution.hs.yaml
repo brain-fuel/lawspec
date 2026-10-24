@@ -1,0 +1,6 @@
+decision/haskell/acceptance/distribution/haskell/files/src/Example/Distribution.hs/module/Example.Distribution/function/handshakeAgrees:
+  digest: sha256:44cf3df17a870a57
+  verdict: pending
+decision/haskell/acceptance/distribution/haskell/files/src/Example/Distribution.hs/module/Example.Distribution/function/sealedOnTheWire:
+  digest: sha256:8a872dde42464955
+  verdict: pending

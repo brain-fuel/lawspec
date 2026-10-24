@@ -1,0 +1,48 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors:
+  digest: sha256:e07c9a45b45b808b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/decode:
+  digest: sha256:fe59044a86d5d919
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/decodePrefix:
+  digest: sha256:998fae8cd6bce1ae
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/encode:
+  digest: sha256:c93ac9393031a176
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/fromText:
+  digest: sha256:7ff56c58e74702d2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/generate:
+  digest: sha256:23870d4882c8d13d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/generated:
+  digest: sha256:c5ca476ac105106d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/minimal:
+  digest: sha256:bc9bda666973fda3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/read:
+  digest: sha256:bf12296cc4321cdc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/readVarint:
+  digest: sha256:94d8e066fb194dd9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/render:
+  digest: sha256:377a7d5bb280567b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/resolve:
+  digest: sha256:4ddd5b48b6172800
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/shrink:
+  digest: sha256:6482dbe3cd518e72
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/shrunk:
+  digest: sha256:0f7f679afb753ba1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/function/varint:
+  digest: sha256:ec73c193b16a05ee
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Descriptors.fs/module/LawSpec.Runtime.Descriptors/union/Descriptor:
+  digest: sha256:76f3449851affc10
+  verdict: pending

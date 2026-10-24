@@ -1,0 +1,63 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow:
+  digest: sha256:576cb2e0b5d10ad3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/class/State:
+  digest: sha256:e6627c19d8ae2eb6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/class/State/member/FinishStage:
+  digest: sha256:625bbcc4852f1784
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/class/State/member/Gate:
+  digest: sha256:ce067f29ff156070
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/ambientRuntime:
+  digest: sha256:79923c061b4561a4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/current:
+  digest: sha256:d2f0b5630d934343
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/now:
+  digest: sha256:5fb792db011848e0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/runAttempts:
+  digest: sha256:62bab05251f0d580
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/runStage:
+  digest: sha256:2619638de53318ee
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/runWorkflow:
+  digest: sha256:5eb8ef406ca6dd60
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/setTime:
+  digest: sha256:ec0fae4c2937a3c7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/sleep:
+  digest: sha256:c675c046144a93f1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/trace:
+  digest: sha256:f2a44ec104c6c5b4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/withClock:
+  digest: sha256:7fb22b8d186bc62b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/withClockCallbacks:
+  digest: sha256:6de1483218bcae6e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/withReal:
+  digest: sha256:fe71a18f7e5c52c7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/withTestRuntime:
+  digest: sha256:38168c5050c613d4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/function/withVirtual:
+  digest: sha256:f7aae9ddfc3f7b59
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/record/Event:
+  digest: sha256:7f118b57f2dba9be
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/record/Runtime:
+  digest: sha256:b905be400e1ca9e6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Workflow.fs/module/LawSpec.Runtime.Workflow/union/Clock:
+  digest: sha256:79ac079339b66bc0
+  verdict: pending

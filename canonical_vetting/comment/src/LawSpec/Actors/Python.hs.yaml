@@ -4,6 +4,12 @@ decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python:
 decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/function/emit:
   digest: sha256:3fc3dbbc7d9c8d55
   verdict: pending
+decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/function/parameters:
+  digest: sha256:080a8323d85442bd
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/function/pyLine:
+  digest: sha256:073caf7a1877d478
+  verdict: pending
 decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/function/supervisorClassText:
   digest: sha256:c9edff2e27fa3a02
   verdict: pending

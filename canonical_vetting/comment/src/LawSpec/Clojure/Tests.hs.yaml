@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Clojure/Tests.hs/module/LawSpec.Clojure.Tests:
+  digest: sha256:27bc6f4bc497331c
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Tests.hs/module/LawSpec.Clojure.Tests/function/casesClassName:
+  digest: sha256:cda45cb04927b253
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Tests.hs/module/LawSpec.Clojure.Tests/function/lawCases:
+  digest: sha256:c510e515bfe50de0
+  verdict: pending
+decision/haskell/src/LawSpec/Clojure/Tests.hs/module/LawSpec.Clojure.Tests/function/replaceWord:
+  digest: sha256:0780191805d14d38
+  verdict: pending

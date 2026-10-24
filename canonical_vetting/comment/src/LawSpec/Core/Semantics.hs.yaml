@@ -16,3 +16,6 @@ decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/fun
 decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/scalarEqual:
   digest: sha256:f5a848081cc788c9
   verdict: pending
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/utf8Units:
+  digest: sha256:5edba8b5adad9e65
+  verdict: pending

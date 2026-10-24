@@ -1,0 +1,6 @@
+decision/clojure/acceptance/abilities/clojure/files/src/example/abilities.clj:
+  digest: sha256:056c33022ad081f3
+  verdict: pending
+decision/clojure/acceptance/abilities/clojure/files/src/example/abilities.clj/function/gateway-handler:
+  digest: sha256:2cc20b2548dd3774
+  verdict: pending

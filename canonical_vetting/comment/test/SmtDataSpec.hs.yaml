@@ -1,0 +1,6 @@
+decision/haskell/test/SmtDataSpec.hs/module/SmtDataSpec:
+  digest: sha256:a5e068d1755b7e34
+  verdict: pending
+decision/haskell/test/SmtDataSpec.hs/module/SmtDataSpec/function/confirmed:
+  digest: sha256:f7bb5b5c4bca0a8f
+  verdict: pending

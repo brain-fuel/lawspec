@@ -1,6 +1,9 @@
 decision/rust/runtime/lawspec_runtime.rs:
   digest: sha256:ba03da91029866bf
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/const/CLOCK_KEY:
+  digest: sha256:da20219ffa5fa641
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/const/COLLECTIONS:
   digest: sha256:c0dbd9761d7081f5
   verdict: pending
@@ -25,6 +28,12 @@ decision/rust/runtime/lawspec_runtime.rs/enum/Value:
 decision/rust/runtime/lawspec_runtime.rs/function/all_sends:
   digest: sha256:1c9ff7ffb1c20455
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/attempt:
+  digest: sha256:bdb4fa89234b9e7e
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/await_step:
+  digest: sha256:58111e69e7eac857
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/binary:
   digest: sha256:47e3936a348d7977
   verdict: pending
@@ -46,8 +55,14 @@ decision/rust/runtime/lawspec_runtime.rs/function/check_model_parallel_with:
 decision/rust/runtime/lawspec_runtime.rs/function/check_scenario:
   digest: sha256:3ba80b8d146ee834
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/clock_ability:
+  digest: sha256:d558c0b234135400
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/compare_values:
   digest: sha256:391f5662a986d88a
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/concurrently:
+  digest: sha256:b957d695359701ac
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/consistent_words:
   digest: sha256:072e4f027982ac61
@@ -55,11 +70,17 @@ decision/rust/runtime/lawspec_runtime.rs/function/consistent_words:
 decision/rust/runtime/lawspec_runtime.rs/function/construct_data:
   digest: sha256:9b9566d965ad5b77
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/count_calls:
+  digest: sha256:f3e6dc94798393cb
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/data_fields:
   digest: sha256:f81fb6055eac3458
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/descriptor:
   digest: sha256:efcab2551d337869
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/difference:
+  digest: sha256:8f57506d4e88b435
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/duration:
   digest: sha256:abf1cce69881bba4
@@ -73,8 +94,14 @@ decision/rust/runtime/lawspec_runtime.rs/function/eval_schema_index:
 decision/rust/runtime/lawspec_runtime.rs/function/exact_float_bits:
   digest: sha256:b6e97b9eff75da95
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/free_port:
+  digest: sha256:4ee6d46bb90e3bd6
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/generated:
   digest: sha256:21368334f083f74e
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/installed_native:
+  digest: sha256:e4a449901182dd3c
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/intern:
   digest: sha256:77478f3fcf5acde2
@@ -85,8 +112,14 @@ decision/rust/runtime/lawspec_runtime.rs/function/jittered:
 decision/rust/runtime/lawspec_runtime.rs/function/joined:
   digest: sha256:42add2c29c5ea23e
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/native_failures:
+  digest: sha256:1d53ab0c7edb44e4
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/native_value:
   digest: sha256:68d744114d61d323
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/pair_fields:
+  digest: sha256:5d443201d232eeca
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/parse_witness:
   digest: sha256:c5ea1e673aa945d7
@@ -99,6 +132,15 @@ decision/rust/runtime/lawspec_runtime.rs/function/perturb:
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/read_descriptor:
   digest: sha256:fc762a7af645a135
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/recorded_text:
+  digest: sha256:1e72999e41863fc4
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/regex_matches:
+  digest: sha256:5582c61c83bf0ab2
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/register_clock_ability:
+  digest: sha256:894d00b8fb6f5a03
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/render:
   digest: sha256:52a17bac99cf4616
@@ -127,6 +169,15 @@ decision/rust/runtime/lawspec_runtime.rs/function/scenario_sends:
 decision/rust/runtime/lawspec_runtime.rs/function/scoped:
   digest: sha256:46b42381316b95d9
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/search_number:
+  digest: sha256:0aa9a2cf98f2efdd
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/sequence_helper:
+  digest: sha256:8489fb17b089576e
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/share:
+  digest: sha256:df824f3779046abc
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/shrunk:
   digest: sha256:f56918a5e4c43087
   verdict: pending
@@ -142,6 +193,12 @@ decision/rust/runtime/lawspec_runtime.rs/function/values_from:
 decision/rust/runtime/lawspec_runtime.rs/function/values_table:
   digest: sha256:36be6c88a7af27f6
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/virtually_hedged:
+  digest: sha256:38d144f493b20de7
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/function/with_handlers:
+  digest: sha256:646c3c84db619e5c
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/function/with_stack:
   digest: sha256:ec5cb800387946d8
   verdict: pending
@@ -156,6 +213,9 @@ decision/rust/runtime/lawspec_runtime.rs/impl/Context/function/testing:
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/impl/Context/function/with_workflow:
   digest: sha256:46aedf042f182ad9
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/impl/Context#2/function/handler:
+  digest: sha256:cb8d53462efcaf6f
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/impl/Handle/function/downcast_ref:
   digest: sha256:f476310d20d0fc3b
@@ -207,6 +267,21 @@ decision/rust/runtime/lawspec_runtime.rs/impl/Handle/function/same:
   verdict: pending
 "decision/rust/runtime/lawspec_runtime.rs/impl/Machine<'a>#3/function/scenario_linearizes":
   digest: sha256:333971c38840a142
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/impl/NativeAsync/function/all:
+  digest: sha256:4813c04e07ba988c
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/impl/NativeAsync/function/pause:
+  digest: sha256:5dac083608925f8f
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/impl/NativeAsync/function/spawn:
+  digest: sha256:0bda424a5f06963b
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/impl/NativeAsync/function/wait:
+  digest: sha256:ba5ab331f1f21790
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/impl/NativeAsync/function/wait_future:
+  digest: sha256:58f8be1696cf289b
   verdict: pending
 "decision/rust/runtime/lawspec_runtime.rs/impl/ScenarioRun<'m>/function/gone":
   digest: sha256:c2a5d121cdb0f17f
@@ -364,6 +439,9 @@ decision/rust/runtime/lawspec_runtime.rs/module/actors/function/is_stopped:
 "decision/rust/runtime/lawspec_runtime.rs/module/actors/impl/Mailbox<T>/function/receive":
   digest: sha256:0eb306e7b20d614c
   verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/actors/impl/Mailbox<T>/function/receive_within":
+  digest: sha256:357c79e2b531dfbd
+  verdict: pending
 "decision/rust/runtime/lawspec_runtime.rs/module/actors/impl/Mailbox<T>/function/send":
   digest: sha256:8a6299bbae7747b2
   verdict: pending
@@ -421,6 +499,87 @@ decision/rust/runtime/lawspec_runtime.rs/module/actors/trait/Supervised/function
 decision/rust/runtime/lawspec_runtime.rs/module/actors/trait/Supervised/function/stop_child:
   digest: sha256:f64341f172935cd0
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast:
+  digest: sha256:ab710d3c3ca54ea0
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/enum/Int:
+  digest: sha256:5371de036e80ff7a
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/append_list:
+  digest: sha256:11e04941331ca1cb
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/attempt:
+  digest: sha256:1340ba7c6e5c88f9
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/clamp_index:
+  digest: sha256:0334c14c3c2cade3
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/fields:
+  digest: sha256:7f8abdf0c6939f61
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/narrow:
+  digest: sha256:348cc45d81830011
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/slice_list:
+  digest: sha256:fa4d1b0a577a4e47
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/function/tag:
+  digest: sha256:29e187ad9180c7dd
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Int/function/narrow:
+  digest: sha256:1cd4234c308ece2f
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Int/function/quot:
+  digest: sha256:3a51670f83b3334a
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Int/function/rem:
+  digest: sha256:5325409fb8f22540
+  verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/List<T>#2/function/split":
+  digest: sha256:85f9ec306e9f55e3
+  verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Map<K,V>/function/iter":
+  digest: sha256:3c88c8f8f1189aed
+  verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Map<K,V>/function/to_list":
+  digest: sha256:9d947eac29962fc4
+  verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Map<K,V>#2/function/from_entries":
+  digest: sha256:d5a53023050a41eb
+  verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Map<K,V>#2/function/insert":
+  digest: sha256:646fb71e8075b485
+  verdict: pending
+"decision/rust/runtime/lawspec_runtime.rs/module/fast/impl/Map<K,V>#2/function/remove":
+  digest: sha256:38357cb1c84cc2a6
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/struct/List:
+  digest: sha256:be7006f3699b2cd2
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/struct/Map:
+  digest: sha256:e4388153cbbb8d31
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/struct/Set:
+  digest: sha256:59713d5179402157
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/trait/Dyn:
+  digest: sha256:d722e831b0ad37ab
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/trait/POrd:
+  digest: sha256:2992bac63f6e58a4
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/trait/Public:
+  digest: sha256:1ca3a31b855d189d
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/type/Bytes:
+  digest: sha256:ae9828e677e37803
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/fast/type/Text:
+  digest: sha256:b822e286bdf09f03
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/const/NO_SECURE_NETWORK:
+  digest: sha256:a4e45f2023f356cc
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/const/PEER_FAILED:
   digest: sha256:d650cac5f5b0efee
   verdict: pending
@@ -436,8 +595,14 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/function/end_codec:
 decision/rust/runtime/lawspec_runtime.rs/module/net/function/offer_end:
   digest: sha256:3700be1df4150f6d
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/function/register_secure_network:
+  digest: sha256:53e3f528ff52fdd8
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/function/relay_end:
   digest: sha256:020e17f499bba083
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/function/secure_token:
+  digest: sha256:e2bf67cb37f51dc7
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/function/split_address:
   digest: sha256:f94c61de685ef240
@@ -472,14 +637,23 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/impl/EndpointInner/function/
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/HttpTransport/function/local:
   digest: sha256:3e898b33363642f1
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/MemoryNetwork/function/insecure_transport_for_tests:
+  digest: sha256:f81c592fcadbf01d
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/MemoryNetwork/function/partition:
   digest: sha256:d64fdfc888774e1d
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/MemoryNetwork/function/recorded:
+  digest: sha256:aeeb01d40821efe1
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/MemoryNetwork/function/reliable:
   digest: sha256:3857182451968a95
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/MemoryNetwork/function/transport:
   digest: sha256:f1ef352f142c89ee
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/MemoryNetwork/function/with_recording:
+  digest: sha256:bd0386e88374f1b0
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/NetEndpoint/function/abandon:
   digest: sha256:8c55ac468a42470c
@@ -514,6 +688,9 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/listen:
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/mailbox:
   digest: sha256:8d238812df9f89d1
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/new:
+  digest: sha256:22a00a8969fc3bfd
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/remote_actor:
   digest: sha256:6df714ad9707df0a
   verdict: pending
@@ -522,6 +699,9 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/remote_ma
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/request:
   digest: sha256:fc8666e4d2f4faaa
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/secure_layer:
+  digest: sha256:5059a7932eea1774
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/serve:
   digest: sha256:68dc0b9b5a5e9065
@@ -532,11 +712,23 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/serve_def
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/take:
   digest: sha256:1791ed893c4d48ad
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/Node/function/with_secure_layer:
+  digest: sha256:6a2ed236f5fc838e
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/impl/NodeLink/function/send:
+  digest: sha256:6d6461d13552187f
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/impl/TcpTransport/function/local:
   digest: sha256:3e898b33363642f1
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/module/sealed/struct/InsecureForTests:
+  digest: sha256:8babaef77a5bee43
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/struct/HttpTransport:
   digest: sha256:12f1f1582f5a84fd
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/struct/InsecureMemoryTransport:
+  digest: sha256:2e65dbc45961cc61
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/struct/MemoryNetwork:
   digest: sha256:f2a03eb4c24242c9
@@ -550,6 +742,9 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/struct/NetSession:
 decision/rust/runtime/lawspec_runtime.rs/module/net/struct/Node:
   digest: sha256:9db0c49afed9070a
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/struct/NodeLink:
+  digest: sha256:13e740f637f1d2eb
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/struct/RemoteActor:
   digest: sha256:7ee2f789287a524d
   verdict: pending
@@ -562,8 +757,17 @@ decision/rust/runtime/lawspec_runtime.rs/module/net/struct/StepCodec:
 decision/rust/runtime/lawspec_runtime.rs/module/net/struct/TcpTransport:
   digest: sha256:a00a21ee4d3f0abd
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/trait/SecureLayer:
+  digest: sha256:e0c34531eb7d4cfe
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/trait/SecureNetwork:
+  digest: sha256:574112241a8bcddd
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/trait/Transport:
   digest: sha256:aaaaeab8ea4fcbbe
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/module/net/trait/Transport/function/insecure_for_tests:
+  digest: sha256:721e1009eef19986
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/module/net/type/Deliver:
   digest: sha256:d4128bfe3b7b6ded
@@ -652,11 +856,29 @@ decision/rust/runtime/lawspec_runtime.rs/module/sessions/trait/Transport/functio
 decision/rust/runtime/lawspec_runtime.rs/module/sessions/type/Message:
   digest: sha256:d9f72bfd952bf935
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/static/ASYNC:
+  digest: sha256:dd996e69a16c5572
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/AbilityClock:
+  digest: sha256:a59b640aa15a979c
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/Calls:
+  digest: sha256:53149649d77b2d80
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/Context/field/handlers:
+  digest: sha256:4393e16c3657f03d
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/struct/Context/field/workflow:
   digest: sha256:6b363052cca10f0c
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/struct/Decimal:
   digest: sha256:6b066ecf100d48b8
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/Fail:
+  digest: sha256:a865213a940ee0a5
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/Failure:
+  digest: sha256:ec639a7a512f5f49
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/struct/Gate:
   digest: sha256:2ed37f8e64f29dd3
@@ -664,11 +886,20 @@ decision/rust/runtime/lawspec_runtime.rs/struct/Gate:
 decision/rust/runtime/lawspec_runtime.rs/struct/Handle:
   digest: sha256:3b91f25bcd8d45ee
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/Installed:
+  digest: sha256:cb3c6490a241183a
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/Installed/field/native:
+  digest: sha256:873ab0b8fb0243c9
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/struct/Integer:
   digest: sha256:38392624afd60a32
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/struct/Model:
   digest: sha256:ad5dbd39571ffdbe
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/struct/NativeAsync:
+  digest: sha256:000c035ddbec8796
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/struct/RealClock:
   digest: sha256:bb6db8df2f086530
@@ -706,8 +937,20 @@ decision/rust/runtime/lawspec_runtime.rs/struct/WorkflowRuntime/field/gates:
 decision/rust/runtime/lawspec_runtime.rs/trait/Clock:
   digest: sha256:b25540cb39308edd
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/trait/Clock/function/is_virtual:
+  digest: sha256:692549e7822d0fc9
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/trait/ClockAbility:
+  digest: sha256:d6dcaead36c816fa
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/type/ClockAbilityReader:
+  digest: sha256:c591586f9af33c57
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/type/FieldPredicate:
   digest: sha256:d98577fe03b4728b
+  verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/type/MappedFailure:
+  digest: sha256:584607a8d4d3ea5b
   verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/type/ModelCallback:
   digest: sha256:7d833b877131ce90

@@ -1,0 +1,18 @@
+decision/swift/runtime/swift/LawSpecRuntime/SecureNetwork.swift/class/SecureLayer/func/send:
+  digest: sha256:246ee884f7931605
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SecureNetwork.swift/class/SecureLayer/var/fingerprint:
+  digest: sha256:4271314fb7b502d3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SecureNetwork.swift/enum/NetworkConfig:
+  digest: sha256:a5d5e84a4d4c62e3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SecureNetwork.swift/enum/NetworkConfig/func/resolve:
+  digest: sha256:9d967c5826703986
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SecureNetwork.swift/struct/NetworkOptions:
+  digest: sha256:68af4433df2361be
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SecureNetwork.swift/struct/NetworkOptions/var/trustGiven:
+  digest: sha256:30f153902b6562a3
+  verdict: pending

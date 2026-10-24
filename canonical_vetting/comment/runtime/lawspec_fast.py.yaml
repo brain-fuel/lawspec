@@ -1,0 +1,9 @@
+decision/python/runtime/lawspec_fast.py:
+  digest: sha256:c8c83cf5c481c394
+  verdict: pending
+decision/python/runtime/lawspec_fast.py/function/entries:
+  digest: sha256:ca241edc9352701a
+  verdict: pending
+decision/python/runtime/lawspec_fast.py/function/slice_list:
+  digest: sha256:58be7adecb564b66
+  verdict: pending

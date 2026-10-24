@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust:
+  digest: sha256:f8bce769239ad9b5
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/bounds:
+  digest: sha256:14ce749be23952b9
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/dataNames:
+  digest: sha256:c02cfb084f899f50
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/directDeclarations:
+  digest: sha256:316f41c47c0a7a33
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/entryOf:
+  digest: sha256:ebaaabf2ec70d000
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/entryPairs:
+  digest: sha256:0b0147ac0451b837
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/expression:
+  digest: sha256:6d565021f53eef91
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/hasTailSelf:
+  digest: sha256:195cbb9ec1a8e3a7
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/identifier:
+  digest: sha256:cf7d462ae0d4ab06
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/integerExpression:
+  digest: sha256:2d4cf23fd0ee4056
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/isCopy:
+  digest: sha256:0d11e19bd3936a8c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/modulePath:
+  digest: sha256:c696102b35333ccf
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/publicDoc:
+  digest: sha256:8c982381253e251e
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/rustIdentifier:
+  digest: sha256:a029d983ae654aba
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/rustTypeP:
+  digest: sha256:116297431c091ffc
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Rust.hs/module/LawSpec.Typed.Rust/function/wide:
+  digest: sha256:5bee31962a7a96af
+  verdict: pending

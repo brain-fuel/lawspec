@@ -19,6 +19,9 @@ decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/portable
 decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/resolveImports:
   digest: sha256:ab9c79037914a226
   verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/resolveImportsByProfile:
+  digest: sha256:c7aad5a92fa01c79
+  verdict: pending
 decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/unitExports:
   digest: sha256:cb0d136d92d571fc
   verdict: pending

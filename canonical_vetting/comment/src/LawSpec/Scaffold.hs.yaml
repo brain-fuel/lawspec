@@ -4,6 +4,12 @@ decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold:
 decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/data/Json:
   digest: sha256:b266b2f993888de5
   verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/dotnetScaffold:
+  digest: sha256:c6b422c04ce10759
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/gleamTestPackage:
+  digest: sha256:516d74c49d4f825c
+  verdict: pending
 decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/scaffoldFiles:
   digest: sha256:666f286d6e97b25b
   verdict: pending
@@ -12,6 +18,9 @@ decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/scaffo
   verdict: pending
 decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/setupAdvice:
   digest: sha256:c33f5bf5a1f21e8e
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/swiftScaffold:
+  digest: sha256:833ee438f3cc140d
   verdict: pending
 decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/testCommand:
   digest: sha256:58bc6e9262f91b99

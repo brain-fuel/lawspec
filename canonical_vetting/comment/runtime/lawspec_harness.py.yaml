@@ -1,0 +1,24 @@
+decision/python/runtime/lawspec_harness.py/class/HarnessError:
+  digest: sha256:69425907fecf0799
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/benchmark:
+  digest: sha256:8ead2e8ff5319ae4
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/check_drawn:
+  digest: sha256:e2475d5598ce38e3
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/known_failing:
+  digest: sha256:a393a4adbf537aa8
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/pytest_collection_modifyitems:
+  digest: sha256:1cba09168c3e5186
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/pytest_pyfunc_call:
+  digest: sha256:87577ff72b2220f6
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/run:
+  digest: sha256:872ea0769cac1d08
+  verdict: pending
+decision/python/runtime/lawspec_harness.py/function/target:
+  digest: sha256:389c205486db5f6d
+  verdict: pending

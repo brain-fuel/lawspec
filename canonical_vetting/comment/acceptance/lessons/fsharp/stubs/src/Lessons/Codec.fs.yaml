@@ -1,0 +1,6 @@
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Codec.fs/module/Lessons.Codec/function/formatQuantity:
+  digest: sha256:ab778135c93bee96
+  verdict: pending
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Codec.fs/module/Lessons.Codec/function/parseQuantity:
+  digest: sha256:baf601555dc5d453
+  verdict: pending

@@ -1,0 +1,72 @@
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan:
+  digest: sha256:7930bf4f74c80a2c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/data/Intrinsic:
+  digest: sha256:c63e8912189f78b1
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/callees:
+  digest: sha256:b64ee6f7634907cd
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/collectionArguments:
+  digest: sha256:36a89c4c5f0eebc1
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/constructorRanks:
+  digest: sha256:b8e0c51d433f0690
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/definitionClass:
+  digest: sha256:d4bac7e8cc9876ab
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/failedWith:
+  digest: sha256:4d01a70aacfe6129
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/firstOf:
+  digest: sha256:30a5025d94d49611
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/intrinsicOf:
+  digest: sha256:5a70b25b0438d93f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/isContextual:
+  digest: sha256:cab1fe93d24549f9
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/isTypedHandler:
+  digest: sha256:55c1577a747c9e26
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/normalize:
+  digest: sha256:e1d55350387fec17
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/number:
+  digest: sha256:6301af2f3fa16602
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/performedFailure:
+  digest: sha256:606b09f1d1dc935f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/scalarTypes:
+  digest: sha256:f87b5c1cdd31a20e
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/sequenceBuiltins:
+  digest: sha256:981c9f42c94811d3
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/sharedDefinitions:
+  digest: sha256:deefe8dc50b35868
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/stableSuffix:
+  digest: sha256:c2db878501e22f45
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/supportedField:
+  digest: sha256:a5f5c16e81fb8382
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/supportedType:
+  digest: sha256:3a11b0d1fb21d805
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/typedDeclarations:
+  digest: sha256:58e49e7811e1bfb4
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/typedFallbacks:
+  digest: sha256:49cbfabccca2accb
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/typedPlanPerforming:
+  digest: sha256:aefd41f9aebf324f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Plan.hs/module/LawSpec.Typed.Plan/function/typedPlanWith:
+  digest: sha256:fb6f46c35a9bdcf9
+  verdict: pending

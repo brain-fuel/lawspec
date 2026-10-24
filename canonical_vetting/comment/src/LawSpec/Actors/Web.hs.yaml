@@ -1,10 +1,19 @@
 decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web:
   digest: sha256:3e1c0747ea5611ac
   verdict: pending
+decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/function/doc:
+  digest: sha256:d25c2c92492f931f
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/function/docLines:
+  digest: sha256:bae277b60d1ebc52
+  verdict: pending
 decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/function/emit:
   digest: sha256:a8c64d1790ff38ea
   verdict: pending
-decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/function/supervisorClassText:
+decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/function/supervise:
+  digest: sha256:bc9bcaa43ba2f162
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/function/supervisorClass:
   digest: sha256:16493b32b4069dec
   verdict: pending
 decision/haskell/src/LawSpec/Actors/Web.hs/module/LawSpec.Actors.Web/type/HandlerWire:

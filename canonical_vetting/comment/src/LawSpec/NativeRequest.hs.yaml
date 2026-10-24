@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest:
 decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/BindingPlan:
   digest: sha256:0bf1928d07eed7bf
   verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/ErlangInclude:
+  digest: sha256:28213a2a24232070
+  verdict: pending
 decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/FunctionBinding:
   digest: sha256:6c185d65bf5bc333
   verdict: pending
@@ -24,6 +27,9 @@ decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/funct
   verdict: pending
 decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/hasBindings:
   digest: sha256:52624ca8fb430ffa
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/normalizedNativeRequest:
+  digest: sha256:c195dd75dc41a8b2
   verdict: pending
 decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/resolveNativeRequest:
   digest: sha256:0fe445ba74f84a8a

@@ -1,0 +1,51 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy:
+  digest: sha256:df0ff1082bdfa22b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/failed:
+  digest: sha256:09d0515cadb3695c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/jitter:
+  digest: sha256:37bcb684d4bc1124
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/jitterOf:
+  digest: sha256:776243847b212d1b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/retryDecision:
+  digest: sha256:a9fed726a3e8a879
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/retryDelay:
+  digest: sha256:eafff23a7dde4b9a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/stage:
+  digest: sha256:7c18f3424be77496
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/function/stageFailure:
+  digest: sha256:c8454971ba37bf75
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/record/Gate:
+  digest: sha256:822e9d3f8fd5ec1f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/record/Retry:
+  digest: sha256:5d13b027f7c2ee91
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/record/Retry/field/When:
+  digest: sha256:c2381f26e0f0e39c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/record/StagePolicy:
+  digest: sha256:0c6a408297a89331
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/record/StagePolicy/field/Hedge:
+  digest: sha256:d514c63a7ec2a979
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/union/Jitter:
+  digest: sha256:dd6dfe26dd26840c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/union/Strategy:
+  digest: sha256:fb41bb1dc235ca2e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/union/Strategy/case/Custom:
+  digest: sha256:709a4e062ea73167
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Policy.fs/module/LawSpec.Runtime.Policy/union/Wait:
+  digest: sha256:b34b39aac4338c78
+  verdict: pending

@@ -13,6 +13,9 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/constructo
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/declarationP:
   digest: sha256:e12a299f459cc3ff
   verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/definitionUsesP:
+  digest: sha256:c4e61184608d781d
+  verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/exportP:
   digest: sha256:83ac0d8aa99f0563
   verdict: pending
@@ -22,14 +25,26 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/expr:
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/headers:
   digest: sha256:51bd2a022c1e6980
   verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/historyLawP:
+  digest: sha256:8e722a3e8d0e572a
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/identRaw:
+  digest: sha256:23f811e3cc237f93
+  verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/indexExpr:
   digest: sha256:b27cdab5e37fd49b
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/isExport:
   digest: sha256:cb4d68a3b9808ac1
   verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/lawClaimsP:
+  digest: sha256:8f78e3b57770bf9d
+  verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/literalHeaders:
   digest: sha256:51f1004b58562466
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/modelLawP:
+  digest: sha256:4bbe865d69a09108
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSource:
   digest: sha256:d7137061bb02b337
@@ -37,8 +52,14 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSourc
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSources:
   digest: sha256:ca09d0012649c884
   verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSourcesSyntaxWithBuiltins:
+  digest: sha256:2518634122c1122d
+  verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSourcesWith:
   digest: sha256:92f8af0e0efc03e8
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSourcesWithBuiltins:
+  digest: sha256:769235df2ef5fad3
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/preambleP:
   digest: sha256:f4e74b8849de9994
@@ -48,6 +69,18 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/protocolP:
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/qualifiedName:
   digest: sha256:669df1db4df7ea06
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/qualifiedNameRaw:
+  digest: sha256:c16e99887956ab42
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/runP:
+  digest: sha256:837dc8a6cd5c5b21
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/runPrimaryP:
+  digest: sha256:61e3b2ffbc96cdd1
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/runWordP:
+  digest: sha256:28c52ca8045104e2
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/scenarioP:
   digest: sha256:bd90f2e2ed7fa54e
@@ -63,6 +96,12 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/startsUppe
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/supervisorP:
   digest: sha256:8e53c57a01984008
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/temporalPropertyP:
+  digest: sha256:3e8c8f27a554c9b2
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/updatedExpr:
+  digest: sha256:8450c320f7bec56f
   verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/upper:
   digest: sha256:c488130997183e23

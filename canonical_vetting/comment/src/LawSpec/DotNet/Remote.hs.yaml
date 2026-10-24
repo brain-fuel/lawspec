@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/DotNet/Remote.hs/module/LawSpec.DotNet.Remote:
+  digest: sha256:79aece3fa23ee0bb
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Remote.hs/module/LawSpec.DotNet.Remote/function/emitRemote:
+  digest: sha256:4fdce76a70547023
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/groovy/runtime/groovy/LawSpecGroovy.groovy/class/LawSpecGroovy:
+  digest: sha256:960b86c359c96be2
+  verdict: pending
+decision/groovy/runtime/groovy/LawSpecGroovy.groovy/class/LawSpecGroovy/method/listOf:
+  digest: sha256:ccf74f4d267d4b77
+  verdict: pending

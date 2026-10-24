@@ -1,0 +1,45 @@
+decision/javascript/runtime/lawspec_network.mjs/class/NodeIdentity:
+  digest: sha256:6dca9b0f955917b2
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/class/NodeIdentity/accessor/get-fingerprint:
+  digest: sha256:b8f2cd1defd0d8e8
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/class/NodeIdentity/method/configured:
+  digest: sha256:8adf93083858ba96
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/class/RecordError:
+  digest: sha256:a424341736d0ba09
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/class/SecureLayer:
+  digest: sha256:07c307dd3c398f94
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/class/SecureLayer/method/receive:
+  digest: sha256:b68ae35d0e7425d0
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/class/SecureLayer/method/retry:
+  digest: sha256:04b61d442299908a
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/handshakeVector:
+  digest: sha256:f0b6f782e80e6b3d
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/layer:
+  digest: sha256:2257929ca7100afb
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/networkConfig:
+  digest: sha256:8e2c47a1e8a2b4d5
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/openFrame:
+  digest: sha256:4d9a2d5f963a735d
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/sealFrame:
+  digest: sha256:6b2cee4e14a01f78
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/secureToken:
+  digest: sha256:a5399960595cf813
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/sessionKey:
+  digest: sha256:ff4b9b416e15b382
+  verdict: pending
+decision/javascript/runtime/lawspec_network.mjs/function/w:
+  digest: sha256:f9aff07fb83cf2b8
+  verdict: pending

@@ -10,3 +10,9 @@ decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinit
 decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions/function/emitHaskellDefinitionsWithBindings:
   digest: sha256:ae8b01c5800af769
   verdict: pending
+decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions/function/functionNames:
+  digest: sha256:adbc2682783a3470
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions/function/moduleNames:
+  digest: sha256:0a3da9f1d0d5dc2d
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/swift/runtime/swift/LawSpecRuntime/Recorded.swift/enum/Recorded/func/debug:
+  digest: sha256:585d7a3d69c6a9fc
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Recorded.swift/enum/Recorded/func/identical:
+  digest: sha256:80e7ee78ca0d20df
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Recorded.swift/enum/Recorded/func/lastPart:
+  digest: sha256:1a39538c5320fd74
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Recorded.swift/enum/Recorded/func/renderPlain:
+  digest: sha256:620c27b8285c1221
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Recorded.swift/enum/Recorded/func/text:
+  digest: sha256:c01388fbb1a2385e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Recorded.swift/enum/Recorded/struct/Ids:
+  digest: sha256:a4d3bd476746dc94
+  verdict: pending

@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks:
+  digest: sha256:7e2affa554be9502
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks/data/Answer:
+  digest: sha256:74bf3f4d826e7218
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks/function/analysisTasks:
+  digest: sha256:0db7ef9f2b0f5746
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks/function/coversPoint:
+  digest: sha256:45c18c610fe378c1
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks/function/match:
+  digest: sha256:44293169c1c97bc5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks/function/renamedTo:
+  digest: sha256:dc7b96f247f0a9e7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/LawTasks.hs/module/LawSpec.Core.LawTasks/function/settle:
+  digest: sha256:45ddb8c22848bdfa
+  verdict: pending

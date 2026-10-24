@@ -1,0 +1,102 @@
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode:
+  digest: sha256:6fd57be5040750df
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/apply:
+  digest: sha256:f9e40547527e6886
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/assign:
+  digest: sha256:1b40c1ba190c1c48
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/atom:
+  digest: sha256:27822fc91fa9efb5
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/binary:
+  digest: sha256:7647c59836999a4b
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/breaksInside:
+  digest: sha256:e8ef7d26387291ce
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/caseOf:
+  digest: sha256:ef681ff2188b1c78
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/comment:
+  digest: sha256:a0872ca741861b90
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/comprehension:
+  digest: sha256:cb243535c57c8e4a
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/cons:
+  digest: sha256:f0949aad8daeff0e
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/dataNames:
+  digest: sha256:19f5a645cc6c5350
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/define:
+  digest: sha256:d73b001647c95a29
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/field:
+  digest: sha256:ce3607cbd34befbb
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/forceBreak:
+  digest: sha256:d880307585c24a74
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/funClauses:
+  digest: sha256:ab5cd8ca7e1f1449
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/funType:
+  digest: sha256:072e197ba751130c
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/function:
+  digest: sha256:8be377c07b196e11
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/functionName:
+  digest: sha256:4bdcc355f74e6ab4
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/json:
+  digest: sha256:a91f08b24861bf48
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/lambda:
+  digest: sha256:fc268f01002cdc93
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/linkComment:
+  digest: sha256:40e7d56cbf4d51f7
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/literal:
+  digest: sha256:e8ab42aa16a0a93a
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/mentions:
+  digest: sha256:b7492e3a5408470c
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/moduleDocFrom:
+  digest: sha256:ad2c5d1f66b071c7
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/nativeModule:
+  digest: sha256:424404bad2389927
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/nativeType:
+  digest: sha256:5ccc8f39f83d940b
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/operator:
+  digest: sha256:76585a90a4828735
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/reference:
+  digest: sha256:88ffeb01be9b341d
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/sequenceDoc:
+  digest: sha256:cae0d006d5764ad6
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/snake:
+  digest: sha256:39d50be9c3dff6b3
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/spec:
+  digest: sha256:d44075154f58d2ab
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/string:
+  digest: sha256:2db350e5a8abaf03
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/unusedIn:
+  digest: sha256:3cf3fd645b7873d9
+  verdict: pending
+decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/variable:
+  digest: sha256:ebdda6554aa48c3e
+  verdict: pending

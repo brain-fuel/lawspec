@@ -1,0 +1,6 @@
+decision/swift/acceptance/workflows/swift/files/src/Example/Approvals.swift/extension/Example.Approvals/func/approvalErrors:
+  digest: sha256:df4b74e7b8d09e2d
+  verdict: pending
+decision/swift/acceptance/workflows/swift/files/src/Example/Approvals.swift/extension/Example.Approvals/func/approvedQuickly:
+  digest: sha256:4b6423fd61e3989f
+  verdict: pending

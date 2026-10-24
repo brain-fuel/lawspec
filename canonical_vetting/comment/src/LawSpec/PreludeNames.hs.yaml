@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/PreludeNames.hs/module/LawSpec.PreludeNames:
+  digest: sha256:78861a1c02f0e8fb
+  verdict: pending
+decision/haskell/src/LawSpec/PreludeNames.hs/module/LawSpec.PreludeNames/function/preludeDefinition:
+  digest: sha256:690bfc41f8f4bca1
+  verdict: pending
+decision/haskell/src/LawSpec/PreludeNames.hs/module/LawSpec.PreludeNames/function/preludeDefinitionTarget:
+  digest: sha256:ffbd1e6c6d3d7d68
+  verdict: pending

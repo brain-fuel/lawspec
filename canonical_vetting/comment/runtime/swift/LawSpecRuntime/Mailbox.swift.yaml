@@ -1,0 +1,54 @@
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/address:
+  digest: sha256:e6d3cb6069f4f1d3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/close:
+  digest: sha256:98dea52d347e7c1e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/receive:
+  digest: sha256:39147271b1b368d2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/receive#2:
+  digest: sha256:9db2ab4a1696f60d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/receiveWithClock:
+  digest: sha256:c592712975e00ed2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/receiveWithin:
+  digest: sha256:f7be572ee40fec37
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/send:
+  digest: sha256:bb7956214ae50ab6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/serve:
+  digest: sha256:69557ba2c5ec8c73
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/stop:
+  digest: sha256:c1701beae86781a7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/func/wait:
+  digest: sha256:db629019d54103e2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/Mailbox/init/init:
+  digest: sha256:45b4528b448d8b44
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/MailboxSender:
+  digest: sha256:508b85827c4561c5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/class/MailboxSender/func/send:
+  digest: sha256:0c1082bb12c23a06
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/enum/Mailboxes:
+  digest: sha256:e8376976d3eaea6d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/enum/Mailboxes/func/withMailbox:
+  digest: sha256:634ce6a889dc7475
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/enum/Timeouts:
+  digest: sha256:38417c184e123ff3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/enum/Timeouts/func/milliseconds:
+  digest: sha256:90e402722cfbf33b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Mailbox.swift/enum/Timeouts/func/seconds:
+  digest: sha256:7b770141dfa88a95
+  verdict: pending

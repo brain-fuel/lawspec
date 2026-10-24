@@ -1,0 +1,9 @@
+decision/haskell/test/BeamSpec.hs/module/BeamSpec:
+  digest: sha256:08fbb1818d0f6645
+  verdict: pending
+decision/haskell/test/BeamSpec.hs/module/BeamSpec/function/identityIn:
+  digest: sha256:b7d81bb20552550e
+  verdict: pending
+decision/haskell/test/BeamSpec.hs/module/BeamSpec/function/test_beamRunsTheLanguageGaps:
+  digest: sha256:39f3decefd48173e
+  verdict: pending

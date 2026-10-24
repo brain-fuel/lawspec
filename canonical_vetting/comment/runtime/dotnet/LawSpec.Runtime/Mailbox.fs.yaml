@@ -1,0 +1,42 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox:
+  digest: sha256:30f0b079d516751a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/constructor/new:
+  digest: sha256:45b4528b448d8b44
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/Address:
+  digest: sha256:e6d3cb6069f4f1d3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/Close:
+  digest: sha256:98dea52d347e7c1e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/Receive:
+  digest: sha256:39147271b1b368d2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/ReceiveWithClock:
+  digest: sha256:de7bb75c62c88638
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/ReceiveWithin:
+  digest: sha256:f7be572ee40fec37
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/Send:
+  digest: sha256:bb7956214ae50ab6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/Serve:
+  digest: sha256:69557ba2c5ec8c73
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/Mailbox/member/Stop:
+  digest: sha256:c1701beae86781a7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/MailboxSender:
+  digest: sha256:508b85827c4561c5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/class/MailboxSender/member/Send:
+  digest: sha256:0c1082bb12c23a06
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/module/Mailboxes:
+  digest: sha256:e8376976d3eaea6d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Mailbox.fs/namespace/LawSpec.Runtime/module/Mailboxes/function/withMailbox:
+  digest: sha256:634ce6a889dc7475
+  verdict: pending

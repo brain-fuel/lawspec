@@ -1,0 +1,6 @@
+decision/swift/runtime/swift/LawSpecTesting/Resources.swift/enum/Resources/func/withResource:
+  digest: sha256:845ba165a6dc171c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Resources.swift/enum/Resources/func/withShared:
+  digest: sha256:5083e30cafd0f75b
+  verdict: pending

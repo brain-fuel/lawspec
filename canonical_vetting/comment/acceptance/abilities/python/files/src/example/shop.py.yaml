@@ -1,0 +1,12 @@
+decision/python/acceptance/abilities/python/files/src/example/shop.py/class/LogHandler:
+  digest: sha256:9b566b5169132773
+  verdict: pending
+decision/python/acceptance/abilities/python/files/src/example/shop.py/class/MeterHandler:
+  digest: sha256:6e1e8fcfec8fdcad
+  verdict: pending
+decision/python/acceptance/abilities/python/files/src/example/shop.py/class/StoreInt32Handler:
+  digest: sha256:bac643f0a8ee27c9
+  verdict: pending
+decision/python/acceptance/abilities/python/files/src/example/shop.py/class/StoreTextHandler:
+  digest: sha256:c59faa060b3c1f8b
+  verdict: pending

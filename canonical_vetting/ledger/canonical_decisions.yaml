@@ -13,8 +13,17 @@ ledger/DEC-adapter-ownership:
 ledger/DEC-algebraic-maybe-either:
   digest: sha256:f0faa4859ce0a034
   verdict: pending
+ledger/DEC-artifact-targets:
+  digest: sha256:259a732220dbf7fe
+  verdict: pending
 ledger/DEC-async-native-tasks:
   digest: sha256:221e36508e50541e
+  verdict: pending
+ledger/DEC-beam-property-libraries:
+  digest: sha256:2838ceeeaf43550f
+  verdict: pending
+ledger/DEC-canon-constructor-haddock:
+  digest: sha256:8c62b83ed7de1d19
   verdict: pending
 ledger/DEC-canon-dialect-profiles:
   digest: sha256:4be11b93342c21fb
@@ -22,8 +31,26 @@ ledger/DEC-canon-dialect-profiles:
 ledger/DEC-canon-from-a-checkout:
   digest: sha256:9cc77567fd79cf86
   verdict: pending
+ledger/DEC-canon-haskell-comprehension-case:
+  digest: sha256:488828c5d51d4ee9
+  verdict: pending
+ledger/DEC-canon-reads-original-haskell:
+  digest: sha256:bef336b5b4f145be
+  verdict: pending
 ledger/DEC-canonical-format:
   digest: sha256:b7cdcc75ec5a6378
+  verdict: pending
+ledger/DEC-clojure-over-java:
+  digest: sha256:9f9409b3675cd764
+  verdict: pending
+ledger/DEC-clojure-property-library:
+  digest: sha256:243523c7c18ee04e
+  verdict: pending
+ledger/DEC-completed-run-attestation:
+  digest: sha256:a99a1f06b610fe01
+  verdict: pending
+ledger/DEC-csharp-over-fsharp:
+  digest: sha256:87a4fa72b2aaa520
   verdict: pending
 ledger/DEC-diataxis-docs:
   digest: sha256:5052a32a1ba049eb
@@ -37,8 +64,17 @@ ledger/DEC-docs-landing-page:
 ledger/DEC-domain-modeling-primitives:
   digest: sha256:5b7b4ec7b487aad7
   verdict: pending
+ledger/DEC-dotnet-fscheck:
+  digest: sha256:327e61d3ca2c536a
+  verdict: pending
+ledger/DEC-dotnet-readable-output:
+  digest: sha256:ab8f92735cdc0f10
+  verdict: pending
 ledger/DEC-elaborate-before-core:
   digest: sha256:7b267e9ec6ddc06a
+  verdict: pending
+ledger/DEC-environment-attestation:
+  digest: sha256:77b8fd60f10c7ed5
   verdict: pending
 ledger/DEC-evidence-statuses:
   digest: sha256:a68c9c1d5983c608
@@ -46,14 +82,26 @@ ledger/DEC-evidence-statuses:
 ledger/DEC-examples-pin-laws:
   digest: sha256:b6b815f6d8e85c9d
   verdict: pending
+ledger/DEC-explain-registers:
+  digest: sha256:fb30e95204a50e2a
+  verdict: pending
 ledger/DEC-explicit-machine-profile:
   digest: sha256:4205c2d90f28bea9
+  verdict: pending
+ledger/DEC-field-access-desugars-to-match:
+  digest: sha256:7fc660a748f57102
   verdict: pending
 ledger/DEC-flow-typing:
   digest: sha256:de8db20ca3a3550f
   verdict: pending
+ledger/DEC-fsharp-runtime-from-scratch:
+  digest: sha256:442e99f18455fb3b
+  verdict: pending
 ledger/DEC-gadts-and-index-arithmetic:
   digest: sha256:a586ab9010082330
+  verdict: pending
+ledger/DEC-gate-5-receipt:
+  digest: sha256:14298b5fd7a835be
   verdict: pending
 ledger/DEC-generated-files-not-checked:
   digest: sha256:a5cef5d500c402c6
@@ -61,8 +109,20 @@ ledger/DEC-generated-files-not-checked:
 ledger/DEC-generated-javascript:
   digest: sha256:57cb229826c9a2aa
   verdict: pending
+ledger/DEC-groovy-over-java:
+  digest: sha256:08c9541b83a0cff1
+  verdict: pending
+ledger/DEC-groovy-property-library:
+  digest: sha256:c90fc75b2bc00212
+  verdict: pending
 ledger/DEC-haskell-grammar-workarounds:
   digest: sha256:5a112ee4810ea39f
+  verdict: pending
+ledger/DEC-haskell-ormolu-layout:
+  digest: sha256:bda72291ea0481be
+  verdict: pending
+ledger/DEC-history-checking:
+  digest: sha256:6ac7d9e35697e9b4
   verdict: pending
 ledger/DEC-idiomatic-generated-types:
   digest: sha256:431d339192ca2887
@@ -79,8 +139,23 @@ ledger/DEC-incremental-compilation:
 ledger/DEC-indexed-families-as-evidence:
   digest: sha256:ee9366fe364cd399
   verdict: pending
+ledger/DEC-law-set-analysis:
+  digest: sha256:7b2190bf82b9eded
+  verdict: pending
 ledger/DEC-local-ci-only:
   digest: sha256:8811b9061f2fe0db
+  verdict: pending
+ledger/DEC-matcher-facts-in-admission:
+  digest: sha256:24e888f5ac041c4c
+  verdict: pending
+ledger/DEC-maybe-present-absent:
+  digest: sha256:1357e4dd545257fa
+  verdict: pending
+ledger/DEC-model-checking:
+  digest: sha256:0030832d6bf8ed62
+  verdict: pending
+ledger/DEC-model-induction:
+  digest: sha256:dd38d4199fda9987
   verdict: pending
 ledger/DEC-native-bindings-typed-identity:
   digest: sha256:6554a1b2ce449949
@@ -88,14 +163,26 @@ ledger/DEC-native-bindings-typed-identity:
 ledger/DEC-native-property-frameworks:
   digest: sha256:07757b5bb7993e13
   verdict: pending
+ledger/DEC-native-string-literals:
+  digest: sha256:352ce08a26a7d7e9
+  verdict: pending
 ledger/DEC-never-pass-vacuously:
   digest: sha256:3d2d8325fe3aadb4
   verdict: pending
 ledger/DEC-npm-documents-copied:
   digest: sha256:075adf7560548b27
   verdict: pending
+ledger/DEC-operation-result-checks:
+  digest: sha256:cdeeea8cf2ac30e8
+  verdict: pending
 ledger/DEC-page-titles-in-front-matter:
   digest: sha256:c4dcdcee2b64ed5a
+  verdict: pending
+ledger/DEC-parallel-ci:
+  digest: sha256:be2f9bd8f02d8dda
+  verdict: pending
+ledger/DEC-parser-error-recovery:
+  digest: sha256:cedaf1dbfbbfffb6
   verdict: pending
 ledger/DEC-planned-generation:
   digest: sha256:76fc2804c6d0a41b
@@ -112,11 +199,26 @@ ledger/DEC-portable-total-order-collections:
 ledger/DEC-priorities-beyond-trees:
   digest: sha256:aa0b04a0949fdb46
   verdict: pending
+ledger/DEC-prolog-janus:
+  digest: sha256:69d5a82822118f8c
+  verdict: pending
 ledger/DEC-proof-producing-index-layer:
   digest: sha256:cc370dd073eb0c09
   verdict: pending
 ledger/DEC-rationale-in-ledger:
   digest: sha256:bfb53c4cab8900b3
+  verdict: pending
+ledger/DEC-readable-artifacts:
+  digest: sha256:53bd887c295bb70b
+  verdict: pending
+ledger/DEC-readable-beam-output:
+  digest: sha256:aa840813d1e1a447
+  verdict: pending
+ledger/DEC-readable-generated-names:
+  digest: sha256:72503b09db37d11d
+  verdict: pending
+ledger/DEC-readable-go-output:
+  digest: sha256:553919f4167462c0
   verdict: pending
 ledger/DEC-readable-notation:
   digest: sha256:cab761c15328fe64
@@ -124,11 +226,23 @@ ledger/DEC-readable-notation:
 ledger/DEC-readable-output-default:
   digest: sha256:74c530256eab79bd
   verdict: pending
+ledger/DEC-record-display-names:
+  digest: sha256:e1f3287babdc41c7
+  verdict: pending
 ledger/DEC-recovery-not-regeneration:
   digest: sha256:da7045355d9b1f6e
   verdict: pending
+ledger/DEC-refuted-status:
+  digest: sha256:d5b3c7f597d0277d
+  verdict: pending
 ledger/DEC-release-cadence:
   digest: sha256:f925fff0d09f262f
+  verdict: pending
+ledger/DEC-scala-on-the-jvm-runtime:
+  digest: sha256:849298526d95bbda
+  verdict: pending
+ledger/DEC-scala-property-library:
+  digest: sha256:909334d928065e43
   verdict: pending
 ledger/DEC-sessions-by-construction:
   digest: sha256:1280ee4010f7de72
@@ -136,11 +250,47 @@ ledger/DEC-sessions-by-construction:
 ledger/DEC-shrink-within-domain:
   digest: sha256:8fa807752284e802
   verdict: pending
+ledger/DEC-smt-datatypes:
+  digest: sha256:79a3b77e88da88e5
+  verdict: pending
+ledger/DEC-smt-induction:
+  digest: sha256:844c4ca88e9edd28
+  verdict: pending
+ledger/DEC-smt-numbers:
+  digest: sha256:72ee77a67207f510
+  verdict: pending
+ledger/DEC-smt-recursive-definitions:
+  digest: sha256:85e6651d58d344b7
+  verdict: pending
+ledger/DEC-smt-text:
+  digest: sha256:1aab10434a2157ab
+  verdict: pending
+ledger/DEC-smtlib-encoding-versions:
+  digest: sha256:233bb56e6d745a8d
+  verdict: pending
+ledger/DEC-source-format-modes-and-layout:
+  digest: sha256:4122baa93d5dd2a0
+  verdict: pending
 ledger/DEC-stateful-models-linearizability:
   digest: sha256:149e0f7593a57006
   verdict: pending
 ledger/DEC-structural-size-budget:
   digest: sha256:1f83a53e2cbd2cda
+  verdict: pending
+ledger/DEC-swift-actors-on-runtime-threads:
+  digest: sha256:330c3280394586dc
+  verdict: pending
+ledger/DEC-swift-persistent-list:
+  digest: sha256:a1425cac64af8340
+  verdict: pending
+ledger/DEC-swift-property-library:
+  digest: sha256:5c6940ac28285607
+  verdict: pending
+ledger/DEC-swift-readable-output:
+  digest: sha256:6b2e6c7b40d8ed01
+  verdict: pending
+ledger/DEC-swift-runtime-from-scratch:
+  digest: sha256:ba9b7fd76bae2436
   verdict: pending
 ledger/DEC-template-holes:
   digest: sha256:157d048b3897a226
@@ -157,6 +307,18 @@ ledger/DEC-total-definitions:
 ledger/DEC-typed-core-boundary:
   digest: sha256:503c0f7403f19020
   verdict: pending
+ledger/DEC-typed-native-definitions:
+  digest: sha256:982d3f59b92c1f9d
+  verdict: pending
+ledger/DEC-validated-counterexamples:
+  digest: sha256:4d2f9b4b59540c7f
+  verdict: pending
+ledger/DEC-vet-with-rices-tax:
+  digest: sha256:9cde1542ad90ffe1
+  verdict: pending
 ledger/DEC-wasm-distribution:
   digest: sha256:e49a8e84cf0dce58
+  verdict: pending
+ledger/DEC-web-prettier-printer:
+  digest: sha256:b5690f2c1d6b9fcf
   verdict: pending

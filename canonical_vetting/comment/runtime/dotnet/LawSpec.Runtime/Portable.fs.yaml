@@ -1,0 +1,36 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable:
+  digest: sha256:0bf40747f4290b7b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/compare:
+  digest: sha256:b9b26317881aec22
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/compareData:
+  digest: sha256:30f40ee8323ebced
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/equal:
+  digest: sha256:a79cce3bdc03fe5b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/equalData:
+  digest: sha256:54afb13b5256ccde
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/hash:
+  digest: sha256:5d32dd9592f49813
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/hashData:
+  digest: sha256:0f94e051df821d5f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/portableEntries:
+  digest: sha256:100f7d54094ed780
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/portableItems:
+  digest: sha256:a4ef24057d01349b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/function/reorders:
+  digest: sha256:0a26d8835ddf161f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/interface/IPortable:
+  digest: sha256:e640ab224550457d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Portable.fs/module/LawSpec.Runtime.Portable/value/textOrder:
+  digest: sha256:986802fd3b3822f3
+  verdict: pending

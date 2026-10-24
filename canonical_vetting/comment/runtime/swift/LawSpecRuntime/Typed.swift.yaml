@@ -1,0 +1,48 @@
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/add:
+  digest: sha256:4f22bd9d25aa526c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/attempt:
+  digest: sha256:e296dedb0b274de0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/compare:
+  digest: sha256:31f7355bb7a9c29d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/contains:
+  digest: sha256:4417bb49a47fa9ee
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/equal:
+  digest: sha256:f73a14f0f616fd91
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/exact:
+  digest: sha256:80ce777846cacf56
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/items:
+  digest: sha256:a4ef24057d01349b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/narrow:
+  digest: sha256:3ce0153139e11861
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/outOfRange:
+  digest: sha256:c6c689e4ff0ce21d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/performed:
+  digest: sha256:05c6a2438a84eba0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/quotient:
+  digest: sha256:ddbb2d1f4fdb4422
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/raiseFailure:
+  digest: sha256:a2ffe3e2a45524cf
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/range:
+  digest: sha256:a9acd552242cf277
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/remainder:
+  digest: sha256:1e16773b74c456ab
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/unreachable:
+  digest: sha256:4c2d203782d34eed
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Typed.swift/enum/Typed/func/unreachableFailure:
+  digest: sha256:5c1c3de2e2a32391
+  verdict: pending

@@ -1,0 +1,27 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network:
+  digest: sha256:fe221178f8a95ed7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/handshakeVector:
+  digest: sha256:de5eaa97c3982b74
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/insecureMemoryTransportForTests:
+  digest: sha256:85d7d3e0f0272969
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/memoryOptions:
+  digest: sha256:70b641abf477ee78
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/options:
+  digest: sha256:afae7659b369d4ce
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/trustOnFirstUse:
+  digest: sha256:acc7e1429bc36544
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/wireEncoded:
+  digest: sha256:a419882fdb6ba7cb
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/wireRoundTrips:
+  digest: sha256:482e0e846986f468
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkApi.fs/namespace/LawSpec.Runtime/module/Network/function/withTrusted:
+  digest: sha256:e1a9ac1b0c61d8de
+  verdict: pending

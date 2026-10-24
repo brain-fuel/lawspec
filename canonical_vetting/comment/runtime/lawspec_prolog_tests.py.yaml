@@ -1,0 +1,12 @@
+decision/python/runtime/lawspec_prolog_tests.py:
+  digest: sha256:91f9beeac5c88dcf
+  verdict: pending
+decision/python/runtime/lawspec_prolog_tests.py/class/_ExecutionStatus:
+  digest: sha256:159dc7a2ffa365b4
+  verdict: pending
+decision/python/runtime/lawspec_prolog_tests.py/function/_run_selected:
+  digest: sha256:f10c54dbbaa3698c
+  verdict: pending
+decision/python/runtime/lawspec_prolog_tests.py/function/run_case:
+  digest: sha256:612c6739c8a443a7
+  verdict: pending

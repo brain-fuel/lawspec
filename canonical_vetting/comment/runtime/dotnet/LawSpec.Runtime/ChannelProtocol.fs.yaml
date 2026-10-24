@@ -1,0 +1,36 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol:
+  digest: sha256:d552e065806d2990
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/abandon:
+  digest: sha256:7f7de5cca9e98b77
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/accept:
+  digest: sha256:e3ad6a1ba3566384
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/connect:
+  digest: sha256:7eb1e0fce68879e6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/create:
+  digest: sha256:f6a05f5147620ccc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/offer:
+  digest: sha256:65649199888795ee
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/receiveBody:
+  digest: sha256:b257daeb46cb7aec
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/send:
+  digest: sha256:b2b87cafdf443572
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/take:
+  digest: sha256:4dd091f775fb0f0d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/takeStatus:
+  digest: sha256:69945ebad752c077
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/function/tick:
+  digest: sha256:06a0cfc4b04b032a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs/module/LawSpec.Runtime.ChannelProtocol/union/Received:
+  digest: sha256:cb517b3ea658d1b2
+  verdict: pending

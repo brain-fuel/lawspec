@@ -13,6 +13,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/Monitorab
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/Monitorable/method/monitor:
   digest: sha256:c89e789ad41de8da
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/NodeTransport:
+  digest: sha256:52fb1ee6fbd432c5
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/Receive:
   digest: sha256:f3a46e0b4d4f5c9a
   verdict: pending
@@ -21,6 +24,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/Send:
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/Supervisable:
   digest: sha256:0b7d06f910719a43
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/class/Uncurried:
+  digest: sha256:1461a8e7d5d23304
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Abandoned:
   digest: sha256:c7a934a0545415f5
@@ -46,14 +52,32 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Descriptor
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Exit:
   digest: sha256:ab185ef64e8eb4a3
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Fail:
+  digest: sha256:3cc2a430d2a19113
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Failure:
+  digest: sha256:ec639a7a512f5f49
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Gate:
   digest: sha256:fe9f4ad138f078ac
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Handle:
   digest: sha256:978657f3e22626c2
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Hedge:
+  digest: sha256:afec16effedf75eb
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/InsecureMemoryTransport:
+  digest: sha256:d2d2eee33265effc
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Installed:
+  digest: sha256:3329a12d2297677b
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/LinkPoint:
   digest: sha256:35b5c59c9ab9647b
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/MailTaken:
+  digest: sha256:73be68a6e96b0308
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Mailbox:
   digest: sha256:0d228cee8121b65e
@@ -70,11 +94,17 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Model:
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/ModelStop:
   digest: sha256:c72f2e0c49dba256
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/NativeAsync:
+  digest: sha256:b6291795a3f288ff
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/NetEndpoint:
   digest: sha256:a1be2ebd21cd9796
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Node:
   digest: sha256:73242eef1bb8c394
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/NodeLayer:
+  digest: sha256:7e9ddbf0250f1c1c
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Outcome:
   digest: sha256:ce58ef2460f5b4ec
@@ -106,8 +136,14 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/ScenarioMa
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/ScenarioQueue:
   digest: sha256:deb836fed72cdd89
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/SecureNetwork:
+  digest: sha256:0e3084f817f26d30
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/SessionEnd:
   digest: sha256:f968bc5e291e45f8
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/SharedEntry:
+  digest: sha256:eb8cb3fb07810cc2
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/StagePolicy:
   digest: sha256:dc57fa00ade7dadc
@@ -130,6 +166,12 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/WorkflowRu
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/abandonEnd:
   digest: sha256:d9d09dcee429b882
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/abilityClock:
+  digest: sha256:5983e65058b6230c
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/acquireBuiltin:
+  digest: sha256:7c34fbb771084885
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/actorCrashStep:
   digest: sha256:e1700bc9e252dc7d
   verdict: pending
@@ -150,6 +192,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/advanc
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/allSends:
   digest: sha256:1c9ff7ffb1c20455
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/attempt:
+  digest: sha256:bdb4fa89234b9e7e
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/awaitStep:
   digest: sha256:0e6c9d5d200a4c19
@@ -196,6 +241,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/checkS
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/checkSupervision:
   digest: sha256:3f907eb796b2b7c8
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/clockAbilityReader:
+  digest: sha256:9f2ee927de39732d
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/closeMailbox:
   digest: sha256:dfab515fa028ce8d
   verdict: pending
@@ -220,6 +268,12 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/conver
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/convert:
   digest: sha256:62bff277a02f6981
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/converted:
+  digest: sha256:0b0f63747bfbe8d7
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/countCalls:
+  digest: sha256:f3e6dc94798393cb
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/crashActor:
   digest: sha256:1d1bff24e1a247b3
   verdict: pending
@@ -240,6 +294,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/descri
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/dialTo:
   digest: sha256:b6076914c8bae0ad
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/difference:
+  digest: sha256:8f57506d4e88b435
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/drawBelow:
   digest: sha256:e079e0d0143534cb
@@ -268,6 +325,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/endpoi
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/entryOf:
   digest: sha256:a6469460b5e215f0
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/eqSetTag:
+  digest: sha256:bb82dc3bd0029618
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/evaluateRemote:
   digest: sha256:187efbd6ec3341bb
   verdict: pending
@@ -286,8 +346,14 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/failSu
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/forceScalar:
   digest: sha256:5c904cfe2caf2ad0
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/forcing:
+  digest: sha256:ac7868290ca8a7ca
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/forwardFrame:
   digest: sha256:6cb426debbd0052e
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/freePort:
+  digest: sha256:4ee6d46bb90e3bd6
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/fromHandle:
   digest: sha256:71032c66f5c4bc96
@@ -310,8 +376,14 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/haltAc
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/handle:
   digest: sha256:c7a0943ba015d148
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/handlerOf:
+  digest: sha256:8abd7fe6332d825d
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/happenedBefore:
   digest: sha256:f2a93891ad3f1913
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/installedRealClock:
+  digest: sha256:0a7fd9abcdb55d45
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/isCrashStep:
   digest: sha256:385a7273f13bf2ff
@@ -321,6 +393,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/jitter
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/join:
   digest: sha256:9559da6101799141
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/letIn:
+  digest: sha256:922448b0e49a3a4b
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/linearizable:
   digest: sha256:0efc2612c7cfde59
@@ -352,14 +427,29 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/monito
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/monitorSupervisor:
   digest: sha256:4f3f403839f97564
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/nativeFailures:
+  digest: sha256:f12197b0e7100563
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/netChannelSide:
   digest: sha256:2e27d27393c84b8b
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/networkRecorded:
+  digest: sha256:6be8f3278baffe85
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newActor:
   digest: sha256:5c38b5b33904f76b
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newNetScenarioChannel:
   digest: sha256:b59302d0f88e29e2
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newNode:
+  digest: sha256:f41ec21b9114c8bc
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newNodeLayered:
+  digest: sha256:73957b982be0dd86
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newRecordingMemoryNetwork:
+  digest: sha256:f3c651d7cef31d1b
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newRestartableActor:
   digest: sha256:e5c9571413bb61ff
@@ -376,8 +466,14 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/number
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/offerEndpoint:
   digest: sha256:0c1cdf9be77ba03e
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/onMachine:
+  digest: sha256:1a34d5c21320feda
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/openSession:
   digest: sha256:11bfce8566011f63
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/pairFields:
+  digest: sha256:5d443201d232eeca
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/par:
   digest: sha256:8c5e0b3df83f9e19
@@ -403,6 +499,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/passGa
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/peerMoved:
   digest: sha256:56c28135c62348a2
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/performIO:
+  digest: sha256:8b888a555b95f861
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/perturb:
   digest: sha256:4e56272fe620a87a
   verdict: pending
@@ -424,8 +523,23 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/receiv
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/receiveMailboxWithin:
   digest: sha256:41bd9742cf59e12a
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/receiveMailboxWithinOn:
+  digest: sha256:6a31ae9b564acb7b
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/receiveOn:
   digest: sha256:1ef3570ee1f64a43
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/regexMatches:
+  digest: sha256:163bdbfdfe60f099
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/registerClockAbility:
+  digest: sha256:39b59ee9d234de3c
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/registerSecureNetwork:
+  digest: sha256:c87660c0b8bc433d
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/renderRecorded:
+  digest: sha256:851b6b1b9c352728
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/renderValue:
   digest: sha256:52a17bac99cf4616
@@ -457,6 +571,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/retryP
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/runCandidates:
   digest: sha256:fd712edae2c91577
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/runClause:
+  digest: sha256:e6411ceca8f53026
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/runScenario:
   digest: sha256:f7d7ac641328338e
   verdict: pending
@@ -481,8 +598,26 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/scenar
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/scenarioSends:
   digest: sha256:38f1dda0b8c6d26e
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchFile:
+  digest: sha256:b242cae7abaaeecd
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchGuard:
+  digest: sha256:67f24456152d3c33
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchMoves:
+  digest: sha256:a8cbc9d804c90ec8
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchNumber:
+  digest: sha256:5a477a3c44b98957
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchOrders:
   digest: sha256:2bc0445c2306afd5
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/secureNetwork:
+  digest: sha256:1410643ac0aca3b6
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/secureToken:
+  digest: sha256:b6dbe3d476bc6ebd
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/seenBefore:
   digest: sha256:09e3196bb734f9da
@@ -507,6 +642,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/simula
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/simulateRun:
   digest: sha256:2a704b2b00cfdc42
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/sliceItems:
+  digest: sha256:16688c9417fefb09
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/spawn:
   digest: sha256:d9e9ec0c01623a40
@@ -553,8 +691,14 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/superv
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/takeFrom:
   digest: sha256:07c48df47f89f23c
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/takeMailbox:
+  digest: sha256:a27123117fda83f6
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/towardZero:
   digest: sha256:60539604beeddc75
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/transmitFrame:
+  digest: sha256:9203f3d72755b852
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/tryReceive:
   digest: sha256:a42d360ab767f3df
@@ -586,14 +730,29 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/wireEn
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/wireRoundTrips:
   digest: sha256:411e3f136aaba672
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/withHandlers:
+  digest: sha256:646c3c84db619e5c
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/withResource:
+  digest: sha256:a3ce9f96d088fcf4
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/withShared:
+  digest: sha256:2ce321934c46703b
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/workflowContext:
   digest: sha256:1916ab5076b0ca61
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/workflowRuntime:
+  digest: sha256:31310435ac2343e7
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/wrapHandle:
   digest: sha256:bfa4a57b3b8d4a59
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/ActorCrashed:
   digest: sha256:d634ce70084a5fa6
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/Calls:
+  digest: sha256:53149649d77b2d80
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/Decimal:
   digest: sha256:e00a904bcb610160
@@ -606,6 +765,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/Entity:
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/IntegerValue:
   digest: sha256:d7a46e1beca99d9c
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/MappedFailure:
+  digest: sha256:0cbc3a9f1be38efc
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/newtype/Process:
   digest: sha256:cdffd51cdf4d7f51

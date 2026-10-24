@@ -1,0 +1,6 @@
+decision/swift/acceptance/collections/swift/files/src/Example/Collections.swift/extension/Example.Collections/func/distinctRows:
+  digest: sha256:c71930a17eb32599
+  verdict: pending
+decision/swift/acceptance/collections/swift/files/src/Example/Collections.swift/extension/Example.Collections/func/lifo:
+  digest: sha256:e4ba7726b66738bd
+  verdict: pending

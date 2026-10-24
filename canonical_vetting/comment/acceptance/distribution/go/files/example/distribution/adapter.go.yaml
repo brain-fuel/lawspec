@@ -7,6 +7,9 @@ decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/fun
 decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/Encoded:
   digest: sha256:ff5aa0e330b42ecf
   verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/HandshakeAgrees:
+  digest: sha256:04fbf22329eac64e
+  verdict: pending
 decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/OpenTally:
   digest: sha256:ce64c02cab2a1a95
   verdict: pending
@@ -30,4 +33,7 @@ decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/fun
   verdict: pending
 decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RoundTrips:
   digest: sha256:e4b6e1f6207a3ffc
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/SealedOnTheWire:
+  digest: sha256:d8053546269d708a
   verdict: pending

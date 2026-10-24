@@ -49,6 +49,9 @@ decision/go/runtime/lawspec_schema.go/method/checkIndices:
 decision/go/runtime/lawspec_schema.go/method/checkNativeProfile:
   digest: sha256:624c546ba62adb1a
   verdict: pending
+decision/go/runtime/lawspec_schema.go/method/instantiateConstructors:
+  digest: sha256:58318555409a3863
+  verdict: pending
 decision/go/runtime/lawspec_schema.go/method/shallow:
   digest: sha256:05cc7de97f43f906
   verdict: pending

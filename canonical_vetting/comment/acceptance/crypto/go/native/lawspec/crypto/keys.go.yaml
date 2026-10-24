@@ -1,0 +1,15 @@
+decision/go/acceptance/crypto/go/native/lawspec/crypto/keys.go:
+  digest: sha256:9e17c2fad0c8e5f4
+  verdict: pending
+decision/go/acceptance/crypto/go/native/lawspec/crypto/keys.go/function/NewCountingExchange:
+  digest: sha256:e82f40dd0a2646c3
+  verdict: pending
+decision/go/acceptance/crypto/go/native/lawspec/crypto/keys.go/function/NewCountingSigner:
+  digest: sha256:bd0d47358557ca20
+  verdict: pending
+decision/go/acceptance/crypto/go/native/lawspec/crypto/keys.go/type/CountingExchange:
+  digest: sha256:eca8b103cb79f87c
+  verdict: pending
+decision/go/acceptance/crypto/go/native/lawspec/crypto/keys.go/type/CountingSigner:
+  digest: sha256:8e14e61d043aa0b5
+  verdict: pending

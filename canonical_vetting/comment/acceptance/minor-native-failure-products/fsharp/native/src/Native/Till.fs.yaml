@@ -1,0 +1,12 @@
+decision/fsharp/acceptance/minor-native-failure-products/fsharp/native/src/Native/Till.fs/namespace/Till/class/BadAmount:
+  digest: sha256:b7093f695934c91f
+  verdict: pending
+decision/fsharp/acceptance/minor-native-failure-products/fsharp/native/src/Native/Till.fs/namespace/Till/class/CardDeclined:
+  digest: sha256:b104a8e010053c0e
+  verdict: pending
+decision/fsharp/acceptance/minor-native-failure-products/fsharp/native/src/Native/Till.fs/namespace/Till/class/NativeTill:
+  digest: sha256:7cd2084b7f874fbe
+  verdict: pending
+decision/fsharp/acceptance/minor-native-failure-products/fsharp/native/src/Native/Till.fs/namespace/Till/module/Payments:
+  digest: sha256:e94bf5b9f009027d
+  verdict: pending

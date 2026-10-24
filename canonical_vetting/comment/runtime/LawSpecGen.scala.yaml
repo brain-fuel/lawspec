@@ -1,0 +1,66 @@
+decision/scala/runtime/LawSpecGen.scala/class/Rng:
+  digest: sha256:11baf81e17a7d0a2
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/class/Rng/def/nextLong#2:
+  digest: sha256:cf2d45f426dea4a1
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/class/Tree:
+  digest: sha256:ab9de260bb2fc2e0
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/class/Tree/def/filter:
+  digest: sha256:d947c74a342df0fe
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/bind:
+  digest: sha256:812dd7f96be31c88
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/bounded:
+  digest: sha256:72ac2a88c25edb68
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/choice:
+  digest: sha256:2b298bfc8baca155
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/double:
+  digest: sha256:68b2f493615ff0b8
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/element:
+  digest: sha256:2544864dd8d4c431
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/flatMap:
+  digest: sha256:8892d15c42dfc9dc
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/float:
+  digest: sha256:2ceeb15247d1ff52
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/from:
+  digest: sha256:4ce8375384d38a0e
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/int:
+  digest: sha256:84bbc3b59f555477
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/list:
+  digest: sha256:8b9f542805d9fc8c
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/Arb/def/towards:
+  digest: sha256:cd1b545bcd936697
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/LawSpecProperty:
+  digest: sha256:9283193c90881ecd
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/LawSpecProperty/def/checkAll:
+  digest: sha256:1b764c07160f0480
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/object/LawSpecProperty/def/seed:
+  digest: sha256:35d668612849e6d8
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/trait/Arb:
+  digest: sha256:a49a7a13d0e6779a
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/trait/Arb/def/filter:
+  digest: sha256:325a1e1d50f82fde
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/trait/LawSpecParallel:
+  digest: sha256:02760b633a291777
+  verdict: pending
+decision/scala/runtime/LawSpecGen.scala/trait/LawSpecParallel/def/parallelTest:
+  digest: sha256:931a601c9ebc3b3c
+  verdict: pending

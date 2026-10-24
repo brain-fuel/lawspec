@@ -1,0 +1,9 @@
+decision/go/acceptance/crypto/go/files/example/crypto/adapter.go:
+  digest: sha256:5fcf175c8821c54d
+  verdict: pending
+decision/go/acceptance/crypto/go/files/example/crypto/adapter.go/function/Fingerprint:
+  digest: sha256:d1197844f5e6941e
+  verdict: pending
+decision/go/acceptance/crypto/go/files/example/crypto/adapter.go/function/RoundTrip:
+  digest: sha256:6941dc837340e5d4
+  verdict: pending

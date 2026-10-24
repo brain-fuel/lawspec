@@ -1,0 +1,39 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed:
+  digest: sha256:8efff80fb6c1dd1d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/attempt:
+  digest: sha256:3c37eca188d167a8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/compare:
+  digest: sha256:31f7355bb7a9c29d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/exact:
+  digest: sha256:80ce777846cacf56
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/items:
+  digest: sha256:a4ef24057d01349b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/outOfRange:
+  digest: sha256:c6c689e4ff0ce21d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/performed:
+  digest: sha256:d93986f2563e2145
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/quotient:
+  digest: sha256:ddbb2d1f4fdb4422
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/raiseFailure:
+  digest: sha256:4d7a6052002795ec
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/range:
+  digest: sha256:a9acd552242cf277
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/remainder:
+  digest: sha256:1e16773b74c456ab
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/tryResult:
+  digest: sha256:2411f4d93823c894
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Typed.fs/module/LawSpec.Runtime.Typed/function/unreachable:
+  digest: sha256:4c2d203782d34eed
+  verdict: pending

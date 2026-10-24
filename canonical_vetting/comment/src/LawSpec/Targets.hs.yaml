@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets:
+  digest: sha256:8bb2dc2df3378028
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/artifactTargets:
+  digest: sha256:fc88154cb0bcbac9
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/beamTargets:
+  digest: sha256:6807110c41b65308
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/dotnetTargets:
+  digest: sha256:b07c7e55dc771584
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/jvmTargets:
+  digest: sha256:b93172b91f3ea88a
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/overJavaTargets:
+  digest: sha256:80052d6f8a1fde2a
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/programTargets:
+  digest: sha256:52330292a30b2657
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/scalaTargets:
+  digest: sha256:ce6f4e17333dc625
+  verdict: pending
+decision/haskell/src/LawSpec/Targets.hs/module/LawSpec.Targets/function/targetLabel:
+  digest: sha256:8fa3dc5e959b602e
+  verdict: pending

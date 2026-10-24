@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/ScalaUnitEmit.hs/module/LawSpec.ScalaUnitEmit:
+  digest: sha256:46dc0c7e0aa44772
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaUnitEmit.hs/module/LawSpec.ScalaUnitEmit/function/emitScalaUnit:
+  digest: sha256:9ff4baa380c5d63f
+  verdict: pending

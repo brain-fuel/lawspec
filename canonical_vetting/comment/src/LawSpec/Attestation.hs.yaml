@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation:
+  digest: sha256:64a184d3b451e1b0
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/data/Implementation:
+  digest: sha256:fddf477eda797fa6
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/data/StandIn:
+  digest: sha256:ac528f77385961bd
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/attestationView:
+  digest: sha256:90d734bd127dcec5
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/attestedFields:
+  digest: sha256:9ed0f6f20c755563
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/completable:
+  digest: sha256:229bc33dd0f3f03d
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/history:
+  digest: sha256:2316145e22a21260
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/instant:
+  digest: sha256:56a2503bc7192da8
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/linked:
+  digest: sha256:ee3ad8ec8663b905
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/parseAttestation:
+  digest: sha256:4ad09bcf9d5573ab
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/plannedTouches:
+  digest: sha256:b80144018073377e
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/provider:
+  digest: sha256:b8b2233a80877422
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/reaches:
+  digest: sha256:0525302e137bcdee
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/relied:
+  digest: sha256:46bd3a96e5552a98
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/spellings:
+  digest: sha256:8e08826d8a31c049
+  verdict: pending
+decision/haskell/src/LawSpec/Attestation.hs/module/LawSpec.Attestation/function/touched:
+  digest: sha256:238cbfe25047c049
+  verdict: pending

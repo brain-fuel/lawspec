@@ -1,0 +1,36 @@
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go:
+  digest: sha256:6cafb0393e89314a
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/function/NewGatewayHandler:
+  digest: sha256:3d9276a6649a5cc7
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/function/NewLogHandler:
+  digest: sha256:34a12eb4c9c23fd8
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/function/NewMeterHandler:
+  digest: sha256:ab468e8bd3ffd7af
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/function/NewStoreInt32Handler:
+  digest: sha256:255d28afd5dbea19
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/function/NewStoreTextHandler:
+  digest: sha256:1140de3cbe6361da
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/function/Refund:
+  digest: sha256:1705e1b8c91f39a9
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/type/GatewayHandler:
+  digest: sha256:aba1d3f2e32b7bb9
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/type/LogHandler:
+  digest: sha256:91050560e95557a9
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/type/MeterHandler:
+  digest: sha256:4f678d88e73397f7
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/type/StoreInt32Handler:
+  digest: sha256:89b30af5765dc070
+  verdict: pending
+decision/go/acceptance/abilities/go/files/example/shop/adapter.go/type/StoreTextHandler:
+  digest: sha256:0e061fee5d84ff7a
+  verdict: pending

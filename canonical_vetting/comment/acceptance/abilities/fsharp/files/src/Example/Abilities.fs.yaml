@@ -1,0 +1,6 @@
+decision/fsharp/acceptance/abilities/fsharp/files/src/Example/Abilities.fs/module/Example.Abilities/function/charge:
+  digest: sha256:69c1d7683735647f
+  verdict: pending
+decision/fsharp/acceptance/abilities/fsharp/files/src/Example/Abilities.fs/module/Example.Abilities/function/gatewayHandler:
+  digest: sha256:2cc20b2548dd3774
+  verdict: pending

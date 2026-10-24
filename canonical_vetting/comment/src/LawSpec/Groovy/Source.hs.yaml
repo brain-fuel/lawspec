@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/Groovy/Source.hs/module/LawSpec.Groovy.Source:
+  digest: sha256:fe19ed669e065975
+  verdict: pending
+decision/haskell/src/LawSpec/Groovy/Source.hs/module/LawSpec.Groovy.Source/function/groovyLiterals:
+  digest: sha256:c9452ff52f6bbdec
+  verdict: pending
+decision/haskell/src/LawSpec/Groovy/Source.hs/module/LawSpec.Groovy.Source/function/idiomaticGroovy:
+  digest: sha256:2a10a1c632b16ba4
+  verdict: pending

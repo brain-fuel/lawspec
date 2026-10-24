@@ -1,0 +1,84 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto:
+  digest: sha256:d2b3761ce7208247
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/class/FixedRandom:
+  digest: sha256:dbd922488a0715f4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/aes256GcmDecrypt:
+  digest: sha256:873e7161a68d8a34
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/aes256GcmEncrypt:
+  digest: sha256:f2a227567e4b023a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/deriveAeadKey:
+  digest: sha256:ae9317c5cccbc653
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/handler:
+  digest: sha256:cb12f855dc33a582
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/install:
+  digest: sha256:11119d5e69b962ee
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mldsaExpand:
+  digest: sha256:61bceb57fda5d9a1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mldsaPublic:
+  digest: sha256:73c958131f84fe55
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mldsaSign:
+  digest: sha256:8b1d414e11da92d9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mldsaSignWith:
+  digest: sha256:cca82f65f37c70e0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mldsaVerifyWith:
+  digest: sha256:37b99de067f436ef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mlkemDecapsulate:
+  digest: sha256:09820ace61cdaa9d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mlkemDecapsulateExpanded:
+  digest: sha256:17cfecf256225fbf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mlkemEncapsulate:
+  digest: sha256:b1dfdd5a85255ef9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mlkemEncapsulateWith:
+  digest: sha256:8221060a8b424017
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mlkemExpand:
+  digest: sha256:ec5d8b6365b1fdac
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/mlkemKeyPair:
+  digest: sha256:004fc788a993dcc9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/randomBytes:
+  digest: sha256:22f205d32405c043
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/seal:
+  digest: sha256:2fdb3bb6288c6acd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/sha3:
+  digest: sha256:45e60e2d0259bfa2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/shake:
+  digest: sha256:bbcdaa4a865a9d67
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/slhDsaSignatureHandler:
+  digest: sha256:5e5e1531e336effa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/slhKeyPair:
+  digest: sha256:6d54849b52c6dfdd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/slhKeyPairOf:
+  digest: sha256:22e9a02589e42ea7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/slhSignWith:
+  digest: sha256:08cc7feb00291ee5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/slhVerifyWith:
+  digest: sha256:a4647d56cf96c5f6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Crypto.fs/module/LawSpec.Runtime.Crypto/function/unseal:
+  digest: sha256:dcbd0871979c492b
+  verdict: pending

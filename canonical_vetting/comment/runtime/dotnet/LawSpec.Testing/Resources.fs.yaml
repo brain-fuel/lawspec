@@ -1,0 +1,9 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Resources.fs/module/LawSpec.Testing.Resources:
+  digest: sha256:eff85748b8034177
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Resources.fs/module/LawSpec.Testing.Resources/function/withResource:
+  digest: sha256:845ba165a6dc171c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Resources.fs/module/LawSpec.Testing.Resources/function/withShared:
+  digest: sha256:5083e30cafd0f75b
+  verdict: pending

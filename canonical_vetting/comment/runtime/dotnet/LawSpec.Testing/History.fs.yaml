@@ -1,0 +1,12 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/History.fs/module/LawSpec.Testing.History:
+  digest: sha256:234aef7fb605f74b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/History.fs/module/LawSpec.Testing.History/function/consistent:
+  digest: sha256:57968075da526cfa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/History.fs/module/LawSpec.Testing.History/function/happenedBefore:
+  digest: sha256:d044e6c5212ce22a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/History.fs/module/LawSpec.Testing.History/record/Event:
+  digest: sha256:a75bc4eea10acf5d
+  verdict: pending

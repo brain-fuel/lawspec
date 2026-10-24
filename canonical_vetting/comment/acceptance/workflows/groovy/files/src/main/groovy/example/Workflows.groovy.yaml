@@ -1,0 +1,9 @@
+decision/groovy/acceptance/workflows/groovy/files/src/main/groovy/example/Workflows.groovy/class/Workflows/method/checkCredit:
+  digest: sha256:8a05c5820d8fd157
+  verdict: pending
+decision/groovy/acceptance/workflows/groovy/files/src/main/groovy/example/Workflows.groovy/class/Workflows/method/checkStock:
+  digest: sha256:7c615bb72a4501a9
+  verdict: pending
+decision/groovy/acceptance/workflows/groovy/files/src/main/groovy/example/Workflows.groovy/class/Workflows/method/overlapped:
+  digest: sha256:9239407d877b8e47
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Actors/Scala.hs/module/LawSpec.Actors.Scala:
+  digest: sha256:cebbff4c3204cb8b
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Scala.hs/module/LawSpec.Actors.Scala/function/emit:
+  digest: sha256:b47b120c22699eaa
+  verdict: pending

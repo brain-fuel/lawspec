@@ -1,0 +1,42 @@
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/enum/Act:
+  digest: sha256:32da6b6a0d9afd93
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/check:
+  digest: sha256:1a78306dcf2796ed
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/checkWith:
+  digest: sha256:e2b9fabc0c540c5a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/divide:
+  digest: sha256:4e7faf3359dfeb21
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/execute:
+  digest: sha256:6421a083cbf586e1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/read:
+  digest: sha256:122e0b8d89469fed
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/runOnce:
+  digest: sha256:580f73011d406056
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/schedules:
+  digest: sha256:acf5cb4a6fe411c9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/func/victim:
+  digest: sha256:ad59401c7159ac2a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/struct/Options:
+  digest: sha256:8bf1dc9c0e5c4713
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/struct/Program:
+  digest: sha256:9a399eccf78f1d89
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/struct/Report:
+  digest: sha256:93856fcb15f6382a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/struct/ReportFailure:
+  digest: sha256:e6f1fb1d1725253b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Scenario.swift/enum/Scenario/var/defaults:
+  digest: sha256:4dfc7008b66f780c
+  verdict: pending

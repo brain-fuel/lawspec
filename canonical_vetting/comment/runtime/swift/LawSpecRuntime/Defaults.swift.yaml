@@ -1,0 +1,21 @@
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/func/freePort:
+  digest: sha256:7609d4efab80691c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/func/handler:
+  digest: sha256:8bb8a00d3b833c67
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/func/jsonString:
+  digest: sha256:6985a734ad527d79
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/func/nowMicros:
+  digest: sha256:0873c2920d22b6a9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/func/sleepMicros:
+  digest: sha256:246b291c49acc622
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/let/cryptoHandler:
+  digest: sha256:eb852ed05de861f6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Defaults.swift/enum/Defaults/let/realClockMarker:
+  digest: sha256:a577442be95b5a23
+  verdict: pending

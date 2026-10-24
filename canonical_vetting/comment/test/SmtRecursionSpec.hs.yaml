@@ -1,0 +1,12 @@
+decision/haskell/test/SmtRecursionSpec.hs/module/SmtRecursionSpec:
+  digest: sha256:07527c7e4f9e9367
+  verdict: pending
+decision/haskell/test/SmtRecursionSpec.hs/module/SmtRecursionSpec/function/answers:
+  digest: sha256:133eba8637f1c49e
+  verdict: pending
+decision/haskell/test/SmtRecursionSpec.hs/module/SmtRecursionSpec/function/caseOutcomes:
+  digest: sha256:b6bee5af14a16e3d
+  verdict: pending
+decision/haskell/test/SmtRecursionSpec.hs/module/SmtRecursionSpec/function/proofTasksOf:
+  digest: sha256:91876f9ece6abc60
+  verdict: pending

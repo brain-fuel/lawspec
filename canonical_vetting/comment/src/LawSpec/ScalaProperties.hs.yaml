@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties:
+  digest: sha256:c770a5f6f5afc5b9
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/data/Config:
+  digest: sha256:0efe7491558a44d8
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/closure:
+  digest: sha256:4d570400e04ad4f9
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaProperties.hs/module/LawSpec.ScalaProperties/function/emitTests:
+  digest: sha256:80354b94bbe44d3f
+  verdict: pending

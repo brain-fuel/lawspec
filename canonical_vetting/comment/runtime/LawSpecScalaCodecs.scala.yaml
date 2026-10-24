@@ -1,0 +1,33 @@
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs:
+  digest: sha256:9070a241b8fc59d7
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/construct:
+  digest: sha256:2dcb3af586bb514c
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/deque:
+  digest: sha256:91c407c96882bd17
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/duration:
+  digest: sha256:fbfeabf892f7a59c
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/integer:
+  digest: sha256:2c596a7a814b6f70
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/keyVal:
+  digest: sha256:23ca7001fc16b5d5
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/matching:
+  digest: sha256:940baf5f0b8d4155
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/queue:
+  digest: sha256:27641cbcdb2b2ecb
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/scalar:
+  digest: sha256:4a99f4af4d4555f6
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/set:
+  digest: sha256:e8f968ba77ee9318
+  verdict: pending
+decision/scala/runtime/LawSpecScalaCodecs.scala/object/LawSpecScalaCodecs/def/stack:
+  digest: sha256:47793b8c07c83e50
+  verdict: pending

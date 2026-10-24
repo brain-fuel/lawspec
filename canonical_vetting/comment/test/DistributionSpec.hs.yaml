@@ -1,0 +1,6 @@
+decision/haskell/test/DistributionSpec.hs/module/DistributionSpec:
+  digest: sha256:be31c9f1b83a6f5b
+  verdict: pending
+decision/haskell/test/DistributionSpec.hs/module/DistributionSpec/function/test_distributionIsSecureByDefaultAndContentAddressed:
+  digest: sha256:036df1b646ba1580
+  verdict: pending

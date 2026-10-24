@@ -7,8 +7,35 @@ decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/array:
 decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/call:
   digest: sha256:60673630d49f2303
   verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/condition:
+  digest: sha256:5c6af86e84c068db
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/declare:
+  digest: sha256:0ea42532270ff5c2
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/funcLiteral:
+  digest: sha256:44ee9e197c8630fc
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/generatedHeader:
+  digest: sha256:d987693db728509c
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/goHeaderDoc:
+  digest: sha256:a3f8674b31ea3eb7
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/identifiers:
+  digest: sha256:b340ebbdd86270f2
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/keyed:
+  digest: sha256:7e764942e02acd13
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/parenthesised:
+  digest: sha256:7a0e837cd2b3a9fb
+  verdict: pending
 decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/quoted:
   digest: sha256:f9b5942fc1c9fa89
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/readsLocal:
+  digest: sha256:d45afeb568d0e246
   verdict: pending
 decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/renderExpression:
   digest: sha256:144fafa14c5a0afd
@@ -16,6 +43,12 @@ decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/renderExpr
 decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/renderExpressionWithContext:
   digest: sha256:c6698bad974979dd
   verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/runeLiteral:
+  digest: sha256:d0dc4134365c815b
+  verdict: pending
 decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/scalarLiteral:
   digest: sha256:73acc6f6f01fa4ef
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/textLiteral:
+  digest: sha256:6098d8203308680c
   verdict: pending

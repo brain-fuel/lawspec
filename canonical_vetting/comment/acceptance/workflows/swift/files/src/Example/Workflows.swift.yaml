@@ -1,0 +1,15 @@
+decision/swift/acceptance/workflows/swift/files/src/Example/Workflows.swift/class/Finished:
+  digest: sha256:e6431554470ff5cb
+  verdict: pending
+decision/swift/acceptance/workflows/swift/files/src/Example/Workflows.swift/class/Spans:
+  digest: sha256:428b751907e74504
+  verdict: pending
+decision/swift/acceptance/workflows/swift/files/src/Example/Workflows.swift/class/Spans/func/overlapped:
+  digest: sha256:e90c8224e737ef41
+  verdict: pending
+decision/swift/acceptance/workflows/swift/files/src/Example/Workflows.swift/extension/Example.Workflows/func/checkCredit:
+  digest: sha256:8a05c5820d8fd157
+  verdict: pending
+decision/swift/acceptance/workflows/swift/files/src/Example/Workflows.swift/extension/Example.Workflows/func/checkStock:
+  digest: sha256:7c615bb72a4501a9
+  verdict: pending

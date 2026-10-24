@@ -1,0 +1,48 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto:
+  digest: sha256:4930d4a5ddefcd85
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/class/Identity:
+  digest: sha256:8b9960284efdf17d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/fields:
+  digest: sha256:75035e6b1f2cf874
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/fingerprint:
+  digest: sha256:0db0426dc229e644
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/hello:
+  digest: sha256:be7538c37fb2529e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/identity:
+  digest: sha256:1bced2860f0381cc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/key:
+  digest: sha256:de4b95073a6d54a1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/openFrame:
+  digest: sha256:d1d9516d530bf3a2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/read:
+  digest: sha256:1fa6b0bec4678f5b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/record:
+  digest: sha256:71a928b1c01cad0f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/seal:
+  digest: sha256:645ff5c10b4610be
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/sealWith:
+  digest: sha256:4471f76cb5df71f2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/function/welcome:
+  digest: sha256:e87b1571b0f3775e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/union/Read:
+  digest: sha256:fbf7b2099e48b348
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/union/Read/case/Frame:
+  digest: sha256:0e0d49e9b6ac9345
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs/module/LawSpec.Runtime.NetworkCrypto/union/Read/case/Handshake:
+  digest: sha256:8f5740d0bcd3c0cf
+  verdict: pending

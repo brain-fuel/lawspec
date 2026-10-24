@@ -4,6 +4,9 @@ decision/haskell/dev/Generate.hs/module/Generate:
 decision/haskell/dev/Generate.hs/module/Generate/function/copiedDocuments:
   digest: sha256:4079de7fdde49020
   verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/copyDocuments:
+  digest: sha256:1787ef7b8fc1f888
+  verdict: pending
 decision/haskell/dev/Generate.hs/module/Generate/function/factFills:
   digest: sha256:3f0806045f83f5e0
   verdict: pending

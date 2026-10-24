@@ -1,0 +1,30 @@
+decision/swift/bench/kafka/swift/bench/main.swift/func/memory:
+  digest: sha256:abadc2976275fa44
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/func/now:
+  digest: sha256:4d8b4c9c272922dd
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/func/ok:
+  digest: sha256:2f304824c4255dc3
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/func/phase:
+  digest: sha256:4d0acf1ce18bca80
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/func/record:
+  digest: sha256:9ebe3a83c614f3fb
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/func/run:
+  digest: sha256:da8c9a8a7d80d928
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/func/tp:
+  digest: sha256:4c1c918388bf3d93
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/let/fetchSize:
+  digest: sha256:9d3d7609cb306b2c
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/let/members:
+  digest: sha256:56c9175a0c23f7b0
+  verdict: pending
+decision/swift/bench/kafka/swift/bench/main.swift/let/partitions:
+  digest: sha256:22366b6963148582
+  verdict: pending

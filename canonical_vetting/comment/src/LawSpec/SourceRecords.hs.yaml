@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/SourceRecords.hs/module/LawSpec.SourceRecords:
+  digest: sha256:1617721481f08a0e
+  verdict: pending
+decision/haskell/src/LawSpec/SourceRecords.hs/module/LawSpec.SourceRecords/function/mapUnitTypeReferences:
+  digest: sha256:983569060af40a1d
+  verdict: pending

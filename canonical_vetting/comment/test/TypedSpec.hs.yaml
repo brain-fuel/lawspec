@@ -1,0 +1,6 @@
+decision/haskell/test/TypedSpec.hs/module/TypedSpec:
+  digest: sha256:9733aa56bce1195a
+  verdict: pending
+decision/haskell/test/TypedSpec.hs/module/TypedSpec/function/test_typedDefinitionsRunNativeWithTheirMeaning:
+  digest: sha256:dd7e42dc9c210702
+  verdict: pending

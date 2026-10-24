@@ -1,0 +1,6 @@
+decision/haskell/test/ArtifactTargetSpec.hs/module/ArtifactTargetSpec:
+  digest: sha256:659a3de4c6d19559
+  verdict: pending
+decision/haskell/test/ArtifactTargetSpec.hs/module/ArtifactTargetSpec/function/test_artifactTargets:
+  digest: sha256:f1a7a2c92b8b06ed
+  verdict: pending

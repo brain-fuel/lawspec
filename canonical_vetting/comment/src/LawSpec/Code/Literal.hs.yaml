@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Code/Literal.hs/module/LawSpec.Code.Literal:
+  digest: sha256:ea721e98539984c3
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Literal.hs/module/LawSpec.Code.Literal/data/QuoteChoice:
+  digest: sha256:33c9181bf7dd9f00
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Literal.hs/module/LawSpec.Code.Literal/function/literalFor:
+  digest: sha256:50ab1acff794895d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Literal.hs/module/LawSpec.Code.Literal/function/printable:
+  digest: sha256:c333b4899ed896b9
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Literal.hs/module/LawSpec.Code.Literal/function/stringLiteral:
+  digest: sha256:98b59d98ab6647f0
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Literal.hs/module/LawSpec.Code.Literal/function/stringSyntax:
+  digest: sha256:5a185f633ec49e0a
+  verdict: pending

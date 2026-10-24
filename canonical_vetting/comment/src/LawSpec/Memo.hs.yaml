@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/data/Persistence:
 decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/data/Table:
   digest: sha256:21fd0a10f1737018
   verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/buildIdentity:
+  digest: sha256:9608e5a08bf49a68
+  verdict: pending
 decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/memoized:
   digest: sha256:5d140a27df165e7a
   verdict: pending

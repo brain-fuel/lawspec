@@ -22,6 +22,9 @@ decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/
 decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/OpenAccount:
   digest: sha256:cfd160c6dae5fee0
   verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/Overlapped:
+  digest: sha256:44d90881f748db44
+  verdict: pending
 decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/ResetFinished:
   digest: sha256:b1f1d1c221533945
   verdict: pending
@@ -30,4 +33,7 @@ decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/
   verdict: pending
 decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/group/0:
   digest: sha256:28cc52e1222fae95
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/group/1:
+  digest: sha256:84006cdeaf565586
   verdict: pending

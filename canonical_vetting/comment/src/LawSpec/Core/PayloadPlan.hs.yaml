@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan
 decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/data/Plan:
   digest: sha256:bfe312a427dbff8b
   verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/data/Schema:
+  digest: sha256:8b3f85748d5e2d17
+  verdict: pending
 decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/function/arity:
   digest: sha256:bec58b87ea1f8afd
   verdict: pending

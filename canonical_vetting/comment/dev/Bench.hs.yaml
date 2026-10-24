@@ -1,0 +1,30 @@
+decision/haskell/dev/Bench.hs/module/Bench:
+  digest: sha256:2c63b8b99cc00653
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/commands:
+  digest: sha256:0c560a6b12ba4942
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/compileBench:
+  digest: sha256:390031a2ff17cf74
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/deterministic:
+  digest: sha256:379270f7899f34dc
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/generationFiles:
+  digest: sha256:f31b8a59ee3a8570
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/generationRequest:
+  digest: sha256:652398c4101390ee
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/loadPackage:
+  digest: sha256:219fee62abca117f
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/planGeneration:
+  digest: sha256:415001b4ec1972a3
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/report:
+  digest: sha256:0fb56fcd3dee2a53
+  verdict: pending
+decision/haskell/dev/Bench.hs/module/Bench/function/typedReport:
+  digest: sha256:31386c76b0d0d578
+  verdict: pending

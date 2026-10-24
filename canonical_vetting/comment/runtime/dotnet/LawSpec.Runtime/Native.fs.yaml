@@ -1,0 +1,42 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec:
+  digest: sha256:535cc2c0dc8f845e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/class/Rational:
+  digest: sha256:810c44b442dcf91d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/class/Symbol:
+  digest: sha256:c9ad38ea259ca557
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/record/Complex64:
+  digest: sha256:833c8e8fa296383f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/record/ExactDecimal:
+  digest: sha256:99c88aae0a74bfa8
+  verdict: pending
+"decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/record/ExactDecimal/member/(*)":
+  digest: sha256:4d30ef4384d79e9e
+  verdict: pending
+"decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/record/ExactDecimal/member/(+)":
+  digest: sha256:10280e4f5fb2d664
+  verdict: pending
+"decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/record/ExactDecimal/member/(-)":
+  digest: sha256:51fc67ab7b435f9c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/record/ExactDecimal/member/Aligned:
+  digest: sha256:3c0087aee3467307
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/union/Either:
+  digest: sha256:81b2f6d65678b1ae
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/union/Null:
+  digest: sha256:521fb026b1194fef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/union/Nullable:
+  digest: sha256:feb5bc97e99b2c57
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/union/Optional:
+  digest: sha256:41788c2d8963a697
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Native.fs/namespace/LawSpec/union/Undefined:
+  digest: sha256:2f3727e832c8dbc1
+  verdict: pending

@@ -1,0 +1,15 @@
+decision/go/acceptance/failures/go/files/example/failures/adapter.go:
+  digest: sha256:43c666e2b91b1733
+  verdict: pending
+decision/go/acceptance/failures/go/files/example/failures/adapter.go/function/NewGatewayHandler:
+  digest: sha256:3d9276a6649a5cc7
+  verdict: pending
+decision/go/acceptance/failures/go/files/example/failures/adapter.go/function/Refund:
+  digest: sha256:1705e1b8c91f39a9
+  verdict: pending
+decision/go/acceptance/failures/go/files/example/failures/adapter.go/function/Settle:
+  digest: sha256:2b38dd67bd9a9da1
+  verdict: pending
+decision/go/acceptance/failures/go/files/example/failures/adapter.go/type/GatewayHandler:
+  digest: sha256:1e83675d12bce1a4
+  verdict: pending

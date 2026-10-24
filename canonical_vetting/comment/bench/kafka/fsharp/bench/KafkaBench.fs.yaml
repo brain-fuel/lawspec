@@ -1,0 +1,33 @@
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench:
+  digest: sha256:cc3719daf927f3a5
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/main:
+  digest: sha256:76cf5a5fc709e3e3
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/memory:
+  digest: sha256:269af6e3ae09f604
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/ok:
+  digest: sha256:2f304824c4255dc3
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/phase:
+  digest: sha256:4d0acf1ce18bca80
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/record:
+  digest: sha256:9ebe3a83c614f3fb
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/run:
+  digest: sha256:da8c9a8a7d80d928
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/function/tp:
+  digest: sha256:4c1c918388bf3d93
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/value/fetchSize:
+  digest: sha256:9d3d7609cb306b2c
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/value/members:
+  digest: sha256:56c9175a0c23f7b0
+  verdict: pending
+decision/fsharp/bench/kafka/fsharp/bench/KafkaBench.fs/module/KafkaBench/value/partitions:
+  digest: sha256:4101aca20aaf6083
+  verdict: pending

@@ -1,0 +1,30 @@
+decision/python/runtime/lawspec_network.py:
+  digest: sha256:e234f4fc7664168d
+  verdict: pending
+decision/python/runtime/lawspec_network.py/class/NodeIdentity:
+  digest: sha256:6dca9b0f955917b2
+  verdict: pending
+decision/python/runtime/lawspec_network.py/class/NodeIdentity/function/configured:
+  digest: sha256:6582156429407c94
+  verdict: pending
+decision/python/runtime/lawspec_network.py/class/NodeIdentity/function/fingerprint:
+  digest: sha256:b8f2cd1defd0d8e8
+  verdict: pending
+decision/python/runtime/lawspec_network.py/class/_SecureLayer:
+  digest: sha256:a66ae8366c0315d5
+  verdict: pending
+decision/python/runtime/lawspec_network.py/class/_SecureLayer/function/receive:
+  digest: sha256:8bb94a0aa957e3b1
+  verdict: pending
+decision/python/runtime/lawspec_network.py/function/_network_config:
+  digest: sha256:14607899a9d8eaf9
+  verdict: pending
+decision/python/runtime/lawspec_network.py/function/handshake_vector:
+  digest: sha256:3be46bf34bd538cf
+  verdict: pending
+decision/python/runtime/lawspec_network.py/function/open_frame:
+  digest: sha256:047024e0c4cb6346
+  verdict: pending
+decision/python/runtime/lawspec_network.py/function/session_key:
+  digest: sha256:ff4b9b416e15b382
+  verdict: pending

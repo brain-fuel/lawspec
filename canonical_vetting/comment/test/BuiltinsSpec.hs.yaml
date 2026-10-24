@@ -1,0 +1,6 @@
+decision/haskell/test/BuiltinsSpec.hs/module/BuiltinsSpec:
+  digest: sha256:4602758fa5eb9c05
+  verdict: pending
+decision/haskell/test/BuiltinsSpec.hs/module/BuiltinsSpec/function/test_builtInAbilitiesHaveLawfulDefaultHandlers:
+  digest: sha256:74db867aafcbc4be
+  verdict: pending

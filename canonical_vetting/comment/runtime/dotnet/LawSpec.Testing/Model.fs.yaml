@@ -1,0 +1,117 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model:
+  digest: sha256:dd5de7dc3f316327
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/abbreviation/Callback:
+  digest: sha256:78dc21988a3e2750
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/abbreviation/CallbackContext:
+  digest: sha256:af7ac19b5889f7f3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/abbreviation/ContextFactory:
+  digest: sha256:525ef13cf938946b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/abbreviation/Run:
+  digest: sha256:2957f88b514a6f91
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/admits:
+  digest: sha256:d11192d1a7b68f53
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/call0:
+  digest: sha256:469134ee80156a30
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/candidates:
+  digest: sha256:1cca1c8eba1d60d4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/check:
+  digest: sha256:f444612199c3d214
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/checkState:
+  digest: sha256:805f7ffc89ffb08e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/checkWith:
+  digest: sha256:8630e5bdbc76fcef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/command:
+  digest: sha256:d2f2a142f3adf596
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/context:
+  digest: sha256:dbc9803cda67d898
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/contextWith:
+  digest: sha256:0c14d7ac8a06e5ec
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/create:
+  digest: sha256:a2289520b3b6e5d8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/describe:
+  digest: sha256:c596a8a5b0126a79
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/execute:
+  digest: sha256:b41a01d20433a53a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/generateRun:
+  digest: sha256:022c09833ea959c9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/invoke:
+  digest: sha256:d6464633f6034da7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/seed:
+  digest: sha256:6d8b7e9b6f9642cd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/shifted:
+  digest: sha256:fdd8d524088d2d9c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/shrinkRun:
+  digest: sha256:dabb528215c2f502
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/simulate:
+  digest: sha256:d8d614d887556d4b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/step:
+  digest: sha256:9006dc31b7585125
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/systemState:
+  digest: sha256:725c7ab4d35d7eaa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/withActors:
+  digest: sha256:b3e96892e25831dd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/withCase:
+  digest: sha256:f612387904bfe7c6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/withContextFactory:
+  digest: sha256:c0c4002b5e02c2e8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/withSystem:
+  digest: sha256:d546573d2cf87d8d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/function/withoutAbstraction:
+  digest: sha256:faa0847d235f98c1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/interface/IActorHost:
+  digest: sha256:6e8831dbc5bc2641
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/interface/IActorHost/member/Call:
+  digest: sha256:d8d993e880193cf5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/interface/IActorHost/member/Crash:
+  digest: sha256:742d569acf27ac52
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/interface/IActorHost/member/State:
+  digest: sha256:10b0bd9029844253
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/interface/IActorHost/member/WithActor:
+  digest: sha256:bacee265dda225a3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/record/Context:
+  digest: sha256:9862101d9c982d4d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/record/Failure:
+  digest: sha256:456799970b413914
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/record/Options:
+  digest: sha256:0983afa0fa805ce6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Model.fs/module/LawSpec.Testing.Model/record/Step:
+  digest: sha256:198244e7f140d076
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Evidence.fs/module/Lessons.Evidence/function/isWeekend:
+  digest: sha256:c04725f6d4a60b48
+  verdict: pending
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Evidence.fs/module/Lessons.Evidence/function/roundToDollars:
+  digest: sha256:35b1ae4b40be9487
+  verdict: pending

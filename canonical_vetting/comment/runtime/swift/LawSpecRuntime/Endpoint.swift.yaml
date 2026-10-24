@@ -1,0 +1,24 @@
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/cancel:
+  digest: sha256:e48e2aa8f86fbf8f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/offer:
+  digest: sha256:cd3c5d0b0ccccc45
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/receive:
+  digest: sha256:1ba66523daf9e1cb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/receiveAsync:
+  digest: sha256:78d039db6ab826bf
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/stop:
+  digest: sha256:69a24de077bc0df8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/take:
+  digest: sha256:ab00cddf7825d1e1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/class/Endpoint/func/wake:
+  digest: sha256:12bda78451150e9c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Endpoint.swift/typealias/Delivery:
+  digest: sha256:7d63c50be309e725
+  verdict: pending

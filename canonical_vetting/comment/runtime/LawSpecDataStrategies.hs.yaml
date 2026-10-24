@@ -7,6 +7,9 @@ decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/d
 decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/function/canonical:
   digest: sha256:e3377f15c77955c5
   verdict: pending
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/function/canonicalEqSet:
+  digest: sha256:00a79b134ea2afb3
+  verdict: pending
 decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/function/checkedStrategy:
   digest: sha256:678ee03a6a94f886
   verdict: pending

@@ -1,8 +1,17 @@
 registry/MIT:
   digest: sha256:ed6c0abb656b1c69
   verdict: pending
+registry/REQ-abilities:
+  digest: sha256:9b45194035e5777b
+  verdict: pending
+registry/REQ-artifact-targets:
+  digest: sha256:b5f0cd9a17e7c877
+  verdict: pending
 registry/REQ-async-adapters:
   digest: sha256:5dd382d8c2e7008d
+  verdict: pending
+registry/REQ-builtin-abilities:
+  digest: sha256:6c258982924639a5
   verdict: pending
 registry/REQ-compiler-api-contract:
   digest: sha256:cd0bc17ed38b625a
@@ -31,8 +40,14 @@ registry/REQ-domain-modeling:
 registry/REQ-durations:
   digest: sha256:bd3effad463bf64e
   verdict: pending
+registry/REQ-environment-attestation:
+  digest: sha256:fad20d5bcc98d8dc
+  verdict: pending
 registry/REQ-exact-refinement-proofs:
   digest: sha256:a340e5d3258ee4e0
+  verdict: pending
+registry/REQ-features-as-abilities:
+  digest: sha256:78ca592b9eb80e81
   verdict: pending
 registry/REQ-flow-typing:
   digest: sha256:2c78054ea922ef87
@@ -42,6 +57,9 @@ registry/REQ-gadts:
   verdict: pending
 registry/REQ-generic-specialization:
   digest: sha256:e51bc526bd8238e5
+  verdict: pending
+registry/REQ-harness-units:
+  digest: sha256:f0e5545392f19cda
   verdict: pending
 registry/REQ-honest-evidence:
   digest: sha256:7b5cf2ed990ade17
@@ -55,11 +73,20 @@ registry/REQ-incremental-compilation:
 registry/REQ-indexed-families:
   digest: sha256:8ea40a32affb06b5
   verdict: pending
+registry/REQ-language-gaps:
+  digest: sha256:a1a4a22b6458ce43
+  verdict: pending
+registry/REQ-law-primitives:
+  digest: sha256:175b5534675168fa
+  verdict: pending
 registry/REQ-native-binding-requests:
   digest: sha256:da49885cf18cf092
   verdict: pending
 registry/REQ-native-binding-resolution:
   digest: sha256:d95fd83929d1989f
+  verdict: pending
+registry/REQ-parallel-ci:
+  digest: sha256:4812ff233c171bde
   verdict: pending
 registry/REQ-payload-predicates:
   digest: sha256:7a05ec9876c8dc1b
@@ -69,6 +96,9 @@ registry/REQ-payload-proofs:
   verdict: pending
 registry/REQ-portable-collections:
   digest: sha256:6dee2800b5332f25
+  verdict: pending
+registry/REQ-prolog-target:
+  digest: sha256:291c1490aa9184ce
   verdict: pending
 registry/REQ-python-sessions:
   digest: sha256:6975765c9bb08022
@@ -82,6 +112,9 @@ registry/REQ-readable-layout:
 registry/REQ-refined-generation-bounds:
   digest: sha256:2a8a0aafc2138021
   verdict: pending
+registry/REQ-secure-network:
+  digest: sha256:26785e321b844eb5
+  verdict: pending
 registry/REQ-source-data-refinements:
   digest: sha256:82b0c7452005baac
   verdict: pending
@@ -93,6 +126,9 @@ registry/REQ-structural-types:
   verdict: pending
 registry/REQ-target-name-escaping:
   digest: sha256:e149c238a88acdab
+  verdict: pending
+registry/REQ-temporal-propositions:
+  digest: sha256:22b61677a83ef00d
   verdict: pending
 registry/REQ-test-manifest:
   digest: sha256:d4e235b4d1eb9705
@@ -106,14 +142,35 @@ registry/REQ-type-schemes:
 registry/REQ-typed-core-boundary:
   digest: sha256:fc3a97846a2356c6
   verdict: pending
+registry/ada-2022-predicates:
+  digest: sha256:1abb6d81a9e5d19d
+  verdict: pending
+registry/antlr-grammars-v4-format:
+  digest: sha256:9dcdc8f485740174
+  verdict: pending
+registry/antlr4-parser-rules:
+  digest: sha256:936987788e67e9bc
+  verdict: pending
+registry/bauer-leucker-schallhart-ltl3:
+  digest: sha256:6e5b6ee9f4ae44a6
+  verdict: pending
+registry/black-code-style:
+  digest: sha256:eee62ed37eb8e111
+  verdict: pending
 registry/caires-pfenning-session-types:
   digest: sha256:3d79558d2ffc5cd3
   verdict: pending
 registry/canon:
   digest: sha256:694468ae38846594
   verdict: pending
+registry/clojure-spec:
+  digest: sha256:2bbe31147f516f00
+  verdict: pending
 registry/commonmark:
   digest: sha256:f5e2a5e5409acf7b
+  verdict: pending
+registry/cty-value-construction:
+  digest: sha256:929274dd86c5f1f8
   verdict: pending
 registry/decimal-arithmetic:
   digest: sha256:c03a64a0bf8a7bcb
@@ -121,17 +178,50 @@ registry/decimal-arithmetic:
 registry/diataxis:
   digest: sha256:da6d545b5d1d42a6
   verdict: pending
+registry/dotnet-format:
+  digest: sha256:3f998b168388625c
+  verdict: pending
+registry/elixir-formatter:
+  digest: sha256:c884164862bee9f5
+  verdict: pending
 registry/erlang-otp-supervisors:
   digest: sha256:87b5729f98952d5a
+  verdict: pending
+registry/erlfmt:
+  digest: sha256:d175c7613a818392
+  verdict: pending
+registry/fantomas:
+  digest: sha256:12fc3a4733a5f458
   verdict: pending
 registry/fast-check:
   digest: sha256:4ca6cf0530492a14
   verdict: pending
+registry/fscheck:
+  digest: sha256:7e4ca8a541038351
+  verdict: pending
 registry/ghc-wasm:
   digest: sha256:4cbf6f72b0fe3072
   verdict: pending
+registry/gleam-format:
+  digest: sha256:616bfd35dc35c8ce
+  verdict: pending
+registry/gnu-make-phony-targets:
+  digest: sha256:c7641ef3af65dd69
+  verdict: pending
+registry/go-generated-code:
+  digest: sha256:bb317d222edbf110
+  verdict: pending
+registry/go-string-literals:
+  digest: sha256:010f205a15ca5485
+  verdict: pending
+registry/gofmt:
+  digest: sha256:95a5698d2899dda2
+  verdict: pending
 registry/google-style-guides:
   digest: sha256:b43c03c040019083
+  verdict: pending
+registry/gpvw-ltl:
+  digest: sha256:03430a295a728e60
   verdict: pending
 registry/hedgehog:
   digest: sha256:9140b9f2e5d2846a
@@ -145,11 +235,26 @@ registry/hspec:
 registry/hypothesis:
   digest: sha256:11b89196faf98b26
   verdict: pending
+registry/hypothesis-custom-strategies:
+  digest: sha256:dc280d80e4e653b9
+  verdict: pending
+registry/idris-ffi:
+  digest: sha256:ecf0976b87f1d6df
+  verdict: pending
 registry/ieee-754:
   digest: sha256:02ee78dd6f7ca574
   verdict: pending
 registry/jetcheck:
   digest: sha256:a02726bccee35998
+  verdict: pending
+registry/jqwik:
+  digest: sha256:1bafd4ccabc15df8
+  verdict: pending
+registry/json-schema-2020-12-validation:
+  digest: sha256:0f4b699d0e8f3cc3
+  verdict: pending
+registry/json-schema-structuring:
+  digest: sha256:b1687213b000580b
   verdict: pending
 registry/keep-a-changelog:
   digest: sha256:c2fd784f65633045
@@ -163,11 +268,41 @@ registry/kotest:
 registry/lawspec-roadmap:
   digest: sha256:b6b573fc7761fdbc
   verdict: pending
+registry/lean-ffi:
+  digest: sha256:89b42cd1f520c80e
+  verdict: pending
+registry/lichtenstein-pnueli-fairness:
+  digest: sha256:0149b64a37b403cc
+  verdict: pending
+registry/malli:
+  digest: sha256:37385df1b9bda400
+  verdict: pending
+registry/megaparsec-error-recovery:
+  digest: sha256:ccfe92cf53cbbb30
+  verdict: pending
+registry/opentofu-fmt:
+  digest: sha256:9f06f6da079e4c36
+  verdict: pending
+registry/opentofu-input-variables:
+  digest: sha256:ce9024836fdfe972
+  verdict: pending
+registry/ormolu:
+  digest: sha256:6bb05493fb27e92b
+  verdict: pending
 registry/padovani-deadlock-freedom:
   digest: sha256:8d293030e9b2ad56
   verdict: pending
 registry/pep-8:
   digest: sha256:0aa5277e9e9b7c15
+  verdict: pending
+registry/prettier:
+  digest: sha256:1bc8288b679dc1e3
+  verdict: pending
+registry/prettier-rationale:
+  digest: sha256:1e1b07a3d6bc7a2c
+  verdict: pending
+registry/proper:
+  digest: sha256:1583695d24db70ca
   verdict: pending
 registry/proptest:
   digest: sha256:81f038715e6b45c2
@@ -175,20 +310,155 @@ registry/proptest:
 registry/pure-rand:
   digest: sha256:ece094fdafafdde6
   verdict: pending
+registry/pytest-collection-hooks:
+  digest: sha256:9d26ff8a2af1cfd6
+  verdict: pending
+registry/pytest-plain-assertions:
+  digest: sha256:c5c5a5663774b292
+  verdict: pending
+registry/pytest-standard-tracebacks:
+  digest: sha256:09819506e60482b2
+  verdict: pending
+registry/python-asyncio-shield:
+  digest: sha256:dbfc5613d9753f10
+  verdict: pending
+registry/python-asyncio-to-thread:
+  digest: sha256:7908649e707dfbfa
+  verdict: pending
+registry/python-asyncio-wrap-future:
+  digest: sha256:82e5f7e9f77d0d1e
+  verdict: pending
+registry/python-contextvars:
+  digest: sha256:61bef4f6e3f4d6c6
+  verdict: pending
+registry/python-future-cancellation:
+  digest: sha256:f49e189487db5789
+  verdict: pending
+registry/python-json-dumps:
+  digest: sha256:822106ea32609769
+  verdict: pending
+registry/python-string-literals:
+  digest: sha256:0df13b818c8bde32
+  verdict: pending
+registry/qcheck:
+  digest: sha256:74e83530baed1a89
+  verdict: pending
 registry/quickcheck:
   digest: sha256:94ca8605f79de664
   verdict: pending
 registry/rapid-go:
   digest: sha256:8d7478fe6fcd8887
   verdict: pending
+registry/rfc3339:
+  digest: sha256:3c75d35fd9ebd621
+  verdict: pending
+registry/rices-tax:
+  digest: sha256:847c8b2b02a5cd5d
+  verdict: pending
+registry/rocq-extraction:
+  digest: sha256:7bfe69a47991e0bc
+  verdict: pending
+registry/ruff-formatter:
+  digest: sha256:00801f285b8b8469
+  verdict: pending
+registry/scala-cli:
+  digest: sha256:8ac3d52b87ccacd7
+  verdict: pending
+registry/scala-hedgehog:
+  digest: sha256:e16d60853b96f1b8
+  verdict: pending
+registry/scalacheck:
+  digest: sha256:7a0acc02c464cb63
+  verdict: pending
+registry/scalatest:
+  digest: sha256:fc8e8e20dbefe025
+  verdict: pending
 registry/semver-2:
   digest: sha256:7ef7fa24c6809d32
+  verdict: pending
+registry/smt-lib:
+  digest: sha256:e5cb47b0f0193e13
+  verdict: pending
+registry/spark-subprogram-contracts:
+  digest: sha256:f25833edab0c9714
+  verdict: pending
+registry/spark-ug:
+  digest: sha256:cbad449743ef4594
   verdict: pending
 registry/splitmix:
   digest: sha256:9c2ca3c849c21547
   verdict: pending
+registry/spock:
+  digest: sha256:8161ef21b257cda7
+  verdict: pending
+registry/stream-data:
+  digest: sha256:5d364695cb58aebe
+  verdict: pending
+registry/swi-determinism:
+  digest: sha256:762012a9c8bfce2d
+  verdict: pending
+registry/swi-janus-calls:
+  digest: sha256:8aec16cdef774623
+  verdict: pending
+registry/swi-janus-data:
+  digest: sha256:bca43a294b1e777d
+  verdict: pending
+registry/swi-janus-python:
+  digest: sha256:98bf9aab023a4457
+  verdict: pending
+registry/swi-janus-terms:
+  digest: sha256:4fe6350dacd82c8c
+  verdict: pending
+registry/swi-janus-threads:
+  digest: sha256:58c2c5f0cc410068
+  verdict: pending
+registry/swi-native-compounds:
+  digest: sha256:3b76fc0290f9bc5c
+  verdict: pending
+registry/swi-native-dicts:
+  digest: sha256:8e22053699971890
+  verdict: pending
+registry/swi-portray-clause:
+  digest: sha256:f079a5992f0aff13
+  verdict: pending
+registry/swi-qualified-module-loading:
+  digest: sha256:7cb94d1b6d422527
+  verdict: pending
+registry/swift-api-design-guidelines:
+  digest: sha256:f114a2ca0729d314
+  verdict: pending
+registry/swift-format:
+  digest: sha256:8f805a8a213c2d36
+  verdict: pending
+registry/swift-string-literals:
+  digest: sha256:965acfab649f9657
+  verdict: pending
+registry/swift-testing:
+  digest: sha256:a90f2171d2c6228c
+  verdict: pending
+registry/test-check:
+  digest: sha256:061a0892b96814cc
+  verdict: pending
+registry/unicode-east-asian-width:
+  digest: sha256:0b0339ca99eabbdd
+  verdict: pending
+registry/unicode-text-segmentation:
+  digest: sha256:4f12b435c22c0990
+  verdict: pending
+registry/unicode-transforms:
+  digest: sha256:014e0a391b0a5327
+  verdict: pending
+registry/unicode-utf32:
+  digest: sha256:efcc6835221e017e
+  verdict: pending
 registry/wadler-propositions-as-sessions:
   digest: sha256:47316299ab183df2
+  verdict: pending
+registry/why3:
+  digest: sha256:af997719c2e1511c
+  verdict: pending
+registry/why3-execution:
+  digest: sha256:b9227df37ad6c6a4
   verdict: pending
 registry/wilshaw-hutton-flow-typing:
   digest: sha256:a375ab116fedf86d
@@ -201,4 +471,13 @@ registry/wlaschin-domain-modeling:
   verdict: pending
 registry/wlaschin-railway:
   digest: sha256:5d4aad03cf50bf80
+  verdict: pending
+registry/yamllint-rules:
+  digest: sha256:baa2c78b68e0966a
+  verdict: pending
+registry/z3:
+  digest: sha256:4d55620e5f385e21
+  verdict: pending
+registry/zio-test:
+  digest: sha256:ced01738315b6c75
   verdict: pending

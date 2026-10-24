@@ -1,0 +1,63 @@
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/class/SymbolIdentity:
+  digest: sha256:16c6c59662abcbe8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Fail:
+  digest: sha256:ba503475a4d60306
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Fail/func/describe:
+  digest: sha256:be703e64d28bfd93
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Fail/func/require:
+  digest: sha256:2a2c431432352448
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Fail/func/with:
+  digest: sha256:fb1324edd60dd68f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/TypeRef:
+  digest: sha256:98d1ae41cb1eb8c0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value:
+  digest: sha256:39b65827ac6b8a09
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/decimal:
+  digest: sha256:17dfed2ae85d5199
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/handle:
+  digest: sha256:5d0f3044d89090d9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/presence:
+  digest: sha256:29d20262e89abd42
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/ratio:
+  digest: sha256:34ec6fcb4ac7e9c5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/raw:
+  digest: sha256:93f61dbffc31c4d4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/symbol:
+  digest: sha256:9384012b8d00f161
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/enum/Value/case/text:
+  digest: sha256:edf48522c6325bd5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/HandleIdentity:
+  digest: sha256:7f03ce1efd91134a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/HandleIdentity/let/object:
+  digest: sha256:f19317610077f15e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/LawSpecError:
+  digest: sha256:2f6a359fad5e0316
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/LawSpecError/func/within:
+  digest: sha256:23e53f6841d6bb13
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/LawSpecError/let/cause:
+  digest: sha256:489670dd6a8dbd1b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/LawSpecError/let/context:
+  digest: sha256:d560c118bac9be62
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Values.swift/struct/RaisedFailure:
+  digest: sha256:a81f6e12ff80355d
+  verdict: pending

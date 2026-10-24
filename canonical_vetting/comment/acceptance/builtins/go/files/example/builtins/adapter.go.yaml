@@ -1,0 +1,15 @@
+decision/go/acceptance/builtins/go/files/example/builtins/adapter.go:
+  digest: sha256:3c0dcfaced467a5c
+  verdict: pending
+decision/go/acceptance/builtins/go/files/example/builtins/adapter.go/function/Charge:
+  digest: sha256:a18f6f7ffb778f27
+  verdict: pending
+decision/go/acceptance/builtins/go/files/example/builtins/adapter.go/function/Elapsed:
+  digest: sha256:e2987659cb7a1391
+  verdict: pending
+decision/go/acceptance/builtins/go/files/example/builtins/adapter.go/function/Listening:
+  digest: sha256:c0875d75cd26bbff
+  verdict: pending
+decision/go/acceptance/builtins/go/files/example/builtins/adapter.go/function/Token:
+  digest: sha256:f686f38267e0cfa2
+  verdict: pending

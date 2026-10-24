@@ -1,6 +1,9 @@
 decision/python/runtime/lawspec_runtime.py:
   digest: sha256:4ae7fa0ed44464e5
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/AbilityClock:
+  digest: sha256:e2729d92480e64bc
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/Actor:
   digest: sha256:80d6d12052553a64
   verdict: pending
@@ -61,11 +64,20 @@ decision/python/runtime/lawspec_runtime.py/class/Channel/function/send:
 decision/python/runtime/lawspec_runtime.py/class/EndPart:
   digest: sha256:5acecf6fee34203e
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/Fail:
+  digest: sha256:05c626ca38256150
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/Failure:
+  digest: sha256:14be50d8589fa5e4
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/Gate:
   digest: sha256:ae9d5f3790cd67b7
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/HttpTransport:
   digest: sha256:12f1f1582f5a84fd
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/InsecureMemoryTransport:
+  digest: sha256:76326519c4ddda4b
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/Mailbox:
   digest: sha256:1f8749a1519af371
@@ -76,17 +88,32 @@ decision/python/runtime/lawspec_runtime.py/class/Mailbox/function/close:
 decision/python/runtime/lawspec_runtime.py/class/Mailbox/function/receive:
   digest: sha256:0526fe832bb1eb81
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/Mailbox/function/receive_within:
+  digest: sha256:ee5e6d256c06ab2d
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/MemoryNetwork:
   digest: sha256:eae027abad280649
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/MemoryNetwork/function/insecure_transport_for_tests:
+  digest: sha256:f81c592fcadbf01d
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/MemoryNetwork/function/partition:
   digest: sha256:d64fdfc888774e1d
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/NativeAsync:
+  digest: sha256:a4af152274dc1c5c
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/NativeAsync/function/all:
+  digest: sha256:4bc3411fe0bcfb60
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/NativeChannel:
   digest: sha256:d6f0962c167bdab4
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/Node:
   digest: sha256:a61a9270cb4da232
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/class/Node/function/__init__:
+  digest: sha256:767a861b77c1eb8f
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/class/Node/function/_forward:
   digest: sha256:6cb426debbd0052e
@@ -337,6 +364,9 @@ decision/python/runtime/lawspec_runtime.py/function/_simulate:
 decision/python/runtime/lawspec_runtime.py/function/_split_address:
   digest: sha256:7c010b80ba32ef5d
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/_virtual_hedge:
+  digest: sha256:7ee977e299d3f51e
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/await_step:
   digest: sha256:6022d64f7ef36f98
   verdict: pending
@@ -373,6 +403,9 @@ decision/python/runtime/lawspec_runtime.py/function/concurrently:
 decision/python/runtime/lawspec_runtime.py/function/convert:
   digest: sha256:99ad6b2d9bb89830
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/difference:
+  digest: sha256:41b645b85f3f357f
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/either_arguments:
   digest: sha256:dd8f6ee61fa70b19
   verdict: pending
@@ -391,11 +424,32 @@ decision/python/runtime/lawspec_runtime.py/function/integer_literal:
 decision/python/runtime/lawspec_runtime.py/function/jittered:
   digest: sha256:ca5eae4d0a1dca9c
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/native_class:
+  digest: sha256:a9bf35d8604adfc8
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/native_failures:
+  digest: sha256:5e4b49801d3180d1
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/native_handler:
+  digest: sha256:36d94f5804b7917f
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/par:
   digest: sha256:fa442c9e2b187bc6
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/read_descriptor:
   digest: sha256:3a588265abd7a970
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/recorded_text:
+  digest: sha256:9a179c08bd055ca4
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/regex_matches:
+  digest: sha256:5582c61c83bf0ab2
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/register_clock_ability:
+  digest: sha256:f075f500756fe733
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/register_secure_network:
+  digest: sha256:5c826ebf16364f69
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/render:
   digest: sha256:52a17bac99cf4616
@@ -414,6 +468,21 @@ decision/python/runtime/lawspec_runtime.py/function/run_workflow:
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/sample:
   digest: sha256:88196bab4c876723
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/search_remember:
+  digest: sha256:f43ac4ece096781d
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/search_replay:
+  digest: sha256:b8cc8ed61baa8f9d
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/secure_token:
+  digest: sha256:253a3a448d16eda5
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/set_handler_schema:
+  digest: sha256:a40f197db9527072
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/share:
+  digest: sha256:2aac6c45df07cc5e
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/shrunk:
   digest: sha256:f56918a5e4c43087
@@ -441,4 +510,7 @@ decision/python/runtime/lawspec_runtime.py/function/wire_encoded:
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/wire_round_trips:
   digest: sha256:411e3f136aaba672
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/with_handlers:
+  digest: sha256:cdbb6bfb5b5395a1
   verdict: pending

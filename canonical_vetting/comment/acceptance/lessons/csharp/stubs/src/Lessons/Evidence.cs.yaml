@@ -1,0 +1,6 @@
+decision/csharp/acceptance/lessons/csharp/stubs/src/Lessons/Evidence.cs/namespace/Lessons/class/Evidence/method/IsWeekend:
+  digest: sha256:127febf7058fe8f5
+  verdict: pending
+decision/csharp/acceptance/lessons/csharp/stubs/src/Lessons/Evidence.cs/namespace/Lessons/class/Evidence/method/RoundToDollars:
+  digest: sha256:9aafc5d3c7f3a54c
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/swift/acceptance/concurrent/swift/files/src/Example/Concurrent.swift/class/Shared:
+  digest: sha256:9130ac5d21474c24
+  verdict: pending
+decision/swift/acceptance/concurrent/swift/files/src/Example/Concurrent.swift/extension/Example.Concurrent/func/queue:
+  digest: sha256:c82fffa21ea1dea6
+  verdict: pending

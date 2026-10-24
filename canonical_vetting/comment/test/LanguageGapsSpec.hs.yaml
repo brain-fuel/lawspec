@@ -1,0 +1,6 @@
+decision/haskell/test/LanguageGapsSpec.hs/module/LanguageGapsSpec:
+  digest: sha256:da84e2f304f11a52
+  verdict: pending
+decision/haskell/test/LanguageGapsSpec.hs/module/LanguageGapsSpec/function/test_languageGapsClose:
+  digest: sha256:25596e6c4407e57f
+  verdict: pending

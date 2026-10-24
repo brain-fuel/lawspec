@@ -1,0 +1,39 @@
+decision/rust/runtime/lawspec_harness.rs:
+  digest: sha256:35bf082f9fc067ae
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/benchmark:
+  digest: sha256:8ead2e8ff5319ae4
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/drawn:
+  digest: sha256:883bf7628dc8a940
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/known_failing:
+  digest: sha256:3c859a568d96dc4c
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/observe:
+  digest: sha256:56c40a4e904733e9
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/parallelism:
+  digest: sha256:ea2c7418a5ac371f
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/run:
+  digest: sha256:b380579b47587a59
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/target:
+  digest: sha256:15b99d6d1d4922b4
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/function/turn:
+  digest: sha256:d1327690c31c44f4
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/impl/Draws/function/any:
+  digest: sha256:8b28ddd443453b5a
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/impl/Draws/function/choose:
+  digest: sha256:da5c7df81cc9ce49
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/struct/Draws:
+  digest: sha256:f0700ef14224edd0
+  verdict: pending
+decision/rust/runtime/lawspec_harness.rs/struct/Turn:
+  digest: sha256:be4b5c59993074f0
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/haskell/test/HarnessSpec.hs/module/HarnessSpec:
+  digest: sha256:aa4f123894c5cd7c
+  verdict: pending
+decision/haskell/test/HarnessSpec.hs/module/HarnessSpec/function/test_harnessesChangeHowLawsRunNeverWhatTheyMean:
+  digest: sha256:740cccbfeb65cdc9
+  verdict: pending

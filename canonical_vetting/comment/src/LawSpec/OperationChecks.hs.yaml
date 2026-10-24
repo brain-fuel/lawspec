@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/OperationChecks.hs/module/LawSpec.OperationChecks:
+  digest: sha256:0a5e546b7287d88f
+  verdict: pending
+decision/haskell/src/LawSpec/OperationChecks.hs/module/LawSpec.OperationChecks/function/checkOperationResults:
+  digest: sha256:7e99bc62a6bfd1ef
+  verdict: pending
+decision/haskell/src/LawSpec/OperationChecks.hs/module/LawSpec.OperationChecks/function/spine:
+  digest: sha256:c1f8632e07c8eb1e
+  verdict: pending

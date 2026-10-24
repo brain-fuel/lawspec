@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/builti
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/collectionCodec:
   digest: sha256:f96ecf52a711e8f0
   verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/componentIdentifier:
+  digest: sha256:6dcd5c56d059bd76
+  verdict: pending
 decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/emitJavaData:
   digest: sha256:015497701dc9c588
   verdict: pending

@@ -1,0 +1,30 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/class/SocketTransport:
+  digest: sha256:1cce514debfaa1f1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/class/SocketTransport/member/Send:
+  digest: sha256:b315c6e995b864e9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol:
+  digest: sha256:487f8535682bbc03
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol/function/address:
+  digest: sha256:a5e323eecb8f0c75
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol/function/endpoint:
+  digest: sha256:73e99734562ff2d6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol/function/header:
+  digest: sha256:f187dbce2b3e008f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol/function/host:
+  digest: sha256:4225ba0348adce2d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol/function/reply:
+  digest: sha256:6bbdd0e57e565081
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/module/SocketProtocol/union/Head:
+  digest: sha256:9d15a956b35251be
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SocketTransport.fs/namespace/LawSpec.Runtime/union/SocketKind:
+  digest: sha256:a8a5ae26608e935e
+  verdict: pending

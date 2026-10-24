@@ -805,8 +805,6 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
   unless (length result == length (nub (map (map toLower . artifactPath) result))) (Left [Diagnostic "collision" "custom layout causes an output collision" Nothing])
   pure result
 
--- | The web strategies' schema import, rewritten to the emitted layout.
-
 -- | Emitted files are held as text, weighed by their length.
 emitTable :: Table (Either [Diagnostic] [Stored])
 emitTable = unsafePerformIO (newPersistentTable "emit" 8000000 (either (const 1) (sum . map storedLength)))

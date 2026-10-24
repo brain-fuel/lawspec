@@ -16,6 +16,9 @@ decision/python/runtime/lawspec_schema.py/class/Schema:
 decision/python/runtime/lawspec_schema.py/class/Schema/function/_check_indices:
   digest: sha256:6ba2413b41b94b2f
   verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/_native_layout:
+  digest: sha256:383dfc2b6dd26742
+  verdict: pending
 decision/python/runtime/lawspec_schema.py/class/Schema/function/all_payloads:
   digest: sha256:45eeb1866162b723
   verdict: pending
@@ -24,6 +27,12 @@ decision/python/runtime/lawspec_schema.py/class/Schema/function/constructors:
   verdict: pending
 decision/python/runtime/lawspec_schema.py/class/Schema/function/from_native:
   digest: sha256:47a991fd6f0bea04
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/is_handle:
+  digest: sha256:c2a02c2615e8748c
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/recorded_text:
+  digest: sha256:a21e2e17ed015bd0
   verdict: pending
 decision/python/runtime/lawspec_schema.py/class/Schema/function/to_native:
   digest: sha256:0efc0e0409883583

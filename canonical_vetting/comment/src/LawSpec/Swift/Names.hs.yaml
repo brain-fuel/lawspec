@@ -1,0 +1,54 @@
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names:
+  digest: sha256:cb8790d6de5e2836
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/apiName:
+  digest: sha256:24288941255bda41
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/camel:
+  digest: sha256:ef85c3b0ce73038c
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/dataNames:
+  digest: sha256:a6252319368714c4
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/exampleSuffixes:
+  digest: sha256:242a082396a0e933
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/functionName:
+  digest: sha256:99532d91a2c45869
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/generatedName:
+  digest: sha256:f293e23d687da57b
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/handleKey:
+  digest: sha256:d3dd802efcdfad00
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/identifierWords:
+  digest: sha256:e2b1a22f0d48f720
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/localName:
+  digest: sha256:f84ed08cdd554efc
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/moduleName:
+  digest: sha256:3fc2b368f378d0b4
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/reservedLocals:
+  digest: sha256:6283eca3c729cb63
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/splitDigest:
+  digest: sha256:669751f1188091b0
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/swiftKeywords:
+  digest: sha256:b2b477949d12e390
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/testName:
+  digest: sha256:0370815609ee33a6
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/typeParameter:
+  digest: sha256:6139abdb9da7aa28
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/unitNamespace:
+  digest: sha256:5272b2cb2b3118e6
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Names.hs/module/LawSpec.Swift.Names/function/unitPath:
+  digest: sha256:c48207de3d911557
+  verdict: pending

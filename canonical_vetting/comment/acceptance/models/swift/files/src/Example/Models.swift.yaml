@@ -1,0 +1,6 @@
+decision/swift/acceptance/models/swift/files/src/Example/Models.swift/class/Counters:
+  digest: sha256:4635a4ff0372e601
+  verdict: pending
+decision/swift/acceptance/models/swift/files/src/Example/Models.swift/extension/Example.Models/func/pop:
+  digest: sha256:98cd26435917534c
+  verdict: pending

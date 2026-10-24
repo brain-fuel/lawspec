@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Swift/Emit.hs/module/LawSpec.Swift.Emit:
+  digest: sha256:7bbf5954c85591cb
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Emit.hs/module/LawSpec.Swift.Emit/data/Namespace:
+  digest: sha256:7a41c43aef2b9f94
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Emit.hs/module/LawSpec.Swift.Emit/function/escapeMultiline:
+  digest: sha256:3f6bd08089fffa94
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Emit.hs/module/LawSpec.Swift.Emit/function/validatePlan:
+  digest: sha256:614438e7bb4cc1d1
+  verdict: pending

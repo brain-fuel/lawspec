@@ -1,0 +1,24 @@
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/enum/ActorHost:
+  digest: sha256:91cb6e7b0ab170d5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/enum/ActorHost/func/call:
+  digest: sha256:d8d993e880193cf5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/enum/ActorHost/func/crash:
+  digest: sha256:742d569acf27ac52
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/enum/ActorHost/func/state:
+  digest: sha256:10b0bd9029844253
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/enum/ActorHost/func/withActor:
+  digest: sha256:bacee265dda225a3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/extension/ActorHost/class/Boxed:
+  digest: sha256:c918512241a3eb30
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/extension/ActorHost/struct/Host:
+  digest: sha256:e156a1116a935dd4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/ActorHost.swift/extension/ActorHost/var/host:
+  digest: sha256:91cb6e7b0ab170d5
+  verdict: pending

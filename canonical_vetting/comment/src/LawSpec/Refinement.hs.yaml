@@ -13,6 +13,9 @@ decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/de
 decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/expandType:
   digest: sha256:0c3fcb9aedbab0b7
   verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/expandUnitType:
+  digest: sha256:7835476fe77df73d
+  verdict: pending
 decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/hasValueRefinements:
   digest: sha256:9f52481d7d38d8ea
   verdict: pending
@@ -42,6 +45,9 @@ decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/su
   verdict: pending
 decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/typeNames:
   digest: sha256:92ed3243d2798220
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/unitTables:
+  digest: sha256:b66e63b510406f93
   verdict: pending
 decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/validateDeclaration:
   digest: sha256:7c466466e11a74ef

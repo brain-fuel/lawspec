@@ -1,0 +1,12 @@
+decision/swift/runtime/swift/LawSpecTesting/History.swift/enum/History/func/consistent:
+  digest: sha256:57968075da526cfa
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/History.swift/enum/History/func/happenedBefore:
+  digest: sha256:d044e6c5212ce22a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/History.swift/enum/History/struct/Event:
+  digest: sha256:a75bc4eea10acf5d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/History.swift/struct/SearchKey:
+  digest: sha256:15ca661c5bb9cf3e
+  verdict: pending

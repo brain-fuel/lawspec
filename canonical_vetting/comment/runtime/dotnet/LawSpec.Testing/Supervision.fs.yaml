@@ -1,0 +1,6 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Supervision.fs/module/LawSpec.Testing.Supervision:
+  digest: sha256:1ea8da9b61b65c16
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Supervision.fs/module/LawSpec.Testing.Supervision/function/check:
+  digest: sha256:10b3044271a3369a
+  verdict: pending

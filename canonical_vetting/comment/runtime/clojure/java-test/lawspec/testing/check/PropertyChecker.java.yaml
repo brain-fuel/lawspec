@@ -1,0 +1,9 @@
+decision/java/runtime/clojure/java-test/lawspec/testing/check/PropertyChecker.java/package/lawspec.testing.check/class/PropertyChecker:
+  digest: sha256:ade85b0285c8e1c6
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/PropertyChecker.java/package/lawspec.testing.check/class/PropertyChecker/class/Parameters:
+  digest: sha256:a7b6b4eccdb23df9
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/PropertyChecker.java/package/lawspec.testing.check/class/PropertyChecker/class/Parameters/method/withSizeHint:
+  digest: sha256:afaec489345cd799
+  verdict: pending

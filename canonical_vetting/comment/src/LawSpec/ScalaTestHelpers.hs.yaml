@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/ScalaTestHelpers.hs/module/LawSpec.ScalaTestHelpers:
+  digest: sha256:391d8ae062da2bb8
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaTestHelpers.hs/module/LawSpec.ScalaTestHelpers/function/assertionDoc:
+  digest: sha256:a9dd544d2707d445
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaTestHelpers.hs/module/LawSpec.ScalaTestHelpers/function/dataHelpersDoc:
+  digest: sha256:391a7f6d0cf23392
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaTestHelpers.hs/module/LawSpec.ScalaTestHelpers/function/generatorDoc:
+  digest: sha256:884aeee1833aa7c1
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaTestHelpers.hs/module/LawSpec.ScalaTestHelpers/function/generatorDocWithin:
+  digest: sha256:55ab443043325cae
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaTestHelpers.hs/module/LawSpec.ScalaTestHelpers/function/lambda:
+  digest: sha256:7cfbf8e9d6152c0a
+  verdict: pending

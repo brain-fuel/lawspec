@@ -1,0 +1,6 @@
+decision/go/acceptance/scheduling/go/files/example/sequencing/adapter.go:
+  digest: sha256:bb9f1fa3e9d89688
+  verdict: pending
+decision/go/acceptance/scheduling/go/files/example/sequencing/adapter.go/function/Pause:
+  digest: sha256:1484e2f04bc5a433
+  verdict: pending

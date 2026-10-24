@@ -10,6 +10,9 @@ decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/f
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/emitJvmDefinitionBodies:
   digest: sha256:3b7c5774333236b6
   verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/emitScalaDefinitionBodies:
+  digest: sha256:6bbd8783b3abaff3
+  verdict: pending
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/kotlinAdapterBridge:
   digest: sha256:1b06320b74905627
   verdict: pending

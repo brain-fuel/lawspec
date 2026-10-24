@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/WebTests.hs/module/LawSpec.WebTests:
+  digest: sha256:bf11b06390562563
+  verdict: pending
+decision/haskell/src/LawSpec/WebTests.hs/module/LawSpec.WebTests/function/typeKey:
+  digest: sha256:edeffea44650cd40
+  verdict: pending
+decision/haskell/src/LawSpec/WebTests.hs/module/LawSpec.WebTests/function/webTests:
+  digest: sha256:70263f1b8e7cdf1c
+  verdict: pending

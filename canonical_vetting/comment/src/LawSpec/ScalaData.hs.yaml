@@ -1,0 +1,69 @@
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData:
+  digest: sha256:c9e6a2cd33f09876
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/builtinFree:
+  digest: sha256:257372201c4e340e
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/emitScalaCodecs:
+  digest: sha256:874036963aba36ef
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/emitScalaDataWithProfile:
+  digest: sha256:c977c19b28a866d4
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/emitScalaNativeCodecs:
+  digest: sha256:8aad516f9c020be1
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/escaped:
+  digest: sha256:7443f2651f906ebe
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/handlesOf:
+  digest: sha256:39ab4e77dfd7ef80
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/identifier:
+  digest: sha256:68925903ff2f0bc3
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/requiresSchema:
+  digest: sha256:047cef9b3e0c5f5a
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/rootQualified:
+  digest: sha256:bb3f8643fc92d8b1
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodec:
+  digest: sha256:79691360f6119714
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecDoc:
+  digest: sha256:1e92e8390af41242
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecDocWithContext:
+  digest: sha256:6650bdd3f33a4f79
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaDataType:
+  digest: sha256:91f56320e676a8ea
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaDataTypeDoc:
+  digest: sha256:692f4a54cc25b182
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaKeywords:
+  digest: sha256:3b0845b633835657
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaNativeCodecDoc:
+  digest: sha256:aab60e7db4f18159
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaNativeTypeDoc:
+  digest: sha256:8a93087a0eafa171
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaQuoted:
+  digest: sha256:5f5f34d5530c5245
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaScalars:
+  digest: sha256:7a6efb1629f276f5
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaTypeReference:
+  digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaTypeReferenceDoc:
+  digest: sha256:ef90005faa03139b
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/symbolsType:
+  digest: sha256:57caf50bb0f802fc
+  verdict: pending

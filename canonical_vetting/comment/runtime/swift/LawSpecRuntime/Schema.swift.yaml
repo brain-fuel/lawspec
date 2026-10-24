@@ -1,0 +1,78 @@
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema:
+  digest: sha256:3a8cc3c177e46568
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/class/Program:
+  digest: sha256:fe04a3e70a547f59
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/allPayloads:
+  digest: sha256:bb2198361174cc9e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/checkType:
+  digest: sha256:b3776aaa7772fdb6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/construct:
+  digest: sha256:868cada6c2f4c9e0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/constructor:
+  digest: sha256:c9e0f2ca71bcd3f1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/constructors:
+  digest: sha256:d2776da271af682c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/create:
+  digest: sha256:b3c1fd253b742269
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/definition:
+  digest: sha256:10761da60a8cebca
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/field:
+  digest: sha256:26b5ae1ad4200858
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/fieldTypes:
+  digest: sha256:8c5e98b5e5255767
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/hints:
+  digest: sha256:e80be5928b5c6bd4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/index:
+  digest: sha256:50270cbbdec4ff6c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/known:
+  digest: sha256:d249a23afce59183
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/refinement:
+  digest: sha256:8b785b3c2cd8daf7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/substitute:
+  digest: sha256:314a13a3c113e11d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/validate:
+  digest: sha256:36db49932ea09f35
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/func/witnessInstances:
+  digest: sha256:5ce182798c90e213
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/struct/Constructor:
+  digest: sha256:d39f5c1529fcc8e3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/struct/Constructor/var/generators:
+  digest: sha256:19f55de5a0d120b7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/struct/FieldHints:
+  digest: sha256:e951e2a2096d12cf
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/var/effectPath:
+  digest: sha256:096c8a8746fb1027
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/var/handlers:
+  digest: sha256:22fce4adb77ba816
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/struct/Schema/var/scope:
+  digest: sha256:aab0c5ce7a343ddb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/typealias/FieldGenerator:
+  digest: sha256:2aa27ce390a7af66
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Schema.swift/typealias/FieldPredicate:
+  digest: sha256:3f145dacef989949
+  verdict: pending

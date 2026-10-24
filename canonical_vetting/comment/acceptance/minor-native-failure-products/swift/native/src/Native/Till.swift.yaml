@@ -1,0 +1,15 @@
+decision/swift/acceptance/minor-native-failure-products/swift/native/src/Native/Till.swift/enum/Till/class/NativeTill:
+  digest: sha256:7cd2084b7f874fbe
+  verdict: pending
+decision/swift/acceptance/minor-native-failure-products/swift/native/src/Native/Till.swift/enum/Till/enum/Payments:
+  digest: sha256:096152ed8373bdc7
+  verdict: pending
+decision/swift/acceptance/minor-native-failure-products/swift/native/src/Native/Till.swift/enum/Till/struct/BadAmount:
+  digest: sha256:b7093f695934c91f
+  verdict: pending
+decision/swift/acceptance/minor-native-failure-products/swift/native/src/Native/Till.swift/enum/Till/struct/CardDeclined:
+  digest: sha256:b104a8e010053c0e
+  verdict: pending
+decision/swift/acceptance/minor-native-failure-products/swift/native/src/Native/Till.swift/enum/Till/struct/Cash:
+  digest: sha256:a754f8579e580ae2
+  verdict: pending

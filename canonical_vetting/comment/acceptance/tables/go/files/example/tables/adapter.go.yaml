@@ -1,0 +1,9 @@
+decision/go/acceptance/tables/go/files/example/tables/adapter.go:
+  digest: sha256:8db628c0527ab0de
+  verdict: pending
+decision/go/acceptance/tables/go/files/example/tables/adapter.go/function/Label:
+  digest: sha256:06688d063522842a
+  verdict: pending
+decision/go/acceptance/tables/go/files/example/tables/adapter.go/function/ShippingCost:
+  digest: sha256:e157b55bb211f7ee
+  verdict: pending

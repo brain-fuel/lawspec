@@ -1,0 +1,6 @@
+decision/rust/acceptance/builtins/rust/native/src/clocks.rs:
+  digest: sha256:2fc89bf3533315fe
+  verdict: pending
+decision/rust/acceptance/builtins/rust/native/src/clocks.rs/function/steady_clock:
+  digest: sha256:8d5dedda396d5bd9
+  verdict: pending

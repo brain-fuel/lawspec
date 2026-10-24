@@ -1,3 +1,15 @@
 decision/haskell/dev/Gen/Embed.hs/module/Gen.Embed:
   digest: sha256:e3d51db1f56958db
   verdict: pending
+decision/haskell/dev/Gen/Embed.hs/module/Gen.Embed/function/embedDotNet:
+  digest: sha256:1a665b0f0362595a
+  verdict: pending
+decision/haskell/dev/Gen/Embed.hs/module/Gen.Embed/function/embedJvmLanguage:
+  digest: sha256:d578ac8fbedf4efe
+  verdict: pending
+decision/haskell/dev/Gen/Embed.hs/module/Gen.Embed/function/embedSwift:
+  digest: sha256:db05546d87e76b44
+  verdict: pending
+decision/haskell/dev/Gen/Embed.hs/module/Gen.Embed/function/languageSources:
+  digest: sha256:c2f90996df742206
+  verdict: pending

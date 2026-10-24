@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Core/Counterexample.hs/module/LawSpec.Core.Counterexample:
+  digest: sha256:90a603fc5eb14382
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Counterexample.hs/module/LawSpec.Core.Counterexample/function/readValues:
+  digest: sha256:2d47b66704084665
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Counterexample.hs/module/LawSpec.Core.Counterexample/function/stringUnits:
+  digest: sha256:9fb390157caca102
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Counterexample.hs/module/LawSpec.Core.Counterexample/function/validateCounterexample:
+  digest: sha256:4623a2db06fdd469
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Counterexample.hs/module/LawSpec.Core.Counterexample/function/valueOf:
+  digest: sha256:d02e79d981c8b3e8
+  verdict: pending

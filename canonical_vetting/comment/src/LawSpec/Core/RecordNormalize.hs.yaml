@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Core/RecordNormalize.hs/module/LawSpec.Core.RecordNormalize:
+  digest: sha256:1b5851bd4f7aa91b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RecordNormalize.hs/module/LawSpec.Core.RecordNormalize/function/normalizeExpressionRecords:
+  digest: sha256:2f56778c76634dd9
+  verdict: pending

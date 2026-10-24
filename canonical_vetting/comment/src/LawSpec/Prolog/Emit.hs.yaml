@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit:
+  digest: sha256:93b7297c893a9d0d
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/data/Term:
+  digest: sha256:8c651ddbac753424
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/array:
+  digest: sha256:df4063d836588846
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/atom:
+  digest: sha256:9205f6e0468ebd6a
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/call:
+  digest: sha256:880cdfbbc7ec6535
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/flatTerm:
+  digest: sha256:61118b0315b8e336
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/moduleDirective:
+  digest: sha256:7a055d5faf26a71d
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/pprint:
+  digest: sha256:4f9de8c3e280f77c
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/prologFile:
+  digest: sha256:bb9aee99cfb04167
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/prologFromPython:
+  digest: sha256:de526a236068b16a
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/pyLine:
+  digest: sha256:e2265c3bf8bb38f9
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/systemModules:
+  digest: sha256:8ca79b47c5fcd838
+  verdict: pending
+decision/haskell/src/LawSpec/Prolog/Emit.hs/module/LawSpec.Prolog.Emit/function/writeLength:
+  digest: sha256:fd4a45127a023e4c
+  verdict: pending

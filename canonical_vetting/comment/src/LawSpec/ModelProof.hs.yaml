@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof:
+  digest: sha256:82c4513fa114275e
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/data/Answer:
+  digest: sha256:824e14fe57384571
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/data/ModelTask:
+  digest: sha256:a82b7a5daa2654f9
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/boundedQuery:
+  digest: sha256:60e6504cb20828b8
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/depth:
+  digest: sha256:b6af932838788fee
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/invariantClaims:
+  digest: sha256:b309249f363aabf8
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/modelTasks:
+  digest: sha256:355ec75f3efe77e5
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/replay:
+  digest: sha256:cadb70ff2acc9c41
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/settleModel:
+  digest: sha256:9b98f0ce9f348d3d
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/shapeOf:
+  digest: sha256:d81c257a22237a88
+  verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/validInvariant:
+  digest: sha256:3c3bcef9e621977b
+  verdict: pending

@@ -1,0 +1,51 @@
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/enum/Jitter:
+  digest: sha256:dd6dfe26dd26840c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/enum/Strategy:
+  digest: sha256:fb41bb1dc235ca2e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/enum/Strategy/case/custom:
+  digest: sha256:709a4e062ea73167
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/enum/Wait:
+  digest: sha256:b34b39aac4338c78
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/exactDelay:
+  digest: sha256:65566ba60abb4462
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/failed:
+  digest: sha256:09d0515cadb3695c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/jitter:
+  digest: sha256:37bcb684d4bc1124
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/jitterOf:
+  digest: sha256:776243847b212d1b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/retryDecision:
+  digest: sha256:7011315d28b78d39
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/retryDelay:
+  digest: sha256:eafff23a7dde4b9a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/stage:
+  digest: sha256:7c18f3424be77496
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/func/stageFailure:
+  digest: sha256:c8454971ba37bf75
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/struct/Gate:
+  digest: sha256:822e9d3f8fd5ec1f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/struct/Retry:
+  digest: sha256:5d13b027f7c2ee91
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/struct/Retry/let/condition:
+  digest: sha256:c2381f26e0f0e39c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/struct/StagePolicy:
+  digest: sha256:0c6a408297a89331
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Policy.swift/enum/Policy/struct/StagePolicy/let/hedge:
+  digest: sha256:d514c63a7ec2a979
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/clojure/acceptance/gadt/clojure/files/src/example/gadt.clj:
+  digest: sha256:d4f71831753d4c5a
+  verdict: pending
+decision/clojure/acceptance/gadt/clojure/files/src/example/gadt.clj/multimethod/evaluate:
+  digest: sha256:9a616692e7dfe788
+  verdict: pending

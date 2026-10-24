@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds:
 decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds/function/bounds:
   digest: sha256:d0ce9819af8dadbd
   verdict: pending
+decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds/function/drawRange:
+  digest: sha256:e396ccf25b2b736c
+  verdict: pending
 decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds/function/inputRange:
   digest: sha256:99a4b6c2aca9563f
   verdict: pending

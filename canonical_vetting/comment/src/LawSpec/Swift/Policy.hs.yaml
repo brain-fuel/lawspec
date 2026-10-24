@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/Swift/Policy.hs/module/LawSpec.Swift.Policy:
+  digest: sha256:4e9bd9105fd48281
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Policy.hs/module/LawSpec.Swift.Policy/function/usesPolicies:
+  digest: sha256:5d3353aa4c45e3b3
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Policy.hs/module/LawSpec.Swift.Policy/function/withTestRuntime:
+  digest: sha256:b0c411ae26aee9b9
+  verdict: pending

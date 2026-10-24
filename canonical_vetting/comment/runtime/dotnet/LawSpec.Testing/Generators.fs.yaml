@@ -1,0 +1,42 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators:
+  digest: sha256:2dddf190359dd766
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/abbreviation/Factory:
+  digest: sha256:57cc404135e9556a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/accepted:
+  digest: sha256:1ecdfe165d013732
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/allocation:
+  digest: sha256:541e9120479a4196
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/canonical:
+  digest: sha256:064d069fe60e3303
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/compareBound:
+  digest: sha256:590da6918c1d3495
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/generator:
+  digest: sha256:bbbf66092770d43b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/index:
+  digest: sha256:fcc84c683f75efe6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/indexed:
+  digest: sha256:4de4f3e57fab5115
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/lengthBound:
+  digest: sha256:9e00f1e3181cae6c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/minimum:
+  digest: sha256:b1d60027b2402ee3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/function/noIndex:
+  digest: sha256:71dfb382d4c7fcc9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/record/Context:
+  digest: sha256:08b6da904c8d5e78
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Generators.fs/module/LawSpec.Testing.Generators/union/Bound:
+  digest: sha256:e34324d6aedd143b
+  verdict: pending

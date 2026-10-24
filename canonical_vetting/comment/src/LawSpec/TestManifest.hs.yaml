@@ -7,6 +7,15 @@ decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/data/Te
 decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/callees:
   digest: sha256:7828d3e82b8bf510
   verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/dotnetModelsPath:
+  digest: sha256:39e9045955d5abbc
+  verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/dotnetName:
+  digest: sha256:cd3b2eb176888f40
+  verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/executableEntries:
+  digest: sha256:d1eba424c900fa97
+  verdict: pending
 decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/testManifest:
   digest: sha256:29caac3a259a30f5
   verdict: pending

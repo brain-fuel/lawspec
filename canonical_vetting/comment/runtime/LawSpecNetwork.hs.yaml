@@ -1,0 +1,108 @@
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork:
+  digest: sha256:b92c51b8be791e64
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/data/Handshake:
+  digest: sha256:550589bc1c735efa
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/data/NodeIdentity:
+  digest: sha256:6dca9b0f955917b2
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/data/NodeOptions:
+  digest: sha256:76301d1d0d8b2b9f
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/data/SealedSession:
+  digest: sha256:1089bf695ed0666e
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/data/SecureLayer:
+  digest: sha256:a66ae8366c0315d5
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/configuredNodeIdentity:
+  digest: sha256:a0d15ecd952026c1
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/emptyContext:
+  digest: sha256:2e361f562e4e5d84
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/fromHex:
+  digest: sha256:793612d97562896f
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/gcmSeal:
+  digest: sha256:8f3c030a0ee79e8a
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/generateNodeIdentity:
+  digest: sha256:b3ee2a2bc85522aa
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/handshakeRetryMicros:
+  digest: sha256:81476a101248da85
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/handshakeVector:
+  digest: sha256:f0b6f782e80e6b3d
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/identityFingerprint:
+  digest: sha256:b8f2cd1defd0d8e8
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/identitySign:
+  digest: sha256:950b3a4c0db69964
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/install:
+  digest: sha256:23cc4641e5d0e559
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/kemEncapsulate:
+  digest: sha256:6802fc93df0ea47a
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/kemKeys:
+  digest: sha256:d2c9b448d8b7e595
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/networkConfig:
+  digest: sha256:1c2d68d90bbf7beb
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/networkToken:
+  digest: sha256:2ab942f9ed0958fc
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/newNodeWith:
+  digest: sha256:7af4a12ade8d669a
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/nodeIdentity:
+  digest: sha256:4381cea638bd6a7e
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/nodeIdentityFromSeed:
+  digest: sha256:2ee218d61df4cd14
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/openFrame:
+  digest: sha256:66a2068d7b9fd0b5
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/parentDirectory:
+  digest: sha256:c9cf4ff134a0fe94
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/readFields:
+  digest: sha256:edcba2968099bc95
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/recordField:
+  digest: sha256:035e4a149411072c
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/retryHandshake:
+  digest: sha256:aff92be3d3446882
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/sealFrame:
+  digest: sha256:8533be514cf54035
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/sealRecord:
+  digest: sha256:aa27172af9bf155a
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/secureLayer:
+  digest: sha256:4e77cff5e82e7a64
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/secureRandom:
+  digest: sha256:d3543f7ccfc19bf0
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/secureReceive:
+  digest: sha256:8200b9eae936176d
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/secureSend:
+  digest: sha256:581e3c3da7d19da7
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/sessionKey:
+  digest: sha256:ff4b9b416e15b382
+  verdict: pending
+decision/haskell/runtime/LawSpecNetwork.hs/module/LawSpecNetwork/function/shakeKey:
+  digest: sha256:7b36a27217cdce75
+  verdict: pending

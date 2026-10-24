@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3:
+  digest: sha256:af4cc2471a1f6512
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/blake3:
+  digest: sha256:1cef61bd783ff983
+  verdict: pending

@@ -1,0 +1,21 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/interface/IPacketTransport:
+  digest: sha256:0414c10489110abb
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/module/Transports:
+  digest: sha256:57bd1bb3753cdf05
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/module/Transports/function/advertise:
+  digest: sha256:b357cc77a07059c2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/module/Transports/function/insecureMemoryForTests:
+  digest: sha256:ab3ae2e90bd1f429
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/module/Transports/function/memory:
+  digest: sha256:f1f93f6b7ea61e06
+  verdict: pending
+"decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/module/Transports/function/open'":
+  digest: sha256:ce274085fa611f55
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Transport.fs/namespace/LawSpec.Runtime/union/Transport:
+  digest: sha256:91b1c2e4a2a01cad
+  verdict: pending

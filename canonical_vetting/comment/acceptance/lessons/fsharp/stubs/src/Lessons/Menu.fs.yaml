@@ -1,0 +1,6 @@
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Menu.fs/module/Lessons.Menu/function/cheapest:
+  digest: sha256:1d9e4ee84f01b7c3
+  verdict: pending
+decision/fsharp/acceptance/lessons/fsharp/stubs/src/Lessons/Menu.fs/module/Lessons.Menu/function/priceOf:
+  digest: sha256:f80c2667aafdaa61
+  verdict: pending

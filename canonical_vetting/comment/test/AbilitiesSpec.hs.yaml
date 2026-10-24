@@ -1,0 +1,6 @@
+decision/haskell/test/AbilitiesSpec.hs/module/AbilitiesSpec:
+  digest: sha256:f8335b5bbfcaa28d
+  verdict: pending
+decision/haskell/test/AbilitiesSpec.hs/module/AbilitiesSpec/function/test_abilityLawsHoldForEveryLawfulHandler:
+  digest: sha256:7d1f2a68233fcafc
+  verdict: pending

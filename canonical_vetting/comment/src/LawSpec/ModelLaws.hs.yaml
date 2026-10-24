@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws:
+  digest: sha256:f7a30a67d2a6701d
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/data/ModelRun:
+  digest: sha256:530aa44770fb175f
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/deadlineSystem:
+  digest: sha256:fa0afa1dedde495d
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/duration:
+  digest: sha256:35254f6824c08698
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/expandFormula:
+  digest: sha256:58f9be4910936e60
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/formulaOf:
+  digest: sha256:c0f6eb7ab9ed5c06
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/historyLawEvidence:
+  digest: sha256:524d1265768ea261
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/lateAtom:
+  digest: sha256:2d2be8b77371e6d0
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/mergeWaits:
+  digest: sha256:24db7527bf7cf14b
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/modelLawEvidence:
+  digest: sha256:b3f8a5c0ff2a74c4
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/predicateOf:
+  digest: sha256:93f94355694c3ea4
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/stateLimit:
+  digest: sha256:1618637627b0bf22
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/systemOf:
+  digest: sha256:6d0c2f705b74a53e
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/timeOf:
+  digest: sha256:f46c94469a29dc6e
+  verdict: pending
+decision/haskell/src/LawSpec/ModelLaws.hs/module/LawSpec.ModelLaws/function/toFormula:
+  digest: sha256:23aa22eb0c474057
+  verdict: pending

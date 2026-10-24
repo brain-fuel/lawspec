@@ -1,0 +1,27 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/class/MemoryNetwork:
+  digest: sha256:0af588a4fc146e3c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/class/MemoryNetwork/member/AddressOf:
+  digest: sha256:562239c983f43533
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/class/MemoryNetwork/member/Partition:
+  digest: sha256:e745c79a0689488d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/class/MemoryNetwork/member/Recorded:
+  digest: sha256:943f32f1426c116b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/class/MemoryNetwork/member/Register:
+  digest: sha256:1e8631b88d65a1df
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/class/MemoryNetwork/member/Send:
+  digest: sha256:669260c0b654afd2
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/record/MemoryEvent:
+  digest: sha256:b6de0ed50bfc268b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/record/MemoryEvent/field/DelaySlots:
+  digest: sha256:a33313343a9d5ddc
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs/namespace/LawSpec.Runtime/record/MemoryOptions:
+  digest: sha256:2aa53fed31a2a16b
+  verdict: pending

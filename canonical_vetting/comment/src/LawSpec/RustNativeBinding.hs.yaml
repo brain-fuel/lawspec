@@ -10,6 +10,9 @@ decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBindi
 decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/emitConversions:
   digest: sha256:c251c90c14148aec
   verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/emitLayoutBranch:
+  digest: sha256:47b5e2a926c1b074
+  verdict: pending
 decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/nativeTypeFor:
   digest: sha256:3ce23a9b9751fab4
   verdict: pending

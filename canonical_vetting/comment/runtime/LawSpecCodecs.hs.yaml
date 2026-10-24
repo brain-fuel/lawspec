@@ -1,3 +1,12 @@
 decision/haskell/runtime/LawSpecCodecs.hs/module/LawSpecCodecs:
   digest: sha256:3f8d26821b39e2ab
   verdict: pending
+decision/haskell/runtime/LawSpecCodecs.hs/module/LawSpecCodecs/function/call1:
+  digest: sha256:a1933ab7e8ec239f
+  verdict: pending
+decision/haskell/runtime/LawSpecCodecs.hs/module/LawSpecCodecs/function/decoded:
+  digest: sha256:4ce96ee7af9b973f
+  verdict: pending
+decision/haskell/runtime/LawSpecCodecs.hs/module/LawSpecCodecs/function/encoded:
+  digest: sha256:76fd3ca60b0cafe4
+  verdict: pending

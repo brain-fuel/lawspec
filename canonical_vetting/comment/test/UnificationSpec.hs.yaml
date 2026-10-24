@@ -1,0 +1,6 @@
+decision/haskell/test/UnificationSpec.hs/module/UnificationSpec:
+  digest: sha256:4da5a859d413a911
+  verdict: pending
+decision/haskell/test/UnificationSpec.hs/module/UnificationSpec/function/test_existingFeaturesAreAbilities:
+  digest: sha256:a0d98d0d56027661
+  verdict: pending

@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities:
+  digest: sha256:56a8a57c918366d8
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/emitBridges:
+  digest: sha256:29773a0ae31b5e3c
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/emitDefaults:
+  digest: sha256:5f17a3b584c61ea2
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/emitProtocols:
+  digest: sha256:9b4b8dbaa295ed9e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/failingKey:
+  digest: sha256:a48a2d6b8d3d1937
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/failureOf:
+  digest: sha256:7c0f1d4522987ac4
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/method:
+  digest: sha256:98c93211e2ee50e1
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/operationSignature:
+  digest: sha256:9632afac3f537610
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/productionStubs:
+  digest: sha256:6eb9d2dda27e404e
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Abilities.hs/module/LawSpec.Swift.Abilities/function/unitFactories:
+  digest: sha256:612a49717fd45699
+  verdict: pending

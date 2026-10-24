@@ -10,6 +10,9 @@ decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/L
 decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/method/capture:
   digest: sha256:fe1c2accaa793155
   verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/method/checkedIndexedGenerator:
+  digest: sha256:69068afee2dcf3e6
+  verdict: pending
 decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/method/indexedGenerator:
   digest: sha256:78ad999238611c6f
   verdict: pending

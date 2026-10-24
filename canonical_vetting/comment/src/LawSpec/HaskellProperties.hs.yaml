@@ -7,3 +7,9 @@ decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperti
 decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperties/function/emitTests:
   digest: sha256:71433ff15386c585
   verdict: pending
+decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperties/function/haskellReserved:
+  digest: sha256:50a720cf7226483c
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperties/function/wrapComment:
+  digest: sha256:18c76e9604919ee1
+  verdict: pending

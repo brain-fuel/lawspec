@@ -1,0 +1,24 @@
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/class/SortedNode:
+  digest: sha256:5269ddca162b4970
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/enum/SortedTree:
+  digest: sha256:9f4515627008a625
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/struct/SortedMap:
+  digest: sha256:6f5f982c8fdaad84
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/struct/SortedMap/init/init#3:
+  digest: sha256:eea03982339f9de3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/struct/SortedMap/var/entries:
+  digest: sha256:c414817e2afde940
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/struct/SortedSet:
+  digest: sha256:ab1d114ca95a3a4c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/struct/SortedSet/init/init#3:
+  digest: sha256:84e862338a993142
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/SortedCollections.swift/struct/SortedSet/var/items:
+  digest: sha256:60d729515894b207
+  verdict: pending

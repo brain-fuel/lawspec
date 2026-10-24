@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/DotNet/Emit.hs/module/LawSpec.DotNet.Emit:
+  digest: sha256:fcdb9dab5d759e7e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Emit.hs/module/LawSpec.DotNet.Emit/function/validatePlan:
+  digest: sha256:e2ceb79c0e282f66
+  verdict: pending

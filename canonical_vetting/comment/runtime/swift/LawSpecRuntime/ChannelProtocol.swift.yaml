@@ -1,0 +1,33 @@
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/enum/Received:
+  digest: sha256:cb517b3ea658d1b2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/abandon:
+  digest: sha256:7f7de5cca9e98b77
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/accept:
+  digest: sha256:e3ad6a1ba3566384
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/connect:
+  digest: sha256:7eb1e0fce68879e6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/create:
+  digest: sha256:f6a05f5147620ccc
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/offer:
+  digest: sha256:65649199888795ee
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/receiveBody:
+  digest: sha256:b257daeb46cb7aec
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/send:
+  digest: sha256:b2b87cafdf443572
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/take:
+  digest: sha256:4dd091f775fb0f0d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/takeStatus:
+  digest: sha256:d48a373a4ad69dd6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/ChannelProtocol.swift/enum/ChannelProtocol/func/tick:
+  digest: sha256:06a0cfc4b04b032a
+  verdict: pending

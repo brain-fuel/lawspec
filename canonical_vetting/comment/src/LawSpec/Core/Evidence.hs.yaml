@@ -13,6 +13,9 @@ decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/funct
 decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/calls:
   digest: sha256:6d30d667a9469af9
   verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/operationResultChecks:
+  digest: sha256:5c5bfa074ccbe6d5
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/programEvidence:
   digest: sha256:7fa3b19dbac80bfc
   verdict: pending

@@ -1,0 +1,3 @@
+decision/prolog/examples/native-payments/prolog/tests/domain/payment_generators.pl:
+  digest: sha256:15e808a887d35049
+  verdict: pending

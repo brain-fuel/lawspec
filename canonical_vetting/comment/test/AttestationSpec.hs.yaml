@@ -1,0 +1,12 @@
+decision/haskell/test/AttestationSpec.hs/module/AttestationSpec:
+  digest: sha256:5096eef766dcb1e8
+  verdict: pending
+decision/haskell/test/AttestationSpec.hs/module/AttestationSpec/function/checkWith:
+  digest: sha256:e7cba6b23fbb5c07
+  verdict: pending
+decision/haskell/test/AttestationSpec.hs/module/AttestationSpec/function/test_attestationReportsWhereTestsRanWithoutChangingEvidence:
+  digest: sha256:ac6d4b46c1a98268
+  verdict: pending
+decision/haskell/test/AttestationSpec.hs/module/AttestationSpec/function/withFields:
+  digest: sha256:a5b6c6661b080e71
+  verdict: pending

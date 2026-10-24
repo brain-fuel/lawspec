@@ -1,0 +1,6 @@
+decision/swift/acceptance/lessons/swift/stubs/src/Lessons/Checkout.swift/extension/Lessons.Checkout/func/charge:
+  digest: sha256:bf9c39e3e6d399b7
+  verdict: pending
+decision/swift/acceptance/lessons/swift/stubs/src/Lessons/Checkout.swift/extension/Lessons.Checkout/func/validate:
+  digest: sha256:dbc17d159ae8937b
+  verdict: pending

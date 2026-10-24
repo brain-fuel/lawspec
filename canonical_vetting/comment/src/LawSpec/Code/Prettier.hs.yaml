@@ -1,0 +1,36 @@
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier:
+  digest: sha256:bbf3c0e06d3f156f
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/align:
+  digest: sha256:7d455f0059bfaf1e
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/canBreak:
+  digest: sha256:663338098160084a
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/conditionalGroup:
+  digest: sha256:4c1986f128850207
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/group:
+  digest: sha256:1a35c5268cee94ed
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/propagates:
+  digest: sha256:3ed206dd39029316
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/removeLines:
+  digest: sha256:334a3d1466b688b0
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/render:
+  digest: sha256:c69ccc2f173cf670
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/stringWidth:
+  digest: sha256:bd436f20d6b3f108
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/willBreak:
+  digest: sha256:da1de6f9604833f8
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/type/GroupId:
+  digest: sha256:6e00203efa1f4a92
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/type/Indentation:
+  digest: sha256:5279815f6614245b
+  verdict: pending

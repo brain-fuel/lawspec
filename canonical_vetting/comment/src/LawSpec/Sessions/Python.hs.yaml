@@ -13,6 +13,9 @@ decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/f
 decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/positions:
   digest: sha256:b2c28b97079542ec
   verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/pyLine:
+  digest: sha256:073caf7a1877d478
+  verdict: pending
 decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/pythonSessions:
   digest: sha256:d1d6dd3ab651392c
   verdict: pending

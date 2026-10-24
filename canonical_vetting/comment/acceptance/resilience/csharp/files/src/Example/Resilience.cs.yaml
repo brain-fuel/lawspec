@@ -1,0 +1,6 @@
+decision/csharp/acceptance/resilience/csharp/files/src/Example/Resilience.cs/namespace/Example/class/Resilience/method/CompensationsFor:
+  digest: sha256:9dd39c8c27fe81bb
+  verdict: pending
+decision/csharp/acceptance/resilience/csharp/files/src/Example/Resilience.cs/namespace/Example/class/Resilience/method/LimitedAt:
+  digest: sha256:3692d6d7c43d5ae6
+  verdict: pending

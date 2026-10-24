@@ -1,0 +1,51 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness:
+  digest: sha256:43ffe9b9c8c74c29
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/abort:
+  digest: sha256:5c721c68fdf6070b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/benchmark:
+  digest: sha256:0ae1bf2229ddb556
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/higher:
+  digest: sha256:090b57b01b7b3141
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/knownFailing:
+  digest: sha256:809019cc7274d229
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/markHarnessFailure:
+  digest: sha256:bb4a8c8b9748134b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/observation:
+  digest: sha256:910f32e60894f7fa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/options:
+  digest: sha256:736f17a8b81dea9e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/record:
+  digest: sha256:1f62f3c019fbde51
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/recordParallel:
+  digest: sha256:a14be67110789021
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/run:
+  digest: sha256:c91ea7ca1f1a5cc8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/sample:
+  digest: sha256:7511d260130a17eb
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/scoreText:
+  digest: sha256:732ab2cf0ddcf82f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/skip:
+  digest: sha256:a9f8aa17187d60c1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/record/Expected:
+  digest: sha256:c6d8fd4efce8a886
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/record/Observation:
+  digest: sha256:3d7d72d864db0014
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/record/Options:
+  digest: sha256:7ed1f7e5d086e1d3
+  verdict: pending

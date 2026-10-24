@@ -1,0 +1,24 @@
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/handshakeVector:
+  digest: sha256:de5eaa97c3982b74
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/insecureMemoryTransportForTests:
+  digest: sha256:85d7d3e0f0272969
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/memoryOptions:
+  digest: sha256:70b641abf477ee78
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/options:
+  digest: sha256:afae7659b369d4ce
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/trustOnFirstUse:
+  digest: sha256:acc7e1429bc36544
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/wireEncoded:
+  digest: sha256:a419882fdb6ba7cb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/wireRoundTrips:
+  digest: sha256:482e0e846986f468
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkApi.swift/enum/Network/func/withTrusted:
+  digest: sha256:e1a9ac1b0c61d8de
+  verdict: pending

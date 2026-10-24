@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/DotNet/Actors.hs/module/LawSpec.DotNet.Actors:
+  digest: sha256:a43ced273f7d8c89
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Actors.hs/module/LawSpec.DotNet.Actors/function/emitActorHandlersCs:
+  digest: sha256:fc66b810ac5774f6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Actors.hs/module/LawSpec.DotNet.Actors/function/emitActors:
+  digest: sha256:5585d40b515ca5d3
+  verdict: pending

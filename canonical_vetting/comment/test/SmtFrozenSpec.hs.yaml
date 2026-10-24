@@ -1,0 +1,6 @@
+decision/haskell/test/SmtFrozenSpec.hs/module/SmtFrozenSpec:
+  digest: sha256:565e38213724949d
+  verdict: pending
+decision/haskell/test/SmtFrozenSpec.hs/module/SmtFrozenSpec/type/Key:
+  digest: sha256:63d596b368c3cdc2
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Random.fs/module/LawSpec.Runtime.Random:
+  digest: sha256:60deb4bcedbf14f5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Random.fs/module/LawSpec.Runtime.Random/function/below:
+  digest: sha256:8a576adb6f8d4b64
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Random.fs/module/LawSpec.Runtime.Random/function/next:
+  digest: sha256:e825573480f5540a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Random.fs/module/LawSpec.Runtime.Random/function/seed:
+  digest: sha256:8d32725a3d114128
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Random.fs/module/LawSpec.Runtime.Random/function/split:
+  digest: sha256:00443bc2bf7ab888
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Random.fs/module/LawSpec.Runtime.Random/union/Seed:
+  digest: sha256:f6cb310ff05beb36
+  verdict: pending

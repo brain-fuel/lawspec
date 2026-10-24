@@ -1,0 +1,6 @@
+decision/rust/acceptance/harness/rust/files/src/example/harness.rs:
+  digest: sha256:7e4c5c06f4821f5b
+  verdict: pending
+decision/rust/acceptance/harness/rust/files/src/example/harness.rs/struct/LedgerHandler:
+  digest: sha256:7b5f652c450b508b
+  verdict: pending

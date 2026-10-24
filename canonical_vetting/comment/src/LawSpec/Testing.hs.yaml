@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/boundari
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/boundariesWithRegistry:
   digest: sha256:f15baa86d34d2032
   verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/boundedLawSearch:
+  digest: sha256:8200231a68133c5c
+  verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/combine:
   digest: sha256:3185dfaf9518bd40
   verdict: pending
@@ -40,14 +43,26 @@ decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/domainHi
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/familyEquations:
   digest: sha256:0b2b9849ef5f8428
   verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/fieldPatternValues:
+  digest: sha256:e4d5af28d4655e8e
+  verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/fieldRegexSamples:
+  digest: sha256:dfda370e18987dde
+  verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/finiteScalars:
   digest: sha256:8a68cd48227308c1
+  verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/finiteUniversalInputs:
+  digest: sha256:e44b3b9d0c7c9caa
   verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/finiteValues:
   digest: sha256:05f80811440bec72
   verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/finiteValuesWithRegistry:
   digest: sha256:2fd8666135413639
+  verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/hasConstructorContracts:
+  digest: sha256:0e4ba621eeef6d5a
   verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/hasValueContracts:
   digest: sha256:02226dbc0fc6e8a2
@@ -67,8 +82,17 @@ decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/lawPlann
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/minimal:
   digest: sha256:6df607817d5d56b2
   verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/modelTestUnit:
+  digest: sha256:ab89bce64fb6f6c5
+  verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/needs:
   digest: sha256:34fa4f94c2d1fe87
+  verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/patternHints:
+  digest: sha256:92afd275d5eb875e
+  verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/patternValues:
+  digest: sha256:bd1c859c4dbe11eb
   verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/planProperty:
   digest: sha256:6f1fe11c548c4978
@@ -79,6 +103,9 @@ decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/planTabl
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/planTesting:
   digest: sha256:716ac7a3cb7818bd
   verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/planTestingWith:
+  digest: sha256:94b71ea1b2b1baaf
+  verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/population:
   digest: sha256:c2c8908139732195
   verdict: pending
@@ -87,6 +114,9 @@ decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/populati
   verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/potential:
   digest: sha256:a390645fd2dd5f44
+  verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/refinedPatterns:
+  digest: sha256:88547c381c6fe530
   verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/scalarCases:
   digest: sha256:577cbd85b1c7d001

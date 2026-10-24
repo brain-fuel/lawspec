@@ -1,0 +1,69 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime:
+  digest: sha256:a58f0e7632363e3f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/absent:
+  digest: sha256:21162c4e7b976bf1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/allElements:
+  digest: sha256:19ecedf4f8931104
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/allPayloads:
+  digest: sha256:bae06dda51adb1c8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/assertEqual:
+  digest: sha256:d21ef34ead5d096c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/await:
+  digest: sha256:f8a82ea105bad4bd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/awaitDone:
+  digest: sha256:298000d814ed82fa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/concurrently:
+  digest: sha256:978d7f8be7304d9b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/contextual:
+  digest: sha256:8550ea41753c6a4b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/difference:
+  digest: sha256:21de253363763c61
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/field:
+  digest: sha256:b5dda13e4c4dd014
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/hasTag:
+  digest: sha256:23ead8d3fc31fba5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/helper:
+  digest: sha256:4b726c87186a0dba
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/ignore:
+  digest: sha256:dda8397acb415d49
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/integer:
+  digest: sha256:cb27682dcebe39e7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/item:
+  digest: sha256:0bb7a1e2a9d47f6c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/noMatch:
+  digest: sha256:d81ace5273fab5f8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/nth:
+  digest: sha256:8fb972a6ea59bbb6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/present:
+  digest: sha256:c67bcc863c761be3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/recorded:
+  digest: sha256:a324af0f8c8ad995
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/recordedText:
+  digest: sha256:cd748ac753377039
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/require:
+  digest: sha256:86b1e607635edd25
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/truth:
+  digest: sha256:9b3dda56debe1039
+  verdict: pending

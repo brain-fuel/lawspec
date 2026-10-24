@@ -1,0 +1,150 @@
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt:
+  digest: sha256:7e5b39faa8f3d339
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/CounterexampleQuery:
+  digest: sha256:3ffff93f2070c61b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Encoding:
+  digest: sha256:a15f5c231d98bd83
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Exact:
+  digest: sha256:a42e47c93c4e2cc9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Ground:
+  digest: sha256:bbd294e77265b9a6
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Induction:
+  digest: sha256:275dc3b78dc4663c
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/InductionCase:
+  digest: sha256:3a7ebda3a824f3d9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/InductionPlan:
+  digest: sha256:49371d8a96c8eb02
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/LawProof:
+  digest: sha256:b5742c9b352fc5ea
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/ModelShape:
+  digest: sha256:a67e7c8b58dde1d0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Recursion:
+  digest: sha256:015a0b3c75585057
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Shape:
+  digest: sha256:5672c303dc28c0ed
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Sort:
+  digest: sha256:dd9584cf0bf42d4c
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/data/Unfolding:
+  digest: sha256:a4e7958d308eee09
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/admissible:
+  digest: sha256:77266fe2a7fd98e1
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/alternativeFingerprint:
+  digest: sha256:fc86f10b41958441
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/byteInterval:
+  digest: sha256:24c183855fd2b794
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/byteLiteral:
+  digest: sha256:c0732ed738b906dc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/caseFingerprint:
+  digest: sha256:91ac53aeeda5e46e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/closure:
+  digest: sha256:ae552ad285f9f069
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/contractChecks:
+  digest: sha256:a159b8097148985f
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/counterexampleFingerprint:
+  digest: sha256:0dcc01a6770adb56
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/datatypePreamble:
+  digest: sha256:e444d37b1927a168
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/declarationOf:
+  digest: sha256:332fe75bc630c020
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/declareGroup:
+  digest: sha256:0628010ec3d0f381
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/defaultFuel:
+  digest: sha256:fd114060b8002627
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/functionSymbol:
+  digest: sha256:2bff48d8db839067
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/groundQuery:
+  digest: sha256:e69d8d3eabedd533
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/hornQuery:
+  digest: sha256:26286de0adc2998b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/inductionTasks:
+  digest: sha256:7dbe812ea7dae2cf
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/inhabited:
+  digest: sha256:2ef63423a659b326
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/instantiate:
+  digest: sha256:fb61ce206bd79745
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/invariantQueries:
+  digest: sha256:0eafc5884452546e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/invariantShape:
+  digest: sha256:8826c92f38405672
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/listHelper:
+  digest: sha256:90843ace95c07ecc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/nodeName:
+  digest: sha256:fd95e300f556edb8
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/outerQuantifiers:
+  digest: sha256:32a312eb6e7ed4e9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/proofTasksWith:
+  digest: sha256:3acfbf798c784dda
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/reachable:
+  digest: sha256:c4d20954223ce668
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/recursiveCall:
+  digest: sha256:a0e1cdbcb023c70b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/recursiveGroups:
+  digest: sha256:64d8897fa86c08f4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/recursiveText:
+  digest: sha256:94e96dd693949770
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/regexTerm:
+  digest: sha256:4f70b6669a7b5ca5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/requires:
+  digest: sha256:b62c8cb2ab6e04b7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/scalarCharacter:
+  digest: sha256:5f047a803cd8ba28
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/sortIn:
+  digest: sha256:5ecaaf3b01283ee6
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/sortOf:
+  digest: sha256:66a048cebdbfbe66
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/structuralInputs:
+  digest: sha256:73c489ba1bb18051
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/function/textHelpers:
+  digest: sha256:e2cab081a8be2c28
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Smt.hs/module/LawSpec.Core.Smt/type/Catalog:
+  digest: sha256:eee648c4923cff55
+  verdict: pending

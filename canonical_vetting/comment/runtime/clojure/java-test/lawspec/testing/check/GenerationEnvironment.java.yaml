@@ -1,0 +1,6 @@
+decision/java/runtime/clojure/java-test/lawspec/testing/check/GenerationEnvironment.java/package/lawspec.testing.check/interface/GenerationEnvironment:
+  digest: sha256:12417cec115f142f
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/GenerationEnvironment.java/package/lawspec.testing.check/interface/GenerationEnvironment/method/getSizeHint:
+  digest: sha256:7e9dc1af17e108fc
+  verdict: pending

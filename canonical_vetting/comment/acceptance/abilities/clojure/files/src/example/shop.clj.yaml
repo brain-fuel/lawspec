@@ -1,0 +1,15 @@
+decision/clojure/acceptance/abilities/clojure/files/src/example/shop.clj:
+  digest: sha256:8cda20873419c94a
+  verdict: pending
+decision/clojure/acceptance/abilities/clojure/files/src/example/shop.clj/function/log-handler:
+  digest: sha256:9b566b5169132773
+  verdict: pending
+decision/clojure/acceptance/abilities/clojure/files/src/example/shop.clj/function/meter-handler:
+  digest: sha256:6e1e8fcfec8fdcad
+  verdict: pending
+decision/clojure/acceptance/abilities/clojure/files/src/example/shop.clj/function/store-int32-handler:
+  digest: sha256:bac643f0a8ee27c9
+  verdict: pending
+decision/clojure/acceptance/abilities/clojure/files/src/example/shop.clj/function/store-text-handler:
+  digest: sha256:c59faa060b3c1f8b
+  verdict: pending

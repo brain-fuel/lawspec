@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/
 decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/nativeName:
   digest: sha256:6052d9be52b5b15d
   verdict: pending
+decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/phraseNativeName:
+  digest: sha256:6c353d544a48a2c8
+  verdict: pending
 decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/targetKeywords:
   digest: sha256:1c80f69dcf1bc56a
   verdict: pending

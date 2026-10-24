@@ -1,0 +1,72 @@
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit:
+  digest: sha256:2030d5e481a2467b
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/data/Json:
+  digest: sha256:ac80407b3429699a
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/data/Path:
+  digest: sha256:5c16f54ce8caeb5c
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/antlrReserved:
+  digest: sha256:b14dd105dd33aefb
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/dataLink:
+  digest: sha256:0da44021eec01796
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/emitArtifacts:
+  digest: sha256:6cab72ef68aa906a
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/grammarArtifacts:
+  digest: sha256:f11ddcba02d66236
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/grammarRule:
+  digest: sha256:f2621f868a48ed3f
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/integerDomain:
+  digest: sha256:c53b22b49205a00e
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/jsonString:
+  digest: sha256:ec53d251e225ef7f
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/prettyJson:
+  digest: sha256:b3299be8980763f8
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/reachable:
+  digest: sha256:1de4965cefbe2267
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/specSource:
+  digest: sha256:a3be3e70033e4c0c
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/terraformChecks:
+  digest: sha256:d82f45326e1f4f1d
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/terraformType:
+  digest: sha256:21d6262339f8ee78
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/terraformVariable:
+  digest: sha256:1662a647ff4a8c44
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/typeNames:
+  digest: sha256:ac0face0a42b9c3c
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/typeText:
+  digest: sha256:ce04e0d7276b390e
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/wrapLines:
+  digest: sha256:15e8fd01b24d5966
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/yamlBlock:
+  digest: sha256:42d3dfe44156e14a
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/yamlDocument:
+  digest: sha256:dd41dab3b2ad9c95
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/yamlKey:
+  digest: sha256:f956c6202374701c
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/yamlScalarLine:
+  digest: sha256:57fb88aba7a12af7
+  verdict: pending
+decision/haskell/src/LawSpec/ArtifactEmit.hs/module/LawSpec.ArtifactEmit/function/yamlWords:
+  digest: sha256:968296b85e3c2ac8
+  verdict: pending

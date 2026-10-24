@@ -1,0 +1,117 @@
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code:
+  digest: sha256:f09c023e75d9ea71
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Expr/constructor/Ctor:
+  digest: sha256:6497851845091af4
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Expr/constructor/Do:
+  digest: sha256:617611e40013f6f9
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Expr/constructor/If:
+  digest: sha256:ed20753785a7ce4e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Expr/constructor/Invoke:
+  digest: sha256:248f6cdeada9b777
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Fn:
+  digest: sha256:1f2eb758ece67e54
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Sink:
+  digest: sha256:6e219d0b9af4ad72
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Stmt:
+  digest: sha256:6a2dd832f3abe8af
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/data/Ty:
+  digest: sha256:364100815a5c98bc
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/bindTo:
+  digest: sha256:96eef525b6e00329
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/block:
+  digest: sha256:dd38a309bc26d2ee
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/closing:
+  digest: sha256:f2a32af47b1bc5d5
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/conditional:
+  digest: sha256:0fafecd227031b3f
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/distinct:
+  digest: sha256:12bca0780c9d2c71
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/expr:
+  digest: sha256:991cc0ddd7deeb69
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/exprStatement:
+  digest: sha256:852e71c4d8f0fd98
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/fallback:
+  digest: sha256:2c7be5dd8d4eb6df
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/flat:
+  digest: sha256:3702b056bdec559e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/flatten:
+  digest: sha256:09312c19db222348
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/fn:
+  digest: sha256:90c577e3cadad5fa
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/functionLines:
+  digest: sha256:ea07b0ea0c0ef9e7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/isInline:
+  digest: sha256:3093d4094142b042
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/lambdaLines:
+  digest: sha256:03e304ccb793510b
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/lambdaOpening:
+  digest: sha256:5ab419e3c2a3dd5b
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/lambdaParameters:
+  digest: sha256:ee5500f740e6ff0d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/linesDoc:
+  digest: sha256:32ffcce4b3831ecc
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/mentions:
+  digest: sha256:93beeed04b3eaa1a
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/methodLike:
+  digest: sha256:b21d0521c088a516
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/narrower:
+  digest: sha256:2c019e913905bda7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/needsParens:
+  digest: sha256:ca0f88a889368e83
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/opening:
+  digest: sha256:5861c488240b30b5
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/pageWidth:
+  digest: sha256:3dd47fdf0992e3f4
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/renderBody:
+  digest: sha256:a7eca5aad4b46296
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/renderExpr:
+  digest: sha256:f9385a311f914064
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/renderStatements:
+  digest: sha256:46dbbaeb8b9331da
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/separated:
+  digest: sha256:3504b28f852a35c3
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/function/stringLiteral:
+  digest: sha256:8a5beed2553e30e4
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/type/Fresh:
+  digest: sha256:ee27c03288e53395
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Code.hs/module/LawSpec.DotNet.Code/type/Lines:
+  digest: sha256:63787c1e287122ab
+  verdict: pending

@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims:
+  digest: sha256:02b98f1af6a264e6
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/data/Expiry:
+  digest: sha256:03c4bd57ad2174db
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/function/analysisEvidence:
+  digest: sha256:54cdb28eeb583d23
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/function/analysisTaskViews:
+  digest: sha256:7290e9d594e8b7cb
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/function/compareVersions:
+  digest: sha256:4fa0ac22ef2fdb40
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/function/elaborateClaims:
+  digest: sha256:1c904ee15d6ec8d0
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/function/expiredAt:
+  digest: sha256:31db2915579cfa23
+  verdict: pending
+decision/haskell/src/LawSpec/LawClaims.hs/module/LawSpec.LawClaims/function/settleAnalysis:
+  digest: sha256:6bbbf3c6d39d2b54
+  verdict: pending

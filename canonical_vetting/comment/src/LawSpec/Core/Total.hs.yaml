@@ -10,6 +10,12 @@ decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/de
 decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/deferProgramPostconditions:
   digest: sha256:663cdddbe83e3b4f
   verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/definitionProof:
+  digest: sha256:074ab3d0a4619876
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/resultBounds:
+  digest: sha256:c01230d84f8ed14c
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/safeConversionTypes:
   digest: sha256:73caacbfe12933d4
   verdict: pending

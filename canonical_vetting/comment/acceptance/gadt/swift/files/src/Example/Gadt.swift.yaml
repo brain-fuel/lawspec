@@ -1,0 +1,18 @@
+decision/swift/acceptance/gadt/swift/files/src/Example/Gadt.swift/extension/Example.Gadt/func/describe:
+  digest: sha256:827c8d51eb1e8369
+  verdict: pending
+decision/swift/acceptance/gadt/swift/files/src/Example/Gadt.swift/extension/Example.Gadt/func/evalNumber:
+  digest: sha256:2817492ebc9719e2
+  verdict: pending
+decision/swift/acceptance/gadt/swift/files/src/Example/Gadt.swift/extension/Example.Gadt/func/evalPair:
+  digest: sha256:1becfecc37acb97f
+  verdict: pending
+decision/swift/acceptance/gadt/swift/files/src/Example/Gadt.swift/extension/Example.Gadt/func/evalTruth:
+  digest: sha256:0fe5579f0a4df442
+  verdict: pending
+decision/swift/acceptance/gadt/swift/files/src/Example/Gadt.swift/extension/Example.Gadt/func/fold:
+  digest: sha256:91b950bd5ed3bad0
+  verdict: pending
+decision/swift/acceptance/gadt/swift/files/src/Example/Gadt.swift/extension/Example.Gadt/func/retype:
+  digest: sha256:237cea275ea0e635
+  verdict: pending

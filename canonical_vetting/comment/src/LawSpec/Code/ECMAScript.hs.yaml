@@ -1,0 +1,114 @@
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript:
+  digest: sha256:db4a9bfa4384b2fb
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/data/Dialect:
+  digest: sha256:cf6d86f5f555085e
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/data/Pattern:
+  digest: sha256:fcbd43a6142ba2a8
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/data/Prop:
+  digest: sha256:f482361f68226c11
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/arrowBodied:
+  digest: sha256:417c85f86d57af11
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/arrowBody:
+  digest: sha256:2567e1657291f5f3
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/arrowFunction:
+  digest: sha256:095c3870b4e43294
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/arrowWith:
+  digest: sha256:720ac08be6ba5882
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/assignment:
+  digest: sha256:1b40b1e7bf538609
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/assignmentWith:
+  digest: sha256:bfa92bace14b0d9d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/binary:
+  digest: sha256:43ffb34038c84f60
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/binaryishParts:
+  digest: sha256:29e6efdb994e5e63
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/callArguments:
+  digest: sha256:bf78348b9fcf329b
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/chainGroups:
+  digest: sha256:b73453fbe95eda0b
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/collect:
+  digest: sha256:689bfcfe689281e0
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/expr:
+  digest: sha256:9c45260d75e57953
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/functionParameters:
+  digest: sha256:51cfbaac48cd31e9
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/isIdentifierName:
+  digest: sha256:aa5593c816315c55
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/isTestCall:
+  digest: sha256:e99289c58493e875
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/javascriptLiteral:
+  digest: sha256:a686386869f909d8
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/leftmost:
+  digest: sha256:b96086751b52a149
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/memberChain:
+  digest: sha256:f9f6a3cf875434e8
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/memberChainLabelled:
+  digest: sha256:b64300b3406a235b
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/needsParens:
+  digest: sha256:3fbd15bff66491dd
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/path:
+  digest: sha256:7890ca7aecdb0104
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/patternWith:
+  digest: sha256:2f7375a632e70c25
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/poorlyBreakable:
+  digest: sha256:c1483c9232197a47
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/printExpression:
+  digest: sha256:803b602d169dd790
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/printFlat:
+  digest: sha256:c980a027b39df827
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/printModule:
+  digest: sha256:60733a33f440259f
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/printModuleWidth:
+  digest: sha256:a52501817c379b38
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/printNumber:
+  digest: sha256:90e5c2f807b76575
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/printType:
+  digest: sha256:be060413063d351d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/shapeOf:
+  digest: sha256:1032e6568ee8b472
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/shouldExtraIndent:
+  digest: sha256:9e7afb7a140f471b
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/statementSequence:
+  digest: sha256:fddff0c817d8c2ea
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/function/ternary:
+  digest: sha256:ab4875b60c6b9e6c
+  verdict: pending
+decision/haskell/src/LawSpec/Code/ECMAScript.hs/module/LawSpec.Code.ECMAScript/type/Path:
+  digest: sha256:936999200f1fdde9
+  verdict: pending

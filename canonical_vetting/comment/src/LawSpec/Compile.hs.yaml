@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile:
 decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compile:
   digest: sha256:a85a2b768b3c01b8
   verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compileCanonicalWithReferenceUnits:
+  digest: sha256:152f37a393bdaa2c
+  verdict: pending
 decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compileWithImports:
   digest: sha256:91019946309b6c0f
   verdict: pending
@@ -19,8 +22,14 @@ decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/invokedL
 decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/metadataText:
   digest: sha256:439aca208bb1a46a
   verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/parseSourceSyntax:
+  digest: sha256:06f62047e84146a7
+  verdict: pending
 decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/prettyExpanded:
   digest: sha256:60e62a818961fb14
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/typeCheck:
+  digest: sha256:c97e25a341cb77ac
   verdict: pending
 decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/validType:
   digest: sha256:69ac64bfed92c141

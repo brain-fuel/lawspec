@@ -1,0 +1,48 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node:
+  digest: sha256:dd7b8a68fe8d918d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Address:
+  digest: sha256:dbfdf34df76b4359
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Adopt:
+  digest: sha256:d7cf046015971641
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Cancel:
+  digest: sha256:96ccca28fc7422cf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Close:
+  digest: sha256:0e4595d0c096aa97
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Forward:
+  digest: sha256:69e01e6614d7ba5c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Identity:
+  digest: sha256:7f90510b7555692c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Packet:
+  digest: sha256:2f478d757e9c9abd
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/RegisterHandler:
+  digest: sha256:e6d21f2b82126f0e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/RegisterReceiver:
+  digest: sha256:9e911edf444a6658
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Reply:
+  digest: sha256:b5638395cf9db461
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Request:
+  digest: sha256:6ad57e95f8fbb205
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/RequestAsync:
+  digest: sha256:05a4b65f2294766e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Send:
+  digest: sha256:98fb0c0a09517856
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/class/Node/member/Unregister:
+  digest: sha256:715937c2ea67d2d4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Node.fs/namespace/LawSpec.Runtime/union/Entity:
+  digest: sha256:72399679d51191c1
+  verdict: pending

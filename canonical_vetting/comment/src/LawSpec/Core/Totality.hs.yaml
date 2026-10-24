@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/funct
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/auditDeferring:
   digest: sha256:3996df79e399d796
   verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/auditDeferringWithResults:
+  digest: sha256:2add3eb13bf3bf7f
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/auditWithConstructorContracts:
   digest: sha256:5ec70e48fe6c80e2
   verdict: pending
@@ -40,17 +43,26 @@ decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/funct
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/callResultFacts:
   digest: sha256:ae8c6fabe0035469
   verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/consNew:
+  digest: sha256:89c051b2c10b2f91
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/dataBranches:
   digest: sha256:dff58850b11d53ef
   verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/derivedFacts:
   digest: sha256:98fb893a22ec2f6a
   verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/domainBounds:
+  digest: sha256:87df0ff282009ace
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/expandKnown:
   digest: sha256:78dfe72cd8c85db9
   verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/faithful:
   digest: sha256:32a0a27f6536888b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/finiteItems:
+  digest: sha256:52ee6733dd50542c
   verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/freshElement:
   digest: sha256:48c094e50f4f4af5
@@ -73,6 +85,12 @@ decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/funct
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/normalizeCalls:
   digest: sha256:c7b13fa89668e391
   verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/numericDescent:
+  digest: sha256:29b1d0a40fd6e8a5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/operationLet:
+  digest: sha256:8d42bab7ce53a146
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/payloadPredicate:
   digest: sha256:622f0ffee58658e3
   verdict: pending
@@ -88,11 +106,20 @@ decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/funct
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/siblingFacts:
   digest: sha256:aacee0d709171d5f
   verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/strictLet:
+  digest: sha256:a5483b6e712a4512
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/stripDomains:
   digest: sha256:acd9a09f11838ce8
   verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/substituteProof:
   digest: sha256:b9d36bdbb736ccc1
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/textPredicate:
+  digest: sha256:dcb3318ce484e2f3
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/textPredicates:
+  digest: sha256:3952aa926634ed65
   verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/unfold:
   digest: sha256:f941a231169acea8

@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names:
+  digest: sha256:e081c787eb54b5c6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/camelKeep:
+  digest: sha256:1315311bae83710c
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/dataNames:
+  digest: sha256:47ca59a55c0e6501
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/functionName:
+  digest: sha256:ba8a17c0d0e80b25
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/generatedModule:
+  digest: sha256:cd8408499a10af99
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/handleKey:
+  digest: sha256:d3dd802efcdfad00
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/identifierWords:
+  digest: sha256:e2b1a22f0d48f720
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/localName:
+  digest: sha256:7feef1f9b0238cd7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/localNames:
+  digest: sha256:740be14cd7b128cd
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/testModule:
+  digest: sha256:bd5c448f2105be95
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Names.hs/module/LawSpec.DotNet.Names/function/unitNamespace:
+  digest: sha256:759f4c62c3522595
+  verdict: pending

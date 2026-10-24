@@ -1,0 +1,48 @@
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/enum/PortableData:
+  digest: sha256:d9751960c172bb34
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/enum/PortableData/func/compare:
+  digest: sha256:ccea77b9338a951c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/AnyHandle/func/portableCompare:
+  digest: sha256:2768037157e95f8b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/Double/func/portableCompare:
+  digest: sha256:82b00c1e05e6b7e2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/Either/func/portableCompare:
+  digest: sha256:125355ffb8cf9ef9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/ExactDecimal/func/portableCompare:
+  digest: sha256:0f341e2aff4dc2db
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/Float/func/portableCompare:
+  digest: sha256:82b00c1e05e6b7e2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/Optional/func/portableCompare:
+  digest: sha256:43666b02a067550d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/String/func/portableEqual:
+  digest: sha256:ad543220b2a6c6eb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/Symbol/func/portableCompare:
+  digest: sha256:93f13206f235941f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/extension/Value/func/portableEqual:
+  digest: sha256:5b7cd61e681a347b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/func/order:
+  digest: sha256:8399974ce70d6534
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/protocol/Portable:
+  digest: sha256:6c9e9118eb272e02
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/protocol/Portable/func/portableCompare:
+  digest: sha256:aa8d5a9888eedd54
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/protocol/Portable/func/portableEqual:
+  digest: sha256:15e9b80d1b1272fd
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Portable.swift/protocol/Portable/func/portableHash:
+  digest: sha256:75a5a1a71c2a9f7f
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/python/tools/swift-network-interoperability.py:
+  digest: sha256:47f02d78ad577a89
+  verdict: pending
+decision/python/tools/swift-network-interoperability.py/function/build:
+  digest: sha256:ae4bd2a5cf5783db
+  verdict: pending

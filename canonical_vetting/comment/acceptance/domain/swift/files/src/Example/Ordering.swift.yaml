@@ -1,0 +1,9 @@
+decision/swift/acceptance/domain/swift/files/src/Example/Ordering.swift/extension/Example.Ordering/func/firstLine:
+  digest: sha256:7b569a68bc46202b
+  verdict: pending
+decision/swift/acceptance/domain/swift/files/src/Example/Ordering.swift/extension/Example.Ordering/func/priceOrder:
+  digest: sha256:a197943b30fc3b3c
+  verdict: pending
+decision/swift/acceptance/domain/swift/files/src/Example/Ordering.swift/extension/Example.Ordering/func/validateOrder:
+  digest: sha256:57e3daef8cc7cc14
+  verdict: pending

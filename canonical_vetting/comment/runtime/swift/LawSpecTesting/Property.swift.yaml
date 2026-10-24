@@ -1,0 +1,33 @@
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/boundaries:
+  digest: sha256:f1ab091ae4015bd2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/check:
+  digest: sha256:30b180a6750c93a2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/checkDrawn:
+  digest: sha256:0908bc14da700e57
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/generation:
+  digest: sha256:c687943829725e99
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/generationWith:
+  digest: sha256:d10bdeeddfa38ca2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/isAbort:
+  digest: sha256:3dba7eb1d945f265
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/runSeed:
+  digest: sha256:cfa2818621902416
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/settings:
+  digest: sha256:cbae0178ff8c9e08
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/func/suchThat:
+  digest: sha256:10c1fc0f4e1b758b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/let/maxSize:
+  digest: sha256:2022a29070fff11e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Property.swift/enum/Property/struct/Settings:
+  digest: sha256:2d5f75ccde2a42c6
+  verdict: pending

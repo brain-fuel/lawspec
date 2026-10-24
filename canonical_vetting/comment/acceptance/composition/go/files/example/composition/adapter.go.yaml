@@ -1,0 +1,30 @@
+decision/go/acceptance/composition/go/files/example/composition/adapter.go:
+  digest: sha256:b641af2fd8e8c80f
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/function/CloseStore:
+  digest: sha256:6b8d4c22fcd3c526
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/function/NewLogsHandler:
+  digest: sha256:0c2c1b26e9000e1a
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/function/NewReaderHandler:
+  digest: sha256:4414b404a076463a
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/function/NewWriterHandler:
+  digest: sha256:ad77dcf01c411540
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/function/OpenStore:
+  digest: sha256:53d9a4b06c37afbd
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/type/LogsHandler:
+  digest: sha256:5133176f8273e12a
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/type/ReaderHandler:
+  digest: sha256:44da3fe9be8fbf6b
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/type/WriterHandler:
+  digest: sha256:911c73b84792028a
+  verdict: pending
+decision/go/acceptance/composition/go/files/example/composition/adapter.go/type/logStore:
+  digest: sha256:4e18ca6999a16dd0
+  verdict: pending

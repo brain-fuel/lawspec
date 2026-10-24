@@ -1,0 +1,84 @@
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork:
+  digest: sha256:9cf04f00beaa8290
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/Layer:
+  digest: sha256:a66ae8366c0315d5
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/Layer/method/receive:
+  digest: sha256:87dec4c77502b525
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/Layer/method/retry:
+  digest: sha256:da6bdc162a831813
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/NodeIdentity:
+  digest: sha256:6dca9b0f955917b2
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/NodeIdentity/method/configured:
+  digest: sha256:b6dba165e56eb308
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/NodeIdentity/method/fingerprint:
+  digest: sha256:b8f2cd1defd0d8e8
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/NodeIdentity/method/sign:
+  digest: sha256:9a4b5a00af528933
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/PendingHandshake:
+  digest: sha256:84fd64570c5c14e1
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/Reader:
+  digest: sha256:c7957ac6ba1dd12f
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto:
+  digest: sha256:81b8e5866f0644bf
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/class/Seeded:
+  digest: sha256:5198627baead0e8c
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/method/encapsulate:
+  digest: sha256:a0382a52ad6cf0bb
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/method/kemKeyPair:
+  digest: sha256:d2c9b448d8b7e595
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureCrypto/method/w:
+  digest: sha256:5854a0579e400499
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/SecureSession:
+  digest: sha256:72756ee87cc69f50
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/class/Shake:
+  digest: sha256:5f275ae1945098d5
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/handshakeVector:
+  digest: sha256:19d53967518b929d
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/helloBody:
+  digest: sha256:20140004ccfa3198
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/identity:
+  digest: sha256:e99c5b75716569e0
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/networkConfig:
+  digest: sha256:7359c0a13f692625
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/node:
+  digest: sha256:dc6543abe8624978
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/openFrame:
+  digest: sha256:4d9a2d5f963a735d
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/sealFrame:
+  digest: sha256:896792b64066160f
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/sessionKey:
+  digest: sha256:867ce77f8a816354
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/method/welcomeBody:
+  digest: sha256:3bbfb40ee24f70f1
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/record/Answered:
+  digest: sha256:bc04b0da19434288
+  verdict: pending
+decision/java/runtime/LawSpecNetwork.java/package/lawspec.runtime/class/LawSpecNetwork/record/NetworkConfig:
+  digest: sha256:05e5e47ef352652c
+  verdict: pending

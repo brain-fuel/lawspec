@@ -1,0 +1,12 @@
+decision/swift/runtime/swift/LawSpecRuntime/NetworkCrypto.swift/enum/NetworkRecords/enum/Record:
+  digest: sha256:eb1995650476147d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkCrypto.swift/enum/NetworkRecords/func/sealWith:
+  digest: sha256:8b652f014866600a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkCrypto.swift/enum/NetworkRecords/func/sign:
+  digest: sha256:a2bfb5c61475d3f1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/NetworkCrypto.swift/struct/NodeIdentity:
+  digest: sha256:5182f3ecfb28a926
+  verdict: pending

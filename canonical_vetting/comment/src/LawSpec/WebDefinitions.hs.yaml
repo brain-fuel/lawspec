@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/fun
 decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/definitionCalls:
   digest: sha256:738afdd102920036
   verdict: pending
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/definitionNames:
+  digest: sha256:323988d7739c7067
+  verdict: pending
 decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/emitWebDefinitions:
   digest: sha256:36e7c4360b4e9cf0
   verdict: pending

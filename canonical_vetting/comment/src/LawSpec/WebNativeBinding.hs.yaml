@@ -7,6 +7,3 @@ decision/haskell/src/LawSpec/WebNativeBinding.hs/module/LawSpec.WebNativeBinding
 decision/haskell/src/LawSpec/WebNativeBinding.hs/module/LawSpec.WebNativeBinding/function/generatorStubs:
   digest: sha256:5f92105e61375193
   verdict: pending
-decision/haskell/src/LawSpec/WebNativeBinding.hs/module/LawSpec.WebNativeBinding/function/schemaImport:
-  digest: sha256:d86ba4b0343af970
-  verdict: pending

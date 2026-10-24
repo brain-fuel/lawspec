@@ -1,0 +1,81 @@
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain:
+  digest: sha256:0dba13fbf2c80df8
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/data/Context:
+  digest: sha256:031765e79453a7f5
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/data/NotShape:
+  digest: sha256:55137ee09053d500
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/data/Section:
+  digest: sha256:362f7b93eac7386e
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/data/Terms:
+  digest: sha256:dafdec8f0ecd0b5b
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/devOperator:
+  digest: sha256:69534e63404aad51
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/devProposition:
+  digest: sha256:686e5276193a1a4c
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/engProposition:
+  digest: sha256:b7c09bccd65ae3cf
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/englishName:
+  digest: sha256:95e8721a1960ed14
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/englishProperty:
+  digest: sha256:b0d85faa4f9a9bbb
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/explainResult:
+  digest: sha256:09cb5d9c1189707a
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/explanationText:
+  digest: sha256:2aa94af259edd990
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/jsString:
+  digest: sha256:424bdc45a3ebebcf
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/jsonText:
+  digest: sha256:f79483d69d824399
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/mathProposition:
+  digest: sha256:2bccd46bdb97a51b
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/mentionedCases:
+  digest: sha256:ac01890c27393d11
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/nativeEvidenceText:
+  digest: sha256:0f8fea7fd64ec669
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/parseView:
+  digest: sha256:a0cfd1000af7f8a4
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/quantifier:
+  digest: sha256:d1a6aabecebd4b08
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/restrictionText:
+  digest: sha256:2e62273c081a085f
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/splitLines:
+  digest: sha256:f5aebcaa30695de5
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/storageView:
+  digest: sha256:759587e862856ebb
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/typeName:
+  digest: sha256:940fd02c30ec2c6b
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/unbracket:
+  digest: sha256:317d46fe883607df
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/unionCase:
+  digest: sha256:7f54af9f2456afdd
+  verdict: pending
+decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/valueExpression:
+  digest: sha256:1761b834486175ab
+  verdict: pending
+"decision/haskell/src/LawSpec/Explain.hs/module/LawSpec.Explain/function/words'":
+  digest: sha256:dcc82141be2ddccb
+  verdict: pending

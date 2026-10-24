@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions:
+  digest: sha256:5ae54d4057ddf29c
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/adapterDeclarations:
+  digest: sha256:803c13740e937057
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/adapterUsingLines:
+  digest: sha256:0ad5006c7c4e7318
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/apiModule:
+  digest: sha256:79fa7a534b211593
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/csUnit:
+  digest: sha256:992bfebbea6085d6
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/csUsings:
+  digest: sha256:c1c9936603dd10c1
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/declarationFailure:
+  digest: sha256:091b4b5ea6064d65
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/emitAdapters:
+  digest: sha256:f310a4f925c3bf85
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/emitApi:
+  digest: sha256:a47868be0bdb2558
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/hasModule:
+  digest: sha256:9916a29ccae1e6c0
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/nativeSignature:
+  digest: sha256:5aa7c56941585c5d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/type/Calls:
+  digest: sha256:0338e2d0645aa697
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/type/TypedCall:
+  digest: sha256:3187db55502c5334
+  verdict: pending

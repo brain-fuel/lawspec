@@ -1,0 +1,48 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime:
+  digest: sha256:79ced0b5bde0bf31
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/class/LawSpecException:
+  digest: sha256:dd324aae571bb154
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/class/LawSpecException/member/Within:
+  digest: sha256:23e53f6841d6bb13
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/class/RaisedFailure:
+  digest: sha256:a81f6e12ff80355d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/module/Fail:
+  digest: sha256:ba503475a4d60306
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/module/Fail/function/raiseWith:
+  digest: sha256:2d82704e11c9d54c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/module/Fail/function/require:
+  digest: sha256:2a2c431432352448
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/TypeRef:
+  digest: sha256:98d1ae41cb1eb8c0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value:
+  digest: sha256:39b65827ac6b8a09
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Decimal:
+  digest: sha256:17dfed2ae85d5199
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Handle:
+  digest: sha256:5d0f3044d89090d9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Presence:
+  digest: sha256:29d20262e89abd42
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Ratio:
+  digest: sha256:34ec6fcb4ac7e9c5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Raw:
+  digest: sha256:93f61dbffc31c4d4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Symbol:
+  digest: sha256:9384012b8d00f161
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Values.fs/namespace/LawSpec.Runtime/union/Value/case/Text:
+  digest: sha256:edf48522c6325bd5
+  verdict: pending

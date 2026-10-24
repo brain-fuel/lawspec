@@ -4,3 +4,6 @@ decision/java/acceptance/workflows/java/files/src/main/java/example/Workflows.ja
 decision/java/acceptance/workflows/java/files/src/main/java/example/Workflows.java/package/example/class/Workflows/method/checkStock:
   digest: sha256:7c615bb72a4501a9
   verdict: pending
+decision/java/acceptance/workflows/java/files/src/main/java/example/Workflows.java/package/example/class/Workflows/method/overlapped:
+  digest: sha256:9239407d877b8e47
+  verdict: pending

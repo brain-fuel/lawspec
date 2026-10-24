@@ -1,0 +1,18 @@
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Generator.java/package/lawspec.testing.check/interface/Generator:
+  digest: sha256:1bb8b62a68b1f59c
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Generator.java/package/lawspec.testing.check/interface/Generator/class/CannotSatisfyCondition:
+  digest: sha256:d0b5ae6d5957b04e
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Generator.java/package/lawspec.testing.check/interface/Generator/method/doubles:
+  digest: sha256:2bbcf223c6ce5dc5
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Generator.java/package/lawspec.testing.check/interface/Generator/method/from:
+  digest: sha256:94b4e84a7c8746f4
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Generator.java/package/lawspec.testing.check/interface/Generator/method/generateValue:
+  digest: sha256:41316e74e0abc566
+  verdict: pending
+decision/java/runtime/clojure/java-test/lawspec/testing/check/Generator.java/package/lawspec.testing.check/interface/Generator/method/suchThat:
+  digest: sha256:b19ccad9925b9c29
+  verdict: pending

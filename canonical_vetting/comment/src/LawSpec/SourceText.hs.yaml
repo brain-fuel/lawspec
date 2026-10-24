@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/SourceText.hs/module/LawSpec.SourceText:
+  digest: sha256:0a04b47de96211e7
+  verdict: pending
+decision/haskell/src/LawSpec/SourceText.hs/module/LawSpec.SourceText/function/formatSource:
+  digest: sha256:8d8e79137bdb09c0
+  verdict: pending
+decision/haskell/src/LawSpec/SourceText.hs/module/LawSpec.SourceText/function/utf16Position:
+  digest: sha256:a0a425f498e5b34d
+  verdict: pending

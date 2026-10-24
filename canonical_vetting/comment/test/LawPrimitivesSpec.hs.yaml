@@ -1,0 +1,6 @@
+decision/haskell/test/LawPrimitivesSpec.hs/module/LawPrimitivesSpec:
+  digest: sha256:63e05454a652370d
+  verdict: pending
+decision/haskell/test/LawPrimitivesSpec.hs/module/LawPrimitivesSpec/function/test_lawPrimitivesCheckWhatTheyReadAs:
+  digest: sha256:a43439f70486cf9b
+  verdict: pending

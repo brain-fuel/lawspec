@@ -4,6 +4,9 @@ decision/go/runtime/lawspec_data_strategies.go:
 decision/go/runtime/lawspec_data_strategies.go/function/lsBoundedFilter:
   digest: sha256:23b5a0e4346b1604
   verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/function/lsCanonicalEqSet:
+  digest: sha256:a07823a32ca1addc
+  verdict: pending
 decision/go/runtime/lawspec_data_strategies.go/function/lsCheckCandidate:
   digest: sha256:1cab2801b1652d8d
   verdict: pending

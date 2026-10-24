@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Release.hs/module/LawSpec.Release:
+  digest: sha256:265d6a0348233a07
+  verdict: pending
+decision/haskell/src/LawSpec/Release.hs/module/LawSpec.Release/function/checkResourceReleases:
+  digest: sha256:1001745f42032a98
+  verdict: pending
+decision/haskell/src/LawSpec/Release.hs/module/LawSpec.Release/function/mentions:
+  digest: sha256:4c4f78195f02f690
+  verdict: pending
+decision/haskell/src/LawSpec/Release.hs/module/LawSpec.Release/function/releasing:
+  digest: sha256:2b2f1ab89fa127d9
+  verdict: pending

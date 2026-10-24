@@ -1,0 +1,9 @@
+decision/fsharp/acceptance/failures/fsharp/files/src/Example/Failures.fs/module/Example.Failures/function/gatewayHandler:
+  digest: sha256:9fd3557ad8a20e61
+  verdict: pending
+decision/fsharp/acceptance/failures/fsharp/files/src/Example/Failures.fs/module/Example.Failures/function/refund:
+  digest: sha256:784478b2bc057411
+  verdict: pending
+decision/fsharp/acceptance/failures/fsharp/files/src/Example/Failures.fs/module/Example.Failures/function/settle:
+  digest: sha256:784478b2bc057411
+  verdict: pending

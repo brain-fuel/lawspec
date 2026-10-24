@@ -1,0 +1,6 @@
+decision/clojure/acceptance/distribution/clojure/files/src/example/distribution.clj:
+  digest: sha256:b7ce0c3f532e22bc
+  verdict: pending
+decision/clojure/acceptance/distribution/clojure/files/src/example/distribution.clj/macro/with-nodes:
+  digest: sha256:c99325520a5bbe6c
+  verdict: pending

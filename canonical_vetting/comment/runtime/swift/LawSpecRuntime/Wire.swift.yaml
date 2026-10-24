@@ -1,0 +1,51 @@
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/class/NetworkTimer:
+  digest: sha256:12c7fccfa971cab4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/class/NetworkTimer/func/after:
+  digest: sha256:847b228a317f44eb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/class/NetworkTimer/init/init:
+  digest: sha256:df1dc67e767f893e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/bytesList:
+  digest: sha256:8654d6de3529d3f6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/channel:
+  digest: sha256:686cfba3326c2a67
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/encode:
+  digest: sha256:a0035a2852664853
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/fields:
+  digest: sha256:e2d3f65d803edf5e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/frameTo:
+  digest: sha256:14806244cc2b806f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/hex:
+  digest: sha256:608cfc36b36781d4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/read:
+  digest: sha256:d2cbf1b883be3f8b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/readFields:
+  digest: sha256:d811a49c0271d7be
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/readTextList:
+  digest: sha256:ae993864e6657a65
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/splitAddress:
+  digest: sha256:5ae89cef6036a91a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/texts:
+  digest: sha256:9ddfe2edcba5dc51
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/unhex:
+  digest: sha256:a41e34bec3a55797
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/enum/Wire/func/utf8:
+  digest: sha256:2c1f5ce5f56d8f02
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Wire.swift/struct/Frame:
+  digest: sha256:466f21b9005e91b7
+  verdict: pending

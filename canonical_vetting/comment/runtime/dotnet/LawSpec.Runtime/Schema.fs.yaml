@@ -1,0 +1,72 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema:
+  digest: sha256:59692f9647fc0d7c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/allPayloads:
+  digest: sha256:bb2198361174cc9e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/checkType:
+  digest: sha256:b3776aaa7772fdb6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/construct:
+  digest: sha256:868cada6c2f4c9e0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/constructor:
+  digest: sha256:c9e0f2ca71bcd3f1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/constructors:
+  digest: sha256:457f892e7e67b1fe
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/create:
+  digest: sha256:b3c1fd253b742269
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/definition:
+  digest: sha256:10761da60a8cebca
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/field:
+  digest: sha256:26b5ae1ad4200858
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/fieldTypes:
+  digest: sha256:8c5e98b5e5255767
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/hints:
+  digest: sha256:e80be5928b5c6bd4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/index:
+  digest: sha256:50270cbbdec4ff6c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/known:
+  digest: sha256:d249a23afce59183
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/matchValue:
+  digest: sha256:5665e8812e6265f5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/refinement:
+  digest: sha256:8b785b3c2cd8daf7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/substitute:
+  digest: sha256:314a13a3c113e11d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/validate:
+  digest: sha256:36db49932ea09f35
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/function/witnessInstances:
+  digest: sha256:5ce182798c90e213
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/record/Constructor:
+  digest: sha256:7b5118ee6352e0b9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/record/Constructor/field/Generators:
+  digest: sha256:19f55de5a0d120b7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/record/FieldHints:
+  digest: sha256:e951e2a2096d12cf
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/record/Schema/field/EffectPath:
+  digest: sha256:096c8a8746fb1027
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/record/Schema/field/Handlers:
+  digest: sha256:5e7186e247b2d943
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Schema.fs/module/LawSpec.Runtime.Schema/record/Schema/field/Scope:
+  digest: sha256:aab0c5ce7a343ddb
+  verdict: pending

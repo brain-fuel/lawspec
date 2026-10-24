@@ -1,0 +1,66 @@
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming:
+  digest: sha256:1586785c72016b19
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/data/Casing:
+  digest: sha256:a796f4661fac81af
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/data/NameKind:
+  digest: sha256:bf01ffc7d11c5d4f
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/boundaryTestSuffix:
+  digest: sha256:e7967e1bf62491e1
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/cased:
+  digest: sha256:26fc8feed5f1cfc0
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/casingFor:
+  digest: sha256:82c4da1dbea4d3be
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/claim:
+  digest: sha256:0db3f14db0f9c527
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/claimAll:
+  digest: sha256:afaab5892cb97ab3
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/displayLabel:
+  digest: sha256:0d40aa0e15f698df
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/escapeKeyword:
+  digest: sha256:6ae07249ee1bfb10
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/exampleTestSuffix:
+  digest: sha256:d76acde89b7ab196
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/localIdentifier:
+  digest: sha256:96224e78f2bd6c6a
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/nameWords:
+  digest: sha256:84a09a391e726bf0
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/nativeIdentifier:
+  digest: sha256:6adcb7c9951763f4
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/readableDefinitionName:
+  digest: sha256:3e30c4be946854ab
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/reservedFor:
+  digest: sha256:863c36029dc3e6dc
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/scopeWith:
+  digest: sha256:6db60b51037099ed
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/sourceDefinitionName:
+  digest: sha256:f07b7b89145ced05
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/testName:
+  digest: sha256:43d3b012242703d9
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/typeWords:
+  digest: sha256:753e6d1a2fc6a015
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/function/uniqueNames:
+  digest: sha256:ac6fc1ed60cad867
+  verdict: pending
+decision/haskell/src/LawSpec/Naming.hs/module/LawSpec.Naming/newtype/Scope:
+  digest: sha256:303ce69fc0597ec9
+  verdict: pending

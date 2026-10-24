@@ -1,0 +1,60 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/class/RuntimeNetworkCrypto:
+  digest: sha256:fbd3c9b0c202356a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/class/SecureLayer:
+  digest: sha256:68b61dc49ee7349a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/class/SecureLayer/member/Fingerprint:
+  digest: sha256:4271314fb7b502d3
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/class/SecureLayer/member/Send:
+  digest: sha256:a39d42b79b869d7c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/interface/INetworkCrypto:
+  digest: sha256:7d54f213b0478c69
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/interface/INetworkCrypto/member/AesGcmDecrypt:
+  digest: sha256:3273c639e2ed869c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/interface/INetworkCrypto/member/AesGcmEncrypt:
+  digest: sha256:47bda362ec9f83db
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/interface/INetworkCrypto/member/MlDsaPublic:
+  digest: sha256:afd07c155d2d7fd7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/interface/INetworkCrypto/member/MlKemEncapsulate:
+  digest: sha256:39754660ec879ef1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/interface/INetworkCrypto/member/MlKemKeypair:
+  digest: sha256:69ccf7dd699b1712
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/NetworkConfig:
+  digest: sha256:0ef73610af838915
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/NetworkConfig/function/resolve:
+  digest: sha256:9d967c5826703986
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/NetworkRecords:
+  digest: sha256:ec0435cbd0fcbda4
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/NetworkRecords/function/sealWith:
+  digest: sha256:8b652f014866600a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/NetworkRecords/union/Record:
+  digest: sha256:eb1995650476147d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/SecureNetwork:
+  digest: sha256:449d00f31218be7a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/module/SecureNetwork/function/install:
+  digest: sha256:2cdbd17f913c7444
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/record/NetworkOptions:
+  digest: sha256:7442bd726f44ae7f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/record/NetworkOptions/field/TrustGiven:
+  digest: sha256:b7a53bbf67ca997f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs/namespace/LawSpec.Runtime/record/NodeIdentity:
+  digest: sha256:5182f3ecfb28a926
+  verdict: pending

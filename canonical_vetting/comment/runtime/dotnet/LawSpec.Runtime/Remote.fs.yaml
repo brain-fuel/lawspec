@@ -1,0 +1,33 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/class/RemoteClient:
+  digest: sha256:1d7c46afd871bd4c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote:
+  digest: sha256:dd848676dbcc294d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/abbreviation/DefinitionSignature:
+  digest: sha256:b12d4e00ef65d831
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/call:
+  digest: sha256:65b0a3121c84ee3a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/connect:
+  digest: sha256:95334a8ed4931959
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/definitionDigest:
+  digest: sha256:186db62e8c681ae6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/definitionInvokers:
+  digest: sha256:70f2fd51f602f57e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/evaluateDefinition:
+  digest: sha256:a49d4bd86721e46c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/serve:
+  digest: sha256:2c90d14784ddd87e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/module/Remote/function/serveDefinitions:
+  digest: sha256:964fd44c8f60a0e9
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Remote.fs/namespace/LawSpec.Runtime/record/RemoteEntry:
+  digest: sha256:b7395f972349bade
+  verdict: pending

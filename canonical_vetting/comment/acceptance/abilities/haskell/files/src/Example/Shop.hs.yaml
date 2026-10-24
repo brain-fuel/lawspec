@@ -1,0 +1,12 @@
+decision/haskell/acceptance/abilities/haskell/files/src/Example/Shop.hs/module/Example.Shop/function/logHandler:
+  digest: sha256:9b566b5169132773
+  verdict: pending
+decision/haskell/acceptance/abilities/haskell/files/src/Example/Shop.hs/module/Example.Shop/function/meterHandler:
+  digest: sha256:6e1e8fcfec8fdcad
+  verdict: pending
+decision/haskell/acceptance/abilities/haskell/files/src/Example/Shop.hs/module/Example.Shop/function/storeInt32Handler:
+  digest: sha256:bac643f0a8ee27c9
+  verdict: pending
+decision/haskell/acceptance/abilities/haskell/files/src/Example/Shop.hs/module/Example.Shop/function/storeTextHandler:
+  digest: sha256:c59faa060b3c1f8b
+  verdict: pending

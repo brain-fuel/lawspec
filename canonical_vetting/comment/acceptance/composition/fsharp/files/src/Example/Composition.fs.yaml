@@ -1,0 +1,12 @@
+decision/fsharp/acceptance/composition/fsharp/files/src/Example/Composition.fs/module/Example.Composition/class/LogStore:
+  digest: sha256:c605c069c9ba7da4
+  verdict: pending
+decision/fsharp/acceptance/composition/fsharp/files/src/Example/Composition.fs/module/Example.Composition/function/logsHandler:
+  digest: sha256:06c84987e093876b
+  verdict: pending
+decision/fsharp/acceptance/composition/fsharp/files/src/Example/Composition.fs/module/Example.Composition/function/readerHandler:
+  digest: sha256:5a7e9604e8c13c6d
+  verdict: pending
+decision/fsharp/acceptance/composition/fsharp/files/src/Example/Composition.fs/module/Example.Composition/function/writerHandler:
+  digest: sha256:6e62a9081fd552d2
+  verdict: pending

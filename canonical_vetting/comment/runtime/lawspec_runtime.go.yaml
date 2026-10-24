@@ -1,6 +1,12 @@
 decision/go/runtime/lawspec_runtime.go:
   digest: sha256:6ebec6977dfc83d6
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/const/lsClockAbility:
+  digest: sha256:4f32b1ee613518e6
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/const/lsHandlersKey:
+  digest: sha256:3324583973a3dd26
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/LawSpecAcceptEnd:
   digest: sha256:cfe8b15e0b173315
   verdict: pending
@@ -28,6 +34,12 @@ decision/go/runtime/lawspec_runtime.go/function/LawSpecGo:
 decision/go/runtime/lawspec_runtime.go/function/LawSpecNewChannel:
   digest: sha256:4b6a9e30b6ac8da7
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/LawSpecNodeTrusting:
+  digest: sha256:8ffa69ad6921ff6e
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/LawSpecNodeWithIdentity:
+  digest: sha256:298e3d84640510ca
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/LawSpecOfferEnd:
   digest: sha256:9957faaa5db50490
   verdict: pending
@@ -36,6 +48,12 @@ decision/go/runtime/lawspec_runtime.go/function/LawSpecOpenEnds:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/LawSpecPar:
   digest: sha256:ca3832e987ed7a6b
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/LawSpecRegisterClockAbility:
+  digest: sha256:746e42728df746ac
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/LawSpecSecureToken:
+  digest: sha256:31ff573734d237d5
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/LawSpecShrunk:
   digest: sha256:64efb926322ce776
@@ -60,6 +78,9 @@ decision/go/runtime/lawspec_runtime.go/function/LawSpecWireEncoded:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/LawSpecWireRoundTrips:
   digest: sha256:15fe1fec4238f1a6
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/LsRegexMatches:
+  digest: sha256:51f471997ceffa07
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/NewLawSpecActor:
   digest: sha256:26b4c8616a0a4bc3
@@ -87,6 +108,12 @@ decision/go/runtime/lawspec_runtime.go/function/NewLawSpecTcpTransport:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/NewLawSpecWorkflowRuntime:
   digest: sha256:58f078f8b95ce836
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsAbilityClockOf:
+  digest: sha256:b10fef7746f25a45
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsAcquireResource:
+  digest: sha256:c343e2743feb0833
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsActorMachine:
   digest: sha256:43bcaa009baa1af2
@@ -118,8 +145,17 @@ decision/go/runtime/lawspec_runtime.go/function/lsBelowCount:
 decision/go/runtime/lawspec_runtime.go/function/lsBinary:
   digest: sha256:5a9be6eb43a04ec7
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsChar:
+  digest: sha256:d72dea8ae0ba80d2
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsClamp:
   digest: sha256:90b555b45bbd92e4
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsClockIsVirtual:
+  digest: sha256:1862ea0fe779ba49
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsCodePointsText:
+  digest: sha256:2f19db482942627d
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsCompareValues:
   digest: sha256:984d5c91b1aa3e33
@@ -130,14 +166,26 @@ decision/go/runtime/lawspec_runtime.go/function/lsConcurrently:
 decision/go/runtime/lawspec_runtime.go/function/lsConvert:
   digest: sha256:3afb7b0d7e61032e
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsDifference:
+  digest: sha256:2b432bd8161fd2c8
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsDuration:
   digest: sha256:bfc3f8b8fac0da4d
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsEqual:
   digest: sha256:0e641967d6662fc5
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsErrorAs:
+  digest: sha256:4997fb9e756b1821
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsEvaluate:
+  digest: sha256:7f48308e2e5f8c4a
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsFlipSteps:
   digest: sha256:875ed305e7726c77
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsFreePort:
+  digest: sha256:53174ce0c328a0e1
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsHandleLabel:
   digest: sha256:45cf7f758cc1be01
@@ -151,8 +199,14 @@ decision/go/runtime/lawspec_runtime.go/function/lsInt64Bytes:
 decision/go/runtime/lawspec_runtime.go/function/lsJittered:
   digest: sha256:9de252350f3fcba8
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsNativeFailures:
+  digest: sha256:cf0291d57d42a988
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsNetEnd:
   digest: sha256:914f51607fcd255f
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsPairFields:
+  digest: sha256:0ff32c31e9ba588a
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsPassGate:
   digest: sha256:dae8a0bbd6a23a7c
@@ -165,6 +219,15 @@ decision/go/runtime/lawspec_runtime.go/function/lsPositionsKey:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsReadDescriptor:
   digest: sha256:5930b3c490527d41
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsRecordedRoot:
+  digest: sha256:60b822c4b4602343
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsRecordedText:
+  digest: sha256:876afb50e508ba8e
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsReleaseShared:
+  digest: sha256:ff11cd4aaa422f77
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsRender:
   digest: sha256:05b3a952e023b076
@@ -196,6 +259,15 @@ decision/go/runtime/lawspec_runtime.go/function/lsScenarioSends:
 decision/go/runtime/lawspec_runtime.go/function/lsScoped:
   digest: sha256:c0be692a4d629659
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsSearchNumber:
+  digest: sha256:d2bd7899312bca0a
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsSequenceHelper:
+  digest: sha256:b10d56793345dbc1
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsShare:
+  digest: sha256:df824f3779046abc
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsSplice:
   digest: sha256:8572bc4150915189
   verdict: pending
@@ -205,14 +277,38 @@ decision/go/runtime/lawspec_runtime.go/function/lsSplitAddress:
 decision/go/runtime/lawspec_runtime.go/function/lsStepModel:
   digest: sha256:c676bd813de5f29f
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsText:
+  digest: sha256:1a0eb85af9967616
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsTimedOut:
+  digest: sha256:d619ae6ed8569eeb
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsValidate:
   digest: sha256:16dafab08ecb79e8
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsValuesFrom:
   digest: sha256:957643fd7265314e
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsVirtualHedge:
+  digest: sha256:4ee695d155eac87c
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsVirtuallyScoped:
+  digest: sha256:aa62547e66a56d91
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsWithHandlers:
+  digest: sha256:94c6fd05f9bf5dd9
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsWorkflowRuntime:
+  digest: sha256:0f4302a745851afb
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/group/0:
   digest: sha256:091d26ca74095778
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/group/1:
+  digest: sha256:6aa5c6ca0556d7a0
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/group/2:
+  digest: sha256:c7a214fc631cd9aa
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/group/3:
   digest: sha256:e7d1f219f0c62ca4
@@ -228,6 +324,9 @@ decision/go/runtime/lawspec_runtime.go/method/Address#4:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/Address#5:
   digest: sha256:e43b7b7c847a56e2
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/All:
+  digest: sha256:6efa38f4d3b54605
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/Await:
   digest: sha256:643f42abb86d6989
@@ -271,6 +370,12 @@ decision/go/runtime/lawspec_runtime.go/method/HandOver:
 decision/go/runtime/lawspec_runtime.go/method/Heal:
   digest: sha256:872743679930cf51
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/Identity:
+  digest: sha256:47beff48568a9ba6
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/InsecureTransportForTests:
+  digest: sha256:328afeea7bdda72f
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/Join:
   digest: sha256:dd7b45690c19fa6e
   verdict: pending
@@ -295,6 +400,9 @@ decision/go/runtime/lawspec_runtime.go/method/Next:
 decision/go/runtime/lawspec_runtime.go/method/Partition:
   digest: sha256:9128dfc01f30aedc
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/Pause:
+  digest: sha256:a45d1a94cb95b55c
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/Receive#2:
   digest: sha256:52a66d579dda35df
   verdict: pending
@@ -306,6 +414,15 @@ decision/go/runtime/lawspec_runtime.go/method/Receive#4:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/ReceiveWithin:
   digest: sha256:de0a6ebe3498c017
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/ReceiveWithin#2:
+  digest: sha256:de0a6ebe3498c017
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/Record:
+  digest: sha256:a7de5b4ba79b725f
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/Recorded:
+  digest: sha256:79dd15af53812030
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/RemoteActor:
   digest: sha256:c63cedf67912b048
@@ -334,6 +451,9 @@ decision/go/runtime/lawspec_runtime.go/method/Serve:
 decision/go/runtime/lawspec_runtime.go/method/ServeDefinitions:
   digest: sha256:390e23cedaf45369
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/Spawn:
+  digest: sha256:22648e167bbc1f83
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/State:
   digest: sha256:e65911983bd463c2
   verdict: pending
@@ -342,6 +462,9 @@ decision/go/runtime/lawspec_runtime.go/method/Stop:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/Stop#2:
   digest: sha256:f91e15c8fbddc9e8
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/String#2:
+  digest: sha256:289404431de40cb3
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/SuperviseActor:
   digest: sha256:0c8d731d3254090c
@@ -357,6 +480,12 @@ decision/go/runtime/lawspec_runtime.go/method/Transport:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/TryReceive:
   digest: sha256:a3877da544a0583c
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/Wait:
+  digest: sha256:a1016bdc7765fc83
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/arrive:
+  digest: sha256:8351a308a9599dcc
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/base:
   digest: sha256:5bcefc3d060b3f9e
@@ -433,6 +562,9 @@ decision/go/runtime/lawspec_runtime.go/method/restartLater#2:
 decision/go/runtime/lawspec_runtime.go/method/restarting:
   digest: sha256:06f7f7df0770ba84
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/searchMoves:
+  digest: sha256:a8cbc9d804c90ec8
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/send:
   digest: sha256:5d4ab47fe2ff19b7
   verdict: pending
@@ -451,8 +583,14 @@ decision/go/runtime/lawspec_runtime.go/method/simulateState:
 decision/go/runtime/lawspec_runtime.go/method/startState:
   digest: sha256:e395700bc5d39916
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/take:
+  digest: sha256:301a529d71a0bf79
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/takeOver:
   digest: sha256:558dbaa37bb79ce7
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/method/transmit:
+  digest: sha256:ab77dd55229ac03f
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/typeOf:
   digest: sha256:7f5afdf26d3b59d1
@@ -472,6 +610,9 @@ decision/go/runtime/lawspec_runtime.go/type/LawSpecActorHandler:
 decision/go/runtime/lawspec_runtime.go/type/LawSpecBigInt:
   digest: sha256:9e83929b087eba76
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecCall:
+  digest: sha256:8da2df14fb279d1c
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecClock:
   digest: sha256:5c48d44cc2ea34cc
   verdict: pending
@@ -487,6 +628,15 @@ decision/go/runtime/lawspec_runtime.go/type/LawSpecEnd:
 decision/go/runtime/lawspec_runtime.go/type/LawSpecExit:
   digest: sha256:cccff6a2ebd9c79d
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecFail:
+  digest: sha256:e104461e1757a81f
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecFailure:
+  digest: sha256:2dfebaedfdd6d817
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecInsecureMemoryTransport:
+  digest: sha256:26711bb51bb88b4b
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecMailbox:
   digest: sha256:f7e77be841cd51a7
   verdict: pending
@@ -496,11 +646,17 @@ decision/go/runtime/lawspec_runtime.go/type/LawSpecMaybe:
 decision/go/runtime/lawspec_runtime.go/type/LawSpecMemoryNetwork:
   digest: sha256:d8d31655a37b029a
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecMemoryNetwork/field/recording:
+  digest: sha256:af5f0fb00067372e
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecModel:
   digest: sha256:a9aa580488a1d931
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecModelCallback:
   digest: sha256:29746553288ee9a1
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecNativeAsync:
+  digest: sha256:f8a3233cd4f6a901
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecNetEndpoint:
   digest: sha256:3079592a6b8e3c3b
@@ -513,6 +669,12 @@ decision/go/runtime/lawspec_runtime.go/type/LawSpecNetTransport:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecNode:
   digest: sha256:cf88a386da07ce6f
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecNode/field/secure:
+  digest: sha256:82c2f35ff57ee5c6
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecNodeOption:
+  digest: sha256:0b1c802e8059c33f
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecNullable:
   digest: sha256:b7873a4d7995b8ae
@@ -540,6 +702,9 @@ decision/go/runtime/lawspec_runtime.go/type/LawSpecRemoteHandler:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecRemoteMailbox:
   digest: sha256:b6a35baaf465eb47
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/LawSpecSearchCase:
+  digest: sha256:31abe5878d0fd7ca
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/LawSpecSignature:
   digest: sha256:0112f5a52ce07000
@@ -586,11 +751,20 @@ decision/go/runtime/lawspec_runtime.go/type/LawSpecWorkflowRuntime/field/hedge:
 decision/go/runtime/lawspec_runtime.go/type/lawSpecAbandoned:
   digest: sha256:4f607634c113123b
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecAbilityClock:
+  digest: sha256:b7052eeb2d2ff180
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecCall:
   digest: sha256:20f2fc85073e4883
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecChild:
   digest: sha256:d69c6320c664278c
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecClockReader:
+  digest: sha256:7779a098afc1243d
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecClockView:
+  digest: sha256:22ce2fa08ac43bcb
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecEnd:
   digest: sha256:ff851eca1cec6879
@@ -631,6 +805,9 @@ decision/go/runtime/lawspec_runtime.go/type/lawSpecNativeTransport:
 decision/go/runtime/lawspec_runtime.go/type/lawSpecNetScenarioChannel:
   digest: sha256:8d961f70e134ce78
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecNodeOptions/field/trusted:
+  digest: sha256:1c80d598290e38ee
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecQuoted:
   digest: sha256:691a31daa504eecd
   verdict: pending
@@ -652,6 +829,9 @@ decision/go/runtime/lawspec_runtime.go/type/lawSpecScenarioChannel/method/receiv
 decision/go/runtime/lawspec_runtime.go/type/lawSpecScenarioMailbox:
   digest: sha256:7b750406dff8fb62
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecSecureChannel:
+  digest: sha256:99d70de8932257e4
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecSessionChannel:
   digest: sha256:7a90da184b703e6f
   verdict: pending
@@ -663,6 +843,12 @@ decision/go/runtime/lawspec_runtime.go/type/lawSpecStagePolicy/field/Compensate:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecStagePolicy/field/Fail:
   digest: sha256:9173fb2fad4609e1
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecSymbol/field/clockView:
+  digest: sha256:f3a054cce1e7e6cb
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lawSpecSymbol/field/handlers:
+  digest: sha256:d571a095a4f2ac4e
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecSymbol/field/workflow:
   digest: sha256:1159216983e3f4a0
@@ -676,8 +862,17 @@ decision/go/runtime/lawspec_runtime.go/type/lawSpecTimedOut:
 decision/go/runtime/lawspec_runtime.go/type/lawSpecValues:
   digest: sha256:3b94fc3dd35e2872
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lsRegexItem:
+  digest: sha256:2cd7a79f88c2f125
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lsSharedEntry:
+  digest: sha256:0d37ad47419fffbb
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/var/LawSpecActorStopped:
   digest: sha256:12c8492d62cbd7e4
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/var/LawSpecAsync:
+  digest: sha256:4d157af26029b572
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/var/LawSpecPeerFailed:
   digest: sha256:7cefba94ae55801b
@@ -685,6 +880,12 @@ decision/go/runtime/lawspec_runtime.go/var/LawSpecPeerFailed:
 decision/go/runtime/lawspec_runtime.go/var/LawSpecUnreachable:
   digest: sha256:f2a1e6843b74c752
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/var/lsClockLock:
+  digest: sha256:5f39880f4029f095
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/var/lsConsistent:
   digest: sha256:a6c1a5c95539ac2e
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/var/lsSecureNetwork:
+  digest: sha256:26ff5aed58a7929b
   verdict: pending

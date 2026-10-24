@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift:
+  digest: sha256:690a1b3d37c2e2ae
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/data/Position:
+  digest: sha256:c3f3ff6ac58a7b35
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/data/Sink:
+  digest: sha256:c361297b916f4bdb
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/binaryDoc:
+  digest: sha256:0bf52082ff7976f1
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/cexpr:
+  digest: sha256:bb78655ae813c512
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/construct:
+  digest: sha256:4ca2dbac0aa2c561
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/exact:
+  digest: sha256:7b4f50fb2d9e3f64
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/fresh:
+  digest: sha256:2a522c41f0e9b1aa
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/ifOpening:
+  digest: sha256:aa1f6fe8479327c7
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/listItems:
+  digest: sha256:d7902e0906a66603
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/narrow:
+  digest: sha256:08efb8448184a8c1
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/receiver:
+  digest: sha256:34aee77f591456b5
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/statements:
+  digest: sha256:2ceb30d1f07d1b48
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/swiftTypedDeclarations:
+  digest: sha256:3461e392c51d676c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/unwrapped:
+  digest: sha256:f402a5c65bcc05ce
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/type/M:
+  digest: sha256:5d562e38751003d6
+  verdict: pending

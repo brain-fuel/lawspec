@@ -1,0 +1,84 @@
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/class/Cell:
+  digest: sha256:b382af1cbb29c53c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/class/Cell/func/update:
+  digest: sha256:f00d3f7aca1a568d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/class/Log:
+  digest: sha256:20d2f295aaac53c3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/class/Scope:
+  digest: sha256:56c2a1749e8b3cb4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/attempt:
+  digest: sha256:bb74f3f6772064b3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/countCalls:
+  digest: sha256:8cb4a0a170fc7704
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/handler:
+  digest: sha256:ab43d29efa2c09a1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/handlerState:
+  digest: sha256:c943cbd77413a86f
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/install:
+  digest: sha256:50f55c5fc86e7c8c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/invoke:
+  digest: sha256:e2b16dda2d657526
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/mapError:
+  digest: sha256:a794a7545f48a1b2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/nativeFailures:
+  digest: sha256:c243f152c967dc0d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/nativeTry:
+  digest: sha256:4389c6ea2de37134
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/ofThrown:
+  digest: sha256:932f293a6b18f3a4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/ofThrownAsync:
+  digest: sha256:8e9c798faef23fec
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/perform:
+  digest: sha256:7266ac563fa037cf
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/raiseFailure:
+  digest: sha256:b474a540f0415bea
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/recording:
+  digest: sha256:f4bfaf0699209b9b
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/recover:
+  digest: sha256:9fac74251aad1c20
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/resourceRequired:
+  digest: sha256:7e82053716871e99
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/setHandlerState:
+  digest: sha256:43d075b1791a3dcb
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/shared:
+  digest: sha256:c70723f2e80111a6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/stateful:
+  digest: sha256:88659faca64b5457
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/stateless:
+  digest: sha256:792174541eed0761
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/func/withScope:
+  digest: sha256:dbaad4167c08cfc8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/protocol/Origin:
+  digest: sha256:7ceece62b703345a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/typealias/Clause:
+  digest: sha256:31277bfb18266a06
+  verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Effects.swift/enum/Effects/typealias/StatefulClause:
+  digest: sha256:1c5120bb48496ea8
+  verdict: pending

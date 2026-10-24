@@ -1,0 +1,18 @@
+decision/haskell/runtime/LawSpecFast.hs/module/LawSpecFast:
+  digest: sha256:9e9c71645c2ddf6a
+  verdict: pending
+decision/haskell/runtime/LawSpecFast.hs/module/LawSpecFast/data/List:
+  digest: sha256:9abd89fde0f5609d
+  verdict: pending
+decision/haskell/runtime/LawSpecFast.hs/module/LawSpecFast/function/attempt:
+  digest: sha256:436e1a472919d267
+  verdict: pending
+decision/haskell/runtime/LawSpecFast.hs/module/LawSpecFast/function/narrow:
+  digest: sha256:326104d5f1104d15
+  verdict: pending
+decision/haskell/runtime/LawSpecFast.hs/module/LawSpecFast/function/onlyField:
+  digest: sha256:bf44e1e92baa9535
+  verdict: pending
+decision/haskell/runtime/LawSpecFast.hs/module/LawSpecFast/function/performing:
+  digest: sha256:e920db74d265689b
+  verdict: pending

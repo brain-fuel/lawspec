@@ -1,0 +1,48 @@
+decision/python/runtime/lawspec_prolog.py:
+  digest: sha256:e4ed8922e280a757
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/class/Handler:
+  digest: sha256:5e4c2d08ceb8c696
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/class/Incomplete:
+  digest: sha256:5d8fc7303d0fe777
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/class/NativeFailure:
+  digest: sha256:077b4763d5c5e69d
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/class/Production:
+  digest: sha256:ca2be0e2b8c832ca
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/class/_PrologState:
+  digest: sha256:e6b26e7df06c786d
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/_intern_native_handle:
+  digest: sha256:5e4a44ec1479603d
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/_query_once:
+  digest: sha256:26a474851a23cb68
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/call:
+  digest: sha256:850146129eb73129
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/call_async:
+  digest: sha256:20194ad9969dc9c0
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/generator_factory:
+  digest: sha256:950d890b463a379d
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/invoke:
+  digest: sha256:4dedc6ed2ad9af74
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/load_module:
+  digest: sha256:98dcda66bbefeee7
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/native_handle:
+  digest: sha256:70bddbb1f16967be
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/pack:
+  digest: sha256:99255c45875c24a5
+  verdict: pending
+decision/python/runtime/lawspec_prolog.py/function/unpack:
+  digest: sha256:e9cd83d45c20e50e
+  verdict: pending

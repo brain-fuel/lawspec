@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go:
   digest: sha256:031a9442b509e27c
   verdict: pending
+decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go/function/aligned:
+  digest: sha256:7d61902fd1449cfb
+  verdict: pending
 decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go/function/emit:
   digest: sha256:72d44dea6ca36b9f
   verdict: pending

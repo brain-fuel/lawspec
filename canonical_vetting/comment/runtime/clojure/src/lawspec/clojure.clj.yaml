@@ -1,0 +1,18 @@
+decision/clojure/runtime/clojure/src/lawspec/clojure.clj:
+  digest: sha256:09206507e6e1ba8b
+  verdict: pending
+"decision/clojure/runtime/clojure/src/lawspec/clojure.clj/function/->clojure":
+  digest: sha256:456ed7eb2c1197bf
+  verdict: pending
+decision/clojure/runtime/clojure/src/lawspec/clojure.clj/function/definition:
+  digest: sha256:5bba7fd6cf2c0a19
+  verdict: pending
+decision/clojure/runtime/clojure/src/lawspec/clojure.clj/function/fail:
+  digest: sha256:c4676dce725c1f04
+  verdict: pending
+decision/clojure/runtime/clojure/src/lawspec/clojure.clj/function/op:
+  digest: sha256:86aabf239e38db80
+  verdict: pending
+decision/clojure/runtime/clojure/src/lawspec/clojure.clj/function/tag:
+  digest: sha256:cde1b71e1bbfe190
+  verdict: pending

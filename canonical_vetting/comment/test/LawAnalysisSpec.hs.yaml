@@ -1,0 +1,12 @@
+decision/haskell/test/LawAnalysisSpec.hs/module/LawAnalysisSpec:
+  digest: sha256:572f3388eda3cdc5
+  verdict: pending
+decision/haskell/test/LawAnalysisSpec.hs/module/LawAnalysisSpec/function/of_:
+  digest: sha256:af9f133c02f290cf
+  verdict: pending
+decision/haskell/test/LawAnalysisSpec.hs/module/LawAnalysisSpec/function/proved:
+  digest: sha256:705becf5946e5039
+  verdict: pending
+decision/haskell/test/LawAnalysisSpec.hs/module/LawAnalysisSpec/function/row:
+  digest: sha256:1e306e72b0f00dcf
+  verdict: pending

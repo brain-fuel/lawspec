@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/HaskellUnicodeAge.hs/module/LawSpec.HaskellUnicodeAge:
+  digest: sha256:250061567b3732c9
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellUnicodeAge.hs/module/LawSpec.HaskellUnicodeAge/function/newerThanGhc:
+  digest: sha256:5e86811dec76f18b
+  verdict: pending

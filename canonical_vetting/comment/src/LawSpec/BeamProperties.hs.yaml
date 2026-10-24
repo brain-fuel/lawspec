@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties:
+  digest: sha256:3d2bf0cc74d3347a
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/bracketResources:
+  digest: sha256:6867ba1fabc4c395
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/caseDescriptions:
+  digest: sha256:396fab2b50d3a70d
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/caseFunction:
+  digest: sha256:21bfafe83da5377d
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/caseSuffixes:
+  digest: sha256:443f962ababc0ab6
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/propertyLink:
+  digest: sha256:310e3ab635f19920
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/propositionLocation:
+  digest: sha256:0a54c0c408f74c4d
+  verdict: pending
+decision/haskell/src/LawSpec/BeamProperties.hs/module/LawSpec.BeamProperties/function/runnerGuard:
+  digest: sha256:e34d3796f9752110
+  verdict: pending

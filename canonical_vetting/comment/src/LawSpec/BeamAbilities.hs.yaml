@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities:
+  digest: sha256:52160b16d15eb9bf
+  verdict: pending
+decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities/function/argumentNames:
+  digest: sha256:46642ef40ee276ab
+  verdict: pending
+decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities/function/failingOperations:
+  digest: sha256:9a68f1835ed546d9
+  verdict: pending
+decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities/function/tryName:
+  digest: sha256:8223f2cb4fe17a66
+  verdict: pending

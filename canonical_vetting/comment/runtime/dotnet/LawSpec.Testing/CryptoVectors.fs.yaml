@@ -1,0 +1,6 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/CryptoVectors.fs/module/LawSpec.Testing.CryptoVectors:
+  digest: sha256:673d72c8267b2aaa
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/CryptoVectors.fs/module/LawSpec.Testing.CryptoVectors/function/check:
+  digest: sha256:c8abbf6de6660494
+  verdict: pending

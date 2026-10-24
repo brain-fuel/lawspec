@@ -1,0 +1,33 @@
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala:
+  digest: sha256:d14f68f0956a4133
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/class/Symbol:
+  digest: sha256:4e61e27ea5253031
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/orFail:
+  digest: sha256:cd45865d17da07cb
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/def/symbols:
+  digest: sha256:fff3c62abdb2e1b2
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/enum/Nullable:
+  digest: sha256:66663f532bb0a69f
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/enum/Optional:
+  digest: sha256:602c3e9a2e7ca21e
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/object/Null:
+  digest: sha256:847e5227d1d58172
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/object/Undefined:
+  digest: sha256:e05503197bed3a8a
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/type/Null:
+  digest: sha256:8262338491dd4dd3
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/type/Symbols:
+  digest: sha256:23149d86dd3c53a0
+  verdict: pending
+decision/scala/runtime/LawSpecScala.scala/object/LawSpecScala/type/Undefined:
+  digest: sha256:ecaf234c9db51f5d
+  verdict: pending

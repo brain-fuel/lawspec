@@ -1,0 +1,12 @@
+decision/rust/acceptance/composition/rust/files/src/example/composition.rs:
+  digest: sha256:32a3715dccf5df20
+  verdict: pending
+decision/rust/acceptance/composition/rust/files/src/example/composition.rs/struct/LogsHandler:
+  digest: sha256:06c84987e093876b
+  verdict: pending
+decision/rust/acceptance/composition/rust/files/src/example/composition.rs/struct/ReaderHandler:
+  digest: sha256:5a7e9604e8c13c6d
+  verdict: pending
+decision/rust/acceptance/composition/rust/files/src/example/composition.rs/struct/WriterHandler:
+  digest: sha256:6e62a9081fd552d2
+  verdict: pending

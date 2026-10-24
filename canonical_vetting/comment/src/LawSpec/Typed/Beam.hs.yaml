@@ -1,0 +1,96 @@
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam:
+  digest: sha256:b4ab685fe509ec03
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/data/Crossing:
+  digest: sha256:165013ce7f0e6423
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/beamTypedDeclarations:
+  digest: sha256:a80492b4eda28f49
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/caseDoc:
+  digest: sha256:66afc08113234c0c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/cexpr:
+  digest: sha256:68ac672795ebd660
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/compareCall:
+  digest: sha256:8ac3a8a8257041ae
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/compareClauses:
+  digest: sha256:b52643763d1cd8ef
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/conConstruct:
+  digest: sha256:590e0bfce2f23f56
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/conPattern:
+  digest: sha256:93baec6bc4f8cc76
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/construct:
+  digest: sha256:4ca2dbac0aa2c561
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/conversionClauses:
+  digest: sha256:4b6b002a14aa0a88
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/convertInteger:
+  digest: sha256:8c360b6aced965b7
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/cstmt:
+  digest: sha256:b838189180cee313
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/discarded:
+  digest: sha256:3d122e2226de061c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/entriesOf:
+  digest: sha256:8b1717b78314bcf9
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/fresh:
+  digest: sha256:8931c5dc0d0e42d6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/fromEntries:
+  digest: sha256:3b1f1b39c400f68b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/helperName:
+  digest: sha256:f8d9a217be759881
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/helpers:
+  digest: sha256:10e117ff21fa95ee
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/identity:
+  digest: sha256:60dfd2f3f13be7d5
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/inlined:
+  digest: sha256:1f16629784cd299b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/letLine:
+  digest: sha256:75bf952eac3f54c4
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/listSpine:
+  digest: sha256:89709bbd66aa9bac
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/maybes:
+  digest: sha256:cef03cab342f0413
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/narrow:
+  digest: sha256:2055893afc79c4ec
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/sequenceBlock:
+  digest: sha256:836689391658dc2b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/sides:
+  digest: sha256:ee1b395117b7fad5
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/sortedItems:
+  digest: sha256:a4ef24057d01349b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/sortedPairs:
+  digest: sha256:4d6788407bdbc0a4
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/startFunction:
+  digest: sha256:573f9fe8efe58ea6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/termOrdered:
+  digest: sha256:9bfba853134453e2
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Beam.hs/module/LawSpec.Typed.Beam/function/texts:
+  digest: sha256:d817ce8604d31120
+  verdict: pending

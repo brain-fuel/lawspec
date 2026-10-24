@@ -1,0 +1,54 @@
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data:
+  digest: sha256:2ea7e9cc2d9b00aa
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/caseName:
+  digest: sha256:e36a394280b1a3a9
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/codec:
+  digest: sha256:719d37cb9b09f6c9
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/comparedParameters:
+  digest: sha256:1338b0a1c5baefda
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/conjunction:
+  digest: sha256:328c41e6e886f995
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/dataCase:
+  digest: sha256:28e5656828ab9071
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/dataLabel:
+  digest: sha256:a6f84ae38c8e83c4
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/emitData:
+  digest: sha256:e45ab1f09cb7f713
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/emitSchema:
+  digest: sha256:3fb1a5f8b93e9bd7
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/fieldName:
+  digest: sha256:7c91210868b9fbf0
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/isRecord:
+  digest: sha256:b5f5b3361b46abd1
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/isStruct:
+  digest: sha256:db2ef82f22315e87
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/nativeCollection:
+  digest: sha256:4ede44f6b60ca564
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/nativeType:
+  digest: sha256:4c087877b0560ef9
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/reaching:
+  digest: sha256:f1ad2550b809c57a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/recursiveTypes:
+  digest: sha256:b56285a68c03aa1a
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/function/typeParameterDeclarations:
+  digest: sha256:466a71d2f26d2dbd
+  verdict: pending
+decision/haskell/src/LawSpec/Swift/Data.hs/module/LawSpec.Swift.Data/type/Names:
+  digest: sha256:1b40cff21cf20728
+  verdict: pending

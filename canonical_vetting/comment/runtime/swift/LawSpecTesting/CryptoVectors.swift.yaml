@@ -1,0 +1,6 @@
+decision/swift/runtime/swift/LawSpecTesting/CryptoVectors.swift/enum/CryptoVectors:
+  digest: sha256:fa61808b11bd5f3a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/CryptoVectors.swift/enum/CryptoVectors/func/check:
+  digest: sha256:c8abbf6de6660494
+  verdict: pending

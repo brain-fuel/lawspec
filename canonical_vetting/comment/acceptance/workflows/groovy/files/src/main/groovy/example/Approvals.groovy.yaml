@@ -1,0 +1,6 @@
+decision/groovy/acceptance/workflows/groovy/files/src/main/groovy/example/Approvals.groovy/class/Approvals/method/approvalErrors:
+  digest: sha256:df4b74e7b8d09e2d
+  verdict: pending
+decision/groovy/acceptance/workflows/groovy/files/src/main/groovy/example/Approvals.groovy/class/Approvals/method/approvedQuickly:
+  digest: sha256:26726aa84878ac56
+  verdict: pending

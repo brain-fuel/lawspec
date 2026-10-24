@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/DotNet/Entries.hs/module/LawSpec.DotNet.Entries:
+  digest: sha256:fc4545caf20e8e4e
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Entries.hs/module/LawSpec.DotNet.Entries/data/Entry:
+  digest: sha256:c9b276d6925f50a7
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Entries.hs/module/LawSpec.DotNet.Entries/function/orderedUnits:
+  digest: sha256:2d9ba66ed8f3bb9b
+  verdict: pending

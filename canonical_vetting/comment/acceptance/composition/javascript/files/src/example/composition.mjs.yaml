@@ -1,0 +1,12 @@
+decision/javascript/acceptance/composition/javascript/files/src/example/composition.mjs/class/LogsHandler:
+  digest: sha256:06c84987e093876b
+  verdict: pending
+decision/javascript/acceptance/composition/javascript/files/src/example/composition.mjs/class/ReaderHandler:
+  digest: sha256:5a7e9604e8c13c6d
+  verdict: pending
+decision/javascript/acceptance/composition/javascript/files/src/example/composition.mjs/class/Store:
+  digest: sha256:c605c069c9ba7da4
+  verdict: pending
+decision/javascript/acceptance/composition/javascript/files/src/example/composition.mjs/class/WriterHandler:
+  digest: sha256:6e62a9081fd552d2
+  verdict: pending

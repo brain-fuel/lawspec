@@ -268,4 +268,3 @@ generatorStubs ts plan bindings files = do
     pure (Artifact (output parts) (E.printModule (if ts then E.TypeScript else E.JavaScript)
       (header : imports ++ concatMap ((E.Blank :) . snd) entries)) "user" "test")
 
--- | The web strategies' schema import, rewritten to the emitted layout.

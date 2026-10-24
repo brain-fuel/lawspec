@@ -1,0 +1,90 @@
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar:
+  digest: sha256:c4f805445f161b1d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/class/SymbolContext:
+  digest: sha256:614dead0e82c65ef
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/binary:
+  digest: sha256:d3e278f3714d582b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/bounds:
+  digest: sha256:342fba0e3151c940
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/codePoints:
+  digest: sha256:c0fe10a09bc5741b
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/compareBytes:
+  digest: sha256:0215d658d594a5d5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/compareText:
+  digest: sha256:8b1734db19698b14
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/compareValues:
+  digest: sha256:a6df8ef885a2e3b5
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/convert:
+  digest: sha256:004d151a17b976a7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/equal:
+  digest: sha256:6e7fda4c89bf56b1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/exact:
+  digest: sha256:44fa777ff7a1d86e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/finiteDecimal:
+  digest: sha256:dd33df57955d6f8a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/floatBinary:
+  digest: sha256:638d09ae55c4bb93
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/floatClass:
+  digest: sha256:d72eea492a3a2ea7
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/floatCompare:
+  digest: sha256:a703da41b9b876b8
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/floatFromNative:
+  digest: sha256:94af25d1fe903b12
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/floatFromRatio:
+  digest: sha256:9fe6e79305679f6a
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/floatFromSingle:
+  digest: sha256:d587b0be4062d42f
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/helper:
+  digest: sha256:78477de39ac8b41c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/isIntegerType:
+  digest: sha256:e58f1d8dcf0d2097
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/isWellFormed:
+  digest: sha256:3601677cc45996af
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/negate:
+  digest: sha256:6dbd7a2f632fffff
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/newSymbol:
+  digest: sha256:06b29b1276b0252c
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/ratio:
+  digest: sha256:c4f32294909c2904
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/symbol:
+  digest: sha256:e50f6a57a27093a1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/textOfPoints:
+  digest: sha256:e64b4cdf7473679d
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/toFloat:
+  digest: sha256:110d1dacbe5becc0
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/typeKey:
+  digest: sha256:b26084b6b69369f6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/typeOf:
+  digest: sha256:770293adbdd34e9e
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Scalar.fs/module/LawSpec.Runtime.Scalar/function/validate:
+  digest: sha256:082ebbbdb88a0e41
+  verdict: pending

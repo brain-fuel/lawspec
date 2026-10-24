@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators:
+  digest: sha256:63cdd59c1215f385
+  verdict: pending
+decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/directBounds:
+  digest: sha256:d08836c79e0e799e
+  verdict: pending
+decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/lengthBounds:
+  digest: sha256:493f18e86bc22001
+  verdict: pending
+decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/nonEmptyBounds:
+  digest: sha256:2eb49e6a4d0429d8
+  verdict: pending

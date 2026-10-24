@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr:
+  digest: sha256:5b055106d18df16b
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/array:
+  digest: sha256:188c1e59e04204e5
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/call:
+  digest: sha256:f681b3ebb85835d6
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/checked:
+  digest: sha256:e88b5f8c58326200
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/codec:
+  digest: sha256:5efad28799554cba
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/lambda:
+  digest: sha256:162102682845b046
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/quoted:
+  digest: sha256:b987599ffda1cbbc
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/reference:
+  digest: sha256:8f72f696ea871622
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/renderExpression:
+  digest: sha256:ae8a33d9f47ed73a
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/scalarLiteral:
+  digest: sha256:aed6fbffff626763
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/valueType:
+  digest: sha256:0aa89f12fbc52ce8
+  verdict: pending

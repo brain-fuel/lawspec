@@ -1,0 +1,6 @@
+decision/haskell/test/SmtNumericSpec.hs/module/SmtNumericSpec:
+  digest: sha256:3d1ba98b1c59a069
+  verdict: pending
+decision/haskell/test/SmtNumericSpec.hs/module/SmtNumericSpec/function/refutation:
+  digest: sha256:b700afc6c9115920
+  verdict: pending

@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/BeamDefinitions.hs/module/LawSpec.BeamDefinitions:
+  digest: sha256:fc7288c021d24fde
+  verdict: pending
+decision/haskell/src/LawSpec/BeamDefinitions.hs/module/LawSpec.BeamDefinitions/function/awaitNative:
+  digest: sha256:ea19f6b8ca921b12
+  verdict: pending
+decision/haskell/src/LawSpec/BeamDefinitions.hs/module/LawSpec.BeamDefinitions/function/nativeFailures:
+  digest: sha256:1323087996fb054a
+  verdict: pending

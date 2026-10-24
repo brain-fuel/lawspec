@@ -1,0 +1,42 @@
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure:
+  digest: sha256:d9cc380cae0744a9
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/call:
+  digest: sha256:ee6ca37fc737278d
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/callStatic:
+  digest: sha256:04808b292fd36c59
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/camel:
+  digest: sha256:56fc61704f96c8b0
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/classOfTag:
+  digest: sha256:ab76cac66adcb036
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/failure:
+  digest: sha256:5d571c3ba226d903
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/handler:
+  digest: sha256:0f7af2198fec5a67
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/invoke:
+  digest: sha256:5c9a0220c9fab7bb
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/kebab:
+  digest: sha256:9ce7244bd4f16507
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/operation:
+  digest: sha256:30efcb74210755a1
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/tagOf:
+  digest: sha256:dc381a060d9d44f2
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/toClojure:
+  digest: sha256:456ed7eb2c1197bf
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/toJava:
+  digest: sha256:bba31fe40cb0c112
+  verdict: pending
+decision/java/runtime/clojure/java/lawspec/clojure/LawSpecClojure.java/package/lawspec.clojure/class/LawSpecClojure/method/var:
+  digest: sha256:55ff9f4c39ca1fd7
+  verdict: pending

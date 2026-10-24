@@ -1,0 +1,108 @@
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/admits:
+  digest: sha256:d11192d1a7b68f53
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/candidates:
+  digest: sha256:1cca1c8eba1d60d4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/check:
+  digest: sha256:f444612199c3d214
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/checkState:
+  digest: sha256:805f7ffc89ffb08e
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/checkWith:
+  digest: sha256:8630e5bdbc76fcef
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/command:
+  digest: sha256:d2f2a142f3adf596
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/contextWith:
+  digest: sha256:0c14d7ac8a06e5ec
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/create:
+  digest: sha256:a2289520b3b6e5d8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/describe:
+  digest: sha256:c596a8a5b0126a79
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/execute:
+  digest: sha256:b41a01d20433a53a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/generateRun:
+  digest: sha256:022c09833ea959c9
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/invoke:
+  digest: sha256:d6464633f6034da7
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/seed:
+  digest: sha256:6d8b7e9b6f9642cd
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/shifted:
+  digest: sha256:fdd8d524088d2d9c
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/shrinkRun:
+  digest: sha256:dabb528215c2f502
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/simulate:
+  digest: sha256:cc6e3b4d86854c36
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/step:
+  digest: sha256:06f77cb9cec21b8a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/systemState:
+  digest: sha256:725c7ab4d35d7eaa
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/withActors:
+  digest: sha256:b3e96892e25831dd
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/withCase:
+  digest: sha256:f612387904bfe7c6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/withContext:
+  digest: sha256:c0c4002b5e02c2e8
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/withSystem:
+  digest: sha256:d546573d2cf87d8d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/func/withoutAbstraction:
+  digest: sha256:faa0847d235f98c1
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/struct/Context:
+  digest: sha256:9862101d9c982d4d
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/struct/Failure:
+  digest: sha256:456799970b413914
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/struct/Options:
+  digest: sha256:0983afa0fa805ce6
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/struct/Step:
+  digest: sha256:198244e7f140d076
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/typealias/Callback:
+  digest: sha256:78dc21988a3e2750
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/typealias/CallbackContext:
+  digest: sha256:af7ac19b5889f7f3
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/typealias/ContextFactory:
+  digest: sha256:bc038bf0133e7ad4
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/enum/Model/typealias/Run:
+  digest: sha256:2957f88b514a6f91
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/protocol/ModelActorHost:
+  digest: sha256:1b4ad4181112aae2
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/protocol/ModelActorHost/func/call:
+  digest: sha256:d8d993e880193cf5
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/protocol/ModelActorHost/func/crash:
+  digest: sha256:742d569acf27ac52
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/protocol/ModelActorHost/func/state:
+  digest: sha256:10b0bd9029844253
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/Model.swift/protocol/ModelActorHost/func/withActor:
+  digest: sha256:bacee265dda225a3
+  verdict: pending

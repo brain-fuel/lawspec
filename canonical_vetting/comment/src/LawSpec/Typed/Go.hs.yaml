@@ -1,0 +1,63 @@
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go:
+  digest: sha256:21a3f3f6823dfaf2
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/data/St:
+  digest: sha256:a6388f44f269a067
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/dataNames:
+  digest: sha256:f9e96825fd9d6132
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/enterFunction:
+  digest: sha256:c1e26298a72bbeac
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/fastRuntimeNames:
+  digest: sha256:37ad5a22a947b1bf
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/fresh:
+  digest: sha256:899ed99e659e2a2c
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/funcLiteral:
+  digest: sha256:34aca35274ed49d8
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/helper:
+  digest: sha256:5c0a09254404ad7b
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/helperName:
+  digest: sha256:dd4285612c015dfc
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/helpers:
+  digest: sha256:0173880210ce147f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/ifThen:
+  digest: sha256:787b59ab039c71ba
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/intExpr:
+  digest: sha256:670e5d8badc93905
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/isLong:
+  digest: sha256:a4f069c5c7504a5d
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/localReserved:
+  digest: sha256:b0695c96a1d31dc8
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/longExpr:
+  digest: sha256:718155f94c92d151
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/nativeDirect:
+  digest: sha256:e9249a69b59b9c8f
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/paren:
+  digest: sha256:cc0df670e7be2fc6
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/simpleEquality:
+  digest: sha256:db8302d971ef30a9
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/switchOf:
+  digest: sha256:fd5b4e4b1fbbb694
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/tagMethod:
+  digest: sha256:c91231a7d9b23d4d
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Go.hs/module/LawSpec.Typed.Go/function/typeSlug:
+  digest: sha256:54c228f45ee5dff4
+  verdict: pending
