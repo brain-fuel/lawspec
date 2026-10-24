@@ -93,18 +93,28 @@ export async function recordedDigest(folder) {
   return any ? hash.digest("hex") : "";
 }
 
-// The result key of each law in a target's test manifest.
+// The result key of each law in a target's test manifest: what the law does
+// (the manifest's semantic key), the compiler build, the target, toolchain
+// and recorded values, and the adapters a law calls. Never the generated
+// file's bytes: a doc edit or a reformat rewrites comments and source links
+// but reruns nothing. ref:DEC-content-identity
 // A law an environment attestation touches is keyed by how its dependencies
 // were wired too, so a run against other endpoints, or the real dependency
 // in place of a stand-in, runs it again; other laws' keys are unchanged.
-export function lawKeys({ build, target, machineBits, minify, tests, files, environment, project, attested = new Map() }) {
-  const contents = new Map(files.map((file) => [file.path, file.content]));
+export function lawKeys({ build, target, machineBits, minify, tests, environment, project, attested = new Map() }) {
   const configuration = JSON.stringify({ ...target, root: undefined });
   return new Map(tests.map((entry) => [entry.law, digest(JSON.stringify([
-    build, configuration, machineBits, minify, entry.key, digest(contents.get(entry.file) ?? ""),
+    build, configuration, machineBits, minify, entry.key,
     environment, entry.callsAdapters ? project : null,
     ...(attested.has(entry.law) ? [attested.get(entry.law)] : []),
   ]))]));
+}
+
+// A law's last result: under its identity, or, when the law was renamed,
+// under any earlier identity with the same key.
+export function previousResult(previous, law, key) {
+  if (previous[law]?.key === key) return previous[law];
+  return Object.values(previous ?? {}).find((result) => result?.key === key);
 }
 
 const regex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -496,7 +506,7 @@ export function selectByTags(entries, include = [], exclude = []) {
 // including when an adapter is repaired by restoring its previous contents.
 export function testsToRun(entries, keys, previous, failures, {fresh = false, coverage = false, updateRecorded = false} = {}) {
   return entries.filter((entry) => fresh || coverage || updateRecorded || failures[entry.law] ||
-    previous[entry.law]?.key !== keys.get(entry.law));
+    !previousResult(previous, entry.law, keys.get(entry.law)));
 }
 
 // Read complete outer elements, preserving nested suites and native payloads.

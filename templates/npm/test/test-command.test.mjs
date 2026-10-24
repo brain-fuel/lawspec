@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { benchmarkInvocations, configurationInvocations, preparationInvocations, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests,
-  environmentDigest, projectDigest, testsToRun, executedTests } from "../test-command.mjs";
+  environmentDigest, projectDigest, testsToRun, previousResult, executedTests } from "../test-command.mjs";
 
 // A manifest entry, named as each target names a law's tests (LawSpec.TestNames).
 const names = { python: (i) => `test_law_${i}`, go: (i) => `TestLaw${i}`, rust: (i) => `law_law_${i}` };
@@ -217,6 +217,24 @@ test("a law's key changes with its adapters only when it calls them", () => {
   const before = keys("one"), after = keys("two");
   assert.notEqual(before.get(tests[0].law), after.get(tests[0].law));
   assert.equal(before.get(tests[1].law), after.get(tests[1].law));
+});
+
+test("a law's key ignores the generated file's bytes", () => {
+  const tests = [law(0, "t")];
+  const keys = (content) => lawKeys({ build: "b", target: { language: "python" }, machineBits: 64, minify: false,
+    tests, files: [{ path: "t", content }], environment: "e", project: "p" });
+  assert.equal(keys("# law at line 3\n").get(tests[0].law), keys("# law at line 9, reworded\n").get(tests[0].law));
+  const changed = lawKeys({ build: "b", target: { language: "python" }, machineBits: 64, minify: false,
+    tests: [{ ...law(0, "t"), key: "another" }], environment: "e", project: "p" });
+  assert.notEqual(changed.get(tests[0].law), keys("").get(tests[0].law));
+});
+
+test("a renamed law finds its result by its key", () => {
+  const entry = { ...law(0, "t"), law: "example.unit::law::renamed" };
+  const previous = { "example.unit::law::original": { key: "k", seed: "1" } };
+  assert.deepEqual(testsToRun([entry], new Map([[entry.law, "k"]]), previous, {}), []);
+  assert.equal(testsToRun([entry], new Map([[entry.law, "other"]]), previous, {}).length, 1);
+  assert.deepEqual(previousResult(previous, entry.law, "k"), { key: "k", seed: "1" });
 });
 
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";

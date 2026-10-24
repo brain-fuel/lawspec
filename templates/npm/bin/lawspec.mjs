@@ -14,7 +14,7 @@ import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.m
 import { collectScalaCoverage } from "../scala-coverage.mjs";
 import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { benchmarkInvocations, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
+import { benchmarkInvocations, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, previousResult, projectDigest, recordedDigest, selectByTags, mergeJunit,
   harnessStatistics, coverageTools, junitFromTests, testsToRun } from "../test-command.mjs";
 import {
   readOptional,
@@ -472,7 +472,7 @@ async function runTests(compiler, input, selected, roots, config) {
     const generated = new Set(planned.files.filter((f) => f.ownership === "generated").map((f) => f.path));
     const keys = lawKeys({
       build, target, machineBits: input.machineBits, minify: options.minify === true,
-      tests: planned.tests, files: planned.files,
+      tests: planned.tests,
       // Recorded values are spec data: a changed recording runs its laws again.
       environment: await environmentDigest(root, report_) + (await recordedDigest(recordedFolder)),
       project: await projectDigest(root, generated),
@@ -598,7 +598,9 @@ async function runTests(compiler, input, selected, roots, config) {
       if (!ok) { failed = true; break; }
     }
     const statistics = await harnessStatistics(stats);
-    const laws = Object.fromEntries(planned.tests.filter((entry) => previous.laws[entry.law]).map((entry) => [entry.law, previous.laws[entry.law]]));
+    // A renamed law keeps its result: it is found by its key.
+    const kept = (entry) => previous.laws[entry.law] ?? previousResult(previous.laws, entry.law, keys.get(entry.law));
+    const laws = Object.fromEntries(planned.tests.filter(kept).map((entry) => [entry.law, kept(entry)]));
     for (const entry of passed) {
       const label = entry.label;
       const observed = statistics.filter((s) => s.law === label);

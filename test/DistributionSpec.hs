@@ -37,8 +37,8 @@ test_distributionIsSecureByDefaultAndContentAddressed = describe "distribution" 
           Right plan -> snd (remoteManifest plan)
           Left _ -> []
         shifted body = unlines ["unit app.remote\n", "\nfunction shifted (x :: Int32) -> Int64 is " ++ body ++ " end" ++ " function\n", "end unit"]
-    it "are named by a SHA3-256 content hash that names its algorithm" $ do
-      map remoteDigest (remotes (shifted "x + 1000")) `shouldSatisfy` all (\d -> "sha3-256:" `isPrefixOf` d && length d == 9 + 64)
+    it "are named by a semantic content hash that names its algorithm and encoding" $ do
+      map remoteDigest (remotes (shifted "x + 1000")) `shouldSatisfy` all (\d -> "blake3-semantic-1:" `isPrefixOf` d && length d == 18 + 64)
     it "change hash exactly when the definition does" $ do
       map remoteDigest (remotes (shifted "x + 1000")) `shouldBe` map remoteDigest (remotes (shifted "x + 1000"))
       map remoteDigest (remotes (shifted "x + 1000")) `shouldNotBe` map remoteDigest (remotes (shifted "x + 1001"))

@@ -16,7 +16,7 @@
 -- for a native compiler, its executable's size and modification time: a
 -- compiler rebuilt from changed sources (a checkout run in place) never
 -- reads what another build wrote, so generation depends only on the program.
-module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, withCacheDirectory) where
+module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, withCacheDirectory, buildIdentity) where
 
 import Control.Exception (SomeException, evaluate, try)
 import Data.Binary (Binary, decodeOrFail, encode)

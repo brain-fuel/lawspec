@@ -63,6 +63,12 @@ import System.FilePath ((</>), takeDirectory)
 import System.IO (BufferMode(LineBuffering), hPutStrLn, hSetBuffering, readFile', stderr, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
+import LawSpec.Blake3 (hexOf)
+import qualified LawSpec.Core as C
+import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, identityOf, nodeIdentity)
+import LawSpec.Frontend (compileCore)
+import LawSpec.Memo (buildIdentity)
+import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Scaffold (scaffoldFilesWith)
 import LawSpec.Targets (programTargets)
 import LawSpec.BuiltinDefaults (adapterPath)
@@ -138,17 +144,39 @@ main = do
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
         formatInputs <- maybe [] formatterInputs <$> formatter target
-        key <- runKey target [suite, target, profile, show mutate]
-          (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated])
-          (suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs)
-        recorded <- if mode == Reuse then lookupResult key else pure Nothing
+        let labels = [suite, target, profile, show mutate]
+            inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
+        key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
+        meaning <- forM (semanticIdentities bits sources) $ \hashes ->
+          meaningKey target labels buildIdentity (hashes ++ map snd vectors ++ [show (extra ++ native)]) scaffolds inputs
+        recorded <- if mode == Reuse then firstJust <$> mapM lookupResult (key : maybe [] pure meaning) else pure Nothing
         case recorded of
           Just output -> mapM_ (putStrLn . (++ " (cached)")) output
           Nothing -> do
             let regenerate edited = planEither (extra ++ native) (edited ++ vectors) target bits minify
             format <- if minify then pure [] else formatted suite target project generated
             output <- (format ++) <$> runSuite suite target project mutate (sources, regenerate, generated)
-            when (mode /= Off) (storeResult key output)
+            when (mode /= Off) (mapM_ (`storeResult` output) (key : maybe [] pure meaning))
+
+-- | The semantic hashes of every law, declaration and data type the suite's
+-- specs define, or Nothing when they do not compile on their own (a suite
+-- with packages), which leaves only the bytes key.
+semanticIdentities :: Int -> [(FilePath, String)] -> Maybe [String]
+semanticIdentities bits sources = case compileCore bits defaultGeneration [Source path content | (path, content) <- sources] of
+  Left _ -> Nothing
+  Right program ->
+    let graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
+    in Just ([ hexOf (semanticHash (identityOf graph p)) | u <- C.programUnits program, p <- C.unitProperties u ] ++
+             [ hexOf (semanticHash i) | u <- C.programUnits program, d <- C.unitDeclarations u ++ map C.definitionDeclaration (C.unitDefinitions u)
+             , Just i <- [nodeIdentity graph (DeclarationNode (C.declarationId d))] ] ++
+             [ hexOf (semanticHash i) | d <- C.programDataDeclarations program, Just i <- [nodeIdentity graph (TypeNode (C.dataId d))] ] ++
+             [ hexOf (semanticHash (identityOf graph (C.unitMachines u, C.unitSessions u, C.unitMailboxes u, C.unitSupervisors u, C.unitHarnessSettings u)))
+             | u <- C.programUnits program ])
+
+firstJust :: [Maybe a] -> Maybe a
+firstJust xs = case [x | Just x <- xs] of
+  x : _ -> Just x
+  [] -> Nothing
 
 -- | Files outside the project that a run reads: the harness itself and the
 -- dependency locks it installs.

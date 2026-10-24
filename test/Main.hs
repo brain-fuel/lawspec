@@ -97,7 +97,7 @@ import qualified DotNetSpec
 import qualified LanguageGapsSpec
 import qualified MatcherAdmissionSpec
 import qualified OperationResultSpec
-import qualified SmtFrozenSpec
+import qualified SmtReceiptSpec
 import qualified CounterexampleSpec
 import qualified SmtDataSpec
 import qualified SmtRecursionSpec
@@ -192,7 +192,7 @@ main = hspec $ do
   LanguageGapsSpec.test_languageGapsClose
   MatcherAdmissionSpec.test_matcherFactsAreKeptInAdmission
   OperationResultSpec.test_operationResultsAreCheckedWhereTheyAreUsed
-  SmtFrozenSpec.test_smtV1IsFrozen
+  SmtReceiptSpec.test_receiptsFollowBehaviourNotSpelling
   CounterexampleSpec.test_counterexamplesAreConfirmedByTheEvaluator
   SmtDataSpec.test_smtDataTasks
   SmtRecursionSpec.test_smtRecursion

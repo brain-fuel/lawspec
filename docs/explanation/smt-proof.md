@@ -277,10 +277,15 @@ already too late. Observation times must be nondecreasing.
 
 ## Encodings and receipts
 
-Every task names its encoding. `lawspec-smtlib-v1` is frozen: a task it
-supports keeps its script and fingerprint byte for byte. A receipt recorded
-for such a task stays current, so nothing needs to run again. A test checks
-this against a frozen corpus of tasks in `test/fixtures/smt-v1`.
+Every task names its encoding. Its `lawFingerprint` binds the receipt to
+what the law does: the encoding, the machine width, how the law is proved and
+the law's semantic hash, which covers everything it reaches
+(see [Content identity](content-identity.md)). Renaming a local, reformatting,
+editing a description or editing a law the law does not reach keeps the
+fingerprint, so the receipt stays current. A behaviour edit changes it.
+The `taskFingerprint` still binds the exact script, so the host can check a
+task. A test checks the fingerprints against the corpus in
+`test/fixtures/smt-corpus`. ref:DEC-smt-semantic-receipts
 
 A task that needs a feature v1 lacks, such as data types or text, is
 `lawspec-smtlib-v2`. The counterexample query beside a v1 task is v2 too; the
