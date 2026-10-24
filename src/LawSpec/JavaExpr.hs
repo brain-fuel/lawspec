@@ -16,7 +16,7 @@ import Data.List (find)
 -- hash) is literals joined, split after a :: where the line is too narrow.
 quoted :: String -> D.Doc
 quoted s = case pieces s of
-  first : rest@(_ : _) | length s > 60 ->
+  first : rest@(_ : _) | length s > 30 ->
     D.group (jvmString "java" first <> D.nest 4 (mconcat [D.softline <> D.text "+ " <> jvmString "java" p | p <- rest]))
   _ -> jvmString "java" s
   where
@@ -26,8 +26,8 @@ quoted s = case pieces s of
     pieces = merge . concatMap chunks . cuts
     chunks t
       | length t <= 40 = [t]
-      | all (`elem` ("0123456789abcdef:" :: String)) t = takeWhile (not . null) (map (take 32) (iterate (drop 32) t))
-      | ' ' `elem` t = afterSpaces t
+      | ' ' `elem` init t = concatMap chunks (afterSpaces t)
+      | all (`elem` ("0123456789abcdef: " :: String)) t = takeWhile (not . null) (map (take 32) (iterate (drop 32) t))
       | otherwise = [t]
     -- Text in words, each with the space after it.
     afterSpaces t = case break (== ' ') t of

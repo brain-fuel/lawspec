@@ -11,6 +11,7 @@
 -- unit). @@VECTORS@@ is the vectors' text, inside a raw string literal.
 module LawSpec.BuiltinDefaults (withBuiltinDefaults, adapterPath, vectorTestPath) where
 
+import qualified LawSpec.JavaExpr as JavaExpr
 import Data.Char (toUpper)
 import Data.List (intercalate, isPrefixOf)
 import qualified LawSpec.Core as C
@@ -164,7 +165,7 @@ fill target _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" ve
     -- Java's lines wrap at the vectors' spaces, within LawSpec's Java
     -- profile's 100 columns.
     vectorLine l
-      | target == "java" = Doc.render (Doc.Pretty 100) (Doc.text "    " <> Doc.nest 4 (jvmString "java" l))
+      | target == "java" = Doc.render (Doc.Pretty 100) (Doc.text "    " <> Doc.nest 4 (JavaExpr.quoted l))
       | target == "kotlin" = "                \"" ++ l ++ "\""
       | otherwise = "    \"" ++ l ++ "\""
 

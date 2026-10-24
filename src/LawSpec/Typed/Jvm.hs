@@ -206,7 +206,7 @@ emitJvmTyped style declarations units = do
         (\n -> typedClassName ++ "." ++ n) <$> M.lookup c functions
       outside = env { envPrefix = typedClassName ++ ".", envFast = "lawspec.runtime.LawSpecFast" }
   pure JvmTyped
-    { jvmTypedSource = D.render (D.Pretty 100) source ++ "\n"
+    { jvmTypedSource = unlines (map (reverse . dropWhile (== ' ') . reverse) (lines (D.render (D.Pretty 100) source)))
     , jvmTypedFunction = lookupFunction
     , jvmTypedType = javaType outside True
     , jvmTypedCodec = \t -> maybe (Left ("no typed codec for " ++ show t)) (Right . ((typedClassName ++ ".") ++)) (M.lookup (show t) boundaryNames)

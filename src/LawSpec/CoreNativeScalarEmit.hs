@@ -455,7 +455,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
               else java (JavaData.javaDataType dataDeclarations failure)))
             supplier = if kt then KotlinLayout.lambda [] [call] else Doc.text "() -> " <> call
             made b = (if kt then ktConstruct' failure else javaConstruct' failure) (C.idText (C.failureConstructor b))
-              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(error.message ?: \"\")" else "java.util.Objects.toString(error.getMessage(), \"\")"))) b)
+              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (if kt then Doc.text "(error.message ?: \"\")" else JavaExpr.call "java.util.Objects.toString" [Doc.text "error.getMessage()", Doc.text "\"\""])) b)
             mapped = [ if kt
                          then KotlinExpr.call "LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ "::class.java"), KotlinLayout.lambda ["error"] [made b]]
                          else JavaExpr.call "new LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ ".class"), Doc.text "error -> " <> made b]
