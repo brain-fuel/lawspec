@@ -156,46 +156,51 @@ emitRustDefinitions layout bits declarations units = do
       pure (L.function ("fn " ++ adapterName i)
         [E.unusedAs "ctx" body ++ ": &mut ls::Context", E.unusedAs "arguments" body ++ ": Vec<ls::Value>"] "ls::Result<ls::Value>" body)
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
+    -- A callback: its parameters, result type and the call it makes.
+    callback params result body = L.closure ("|" ++ params ++ "| -> " ++ result) (L.Block [] (Just body))
+    numbers ns = [L.call "ls::Value::Integer" [L.call "ls::BigInt::from" [L.atom (show n ++ "i64")]] | n <- ns]
+    nowValue = L.call "ls::Value::Integer" [L.call "ls::BigInt::from" [L.atom "now"]]
+    called' name args = L.call name [L.atom "ctx", L.vecOf args]
     policyDoc key policy = do
       gates <- policyGates policy
       compensate <- case policyCompensate policy of
-        Nothing -> pure (D.text "None")
-        Just undo -> (\name -> D.text ("Some(|ctx: &mut ls::Context, value: ls::Value| -> ls::Result<ls::Value> { " ++ name ++ "(ctx, vec![value]) })")) <$> evaluator undo
+        Nothing -> pure (L.atom "None")
+        Just undo -> (\name -> L.call "Some" [callback "ctx: &mut ls::Context, value: ls::Value" "ls::Result<ls::Value>" (called' name [L.atom "value"])]) <$> evaluator undo
       retry <- case policyRetry policy of
-        Nothing -> pure (D.text "None")
+        Nothing -> pure (L.atom "None")
         Just r -> do
           let (kind, delay, step, factor, cap) = case retryStrategy r of
                 Immediate -> ("immediate", 0, 0, 0, -1)
                 Fixed d' -> ("fixed", d', 0, 0, -1)
-                Linear d' s -> ("linear", d', s, 0, -1)
+                Linear d' s' -> ("linear", d', s', 0, -1)
                 Exponential d' f c -> ("exponential", d', 0, f, maybe (-1) id c)
                 Fibonacci d' -> ("fibonacci", d', 0, 0, -1)
                 Custom _ -> ("custom", 0, 0, 0, -1)
           condition <- case retryWhen r of
-            Nothing -> pure (D.text "None")
-            Just p -> (\name -> D.text ("Some(|ctx: &mut ls::Context, failure: ls::Value| -> ls::Result<bool> { " ++ name ++
-              "(ctx, vec![failure])?.boolean() })")) <$> evaluator p
+            Nothing -> pure (L.atom "None")
+            Just p' -> (\name -> L.call "Some" [callback "ctx: &mut ls::Context, failure: ls::Value" "ls::Result<bool>"
+              (L.method (L.try' (called' name [L.atom "failure"])) "boolean" [])]) <$> evaluator p'
           decide <- case retryStrategy r of
-            Custom f -> (\name -> D.text ("Some(|ctx: &mut ls::Context, attempt: i64, failure: ls::Value, previous: i64| -> ls::Result<Option<i64>> { " ++
-              "ls::retry_decision(" ++ name ++ "(ctx, vec![ls::Value::Integer(ls::BigInt::from(attempt)), failure, ls::duration(previous)])?) })")) <$> evaluator f
-            _ -> pure (D.text "None")
-          pure (D.text "Some(ls::Retry " <> D.block 4 (D.joinWith D.hardline
-            [ D.text ("strategy: " ++ show (kind :: String) ++ ",")
-            , D.text ("delay: " ++ show (delay :: Integer) ++ ", step: " ++ show (step :: Integer) ++ ", factor: " ++ show (factor :: Integer) ++ ", cap: " ++ show (cap :: Integer) ++ ",")
-            , D.text ("attempts: " ++ show (retryAttempts r) ++ ",")
-            , D.text ("jitter: " ++ show (jitterName (retryJitter r)) ++ ",")
-            , D.text "when: " <> condition <> D.text ","
-            , D.text "decide: " <> decide <> D.text "," ]) <> D.text ")")
-      pure (D.text "ls::StagePolicy " <> D.block 4 (D.joinWith D.hardline
-        [ D.text ("stage: " ++ show (policyStage policy) ++ ",")
-        , D.text "retry: " <> retry <> D.text ","
-        , D.text ("timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",")
-        , D.text ("key: " ++ show key ++ ",")
-        , D.text "gates: vec!" <> D.delimitTrailing 4 "[" "]" gates <> D.text ","
-        , D.text ("cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
-        , D.text ("wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
-        , D.text "compensate: " <> compensate <> D.text ","
-        , D.text ("hedge: " ++ maybe "None" (\h -> "Some((" ++ show (hedgeDelay h) ++ ", " ++ show (hedgeMost h) ++ "))") (policyHedge policy) ++ ",") ]))
+            Custom f -> (\name -> L.call "Some" [callback "ctx: &mut ls::Context, attempt: i64, failure: ls::Value, previous: i64" "ls::Result<Option<i64>>"
+              (L.call "ls::retry_decision" [L.try' (called' name [L.call "ls::Value::Integer" [L.call "ls::BigInt::from" [L.atom "attempt"]], L.atom "failure", L.call "ls::duration" [L.atom "previous"]])])]) <$> evaluator f
+            _ -> pure (L.atom "None")
+          pure (L.call "Some" [L.struct "ls::Retry"
+            [ ("strategy", L.atom (show (kind :: String)))
+            , ("delay", L.atom (show (delay :: Integer))), ("step", L.atom (show (step :: Integer)))
+            , ("factor", L.atom (show (factor :: Integer))), ("cap", L.atom (show (cap :: Integer)))
+            , ("attempts", L.atom (show (retryAttempts r)))
+            , ("jitter", L.atom (show (jitterName (retryJitter r))))
+            , ("when", condition), ("decide", decide) ]])
+      pure (L.struct "ls::StagePolicy"
+        [ ("stage", L.atom (show (policyStage policy)))
+        , ("retry", retry)
+        , ("timeout", L.atom (show (maybe (-1) id (policyTimeout policy))))
+        , ("key", L.atom (show key))
+        , ("gates", L.vecOf gates)
+        , ("cache", L.atom (show (maybe (-1) id (policyCache policy))))
+        , ("wraps", L.atom (if null (policyFailures policy) then "false" else "true"))
+        , ("compensate", compensate)
+        , ("hedge", maybe (L.atom "None") (\h -> L.call "Some" [L.Macro "" "(" ")" [L.atom (show (hedgeDelay h)), L.atom (show (hedgeMost h))]]) (policyHedge policy)) ])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
@@ -203,30 +208,26 @@ emitRustDefinitions layout bits declarations units = do
         start <- evaluator (breakerStart b)
         admit <- evaluator (breakerAdmit b)
         record <- evaluator (breakerRecord b)
-        pure (gateDoc "breaker" (start ++ "(ctx, vec![" ++ nowValue ++ "])") (admit ++ "(ctx, vec![state, " ++ nowValue ++ "])")
-          (Just (record ++ "(ctx, vec![" ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++ ", state, " ++ nowValue ++ ", ls::Value::Bool(succeeded)])")) (-2))
+        pure (gateDoc "breaker" (called' start [nowValue]) (called' admit [L.atom "state", nowValue])
+          (Just (called' record (numbers [breakerFailures b, breakerWindow b, breakerCooldown b] ++ [L.atom "state", nowValue, L.call "ls::Value::Bool" [L.atom "succeeded"]]))) (-2))
       limit <- forM (policyLimit policy) $ \l -> do
         start <- evaluator (limitStart l)
         admit <- evaluator (limitAdmit l)
-        let numbers = integers [limitCount l, limitPeriod l]
-        pure (gateDoc "limit" (start ++ "(ctx, vec![" ++ numbers ++ ", " ++ nowValue ++ "])")
-          (admit ++ "(ctx, vec![" ++ numbers ++ ", state, " ++ nowValue ++ "])") Nothing (waitCode (limitWait l)))
+        let ns = numbers [limitCount l, limitPeriod l]
+        pure (gateDoc "limit" (called' start (ns ++ [nowValue])) (called' admit (ns ++ [L.atom "state", nowValue])) Nothing (waitCode (limitWait l)))
       bulkhead <- forM (policyBulkhead policy) $ \b -> do
         start <- evaluator (bulkheadStart b)
         admit <- evaluator (bulkheadAdmit b)
         release <- evaluator (bulkheadRelease b)
-        let n = integers [bulkheadLimit b]
-        pure (gateDoc "bulkhead" (start ++ "(ctx, vec![" ++ n ++ ", " ++ nowValue ++ "])")
-          (admit ++ "(ctx, vec![" ++ n ++ ", state, " ++ nowValue ++ "])") (Just (release ++ "(ctx, vec![state])")) (waitCode (bulkheadWait b)))
+        let n = numbers [bulkheadLimit b]
+        pure (gateDoc "bulkhead" (called' start (n ++ [nowValue])) (called' admit (n ++ [L.atom "state", nowValue])) (Just (called' release [L.atom "state"])) (waitCode (bulkheadWait b)))
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
-    nowValue = "ls::Value::Integer(ls::BigInt::from(now))"
-    integers numbers = intercalate ", " ["ls::Value::Integer(ls::BigInt::from(" ++ show n ++ "i64))" | n <- numbers]
-    gateDoc kind start admit finish wait = D.text "ls::Gate " <> D.block 4 (D.joinWith D.hardline
-      [ D.text ("kind: " ++ show (kind :: String) ++ ",")
-      , D.text ("start: |ctx: &mut ls::Context, now: i64| -> ls::Result<ls::Value> { " ++ start ++ " },")
-      , D.text ("admit: |ctx: &mut ls::Context, state: ls::Value, now: i64| -> ls::Result<ls::Value> { " ++ admit ++ " },")
-      , D.text ("finish: " ++ maybe "None" (\f -> "Some(|ctx: &mut ls::Context, state: ls::Value, now: i64, succeeded: bool| -> ls::Result<ls::Value> { " ++ f ++ " })") finish ++ ",")
-      , D.text ("wait: " ++ show (wait :: Integer) ++ ",") ])
+    gateDoc kind start admit finish wait = L.struct "ls::Gate"
+      [ ("kind", L.atom (show (kind :: String)))
+      , ("start", callback "ctx: &mut ls::Context, now: i64" "ls::Result<ls::Value>" start)
+      , ("admit", callback "ctx: &mut ls::Context, state: ls::Value, now: i64" "ls::Result<ls::Value>" admit)
+      , ("finish", maybe (L.atom "None") (\f -> L.call "Some" [callback "ctx: &mut ls::Context, state: ls::Value, now: i64, succeeded: bool" "ls::Result<ls::Value>" f]) finish)
+      , ("wait", L.atom (show (wait :: Integer))) ]
     waitCode wait = case wait of
       Nothing -> -2
       Just Nothing -> -1
@@ -304,7 +305,7 @@ emitRustDefinitions layout bits declarations units = do
           let key = case locals of
                 (_, local) : _ -> L.method (L.atom local) "clone" []
                 [] -> L.atom "ls::Value::Unit"
-          pure (L.try' (L.call "ls::run_stage" [L.atom "ctx", L.prefix "&" (L.Laid config), workflowClosure rendered, key]))
+          pure (L.try' (L.call "ls::run_stage" [L.atom "ctx", L.prefix "&" config, workflowClosure rendered, key]))
       let identity = idText (declarationId (definitionDeclaration d))
           failWith message = L.Block [L.Semi (L.Return (Just (L.call "Err" [L.method (L.atom (E.quoted message)) "into" []])))] Nothing
           arity = L.Do (L.If (L.infixOp "!=" (L.method (L.atom "arguments") "len" []) (L.atom (show (length args))))

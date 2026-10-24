@@ -374,11 +374,11 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           observationsDoc names p = do
             let h = propertyHarness p
                 label = idText (unitId unit) ++ "::" ++ propertyName p
-            covers <- mapM (\(Cover _ l w) -> (\t -> (l, t)) <$> render names w) (harnessCover h)
-            classes <- mapM (\(c, l) -> (\t -> (l, t)) <$> render names c) (harnessClassify h)
+            covers <- mapM (\(Cover _ l w) -> (\t -> (l, t)) <$> renderL names w) (harnessCover h)
+            classes <- mapM (\(c, l) -> (\t -> (l, t)) <$> renderL names c) (harnessClassify h)
             labels <- mapM (render names) (harnessLabels h)
             target' <- traverse (render names) (harnessTarget h)
-            let pairs prefix xs = [binding (prefix ++ show k) (Doc.text "(" <> t <> Doc.text ").boolean()?") | (k, (_, t)) <- zip [0::Int ..] xs]
+            let pairs prefix xs = [RL.stmt (RL.Let (prefix ++ show k) (RL.try' (RL.method t "boolean" []))) | (k, (_, t)) <- zip [0::Int ..] xs]
                 refs prefix xs = Doc.text "&[" <> Doc.joinWith (Doc.text ", ") [Doc.text "(" <> string l <> Doc.text (", " ++ prefix ++ show k ++ ")") | (k, (l, _)) <- zip [0::Int ..] xs] <> Doc.text "]"
             pure (pairs "cover_" covers ++ pairs "class_" classes ++
               [binding ("label_" ++ show k) t | (k, t) <- zip [0::Int ..] labels] ++
