@@ -11,6 +11,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Vector as V
 import Test.Hspec
 import LawSpec.Api (dispatch)
+import LawSpec.Attestation (parseAttestation)
 
 spec :: String
 spec = unlines
@@ -105,6 +106,13 @@ test_attestationReportsWhereTestsRanWithoutChangingEvidence = describe "environm
       unmatched = dependency "payments" "real" []
       attested = check (Just (attestation [gateway, normalize, unmatched]))
       plain = check Nothing
+  it "accepts checked component identity separately from a published contract" $ do
+    let component = object ["name" .= ("atlas-client" :: String), "version" .= ("0.1.0" :: String), "fingerprint" .= replicate 64 'a']
+        implementation = object ["kind" .= ("application" :: String), "product" .= ("atlas-client" :: String), "version" .= ("0.1.0" :: String)]
+        application value = object ["node" .= ("client" :: String), "component" .= value, "implementation" .= implementation]
+        attach value = case attestation [] of Object fields -> Object (KM.insert "application" (application value) fields); value' -> value'
+    parseAttestation (attach component) `shouldSatisfy` either (const False) (const True)
+    parseAttestation (attach (object ["name" .= ("atlas-client" :: String)])) `shouldSatisfy` either (const True) (const False)
   it "plans production-handler dependencies without claiming a completed run" $ do
     field "diagnostics" attested `shouldBe` Just (Array V.empty)
     let law = item "[native]" attested

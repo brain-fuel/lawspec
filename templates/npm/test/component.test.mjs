@@ -59,3 +59,11 @@ test('resolved component describes checked laws, fingerprints and declaration re
   await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nread :: Unit -> Int32\nlaw "|the recorded answer| is definition: read unitValue = 43 end definition end law\nend unit\n');
   assert.notEqual((await resolveComponent(file)).fingerprint, previous);
 });
+
+test('descriptions validate native bindings even with optional verification disabled', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  await mkdir(path.join(root, 'laws'));
+  await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nread :: Unit -> Int32\nend unit\n');
+  await writeFile(file, writeManifest({...project, verification: {layers: []}, targets: [{language: 'javascript', root: '.', nativeBindings: {functions: [{declaration: 'example::missing', native: ['example', 'read']}]}}]}));
+  await assert.rejects(resolveComponent(file), /missing|unknown|binding/i);
+});
