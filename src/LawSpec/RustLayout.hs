@@ -434,7 +434,13 @@ arguments callee cap open close limit args =
     initialTexts = [t | Just t <- map oneLine initial]
     -- An operation overflows only outside a nested call's budget.
     overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial &&
-      (isNothing cap || not (isInfix lastArg)) && (width callee < 4 || not (brokenChain lastArg))
+      (isNothing cap || not (isInfix lastArg)) && (width callee < 4 || not (brokenChain lastArg || forcedChain lastArg))
+    -- (rustfmt keeps a chain of several links that overflows a longer
+    -- callee on one line, so it does not overflow there)
+    forcedChain x = case x of
+      Try a -> forcedChain a
+      Method {} -> length (snd (unchain x)) >= 2
+      _ -> False
     brokenChain x = case x of
       Prefix _ a -> brokenChain a
       Try a -> brokenChain a
@@ -731,8 +737,10 @@ ifDoc c a b = case (flat (If c a b), b) of
       Prefix _ a -> endsOpen a
       _ -> False
     opened = case oneLine c of
-      Just t -> oneOf [D.text ("if " ++ t ++ " {"), D.text "if " <> expr c <> closer]
+      -- (rustfmt keeps two columns back for a chain's last ?)
+      Just t -> oneOf [keep (D.text ("if " ++ t ++ " {")), D.text "if " <> expr c <> closer]
       Nothing -> D.text "if " <> expr c <> closer
+    keep = if triedChain c then D.narrow 2 else id
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
       _ -> D.text "}"
@@ -908,6 +916,7 @@ triedChain e = case e of
 callRoot :: Expr -> Bool
 callRoot e = case e of
   Call {} -> True
+  Paren a -> callRoot a
   Try a -> callRoot a
   _ -> False
 
