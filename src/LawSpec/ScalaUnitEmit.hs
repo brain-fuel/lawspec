@@ -114,7 +114,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
                          [Doc.text ("classOf[" ++ intercalate "." (C.failureNative b) ++ "]"),
                           arrow "(error: Throwable)" (
                             scConstruct failure (C.idText (C.failureConstructor b))
-                              (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (Doc.text "java.util.Objects.toString(error.getMessage, \"\")")) b))]
+                              (C.mapFailureFields (\ty tag -> scConstruct ty (C.idText tag)) (scNativeResult (C.scalarType "Text") (ScalaExpr.call "java.util.Objects.toString" [Doc.text "error.getMessage", ScalaExpr.quoted ""])) b))]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in ScalaExpr.call "LawSpecRuntime.nativeFailures"
              ([ScalaExpr.quoted (C.abilityKey ability), arrow "(nativeValue: Object)" (scNativeResult failure (ScalaExpr.call ("LawSpecScala.cast[" ++ native ++ "]") [Doc.text "nativeValue"])),

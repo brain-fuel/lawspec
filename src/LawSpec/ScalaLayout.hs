@@ -25,20 +25,28 @@ scalaString = D.text . literalFor "scala"
 call :: String -> [D.Doc] -> D.Doc
 call name values = case break (== '[') name of
   -- A method with type arguments (Scala.handler[T]) breaks before its dot
-  -- when its opening does not fit, as scalafmt breaks a chain.
-  (path, typeArgs@('[' : _)) | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse path), not (null values) ->
-    D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
-      (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.group (D.text ('.' : reverse method ++ "[") <>
-        D.nest 2 (D.softbreak <> D.text (init (drop 1 typeArgs))) <> D.softbreak <> D.text "]")) values))]
+  -- when its opening does not fit, and its type arguments break inside
+  -- their brackets, as scalafmt breaks a chain.
+  (path, typeArgs@('[' : _)) | not (null values) ->
+    let typed method = D.group (D.text (method ++ "[") <> D.nest 2 (D.softbreak <> D.text (init (drop 1 typeArgs))) <> D.softbreak <> D.text "]")
+    in case break (== '.') (reverse path) of
+      (method@(_ : _), '.' : owner@(_ : _)) ->
+        D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
+          (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (typed ('.' : reverse method)) values))]
+      _ -> callWith (typed path) values
   -- A qualified call whose opening does not fit breaks before its method.
-  _ | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse name), not (null values), '(' `notElem` name ->
+  _ | (method@(_ : _), '.' : owner@(_ : _)) <- break (== '.') (reverse name), not (null values), all (`notElem` name) "([" ->
       D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
         (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method)) values))]
   _ -> callWith (D.text name) values
 
 callWith :: D.Doc -> [D.Doc] -> D.Doc
 callWith name [] = name <> D.text "()"
-callWith name values = D.group (name <> D.text "(" <> D.nest 2 (D.softbreak <> D.commaSep values) <> D.softbreak <> D.text ")")
+callWith name values
+  -- An argument of several lines puts every argument on a line of its own.
+  | any (('\n' `elem`) . D.render D.Compact) values =
+      D.multiline (name <> D.text "(" <> D.nest 2 (D.hardline <> D.joinWith (D.text "," <> D.hardline) values) <> D.hardline <> D.text ")")
+  | otherwise = D.group (name <> D.text "(" <> D.nest 2 (D.softbreak <> D.commaSep values) <> D.softbreak <> D.text ")")
 
 -- | A definition's parameters: (a: A, b: B), or one a line, indented 4.
 parameters :: D.Doc -> [D.Doc] -> D.Doc

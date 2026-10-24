@@ -196,10 +196,10 @@ emitTests Config{..} unit laws = do
     -- order the run's seed chooses.
     ordered docs
       | orderRandom =
-          [ bind "tests" (text "scala.collection.mutable.ArrayBuffer[(String, () => Unit)]()")
+          [ D.group (text "private val tests =" <> D.nest 2 (D.softline <> text "scala.collection.mutable.ArrayBuffer[(String, () => Unit)]()"))
           , text "protected def registerTest(name: String)(body: => Unit): Unit =" <> D.nest 2 (D.hardline <> text "tests += ((name, () => body))")
           , statements docs
-          , bind "shuffled" (L.chain (call "lawspec.testing.LawSpecHarness.shuffled" [quoted unitLabel, text "tests.asJava"]) [] <> text ".asScala")
+          , bind "shuffled" (D.group (text "lawspec.testing.LawSpecHarness" <> D.nest 2 (D.softbreak <> call ".shuffled" [quoted unitLabel, text "tests.asJava"] <> D.softbreak <> text ".asScala")))
           , braced (text "for ((name, body) <- shuffled)") [text (finalRegister ++ "(name)(body())")] ]
       | otherwise = docs
     register = if orderRandom then "registerTest" else finalRegister
@@ -256,8 +256,8 @@ emitTests Config{..} unit laws = do
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
-    chooser = text "((count: Int) => random.nextInt(count)): java.util.function.IntUnaryOperator"
-    supplier doc = text "(() => " <> doc <> text "): java.util.function.Supplier[LawSpecRuntime.Value]"
+    chooser = text "(count: Int) => random.nextInt(count)"
+    supplier doc = D.group (text "() =>" <> D.nest 2 (D.softline <> doc))
     drawDoc inp strategy d = case d of
       C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".sample(random).value")
       C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "java.util.List.of[java.util.function.Supplier[LawSpecRuntime.Value]]" [supplier (expr v) | v <- values]])

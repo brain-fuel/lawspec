@@ -196,11 +196,11 @@ emitScalaDefinitions layout bits declarations units = do
             native = either error id (Native.scalaDataType declarations failure)
             bindings = [b | b <- failureBindings, failureType b == failure]
             mapped = [ call "LawSpecRuntime.MappedFailure" [D.text ("classOf[" ++ intercalate "." (failureNative b) ++ "]"),
-                         D.text "(error: Throwable) => " <> call "LawSpecScalaCodecs.construct"
+                         arrow "(error: Throwable)" $ call "LawSpecScalaCodecs.construct"
                            [D.text E.schemaName, either error id (E.reference failure), E.quoted (idText (failureConstructor b)), call "List"
                              (mapFailureFields (\ty tag fields -> call "LawSpecScalaCodecs.construct" [D.text E.schemaName, either error id (E.reference ty), E.quoted (idText tag), call "List" fields, D.text E.bitsName, D.text "symbols"]) (call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text E.bitsName]) b),
                             D.text E.bitsName, D.text "symbols"]]
                      | b <- bindings ]
         in call "LawSpecRuntime.nativeFailures" ([E.quoted (abilityKey ability),
-             D.text "(nativeValue: Object) => " <> L.chain codec [("encode", [D.text ("nativeValue.asInstanceOf[" ++ native ++ "]")])], D.text "() => " <> body] ++ mapped)
+             arrow "(nativeValue: Object)" (L.chain codec [("encode", [call ("LawSpecScala.cast[" ++ native ++ "]") [D.text "nativeValue"]])]), arrow "()" body] ++ mapped)
       _ -> body
