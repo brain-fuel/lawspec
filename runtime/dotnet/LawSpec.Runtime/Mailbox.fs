@@ -13,13 +13,15 @@ open System.Text
 /// node, and a remote send completes once the mailbox has the value.
 /// ref:DEC-actors-otp-supervision ref:DEC-distribution-canonical-wire
 [<Sealed; AllowNullLiteral>]
-type Mailbox private (network: (Node * string * Map<string, Descriptors.Descriptor> * Descriptors.Descriptor) option) as this =
+type Mailbox private (network: (Node * string * Map<string, Descriptors.Descriptor> * Descriptors.Descriptor) option) as this
+    =
     let gate = obj ()
     let queue = Collections.Generic.Queue<Value>()
     let mutable closed = false
     let mutable stopped = false
     let mutable reader: TaskCompletionSource<Result<Value, string>> option = None
     let fail reason : 'a = Fail.raiseWith "Mailbox" reason
+
     let address =
         match network with
         | None -> None
@@ -41,15 +43,21 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
             match network with
             | Some n -> n
             | None -> fail "local_mailbox"
+
         let status, body =
-            if closed then 2, "the mailbox is closed"
-            elif frame.Kind <> "mail" then 3, "not a mailbox request"
+            if closed then
+                2, "the mailbox is closed"
+            elif frame.Kind <> "mail" then
+                3, "not a mailbox request"
             else
                 try
                     this.Enqueue(Descriptors.decode d frame.Payload table)
                     0, ""
-                with _ -> 3, "not a message of this mailbox"
-        if frame.Id <> 0UL then node.Reply(frame.Source, frame.Id, status, Encoding.UTF8.GetBytes body)
+                with _ ->
+                    3, "not a message of this mailbox"
+
+        if frame.Id <> 0UL then
+            node.Reply(frame.Source, frame.Id, status, Encoding.UTF8.GetBytes body)
 
     member private this.Enqueue(value: Value) =
         let waiting =
@@ -61,6 +69,7 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
                 | None ->
                     queue.Enqueue value
                     None)
+
         waiting |> Option.iter (fun r -> r.TrySetResult(Ok value) |> ignore)
 
     /// The served mailbox's address.
@@ -71,19 +80,29 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
 
     /// Add a value, unless the mailbox is closed.
     member this.Send(value: Value) =
-        lock gate (fun () -> if closed || stopped then fail "closed")
+        lock gate (fun () ->
+            if closed || stopped then
+                fail "closed")
+
         this.Enqueue value
 
     member private this.Wait(deadline: int64 option) : Value option =
         let pending =
             lock gate (fun () ->
-                if reader.IsSome then fail "already_receiving"
-                if queue.Count > 0 then Choice1Of2(Some(queue.Dequeue()))
-                elif closed || stopped then fail "closed"
+                if reader.IsSome then
+                    fail "already_receiving"
+
+                if queue.Count > 0 then
+                    Choice1Of2(Some(queue.Dequeue()))
+                elif closed || stopped then
+                    fail "closed"
                 else
-                    let r = TaskCompletionSource<Result<Value, string>>(TaskCreationOptions.RunContinuationsAsynchronously)
+                    let r =
+                        TaskCompletionSource<Result<Value, string>>(TaskCreationOptions.RunContinuationsAsynchronously)
+
                     reader <- Some r
                     Choice2Of2 r)
+
         match pending with
         | Choice1Of2 value -> value
         | Choice2Of2 r ->
@@ -92,9 +111,17 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
                 | None -> r.Task.Wait(Timeout.Infinite)
                 | Some micros ->
                     let left = micros - Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency
-                    left > 0L && r.Task.Wait(TimeSpan.FromMilliseconds(float ((left + 999L) / 1000L)))
-            let outcome () = match r.Task.Result with Ok v -> Some v | Error e -> fail e
-            if finished then outcome ()
+
+                    left > 0L
+                    && r.Task.Wait(TimeSpan.FromMilliseconds(float ((left + 999L) / 1000L)))
+
+            let outcome () =
+                match r.Task.Result with
+                | Ok v -> Some v
+                | Error e -> fail e
+
+            if finished then
+                outcome ()
             else
                 let raced =
                     lock gate (fun () ->
@@ -103,6 +130,7 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
                             reader <- None
                             false
                         | _ -> true)
+
                 if raced then outcome () else None
 
     /// The next value, waiting for one.
@@ -114,6 +142,7 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
     /// The next value within some microseconds, or none (a Maybe).
     member this.ReceiveWithin(micros: BigInteger) : Value =
         let now = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency
+
         match this.Wait(Some(now + int64 (BigInteger.Max(BigInteger.Zero, micros)))) with
         | Some value -> Data("Maybe::Present", [ value ])
         | None -> Data("Maybe::Absent", [])
@@ -126,14 +155,26 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
             | Effects.Recording(_, inner) -> real inner
             | Effects.Stateful _ -> false
             | Effects.Stateless _ -> true
+
         let handler = Effects.handler schema "lawspec.time::ability::Clock"
-        if real handler then this.ReceiveWithin micros
+
+        if real handler then
+            this.ReceiveWithin micros
         else
             let now = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency
+
             match this.Wait(Some now) with
             | Some value -> Data("Maybe::Present", [ value ])
             | None ->
-                Effects.invoke handler schema "sleep" [ Data("lawspec.time::type::Duration::Duration", [ Int(BigInteger.Max(BigInteger.Zero, micros)) ]) ] |> ignore
+                Effects.invoke
+                    handler
+                    schema
+                    "sleep"
+                    [
+                        Data("lawspec.time::type::Duration::Duration", [ Int(BigInteger.Max(BigInteger.Zero, micros)) ])
+                    ]
+                |> ignore
+
                 Data("Maybe::Absent", [])
 
     /// Refuse new values; accepted ones still drain.
@@ -141,11 +182,14 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
         let waiting =
             lock gate (fun () ->
                 closed <- true
+
                 if queue.Count = 0 then
                     let r = reader
                     reader <- None
                     r
-                else None)
+                else
+                    None)
+
         waiting |> Option.iter (fun r -> r.TrySetResult(Error "closed") |> ignore)
 
     /// Stop the mailbox: a waiting reader fails, and a served one leaves its node.
@@ -156,9 +200,15 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
                 let r = reader
                 reader <- None
                 r)
+
         waiting |> Option.iter (fun r -> r.TrySetResult(Error "closed") |> ignore)
+
         match network with
-        | Some(node, name, _, _) -> (try node.Unregister name with _ -> ())
+        | Some(node, name, _, _) ->
+            (try
+                node.Unregister name
+             with _ ->
+                 ())
         | None -> ()
 
     interface IDisposable with
@@ -167,7 +217,10 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
 /// Sending to a mailbox on another node.
 [<Sealed>]
 type MailboxSender(node: Node, address: string, descriptor: string, timeout: int) =
-    do if timeout <= 0 then Fail.raiseWith "Mailbox" "invalid_sender"
+    do
+        if timeout <= 0 then
+            Fail.raiseWith "Mailbox" "invalid_sender"
+
     let table, d = Descriptors.fromText descriptor
 
     /// Send, waiting until the mailbox has the value.
@@ -192,4 +245,5 @@ module Mailboxes =
     let serve (node: Node) (name: string) (descriptor: string) = Mailbox.Serve(node, name, descriptor)
 
     [<CompiledName("Connect")>]
-    let connect (node: Node) (address: string) (descriptor: string) (timeout: int) = MailboxSender(node, address, descriptor, timeout)
+    let connect (node: Node) (address: string) (descriptor: string) (timeout: int) =
+        MailboxSender(node, address, descriptor, timeout)

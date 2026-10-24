@@ -131,6 +131,14 @@ async function setup(target) {
       ["--no-terminal", "build", "--test", "--no-run-tests"],
       root,
     );
+  } else if (target === "fsharp" || target === "csharp") {
+    // Acceptance checks generated F# with Fantomas, at the version the tool
+    // manifest pins; dotnet format comes with the SDK.
+    const manifest = JSON.parse(await readFile(path.join(repo, "test/locks/dotnet-tools.json"), "utf8"));
+    const tools = path.join(root, "fantomas");
+    const installed = await access(path.join(tools, ".store", "fantomas", manifest.tools.fantomas.version)).then(() => true, () => false);
+    if (!installed)
+      await run("dotnet", ["tool", "install", "fantomas", "--version", manifest.tools.fantomas.version, "--tool-path", tools], root);
   } else if (target === "clojure") {
     await run("clojure", ["-P", "-M:test"], root);
   } else if (target === "kotlin" || target === "groovy") {

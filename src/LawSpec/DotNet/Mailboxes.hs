@@ -15,10 +15,11 @@ import LawSpec.Mailboxes (mailboxClassName)
 import LawSpec.DotNet.Code (stringLiteral, Lang(..))
 import LawSpec.DotNet.Names
 import qualified LawSpec.DotNet.Data as Data
+import qualified LawSpec.DotNet.Layout as L
 import Control.Monad (forM)
 
 emitMailboxes :: D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emitMailboxes layout bits datas units
+emitMailboxes _ bits datas units
   | null boxes = pure []
   | otherwise = do
       names <- dataNames datas
@@ -29,48 +30,51 @@ emitMailboxes layout bits datas units
             wire = either (const Nothing) Just $ do
               (d, table) <- describe bits datas [] (C.mailboxType b)
               pure (concatMap ((++ " ") . snd) (reverse table) ++ d)
-            member doc text = D.text ("/// " ++ doc) <> D.hardline <> D.text text
+            -- A codec's conversion of a value.
+            convert member x
+              | take 1 codec == "(" = L.App ("Codec." ++ member) [L.A codec, x]
+              | otherwise = L.App (codec ++ "." ++ (if member == "toNative" then "ToNative" else "FromNative")) [x]
+            member doc ls = L.pad 4 ("/// " ++ doc) : ls
+            function declaration result body = L.function 4 declaration [] result body
             network = case wire of
               Nothing -> []
               Just w ->
-                [ member "The mailbox's wire form." ("static member Descriptor = " ++ stringLiteral FSharp w)
+                [ member "The mailbox's wire form." (L.binding 4 "static member Descriptor" (L.A (stringLiteral FSharp w)))
                 , member "A mailbox served at name on a node: other nodes send to its Address."
-                    ("static member Serve(node: Node, name: string) : " ++ cls ++ " = new " ++ cls ++ "(Mailbox.Serve(node, name, " ++ cls ++ ".Descriptor))")
+                    (function "static member Serve(node: Node, name: string)" (Just cls)
+                      (L.Method ("new " ++ cls) [L.Method "Mailbox.Serve" [L.A "node", L.A "name", L.A (cls ++ ".Descriptor")]]))
                 , member "Sends to the mailbox at address on another node; each send waits up to timeout for it to arrive."
-                    ("static member Connect(node: Node, address: string, timeout: TimeSpan) : " ++ cls ++ "Sender =") <> D.nest 4 (D.hardline <>
-                      D.text (cls ++ "Sender(MailboxSender(node, address, " ++ cls ++ ".Descriptor, int timeout.TotalMilliseconds))"))
+                    (function "static member Connect(node: Node, address: string, timeout: TimeSpan)" (Just (cls ++ "Sender"))
+                      (L.Method (cls ++ "Sender") [L.Method "MailboxSender" [L.A "node", L.A "address", L.A (cls ++ ".Descriptor"), L.App "int" [L.A "timeout.TotalMilliseconds"]]]))
                 , member "Sends to the mailbox at address on another node, waiting up to 5 seconds for each send to arrive."
-                    ("static member Connect(node: Node, address: string) : " ++ cls ++ "Sender = " ++ cls ++ ".Connect(node, address, TimeSpan.FromSeconds 5.0)")
-                , member "The served mailbox's address." "member _.Address : string = mailbox.Address" ]
+                    (function "static member Connect(node: Node, address: string)" (Just (cls ++ "Sender"))
+                      (L.Method (cls ++ ".Connect") [L.A "node", L.A "address", L.App "TimeSpan.FromSeconds" [L.A "5.0"]]))
+                , member "The served mailbox's address." (L.binding 4 "member _.Address: string" (L.A "mailbox.Address")) ]
             sender = case wire of
               Nothing -> []
               Just _ ->
-                [ D.text ("/// Sends to mailbox " ++ C.mailboxName b ++ " on another node.") <> D.hardline <>
-                  D.text "[<Sealed>]" <> D.hardline <>
-                  D.text ("type " ++ cls ++ "Sender internal (sender: MailboxSender) =") <> D.nest 4 (D.hardline <>
-                    member "Sends value, waiting until the mailbox has it." ("member _.Send(value: " ++ native ++ ") : unit = sender.Send(" ++ codec ++ ".FromNative value)")) ]
-        pure (sender ++ [D.text ("/// Mailbox " ++ C.mailboxName b ++ ": messages from any number of senders, taken by one receiver.") <> D.hardline <>
-          D.text "[<Sealed>]" <> D.hardline <>
-          D.text ("type " ++ cls ++ " internal (mailbox: Mailbox) =") <> D.nest 4 (D.hardline <> D.joinWith (D.hardline <> D.hardline) (
-            [ member "A mailbox in this process." ("new() = new " ++ cls ++ "(new Mailbox())")
-            , member "Queues value without waiting." ("member _.Send(value: " ++ native ++ ") : unit = mailbox.Send(" ++ codec ++ ".FromNative value)")
-            , member "The next message, waiting for one; fails once closed and empty." ("member _.Receive() : " ++ native ++ " = " ++ codec ++ ".ToNative (mailbox.Receive())")
-            , member "The next message within timeout, if one comes." ("member _.ReceiveWithin(timeout: TimeSpan) : " ++ native ++ " option =") <> D.nest 4 (D.hardline <>
-                D.text "match mailbox.ReceiveWithin(System.Numerics.BigInteger(timeout.Ticks / 10L)) with" <> D.hardline <>
-                D.text ("| Value.Data(\"Maybe::Present\", [ value ]) -> Some(" ++ codec ++ ".ToNative value)") <> D.hardline <>
-                D.text "| _ -> None")
-            , member "The next message within timeout; fails when none comes." ("member this.Receive(timeout: TimeSpan) : " ++ native ++ " =") <> D.nest 4 (D.hardline <>
-                D.text "match this.ReceiveWithin timeout with" <> D.hardline <>
-                D.text "| Some value -> value" <> D.hardline <>
-                D.text ("| None -> Fail.raiseWith \"Mailbox\" \"timeout\""))
-            , member "Refuses later sends; messages already sent can still be received." "member _.Close() : unit = mailbox.Close()"
-            , member "Stops the mailbox: later sends and receives fail." "member _.Stop() : unit = mailbox.Stop()"
-            , D.text "interface IDisposable with" <> D.nest 4 (D.hardline <> D.text "member _.Dispose() = mailbox.Stop()") ] ++ network))])
-      let doc = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
-            D.text "/// Typed mailboxes: send never waits, one receiver takes messages in order." <> D.hardline <>
-            D.text "namespace LawSpec.Mailboxes" <> D.hardline <> D.hardline <>
-            D.text "open System" <> D.hardline <> D.text "open LawSpec.Runtime" <> D.hardline <> D.hardline <>
-            D.joinWith (D.hardline <> D.hardline) (concat classes) <> D.hardline
-      pure [Artifact "src/LawSpec/Mailboxes.fs" (D.render layout doc) "generated" "source"]
+                [ [ "/// Sends to mailbox " ++ C.mailboxName b ++ " on another node.", "[<Sealed>]"
+                  , "type " ++ cls ++ "Sender internal (sender: MailboxSender) =" ] ++
+                  member "Sends value, waiting until the mailbox has it."
+                    (function ("member _.Send(value: " ++ native ++ ")") (Just "unit") (L.Method "sender.Send" [convert "fromNative" (L.A "value")])) ]
+        pure (sender ++ [[ "/// Mailbox " ++ C.mailboxName b ++ ": messages from any number of senders, taken by one receiver.", "[<Sealed>]"
+          , "type " ++ cls ++ " internal (mailbox: Mailbox) =" ] ++ L.separatedBy [""] (
+            [ member "A mailbox in this process." [L.pad 4 ("new() = new " ++ cls ++ "(new Mailbox())")]
+            , member "Queues value without waiting." (function ("member _.Send(value: " ++ native ++ ")") (Just "unit")
+                (L.Method "mailbox.Send" [convert "fromNative" (L.A "value")]))
+            , member "The next message, waiting for one; fails once closed and empty." (function "member _.Receive()" (Just native)
+                (convert "toNative" (L.A "(mailbox.Receive())")))
+            , member "The next message within timeout, if one comes." (function "member _.ReceiveWithin(timeout: TimeSpan)" (Just (native ++ " option"))
+                (L.Match (L.A "mailbox.ReceiveWithin(System.Numerics.BigInteger(timeout.Ticks / 10L))")
+                  [("Value.Data(\"Maybe::Present\", [ value ])", L.App "Some" [convert "toNative" (L.A "value")]), ("_", L.A "None")]))
+            , member "The next message within timeout; fails when none comes." (function "member this.Receive(timeout: TimeSpan)" (Just native)
+                (L.Match (L.A "this.ReceiveWithin timeout") [("Some value", L.A "value"), ("None", L.A "Fail.raiseWith \"Mailbox\" \"timeout\"")]))
+            , member "Refuses later sends; messages already sent can still be received." [L.pad 4 "member _.Close() : unit = mailbox.Close()"]
+            , member "Stops the mailbox: later sends and receives fail." [L.pad 4 "member _.Stop() : unit = mailbox.Stop()"]
+            , [L.pad 4 "interface IDisposable with", L.pad 8 "member _.Dispose() = mailbox.Stop()"] ] ++ network)])
+      let text = unlines ([ "// Generated by LawSpec. Do not edit."
+            , "/// Typed mailboxes: send never waits, one receiver takes messages in order."
+            , "namespace LawSpec.Mailboxes", "", "open System", "open LawSpec.Runtime", "" ] ++ L.separatedBy [""] (concat classes))
+      pure [Artifact "src/LawSpec/Mailboxes.fs" text "generated" "source"]
   where
     boxes = concatMap C.unitMailboxes units

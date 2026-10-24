@@ -42,32 +42,67 @@ module NetworkRecords =
     let private bytesType = Descriptors.Forms [ Descriptors.Atom "bytes" ]
 
     [<CompiledName("Fields")>]
-    let fields (values: byte[] list) = Wire.fields (values |> List.map (fun _ -> bytesType)) (values |> List.map Bytes)
+    let fields (values: byte[] list) =
+        Wire.fields (values |> List.map (fun _ -> bytesType)) (values |> List.map Bytes)
 
     [<CompiledName("ReadFields")>]
     let readFields (count: int) (bytes: byte[]) (start: int) =
         let values, next = Wire.readFields (List.replicate count bytesType) bytes start
-        values |> List.map (function Bytes b -> b | _ -> Fail.raiseWith "InvalidSecureRecord" ""), next
+
+        values
+        |> List.map (function
+            | Bytes b -> b
+            | _ -> Fail.raiseWith "InvalidSecureRecord" ""),
+        next
 
     [<CompiledName("Identity")>]
     let identity (crypto: INetworkCrypto) (seed: byte[]) =
-        if isNull seed || seed.Length <> 32 then Fail.raiseWith "InvalidNodeIdentity" ""
-        { Seed = Array.copy seed; PublicKey = crypto.MlDsaPublic seed }
+        if isNull seed || seed.Length <> 32 then
+            Fail.raiseWith "InvalidNodeIdentity" ""
+
+        {
+            Seed = Array.copy seed
+            PublicKey = crypto.MlDsaPublic seed
+        }
 
     [<CompiledName("Fingerprint")>]
-    let fingerprint (crypto: INetworkCrypto) (identity: NodeIdentity) = Wire.hex (crypto.Sha3_256 identity.PublicKey)
+    let fingerprint (crypto: INetworkCrypto) (identity: NodeIdentity) =
+        Wire.hex (crypto.Sha3_256 identity.PublicKey)
 
     [<CompiledName("Hello")>]
     let hello (session: byte[]) (address: string) (publicKey: byte[]) (kem: byte[]) =
         fields [ session; Encoding.UTF8.GetBytes address; publicKey; kem ]
 
     [<CompiledName("Welcome")>]
-    let welcome (crypto: INetworkCrypto) (session: byte[]) (address: string) (publicKey: byte[]) (ciphertext: byte[]) (helloBody: byte[]) =
-        fields [ session; Encoding.UTF8.GetBytes address; publicKey; ciphertext; crypto.Sha3_256 helloBody ]
+    let welcome
+        (crypto: INetworkCrypto)
+        (session: byte[])
+        (address: string)
+        (publicKey: byte[])
+        (ciphertext: byte[])
+        (helloBody: byte[])
+        =
+        fields
+            [
+                session
+                Encoding.UTF8.GetBytes address
+                publicKey
+                ciphertext
+                crypto.Sha3_256 helloBody
+            ]
 
     [<CompiledName("Key")>]
     let key (crypto: INetworkCrypto) (shared: byte[]) (helloBody: byte[]) (welcomeBody: byte[]) =
-        crypto.Shake256(Array.concat [ shared; Encoding.ASCII.GetBytes "lawspec-session-v1"; crypto.Sha3_256 helloBody; crypto.Sha3_256 welcomeBody ], 32)
+        crypto.Shake256(
+            Array.concat
+                [
+                    shared
+                    Encoding.ASCII.GetBytes "lawspec-session-v1"
+                    crypto.Sha3_256 helloBody
+                    crypto.Sha3_256 welcomeBody
+                ],
+            32
+        )
 
     [<CompiledName("Record")>]
     let record (kind: byte) (body: byte[]) (signature: byte[]) =
@@ -80,19 +115,29 @@ module NetworkRecords =
 
     [<CompiledName("Read")>]
     let read (bytes: byte[]) : Record =
-        if bytes.Length < 4 || bytes.[0] <> byte 'L' || bytes.[1] <> byte 'S' || bytes.[2] <> 1uy then
+        if
+            bytes.Length < 4
+            || bytes.[0] <> byte 'L'
+            || bytes.[1] <> byte 'S'
+            || bytes.[2] <> 1uy
+        then
             Fail.raiseWith "InvalidSecureRecord" ""
+
         match bytes.[3] with
-        | 1uy | 2uy ->
+        | 1uy
+        | 2uy ->
             let count = if bytes.[3] = 1uy then 4 else 5
             let values, rest = readFields count bytes 4
+
             match readFields 1 bytes rest with
-            | [ signature ], next when next = bytes.Length -> Handshake(int bytes.[3], values, bytes.[4 .. rest - 1], signature)
+            | [ signature ], next when next = bytes.Length ->
+                Handshake(int bytes.[3], values, bytes.[4 .. rest - 1], signature)
             | _ -> Fail.raiseWith "InvalidSecureRecord" ""
         | 3uy ->
             match readFields 1 bytes 4 with
             | [ session ], at when at < bytes.Length ->
                 let direction = int bytes.[at]
+
                 match readFields 1 bytes (at + 1) with
                 | [ sealedBytes ], next when next = bytes.Length -> Sealed(session, direction, sealedBytes)
                 | _ -> Fail.raiseWith "InvalidSecureRecord" ""
@@ -104,26 +149,46 @@ module NetworkRecords =
 
     /// A frame sealed under a session key with a given nonce.
     [<CompiledName("SealWith")>]
-    let sealWith (crypto: INetworkCrypto) (key: byte[]) (session: byte[]) (direction: int) (frame: byte[]) (nonce: byte[]) =
-        let sealedBytes = Array.append nonce (crypto.AesGcmEncrypt(key, nonce, frame, associated session direction))
-        Array.concat [ [| byte 'L'; byte 'S'; 1uy; 3uy |]; fields [ session ]; [| byte direction |]; fields [ sealedBytes ] ]
+    let sealWith
+        (crypto: INetworkCrypto)
+        (key: byte[])
+        (session: byte[])
+        (direction: int)
+        (frame: byte[])
+        (nonce: byte[])
+        =
+        let sealedBytes =
+            Array.append nonce (crypto.AesGcmEncrypt(key, nonce, frame, associated session direction))
+
+        Array.concat
+            [
+                [| byte 'L'; byte 'S'; 1uy; 3uy |]
+                fields [ session ]
+                [| byte direction |]
+                fields [ sealedBytes ]
+            ]
 
     [<CompiledName("Seal")>]
-    let seal crypto key session direction frame = sealWith crypto key session direction frame (RandomNumberGenerator.GetBytes 12)
+    let seal crypto key session direction frame =
+        sealWith crypto key session direction frame (RandomNumberGenerator.GetBytes 12)
 
     [<CompiledName("OpenSealed")>]
     let openSealed (crypto: INetworkCrypto) (key: byte[]) (session: byte[]) (direction: int) (sealedBytes: byte[]) =
-        if sealedBytes.Length < 12 + 16 then None
-        else crypto.AesGcmDecrypt(key, sealedBytes.[.. 11], sealedBytes.[12 ..], associated session direction)
+        if sealedBytes.Length < 12 + 16 then
+            None
+        else
+            crypto.AesGcmDecrypt(key, sealedBytes.[..11], sealedBytes.[12..], associated session direction)
 
 /// A node's identity and the fingerprints it trusts (None: trust on first use).
 type NetworkOptions =
-    { Identity: NodeIdentity option
-      IdentitySeed: byte[] option
-      Trusted: string list option
-      /// Whether Trusted was given (so the configuration file is not read for it).
-      TrustGiven: bool
-      FirstId: uint64 option }
+    {
+        Identity: NodeIdentity option
+        IdentitySeed: byte[] option
+        Trusted: string list option
+        /// Whether Trusted was given (so the configuration file is not read for it).
+        TrustGiven: bool
+        FirstId: uint64 option
+    }
 
 /// Node identities and trust from options, then lawspec-network.conf (found
 /// from the working directory up, or named by LAWSPEC_NETWORK_CONF), whose
@@ -132,18 +197,29 @@ type NetworkOptions =
 /// ref:DEC-distribution-canonical-wire
 module NetworkConfig =
     [<CompiledName("Empty")>]
-    let empty = { Identity = None; IdentitySeed = None; Trusted = None; TrustGiven = false; FirstId = None }
+    let empty =
+        {
+            Identity = None
+            IdentitySeed = None
+            Trusted = None
+            TrustGiven = false
+            FirstId = None
+        }
 
     let private locate () =
         match Environment.GetEnvironmentVariable "LAWSPEC_NETWORK_CONF" with
-        | null | "" ->
+        | null
+        | "" ->
             let rec up (directory: string) =
                 let path = Path.Combine(directory, "lawspec-network.conf")
-                if File.Exists path then Some path
+
+                if File.Exists path then
+                    Some path
                 else
                     match Directory.GetParent directory with
                     | null -> None
                     | parent -> up parent.FullName
+
             up (Directory.GetCurrentDirectory())
         | file -> Some(Path.GetFullPath file)
 
@@ -156,19 +232,35 @@ module NetworkConfig =
             let directory = Path.GetDirectoryName path
             let mutable identity = None
             let mutable trusted = None
+
             for line in File.ReadAllLines path do
                 let trimmed = line.Trim()
+
                 for kind in [ "identity"; "trusted" ] do
-                    if trimmed.StartsWith(kind) && trimmed.Length > kind.Length && Char.IsWhiteSpace trimmed.[kind.Length] then
+                    if
+                        trimmed.StartsWith(kind)
+                        && trimmed.Length > kind.Length
+                        && Char.IsWhiteSpace trimmed.[kind.Length]
+                    then
                         let name = trimmed.Substring(kind.Length).Trim()
                         let text = File.ReadAllText(Path.Combine(directory, name))
-                        if kind = "identity" then identity <- Some(Convert.FromHexString(text.Trim()))
-                        else trusted <- Some(text.Split([| ' '; '\t'; '\r'; '\n' |], StringSplitOptions.RemoveEmptyEntries) |> List.ofArray)
+
+                        if kind = "identity" then
+                            identity <- Some(Convert.FromHexString(text.Trim()))
+                        else
+                            trusted <-
+                                Some(
+                                    text.Split([| ' '; '\t'; '\r'; '\n' |], StringSplitOptions.RemoveEmptyEntries)
+                                    |> List.ofArray
+                                )
+
             identity, trusted
 
     [<CompiledName("Fingerprint")>]
     let fingerprint (value: string) =
-        if isNull value || value.Length <> 64 then Fail.raiseWith "InvalidTrustedFingerprint" ""
+        if isNull value || value.Length <> 64 then
+            Fail.raiseWith "InvalidTrustedFingerprint" ""
+
         Convert.FromHexString value |> ignore
         value.ToLowerInvariant()
 
@@ -176,13 +268,18 @@ module NetworkConfig =
     [<CompiledName("Resolve")>]
     let resolve (crypto: INetworkCrypto) (options: NetworkOptions) : NodeIdentity * Set<string> option =
         let fileIdentity, fileTrusted =
-            if (options.Identity.IsSome || options.IdentitySeed.IsSome) && options.TrustGiven then None, None else configured ()
+            if (options.Identity.IsSome || options.IdentitySeed.IsSome) && options.TrustGiven then
+                None, None
+            else
+                configured ()
+
         let identity =
             match options.Identity, options.IdentitySeed, fileIdentity with
             | Some i, _, _ -> i
             | None, Some seed, _ -> NetworkRecords.identity crypto seed
             | None, None, Some seed -> NetworkRecords.identity crypto seed
             | None, None, None -> NetworkRecords.identity crypto (RandomNumberGenerator.GetBytes 32)
+
         let trusted = if options.TrustGiven then options.Trusted else fileTrusted
         identity, trusted |> Option.map (List.map fingerprint >> Set.ofList)
 
@@ -191,7 +288,8 @@ module NetworkConfig =
 /// node only after they open under a session's key.
 /// ref:DEC-distribution-canonical-wire ref:DEC-async-native-tasks
 [<Sealed>]
-type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkOptions, deliver: string -> byte[] -> unit) =
+type SecureLayer
+    (crypto: INetworkCrypto, transport: Transport, options: NetworkOptions, deliver: string -> byte[] -> unit) =
     let identity, trusted = NetworkConfig.resolve crypto options
     let gate = obj ()
     let known = Collections.Generic.Dictionary<string, string>()
@@ -205,42 +303,70 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
 
     let accept (peer: string) (publicKey: byte[]) =
         let fingerprint = Wire.hex (crypto.Sha3_256 publicKey)
+
         match trusted with
         | Some set when not (set.Contains fingerprint) -> Fail.raiseWith "UntrustedPeer" peer
         | _ -> ()
+
         match known.TryGetValue peer with
         | true, existing when existing <> fingerprint -> Fail.raiseWith "PeerIdentityChanged" peer
         | _ -> known.[peer] <- fingerprint
 
     let validPeer (peer: string) =
         let node, name = Wire.splitAddress (peer + "/")
-        if node <> peer || name <> "" then Fail.raiseWith "InvalidPeer" peer
+
+        if node <> peer || name <> "" then
+            Fail.raiseWith "InvalidPeer" peer
 
     let signed (kind: byte) (prefix: string) (body: byte[]) =
-        NetworkRecords.record kind body (crypto.MlDsaSign(identity.Seed, Array.append (Encoding.ASCII.GetBytes prefix) body))
+        NetworkRecords.record
+            kind
+            body
+            (crypto.MlDsaSign(identity.Seed, Array.append (Encoding.ASCII.GetBytes prefix) body))
 
     member private this.Wire(peer: string, bytes: byte[]) = connection.Send(peer, bytes)
 
     member private this.Incoming(record: byte[]) =
         let outgoingFrames = ResizeArray<string * byte[]>()
         let received = ResizeArray<string * byte[]>()
+
         lock gate (fun () ->
             match NetworkRecords.read record with
             | NetworkRecords.Handshake(1, [ session; peerBytes; publicKey; kem ], body, signature) ->
-                if session.Length <> 16 || kem.Length <> 1184 then Fail.raiseWith "InvalidHello" ""
+                if session.Length <> 16 || kem.Length <> 1184 then
+                    Fail.raiseWith "InvalidHello" ""
+
                 let peer = Encoding.UTF8.GetString peerBytes
                 validPeer peer
+
                 match welcomes.TryGetValue(key session) with
                 | true, (hello, answer, from) ->
-                    if from = peer && hello = record then outgoingFrames.Add((peer, answer))
+                    if from = peer && hello = record then
+                        outgoingFrames.Add((peer, answer))
                 | _ ->
-                    if sessions.ContainsKey(key session) || pending.Values |> Seq.exists (fun p -> p.Session = session) then
+                    if
+                        sessions.ContainsKey(key session)
+                        || pending.Values |> Seq.exists (fun p -> p.Session = session)
+                    then
                         Fail.raiseWith "DuplicateSession" ""
-                    if not (crypto.MlDsaVerify(publicKey, Array.append (Encoding.ASCII.GetBytes "lawspec-handshake-v1-hello") body, signature)) then
+
+                    if
+                        not (
+                            crypto.MlDsaVerify(
+                                publicKey,
+                                Array.append (Encoding.ASCII.GetBytes "lawspec-handshake-v1-hello") body,
+                                signature
+                            )
+                        )
+                    then
                         Fail.raiseWith "BadSignature" ""
+
                     accept peer publicKey
                     let ciphertext, shared = crypto.MlKemEncapsulate kem
-                    let welcomeBody = NetworkRecords.welcome crypto session connection.Address identity.PublicKey ciphertext body
+
+                    let welcomeBody =
+                        NetworkRecords.welcome crypto session connection.Address identity.PublicKey ciphertext body
+
                     let answer = signed 2uy "lawspec-handshake-v1-welcome" welcomeBody
                     let sessionKey = NetworkRecords.key crypto shared body welcomeBody
                     welcomes.[key session] <- (record, answer, peer)
@@ -248,17 +374,33 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
                     outgoingFrames.Add((peer, answer))
             | NetworkRecords.Handshake(2, [ session; peerBytes; publicKey; ciphertext; hash ], body, signature) ->
                 let peer = Encoding.UTF8.GetString peerBytes
+
                 match pending.TryGetValue peer with
                 | true, p when p.Session = session ->
-                    if ciphertext.Length <> 1088 || hash <> crypto.Sha3_256 p.Body then Fail.raiseWith "InvalidWelcome" ""
-                    if not (crypto.MlDsaVerify(publicKey, Array.append (Encoding.ASCII.GetBytes "lawspec-handshake-v1-welcome") body, signature)) then
+                    if ciphertext.Length <> 1088 || hash <> crypto.Sha3_256 p.Body then
+                        Fail.raiseWith "InvalidWelcome" ""
+
+                    if
+                        not (
+                            crypto.MlDsaVerify(
+                                publicKey,
+                                Array.append (Encoding.ASCII.GetBytes "lawspec-handshake-v1-welcome") body,
+                                signature
+                            )
+                        )
+                    then
                         Fail.raiseWith "BadSignature" ""
+
                     accept peer publicKey
-                    let sessionKey = NetworkRecords.key crypto (crypto.MlKemDecapsulate(p.Seed, ciphertext)) p.Body body
+
+                    let sessionKey =
+                        NetworkRecords.key crypto (crypto.MlKemDecapsulate(p.Seed, ciphertext)) p.Body body
+
                     p.Timer.Dispose()
                     pending.Remove peer |> ignore
                     sessions.[key session] <- (peer, sessionKey, 0)
                     outbound.[peer] <- session
+
                     for frame in p.Queue do
                         outgoingFrames.Add((peer, NetworkRecords.seal crypto sessionKey session 0 frame))
                 | _ -> ()
@@ -268,15 +410,26 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
                     match NetworkRecords.openSealed crypto sessionKey session direction sealedBytes with
                     | Some frame ->
                         received.Add((peer, frame))
-                        if not (outbound.ContainsKey peer) then outbound.[peer] <- session
+
+                        if not (outbound.ContainsKey peer) then
+                            outbound.[peer] <- session
                     | None -> ()
                 | _ -> ()
             | _ -> ())
-        for peer, bytes in outgoingFrames do this.Wire(peer, bytes) |> ignore
-        for peer, frame in received do deliver peer frame
+
+        for peer, bytes in outgoingFrames do
+            this.Wire(peer, bytes) |> ignore
+
+        for peer, frame in received do
+            deliver peer frame
 
     member this.Start() =
-        connection <- Transports.open' transport (fun _ bytes -> try this.Incoming bytes with _ -> ())
+        connection <-
+            Transports.open' transport (fun _ bytes ->
+                try
+                    this.Incoming bytes
+                with _ ->
+                    ())
 
     member this.Address = connection.Address
 
@@ -287,7 +440,8 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
     member this.Send(peer: string, frame: byte[]) : Result<unit, string> =
         let action =
             lock gate (fun () ->
-                if closed then Choice3Of3(Error "transport_closed")
+                if closed then
+                    Choice3Of3(Error "transport_closed")
                 else
                     match outbound.TryGetValue peer with
                     | true, session ->
@@ -305,23 +459,44 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
                             let body = NetworkRecords.hello session connection.Address identity.PublicKey kem
                             let hello = signed 1uy "lawspec-handshake-v1-hello" body
                             let deadline = DateTime.UtcNow.AddSeconds 5.0
-                            let p = { Session = session; Seed = seed; Body = body; Hello = hello; Queue = ResizeArray [ frame ]; Timer = null }
+
+                            let p =
+                                {
+                                    Session = session
+                                    Seed = seed
+                                    Body = body
+                                    Hello = hello
+                                    Queue = ResizeArray [ frame ]
+                                    Timer = null
+                                }
+
                             pending.[peer] <- p
+
                             let timer =
-                                new Timer((fun _ ->
-                                    let resend =
-                                        lock gate (fun () ->
-                                            match pending.TryGetValue peer with
-                                            | true, q when obj.ReferenceEquals(q, p) ->
-                                                if DateTime.UtcNow >= deadline then
-                                                    q.Timer.Dispose()
-                                                    pending.Remove peer |> ignore
-                                                    false
-                                                else true
-                                            | _ -> false)
-                                    if resend then this.Wire(peer, hello) |> ignore), null, 100, 100)
+                                new Timer(
+                                    (fun _ ->
+                                        let resend =
+                                            lock gate (fun () ->
+                                                match pending.TryGetValue peer with
+                                                | true, q when obj.ReferenceEquals(q, p) ->
+                                                    if DateTime.UtcNow >= deadline then
+                                                        q.Timer.Dispose()
+                                                        pending.Remove peer |> ignore
+                                                        false
+                                                    else
+                                                        true
+                                                | _ -> false)
+
+                                        if resend then
+                                            this.Wire(peer, hello) |> ignore),
+                                    null,
+                                    100,
+                                    100
+                                )
+
                             p.Timer <- timer
                             Choice2Of3 hello)
+
         match action with
         | Choice1Of3 sealedFrame -> this.Wire(peer, sealedFrame)
         | Choice2Of3 hello -> this.Wire(peer, hello)
@@ -330,20 +505,27 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
     member this.Close() =
         lock gate (fun () ->
             closed <- true
-            for p in pending.Values do p.Timer.Dispose()
+
+            for p in pending.Values do
+                p.Timer.Dispose()
+
             pending.Clear())
-        if not (isNull (box connection)) then connection.Dispose()
+
+        if not (isNull (box connection)) then
+            connection.Dispose()
 
     interface IDisposable with
         member this.Dispose() = this.Close()
 
 and private PendingHandshake =
-    { Session: byte[]
-      Seed: byte[]
-      Body: byte[]
-      Hello: byte[]
-      Queue: ResizeArray<byte[]>
-      mutable Timer: Timer }
+    {
+        Session: byte[]
+        Seed: byte[]
+        Body: byte[]
+        Hello: byte[]
+        Queue: ResizeArray<byte[]>
+        mutable Timer: Timer
+    }
 
 /// The secure network's primitives from LawSpec.Runtime.Crypto (BouncyCastle
 /// ML-DSA-65 and ML-KEM-768; SHA3, SHAKE256 and AES-256-GCM).
@@ -352,14 +534,24 @@ type RuntimeNetworkCrypto() =
     interface INetworkCrypto with
         member _.MlDsaPublic seed = Crypto.mldsaPublic seed
         member _.MlDsaSign(seed, message) = Crypto.mldsaSign seed message
-        member _.MlDsaVerify(publicKey, message, signature) = Crypto.mldsaVerify publicKey message signature
+
+        member _.MlDsaVerify(publicKey, message, signature) =
+            Crypto.mldsaVerify publicKey message signature
+
         member _.MlKemKeypair seed = Crypto.mlkemKeyPair seed
-        member _.MlKemEncapsulate encapsulationKey = Crypto.mlkemEncapsulate encapsulationKey
+
+        member _.MlKemEncapsulate encapsulationKey =
+            Crypto.mlkemEncapsulate encapsulationKey
+
         member _.MlKemDecapsulate(seed, ciphertext) = Crypto.mlkemDecapsulate seed ciphertext
         member _.Sha3_256 bytes = Crypto.sha3 bytes
         member _.Shake256(bytes, length) = Crypto.shake bytes length
-        member _.AesGcmEncrypt(key, nonce, plaintext, associated) = Crypto.aes256GcmEncrypt key nonce plaintext associated
-        member _.AesGcmDecrypt(key, nonce, sealedBytes, associated) = Crypto.aes256GcmDecrypt key nonce sealedBytes associated
+
+        member _.AesGcmEncrypt(key, nonce, plaintext, associated) =
+            Crypto.aes256GcmEncrypt key nonce plaintext associated
+
+        member _.AesGcmDecrypt(key, nonce, sealedBytes, associated) =
+            Crypto.aes256GcmDecrypt key nonce sealedBytes associated
 
 /// The crypto primitives of the secure network: the runtime's own, unless
 /// another implementation is installed.

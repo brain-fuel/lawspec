@@ -13,7 +13,11 @@ open System.Threading.Tasks
 type SocketKind =
     | Tcp
     | Http
-    member this.Scheme = match this with Tcp -> "tcp" | Http -> "http"
+
+    member this.Scheme =
+        match this with
+        | Tcp -> "tcp"
+        | Http -> "http"
 
 /// The envelopes sockets carry: a TCP record is a 4-byte big-endian length
 /// then the bytes; HTTP is one POST /lawspec per connection, answered 204,
@@ -26,7 +30,9 @@ module SocketProtocol =
     /// Whether text is an IP address or a host name.
     [<CompiledName("Host")>]
     let host (h: string) =
-        not (String.IsNullOrEmpty h) && h.Length <= 253 && (fst (IPAddress.TryParse h) || hostPattern.IsMatch h)
+        not (String.IsNullOrEmpty h)
+        && h.Length <= 253
+        && (fst (IPAddress.TryParse h) || hostPattern.IsMatch h)
 
     /// A listener's address: tcp://host:port, with IPv6 hosts in brackets.
     [<CompiledName("Address")>]
@@ -39,20 +45,39 @@ module SocketProtocol =
     let endpoint (kind: SocketKind) (peer: string) : Result<string * int, string> =
         try
             let uri = Uri(peer)
-            if uri.Scheme <> kind.Scheme || (uri.AbsolutePath <> "/" && uri.AbsolutePath <> "") || peer.EndsWith "/"
-               || uri.Query <> "" || uri.UserInfo <> "" || uri.Port <= 0 || uri.Port > 65535 || uri.IsDefaultPort && not (peer.Contains(":" + string uri.Port)) then
+
+            if
+                uri.Scheme <> kind.Scheme
+                || (uri.AbsolutePath <> "/" && uri.AbsolutePath <> "")
+                || peer.EndsWith "/"
+                || uri.Query <> ""
+                || uri.UserInfo <> ""
+                || uri.Port <= 0
+                || uri.Port > 65535
+                || uri.IsDefaultPort && not (peer.Contains(":" + string uri.Port))
+            then
                 Error "invalid_peer_address"
             else
                 let h = uri.Host.Trim('[', ']')
-                if host h then Ok(h, uri.Port) else Error "invalid_peer_address"
-        with _ -> Error "invalid_peer_address"
+
+                if host h then
+                    Ok(h, uri.Port)
+                else
+                    Error "invalid_peer_address"
+        with _ ->
+            Error "invalid_peer_address"
 
     [<CompiledName("Request")>]
     let request (peer: string) (bytes: byte[]) =
         let authority = peer.Substring("http://".Length)
+
         let head =
-            "POST /lawspec HTTP/1.1\r\nHost: " + authority + "\r\nContent-Type: application/octet-stream\r\nContent-Length: "
-            + string bytes.Length + "\r\nConnection: close\r\n\r\n"
+            "POST /lawspec HTTP/1.1\r\nHost: "
+            + authority
+            + "\r\nContent-Type: application/octet-stream\r\nContent-Length: "
+            + string bytes.Length
+            + "\r\nConnection: close\r\n\r\n"
+
         Array.append (Encoding.ASCII.GetBytes head) bytes
 
     [<CompiledName("Response")>]
@@ -67,7 +92,14 @@ module SocketProtocol =
             | 413 -> "Content Too Large"
             | 417 -> "Expectation Failed"
             | _ -> "Request Header Fields Too Large"
-        Encoding.ASCII.GetBytes("HTTP/1.1 " + string code + " " + reason + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+
+        Encoding.ASCII.GetBytes(
+            "HTTP/1.1 "
+            + string code
+            + " "
+            + reason
+            + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
 
     /// The parse of an HTTP head so far.
     type Head =
@@ -78,23 +110,41 @@ module SocketProtocol =
     let private headEnd (bytes: byte[]) =
         let mutable found = -1
         let mutable i = 0
+
         while found < 0 && i + 3 < bytes.Length do
-            if bytes.[i] = 13uy && bytes.[i + 1] = 10uy && bytes.[i + 2] = 13uy && bytes.[i + 3] = 10uy then found <- i
+            if
+                bytes.[i] = 13uy
+                && bytes.[i + 1] = 10uy
+                && bytes.[i + 2] = 13uy
+                && bytes.[i + 3] = 10uy
+            then
+                found <- i
+
             i <- i + 1
+
         found
 
     let private headers (lines: string[]) : Map<string, string> option =
         let mutable fields = Map.empty
         let mutable ok = lines.Length <= 101
+
         for line in lines do
             if ok then
                 match line.IndexOf ':' with
                 | -1 -> ok <- false
                 | at ->
                     let name = line.Substring(0, at).Trim().ToLowerInvariant()
-                    if name = "" || name.Contains ' ' then ok <- false
-                    elif fields.ContainsKey name && (name = "content-length" || name = "transfer-encoding") then ok <- false
-                    else fields <- fields.Add(name, line.Substring(at + 1).Trim())
+
+                    if name = "" || name.Contains ' ' then
+                        ok <- false
+                    elif
+                        fields.ContainsKey name
+                        && (name = "content-length" || name = "transfer-encoding")
+                    then
+                        ok <- false
+                    else
+                        fields <- fields.Add(name, line.Substring(at + 1).Trim())
+
         if ok then Some fields else None
 
     /// A request's head: the body size and the bytes after the head.
@@ -108,21 +158,31 @@ module SocketProtocol =
             let lines = Encoding.ASCII.GetString(bytes, 0, at).Split("\r\n")
             let parts = lines.[0].Split(' ')
             let rest = bytes.[at + 4 ..]
-            if parts.Length <> 3 || not (parts.[2] = "HTTP/1.1" || parts.[2] = "HTTP/1.0") then Failed 400
-            elif parts.[0] <> "POST" then Failed 405
-            elif parts.[1] <> "/lawspec" then Failed 404
+
+            if parts.Length <> 3 || not (parts.[2] = "HTTP/1.1" || parts.[2] = "HTTP/1.0") then
+                Failed 400
+            elif parts.[0] <> "POST" then
+                Failed 405
+            elif parts.[1] <> "/lawspec" then
+                Failed 404
             else
                 match headers lines.[1..] with
                 | None -> Failed 400
                 | Some fields ->
-                    if fields.ContainsKey "transfer-encoding" then Failed 400
-                    elif fields.ContainsKey "expect" then Failed 417
+                    if fields.ContainsKey "transfer-encoding" then
+                        Failed 400
+                    elif fields.ContainsKey "expect" then
+                        Failed 417
                     else
                         match fields.TryFind "content-length" with
                         | None -> Failed 411
                         | Some v when v.Length <= 10 && v.Length > 0 && v |> Seq.forall Char.IsAsciiDigit ->
                             let size = Int64.Parse v
-                            if size <= int64 maximum then Body(int size, rest) else Failed 413
+
+                            if size <= int64 maximum then
+                                Body(int size, rest)
+                            else
+                                Failed 413
                         | Some _ -> Failed 400
 
     /// Whether a reply head is a 204.
@@ -134,8 +194,16 @@ module SocketProtocol =
         | at ->
             let lines = Encoding.ASCII.GetString(bytes, 0, at).Split("\r\n")
             let parts = lines.[0].Split(' ')
-            if parts.Length >= 2 && parts.[0].StartsWith "HTTP/1." && parts.[1] = "204" && (headers lines.[1..]).IsSome then Ok true
-            else Error "invalid_http_response"
+
+            if
+                parts.Length >= 2
+                && parts.[0].StartsWith "HTTP/1."
+                && parts.[1] = "204"
+                && (headers lines.[1..]).IsSome
+            then
+                Ok true
+            else
+                Error "invalid_http_response"
 
 /// An owned TCP or HTTP packet listener with per-peer writers that keep each
 /// peer's order without blocking the sender. Only the security layer opens
@@ -144,17 +212,29 @@ module SocketProtocol =
 type SocketTransport(kind: SocketKind, host: string, port: int, advertise: string, receive: byte[] -> unit) =
     static let maxRecord = 67108864
     static let ioTimeout = 5000
+
     do
-        if port < 0 || port > 65535 || not (SocketProtocol.host host) || not (SocketProtocol.host advertise) then
+        if
+            port < 0
+            || port > 65535
+            || not (SocketProtocol.host host)
+            || not (SocketProtocol.host advertise)
+        then
             Fail.raiseWith "InvalidTransportOptions" ""
+
     let ip =
         match IPAddress.TryParse host with
         | true, a -> a
         | _ ->
             let addresses = Dns.GetHostAddresses host
-            match addresses |> Array.tryFind (fun a -> a.AddressFamily = AddressFamily.InterNetwork) with
+
+            match
+                addresses
+                |> Array.tryFind (fun a -> a.AddressFamily = AddressFamily.InterNetwork)
+            with
             | Some a -> a
             | None -> addresses.[0]
+
     let listener = new TcpListener(ip, port)
     do listener.Start()
     let actual = (listener.LocalEndpoint :?> IPEndPoint).Port
@@ -164,16 +244,22 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
     let writers = Collections.Generic.Dictionary<string, Channels.Channel<byte[]>>()
     let workers = Collections.Concurrent.ConcurrentBag<Task>()
 
-    let safely (action: unit -> unit) = try action () with _ -> ()
+    let safely (action: unit -> unit) =
+        try
+            action ()
+        with _ ->
+            ()
 
     let readExactly (stream: Stream) (count: int) (token: CancellationToken) =
         task {
             let buffer = Array.zeroCreate<byte> count
             let mutable read = 0
             let mutable ok = true
+
             while ok && read < count do
                 let! n = stream.ReadAsync(buffer, read, count - read, token)
                 if n = 0 then ok <- false else read <- read + n
+
             return if ok then Some buffer else None
         }
 
@@ -182,14 +268,20 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             use client = client
             use stream = client.GetStream()
             let mutable go = true
+
             while go && not cancel.IsCancellationRequested do
                 let! prefix = readExactly stream 4 cancel.Token
+
                 match prefix with
                 | Some p ->
-                    let size = (int p.[0] <<< 24) ||| (int p.[1] <<< 16) ||| (int p.[2] <<< 8) ||| int p.[3]
-                    if size < 0 || size > maxRecord then go <- false
+                    let size =
+                        (int p.[0] <<< 24) ||| (int p.[1] <<< 16) ||| (int p.[2] <<< 8) ||| int p.[3]
+
+                    if size < 0 || size > maxRecord then
+                        go <- false
                     else
                         let! body = readExactly stream size cancel.Token
+
                         match body with
                         | Some b -> safely (fun () -> receive b)
                         | None -> go <- false
@@ -203,6 +295,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             let mutable acc = [||]
             let mutable result = None
             let mutable go = true
+
             while go do
                 match parse acc with
                 | Some r ->
@@ -210,7 +303,12 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
                     go <- false
                 | None ->
                     let! n = stream.ReadAsync(buffer, 0, buffer.Length, token)
-                    if n = 0 then go <- false else acc <- Array.append acc buffer.[.. n - 1]
+
+                    if n = 0 then
+                        go <- false
+                    else
+                        acc <- Array.append acc buffer.[.. n - 1]
+
             return result, acc
         }
 
@@ -220,24 +318,36 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             use timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token)
             timeout.CancelAfter ioTimeout
             use stream = client.GetStream()
+
             try
                 let! parsed, _ =
-                    readHead stream (fun bytes ->
-                        match SocketProtocol.header bytes maxRecord with
-                        | SocketProtocol.More -> None
-                        | other -> Some other) timeout.Token
+                    readHead
+                        stream
+                        (fun bytes ->
+                            match SocketProtocol.header bytes maxRecord with
+                            | SocketProtocol.More -> None
+                            | other -> Some other)
+                        timeout.Token
+
                 match parsed with
                 | Some(SocketProtocol.Body(size, rest)) ->
-                    let! more = if rest.Length >= size then Task.FromResult(Some [||]) else readExactly stream (size - rest.Length) timeout.Token
+                    let! more =
+                        if rest.Length >= size then
+                            Task.FromResult(Some [||])
+                        else
+                            readExactly stream (size - rest.Length) timeout.Token
+
                     match more with
                     | Some tail ->
                         let body = (Array.append rest tail).[.. size - 1]
                         safely (fun () -> receive body)
                         do! stream.WriteAsync(ReadOnlyMemory<byte>(SocketProtocol.response 204), timeout.Token)
                     | None -> do! stream.WriteAsync(ReadOnlyMemory<byte>(SocketProtocol.response 400), timeout.Token)
-                | Some(SocketProtocol.Failed code) -> do! stream.WriteAsync(ReadOnlyMemory<byte>(SocketProtocol.response code), timeout.Token)
+                | Some(SocketProtocol.Failed code) ->
+                    do! stream.WriteAsync(ReadOnlyMemory<byte>(SocketProtocol.response code), timeout.Token)
                 | _ -> ()
-            with _ -> ()
+            with _ ->
+                ()
         }
         :> Task
 
@@ -248,7 +358,8 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
                     let! client = listener.AcceptTcpClientAsync(cancel.Token)
                     client.NoDelay <- true
                     workers.Add(Task.Run(fun () -> if kind = Tcp then serveTcp client else serveHttp client))
-            with _ -> ()
+            with _ ->
+                ()
         }
 
     let connect (h: string) (p: int) (token: CancellationToken) =
@@ -265,33 +376,57 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
     let writeTcp (peer: string) (h: string) (p: int) (queue: Channels.Channel<byte[]>) =
         task {
             let mutable client: TcpClient = null
+
             try
                 let mutable go = true
+
                 while go do
                     use idle = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token)
                     idle.CancelAfter 60000
-                    let! ready = (try queue.Reader.WaitToReadAsync(idle.Token).AsTask() with _ -> Task.FromResult false)
-                    if not ready then go <- false
+
+                    let! ready =
+                        (try
+                            queue.Reader.WaitToReadAsync(idle.Token).AsTask()
+                         with _ ->
+                             Task.FromResult false)
+
+                    if not ready then
+                        go <- false
                     else
                         let mutable item = Unchecked.defaultof<byte[]>
+
                         while queue.Reader.TryRead(&item) do
                             let bytes = item
-                            let prefix = [| byte (bytes.Length >>> 24); byte (bytes.Length >>> 16); byte (bytes.Length >>> 8); byte bytes.Length |]
+
+                            let prefix =
+                                [|
+                                    byte (bytes.Length >>> 24)
+                                    byte (bytes.Length >>> 16)
+                                    byte (bytes.Length >>> 8)
+                                    byte bytes.Length
+                                |]
+
                             let mutable attempts = 2
+
                             while attempts > 0 do
                                 try
                                     if isNull client then
                                         let! c = connect h p cancel.Token
                                         client <- c
+
                                     let stream = client.GetStream()
                                     do! stream.WriteAsync(ReadOnlyMemory<byte>(Array.append prefix bytes), cancel.Token)
                                     attempts <- 0
                                 with _ ->
-                                    if not (isNull client) then client.Dispose()
+                                    if not (isNull client) then
+                                        client.Dispose()
+
                                     client <- null
                                     attempts <- attempts - 1
             finally
-                if not (isNull client) then client.Dispose()
+                if not (isNull client) then
+                    client.Dispose()
+
                 lock gate (fun () -> writers.Remove peer |> ignore)
         }
         :> Task
@@ -300,28 +435,49 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         task {
             try
                 let mutable go = true
+
                 while go do
                     use idle = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token)
                     idle.CancelAfter 60000
-                    let! ready = (try queue.Reader.WaitToReadAsync(idle.Token).AsTask() with _ -> Task.FromResult false)
-                    if not ready then go <- false
+
+                    let! ready =
+                        (try
+                            queue.Reader.WaitToReadAsync(idle.Token).AsTask()
+                         with _ ->
+                             Task.FromResult false)
+
+                    if not ready then
+                        go <- false
                     else
                         let mutable item = Unchecked.defaultof<byte[]>
+
                         while queue.Reader.TryRead(&item) do
                             let bytes = item
+
                             try
                                 use! client = connect h p cancel.Token
                                 use stream = client.GetStream()
                                 use timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token)
                                 timeout.CancelAfter ioTimeout
-                                do! stream.WriteAsync(ReadOnlyMemory<byte>(SocketProtocol.request peer bytes), timeout.Token)
+
+                                do!
+                                    stream.WriteAsync(
+                                        ReadOnlyMemory<byte>(SocketProtocol.request peer bytes),
+                                        timeout.Token
+                                    )
+
                                 let! _ =
-                                    readHead stream (fun b ->
-                                        match SocketProtocol.reply b with
-                                        | Ok false -> None
-                                        | other -> Some other) timeout.Token
+                                    readHead
+                                        stream
+                                        (fun b ->
+                                            match SocketProtocol.reply b with
+                                            | Ok false -> None
+                                            | other -> Some other)
+                                        timeout.Token
+
                                 ()
-                            with _ -> ()
+                            with _ ->
+                                ()
             finally
                 lock gate (fun () -> writers.Remove peer |> ignore)
         }
@@ -331,7 +487,8 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
 
     /// Queue bytes for a peer; its writer connects and sends in order.
     member _.Send(peer: string, bytes: byte[]) : Result<unit, string> =
-        if bytes.Length > maxRecord then Error "record_too_large"
+        if bytes.Length > maxRecord then
+            Error "record_too_large"
         else
             match SocketProtocol.endpoint kind peer with
             | Error e -> Error e
@@ -339,19 +496,38 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
                 lock gate (fun () ->
                     match writers.TryGetValue peer with
                     | true, queue ->
-                        if queue.Writer.TryWrite bytes then Ok() else Error "transport_queue_full"
+                        if queue.Writer.TryWrite bytes then
+                            Ok()
+                        else
+                            Error "transport_queue_full"
                     | _ when writers.Count >= 512 -> Error "transport_busy"
                     | _ ->
                         let queue = Channels.Channel.CreateBounded<byte[]>(1024)
                         writers.[peer] <- queue
                         queue.Writer.TryWrite bytes |> ignore
-                        workers.Add(Task.Run(fun () -> if kind = Tcp then writeTcp peer h p queue else writeHttp peer h p queue))
+
+                        workers.Add(
+                            Task.Run(fun () ->
+                                if kind = Tcp then
+                                    writeTcp peer h p queue
+                                else
+                                    writeHttp peer h p queue)
+                        )
+
                         Ok())
 
     member _.Close() =
         cancel.Cancel()
-        (try listener.Stop() with _ -> ())
-        (try Task.WaitAll(Array.ofSeq workers, 5000) |> ignore with _ -> ())
+
+        (try
+            listener.Stop()
+         with _ ->
+             ())
+
+        (try
+            Task.WaitAll(Array.ofSeq workers, 5000) |> ignore
+         with _ ->
+             ())
 
     interface IDisposable with
         member this.Dispose() = this.Close()

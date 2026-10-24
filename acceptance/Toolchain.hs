@@ -60,7 +60,34 @@ formatter target = do
             , "exec \"$(go env GOROOT)/bin/gofmt\" -d \"$2\"" ]
       pure (Just (Formatter "gofmt" "sh" (\dir -> ["-c", script, "gofmt-check", lock, dir]) [".go"]
         ["test/locks/go/gofmt.txt"]))
+    -- Fantomas's default configuration on F# (the program's model and the
+    -- runtime, in a C# project too), and dotnet format's whitespace check on
+    -- C#. Fantomas is the version in the tool manifest, installed in the
+    -- target's integration project; dotnet format is the pinned SDK's.
+    t | t `elem` ["fsharp", "csharp"] -> do
+      let manifest = "test/locks/dotnet-tools.json"
+          sdk = "test/locks/dotnet-sdk.json"
+      pinned <- fantomasVersion <$> readFile (root </> manifest)
+      let dll = root </> ".integration" </> t </> "fantomas/.store/fantomas" </> pinned </> "fantomas" </> pinned </> "tools/net10.0/any/fantomas.dll"
+          script = unlines $
+            [ "set -e"
+            , "if [ ! -f \"$1\" ]; then echo \"Fantomas " ++ pinned ++ " is not installed: node tools/bootstrap-integration.mjs " ++ t ++ "\" >&2; exit 2; fi"
+            , "dotnet \"$1\" --check \"$3\"" ] ++
+            [ "cp \"$2\" \"$3/global.json\" && cd \"$3\" && dotnet format whitespace --folder --verify-no-changes ." | t == "csharp" ]
+      pure (Just (Formatter (if t == "csharp" then "Fantomas " ++ pinned ++ ", dotnet format" else "Fantomas " ++ pinned) "sh"
+        (\dir -> ["-c", script, "sh", dll, root </> sdk, dir]) (".fs" : [".cs" | t == "csharp"]) [manifest, sdk]))
     _ -> pure Nothing
+
+-- | The Fantomas version a dotnet tool manifest pins.
+fantomasVersion :: String -> String
+fantomasVersion manifest = case breakOn "\"fantomas\"" manifest of
+  Just rest | Just after <- breakOn "\"version\": \"" rest -> takeWhile (/= '"') after
+  _ -> "8.1.0"
+  where
+    breakOn needle hay = case hay of
+      [] -> Nothing
+      _ | take (length needle) hay == needle -> Just (drop (length needle) hay)
+      _ : more -> breakOn needle more
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

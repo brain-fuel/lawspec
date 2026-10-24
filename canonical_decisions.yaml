@@ -345,6 +345,15 @@ DEC-readable-go-output:
   decided: 0.30.0
   refs: [gofmt, go-generated-code, go-string-literals]
 
+DEC-dotnet-readable-output:
+  status: decided
+  question: How do F# and C# adopt readable output?
+  answer: |
+    As DEC-readable-output-default, DEC-readable-generated-names, DEC-record-display-names and DEC-native-string-literals ask, from 0.30. F# is laid out as Fantomas 8.1.0 lays it out with its default settings (LawSpec.DotNet.Layout and LawSpec.DotNet.Code): 120 columns measured in text elements (a character with its combining marks, a ZWJ emoji sequence or a flag pair counts once, from the pinned Unicode tables); a value binding on one line while name = value takes up to 80 columns; a function's body on its declaration's line while it is under 40; lists up to 80, records up to 40 and conditionals up to 60 columns on one line; an else-if chain on a line per clause while each is up to 60; a callback kept on its call's line; a capitalised function next to its one parenthesised argument; closing brackets left out of a line's measure, and a parenthesised lambda's body laid out one column narrower; a blank line around each statement or member that spans lines. C# is what dotnet format leaves unchanged (Allman braces; LawSpec wraps a call at 120 columns with an argument on each line). The program's model and the runtime (lawspec/) are F# in both targets, and the runtime sources are formatted with Fantomas. Acceptance runs fantomas --check (pinned in test/locks/dotnet-tools.json) and, for C#, dotnet format whitespace --verify-no-changes on the SDK pinned in test/locks/dotnet-sdk.json. Tests keep their law's base name (lawNormalizersAgree, as lawspec test selects them) and take the example's words after it; inputs, parameters and binders keep their source names; typed definitions are named for their definition with no digest; anonymous records take their display names; text is a native string literal (Value.Text). Boilerplate moves into the runtime: Codec.toNative and fromNative, Typed.tryResult, Model.call0 to call4 and Remote.serveDefinitions and evaluateDefinition.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [fantomas, dotnet-format, unicode-text-segmentation]
+
 DEC-adapter-ownership:
   status: decided
   question: Which files does generation own, and how does it avoid overwriting user code?

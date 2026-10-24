@@ -19,7 +19,7 @@ public static class Models
 
     public static Stack Empty() => Stack.Empty;
 
-    public static PushFlow Push(sbyte top, Stack rest) => new(Stack.NewPush(new LawSpec.Data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(rest, top)));
+    public static PushFlow Push(sbyte top, Stack rest) => new(Stack.NewPush(new LawSpec.Data.PushDetails(rest, top)));
 
     // The flow signature guarantees a nonempty stack.
     public static PopFlow Pop(Stack stack) => stack switch
