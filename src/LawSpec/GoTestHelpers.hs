@@ -1,5 +1,5 @@
 -- | Framework-specific generator documents, downstream of checked Core.
-module LawSpec.GoTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, dataHelpersDoc) where
+module LawSpec.GoTestHelpers (generatorDoc, generatorDocWithin, dataHelpersDoc) where
 
 import LawSpec.Core (Type(..), Argument(..), scalarType)
 import LawSpec.Scalar
@@ -47,7 +47,8 @@ generatorDocWithin within bits budget structural reference ty = generatorDocBoun
 generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
 generatorDocBounded boundsOf bits budget structural reference = gen
   where
-    width = line (show bits)
+    -- The test file names the machine width once.
+    width = line "lawspecMachineBits"
     key = quoted . Native.goDataKey
     native name = call "lsFromNative" [quoted name,value "value",width]
     gen ty | structural ty = call "lsDataStrategy"
@@ -117,26 +118,20 @@ generatorDocBounded boundsOf bits budget structural reference = gen
     floating (SFloat name pattern) = call "lsFloating" [quoted name,quoted pattern]
     floating _ = error "non-floating Go boundary"
 
--- | Assertions report the law, the inputs and both sides, so a failure
--- explains itself.
-assertionDoc :: D.Doc
-assertionDoc = line "func _lawspecAssert(t interface{ Fatalf(string, ...any) }, context string, actual, expected func() LawSpecValue) " <>
-  block (value "lsAssert(context, actual, expected)")
-
 -- | Data values are built and compared through helpers emitted once per test
 -- module rather than at every use.
-dataHelpersDoc :: Int -> (Type -> D.Doc) -> D.Doc
-dataHelpersDoc bits generator = statements
+dataHelpersDoc :: [String] -> (Type -> D.Doc) -> D.Doc
+dataHelpersDoc used generator = statements
   [value "var _lawspecSchema = lawSpecDataSchemaRegistry()",mempty,
    line "func _lawspecScalarGenerator(name string) *rapid.Generator[LawSpecValue] " <>
      block (line "switch name {" <> D.hardline <>
        statements ([line "case " <> quoted (primitiveName p) <> line ":" <>
-         D.nest 8 (D.hardline <> returned (generator (scalarType (primitiveName p)))) | p <- primitives] ++
+         D.nest 8 (D.hardline <> returned (generator (scalarType (primitiveName p)))) | p <- primitives, primitiveName p `elem` used] ++
          [line "default:" <> D.nest 8 (D.hardline <> value "panic(\"unknown scalar generator: \" + name)")]) <>
        D.hardline <> line "}"),mempty,
    line "func _lawspecDataAssert(context string, ty lawSpecTypeRef, symbols map[string]*lawSpecSymbol, actual, expected func() LawSpecValue) " <>
      block (statements [line "defer func() " <> block
        (line "if problem := recover(); problem != nil " <> block (value "panic(context + \" | \" + fmt.Sprint(problem))")) <> line "()",
        line "a, b := actual(), expected()",
-       line ("if !_lawspecSchema.equal(ty, a, b, " ++ show bits ++ ", symbols) ") <>
+       line "if !_lawspecSchema.equal(ty, a, b, lawspecMachineBits, symbols) " <>
          block (value "panic(context + lsDifference(a, b))")])]

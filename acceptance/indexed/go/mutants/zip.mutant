@@ -1,6 +1,6 @@
 @@ example/indexed/adapter.go
 <<<<<<<
-	return VecVCons[bool]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[bool]{Head: b.Value.Head, Tail: Zip(a.Value.Tail, b.Value.Tail)}}
+	return VecVCons[bool]{Value: VConsDetails[bool]{Head: b.Value.Head, Tail: Zip(a.Value.Tail, b.Value.Tail)}}
 =======
 	return Zip(a.Value.Tail, b.Value.Tail)
 >>>>>>>

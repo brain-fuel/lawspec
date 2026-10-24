@@ -1,19 +1,217 @@
 -- | Go expression documents for checked Core, shared by definitions and properties.
-module LawSpec.GoExpr (renderExpression, renderExpressionWithContext, scalarLiteral, call, array, quoted) where
+module LawSpec.GoExpr
+  ( renderExpression, renderExpressionWithContext, scalarLiteral, textLiteral, call, array, quoted, runeLiteral
+  , declare, identifiers, generatedHeader, goHeaderDoc, condition, keyed, funcLiteral, parenthesised
+  ) where
 
 import LawSpec.Core
 import qualified LawSpec.GoTypeRefs as Native
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
-import Data.Aeson (encode)
-import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy.Encoding as T
+import LawSpec.Code.Literal (literalFor, printable)
+import LawSpec.SourceLink (goGeneratedMarker)
+import Data.Char (chr, isAlphaNum)
 import Data.List (find)
+import Numeric (showHex)
 
--- | Strings are escaped for Go here, once, so no generated literal can end
--- early or change meaning.
+-- | Strings are Go string literals, escaped by Go's table
+-- (LawSpec.Code.Literal), so no generated literal can end early or change
+-- meaning. ref:DEC-native-string-literals
 quoted :: String -> D.Doc
-quoted = D.text . T.unpack . T.decodeUtf8 . encode
+quoted = D.text . literalFor "go"
+
+-- | The first lines of every generated Go file: the marker Go's tools
+-- recognise generated files by, then the specification it comes from.
+generatedHeader :: Maybe FilePath -> D.Doc
+generatedHeader source = D.text ("// " ++ goGeneratedMarker) <>
+  maybe mempty (\path -> D.hardline <> D.text ("// Source: " ++ path)) source
+
+-- | The marker and the blank line before a generated file's package clause.
+goHeaderDoc :: D.Doc
+goHeaderDoc = generatedHeader Nothing <> D.hardline <> D.hardline
+
+-- | A character as a Go rune literal: printable characters as they are,
+-- Go's escapes otherwise.
+runeLiteral :: Char -> String
+runeLiteral c = "'" ++ escaped ++ "'"
+  where
+    escaped = case c of
+      '\\' -> "\\\\"
+      '\'' -> "\\'"
+      '\n' -> "\\n"
+      '\r' -> "\\r"
+      '\t' -> "\\t"
+      _ | printable c -> [c]
+        | fromEnum c < 0x10000 -> "\\u" ++ hex 4 (fromEnum c)
+        | otherwise -> "\\U" ++ hex 8 (fromEnum c)
+    hex n v = let digits = showHex v "" in replicate (n - length digits) '0' ++ digits
+
+-- | Text as Go writes it. Text holds Unicode scalar values only, so every
+-- value is a valid Go string literal.
+textLiteral :: [Int] -> D.Doc
+textLiteral units = call "lsText" [quoted (map chr units)]
+
+-- | Locals, each followed by the statements that may read it. Go refuses a
+-- local nothing reads, so one that is unread is marked used with _ = name;
+-- a pure one (droppable) is left out instead.
+declare :: [(String, D.Doc, Bool)] -> [D.Doc] -> [D.Doc]
+declare [] rest = rest
+declare ((name, value, droppable) : others) rest
+  | readsLocal name (D.render D.Compact (D.joinWith D.hardline later)) = defined : later
+  | droppable = later
+  | otherwise = defined : D.text ("_ = " ++ name) : later
+  where
+    later = declare others rest
+    defined = D.text (name ++ " := ") <> value
+
+-- | Whether an expression is already wrapped in one pair of parentheses:
+-- gofmt prints ((x)) as (x).
+parenthesised :: D.Doc -> Bool
+parenthesised doc = let rendered = D.render D.Compact doc in '\n' `notElem` rendered && wholly rendered
+  where
+    wholly ('(' : rest) = closes (0 :: Int) rest
+    wholly _ = False
+    closes depth text' = case text' of
+      [] -> False
+      '"' : more -> closes depth (skip '"' more)
+      '\'' : more -> closes depth (skip '\'' more)
+      '(' : more -> closes (depth + 1) more
+      ")" | depth == 0 -> True
+      ')' : more | depth == 0 -> False
+                 | otherwise -> closes (depth - 1) more
+      _ : more -> closes depth more
+    skip q text' = case text' of
+      [] -> []
+      '\\' : _ : more -> skip q more
+      c : more | c == q -> more
+               | otherwise -> skip q more
+
+-- | An if statement's condition as gofmt writes it: without parentheses
+-- around the whole, unless a composite literal of a named type inside needs
+-- them (Go would read its brace as the block's).
+condition :: D.Doc -> D.Doc
+condition doc
+  | '\n' `elem` rendered = doc
+  | otherwise = D.text (strip rendered)
+  where
+    rendered = D.render D.Compact doc
+    strip text'
+      | Just inner <- wrapped text', not (namedLiteral inner) = strip inner
+      | otherwise = text'
+    -- (x) whose opening parenthesis closes at the very end.
+    wrapped ('(' : rest) | closesAtEnd (0 :: Int) rest = Just (init rest)
+    wrapped _ = Nothing
+    closesAtEnd depth text'' = case text'' of
+      [] -> False
+      '"' : more -> closesAtEnd depth (skipQuoted '"' more)
+      '\'' : more -> closesAtEnd depth (skipQuoted '\'' more)
+      '(' : more -> closesAtEnd (depth + 1) more
+      ")" | depth == 0 -> True
+      ')' : more | depth == 0 -> False
+                 | otherwise -> closesAtEnd (depth - 1) more
+      _ : more -> closesAtEnd depth more
+    skipQuoted q text'' = case text'' of
+      [] -> []
+      '\\' : _ : more -> skipQuoted q more
+      c : more | c == q -> more
+               | otherwise -> skipQuoted q more
+    -- A brace right after a name, outside a parenthesised group: Name{...}.
+    namedLiteral = go [] ' '
+      where
+        go _ _ [] = False
+        go stack previous text'' = case text'' of
+          '"' : more -> go stack '"' (skipQuoted '"' more)
+          '\'' : more -> go stack '\'' (skipQuoted '\'' more)
+          '(' : more -> go ((isAlphaNum previous || previous `elem` ("_)]" :: String)) : stack) '(' more
+          ')' : more -> go (drop 1 stack) ')' more
+          '{' : more | (isAlphaNum previous || previous == '_') && and stack -> True
+                     | otherwise -> go stack '{' more
+          c : more -> go stack c more
+
+-- | A keyed composite literal, Type{ Key: value, ... }, one field a line.
+-- gofmt aligns the values of consecutive one-line fields in a column; a
+-- field whose value spans lines stands alone. An empty literal is Type{}.
+keyed :: String -> [(String, D.Doc)] -> D.Doc
+keyed ty [] = D.text (ty ++ "{}")
+keyed ty fields = D.text (ty ++ "{") <> D.nest 8 (mconcat (map (D.hardline <>) (concatMap run (groups fields)))) <> D.hardline <> D.text "}"
+  where
+    oneLine value = '\n' `notElem` D.render D.Compact value
+    groups [] = []
+    groups xs@((_, v) : _) | oneLine v = let (single, rest) = span (oneLine . snd) xs in single : groups rest
+    groups (x : rest) = [x] : groups rest
+    run entries = let width = maximum (map (length . fst) entries) in
+      [ D.text (key ++ ":" ++ replicate (if length entries > 1 then width - length key + 1 else 1) ' ') <> value <> D.text ","
+      | (key, value) <- entries ]
+
+-- | A function literal whose body spans lines, so gofmt keeps it as it is.
+funcLiteral :: String -> [D.Doc] -> D.Doc
+funcLiteral signature body = D.text ("func" ++ signature ++ " ") <> D.block 8 (D.joinWith D.hardline body)
+
+-- | Whether Go code reads a local of this name: a mention that a nested
+-- declaration or function parameter of the same name hides, or a field of
+-- that name (x.name), is not a read.
+readsLocal :: String -> String -> Bool
+readsLocal name source = go (0 :: Int) [] Nothing "" (tokens source)
+  where
+    -- depth: braces open; shadows: the depths a nested name holds;
+    -- pending: a function literal's parameters hide the name in its body.
+    go _ _ _ _ [] = False
+    go depth shadows pending previous (t : rest) = case t of
+      "{" -> go (depth + 1) (maybe shadows (const (depth + 1 : shadows)) pending) Nothing t rest
+      "}" -> go (depth - 1) (filter (< depth) shadows) pending t rest
+      "func" | ("(" : more) <- rest ->
+        let (parameters, after) = paramList (0 :: Int) [] more
+        in go depth shadows (if name `elem` parameters then Just () else Nothing) ")" after
+      _ | t == name, previous /= "." -> case rest of
+            ":=" : _ -> go depth (if null shadows then depth : shadows else shadows) pending t rest
+            _ | null shadows -> True
+              | otherwise -> go depth shadows pending t rest
+        | otherwise -> go depth shadows pending t rest
+    -- The identifiers that open each parameter (after ( or ,) up to the
+    -- closing parenthesis.
+    paramList depth acc ts = case ts of
+      [] -> (acc, [])
+      ")" : rest | depth == 0 -> (acc, rest)
+                 | otherwise -> paramList (depth - 1) acc rest
+      "(" : rest -> paramList (depth + 1) acc rest
+      "," : p : rest | depth == 0 && word p -> paramList depth (p : acc) rest
+      t : rest | depth == 0 && null acc && word t -> paramList depth [t] rest
+               | otherwise -> paramList depth acc rest
+    word = all (\c -> isAlphaNum c || c == '_')
+    tokens text' = case text' of
+      [] -> []
+      '"' : rest -> tokens (quotedEnd '"' rest)
+      '\'' : rest -> tokens (quotedEnd '\'' rest)
+      '`' : rest -> tokens (drop 1 (dropWhile (/= '`') rest))
+      '/' : '/' : rest -> tokens (dropWhile (/= '\n') rest)
+      ':' : '=' : rest -> ":=" : tokens rest
+      c : rest | isAlphaNum c || c == '_' -> let (w, after) = span (\x -> isAlphaNum x || x == '_') (c : rest) in w : tokens after
+               | c `elem` ("{}().," :: String) -> [c] : tokens rest
+               | otherwise -> tokens rest
+    quotedEnd q text' = case text' of
+      [] -> []
+      '\\' : _ : more -> quotedEnd q more
+      c : more | c == q -> more
+               | otherwise -> quotedEnd q more
+
+-- | The identifiers Go code mentions, outside string, rune and raw literals
+-- and comments.
+identifiers :: String -> [String]
+identifiers source = case source of
+  [] -> []
+  '"' : rest -> identifiers (quotedEnd '"' rest)
+  '\'' : rest -> identifiers (quotedEnd '\'' rest)
+  '`' : rest -> identifiers (drop 1 (dropWhile (/= '`') rest))
+  '/' : '/' : rest -> identifiers (dropWhile (/= '\n') rest)
+  c : rest | word c -> let (w, after) = span word (c : rest) in w : identifiers after
+           | otherwise -> identifiers rest
+  where
+    word c = isAlphaNum c || c == '_'
+    quotedEnd q text' = case text' of
+      [] -> []
+      '\\' : _ : more -> quotedEnd q more
+      c : more | c == q -> more
+               | otherwise -> quotedEnd q more
 
 -- | Arguments wrap when a call is too wide, in the Go style LawSpec follows.
 -- ref:DEC-readable-output-default
@@ -22,9 +220,15 @@ call :: String -> [D.Doc] -> D.Doc
 -- also keeps nested function-literal blocks at the correct lexical indentation.
 call name values = D.text (name ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
 
--- | Lists of runtime values are written in one shape so they wrap like calls.
+-- | Lists of runtime values are written in one shape: on one line when they
+-- fit, otherwise one value a line with a trailing comma, as gofmt keeps them.
 array :: [D.Doc] -> D.Doc
-array values = D.text "[]LawSpecValue{" <> D.joinWith (D.text ", ") values <> D.text "}"
+array values
+  -- A function literal inside keeps the list on its line, so the literal's
+  -- block is indented from that line, as gofmt indents it.
+  | any multiline values = D.text "[]LawSpecValue{" <> D.joinWith (D.text ", ") values <> D.text "}"
+  | otherwise = D.delimitTrailing 8 "[]LawSpecValue{" "}" values
+  where multiline value = '\n' `elem` D.render D.Compact value
 
 -- | Literals become runtime values built from their declared type and exact
 -- digits, so Go never reads a number at its own precision.
@@ -40,7 +244,9 @@ scalarLiteral ty value = case value of
     a <- scalarLiteral (scalarType (scalarName real)) real
     b <- scalarLiteral (scalarType (scalarName imaginary)) imaginary
     pure (call "lsComplex" [quoted name,a,b])
+  SCharacter "Char" point | point < 0xD800 || point > 0xDFFF -> pure (call "lsChar" [D.text (runeLiteral (chr point))])
   SCharacter name point -> pure (call "lsCharacter" [quoted name,D.text (show point)])
+  SSequence "Text" units -> pure (textLiteral units)
   SSequence name units -> pure (call "lsSequence" [quoted name,
     D.delimitTrailing 8 "[]int{" "}" (map (D.text . show) units)])
   SSymbol identity description -> pure (call "lsSymbol" [quoted identity,quoted description,D.text "symbols"])
@@ -80,13 +286,13 @@ renderExpressionWithContext declarations width schema ref key local external = r
       | Just (fields,binders,body) <- concurrentGroup term = do
           steps <- mapM render fields
           inner <- render body
-          let resultsName = "group" ++ show (length (show term))
-              bindings = concat [[D.text (local (binderId binder) ++ " := " ++ resultsName ++ "[" ++ show i ++ "]"),
-                D.text ("_ = " ++ local (binderId binder))] | (i,binder) <- zip [0::Int ..] binders]
+          let resultsName = "results"
+              bindings = [(local (binderId binder), D.text (resultsName ++ "[" ++ show i ++ "]"), True)
+                | (i,binder) <- zip [0::Int ..] binders]
               thunk step = D.text "func() LawSpecValue " <> D.block 8 (D.text "return " <> step)
           pure (D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
             ([D.text (resultsName ++ " := ") <> call "lsConcurrently" (map thunk steps)] ++
-             bindings ++ [D.text "return " <> inner])) <> D.text "()")
+             declare bindings [D.text "return " <> inner])) <> D.text "()")
     render term = case expressionNode term of
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
@@ -115,7 +321,13 @@ renderExpressionWithContext declarations width schema ref key local external = r
         inner <- render body
         let name = local (binderId binder)
         pure (call "lsEvaluate" [D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-          [D.text (name ++ " := ") <> argument, D.text ("_ = " ++ name), D.text "return " <> inner])])
+          (declare [(name, argument, False)] [D.text "return " <> inner]))])
+      -- Text and characters are always valid as written.
+      Constant value@(SSequence "Text" _) | expressionType term == scalarType "Text" -> scalarLiteral (expressionType term) value
+      Constant value@(SCharacter "Char" _) | expressionType term == scalarType "Char" -> scalarLiteral (expressionType term) value
+      -- So are booleans and unbounded integers.
+      Constant value@(SBool _) | expressionType term == scalarType "Bool" -> scalarLiteral (expressionType term) value
+      Constant value@(SInteger name _) | name `elem` ["Integer", "BigInt"], expressionType term == scalarType name -> scalarLiteral (expressionType term) value
       Constant value -> scalarLiteral (expressionType term) value >>= checked (expressionType term)
       Construct tag args -> do
         values <- mapM render args
@@ -141,8 +353,9 @@ renderExpressionWithContext declarations width schema ref key local external = r
         condition <- render c
         yes <- render a
         no <- render b
-        pure (call "lsEvaluate" [D.text "func() LawSpecValue { if " <> call "lsTruth" [condition] <> D.text " { return " <> yes <>
-          D.text " }; return " <> no <> D.text " }"])
+        pure (call "lsEvaluate" [D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+          [D.text "if " <> call "lsTruth" [condition] <> D.text " " <> D.block 8 (D.text "return " <> yes),
+           D.text "return " <> no])])
       ShortCircuit op a b -> do
         left <- render a
         right <- render b
@@ -169,10 +382,12 @@ renderExpressionWithContext declarations width schema ref key local external = r
       Match scrutinee branches -> do
         -- Values are checked where they are built, decoded or drawn.
         value <- render scrutinee
-        let matchedName = "matched" ++ show (length (show term))
-            fieldsName = matchedName ++ "Fields"
-            bind binder expression = [D.text (local (binderId binder) ++ " := ") <> expression,
-              D.text ("_ = " ++ local (binderId binder))]
+        -- Each match is a function of its own, so these names never meet
+        -- another match's; a source binder never takes them (LawSpec.Naming).
+        let matchedName = "matched"
+            itemsName = "matchedItems"
+            fieldsName = "matchedData"
+            bind binder expression = (local (binderId binder), expression, True)
             invoke body = D.text "func() LawSpecValue " <> D.block 8 body <> D.text "()"
         case expressionType scrutinee of
           Constructor "List" _ -> do
@@ -182,14 +397,14 @@ renderExpressionWithContext declarations width schema ref key local external = r
             consBody <- render (caseBody cons)
             name <- key (expressionType scrutinee)
             bindings <- case caseBinders cons of
-              [headBinder,tailBinder] -> pure (bind headBinder (D.text (fieldsName ++ "[0]")) ++
-                bind tailBinder (call "lsList" [name,D.text (fieldsName ++ "[1:]")]))
+              [headBinder,tailBinder] -> pure [bind headBinder (D.text (itemsName ++ "[0]")),
+                bind tailBinder (call "lsList" [name,D.text (itemsName ++ "[1:]")])]
               _ -> Left "invalid Go list match binders"
             pure (invoke (D.joinWith D.hardline
               ([D.text (matchedName ++ " := ") <> value,
-                D.text (fieldsName ++ " := " ++ matchedName ++ ".Data.([]LawSpecValue)"),
-                D.text ("if len(" ++ fieldsName ++ ") == 0 ") <> D.block 8 (D.text "return " <> nilBody)] ++
-               bindings ++ [D.text "return " <> consBody])))
+                D.text (itemsName ++ " := " ++ matchedName ++ ".Data.([]LawSpecValue)"),
+                D.text ("if len(" ++ itemsName ++ ") == 0 ") <> D.block 8 (D.text "return " <> nilBody)] ++
+               declare bindings [D.text "return " <> consBody])))
           Constructor name _ | name `elem` ["Maybe","Either"] -> do
             let (helper,tags) = if name == "Maybe" then ("lsMatchMaybe",["Maybe::Absent","Maybe::Present"])
                   else ("lsMatchEither",["Either::Left","Either::Right"])
@@ -198,10 +413,10 @@ renderExpressionWithContext declarations width schema ref key local external = r
           Constructor _ _ -> do
             arms <- mapM (\branch -> do
               body <- render (caseBody branch)
-              let bindings = concat [bind binder (D.text (fieldsName ++ ".fields[" ++ show i ++ "]"))
+              let bindings = [bind binder (D.text (fieldsName ++ ".fields[" ++ show i ++ "]"))
                     | (i,binder) <- zip [0::Int ..] (caseBinders branch)]
               pure (D.text "case " <> quoted (idText (caseConstructor branch)) <> D.text ":" <>
-                D.nest 8 (D.hardline <> D.joinWith D.hardline (bindings ++ [D.text "return " <> body])))) branches
+                D.nest 8 (D.hardline <> D.joinWith D.hardline (declare bindings [D.text "return " <> body])))) branches
             pure (invoke (D.joinWith D.hardline
               [D.text (matchedName ++ " := ") <> value,
                D.text (fieldsName ++ " := " ++ matchedName ++ ".Data.(lawSpecData)"),

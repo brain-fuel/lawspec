@@ -362,6 +362,18 @@ python-string-literals:
   kind: article
   title: The Python Language Reference, String and Bytes literals
   locator: https://docs.python.org/3/reference/lexical_analysis.html#string-and-bytes-literals
+gofmt:
+  kind: article
+  title: gofmt, the Go formatter
+  locator: https://pkg.go.dev/cmd/gofmt
+go-generated-code:
+  kind: article
+  title: Go generated-code marker (go help generate)
+  locator: https://pkg.go.dev/cmd/go#hdr-Generate_Go_files_by_processing_source
+go-string-literals:
+  kind: article
+  title: The Go Programming Language Specification, String and rune literals
+  locator: https://go.dev/ref/spec#String_literals
 decimal-arithmetic:
   kind: article
   title: Mike Cowlishaw, General Decimal Arithmetic Specification

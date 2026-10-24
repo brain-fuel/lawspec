@@ -76,6 +76,11 @@ reservedFor target = targetKeywords target ++ case target of
   "python" -> words "ls data symbols builtins print len list dict set tuple str int bool bytes float object type id range min max abs all any iter next map filter zip sorted reversed super self cls isinstance callable"
   "javascript" -> words "ls impl data schema symbols fc assert test describe undefined NaN Infinity"
   "typescript" -> words "ls impl data schema symbols fc assert test describe undefined NaN Infinity"
+  -- Go: its keywords and predeclared names, the packages generated tests
+  -- import, and the names generated Go code gives its own locals.
+  "go" -> words "break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var" ++
+    words "any append bool byte cap clear close complex complex64 complex128 copy delete error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr" ++
+    words "flag fmt os testing rapid t m symbols seed values code problem err matched matchedItems matchedData results"
   _ -> []
 
 -- | A keyword or reserved name escaped the target's own way: a trailing

@@ -1,4 +1,4 @@
-expect: expect 
+expect: .lawspec:
 @@ example/parse_port/adapter.go
 <<<<<<<
 *

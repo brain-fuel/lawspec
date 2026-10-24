@@ -19,14 +19,31 @@ import qualified Data.Set as S
 import Data.Foldable (toList)
 import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import Data.Char (toUpper)
-import Data.List (nub, intercalate)
+import Data.List (nub, intercalate, zip4)
+import LawSpec.SourceLink (labelled, sourceLink)
+import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, uniqueNames)
 import LawSpec.AbilityNames (interfaceName, specName)
 
 -- | Generated tests call checked definitions by these names, so every test
 -- file agrees.
+-- Each is lawSpecEvaluate and the definition's name (a specialised copy's
+-- with its argument types), with _2, _3 where names meet.
 definitionCalls :: [Unit] -> [(Id,String)]
-definitionCalls units = [(declarationId (definitionDeclaration d), "lawSpecEvaluate" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+definitionCalls units = zip (map (declarationId . definitionDeclaration) definitions)
+  (uniqueNames ["lawSpecEvaluate" ++ pascal d | d <- definitions])
+  where
+    definitions = concatMap unitDefinitions units
+    -- An imported definition (lawspec.collections::setOf) by its own name.
+    shortName n = case breakOn n of
+      Just rest -> shortName rest
+      Nothing -> n
+    breakOn (':' : ':' : rest) = Just rest
+    breakOn (_ : rest) = breakOn rest
+    breakOn [] = Nothing
+    pascal d = let declaration = definitionDeclaration d
+               in case nameWords (readableDefinitionName (shortName (declarationName declaration)) (fst (functionType (declarationType declaration)))) of
+                    [] -> "Definition"
+                    ws -> concatMap (\w -> case w of { c : cs -> toUpper c : cs; [] -> [] }) ws
 
 -- | Checked definitions are emitted as ordinary Go code, so adapters and tests call
 -- the same proved implementation. ref:DEC-total-definitions
@@ -46,9 +63,9 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
   let unitOf = M.fromList [(declarationId (definitionDeclaration d), unitId u) | u <- units, d <- unitDefinitions u]
       shared = M.filterWithKey (\i target -> M.lookup i unitOf == M.lookup target unitOf) (sharedDefinitions units)
       everyIndex = M.fromList [(declarationId (definitionDeclaration d), i) | (i, d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
-      delegate i d target = pure (line ("func lawSpecEvaluate" ++ show i) <>
-        D.delimitTrailing 8 "(" ")" (symbols : [line ("value" ++ show k ++ " LawSpecValue") | k <- [0 .. length (definitionArguments d) - 1]]) <>
-        line " LawSpecValue " <> D.block 8 (line ("return lawSpecEvaluate" ++ show target ++ "(" ++ intercalate ", " ("symbols" : ["value" ++ show k | k <- [0 .. length (definitionArguments d) - 1]]) ++ ")")))
+      delegate i d target = let names = parameterNames d in pure (evaluatorComment i d <> line ("func " ++ evaluatorAt i) <>
+        D.delimitTrailing 8 "(" ")" (symbols : [line (n ++ " LawSpecValue") | n <- names]) <>
+        line " LawSpecValue " <> D.block 8 (line ("return " ++ evaluatorAt target ++ "(" ++ intercalate ", " ("symbols" : names) ++ ")")))
   bodies <- mapM (\(i, (owner, d)) -> (,) (owner, definitionOrchestrates d, declarationId (definitionDeclaration d)) <$>
       case M.lookup (declarationId (definitionDeclaration d)) shared >>= (`M.lookup` everyIndex) of
         Just target -> delegate i d target
@@ -120,9 +137,10 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                   line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
               | otherwise = E.call "resultCodec.fromNative" [call]
         let performed = line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-              ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"] ++
-               [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
-               [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()"
+              (E.declare ([("schema", line schema, True), ("bits", line (show bits), True)] ++
+                 [("codec" ++ show i, line codec, True) | (i, codec) <- zip [0::Int ..] codecs] ++
+                 [("resultCodec", line resultCodec, True)])
+               [line "return " <> result])) <> line "()"
         -- An operation that fails with E: a native handler panics with
         -- LawSpecFail and a native E, which becomes the failure.
         case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
@@ -131,8 +149,8 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
             failureType <- Native.goDataType declarations failure
             pure (E.call "lsNativeFailures" [E.quoted (abilityKey failing),
               line "func(native any) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                [line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits",
-                 line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")]),
+                (E.declare [("schema", line schema, True), ("bits", line (show bits), True)]
+                 [line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")])),
               line "func() LawSpecValue " <> D.block 8 (line "return " <> performed)])
           _ -> pure performed
       _ -> Left "not an operation"
@@ -143,12 +161,23 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
     -- A typed definition's dynamic entry converts its arguments and result.
     bridge typed index d function = do
       let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
-          arguments = [line ("value" ++ show i ++ " LawSpecValue") | i <- [0 .. length argTypes - 1]]
+          names = parameterNames d
+          arguments = [line (n ++ " LawSpecValue") | n <- names]
       froms <- mapM (goTypedFrom typed) argTypes
       to <- goTypedTo typed resultType
-      pure (line ("func lawSpecEvaluate" ++ show index) <> D.delimitTrailing 8 "(" ")" (symbols : arguments) <> line " LawSpecValue " <>
-        D.block 8 (line ("return " ++ to ++ "(" ++ function ++ "(" ++ intercalate ", " (["symbols" | isContextual (goTypedPlan typed) (declarationId (definitionDeclaration d))] ++ [f ++ "(value" ++ show i ++ ")" | (i, f) <- zip [0 :: Int ..] froms]) ++ "))")))
+      pure (evaluatorComment index d <> line ("func " ++ evaluatorAt index) <> D.delimitTrailing 8 "(" ")" (symbols : arguments) <> line " LawSpecValue " <>
+        D.block 8 (line ("return " ++ to ++ "(" ++ function ++ "(" ++ intercalate ", " (["symbols" | isContextual (goTypedPlan typed) (declarationId (definitionDeclaration d))] ++ [f ++ "(" ++ n ++ ")" | (n, f) <- zip names froms]) ++ "))")))
     callees = definitionCalls units
+    evaluatorAt i = snd (callees !! i)
+    -- Each function links to the definition it implements.
+    evaluatorComment i d = line ("// " ++ labelled (evaluatorAt i ++ " is " ++ idText (declarationId (definitionDeclaration d)) ++ " on logical values")
+      (sourceLink (declarationOrigin (definitionDeclaration d))) ++ ".") <> D.hardline
+    wrapperComment d = line ("// " ++ labelled (capitalize (declarationName (definitionDeclaration d)) ++ " is " ++ idText (declarationId (definitionDeclaration d)))
+      (sourceLink (declarationOrigin (definitionDeclaration d))) ++ ".") <> D.hardline
+    -- A definition's parameters by their source names (LawSpec.Naming).
+    parameterNames d = fst (claimAll (scopeWith (reservedFor "go" ++ wrapperNames)) [localIdentifier "go" (binderName b) | b <- definitionArguments d])
+    -- The names generated wrappers give their own values.
+    wrapperNames = words "schema bits result resultCodec checkedResult native kind"
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
     adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,
       declarationId d `notElem` definitionIds]
@@ -166,17 +195,20 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       wrappers <- mapM (native typed) (unitDefinitions unit)
       let identity = idText (unitId unit)
           packageName = reverse (takeWhile (/= '.') (reverse identity))
-          source = line "// Generated by LawSpec. Do not edit." <> D.hardline <>
+          source = E.goHeaderDoc <>
             line ("package " ++ packageName) <> D.hardline <> D.hardline <>
             line ("var " ++ schema ++ " = lawSpecDataSchemaRegistry()") <> D.hardline <> D.hardline <>
             line "type lawSpecDefinitions struct{}" <> D.hardline <> D.hardline <>
-            line "var LawSpecDefinitions lawSpecDefinitions" <> D.hardline <> D.hardline <>
-            D.joinWith (D.hardline <> D.hardline) (wrappers ++ bodies) <> D.hardline
+            line "var LawSpecDefinitions lawSpecDefinitions" <> D.hardline <>
+            mconcat [D.hardline <> doc <> D.hardline | doc <- wrappers ++ bodies]
       pure (Artifact (map (\c -> if c == '.' then '/' else c) identity ++ "/lawspec_definitions.go")
         (D.render (if layout == D.Compact then D.CompactTabs else layout) source) "generated" "source")
     implementation contracts (index,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
-          names = zip (nub (map binderId binders)) ["value" ++ show i | i <- [0::Int ..]]
+          -- Locals keep their source names (LawSpec.Naming).
+          names = zip (nub (map binderId binders)) (fst (claimAll (scopeWith (reservedFor "go" ++ wrapperNames))
+            [localIdentifier "go" (binderName b) | b <- uniqueBinders binders]))
+          uniqueBinders = foldr (\b acc -> b : filter ((/= binderId b) . binderId) acc) []
           local identity = maybe (error "unresolved Go local") id (lookup identity names)
           arguments = [line (local (binderId binder) ++ " LawSpecValue") | binder <- definitionArguments d]
           external term values = case expressionNode term of
@@ -239,9 +271,10 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                     line "func() LawSpecValue " <> D.block 8 (line "return " <> inner)])
                 _ -> pure id
               pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_ = bits"] ++
-                 [assign ("codec" ++ show i) (line codec) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" [] || bridge /= Nothing] ++
-                 [assign "resultCodec" (line resultCodec), line "return " <> failing result])) <> line "()")
+                (E.declare ([("schema", line schema, True), ("bits", line (show bits), True)] ++
+                   [("codec" ++ show i, line codec, True) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" [] || bridge /= Nothing] ++
+                   [("resultCodec", line resultCodec, True)])
+                 [line "return " <> failing result])) <> line "()")
             _ -> Left "unresolved Go total call"
       rendered <- E.renderExpression declarations bits schema local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
@@ -251,10 +284,10 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
           pure (E.call "lsRunWorkflow" [line "symbols", line "func() LawSpecValue " <> D.block 8 (line "return " <> rendered)])
         Just policy -> do
           failures <- forM (stageFailures d) $ \(kind, value) ->
-            (\rendered' -> line ("case " ++ show kind ++ ": return ") <> rendered') <$>
+            (\rendered' -> line ("case " ++ D.render D.Compact (E.quoted kind) ++ ":") <> D.nest 8 (D.hardline <> line "return " <> rendered')) <$>
               E.renderExpression declarations bits schema local external value
           let fail' = line "func(kind string) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                ([line "switch kind " <> D.block 8 (D.joinWith D.hardline failures) | not (null failures)] ++
+                ([line "switch kind {" <> D.hardline <> D.joinWith D.hardline failures <> D.hardline <> line "}" | not (null failures)] ++
                  [line "panic(\"unexpected stage failure: \" + kind)"]))
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) fail' policy
           let key = case definitionArguments d of
@@ -284,7 +317,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
           post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checkedResult" result] ++
             post ++ [line "return checkedResult"])
-      pure (line ("func lawSpecEvaluate" ++ show index) <>
+      pure (evaluatorComment index d <> line ("func " ++ evaluatorAt index) <>
         D.delimitTrailing 8 "(" ")" (symbols:arguments) <> line " LawSpecValue " <>
         D.block 8 (contextual (declarationId (definitionDeclaration d)) "LawSpecValue"
           (D.joinWith D.hardline statements)))
@@ -293,7 +326,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       gates <- policyGates policy
       compensate <- case policyCompensate policy of
         Nothing -> pure (line "nil")
-        Just undo -> (\name -> line ("func(value LawSpecValue) { _ = " ++ name ++ "(symbols, value) }")) <$> evaluator undo
+        Just undo -> (\name -> line "func(value LawSpecValue) " <> D.block 8 (line ("_ = " ++ name ++ "(symbols, value)"))) <$> evaluator undo
       retry <- case policyRetry policy of
         Nothing -> pure (line "nil")
         Just r -> do
@@ -306,29 +339,32 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                 Custom _ -> ("custom", 0, 0, 0, -1)
           condition <- case retryWhen r of
             Nothing -> pure (line "nil")
-            Just p -> (\name -> line ("func(failure LawSpecValue) bool { return lsTruth(" ++ name ++ "(symbols, failure)) }")) <$> evaluator p
+            Just p -> (\name -> E.funcLiteral "(failure LawSpecValue) bool" [line ("return lsTruth(" ++ name ++ "(symbols, failure))")]) <$> evaluator p
           decide <- case retryStrategy r of
-            Custom f -> (\name -> line ("func(attempt int64, failure LawSpecValue, previous int64) (int64, bool) { return lsRetryDecision(" ++
-              name ++ "(symbols, lsInteger64(attempt), failure, lsDuration(previous))) }")) <$> evaluator f
+            Custom f -> (\name -> E.funcLiteral "(attempt int64, failure LawSpecValue, previous int64) (int64, bool)" [line ("return lsRetryDecision(" ++
+              name ++ "(symbols, lsInteger64(attempt), failure, lsDuration(previous)))")]) <$> evaluator f
             _ -> pure (line "nil")
-          pure (line "&lawSpecRetry" <> D.block 8 (D.joinWith D.hardline
-            [ line ("Strategy: " ++ show (kind :: String) ++ ",")
-            , line ("Delay: " ++ show (delay :: Integer) ++ ", Step: " ++ show (step :: Integer) ++ ", Factor: " ++ show (factor :: Integer) ++ ", Cap: " ++ show (cap :: Integer) ++ ",")
-            , line ("Attempts: " ++ show (retryAttempts r) ++ ",")
-            , line ("Jitter: " ++ show (jitterName (retryJitter r)) ++ ",")
-            , line "When: " <> condition <> line ","
-            , line "Decide: " <> decide <> line "," ]))
-      pure (line "lawSpecStagePolicy" <> D.block 8 (D.joinWith D.hardline
-        [ line ("Stage: " ++ show (policyStage policy) ++ ",")
-        , line "Retry: " <> retry <> line ","
-        , line ("Timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",")
-        , line ("Key: " ++ show key ++ ",")
-        , line "Gates: []lawSpecGate" <> D.block 8 (D.joinWith D.hardline [gate <> line "," | gate <- gates]) <> line ","
-        , line ("Cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
-        , line ("Wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
-        , line "Fail: " <> fail' <> line ","
-        , line "Compensate: " <> compensate <> line ","
-        , line ("Hedge: " ++ maybe "nil" (\h -> "&lawSpecHedge{Delay: " ++ show (hedgeDelay h) ++ ", Most: " ++ show (hedgeMost h) ++ "}") (policyHedge policy) ++ ",") ]))
+          pure (E.keyed "&lawSpecRetry"
+            [ ("Strategy", E.quoted kind)
+            , ("Delay", line (show (delay :: Integer)))
+            , ("Step", line (show (step :: Integer)))
+            , ("Factor", line (show (factor :: Integer)))
+            , ("Cap", line (show (cap :: Integer)))
+            , ("Attempts", line (show (retryAttempts r)))
+            , ("Jitter", E.quoted (jitterName (retryJitter r)))
+            , ("When", condition)
+            , ("Decide", decide) ])
+      pure (E.keyed "lawSpecStagePolicy"
+        [ ("Stage", E.quoted (policyStage policy))
+        , ("Retry", retry)
+        , ("Timeout", line (show (maybe (-1) id (policyTimeout policy))))
+        , ("Key", E.quoted key)
+        , ("Gates", if null gates then line "[]lawSpecGate{}" else line "[]lawSpecGate" <> D.block 8 (D.joinWith D.hardline [gate <> line "," | gate <- gates]))
+        , ("Cache", line (show (maybe (-1) id (policyCache policy))))
+        , ("Wraps", line (if null (policyFailures policy) then "false" else "true"))
+        , ("Fail", fail')
+        , ("Compensate", compensate)
+        , ("Hedge", maybe (line "nil") (\h -> line ("&lawSpecHedge{Delay: " ++ show (hedgeDelay h) ++ ", Most: " ++ show (hedgeMost h) ++ "}")) (policyHedge policy)) ])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
@@ -352,12 +388,12 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
         pure (gateDoc "bulkhead" (start ++ "(symbols, " ++ n ++ ", lsInteger64(now))") (admit ++ "(symbols, " ++ n ++ ", state, lsInteger64(now))")
           (Just (release ++ "(symbols, state)")) (waitCode (bulkheadWait b)))
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
-    gateDoc kind start admit finish wait = line "lawSpecGate" <> D.block 8 (D.joinWith D.hardline
-      [ line ("Kind: " ++ show (kind :: String) ++ ",")
-      , line ("Start: func(now int64) LawSpecValue { return " ++ start ++ " },")
-      , line ("Admit: func(state LawSpecValue, now int64) LawSpecValue { return " ++ admit ++ " },")
-      , line ("Finish: " ++ maybe "nil" (\f -> "func(state LawSpecValue, now int64, succeeded bool) LawSpecValue { return " ++ f ++ " }") finish ++ ",")
-      , line ("Wait: " ++ show (wait :: Integer) ++ ",") ])
+    gateDoc kind start admit finish wait = E.keyed "lawSpecGate"
+      [ ("Kind", E.quoted (kind :: String))
+      , ("Start", E.funcLiteral "(now int64) LawSpecValue" [line ("return " ++ start)])
+      , ("Admit", E.funcLiteral "(state LawSpecValue, now int64) LawSpecValue" [line ("return " ++ admit)])
+      , ("Finish", maybe (line "nil") (\f -> E.funcLiteral "(state LawSpecValue, now int64, succeeded bool) LawSpecValue" [line ("return " ++ f)]) finish)
+      , ("Wait", line (show (wait :: Integer))) ]
     integers numbers = intercalate ", " ["lsInteger64(" ++ show n ++ ")" | n <- numbers]
     waitCode wait = case wait of
       Nothing -> -2
@@ -379,16 +415,16 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
           types <- mapM (Native.goDataType declarations) args
           resultType <- Native.goDataType declarations result
           let declaration = definitionDeclaration d
-              parameters = symbols : [line ("value" ++ show i ++ " " ++ ty) | (i, ty) <- zip [0 :: Int ..] types]
-          pure (line ("func (lawSpecDefinitions) " ++ capitalize (declarationName declaration)) <>
+              names = parameterNames d
+              parameters = symbols : [line (n ++ " " ++ ty) | (n, ty) <- zip names types]
+          pure (wrapperComment d <> line ("func (lawSpecDefinitions) " ++ capitalize (declarationName declaration)) <>
             D.delimitTrailing 8 "(" ")" parameters <> line (" " ++ resultType ++ " ") <>
             D.block 8 (line ("return " ++ toNative ++ "(" ++ function ++ "(" ++
-              intercalate ", " ([fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]) ++ "))")))
+              intercalate ", " ([fromNative ++ "(" ++ n ++ ")" | (n, (fromNative, _)) <- zip names conversions]) ++ "))")))
       | otherwise = nativeDynamic d
     nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
-          values = ["value" ++ show i | i <- [0 .. length args - 1]]
       types <- mapM (Native.goDataType declarations) args
       resultType <- Native.goDataType declarations result
       codecs <- mapM (Native.goCodecWithContext "symbols" declarations) args
@@ -396,16 +432,23 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       name <- maybe (Left "unresolved Go native call") Right (lookup (declarationId declaration) callees)
       let handlers = [ (ability, lowerFirst (interfaceName a), a) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
+          -- Each parameter keeps its source name; its codec and checked
+          -- logical value are named after it.
+          handlerNames = [n | (_, n, _) <- handlers]
+          (values, scope) = claimAll (scopeWith (reservedFor "go" ++ wrapperNames ++ handlerNames))
+            [localIdentifier "go" (binderName b) | b <- definitionArguments d]
+          (codecNames, scope') = claimAll scope [v ++ "Codec" | v <- values]
+          checkedNames = fst (claimAll scope' [v ++ "Value" | v <- values])
           parameters = symbols : [line (name ++ " " ++ interfaceName a) | (_, name, a) <- handlers] ++ [line (value ++ " " ++ ty) | (value,ty) <- zip values types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [line ("lsInstallHandlers(symbols, map[string]any{" ++ intercalate ", " [show (abilityKey ability) ++ ": " ++ name | (ability, name, _) <- handlers] ++ "})")
                      | not (null handlers)]
-          inputs = installs ++ concat [[assign ("codec" ++ show i) (line codec),
-            assign ("argument" ++ show i) (E.call ("codec" ++ show i ++ ".fromNative") [line value])]
-            | (i,(value,codec)) <- zip [0::Int ..] (zip values codecs)]
-          invocation = E.call name (line "symbols" : [line ("argument" ++ show i) | i <- [0 .. length args - 1]])
-      pure (line ("func (lawSpecDefinitions) " ++ capitalize (declarationName declaration)) <>
+          inputs = installs ++ concat [[assign codecName (line codec),
+            assign checkedName (E.call (codecName ++ ".fromNative") [line value])]
+            | (value, codec, codecName, checkedName) <- zip4 values codecs codecNames checkedNames]
+          invocation = E.call name (line "symbols" : map line checkedNames)
+      pure (wrapperComment d <> line ("func (lawSpecDefinitions) " ++ capitalize (declarationName declaration)) <>
         D.delimitTrailing 8 "(" ")" parameters <> line (" " ++ resultType ++ " ") <>
         D.block 8 (contextual (declarationId declaration) resultType (D.joinWith D.hardline
           ([line ("schema := " ++ schema),line ("bits := " ++ show bits)] ++ inputs ++

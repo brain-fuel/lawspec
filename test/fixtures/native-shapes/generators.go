@@ -20,4 +20,4 @@ func TestNativeRefinedFactory(t *testing.T) {
 	}
 }
 
-func TestNativeFiniteFactory(t *testing.T) { TestEmptyRecord_Boundary0(t) }
+func TestNativeFiniteFactory(t *testing.T) { TestEmptyRecord_Boundary1(t) }

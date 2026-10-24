@@ -37,7 +37,7 @@ func Settle(value0 int32) LawSpecTask[int32] {
 			panic(LawSpecFail{Value: PaymentErrorBlocked{}})
 		}
 		if value0 == 0 {
-			panic(LawSpecFail{Value: PaymentErrorDeclined{Value: Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7{Message: "there is nothing to settle"}}})
+			panic(LawSpecFail{Value: PaymentErrorDeclined{Value: DeclinedDetails{Message: "there is nothing to settle"}}})
 		}
 		return value0
 	})
