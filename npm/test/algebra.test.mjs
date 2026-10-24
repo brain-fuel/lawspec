@@ -85,8 +85,8 @@ test("all algebra laws expand, including both sides and four division equations"
   for (const target of targets) {
     const plan = await generateInput(compiler, { sources, target });
     assert.deepEqual(plan.diagnostics, [], target);
-    assert.equal(plan.files.filter(f => f.ownership === "user").length, 2);
-    assert.equal(propertyFiles(plan.files).length, 2);
+    assert.equal(plan.files.filter(f => f.ownership === "user").length, 2, target);
+    assert.equal(propertyFiles(plan.files).length, 2, target);
   }
 });
 
@@ -110,15 +110,17 @@ end unit
     });
     assert.deepEqual(plan.diagnostics, []);
     const adapter = plan.files.find(file => file.ownership === 'user').content;
-    if (target === 'erlang') assert.match(adapter, /_Argument11/);
-    else if (target === 'elixir' || target === 'gleam') assert.match(adapter, /_argument11/);
+    // Erlang names a stub's unused parameters after their type: _Int32 to _Int32_12.
+    if (target === 'erlang') assert.match(adapter, /_Int32_12/);
+    else if (target === 'elixir' || target === 'gleam') assert.match(adapter, /_int32_12/);
     else if (target === 'prolog') {
-      assert.match(adapter, /'ls_f'\/13/);
-      const head = adapter.match(/'ls_f'\(([^)]*)\)\s*:-/);
+      // portray_clause quotes only atoms that need it.
+      assert.match(adapter, /\bls_f\/13/);
+      const head = adapter.match(/\bls_f\(([^)]*)\)\s*:-/);
       assert.ok(head, 'The Prolog adapter declares its functional predicate');
       assert.equal(head[1].split(',').length, 13, 'Twelve inputs and one result');
     }
-    else if (target !== "haskell") assert.match(adapter, /value11/);
+    else if (target !== "haskell") assert.match(adapter, /value11/, target);
   }
   for (const bad of [
     content.replace("Int32 -> Int32", "Bool -> Int32"),

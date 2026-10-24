@@ -224,6 +224,7 @@ end unit
     });
     assert.deepEqual(r.diagnostics, []);
     assert.ok(propertyContent(r.files).includes("negative rendering"), target);
-    assert.ok(propertyContent(r.files).includes("expect actual"), target);
+    // Assertions point at each expectation's line rather than repeat its text.
+    assert.ok(propertyContent(r.files).includes("expect.lawspec:9"), target);
   }
 });

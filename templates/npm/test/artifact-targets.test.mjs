@@ -19,6 +19,24 @@ end unit`;
 const request = (target, text = content) => ({schemaVersion:5, languageProfile:'1.0-rc.2',
   verification:{layers:[]}, target, sources:[{path:'configuration.lawspec',content:text}]});
 
+// The generated YAML is block style; these documents are mappings of
+// scalars, nested by two spaces, which is all this reader handles.
+function readYaml(text) {
+  const scalar = raw => raw.startsWith('"') ? JSON.parse(raw) : raw === 'true' ? true : raw === 'false' ? false :
+    /^-?[0-9]+$/u.test(raw) ? Number(raw) : raw;
+  const root = {}, stack = [{indent: -1, value: root}];
+  for (const line of text.split('\n')) {
+    if (!line.trim() || line.trimStart().startsWith('#') || line === '---') continue;
+    const indent = line.length - line.trimStart().length;
+    const [, key, rest] = /^\s*("(?:[^"\\]|\\.)*"|[^:]+):\s?(.*)$/u.exec(line);
+    while (stack.at(-1).indent >= indent) stack.pop();
+    const parent = stack.at(-1).value, name = scalar(key);
+    if (rest === '') { parent[name] = {}; stack.push({indent, value: parent[name]}); }
+    else parent[name] = scalar(rest);
+  }
+  return root;
+}
+
 test('program and artifact inventories are distinct and cover public targets', () => {
   assert.deepEqual(targets,[...programTargets,...artifactTargets]);
   assert.equal(new Set(targets).size,targets.length);
@@ -33,7 +51,7 @@ test('artifact API emits checked configuration without tests, on both machine pr
     assert.deepEqual(result.benchmarks,[],target);
     assert.ok(result.files.length > 0,target);
     if(target === 'yaml') {
-      const config = JSON.parse(result.files.find(file => file.path === 'configuration.yaml').content);
+      const config = readYaml(result.files.find(file => file.path === 'configuration.yaml').content);
       assert.deepEqual(config['configuration::settings'],{port:8080,enabled:true});
     }
   }
@@ -69,16 +87,16 @@ test('ANTLR exposes concrete input identities, EOF entries and exact schemas acr
     assert.match(grammar,/inputOnly::type::Box::Box/u);
     assert.deepEqual(Object.keys(manifest.entryPoints).sort(),Object.keys(manifest.types).sort());
     for(const [scalar,maximum]of [['UInt8',255],['UInt16',65535]]) {
-      const keys=Object.entries(manifest.types).filter(([,ty])=>
-        ty.startsWith('Constructor "inputOnly::type::Box"')&&ty.includes(`Constructor "${scalar}"`));
+      // Manifest types are written as LawSpec writes them.
+      const keys=Object.entries(manifest.types).filter(([,ty])=>ty===`inputOnly::type::Box ${scalar}`);
       assert.equal(keys.length,1,scalar);
       const key=keys[0][0],entry=manifest.entryPoints[key];
       assert.equal(entry.schema,`#/$defs/${key}`);
-      assert.ok(grammar.includes(`${entry.rule} : ${key} EOF ;`));
+      assert.ok(grammar.includes(`${entry.rule}\n    : ${key} EOF\n    ;`));
       const payload=schema.$defs[key].properties.payload.$ref;
       assert.equal(schema.$defs[payload.slice('#/$defs/'.length)].maximum,maximum);
     }
-    assert.ok(Object.values(manifest.types).some(ty=>ty.startsWith('Constructor "List"')&&ty.includes('Bool')));
+    assert.ok(Object.values(manifest.types).some(ty=>ty.startsWith('List ')&&ty.includes('Bool')));
   }
 });
 
@@ -99,7 +117,8 @@ test('configuration serialization preserves UTF-8 and astral code points', async
     const result = await compiler.planGeneration(request(target,source));
     assert.deepEqual(result.diagnostics,[]);
     const filename = target === 'yaml' ? 'configuration.yaml' : 'configuration.tfvars.json';
-    assert.deepEqual(Object.values(JSON.parse(result.files.find(file => file.path === filename).content)),[value]);
+    const text = result.files.find(file => file.path === filename).content;
+    assert.deepEqual(Object.values(target === 'yaml' ? readYaml(text) : JSON.parse(text)),[value]);
   }
 });
 
