@@ -378,7 +378,7 @@ expr e = case e of
   -- (its brace goes on the next line when a scrutinee on one line leaves
   -- no room for it)
   Match scrutinee arms
-    | Just t <- flat scrutinee ->
+    | Just t <- oneLine scrutinee ->
         oneOf [ D.utf8Text ("match " ++ t ++ " ") <> armsDoc arms
               , D.text ("match " ++ t) <> D.hardline <> armsDoc arms
               , D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms ]
@@ -484,6 +484,8 @@ arguments callee cap open close limit args =
     -- A single chain of one link would overflow onto two lines; rustfmt
     -- puts it on a line of its own instead when it fits there.
     twoLines = case (args, lastArg) of
+      -- (so does a single operation)
+      ([_], Infix {}) -> True
       ([_], Method {}) -> length (snd (unchain lastArg)) == 1
       ([_], Try a@(Method {})) -> length (snd (unchain a)) == 1
       _ -> False
@@ -776,7 +778,7 @@ ifDocOf elseIf c a b = case (flat (If c a b), b) of
       Just t | elseIf -> D.fitsIndented 0 (width ("if " ++ t ++ " {"))
         (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{", brokenCondition]) brokenCondition
       -- (rustfmt counts a chain's last ? twice)
-      Just t -> oneOf [(if triedChain c then D.narrow 1 else id) (D.text ("if " ++ t ++ " {")), brokenCondition]
+      Just t -> oneOf [(if triedChain c && rootTried c then D.narrow 1 else id) (D.text ("if " ++ t ++ " {")), brokenCondition]
       Nothing -> D.text "if " <> expr c <> closer
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
@@ -843,10 +845,10 @@ armDoc (ArmOf pat guard body) = case unblocked body of
     unblocked b = case b of
       Block [] (Just inner) -> unblocked inner
       _ -> b
+    -- (only a block's arm goes without its comma)
     comma x = if endsInBlock x then mempty else D.text ","
     endsInBlock x = case x of
-      Match {} -> True
-      If _ _ _ -> isNothing (flat x)
+      Block _ _ -> True
       _ -> False
 
 -- | A function: its signature on one line when it fits, else one
@@ -967,3 +969,11 @@ laidBlock e = case e of
 
 isInfixOf' :: String -> String -> Bool
 isInfixOf' needle hay = any (\i -> take (length needle) (drop i hay) == needle) [0 .. length hay]
+
+-- | A chain whose root is tried (f(..)?.g()).
+rootTried :: Expr -> Bool
+rootTried e = case fst (unchain e) of
+  Left (Try _) : _ -> True
+  _ -> case e of
+    Try a -> rootTried a
+    _ -> False
