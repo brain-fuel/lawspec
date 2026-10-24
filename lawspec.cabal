@@ -60,6 +60,7 @@ extra-source-files:
     runtime/LawSpecSchema.java
     runtime/LawSpecKotlin.kt
     runtime/LawSpecKotlinCodecs.kt
+    runtime/LawSpecKotlinDraws.kt
     runtime/LawSpecKotlinScalars.kt
     runtime/LawSpecKotlinStrategies.kt
     runtime/LawSpecKotlinTesting.kt
