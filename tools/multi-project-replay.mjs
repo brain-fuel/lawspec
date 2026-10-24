@@ -36,7 +36,7 @@ const source = process.env.LAWSPEC_NPM_SOURCE;
 const packed = JSON.parse((await run('npm', ['pack', '--json', '--pack-destination', base,
   ...(source ? ['--ignore-scripts'] : [])], path.resolve(source ?? path.join(repo, 'npm')))).stdout)[0];
 const installation = path.join(base, 'installation');
-await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+await run('npm', ['install', ...(process.env.LAWSPEC_OFFLINE === '1' ? ['--offline'] : ['--prefer-offline']), '--ignore-scripts', '--no-audit', '--no-fund',
   '--prefix', installation, path.join(base, packed.filename)]);
 const cli = path.join(installation, 'node_modules/lawspec/bin/lawspec.mjs');
 const call = (verb, flags = [], pass = true) => run(process.execPath, [cli, verb, ...flags,

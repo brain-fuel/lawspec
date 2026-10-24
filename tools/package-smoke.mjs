@@ -8,6 +8,7 @@ import path from "node:path";
 import { programTargets as targets } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
+const env = {...process.env, npm_config_cache: path.join(repo, '.artifacts/npm-cache')};
 const output = process.env.LAWSPEC_PACKAGE_DIR ??
   path.join(repo, ".artifacts/package-smoke");
 await mkdir(output, { recursive: true });
@@ -16,7 +17,7 @@ const packed = JSON.parse(
     await exec(
       "npm",
       ["pack", "./npm", "--pack-destination", output, "--json"],
-      { cwd: repo, encoding: "utf8" },
+      { cwd: repo, env, encoding: "utf8" },
     )
   ).stdout,
 );
@@ -28,6 +29,7 @@ async function run(cmd, args, cwd = root, {timeout = 1800000} = {}) {
   try {
     const result = await exec(cmd, args, {
       cwd,
+      env,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
       timeout,
@@ -72,6 +74,8 @@ try {
     ],
     app,
   );
+  await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+    '--prefix', path.join(root, 'offline-installation'), archive]);
   const cli = path.join(app, "node_modules/lawspec/bin/lawspec.mjs");
   // Init deliberately selects no optional law checks. This smoke run opts in
   // before exercising the generated native tests.
