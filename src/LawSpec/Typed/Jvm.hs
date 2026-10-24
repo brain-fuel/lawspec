@@ -10,7 +10,7 @@ module LawSpec.Typed.Jvm (jvmPerformName, JvmTyped(..), JvmStyle(..), emitJvmTyp
 import Control.Monad (forM)
 import Control.Monad.State.Strict
 import Data.Char (isAlphaNum, isUpper, toLower)
-import Data.List (intercalate, isPrefixOf, nub, stripPrefix)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -334,11 +334,15 @@ dataDoc env d = do
       generics = if null parameters then "" else "<" ++ intercalate ", " (map snd parameters) ++ ">"
       ranks = constructorRanks d
       rank c = fromMaybe 0 (lookup (constructorId c) ranks)
-      tagOf c = D.render D.Compact (E.quoted (idText (constructorId c)))
+      tagOf c = E.quoted (idText (constructorId c))
       variants = dataConstructors d
       line = javaText
-      header = line ("/** " ++ dataName d ++ " (" ++ idText (dataId d) ++ "). */")
+      header = if length (dataName d ++ idText (dataId d)) > 80
+        then D.joinWith D.hardline (map line ["/**", " * " ++ dataName d, " * (" ++ idText (dataId d) ++ ").", " */"])
+        else line ("/** " ++ dataName d ++ " (" ++ idText (dataId d) ++ "). */")
       codecParams = [("LawSpecFast.Codec<" ++ p ++ "> c" ++ show k) | (k, (_, p)) <- zip [0 :: Int ..] parameters]
+      -- A plain key is a literal, which splits when long.
+      keyLiteral = if null parameters then E.quoted (idText (dataId d)) else line keyDoc
       keyDoc = if null parameters then show (idText (dataId d))
         else "LawSpecFast.dataKey(" ++ show (idText (dataId d)) ++ concat [", c" ++ show k | k <- [0 .. length parameters - 1]] ++ ")"
       codecParamMap = [(v, "c" ++ show k) | (k, (v, _)) <- zip [0 :: Int ..] parameters]
@@ -350,8 +354,8 @@ dataDoc env d = do
       variantClass c = if isProductType d then name else name ++ "." ++ variantName env d c
       encodeArm c codecs = line ("case " ++ show (index c) ++ " -> ") <> D.block 2 (
         (if null (constructorFields c) then mempty else line ("var m = (" ++ variantClass c ++ generics ++ ") value;") <> D.hardline) <>
-        line "return " <> jcall "LawSpecFast.value" (line "key" : line (tagOf c) : [jcall (codec ++ ".encode") [line ("m." ++ fieldName f)] | (f, codec) <- zip (constructorFields c) codecs]) <> line ";")
-      decodeArm c codecs = line ("case " ++ tagOf c ++ " -> ") <> D.block 2 (line "return " <>
+        line "return " <> jcall "LawSpecFast.value" (line "key" : tagOf c : [jcall (codec ++ ".encode") [line ("m." ++ fieldName f)] | (f, codec) <- zip (constructorFields c) codecs]) <> line ";")
+      decodeArm c codecs = line "case " <> tagOf c <> line " -> " <> D.block 2 (line "return " <>
         construction c [jcall (codec ++ ".decode") [line ("d.fields().get(" ++ show k ++ ")")] | (k, codec) <- zip [0 :: Int ..] codecs] <> line ";")
       construction c args
         | fieldless d = line (name ++ "." ++ variantName env d c)
@@ -360,13 +364,13 @@ dataDoc env d = do
       codecField = [line ("public static final LawSpecFast.Codec<" ++ name ++ "> CODEC = codec();") | null parameters]
       codecSignature = if null parameters then line codecHead else jcall codecHead (map line codecParams)
       codecDoc = D.joinWith (D.hardline <> D.hardline) (codecField ++ [codecSignature]) <> D.hardline <> D.block 2 (D.joinWith D.hardline
-        [ line ("String key = " ++ keyDoc ++ ";")
+        [ D.group (line "String key =" <> D.nest 4 (D.softline <> keyLiteral <> line ";"))
         , line ("return new LawSpecFast.Codec<" ++ name ++ generics ++ ">()") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           [ braced "public String key()" (line "return key;")
           , line ("public LawSpecRuntime.Value encode(" ++ name ++ generics ++ " value)") <> D.hardline <> D.block 2
               (if fieldless d
                 then line "return switch (value)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
-                  [D.group (line ("case " ++ variantName env d c ++ " ->") <> D.nest 4 (D.softline <> jcall "LawSpecFast.value" [line "key", line (tagOf c)])) <> line ";" | c <- variants]) <> line ";"
+                  [D.group (line ("case " ++ variantName env d c ++ " ->") <> D.nest 4 (D.softline <> jcall "LawSpecFast.value" [line "key", tagOf c])) <> line ";" | c <- variants]) <> line ";"
                 else line ("switch (" ++ (if isProductType d then "0" else "value.tag") ++ ")") <> D.hardline <> D.block 2 (D.joinWith D.hardline
                   (zipWith encodeArm variants fieldCodecs ++ [line "default -> throw LawSpecFast.unreachable();"])))
           , line ("public " ++ name ++ generics ++ " decode(LawSpecRuntime.Value value)") <> D.hardline <> D.block 2 (
@@ -485,8 +489,17 @@ hasTailSelf env c e = case expressionNode e of
   _ -> False
 
 deliver :: Target -> D.Doc -> D.Doc
-deliver Return x = javaText "return " <> x <> javaText ";"
-deliver (Assign v) x = javaText (v ++ " = ") <> x <> javaText ";"
+deliver Return x = relaid (javaText "return " <> x <> javaText ";")
+deliver (Assign v) x = relaid (javaText (v ++ " = ") <> x <> javaText ";")
+
+-- | A one-line statement built from pieces, read back into its calls so it
+-- wraps as Google Java Style wraps it; a declaration breaks after its = too.
+relaid :: D.Doc -> D.Doc
+relaid d = case D.render D.Compact d of
+  flat | '\n' `elem` flat -> d
+       | (declaration, '=' : ' ' : value) <- break (== '=') flat, " " `isSuffixOf` declaration, "final " `isPrefixOf` flat ->
+           D.group (javaText (init declaration ++ " =") <> D.nest 4 (D.softline <> javaText value))
+       | otherwise -> javaText flat
 
 -- | Statements delivering an expression's value to a target.
 cstmt :: Env -> Maybe (Int, [String]) -> Scope -> Target -> Expr -> M [D.Doc]
@@ -496,7 +509,7 @@ cstmt env selfCall scope target e = case expressionNode e of
     local <- fresh (binderName binder)
     ty <- lift' (javaType env False (binderType binder))
     rest <- cstmt env selfCall ((binderId binder, local) : scope) target body
-    pure (s ++ [javaText ("final " ++ ty ++ " " ++ local ++ " = ") <> x <> javaText ";"] ++ rest)
+    pure (s ++ [relaid (javaText ("final " ++ ty ++ " " ++ local ++ " = ") <> x <> javaText ";")] ++ rest)
   If c a b -> do
     (s, x) <- cexpr env scope c
     yes <- cstmt env selfCall scope target a
@@ -514,7 +527,7 @@ cstmt env selfCall scope target e = case expressionNode e of
           (s, x) <- cexpr env scope a
           t <- fresh "next"
           ty <- lift' (javaType env False (expressionType a))
-          pure (s ++ [javaText ("final " ++ ty ++ " " ++ t ++ " = ") <> x <> javaText ";"], javaText (p ++ " = " ++ t ++ ";"))
+          pure (s ++ [relaid (javaText ("final " ++ ty ++ " " ++ t ++ " = ") <> x <> javaText ";")], javaText (p ++ " = " ++ t ++ ";"))
         pure (concatMap fst evaluated ++ map snd evaluated ++ [javaText "continue;"])
   Helper Unreachable _ -> pure [javaText "throw LawSpecFast.unreachable();"]
   -- raise e delivers nothing: it throws.
