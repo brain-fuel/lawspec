@@ -7,6 +7,7 @@
 -- target's model runtime.
 module LawSpec.ModelTests (modelTestArtifacts, rustModelTests) where
 
+import LawSpec.JavaText (javaText)
 import Data.Char (toUpper)
 import Data.List (intercalate, stripPrefix)
 import qualified LawSpec.Core as C
@@ -71,7 +72,7 @@ modelTestArtifacts target bits datas calls u
     scArray many = ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" many
     -- A Java callback: (s, a) -> name(args), broken after the arrow.
     jCallback body = case break (== '>') body of
-      (params, '>' : ' ' : call) -> D.group (D.text (params ++ ">") <> D.nest 4 (D.softline <> D.text call))
+      (params, '>' : ' ' : call) -> D.group (D.text (params ++ ">") <> D.nest 4 (D.softline <> javaText call))
       _ -> D.text body
     splitArguments s = case break (== ',') s of
       (a, []) -> [a]

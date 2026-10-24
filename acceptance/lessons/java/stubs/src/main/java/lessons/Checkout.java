@@ -12,13 +12,16 @@ public final class Checkout
       validate(lawspec.data.RawOrder value0)
   {
     throw new UnsupportedOperationException(
-        "validate -> Either (lessons.checkout::type::OrderProblem) (lessons.checkout::type::ValidOrder)");
+        "validate -> Either (lessons.checkout::"
+            + "type::"
+            + "OrderProblem) (lessons.checkout::"
+            + "type::ValidOrder)");
   }
 
   // charge :: (lessons.checkout::type::ValidOrder -> lessons.checkout::type::Receipt) —
   // 06-domain.lawspec:17
   public static lawspec.data.Receipt charge(lawspec.data.ValidOrder value0)
   {
-    throw new UnsupportedOperationException("charge -> lessons.checkout::type::Receipt");
+    throw new UnsupportedOperationException("charge -> lessons.checkout::type::" + "Receipt");
   }
 }

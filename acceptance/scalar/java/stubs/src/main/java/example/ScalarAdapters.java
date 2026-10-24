@@ -71,7 +71,7 @@ public final class ScalarAdapters
   // scalar_adapters.lawspec:12
   public static Value echoPresence(Value value0)
   {
-    throw new UnsupportedOperationException("echoPresence -> Optional (Nullable (Int8))");
+    throw new UnsupportedOperationException("echoPresence -> Optional (Nullable " + "(Int8))");
   }
 
   // finish :: (Unit -> Unit) — scalar_adapters.lawspec:13

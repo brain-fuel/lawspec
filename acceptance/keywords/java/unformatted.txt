@@ -1,0 +1,1 @@
+src/main/java/example/Keywords.java Checkstyle's GoogleMethodName rejects _class, the documented adapter name for the Java keyword class (a user-owned stub; renaming it would break the adapters written against it)

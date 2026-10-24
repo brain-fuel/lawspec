@@ -672,8 +672,7 @@ javaCodecDocUsing codecs width context declarations =
   go ty
   where
     quoted = D.text . literalFor "java"
-    invoke name args = D.group (D.text (name ++ "(") <>
-      D.nest 4 (D.softbreak <> D.group (D.commaSep args)) <> D.text ")")
+    invoke = E.call
 
 -- | Built-in collections and durations are Java's own types, not generated ones.
 builtinFree :: C.DataDeclaration -> Bool

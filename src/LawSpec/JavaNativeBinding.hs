@@ -94,7 +94,7 @@ emitBindings minify plan testing files = do
                   nativeResultType <> D.text " result = found == null" <> D.nest 4 (D.hardline <>
                     D.text "? new lawspec.runtime.LawSpecRuntime.Absent<>()" <> D.hardline <>
                     D.text ": new lawspec.runtime.LawSpecRuntime.Present<>((" <> element <> D.text ") found);") <> D.hardline <> returned
-              | otherwise = assigned (nativeResultType <> D.text " result") (D.text "(" <> nativeResultType <> D.text ") " <> application) <> D.hardline <> returned
+              | otherwise = assigned (nativeResultType <> D.text " result") (D.group (D.text "(" <> nativeResultType <> D.text ")" <> D.nest 4 (D.softline <> application))) <> D.hardline <> returned
         -- An async bridge converts the native task's result once it completes.
         -- A constructor is called at once, and its bridge returns a completed task.
         let async = C.declarationAsync d

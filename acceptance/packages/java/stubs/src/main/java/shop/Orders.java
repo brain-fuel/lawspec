@@ -7,13 +7,13 @@ public final class Orders
   // settlement :: (shop.orders::type::Currency -> shop.domain::type::Currency) — orders.lawspec:13
   public static lawspec.data.ShopDomainCurrency settlement(lawspec.data.ShopOrdersCurrency value0)
   {
-    throw new UnsupportedOperationException("settlement -> shop.domain::type::Currency");
+    throw new UnsupportedOperationException("settlement -> shop.domain::type::" + "Currency");
   }
 
   // lineTotal :: (shop.orders::type::Line -> shop.domain::type::Money) — orders.lawspec:14
   public static lawspec.data.Money lineTotal(lawspec.data.Line value0)
   {
-    throw new UnsupportedOperationException("lineTotal -> shop.domain::type::Money");
+    throw new UnsupportedOperationException("lineTotal -> shop.domain::type::" + "Money");
   }
 
   // cheaper :: (Int64 -> (Int64 -> Int64)) — orders.lawspec:17
@@ -31,6 +31,6 @@ public final class Orders
   // classify :: (Int64 -> shop.tax.v2x0x0.rates::type::Band) — orders.lawspec:19
   public static lawspec.data.ShopTaxV2x0x0RatesBand classify(long value0)
   {
-    throw new UnsupportedOperationException("classify -> shop.tax.v2x0x0.rates::type::Band");
+    throw new UnsupportedOperationException("classify -> shop.tax.v2x0x0.rates::" + "type::Band");
   }
 }
