@@ -245,7 +245,7 @@ emit minify bits datas units = do
       pure (comment 2 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <>
         classHeader ("class " ++ name ++ "(private val symbols: LawSpecScala.Symbols)") [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] <>
         block (D.joinWith (D.hardline <> D.hardline)
-          ([D.group (line ("private var state: " ++ t ++ " =") <> D.nest 2 (D.softline <> line v)) | Just t <- [stateType], Just v <- [start]] ++
+          ([D.group (D.group (line "private var state" <> D.nest 4 (D.softbreak <> line (": " ++ t))) <> line " =" <> D.nest 2 (D.softline <> line v)) | Just t <- [stateType], Just v <- [start]] ++
            [ comment 4 "The handler on its own, outside any law: the embedding entry point." <>
              line "def this() = this(LawSpecScala.symbols())" ] ++ methods ++ accessors)))
     recording a = do

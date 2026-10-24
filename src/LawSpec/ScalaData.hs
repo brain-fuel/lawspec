@@ -418,9 +418,11 @@ emitCodecs mappings owner layout declarations = do
         [("List", 1 :: Int), ("Maybe", 1), ("Either", 2)]
       scalars <- mapM (\p -> caseFor (primitiveName p) (C.Constructor (primitiveName p) []))
         [p | p <- primitives, primitiveName p `elem` map fst scalaScalars]
-      pure (D.text ("def dynamic(schema: LawSpecSchema, bits: Int, symbols: " ++ symbolsType ++ ", tpe: LawSpecSchema.Named): Codec[Any] = ") <>
-        D.block 2 (D.group (D.text "val arguments: IndexedSeq[Codec[Any]] =" <> D.nest 2 (D.softline <>
-          scalaText "scala.jdk.CollectionConverters.ListHasAsScala(tpe.arguments()).asScala.toIndexedSeq.map(argument => dynamic(schema, bits, symbols, argument.asInstanceOf[LawSpecSchema.Named]))")) <> D.hardline <>
+      pure (L.parameters (D.text "def dynamic") (map D.text ["schema: LawSpecSchema", "bits: Int", "symbols: " ++ symbolsType, "tpe: LawSpecSchema.Named"]) <> D.text ": Codec[Any] = " <>
+        D.block 2 (D.text "val arguments: IndexedSeq[Codec[Any]] =" <> D.nest 2 (D.hardline <>
+          D.text "(0 until tpe.arguments().size()).map { i =>" <> D.nest 2 (D.hardline <>
+            D.text "val argument = tpe.arguments().get(i).asInstanceOf[LawSpecSchema.Named]" <> D.hardline <>
+            D.text "dynamic(schema, bits, symbols, argument)") <> D.hardline <> D.text "}") <> D.hardline <>
           D.text "val codec: Codec[?] = tpe.name() match " <> D.block 2 (D.joinWith D.hardline
             (dataCases ++ structural ++ scalars ++ [arm (D.text "case _") (D.text "schema.supported(tpe, bits, symbols)")])) <> D.hardline <>
           D.text "codec.asInstanceOf[Codec[Any]]"))

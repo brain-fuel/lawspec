@@ -16,6 +16,9 @@ object LawSpecScala:
   /** A fresh, empty symbols map. */
   def symbols(): Symbols = java.util.HashMap[String, Object]()
 
+  /** A value of a native call, as the type it is known to have. */
+  def cast[T](value: Any): T = value.asInstanceOf[T]
+
   /** The handler installed in symbols for an ability, as its trait. */
   def handler[T](symbols: Symbols, ability: String): T =
     LawSpecRuntime.handler(symbols, ability).asInstanceOf[T]

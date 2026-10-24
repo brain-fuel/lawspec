@@ -67,7 +67,7 @@ modelTestArtifacts target bits datas calls u
       (map D.text (splitArguments (init (drop 1 (dropWhile (/= '(') body)))))))
     scString = ScalaLayout.scalaString
     -- An array of one callback keeps it in its parentheses, as scalafmt does.
-    scArray [one] = D.text "Array[LawSpecRuntime.ModelCallback](" <> one <> D.text ")"
+    scArray [one] = D.group (D.text "Array[LawSpecRuntime.ModelCallback](" <> one <> D.softbreak <> D.text ")")
     scArray many = ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" many
     -- A Java callback: (s, a) -> name(args), broken after the arrow.
     jCallback body = case break (== '>') body of

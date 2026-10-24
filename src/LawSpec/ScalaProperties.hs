@@ -416,20 +416,21 @@ emitTests Config{..} unit laws = do
                       D.nest 2 (D.softline <> generatorWithin (Just range) ty) <> D.softline <>
                       text "else " <> call "LawSpecScalars.generator" [text "tpe", text "MachineBits"]))
                 strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
-                  value:_ -> call "Arb.constant" [call "LawSpecScalaStrategies.Checked" [expr value,text "null"]]
+                  value:_ -> ("Arb", "constant", [call "LawSpecScalaStrategies.Checked" [expr value,text "null"]])
                   -- The target is evaluated from the inputs bound above.
-                  [] | Just indexed <- generatorIndex plan -> call "LawSpecScalaStrategies.indexedGenerator"
+                  [] | Just indexed <- generatorIndex plan -> ("LawSpecScalaStrategies", "indexedGenerator",
                     [text "Schema",reference ty,text "MachineBits",number nodeBudget,text "symbols",
                      expr (indexedTarget indexed),
                      call "Map" [quoted (C.idText tag) <> text " -> " <> call "List" (map quoted texts)
                        | (tag,texts) <- indexedEquations indexed],
-                     scalarGenerators]
-                  [] -> call "LawSpecScalaStrategies.checkedGenerator" $
+                     scalarGenerators])
+                  [] -> (,,) "LawSpecScalaStrategies" "checkedGenerator" $
                     [text "Schema",reference ty,text "MachineBits",number nodeBudget,
                      number (maxAttempts (generation e)),text "symbols",call "List" (seeds ++ hints)] ++
                     [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
                     [scalar]
-                added = L.trailingChain strategy [] "map" ["drawn"]
+                (owner', method', args') = strategy
+                added = L.trailingChain (text owner') [(method', args')] "map" ["drawn"]
                   [braced (L.condition "if" (text "drawn.error != null")) [state (text "values")] <> text " else " <>
                    L.block [state (text "values :+ drawn.requireValue()")]]
             pure $ L.trailing (call "Arb.flatMap" [prior]) ["inputs"]

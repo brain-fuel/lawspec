@@ -70,7 +70,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       let arguments = [Doc.text (handlerParameter ability ++ ": " ++ scInterface ability) | ability <- usesOf n] ++
             [Doc.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
           signature = ScalaLayout.parameters (Doc.text ("def " ++ ScalaData.escaped (adapterName u (C.declarationId d)))) arguments <>
-            Doc.text ": " <> result
+            Doc.text ": " <> Doc.bestFit [Doc.text (Doc.render Doc.Compact result), result]
       pure (Doc.lineComment 78 "// " (n ++ " :: " ++ prettyType (C.declarationType d) ++ maybe "" (" — " ++) (sourceLink (C.declarationOrigin d))) <>
         Doc.group (signature <> Doc.text " =" <>
           Doc.nest 2 (Doc.softline <> Doc.text ("throw NotImplementedError(" ++ quote n ++ ")"))))

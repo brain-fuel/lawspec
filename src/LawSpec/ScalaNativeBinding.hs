@@ -122,15 +122,15 @@ emitBindings minify plan testing files = do
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
                 pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
             pure $ if async then [mapped application
-                (if result == C.scalarType "Unit" then D.text "()" else returnedOf (D.text ("result.asInstanceOf[" ++ D.render D.Compact nativeResultType ++ "]")))]
+                (if result == C.scalarType "Unit" then D.text "()" else returnedOf (L.call ("LawSpecScala.cast[" ++ D.render D.Compact nativeResultType ++ "]") [D.text "result"]))]
               else if result == C.scalarType "Unit" then [application, D.text "()"]
               -- A method's null is None; anything else is Some.
               else case maybeElement of
                 Just element -> [ D.group (D.text "val found: Any =" <> D.nest 2 (D.softline <> application))
                   , D.group (D.text "val result: " <> nativeResultType <> D.text " =" <> D.nest 2 (D.softline <>
-                      D.text "if (found == null) None else Some(found.asInstanceOf[" <> element <> D.text "])"))
+                      D.text "if (found == null) None else Some(" <> L.call ("LawSpecScala.cast[" ++ D.render D.Compact element ++ "]") [D.text "found"] <> D.text ")"))
                   , returned ]
-                Nothing -> [L.bind "result" (application <> D.text ".asInstanceOf[" <> nativeResultType <> D.text "]"), returned]
+                Nothing -> [L.bind "result" (L.call ("LawSpecScala.cast[" ++ D.render D.Compact nativeResultType ++ "]") [application]), returned]
         -- An adapter that fails with E answers Either: the exceptions
         -- lawspec.json maps become its failures, as Lefts.
         failureCases <- case [failure | C.AbilityRef _ [failure] <- filter C.isFail (C.declarationUses d)] of

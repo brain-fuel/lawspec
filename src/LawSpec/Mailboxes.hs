@@ -708,8 +708,8 @@ scalaMailbox bits datas b = do
         , comment 2 "A received value in its native type." <>
           SL.equalsBody (D.text ("private def toNative(value: Object): " ++ native))
             (D.group (D.text "if (logical)" <> D.nest 2 (D.softline <>
-               SL.chain (D.text name) [("conversion", []), ("toNative", [D.text "value.asInstanceOf[LawSpecRuntime.Value]"])] <>
-               D.text (".asInstanceOf[" ++ native ++ "]")) <> D.softline <> D.text ("else value.asInstanceOf[" ++ native ++ "]")))
+               SL.call ("LawSpecScala.cast[" ++ native ++ "]") [SL.chain (D.text name) [("conversion", []), ("toNative", [D.text "value.asInstanceOf[LawSpecRuntime.Value]"])]]) <>
+               D.softline <> D.text ("else LawSpecScala.cast[" ++ native ++ "](value)")))
         , comment 2 "Queues value without waiting." <>
           SL.equalsBody (D.text ("def send(value: " ++ native ++ "): Unit"))
             (SL.call "mailbox.send" [D.group (D.text ("if (logical) " ++ name ++ ".conversion().toLogical(value)") <> D.softline <> D.text "else value.asInstanceOf[Object]")])
@@ -735,7 +735,7 @@ scalaMailbox bits datas b = do
             SL.equalsBody (D.text ("def send(value: " ++ native ++ "): Unit")) (D.text "remote.send(conversion().toLogical(value))")]
         , comment 2 "A mailbox on node that other nodes send to at {node address}/name." <>
           SL.equalsBody (D.text ("def serve(node: LawSpecRuntime.Node, name: String): " ++ name))
-            (SL.call ("new " ++ name) [D.text "node.mailbox(name, Descriptor, Types).asInstanceOf[LawSpecRuntime.Mailbox[Object]]", D.text "true"])
+            (SL.call ("new " ++ name) [SL.call "LawSpecScala.cast[LawSpecRuntime.Mailbox[Object]]" [D.text "node.mailbox(name, Descriptor, Types)"], D.text "true"])
         , comment 2 "Sends to the mailbox served at address on another node." <>
           SL.equalsBody (SL.parameters (D.text "def connect") [D.text "node: LawSpecRuntime.Node", D.text "address: String", D.text "timeout: Double = 5.0"] <> D.text ": Sender")
             (D.text "Sender(node.remoteMailbox(address, Descriptor, Types, timeout))") ]
