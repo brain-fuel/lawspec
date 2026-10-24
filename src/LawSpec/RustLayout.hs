@@ -326,7 +326,10 @@ opening e = case e of
       -- (the chain up to its last call stays on one line only within 60
       -- columns; otherwise it breaks after its root)
       (Just p, links@(_ : _)) | LinkCall name _ _ <- last links, width (p ++ "." ++ name ++ "(") <= 60 -> p ++ "." ++ name ++ "("
-      _ -> let (root, _) = unchain e in concat [maybe "" id (either flat flatLink r) | r <- root]
+      -- (a call root that breaks opens the chain's first line)
+      _ -> case fst (unchain e) of
+        [Left r] | callRoot r, maybe True ((> 60) . width) (oneLine r) -> opening r
+        root -> concat [maybe "" id (either flat flatLink r) | r <- root]
 
 -- | A block, or a closure: always overflowable.
 blocky :: Expr -> Bool
@@ -663,9 +666,12 @@ flatLink l = case l of
 
 -- | Operands joined by one operator break before each operator, indented.
 infixDoc :: Expr -> D.Doc
-infixDoc e = case flat e of
-  Just t -> oneOf [D.text t, broken]
-  Nothing -> broken
+infixDoc e = case (flat e, e) of
+  (Just t, _) -> oneOf [D.text t, broken]
+  -- An operation whose right operand is a block keeps the block's opening
+  -- on the operator's line.
+  (Nothing, Infix _ op a b@(Block _ _)) | Just l <- oneLine a -> D.text (l ++ " " ++ op ++ " ") <> expr b
+  _ -> broken
   where
     (first, rest) = operands e
     broken = expr first <> D.nest 4 (mconcat [D.hardline <> D.text (op ++ " ") <> expr x | (op, x) <- rest])
@@ -726,6 +732,7 @@ letDoc binding e =
         -- next line when its scrutinee is on one line there)
         matched = case e of
           Match {} -> True
+          If {} -> True
           _ -> False
     in if shallow e || matched
       then head' <> D.prefer (D.NextLineValue (isChain e) (if triedChain e then 2 else 0)) sameValue nextValue sameValue nextValue
@@ -740,6 +747,7 @@ ifDoc c a b = case (flat (If c a b), b) of
     -- (A condition whose last line only closes brackets keeps it there.)
     closer = if endsOpen c then D.hardline <> D.text "{" else D.text " {"
     endsOpen x = case x of
+      Infix _ _ _ (Block _ _) -> False
       Infix {} -> True
       Method {} -> True
       Field {} -> True
@@ -778,6 +786,7 @@ structDoc name fields = case mapM fieldText fields of
 -- block, or a body that fits on a line of its own, is a block; otherwise
 -- it breaks after the arrow's line as it overflows.
 armsDoc :: [Arm] -> D.Doc
+armsDoc [] = D.text "{}"
 armsDoc arms = D.text "{" <> D.nest 4 (D.hardline <> D.joinWith D.hardline (map armDoc arms)) <> D.hardline <> D.text "}"
 
 armDoc :: Arm -> D.Doc
