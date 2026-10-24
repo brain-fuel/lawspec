@@ -84,6 +84,7 @@ import qualified BoundsSpec
 import qualified ECMAScriptSpec
 import qualified ConditionalSpec
 import qualified IncrementalSpec
+import qualified IdentitySpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
 import qualified SessionsPythonSpec
@@ -208,6 +209,7 @@ main = hspec $ do
   ECMAScriptSpec.test_javascriptIsLaidOutAsPrettierLaysItOut
   ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
   IncrementalSpec.test_incrementalCompilationGivesTheSameResultAsAFreshOne
+  IdentitySpec.test_semanticIdentityIsBehaviourAndPresentationIsTheRest
   TestManifestSpec.test_testManifestNamesEveryLawsTestOnEachTarget
   RailwaySpec.test_railwayCombinatorsComposeResultsAsDocumented
   SessionsPythonSpec.test_pythonSessionEndsFollowTheirProtocol

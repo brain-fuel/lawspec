@@ -7,7 +7,7 @@ module LawSpec.Core.RecordIdentity
   , RecordInterner, emptyInterner, internRecord, internRecordWith
   , makeRecordDeclaration, makeRecordDeclarationWithIndexGuards, validateRecordDeclaration, internRecordDeclarations
   , instantiateRecordDeclaration, rebuildRecordDeclaration
-  , constructRecord
+  , constructRecord, scalarValue
   ) where
 
 import Control.Monad (foldM, unless)

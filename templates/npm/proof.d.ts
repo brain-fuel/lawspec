@@ -29,7 +29,7 @@ export interface LawSolverEvidence extends SolverRun {
   at: Location;
   encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
   machineBits: 32 | 64;
-  programFingerprint: string;
+  lawFingerprint: string;
   taskFingerprint?: string;
   status: 'proved' | 'refuted' | 'incomplete' | 'unsupported';
   model?: string;
@@ -75,5 +75,5 @@ export interface ModelSolverEvidence extends SolverRun {
   counterexample?: undefined;
 }
 export type SolverEvidence = LawSolverEvidence | AnalysisSolverEvidence | ModelSolverEvidence;
-export function proofTaskFingerprint(task: {encoding:string;programFingerprint:string;machineBits:number;owner:string;declaration:string;script:string}):string;
+export function proofTaskFingerprint(task: {encoding:string;lawFingerprint:string;machineBits:number;owner:string;declaration:string;script:string}):string;
 export function proveWithZ3(compiler:Compiler,request:CheckRequest,options?:Z3Options):Promise<Result & {solverEvidence:SolverEvidence[]}>;

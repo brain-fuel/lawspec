@@ -9,7 +9,7 @@ import Paths_lawspec (version)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Api (dispatch)
-import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
+import LawSpec.Dependencies (dependencyGraph, fullKey)
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
@@ -142,7 +142,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             , "law \"|doubles| is definition : for all (x :: Integer) => double x = x * 2 end for all end definition end law\n"
             , "law \"|triples| is definition : for all (x :: Integer) => triple x = x * 3 end for all end definition end law\n" , "end unit"]
           graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
-      in [ (C.propertyName p, keyOf graph (show p) (lawReferences graph p))
+      in [ (C.propertyName p, fullKey graph "" p)
          | u <- C.programUnits program, p <- C.unitProperties u ]
     wrapper name bound = "wrapper " ++ name ++ " is Int32 where value > " ++ bound ++ " end wrapper"
     planOf law declarations = do

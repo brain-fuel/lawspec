@@ -9,11 +9,11 @@ import path from 'node:path';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const frame=value=>Buffer.byteLength(value,'utf8')+':'+value;
 const fingerprint=values=>hash(values.map(frame).join(''));
-// v1 is frozen byte for byte; tasks that need later features are v2.
+// A task names its encoding; tasks that need later features are v2.
 const encodings=['lawspec-smtlib-v1','lawspec-smtlib-v2'];
 
 export function proofTaskFingerprint(task) {
-  return fingerprint([task.encoding,task.programFingerprint,String(task.machineBits),
+  return fingerprint([task.encoding,task.lawFingerprint,String(task.machineBits),
     task.owner,task.declaration,task.script]);
 }
 
@@ -102,8 +102,8 @@ async function prover(config) {
 
 function validTask(task) {
   return encodings.includes(task.encoding)&&[32,64].includes(task.machineBits)&&
-    ['owner','declaration','programFingerprint','script','taskFingerprint'].every(key=>typeof task[key]==='string')&&
-    /^[0-9a-f]{64}$/.test(task.programFingerprint)&&
+    ['owner','declaration','lawFingerprint','script','taskFingerprint'].every(key=>typeof task[key]==='string')&&
+    /^[0-9a-f]{64}$/.test(task.lawFingerprint)&&
     proofTaskFingerprint(task)===task.taskFingerprint;
 }
 
@@ -183,7 +183,7 @@ async function solve(task,selected,config) {
 
 async function attempt(task,script,taskFingerprint,selected,config,names=null) {
   const common={owner:task.owner,declaration:task.declaration,at:task.at,
-    programFingerprint:task.programFingerprint,taskFingerprint:task.taskFingerprint,
+    lawFingerprint:task.lawFingerprint,taskFingerprint:task.taskFingerprint,
     encoding:task.encoding,machineBits:task.machineBits,configuration:config};
   if(task.status==='unsupported')return {...common,status:'unsupported',outcome:'unsupported',reason:task.reason};
   if(task.status!=='ready'||!validTask(task))
@@ -231,7 +231,7 @@ async function attempt(task,script,taskFingerprint,selected,config,names=null) {
 async function counterexampleValues(task,selected,config) {
   const query=task.counterexample;
   if(!query||typeof query.script!=='string'||!Array.isArray(query.inputs))return null;
-  if(fingerprint(['lawspec-smtlib-v2',task.programFingerprint,String(task.machineBits),task.owner,task.declaration,
+  if(fingerprint(['lawspec-smtlib-v2',task.lawFingerprint,String(task.machineBits),task.owner,task.declaration,
     query.script])!==query.fingerprint)return null;
   const names=query.inputs.map(input=>input.name);
   // A law with no inputs needs no search: the evaluator decides it.

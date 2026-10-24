@@ -272,13 +272,13 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
       [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
-          ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
+          ("at","Location"),("lawFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string"),
           ("counterexample?","CounterexampleQuery"),
           ("counterexampleUnsupported?","string"), ("recursion?", "Recursion"),
           ("alternative?", "AlternativeTask"), ("induction?", "InductionPlan")]),
        record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
-          ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
+          ("at","Location"),("lawFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
   , interface "AlternativeTask"
       (fields [("recursion", "Recursion"), ("script", "string"), ("taskFingerprint", "string")])

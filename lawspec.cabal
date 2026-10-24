@@ -613,6 +613,7 @@ library
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
+      LawSpec.Core.Identity
       LawSpec.Core.LawAnalysis
       LawSpec.Core.LawTasks
       LawSpec.Core.Machine
@@ -1029,6 +1030,7 @@ test-suite lawspec-test
       GenericDefinitionSpec
       GroovyBridgeSpec
       HarnessSpec
+      IdentitySpec
       ImportSpec
       IncrementalSpec
       IndexedSpec

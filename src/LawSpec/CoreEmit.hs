@@ -573,24 +573,24 @@ emitPlanFormatted minify target Plan{..} = do
     -- A unit's files are a function of exactly these inputs, so its key is
     -- their content: the unit, its laws (each by its plan key, which covers
     -- the law and everything it reaches), Java's data budget (sized across
-    -- every law on purpose), every data declaration (emitters disambiguate
-    -- type names across the program) and the table naming each checked
+    -- every law on purpose), every data declaration by its identity
+    -- (emitters disambiguate type names across the program) and the table naming each checked
     -- definition. Editing a definition's body elsewhere re-emits only the
     -- units whose laws reach it.
     graph = D.dependencyGraph planDataDeclarations (map plannedUnit plannedUnits)
-    dataDigest = digestHex (digestString (show planDataDeclarations))
+    dataDigest = D.fullKey graph "data" [C.Constructor (C.idText (C.dataId d)) [] | d <- planDataDeclarations]
     calls
       | target `elem` ["java","kotlin","scala"] = definitionCalls
       | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "python" = PythonDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
       | otherwise = WebDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
-    lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
+    lawKey law = D.fullKey graph (show planMachineBits) (plannedProperty law)
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
           testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
       in fmap (map unstore) $ memoized emitTable (digestHex (digestString (show (minify, target, planMachineBits,
-             testing { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
+             D.fullKey graph "unit" testing { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
            (fmap (map store) (emitUnitWith laws testing))
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
