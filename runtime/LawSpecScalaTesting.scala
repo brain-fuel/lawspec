@@ -2,6 +2,7 @@
 package lawspec.testing
 
 import lawspec.runtime.{LawSpecRuntime, LawSpecScala, LawSpecSchema}
+import scala.jdk.CollectionConverters.*
 
 /** What the generated Scala tests share: how a law's expectation is checked,
   * and how a property's inputs are drawn.
@@ -41,3 +42,33 @@ object LawSpecTesting:
           Arb.bind(drawn, generator)((values, value) => values :+ value)
       }
       .map(values => (values, LawSpecScala.symbols()))
+
+  /** One of the choices, each as likely, drawn from the property's random
+    * source.
+    */
+  def oneOf(
+      random: Rng,
+      choices: (() => LawSpecRuntime.Value)*
+  ): LawSpecRuntime.Value =
+    LawSpecHarness.oneOf(
+      count => random.nextInt(count),
+      choices
+        .map(choice =>
+          (() => choice()): java.util.function.Supplier[LawSpecRuntime.Value]
+        )
+        .asJava
+    )
+
+  /** One of the alternatives, each as likely as its weight, drawn from the
+    * property's random source.
+    */
+  def frequency(
+      random: Rng,
+      alternatives: (Int, () => LawSpecRuntime.Value)*
+  ): LawSpecRuntime.Value =
+    LawSpecHarness.frequency(
+      count => random.nextInt(count),
+      alternatives
+        .map((weight, draw) => LawSpecHarness.Weighted(weight, () => draw()))
+        .asJava
+    )

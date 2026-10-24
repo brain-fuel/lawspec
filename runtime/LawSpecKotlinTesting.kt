@@ -82,4 +82,36 @@ object LawSpecTesting {
     @OptIn(io.kotest.common.ExperimentalKotest::class)
     fun config(iterations: Int): PropTestConfig =
         PropTestConfig(seed = System.getenv("LAWSPEC_SEED")?.toLong(), iterations = iterations)
+
+    /** One of the choices, each as likely, drawn from the property's random source. */
+    fun oneOf(
+        random: io.kotest.property.RandomSource,
+        vararg choices: () -> LawSpecRuntime.Value,
+    ): LawSpecRuntime.Value =
+        LawSpecHarness.oneOf(
+            { count -> random.random.nextInt(count) },
+            choices.map { choice -> java.util.function.Supplier { choice() } },
+        )
+
+    /**
+     * One of the alternatives, each as likely as its weight, drawn from the property's random
+     * source.
+     */
+    fun frequency(
+        random: io.kotest.property.RandomSource,
+        vararg alternatives: Pair<Int, () -> LawSpecRuntime.Value>,
+    ): LawSpecRuntime.Value =
+        LawSpecHarness.frequency(
+            { count -> random.random.nextInt(count) },
+            alternatives.map { (weight, draw) -> LawSpecHarness.Weighted(weight) { draw() } },
+        )
+
+    /** A value of the draw that the predicate keeps, the draw tried at most limit times more. */
+    fun suchThat(
+        draw: () -> LawSpecRuntime.Value,
+        limit: Int,
+        strategy: String,
+        predicate: (LawSpecRuntime.Value) -> Boolean,
+    ): LawSpecRuntime.Value =
+        LawSpecHarness.suchThat({ draw() }, { value -> predicate(value) }, limit, strategy)
 }

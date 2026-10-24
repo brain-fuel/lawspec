@@ -174,12 +174,16 @@ renderExpression declarations bits local external = render . flattenLets
         no <- render b
         pure (D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
           D.softline <> D.text "else" <> D.nest 2 (D.softline <> no)))
-      ShortCircuit op a b -> do
-        left <- render a
-        right <- render b
-        pure (runtime "bool" [D.group (runtime "truth" [left] <>
-          D.text (if op == And then " &&" else " ||") <>
-          D.nest 2 (D.softline <> runtime "truth" [right]))])
+      -- A chain of one operator is one condition, broken after each.
+      ShortCircuit op _ _ -> do
+        operands <- mapM render (chainOf op term)
+        -- scalafmt's search gives up on a long infix chain, so a long one
+        -- is a call trying each condition in turn.
+        pure (runtime "bool" [case map (\o -> runtime "truth" [o]) operands of
+          conditions | length conditions > 8 ->
+            call (if op == And then "LawSpecScala.allOf" else "LawSpecScala.anyOf") (map (L.arrow "()") conditions)
+          first : rest -> D.group (first <> D.nest 2 (mconcat [D.text (if op == And then " &&" else " ||") <> D.softline <> o | o <- rest]))
+          [] -> D.text "true"])
       Unary Not value -> do
         argument <- render value
         pure (runtime "bool" [D.text "!" <> runtime "truth" [argument]])
@@ -212,6 +216,9 @@ renderExpression declarations bits local external = render . flattenLets
         pure $ case expressionNode scrutinee of
           Local _ -> matching value
           _ -> L.block [L.bind "scrutinee" value, matching (D.text "scrutinee")]
+    chainOf op e = case expressionNode e of
+      ShortCircuit op' a b | op' == op -> chainOf op a ++ chainOf op b
+      _ -> [e]
     branch matched = do
       body <- render (caseBody matched)
       let bindings = [D.text ("val " ++ local (binderId binder) ++ " = fields(" ++ show index ++ ")")

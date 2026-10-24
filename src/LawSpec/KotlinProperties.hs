@@ -26,6 +26,9 @@ import Data.List (intercalate, sort, stripPrefix, nub)
 
 -- | What the Kotlin test emitter needs besides the plan: names, layout and
 -- bindings, gathered so the emitter takes one argument.
+-- A drawn value, or the bindings that draw it and then its value.
+data DrawBody = DrawValue D.Doc | DrawSteps [D.Doc] D.Doc
+
 data Config = Config
   { packageName :: String
   -- An async adapter's call, awaited.
@@ -240,14 +243,14 @@ emitTests Config{..} unit laws = do
       draws <- mapM (\plan -> do
         let inp = domainInput plan
         case strategyOf inp of
-          (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
-          [] -> pure (bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp))))) (generationPlan e)
+          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> drawDoc inp strategy (inputId inp) d
+          [] -> pure [bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp)))]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
               conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
             | inp <- inputs e, (strategy, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
           base = L.trailing (text "io.kotest.property.arbitrary.arbitrary") ["random"]
-            ([symbols] ++ draws ++ [call "Pair" [call "listOf" [text (inputId inp) | inp <- inputs e], text "symbols"]])
+            ([symbols] ++ concat draws ++ [call "Pair" [call "listOf" [text (inputId inp) | inp <- inputs e], text "symbols"]])
           predicates = concatMap inputRefinements defaults
           bindingsDoc = [text "val symbols = inputs.second", text "val values = inputs.first", fromValues (inputs e)]
           strategy = if null predicates then base else L.trailingCall "LawSpecTesting.filter" [base] ["inputs"]
@@ -256,28 +259,50 @@ emitTests Config{..} unit laws = do
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     -- A generator's value drawn from the property's random source.
     sampled gen = L.selects gen [L.call ".sample" [text "random"], text ".value"]
-    chooser = text "java.util.function.IntUnaryOperator " <> L.lambda ["count"] [text "random.random.nextInt(count)"]
-    supplier doc = text "java.util.function.Supplier " <> L.lambda [] [doc]
-    drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)))
-      C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "listOf" [supplier (expr v) | v <- values]])
+    -- A draw is the definitions it needs, each a named function drawing one
+    -- sub-draw, followed by its value: draws stay flat rather than nesting a
+    -- supplier per step.
+    drawDoc inp strategy name d = case d of
+      C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))))
+      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecTesting.oneOf" (text "random" : [L.lambda [] [expr v] | v <- values])))
       C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, a) -> (\doc -> harness "Weighted" [number w, supplier doc]) <$> drawDoc inp strategy a) alternatives
-        pure (harness "frequency" [chooser, call "listOf" options])
+        options <- mapM (\(k, (w, a)) -> do
+          let n = name ++ "Option" ++ show k
+          (defs, body) <- drawDoc inp strategy n a
+          pure (defs ++ [bindLambda n body], text (show w ++ " to " ++ n))) (zip [1 :: Int ..] alternatives)
+        pure (concatMap fst options, DrawValue (call "LawSpecTesting.frequency" (text "random" : map snd options)))
       C.DrawSuchThat inner binder predicate limit -> do
-        doc <- drawDoc inp strategy inner
-        pure (harness "suchThat" [supplier doc,
-          text "java.util.function.Predicate<LawSpecRuntime.Value> " <> L.lambda [localName (C.binderId binder)] [truth (expr predicate)],
-          number limit, quoted strategy])
+        (defs, candidate) <- named (name ++ "Candidate") inner
+        pure (defs, DrawValue (L.trailingCall "LawSpecTesting.suchThat" [candidate, number limit, quoted strategy]
+          [localName (C.binderId binder)] [truth (expr predicate)]))
       C.DrawBind _ _ _ -> do
         -- A chain of draws is one block of bindings, not a block per draw.
         let chained d' = case d' of
               C.DrawBind binder from rest -> let (bs, final) = chained rest in ((binder, from) : bs, final)
               _ -> ([], d')
             (binds, final) = chained d
-        bound <- mapM (\(binder, from) -> bind (localName (C.binderId binder)) <$> drawDoc inp strategy from) binds
-        finalDoc <- drawDoc inp strategy final
-        pure (L.trailing (text "run") [] (bound ++ [finalDoc]))
+        bound <- mapM (\(binder, from) -> do
+          let n = localName (C.binderId binder)
+          (defs, body) <- drawDoc inp strategy n from
+          pure (defs ++ [bind n (drawValue body)])) binds
+        (finalDefs, finalBody) <- drawDoc inp strategy name final
+        pure ([], DrawSteps (concat bound ++ finalDefs) (drawValue finalBody))
+      where
+        -- A sub-draw passed on as a supplier: a plain sample stays inline;
+        -- anything larger is named, and defined before its use.
+        named n sub = do
+          (defs, body) <- drawDoc inp strategy n sub
+          pure $ case (sub, body) of
+            (C.DrawAny _ _, DrawValue v) -> (defs, L.lambda [] [v])
+            _ -> (defs ++ [bindLambda n body], text n)
+    -- A function value starts on its binding's line, as ktfmt keeps it.
+    bindLambda n body = text ("val " ++ n ++ " = ") <> lambdaOf body
+    lambdaOf body = case body of
+      DrawValue v -> L.lambda [] [v]
+      DrawSteps steps v -> L.lambda [] (steps ++ [v])
+    drawValue body = case body of
+      DrawValue v -> v
+      DrawSteps steps v -> L.trailing (text "run") [] (steps ++ [v])
     expr = expression
     -- An assertion names its law and case and points at the source line of
     -- what it checks; the expectation itself is in the law's comment.

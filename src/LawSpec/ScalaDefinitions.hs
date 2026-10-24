@@ -28,9 +28,9 @@ adapterResult declarations adapter = do
   failing <- case [failure | AbilityRef _ [failure] <- filter isFail (declarationUses adapter)] of
     failure : _ -> do
       failureType <- Native.scalaDataTypeDoc declarations failure
-      pure (D.text "scala.util.Either[" <> failureType <> D.text ", " <> value <> D.text "]")
+      pure (Native.applied "scala.util.Either" [failureType, value])
     [] -> pure value
-  pure (if declarationAsync adapter then D.text "scala.concurrent.Future[" <> failing <> D.text "]" else failing)
+  pure (if declarationAsync adapter then Native.applied "scala.concurrent.Future" [failing] else failing)
 
 -- | Checked definitions are emitted as ordinary Scala code, so adapters and
 -- tests call the same proved implementation. ref:DEC-total-definitions

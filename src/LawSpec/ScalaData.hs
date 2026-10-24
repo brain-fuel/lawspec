@@ -2,7 +2,7 @@
 -- Products are case classes, sums are enums, and the built-in types are
 -- Scala's own immutable ones: List, Option, Either, Set, Map and BigInt.
 -- ref:DEC-scala-on-the-jvm-runtime
-module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaCodecDocIn, scalaNativeCodecDocIn, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified, rootQualifiedDoc) where
+module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaCodecDocIn, scalaNativeCodecDocIn, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified, rootQualifiedDoc, applied) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Scalar (primitives, primitiveName)
@@ -482,7 +482,7 @@ emitCodecs mappings owner layout declarations = do
               if directProduct then D.joinWith D.hardline [body | (_,body) <- encodeArms] else
               D.text "(value: Any) match " <>
               D.block 2 (D.joinWith D.hardline
-                ([D.text ("case " ++ condition ++ " => ") <> D.block 2 body | (condition,body) <- encodeArms] ++ [arm (D.text "case _") failure])))) <>
+                ([caseHeader condition <> D.block 2 body | (condition,body) <- encodeArms] ++ [arm (D.text "case _") failure])))) <>
             D.hardline <> D.text "}"
           decoder = D.text "(value: LawSpecRuntime.Value) => {" <> D.nest 2 (D.hardline <>
             D.text "val data = value.data().asInstanceOf[LawSpecRuntime.Data]" <> D.hardline <>
@@ -657,3 +657,12 @@ scalaTypeReferenceDoc = referenceDoc []
 -- | Built-in collections and durations are Scala's own types, not generated ones.
 builtinFree :: C.DataDeclaration -> Bool
 builtinFree d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d)))
+
+-- A case's type pattern breaks inside its type arguments when the case line
+-- is too long, as scalafmt lays it out.
+caseHeader :: String -> D.Doc
+caseHeader condition = case break (== '[') condition of
+  (base, '[' : rest) | (arguments, ']' : after) <- break (== ']') rest, '[' `notElem` arguments ->
+    D.group (D.text ("case " ++ base ++ "[") <> D.nest 6 (D.softbreak <> D.text arguments) <>
+      D.nest 4 D.softbreak <> D.text ("]" ++ after ++ " => "))
+  _ -> D.text ("case " ++ condition ++ " => ")

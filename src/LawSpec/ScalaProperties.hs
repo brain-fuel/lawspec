@@ -26,6 +26,9 @@ import Data.List (intercalate, nub, sort, stripPrefix)
 
 -- | What the Scala test emitter needs besides the plan: names, layout and
 -- bindings, gathered so the emitter takes one argument.
+-- A drawn value, or the bindings that draw it and then its value.
+data DrawBody = DrawValue D.Doc | DrawSteps [D.Doc] D.Doc
+
 data Config = Config
   { packageName :: String
   -- An async adapter's call, awaited.
@@ -242,39 +245,65 @@ emitTests Config{..} unit laws = do
       draws <- mapM (\plan -> do
         let inp = domainInput plan
         case strategyOf inp of
-          (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
-          [] -> pure (bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp))))) (generationPlan e)
+          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> drawDoc inp strategy (inputId inp) d
+          [] -> pure [bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp)))]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
               L.conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
             | inp <- inputs e, (strategy, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
           base = L.trailing (text "Arb.from") ["random"]
-            ([symbols] ++ draws ++ [text "(" <> call "List" [text (inputId inp) | inp <- inputs e] <> text ", symbols)"])
+            ([symbols] ++ concat draws ++ [text "(" <> call "List" [text (inputId inp) | inp <- inputs e] <> text ", symbols)"])
           predicates = concatMap inputRefinements defaults
           bindingsDoc = text "val (values, symbols) = inputs" : fromValues (inputs e)
           strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
-    chooser = text "(count: Int) => random.nextInt(count)"
     -- A generator's value drawn from the property's random source.
     sampled gen = L.chainWith gen [("sample", [text "random"])] (Just (text ".value"))
     supplier = L.arrow "()"
-    drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)))
-      C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "java.util.List.of[java.util.function.Supplier[LawSpecRuntime.Value]]" [supplier (expr v) | v <- values]])
+    -- A draw is the definitions it needs, each a named method drawing one
+    -- sub-draw, followed by its value: draws stay flat rather than nesting a
+    -- supplier per step.
+    drawDoc inp strategy name d = case d of
+      C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))))
+      C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecTesting.oneOf" (text "random" : [supplier (expr v) | v <- values])))
       C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, a) -> (\doc -> call "lawspec.testing.LawSpecHarness.Weighted" [number w, supplier doc]) <$> drawDoc inp strategy a) alternatives
-        pure (harness "frequency" [chooser, call "java.util.List.of[lawspec.testing.LawSpecHarness.Weighted]" options])
+        options <- mapM (\(k, (w, a)) -> do
+          let n = name ++ "Option" ++ show k
+          (defs, body) <- drawDoc inp strategy n a
+          pure (defs ++ [method n (drawValue body)], text ("(" ++ show w ++ ", () => " ++ n ++ "())"))) (zip [1 :: Int ..] alternatives)
+        pure (concatMap fst options, DrawValue (call "LawSpecTesting.frequency" (text "random" : map snd options)))
       C.DrawSuchThat inner binder predicate limit -> do
-        doc <- drawDoc inp strategy inner
-        pure (harness "suchThat" [supplier doc,
+        (defs, candidate) <- named (name ++ "Candidate") inner
+        pure (defs, DrawValue (harness "suchThat" [candidate,
           L.arrow ("(" ++ localName (C.binderId binder) ++ ": LawSpecRuntime.Value)") (truth (expr predicate)),
-          number limit, quoted strategy])
-      C.DrawBind binder from rest -> do
-        fromDoc <- drawDoc inp strategy from
-        restDoc <- drawDoc inp strategy rest
-        pure (L.block [bind (localName (C.binderId binder)) fromDoc, restDoc])
+          number limit, quoted strategy]))
+      C.DrawBind _ _ _ -> do
+        -- A chain of draws is one block of bindings, not a block per draw.
+        let chained d' = case d' of
+              C.DrawBind binder from rest -> let (bs, final) = chained rest in ((binder, from) : bs, final)
+              _ -> ([], d')
+            (binds, final) = chained d
+        bound <- mapM (\(binder, from) -> do
+          let n = localName (C.binderId binder)
+          (defs, body) <- drawDoc inp strategy n from
+          pure (defs ++ [bind n (drawValue body)])) binds
+        (finalDefs, finalBody) <- drawDoc inp strategy name final
+        pure ([], DrawSteps (concat bound ++ finalDefs) (drawValue finalBody))
+      where
+        -- A sub-draw passed on as a supplier: a plain sample stays inline;
+        -- anything larger is a method, defined before its use.
+        named n sub = do
+          (defs, body) <- drawDoc inp strategy n sub
+          pure $ case (sub, body) of
+            (C.DrawAny _ _, DrawValue v) -> (defs, supplier v)
+            (_, DrawValue v) -> (defs ++ [method n v], supplier (text (n ++ "()")))
+            (_, DrawSteps steps v) -> (defs ++ [method n (L.block (steps ++ [v]))], supplier (text (n ++ "()")))
+    method n = L.equalsBody (text ("def " ++ n ++ "(): LawSpecRuntime.Value"))
+    drawValue body = case body of
+      DrawValue v -> v
+      DrawSteps steps v -> L.block (steps ++ [v])
     expr = expression
     -- An assertion names its law and case and points at the source line of
     -- what it checks; the expectation itself is in the law's comment.

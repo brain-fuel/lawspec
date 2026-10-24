@@ -19,6 +19,16 @@ object LawSpecScala:
   /** A value of a native call, as the type it is known to have. */
   def cast[T](value: Any): T = value.asInstanceOf[T]
 
+  /** Whether any condition holds, tried in order until one does: a long chain
+    * of `||`, which scalafmt cannot lay out.
+    */
+  def anyOf(conditions: (() => Boolean)*): Boolean = conditions.exists(_())
+
+  /** Whether every condition holds, tried in order until one fails: a long
+    * chain of `&&`.
+    */
+  def allOf(conditions: (() => Boolean)*): Boolean = conditions.forall(_())
+
   /** The handler installed in symbols for an ability, as its trait. */
   def handler[T](symbols: Symbols, ability: String): T =
     LawSpecRuntime.handler(symbols, ability).asInstanceOf[T]

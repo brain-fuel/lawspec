@@ -3,7 +3,8 @@
 -- value comes first (let x = (let y = a in b) in c is let y = a in let x = b
 -- in c), and a let in a constructor's argument comes before the
 -- constructor when every earlier argument is a local or a constant, so
--- nothing evaluates in a different order. Binders are fresh in Core, so no
+-- nothing evaluates in a different order. A let in a match's scrutinee comes
+-- before the match. Binders are fresh in Core, so no
 -- name is captured.
 module LawSpec.JvmLets (flattenLets) where
 
@@ -20,6 +21,10 @@ flattenLets e = case expressionNode e of
           Let b v inner -> flattenLets (letArg { expressionNode = Let b v (e { expressionNode = Construct tag (before ++ [inner] ++ after) }) })
           _ -> e { expressionNode = Construct tag args' }
       _ -> e { expressionNode = Construct tag args' }
+  -- match (let y = a in s) is let y = a in match s.
+  Match _ _ -> let e' = mapChildren flattenLets e in case expressionNode e' of
+    Match scrutinee branches -> hoist scrutinee (\s -> e' { expressionNode = Match s branches })
+    _ -> e'
   _ -> mapChildren flattenLets e
   where
     -- let x = (let y = a in b) in c: y's let first.
