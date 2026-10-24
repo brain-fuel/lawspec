@@ -57,7 +57,7 @@ Each project contains:
 - `lawspec.edn` with the [native bindings](bind-native-types.md) that connect them;
 - build files and a README with the target's commands.
 
-Exported projects use configuration version 2, the explicit `1.0-rc.2` language
+Exported projects use version 1 EDN manifests, the explicit `1.0-rc.2` language
 profile and explicit verification layers preserving the example's previous
 checks. This profile identifier does not designate a release candidate. C# and
 Clojure use generated model data with application-owned functions and

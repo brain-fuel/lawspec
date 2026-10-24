@@ -34,7 +34,7 @@ export async function exportNativePayments(options, selected) {
     if(config.manifestVersion!==1||config.languageProfile!=='1.0-rc.2')
       throw new Error(`Bundled native payments configuration for ${target} must use lawspec.edn and languageProfile 1.0-rc.2`);
     config.machineBits = options.machineBits ?? 64;
-    files['lawspec.edn'] = writeManifest(config);
+    files['lawspec.edn'] = writeManifest(config, {compact: options.minify === true});
     const instructions = target === 'gleam' ? setup[target].replace(
       'Prepare dependencies with gleam build, then run gleam test.',
       'Prepare dependencies with node prepare.mjs before generation, then run gleam test.') : setup[target];

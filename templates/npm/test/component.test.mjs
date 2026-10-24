@@ -14,8 +14,28 @@ async function directory(t) {
 
 test('manifest EDN preserves nested binding keys, Unicode and enum values', () => {
   const value = {...project, targets: [{language: 'rust', root: '.', nativeBindings: {functions: [{declaration: 'example::read', native: ['example', 'read']}], types: []}}]};
-  assert.deepEqual(parseManifest(writeManifest(value)), value);
+  const readable = writeManifest(value), compact = writeManifest(value, {compact: true});
+  assert.deepEqual(parseManifest(readable), value);
+  assert.deepEqual(parseManifest(compact), value);
+  assert.equal(compact.trim().split('\n').length, 1);
+  assert.match(readable, /\n  :component \{/);
+  assert.throws(() => writeManifest(value, {compact: 'yes'}), /boolean/);
   assert.equal(parseManifest('{:component {:name "λ" :version "0.1.0"} :manifest-version 1}').component.name, 'λ');
+});
+
+test('init forwards the compact layout to its EDN manifest', async t => {
+  const root = await directory(t);
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  await promisify(execFile)(process.execPath, [path.resolve(import.meta.dirname, '../bin/lawspec.mjs'),
+    'init', '--target', 'javascript', '--machine-bits', '32', '--minify'], {cwd: root});
+  const manifest = await readManifest(path.join(root, 'lawspec.edn'));
+  const {readFile} = await import('node:fs/promises');
+  const content = await readFile(path.join(root, 'lawspec.edn'), 'utf8');
+  assert.equal(content.trim().split('\n').length, 1);
+  assert.equal(manifest.manifestVersion, 1);
+  assert.equal(manifest.machineBits, 32);
+  assert.equal(manifest.targets[0].language, 'javascript');
 });
 
 test('EDN duplicate and normalized duplicate keys are rejected before conversion', () => {

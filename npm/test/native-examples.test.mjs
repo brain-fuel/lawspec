@@ -23,7 +23,7 @@ test('native payment exports cover all targets and preserve application and gene
     for(const project of projects) {
       assert.ok(project.files.every(file=>file.ownership==='user'));
       const config=parseManifest(await readFile(path.join(project.directory,'lawspec.edn'),'utf8'));
-      assert.equal(config.version,2);
+      assert.equal(config.manifestVersion,1);
       assert.equal(config.languageProfile,'1.0-rc.2');
       assert.deepEqual(config.verification.layers,['proof','exhaustive','property','examples','runtime','model']);
       assert.equal(config.machineBits,32);
@@ -56,6 +56,10 @@ test('native payment exports cover all targets and preserve application and gene
     assert.equal(rust.length,1);
     const config=await readFile(path.join(root,'custom/rust/lawspec.edn'),'utf8');
     assert.equal(config.trim().split('\n').length,1);
+    const compact = parseManifest(config);
+    assert.equal(compact.manifestVersion,1);
+    assert.equal(compact.targets[0].language,'rust');
+    assert.equal(compact.machineBits,64);
     await assert.rejects(run(['--output','../escape']));
     await symlink(root,path.join(root,'linked'));
     await assert.rejects(run(['--output','linked']));

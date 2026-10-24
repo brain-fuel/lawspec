@@ -244,7 +244,7 @@ async function init() {
   });
   await atomicWrite(
     configFile,
-    writeManifest(config),
+    writeManifest(config, {compact: options.minify === true}),
     current === null,
   );
   output(

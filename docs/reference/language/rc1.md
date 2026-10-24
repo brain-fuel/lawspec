@@ -8,7 +8,7 @@ title: Minor-version authoring contract
 The authoritative implementation contract and remaining gates are in
 [the single review packet](../../../LAWSPEC-PRE-1.0-REVIEW.md). The current
 authoring milestone is a minor version, not a release candidate. The existing
-technical profile `1.0-rc.2` uses API schema 5 and configuration version 2;
+technical profile `1.0-rc.2` uses API schema 5 and version 1 EDN component manifests;
 its identifier does not designate a released RC or final 1.0.
 
 The 0.26 grammar requires a named closer for every keyword block, including

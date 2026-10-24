@@ -48,7 +48,8 @@ export function parseManifest(text, file) {
   return convert(values[0]);
 }
 
-export function writeManifest(value) {
+export function writeManifest(value, options = {}) {
+  if (options?.compact !== undefined && typeof options.compact !== 'boolean') throw new TypeError('compact must be a boolean');
   const identifiers = new Set(['language', 'layers']);
   function convert(value, parent) {
     if (Array.isArray(value)) return value.map(entry => convert(entry, parent));
@@ -66,7 +67,8 @@ export function writeManifest(value) {
       return '[\n' + value.map(entry => child + layout(entry, depth + 1)).join('\n') + '\n' + indent + ']';
     return toEDNString(value);
   }
-  return layout(convert(value), 0) + '\n';
+  const converted = convert(value);
+  return (options?.compact === true ? toEDNString(converted) : layout(converted, 0)) + '\n';
 }
 
 let core;

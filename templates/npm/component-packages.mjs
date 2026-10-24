@@ -145,10 +145,23 @@ export async function resolveDependencies(file, manifest, options = {}) {
   }
   await localCandidates(root, manifest);
 
+  async function gitRepository(url) {
+    const repository = path.join(cache, 'git', contentDigest(url));
+    if (await optional(path.join(repository, 'HEAD')) !== null) return repository;
+    await mkdir(path.dirname(repository), {recursive: true});
+    const temporary = await mkdtemp(path.join(path.dirname(repository), '.initializing-'));
+    try {
+      await git(['init', '--bare', '--quiet', temporary]);
+      try { await rename(temporary, repository); }
+      catch (error) { if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error; }
+      if (await optional(path.join(repository, 'HEAD')) === null)
+        throw new Error(`Cached Git repository initialization did not complete: ${repository}`);
+    } finally { await rm(temporary, {recursive: true, force: true}); }
+    return repository;
+  }
+
   async function gitCheckout(source) {
-    const repository = path.join(cache, 'git', contentDigest(source.url));
-    await mkdir(repository, {recursive: true});
-    if (await optional(path.join(repository, 'HEAD')) === null) await git(['init', '--bare', '--quiet', repository]);
+    const repository = await gitRepository(source.url);
     const present = await git(['--git-dir', repository, 'cat-file', '-e', `${source.commit}^{commit}`]).then(() => true, () => false);
     if (!present) {
       if (offline) throw new Error(`Offline: Git revision ${source.commit} is not cached`);
@@ -255,9 +268,7 @@ export async function resolveDependencies(file, manifest, options = {}) {
       ref = chosen.commit;
       tagVersion = chosen.tag.slice(prefix.length);
     }
-    const repository = path.join(cache, 'git', contentDigest(specification.git));
-    await mkdir(repository, {recursive: true});
-    if (await optional(path.join(repository, 'HEAD')) === null) await git(['init', '--bare', '--quiet', repository]);
+    const repository = await gitRepository(specification.git);
     const fetched = 'refs/lawspec/' + randomUUID();
     let commit;
     try {

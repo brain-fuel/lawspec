@@ -65,8 +65,8 @@ npx lawspec init --target kotlin --minify
 
 - For `generate` and `examples`, it compacts runtime sources, declarations,
   definitions, adapter stubs and tests.
-- For `init`, it compacts newly created build scaffolds and the configuration
-  JSON.
+- For `init`, it compacts newly created build scaffolds and the EDN
+  configuration.
 
 The compiler API accepts `minify: true` on generation requests.
 

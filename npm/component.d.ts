@@ -40,7 +40,7 @@ export interface ComponentDescriptor {
 }
 /** Parses EDN data; readManifest also validates the component schema. */
 export function parseManifest(text: string, file?: string): Record<string, unknown>;
-export function writeManifest(value: ComponentManifest | Record<string, unknown>): string;
+export function writeManifest(value: ComponentManifest | Record<string, unknown>, options?: {compact?: boolean}): string;
 export function readManifest(file: string): Promise<ComponentManifest>;
 export function findManifest(start?: string): Promise<string>;
 export function resolveComponent(file: string, options?: ResolutionOptions): Promise<ComponentDescriptor>;

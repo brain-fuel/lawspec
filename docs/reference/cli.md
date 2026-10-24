@@ -117,15 +117,15 @@ Creates or extends a project configuration.
 - `--project <directory>`: the target's root, relative to the configuration
   file. Default: the configuration file's directory.
 - `--machine-bits <32|64>`: write `machineBits` into the configuration.
-- `--minify`: write compact scaffolds and configuration JSON.
+- `--minify`: write compact scaffolds and an EDN configuration.
 
 When there is no configuration file, `init` creates `lawspec.edn` with
 `sources: ["laws"]` and a starter specification `laws/atoi_codec.lawspec`. It
 fails if the starter already exists. When the file exists, it adds the target.
 A target of the same language with the same root is an error.
 
-New configurations use version 2, `languageProfile: "1.0-rc.2"` and
-`verification.layers: []`. Select optional law checks explicitly; intrinsic
+New manifests use `:manifest-version 1`, `:language-profile "1.0-rc.2"` and
+`:verification {:layers []}`. Select optional law checks explicitly; intrinsic
 definition validation remains mandatory.
 
 If the target root has no build files (such as `pom.xml`, `pyproject.toml`,
@@ -146,7 +146,7 @@ the compiler's full result.
 
 ## `prove`
 
-Requires configuration version 2 and selects the configured `proof` layer.
+Requires a version 1 `lawspec.edn` manifest and selects the configured `proof` layer.
 The compiler prepares typed tasks; the Node host invokes the specified Z3
 executable, or `z3` on `PATH`. With no proof layer selected, no solver is invoked.
 See [proof with Z3](../explanation/smt-proof.md) for supported theories, resource

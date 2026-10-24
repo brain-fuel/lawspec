@@ -9,8 +9,8 @@ LawSpec does not provide migration tooling or compatibility grammars before a
 stable API. Version 0.26 removes the earlier migration command and API methods.
 Update source and consumers directly to the [current grammar](../reference/language/syntax.md).
 
-Requests use API schema 5 and language profile `1.0-rc.2`. Projects use
-configuration version 2 and the same profile. Law verification layers remain
+Requests use API schema 5 and language profile `1.0-rc.2`. Components and contract packages use
+version 1 `lawspec.edn` manifests and the same profile. Law verification layers remain
 explicit; mandatory definition validation always runs.
 
 ## Source migration from 0.24
