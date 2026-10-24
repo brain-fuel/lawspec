@@ -25,6 +25,7 @@ import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.ScalaData as ScalaData
 import LawSpec.ScalaText (scalaText)
 import LawSpec.JavaText (javaText)
+import qualified LawSpec.JavaText as JT
 import LawSpec.DataNames (isProduct, caseNames)
 import LawSpec.Time (isDurationType)
 import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmMethod)
@@ -184,7 +185,7 @@ emitJvmTyped style declarations units = do
     pure (javaText ("public static " ++ jt ++ " " ++ name ++ "(java.util.Map<String, Object> symbols)") <> D.hardline <>
       D.block 2 (D.joinWith D.hardline body))
   let boundaryNames = M.fromList [ (show t, "C" ++ show i) | (i, (t, _)) <- zip [0 :: Int ..] boundary ]
-      codecDocs = [ javaText ("public static final LawSpecFast.Codec<" ++ either (const "?") id (javaType env True t) ++ "> " ++ boundaryNames M.! show t ++ " =") <>
+      codecDocs = [ javaText "public static final " <> JT.javaType ("LawSpecFast.Codec<" ++ either (const "?") id (javaType env True t) ++ ">") <> javaText (" " ++ boundaryNames M.! show t ++ " =") <>
                     D.nest 8 (D.hardline <> javaText (expr ++ ";")) | (t, expr) <- boundary ]
       helpers = entryHelpers env ++ orderingHelper env
       line = javaText
@@ -1031,7 +1032,7 @@ nativeHelper env kind index ty = do
   let name = kind ++ show index
       line = javaText
       -- A long result type puts the name on the next line.
-      fn result signature body = D.group (line ("public static " ++ result) <> D.nest 4 (D.softline <> line signature)) <>
+      fn result signature body = D.group (line "public static " <> JT.javaType result <> D.nest 4 (D.softline <> line signature)) <>
         D.hardline <> D.block 2 (D.joinWith D.hardline body)
   if kind == "toNative"
     then fn n (name ++ "(" ++ t ++ " x)") <$> toNative env ty

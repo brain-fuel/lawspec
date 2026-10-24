@@ -291,13 +291,20 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             | asyncStub = "java.util.concurrent.CompletableFuture<" ++ boxed (native result) ++ ">"
             | otherwise = native result
           flatHeader = "public static " ++ resultText ++ " " ++ n ++ "("
-          signature = Doc.group $ if length flatHeader <= 98 || asyncStub
+          -- A long result type breaks inside its type arguments, and the
+          -- name goes on the next line.
+          resultDoc
+            | asyncStub && result == Named "Unit" = Doc.text "java.util.concurrent.CompletableFuture<Void>"
+            | asyncStub = Doc.group (Doc.text "java.util.concurrent.CompletableFuture<" <>
+                Doc.nest 4 (Doc.softbreak <> javaTypeDoc True False 8 result) <> Doc.text ">")
+            | otherwise = javaTypeDoc False False 8 result
+          signature = Doc.group $ if length flatHeader <= 98
             then Doc.text flatHeader <> Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ")"
-            else Doc.text "public static " <> javaTypeDoc False False 8 result <>
+            else Doc.text "public static " <> resultDoc <>
               Doc.nest 4 (Doc.softline <> Doc.group (Doc.text (n ++ "(") <>
                 Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ")"))
           body = Doc.group $ Doc.text "throw new UnsupportedOperationException(" <>
-            Doc.nest 4 (Doc.softbreak <> Doc.text (q (n ++ " -> " ++ prettyType result))) <> Doc.text ");"
+            Doc.nest 4 (Doc.softbreak <> JavaExpr.quoted (n ++ " -> " ++ prettyType result)) <> Doc.text ");"
       in javaComment (labelled (n ++ " :: " ++ prettyType t) (declarationLink n)) <> Doc.hardline <> signature <> Doc.hardline <> Doc.block 2 body
     javaTypeDoc argument nested indentation t = case t of
       Applied "List" inner -> generic "java.util.List" [inner]

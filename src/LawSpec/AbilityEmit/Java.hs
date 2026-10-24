@@ -4,6 +4,7 @@
 -- in the symbols map generated code passes to every definition.
 module LawSpec.AbilityEmit.Java (emit, productionStub, abilitiesClass, abilitiesClassOf, adapterClassOf) where
 
+import LawSpec.JavaText (javaType)
 import Data.Char (toUpper)
 import Data.List (intercalate)
 import Control.Monad (forM)
@@ -125,13 +126,13 @@ emit minify bits datas units = do
             invocation = E.call evaluate arguments
             outcome = case C.handlerState h of
               Nothing -> [line "var result = " <> invocation <> line ";"]
-              Just _ -> [line "var pair = LawSpecRuntime.pairFields(" <> invocation <> line ");", line "state = pair.get(1);", line "var result = pair.get(0);"]
+              Just _ -> [line "var pair = " <> D.group (line "LawSpecRuntime.pairFields(" <> D.nest 4 (D.softbreak <> invocation) <> line ")") <> line ";", line "state = pair.get(1);", line "var result = pair.get(0);"]
             returned
               | result == C.scalarType "Unit" = []
               | otherwise = [line "return " <> resultCodec <> line ".decode(result);"]
         pure (line "@Override" <> D.hardline <> line "public " <> s <> line "" <> D.hardline <> D.block 2 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
       pure (javadoc 98 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
-        line ("public static final class " ++ name ++ " implements " ++ intercalate ", " [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+        implementing name [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           ([ line "private final Map<String, Object> symbols;" <> D.hardline <> line "private Value state;"
            , line ("public " ++ name ++ "(Map<String, Object> symbols)") <> D.hardline <> D.block 2 (D.joinWith D.hardline (line "this.symbols = symbols;" : initialState)) ] ++
            methods)))
@@ -190,9 +191,9 @@ emit minify bits datas units = do
                , line "/** Replaces the handler's state: to force it, reset it or restore a snapshot. */" <> D.hardline <>
                  line "public synchronized void setState(" <> native <> line " state)" <> D.hardline <> D.block 2 write'
                , line "/** The typed state, shared rather than copied. */" <> D.hardline <>
-                 line ("public synchronized " ++ typedType ++ " typedState()") <> D.hardline <> D.block 2 (line "return state;")
+                 D.group (line "public synchronized " <> javaType typedType <> D.nest 4 (D.softline <> line "typedState()")) <> D.hardline <> D.block 2 (line "return state;")
                , line "/** Replaces the typed state. */" <> D.hardline <>
-                 line ("public synchronized void setTypedState(" ++ typedType ++ " state)") <> D.hardline <> D.block 2 (line "this.state = state;") ]
+                 D.group (line "public synchronized void setTypedState(" <> D.nest 4 (D.softbreak <> javaType typedType <> line " state") <> line ")") <> D.hardline <> D.block 2 (line "this.state = state;") ]
         _ -> pure []
       -- Each operation that fails with E, with its failure as an Outcome.
       attempts <- fmap concat $ forM answered $ \a -> forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a
@@ -213,9 +214,9 @@ emit minify bits datas units = do
                  else line ("return lawspec.runtime.LawSpecFast.Outcome.success(" ++ call ++ ");")) <>
             D.hardline <> line "catch (LawSpecRuntime.Failure failure)" <> D.hardline <> D.block 2 (D.joinWith D.hardline
               [ line ("if (!failure.ability.equals(" ++ show (C.abilityKey failing) ++ "))") <> D.hardline <> D.block 2 (line "throw failure;")
-              , line "return lawspec.runtime.LawSpecFast.Outcome.failure(" <> failureCodec <> line ".decode(failure.value));" ])))
+              , line "return " <> D.group (line "lawspec.runtime.LawSpecFast.Outcome.failure(" <> D.nest 4 (D.softbreak <> failureCodec <> line ".decode(failure.value)") <> line ")") <> line ";" ])))
       pure (javadoc 98 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
-        line ("public static final class " ++ name ++ " implements " ++ intercalate ", " [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+        implementing name [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           ([ line "private final Map<String, Object> symbols;" <> maybe mempty (\t -> D.hardline <> line ("private " ++ t ++ " state;")) stateType
            , line "/** The handler for a law, in its context. */" <> D.hardline <>
              line ("public " ++ name ++ "(Map<String, Object> symbols)") <> D.hardline <> D.block 2 (D.joinWith D.hardline
@@ -265,3 +266,8 @@ productionStub datas u a = do
   pure (javadoc 98 ("The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
     D.group (D.text ("public static final class " ++ productionName a) <> D.nest 4 (D.softline <> D.text ("implements " ++ abilitiesClass u ++ "." ++ interfaceName a))) <> D.hardline <>
     D.block 2 (D.joinWith (D.hardline <> D.hardline) (made ++ methods)))
+
+-- | A class header that breaks before implements, and between interfaces.
+implementing :: String -> [String] -> D.Doc
+implementing name interfaces = D.group (D.text ("public static final class " ++ name) <>
+  D.nest 4 (D.softline <> D.text "implements " <> D.group (D.nest 4 (D.joinWith (D.text "," <> D.softline) (map D.text interfaces)))))

@@ -2,7 +2,7 @@
 -- typed definitions) wraps as Google Java Style wraps it: a call's
 -- arguments break 4 deeper inside its parentheses. Strings, characters and
 -- anything unbalanced are kept whole, and so are type arguments.
-module LawSpec.JavaText (javaText, javaLayout) where
+module LawSpec.JavaText (javaText, javaLayout, javaType) where
 
 import qualified LawSpec.Code.Doc as D
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
@@ -107,6 +107,7 @@ javaLayout = unlines . concatMap (fit . dropWhileEndSpace) . concatMap allman . 
             _ | "/** " `isPrefixOf` body, " */" `isSuffixOf` body ->
                   [indent ++ "/**"] ++ map ((indent ++ " * ") ++) (wrap (width - 3) (words (drop 4 (take (length body - 3) body)))) ++ [indent ++ " */"]
               | "// " `isPrefixOf` body -> map ((indent ++ "// ") ++) (wrap (width - 3) (words (drop 3 body)))
+              | "* " `isPrefixOf` body -> map ((indent ++ "* ") ++) (wrap (width - 2) (words (drop 2 body)))
               | "\"" `isInfixOf` body && not (balanced body) -> [l]
               | otherwise -> map (\x -> if null x then x else indent ++ x) (lines (D.render (D.Pretty width) (javaText body)))
     balanced body = case pieces body of
@@ -118,3 +119,28 @@ javaLayout = unlines . concatMap (fit . dropWhileEndSpace) . concatMap allman . 
         go (w : rest) = let (line', more) = fill w rest in line' : go more
         fill acc (w : rest) | length acc + 1 + length w <= width = fill (acc ++ " " ++ w) rest
         fill acc rest = (acc, rest)
+
+-- | A Java type, its type arguments breaking 4 deeper when it is too long
+-- (Pair<A, B> as Pair< A, B > over three lines).
+javaType :: String -> D.Doc
+javaType t = case break (== '<') t of
+  (name@(_ : _), '<' : rest) | Just arguments <- closing rest ->
+    D.group (D.text (name ++ "<") <> D.nest 4 (D.softbreak <> D.joinWith (D.text "," <> D.softline) (map javaType (topLevel arguments))) <> D.text ">")
+  _ -> D.text t
+  where
+    -- The arguments when the type ends at its first < 's match.
+    closing s = let (inside, after) = matched (0 :: Int) [] s in if after == ">" then Just inside else Nothing
+    matched depth acc s = case s of
+      '<' : more -> matched (depth + 1) ('<' : acc) more
+      '>' : more | depth == 0 -> (reverse acc, '>' : more)
+                 | otherwise -> matched (depth - 1) ('>' : acc) more
+      c : more -> matched depth (c : acc) more
+      [] -> (reverse acc, [])
+    topLevel s = go (0 :: Int) [] s
+      where
+        go _ acc [] = [reverse acc]
+        go depth acc (c : more)
+          | c == ',' && depth == 0 = reverse acc : go depth [] (dropWhile (== ' ') more)
+          | c == '<' = go (depth + 1) (c : acc) more
+          | c == '>' = go (depth - 1) (c : acc) more
+          | otherwise = go depth (c : acc) more
