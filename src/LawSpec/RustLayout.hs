@@ -386,6 +386,10 @@ expr e = case e of
   -- A closure's body that is not a block, match or struct literal is on
   -- the closure's line or in a block of its own (rustfmt vetoes breaking
   -- it there).
+  -- A closure with a result type keeps its braces, on one line when its
+  -- value fits there.
+  Closure h body@(Block [] (Just value))
+    | "->" `isInfixOf'` h, Just t <- oneLine value -> oneOf [D.text (h ++ " { " ++ t ++ " }"), D.text (h ++ " ") <> expr body]
   Closure h body
     | multilineBody body -> D.text (h ++ " ") <> expr body
     | otherwise -> case oneLine body of
@@ -634,7 +638,7 @@ chainWithOf oneLineAllowed root' links' e = case (if oneLineAllowed then chainOn
     broken = case links' of
       [] -> rootDoc
       _ -> case (prefixText, last links') of
-        (Just p, l@(LinkCall _ _ _)) ->
+        (Just p, l@(LinkCall _ _ _)) | oneLineAllowed ->
           let same = D.text p <> linkDoc l
           in D.prefer (D.ChainLast budget) same (D.nest 4 (D.hardline <> linkDoc l)) same eachLine
         _ -> eachLine
@@ -745,7 +749,13 @@ letDoc binding e =
       else head' <> sameValue
 
 ifDoc :: Expr -> Expr -> Maybe Expr -> D.Doc
-ifDoc c a b = case (flat (If c a b), b) of
+ifDoc = ifDocOf False
+
+-- | An if, or (elseIf) an else's if: rustfmt fits that one's condition as
+-- if it started the line, then puts the brace on the next line when the
+-- else's line has no room for it.
+ifDocOf :: Bool -> Expr -> Expr -> Maybe Expr -> D.Doc
+ifDocOf elseIf c a b = case (flat (If c a b), b) of
   (Just t, Just _) | width t <= 50 -> oneOf [D.text t, broken]
   _ -> broken
   where
@@ -760,16 +770,18 @@ ifDoc c a b = case (flat (If c a b), b) of
       Try a -> endsOpen a
       Prefix _ a -> endsOpen a
       _ -> False
+    brokenCondition = D.text "if " <> (if isChain c then brokenChain' c else expr c) <> closer
     opened = case oneLine c of
-      -- (a condition that breaks has the line less the brace's room)
-      Just t -> oneOf [D.text ("if " ++ t ++ " {"), D.text "if " <> (if isChain c then brokenChain' c else expr c) <> closer]
+      Just t | elseIf -> D.fitsIndented 0 (width ("if " ++ t ++ " {"))
+        (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{"]) brokenCondition
+      Just t -> oneOf [D.text ("if " ++ t ++ " {"), brokenCondition]
       Nothing -> D.text "if " <> expr c <> closer
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
       _ -> D.text "}"
     broken = opened <> thenBlock <> case b of
       Nothing -> mempty
-      Just other@(If {}) -> D.text " else " <> expr other
+      Just (If c' a' b') -> D.text " else " <> ifDocOf True c' a' b'
       Just other -> D.text " else " <> expr (asBlock other)
 
 -- | Struct literal fields: on one line within 18 columns, else one a line.
@@ -950,3 +962,6 @@ laidBlock :: Expr -> Bool
 laidBlock e = case e of
   Laid d -> let t = D.render D.Compact d in take 1 t == "{" && '\n' `elem` D.render (D.styleLayout (D.styleFor "rust")) d
   _ -> False
+
+isInfixOf' :: String -> String -> Bool
+isInfixOf' needle hay = any (\i -> take (length needle) (drop i hay) == needle) [0 .. length hay]
