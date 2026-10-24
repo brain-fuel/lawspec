@@ -576,8 +576,16 @@ isChain e = case e of
 chain :: Expr -> D.Doc
 chain e = let (root, links) = unchain e in chainWith root links e
 
+-- | A chain laid out broken, a link a line (an if's condition that does
+-- not fit with its brace).
+brokenChain' :: Expr -> D.Doc
+brokenChain' e = let (root, links) = unchain e in chainWithOf False root links e
+
 chainWith :: [Either Expr Link] -> [Link] -> Expr -> D.Doc
-chainWith root' links' e = case chainOneLine of
+chainWith = chainWithOf True
+
+chainWithOf :: Bool -> [Either Expr Link] -> [Link] -> Expr -> D.Doc
+chainWithOf oneLineAllowed root' links' e = case (if oneLineAllowed then chainOneLine else Nothing) of
   Just t -> oneOf [D.text t, broken]
   _ -> broken
   where
@@ -738,10 +746,9 @@ ifDoc c a b = case (flat (If c a b), b) of
       Prefix _ a -> endsOpen a
       _ -> False
     opened = case oneLine c of
-      -- (rustfmt keeps two columns back for a chain's last ?)
-      Just t -> oneOf [keep (D.text ("if " ++ t ++ " {")), D.text "if " <> expr c <> closer]
+      -- (a condition that breaks has the line less the brace's room)
+      Just t -> oneOf [D.text ("if " ++ t ++ " {"), D.text "if " <> (if isChain c then brokenChain' c else expr c) <> closer]
       Nothing -> D.text "if " <> expr c <> closer
-    keep = if triedChain c then D.narrow 2 else id
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
       _ -> D.text "}"
