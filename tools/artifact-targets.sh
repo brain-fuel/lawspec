@@ -10,7 +10,9 @@ if [ ! -x "$artifact_environment/bin/python" ]; then
   "$artifact_bootstrap_python" -m venv "$artifact_environment"
 fi
 if ! "$artifact_environment/bin/python" -c 'import importlib.metadata as m; assert m.version("jsonschema")=="4.25.1" and m.version("PyYAML")=="6.0.3" and m.version("yamllint")=="1.37.1"' 2>/dev/null; then
-  "$artifact_environment/bin/pip" install --disable-pip-version-check 'jsonschema==4.25.1' 'PyYAML==6.0.3' 'yamllint==1.37.1'
+  # pip through this environment's own python: a copied environment's pip
+  # script can name another checkout's interpreter and install there.
+  "$artifact_environment/bin/python" -m pip install --disable-pip-version-check 'jsonschema==4.25.1' 'PyYAML==6.0.3' 'yamllint==1.37.1'
 fi
 ANTLR_JAR=${ANTLR_JAR:-"$PWD/.tools/antlr-4.13.2-complete.jar"}
 if [ ! -f "$ANTLR_JAR" ]; then
