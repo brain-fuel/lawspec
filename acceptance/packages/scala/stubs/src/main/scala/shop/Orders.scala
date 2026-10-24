@@ -2,22 +2,28 @@
 package shop
 
 object Orders {
-  // (shop.orders::type::Currency -> shop.domain::type::Currency)
-  def settlement(value0: lawspec.data.ShopOrdersCurrency): lawspec.data.ShopDomainCurrency =
+  // settlement :: (shop.orders::type::Currency -> shop.domain::type::Currency)
+  // — orders.lawspec:13
+  def settlement(
+      value0: lawspec.data.ShopOrdersCurrency
+  ): lawspec.data.ShopDomainCurrency =
     throw NotImplementedError("settlement")
 
-  // (shop.orders::type::Line -> shop.domain::type::Money)
+  // lineTotal :: (shop.orders::type::Line -> shop.domain::type::Money) —
+  // orders.lawspec:14
   def lineTotal(value0: lawspec.data.Line): lawspec.data.Money =
     throw NotImplementedError("lineTotal")
 
-  // (Int64 -> (Int64 -> Int64))
+  // cheaper :: (Int64 -> (Int64 -> Int64)) — orders.lawspec:17
   def cheaper(value0: scala.Long, value1: scala.Long): scala.Long =
     throw NotImplementedError("cheaper")
 
-  // (Int64 -> Int64)
-  def roundDown(value0: scala.Long): scala.Long = throw NotImplementedError("roundDown")
+  // roundDown :: (Int64 -> Int64) — orders.lawspec:18
+  def roundDown(value0: scala.Long): scala.Long =
+    throw NotImplementedError("roundDown")
 
-  // (Int64 -> shop.tax.v2x0x0.rates::type::Band)
+  // classify :: (Int64 -> shop.tax.v2x0x0.rates::type::Band) —
+  // orders.lawspec:19
   def classify(value0: scala.Long): lawspec.data.ShopTaxV2x0x0RatesBand =
     throw NotImplementedError("classify")
 }

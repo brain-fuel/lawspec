@@ -2,9 +2,11 @@
 package example
 
 object AtoiCodec {
-  // (Int32 -> Text)
-  def itoa(value0: scala.Int): java.lang.String = throw NotImplementedError("itoa")
+  // itoa :: (Int32 -> Text) — atoi_codec.lawspec:3
+  def itoa(value0: scala.Int): java.lang.String =
+    throw NotImplementedError("itoa")
 
-  // (Text -> Int32)
-  def atoi(value0: java.lang.String): scala.Int = throw NotImplementedError("atoi")
+  // atoi :: (Text -> Int32) — atoi_codec.lawspec:4
+  def atoi(value0: java.lang.String): scala.Int =
+    throw NotImplementedError("atoi")
 }
