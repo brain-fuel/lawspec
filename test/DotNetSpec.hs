@@ -3,9 +3,11 @@
 -- ref:DEC-fsharp-runtime-from-scratch ref:DEC-csharp-over-fsharp ref:DEC-tests-cite-requirements
 module DotNetSpec (test_dotnetTargetsShareOneRuntime) where
 
+import System.Process (readProcess)
 import Test.Hspec
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.ByteString.Lazy as BL
 import Data.Foldable (toList)
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
@@ -96,7 +98,8 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
       codes (request "csharp" source binding) `shouldBe` [String "native-binding"]
     it "binds C# functions, handlers and generators without types" $ do
       source <- readFile "examples/specs/payments.lawspec"
-      config <- either error id . eitherDecode <$> BL.readFile "examples/native-payments/csharp/lawspec.json"
+      config <- either error id . eitherDecode . BLC.pack <$> readProcess "node"
+        ["--input-type=module", "-e", "import {readManifest} from './npm/component.mjs'; console.log(JSON.stringify(await readManifest(process.argv[1])));", "examples/native-payments/csharp/lawspec.edn"] ""
       let native = case config of
             Object o | Just (Array ts) <- KM.lookup "targets" o, Object t : _ <- toList ts, Just n <- KM.lookup "nativeBindings" t -> n
             _ -> Null

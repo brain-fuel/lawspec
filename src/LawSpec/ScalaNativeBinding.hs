@@ -131,7 +131,7 @@ emitBindings minify plan testing files = do
                     D.text "Some(found.asInstanceOf[" <> element <> D.text "])" <> D.hardline <> returned
                 Nothing -> D.text "val result = " <> application <> D.text ".asInstanceOf[" <> nativeResultType <> D.text "]" <> D.hardline <> returned
         -- An adapter that fails with E answers Either: the exceptions
-        -- lawspec.json maps become its failures, as Lefts.
+        -- lawspec.edn maps become its failures, as Lefts.
         failureCases <- case [failure | C.AbilityRef _ [failure] <- filter C.isFail (C.declarationUses d)] of
           failure : _ | not async -> do
             Just <$> mappedFailures failure
@@ -161,7 +161,7 @@ emitBindings minify plan testing files = do
               plain = if result == C.scalarType "Unit" then invocation <> D.hardline <> D.text "()"
                 else method canonicalResult "decode" [method nativeResult "encode" [invocation]]
           -- An operation that fails with E answers Either: the exceptions
-          -- lawspec.json maps become its failures, as Lefts.
+          -- lawspec.edn maps become its failures, as Lefts.
           body <- case lookup op (C.abilityFailures a) of
             Just (C.AbilityRef _ [failure]) -> do
               cases <- mappedFailures failure
@@ -252,7 +252,7 @@ emitBindings minify plan testing files = do
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
     method value name args = value <> D.text "." <> E.call name args
-    -- The exceptions lawspec.json maps to a failure of type failure, as cases
+    -- The exceptions lawspec.edn maps to a failure of type failure, as cases
     -- that answer Left with it.
     mappedFailures failure = do
       failureCodec <- S.scalaCodecDocWithContext (D.text "symbols") declarations failure

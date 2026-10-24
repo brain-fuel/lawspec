@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/authoring.test.mjs by lawspec-dev generate. Do not edit.
+import {configEDN} from './manifest-fixtures.mjs';
 import {semanticFacts} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -779,10 +780,10 @@ end unit
 `;
     await writeFile(path.join(root,'sample.lawspec'),source);
     await writeFile(path.join(outer,'sample.lawspec'),'unrelated sibling file\n');
-    await writeFile(path.join(root,'config/lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(root,'config/lawspec.edn'),configEDN({manifestVersion: 1,languageProfile:'1.0-rc.2',
       sources:['../sample.lawspec'],targets:[],verification:{layers:[]}}));
     const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
-    const run=args=>spawnSync(process.execPath,[cli,'fmt','sample.lawspec','--config','config/lawspec.json','--json',...args],
+    const run=args=>spawnSync(process.execPath,[cli,'fmt','sample.lawspec','--config','config/lawspec.edn','--json',...args],
       {cwd:root,encoding:'utf8'});
     const needed=run(['--check']);assert.equal(needed.status,1,needed.stdout+needed.stderr);
     assert.deepEqual(JSON.parse(needed.stdout).changed,['sample.lawspec']);

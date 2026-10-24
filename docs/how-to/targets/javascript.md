@@ -23,7 +23,7 @@ npm install --save-dev ../lawspec/npm
 npx lawspec doctor
 ```
 
-New projects select no law checks. In `lawspec.json`, set
+New projects select no law checks. In `lawspec.edn`, set
 `verification.layers` to `["property", "examples"]`, then run
 `npx lawspec generate`. Implement the generated adapter stubs and run `npm test`.
 Intrinsic definition checking always runs.

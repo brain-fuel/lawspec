@@ -1,6 +1,6 @@
 {
   "name": "lawspec",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "description": "State the law once. Check it everywhere.",
   "license": "MIT",
   "repository": {
@@ -22,14 +22,18 @@
     "./proof": {
       "types": "./proof.d.ts",
       "import": "./proof.mjs"
+    },
+    "./component": {
+      "types": "./component.d.ts",
+      "import": "./component.mjs"
     }
   },
   "types": "index.d.ts",
+  "dependencies": {"edn-data": "1.2.2", "tar": "7.5.22"},
   "files": [
              "*.mjs",
              "*.json",
-             "index.d.ts",
-             "proof.d.ts",
+             "*.d.ts",
              "bin",
              "core.wasm",
              "core_jsffi.js",

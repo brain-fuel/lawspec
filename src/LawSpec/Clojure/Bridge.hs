@@ -279,7 +279,7 @@ clojureStub unit ns bound (Stub _ _ _ allItems) = unlines $
   [ "  (:require [lawspec.clojure :as ls]))" ] ++
   concatMap item items
   where
-    -- A bound function is written elsewhere, in the namespace lawspec.json names.
+    -- A bound function is written elsewhere, in the namespace lawspec.edn names.
     items = [i | i <- allItems, case i of Function _ o -> bound (opName o) == Nothing; _ -> True]
     defined = [clojureName (opName o) | Function _ o <- items] ++ [kebab n | Handler _ n _ _ _ <- items]
     clashes = filter (`elem` clojureCore) defined

@@ -177,7 +177,7 @@ target should change these, and only these.
   abilities and handlers (`LawSpec.Imports`), and the declaring unit keeps
   the native interface, production handler and recording
   (`AbilityNames.ownedAbilityUnits`, `ownAbilities`, `Core.findAbility`).
-  Its production handler is bound in `lawspec.json` (`handlers`), or
+  Its production handler is bound in `lawspec.edn` (`handlers`), or
   generated as a stub in the declaring unit's adapter module.
 - **Built-in abilities with defaults.** `LawSpec.Builtins` holds the
   sources of the `lawspec.*` units with abilities, and `Compile` adds each to
@@ -222,7 +222,7 @@ target should change these, and only these.
   random` and `parallel` with its test framework; see
   [Harness units](../reference/language/harness.md).
 - **Acceptance.** The `abilities` suite covers the language on every
-  target, and `handlerbindings` covers `lawspec.json`; `builtins` and
+  target, and `handlerbindings` covers `lawspec.edn`; `builtins` and
   `crypto` cover the built-in abilities and their defaults. A new feature
   adds a law and a mutant to one of them on each target.
 - **Existing features as abilities.** `LawSpec.Unification` states what

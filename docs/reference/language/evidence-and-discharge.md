@@ -212,7 +212,7 @@ Each obligation has a stage:
 | `adapter` | An adapter implementation | assumed |
 | `binding` | A native type binding | runtime-checked |
 | `codec`, `generator`, `native-function` | A codec hook, generator factory or bound native function | assumed |
-| `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.json` | default-handler, or assumed when bound |
+| `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.edn` | default-handler, or assumed when bound |
 | `completeness`, `overlap`, `conflict`, `vacuity` | A function's laws, checked together (see [law sets](law-sets.md)) | exhaustively checked, proved, refuted, exempted, planned or incomplete |
 
 ## Where the tests ran
@@ -358,7 +358,7 @@ conformance level is the one the stand-in's maker declares; LawSpec records
 it and does not judge it.
 
 `lawspec evidence --attestation <file>` reads an attestation, as does an
-`attestation` path in `lawspec.json`. `lawspec test --attestation <file>`
+`attestation` path in `lawspec.edn`. `lawspec test --attestation <file>`
 keeps the attestation with the run's results in `.lawspec/results`, and each
 law it touches that passes in that run names it, so a later `lawspec evidence`
 shows where each law last passed. See [the CLI](../cli.md#evidence).

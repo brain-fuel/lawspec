@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-24
+
+### Changed
+
+- Replace project and package JSON manifests with `lawspec.edn`. The component
+  and published contract identities are explicit; obsolete JSON is rejected.
+- Native runtimes, editor discovery, examples and test tooling use the same
+  manifest. Optional verification still leaves definition validation mandatory.
+
+### Added
+
+- Local, Git-tag/revision and SHA-256 HTTPS archive contract dependencies,
+  `lawspec.lock.edn`, fetch/update and locked/offline execution.
+- Deterministic contract archives and the checked `lawspec/component` SDK and
+  `lawspec describe --json` descriptor for CALM consumers.
+- Completed evidence can identify a component independently of its contracts,
+  retaining architecture, implementation and selected contract content digests.
+
 ## [0.30.0] - 2026-10-23
 
 ### Added

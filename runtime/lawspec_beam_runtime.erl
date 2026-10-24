@@ -103,7 +103,7 @@ find_recorded_root() ->
     find_recorded_root(Start, Start).
 
 find_recorded_root(Folder, Start) ->
-    case filelib:is_regular(filename:join(Folder, <<"lawspec.json">>)) orelse
+    case filelib:is_regular(filename:join(Folder, <<"lawspec.edn">>)) orelse
          filelib:is_dir(filename:join(Folder, <<"recorded">>)) of
         true -> filename:join(Folder, <<"recorded">>);
         false -> case filename:dirname(Folder) of

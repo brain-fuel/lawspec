@@ -254,7 +254,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
         case t of
           -- A built-in resource acquires and releases through lawspec.host's
           -- abilities, under their handlers (the default ones, or those
-          -- lawspec.json binds).
+          -- lawspec.edn binds).
           C.Constructor typeName [] | Just kind <- builtinResourceKind typeName -> do
             let constructor = C.Id (typeName ++ "::" ++ baseName typeName)
                 fieldType = if kind == "freePort" then C.scalarType "Int32" else C.scalarType "Text"

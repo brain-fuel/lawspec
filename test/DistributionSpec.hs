@@ -67,7 +67,7 @@ test_distributionIsSecureByDefaultAndContentAddressed = describe "distribution" 
             , ("java", ["bouncycastle"]), ("haskell", ["import qualified Crypto", "mlkem", "mldsa"])
             , ("rust", ["ml_kem", "ml_dsa", "sha3::", "aes_gcm", "getrandom"]) ] $ \(target, names) ->
         (target, filter (`isInfixOf` runtimeSource target) names) `shouldBe` (target, [])
-  describe "node identities in lawspec.json" $ do
+  describe "node identities in lawspec.edn" $ do
     let parse text = eitherDecode (LC.pack text) :: Either String NativeRequest
     it "bind an identity and trusted peers through lawspec-network.conf" $ do
       let Right request = parse "{\"network\": {\"identity\": \"keys/node.seed\", \"trusted\": \"keys/peers.txt\"}}"

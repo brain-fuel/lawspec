@@ -1,4 +1,4 @@
--- | lawspec.json's bindings on Clojure. A bound function, constructor or
+-- | lawspec.edn's bindings on Clojure. A bound function, constructor or
 -- method is a Clojure function the unit's Java bridge calls in place of the
 -- adapter's; a bound handler is a Clojure function returning a map of the
 -- ability's operations, which a generated Java class presents as the
@@ -45,7 +45,7 @@ splitBindings plan = do
     _ -> Left [Diagnostic "native-binding" "a Clojure generator binding names an existing function of no arguments" Nothing]
   let unitOf d = takeWhile (/= ':') (C.idText (C.declarationId d))
       javaName d = nativeName "java" (nativeName "clojure" (C.declarationName d))
-      -- lawspec.json's names are identifiers: an underscore is Clojure's hyphen.
+      -- lawspec.edn's names are identifiers: an underscore is Clojure's hyphen.
       target (NativeRef parts) = (intercalate "." (map hyphens (init parts)), hyphens (last parts))
       constructors = [(unitOf d, target r) | (d, NB.ConstructorCall r) <- NB.bindingCalls plan]
   calls <- mapM (\(d, call) -> case call of

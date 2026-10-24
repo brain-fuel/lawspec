@@ -13,7 +13,7 @@ generated code does with it. For step-by-step use, see
 
 ## Configuration
 
-Bindings are set per target in `lawspec.json` (`targets[].nativeBindings`) or in
+Bindings are set per target in `lawspec.edn` (`targets[].nativeBindings`) or in
 a compiler request (`nativeBindings`): API schema 5 and the current language
 profile. The fields include `types`, `functions`, `generators`,
 `rustCrate`, `goImports` and `erlangIncludes`; their shapes are in the

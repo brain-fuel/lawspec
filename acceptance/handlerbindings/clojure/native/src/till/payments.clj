@@ -1,5 +1,5 @@
-;; Application code lawspec.json binds: a payment, the till it takes money
-;; with, and the errors it throws, which lawspec.json maps to PayError.
+;; Application code lawspec.edn binds: a payment, the till it takes money
+;; with, and the errors it throws, which lawspec.edn maps to PayError.
 (ns till.payments
   "Payments: a bound adapter, its till and its errors."
   (:require [lawspec.clojure :as ls]))

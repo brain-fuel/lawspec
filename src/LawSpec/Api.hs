@@ -41,13 +41,16 @@ import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
 import qualified Data.Text as T
 import System.IO.Unsafe (unsafePerformIO)
+import qualified LawSpec.Component as Component
 
 -- | One function from request bytes to response bytes, because that is all a
 -- WASM export can carry without a shared heap; the work every method shares is
 -- memoised so a host asking for several targets compiles once.
 -- ref:DEC-incremental-compilation
 dispatch :: B.ByteString -> B.ByteString
-dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
+dispatch bytes
+  | Just value <- decode bytes, Just result <- Component.componentRequest value = encode result
+  | otherwise = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
   Right (_, _, Left err) -> failure [Diagnostic "attestation" err Nothing]
   Right ((method,sources,_,_,_,_,_,_,_,_),(project,packages),Right _)

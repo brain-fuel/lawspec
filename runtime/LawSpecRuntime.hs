@@ -1231,7 +1231,7 @@ regexMatches pattern text = do
 -- Recorded values: a law compares a value's portable rendering with the
 -- text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
 -- names the folder; otherwise it is recorded/ in the nearest folder, from
--- the working one up, that holds lawspec.json or recorded/. With
+-- the working one up, that holds lawspec.edn or recorded/. With
 -- LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
 -- the value instead.
 recordedRoot :: IO FilePath
@@ -1242,7 +1242,7 @@ recordedRoot = do
     _ -> do
       start <- Directory.getCurrentDirectory
       let search folder = do
-            config <- Directory.doesFileExist (folder ++ "/lawspec.json")
+            config <- Directory.doesFileExist (folder ++ "/lawspec.edn")
             recordings <- Directory.doesDirectoryExist (folder ++ "/recorded")
             let parent = reverse (drop 1 (dropWhile (/= '/') (reverse folder)))
             if config || recordings then pure (folder ++ "/recorded")
@@ -4979,7 +4979,7 @@ data Node = Node
 -- | What a registered name does with a frame: kind, source, id, payload.
 newtype Entity = Entity (Node -> String -> String -> Integer -> ByteString -> IO ())
 
--- | A node on a transport, with the identity lawspec.json binds (or a fresh
+-- | A node on a transport, with the identity lawspec.edn binds (or a fresh
 -- one), talking to any peer: its layer comes from the installed secure
 -- network handler (LawSpecNetwork.install). LawSpecNetwork.newNodeWith
 -- takes an identity and trusted peers.
@@ -5764,14 +5764,14 @@ instance Show Fail where
   show (Fail value) = "failed with " ++ show value
 instance Exception Fail
 
--- | A native exception lawspec.json maps to a failure.
+-- | A native exception lawspec.edn maps to a failure.
 newtype MappedFailure = MappedFailure (SomeException -> Maybe Scalar)
 
 mappedFailure :: Exception e => (e -> Scalar) -> MappedFailure
 mappedFailure make = MappedFailure (fmap make . fromException)
 
 -- | Native code that may fail: a Fail it throws (with a native E), or an
--- exception lawspec.json maps, becomes a failure of the ability.
+-- exception lawspec.edn maps, becomes a failure of the ability.
 nativeFailures :: forall e. Typeable e => String -> (e -> Scalar) -> (() -> Scalar) -> [MappedFailure] -> Scalar
 nativeFailures ability convert body mapped = unsafePerformIO $ do
   outcome <- try (do value <- evaluate (body ()); _ <- evaluate (forceScalar value); pure value)

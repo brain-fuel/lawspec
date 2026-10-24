@@ -95,7 +95,7 @@ with that number. Passing these checks does not create a tag or publish.
 
 ```sh
 make package
-tar -tzf .artifacts/0.30.0/lawspec-0.30.0.tgz
+tar -tzf .artifacts/0.31.0/lawspec-0.31.0.tgz
 ```
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
@@ -108,8 +108,8 @@ packed copy.
 ## 6. Tag and push
 
 ```sh
-git tag -a v0.30.0 -m "LawSpec 0.30.0"
-git push --atomic origin main v0.30.0
+git tag -a v0.31.0 -m "LawSpec 0.30.0"
+git push --atomic origin main v0.31.0
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -118,7 +118,7 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.30.0/lawspec-0.30.0.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.31.0/lawspec-0.31.0.tgz --access public --tag latest --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
@@ -128,9 +128,9 @@ the browser; complete it there. If npm reports that you are not logged in, run
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.30.0 version dist.integrity
+npm view lawspec@0.31.0 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.30.0/lawspec-0.30.0.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.31.0/lawspec-0.31.0.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and

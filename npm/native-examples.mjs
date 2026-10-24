@@ -3,6 +3,7 @@ import {readFile, readdir, mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {templates, commands, setup} from './templates.mjs';
 import {safePath, planWrites, applyWrites} from './files.mjs';
+import {parseManifest, writeManifest} from './component.mjs';
 
 async function projectFiles(directory, prefix = '') {
   const files = {};
@@ -30,11 +31,11 @@ export async function exportNativePayments(options, selected) {
       ...await projectFiles(new URL(`./examples/native-payments/${target}/`, import.meta.url)),
       'laws/payments.lawspec': law,
     };
-    const config = JSON.parse(files['lawspec.json']);
-    if(config.version!==2||config.languageProfile!=='1.0-rc.2')
-      throw new Error(`Bundled native payments configuration for ${target} must use version 2 and languageProfile 1.0-rc.2`);
+    const config = parseManifest(files['lawspec.edn']);
+    if(config.manifestVersion!==1||config.languageProfile!=='1.0-rc.2')
+      throw new Error(`Bundled native payments configuration for ${target} must use lawspec.edn and languageProfile 1.0-rc.2`);
     config.machineBits = options.machineBits ?? 64;
-    files['lawspec.json'] = JSON.stringify(config, null, options.minify ? undefined : 2) + '\n';
+    files['lawspec.edn'] = writeManifest(config);
     const instructions = target === 'gleam' ? setup[target].replace(
       'Prepare dependencies with gleam build, then run gleam test.',
       'Prepare dependencies with node prepare.mjs before generation, then run gleam test.') : setup[target];
@@ -77,7 +78,7 @@ the application so that runtime support is present.
 
 Edit the domain implementation or generator, then run the native tests again.
 For example, change the fee from 0.2 to 0.3: the exact-decimal law must fail.
-Edit \`lawspec.json\` to change native bindings and rerun \`lawspec generate\`.
+Edit \`lawspec.edn\` to change native bindings and rerun \`lawspec generate\`.
 
 All exported project files are user-owned. Re-exporting preserves your edits;
 it reports changed bundled versions for review. Compiler-generated files use a

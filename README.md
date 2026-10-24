@@ -54,7 +54,7 @@ npx lawspec doctor
 
 New projects start with `verification.layers: []`: intrinsic definition checks
 run, and no law verification is selected. Set `verification.layers` to
-`["property", "examples"]` in `lawspec.json`, then run `npx lawspec generate`.
+`[:property :examples]` in `lawspec.edn`, then run `npx lawspec generate`.
 Implement `src/example/codec.mjs`, then run `npm test`:
 
 ```javascript

@@ -1,4 +1,5 @@
 // Generated from templates/tools/native-example-integration.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Exercise the installed public CLI and each project's normal native build tool.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -65,8 +66,8 @@ const exported = await run(process.execPath, [cli, 'examples', '--example', 'pay
 const projects = JSON.parse(exported);
 assert.equal(projects.length, 1);
 const directory = projects[0].directory;
-const configPath = path.join(directory, 'lawspec.json');
-const config = JSON.parse(await readFile(configPath, 'utf8'));
+const configPath = path.join(directory, 'lawspec.edn');
+const config = parseManifest(await readFile(configPath, 'utf8'));
 if (target === 'python' || target === 'prolog') {
   if (process.env.LAWSPEC_PYTHON_EXECUTABLE) {
     config.targets[0].python = process.env.LAWSPEC_PYTHON_EXECUTABLE;
@@ -119,7 +120,7 @@ if (target === 'python' || target === 'prolog') {
   }
   if (target === 'gleam') await run(process.execPath, ['prepare.mjs'], directory);
 }
-await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+await writeFile(configPath, writeManifest(config, null, 2) + '\n');
 await run(process.execPath, [cli, 'check'], directory);
 await run(process.execPath, [cli, 'generate', ...(minify ? ['--minify'] : [])], directory);
 const commands = {
@@ -231,7 +232,7 @@ if (['erlang', 'elixir', 'gleam'].includes(target)) {
     for (const entry of await readdir(source, {withFileTypes: true})) {
       const file = path.join(relative, entry.name);
       if (entry.isDirectory()) await applicationFiles(file);
-      else if (file !== 'lawspec.json') await keep(file);
+      else if (file !== 'lawspec.edn') await keep(file);
     }
   }
   await applicationFiles();

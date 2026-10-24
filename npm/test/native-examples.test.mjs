@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/native-examples.test.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest} from './manifest-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {execFile} from 'node:child_process';
@@ -21,7 +22,7 @@ test('native payment exports cover all targets and preserve application and gene
     const compiler=await createCompiler();
     for(const project of projects) {
       assert.ok(project.files.every(file=>file.ownership==='user'));
-      const config=JSON.parse(await readFile(path.join(project.directory,'lawspec.json'),'utf8'));
+      const config=parseManifest(await readFile(path.join(project.directory,'lawspec.edn'),'utf8'));
       assert.equal(config.version,2);
       assert.equal(config.languageProfile,'1.0-rc.2');
       assert.deepEqual(config.verification.layers,['proof','exhaustive','property','examples','runtime','model']);
@@ -50,10 +51,10 @@ test('native payment exports cover all targets and preserve application and gene
       assert.ok(Object.keys(manifest.files).length);
     }
     const changed=JSON.parse((await run(['--machine-bits','64'])).stdout);
-    assert.ok(changed.every(project=>project.adapterUpdates.some(update=>update.path==='lawspec.json')));
+    assert.ok(changed.every(project=>project.adapterUpdates.some(update=>update.path==='lawspec.edn')));
     const rust=JSON.parse((await run(['--target','rust','--output','custom','--minify'])).stdout);
     assert.equal(rust.length,1);
-    const config=await readFile(path.join(root,'custom/rust/lawspec.json'),'utf8');
+    const config=await readFile(path.join(root,'custom/rust/lawspec.edn'),'utf8');
     assert.equal(config.trim().split('\n').length,1);
     await assert.rejects(run(['--output','../escape']));
     await symlink(root,path.join(root,'linked'));

@@ -17,7 +17,7 @@
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
 --                                  (a "rejected-at: compile" header line marks
 --                                  one the target's compiler must reject)
---   <target>/bindings.json         native bindings, as in lawspec.json (optional)
+--   <target>/bindings.json         native bindings, as in lawspec.edn (optional)
 --   <target>/native/<path>         application code those bindings call, copied
 --                                  as is (bound units have no adapters)
 --   recorded/<unit>/<name>         recorded values, copied to every target's
@@ -27,7 +27,7 @@
 --                                  mutant ("rejected-at: generation" marks one
 --                                  the compiler must reject)
 --
--- A package directory holds lawspec-package.json ({"name", "version",
+-- A package directory holds lawspec.edn ({"name", "version",
 -- "sources": [directories or files], "dependencies"}); its sources are sent
 -- with the request as they would be by the lawspec CLI.
 --
@@ -51,6 +51,7 @@ import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Time.Clock (addUTCTime)
@@ -118,7 +119,7 @@ main = do
   forM_ targets $ \target -> do
     let project = ".artifacts" </> (suite ++ profile) </> target
         bindingsFile = "acceptance" </> suite </> target </> "bindings.json"
-    -- A target's native bindings, sent as the CLI sends lawspec.json's.
+    -- A target's native bindings, sent as the CLI sends lawspec.edn's.
     hasBindings <- doesFileExist bindingsFile
     bound <- if hasBindings then decode <$> BL.readFile bindingsFile else pure Nothing
     let native = maybe [] (\b -> [("nativeBindings", b)]) bound
@@ -177,8 +178,13 @@ planEither extra sources target bits minify = do
 -- | A package as the lawspec CLI sends it: its manifest with the sources read.
 loadPackage :: FilePath -> IO Value
 loadPackage directory = do
-  manifest <- BL.readFile (directory </> "lawspec-package.json")
-  value <- maybe (die ("invalid " ++ directory ++ "/lawspec-package.json")) pure (decode manifest)
+  (status, text, errors) <- readCreateProcessWithExitCode
+    (proc "node" ["--input-type=module", "-e", "import {readManifest} from './npm/component.mjs'; console.log(JSON.stringify(await readManifest(process.argv[1])));", directory </> "lawspec.edn"]) ""
+  unless (status == ExitSuccess) (die errors)
+  manifest <- maybe (die ("invalid " ++ directory ++ "/lawspec.edn")) pure (decode (BLC.pack text))
+  let value = case manifest of
+        Object fields | Just (Object identity) <- KM.lookup "package" fields -> Object (KM.union identity (KM.delete "package" fields))
+        _ -> manifest
   let roots = [T.unpack s | String s <- fromMaybe [] (list (field "sources" value))]
   files <- concat <$> mapM (lawspecFiles . (directory </>)) roots
   sources <- forM (sort files) $ \path -> do
@@ -186,7 +192,7 @@ loadPackage directory = do
     pure (object ["path" .= path, "content" .= content])
   case value of
     Object o -> pure (Object (KM.insert "sources" (toJSON sources) o))
-    _ -> die ("invalid " ++ directory ++ "/lawspec-package.json")
+    _ -> die ("invalid " ++ directory ++ "/lawspec.edn")
   where
     lawspecFiles path = do
       isDirectory <- doesDirectoryExist path

@@ -277,7 +277,7 @@ public enum Effects {
     public static func resourceRequired(_ ability: String) throws -> Handler { throw fail("ResourceRequired", ability) }
 }
 
-// Calls of application code bound in lawspec.json. A bound function may or
+// Calls of application code bound in lawspec.edn. A bound function may or
 // may not throw, and may or may not be async: passed as a value it converts
 // to a throwing (or async throwing) function, so the generated call is the
 // same either way.

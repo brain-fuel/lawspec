@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/doctor.test.mjs by lawspec-dev generate. Do not edit.
+import {configEDN} from './manifest-fixtures.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, readdir } from "node:fs/promises";
@@ -21,13 +22,13 @@ test("incompatible or unverifiable environments prevent generation writes", asyn
   t.after(() => rm(root, { recursive: true, force: true }));
   const executable = path.join(root, "python");
   const config = {
-    version: 2,
+    manifestVersion: 1,
     languageProfile: "1.0-rc.2",
     verification: {layers: []},
     sources: ["codec.lawspec"],
     targets: [{ language: "python", root: ".", python: executable }],
   };
-  await writeFile(path.join(root, "lawspec.json"), JSON.stringify(config));
+  await writeFile(path.join(root, "lawspec.edn"), configEDN(config));
   await writeFile(
     path.join(root, "codec.lawspec"),
     await readFile(new URL("../starter-rc1.lawspec", import.meta.url), "utf8"),
@@ -56,8 +57,8 @@ test("incompatible or unverifiable environments prevent generation writes", asyn
     );
     assert.deepEqual((await readdir(root)).sort(), before);
     assert.equal(
-      await readFile(path.join(root, "lawspec.json"), "utf8"),
-      JSON.stringify(config),
+      await readFile(path.join(root, "lawspec.edn"), "utf8"),
+      configEDN(config),
     );
   }
 });

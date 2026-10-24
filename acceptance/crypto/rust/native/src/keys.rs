@@ -1,5 +1,5 @@
 // Application code: the Signature and KeyExchange handlers bound in
-// lawspec.json in place of the defaults. Each passes its operations on to
+// lawspec.edn in place of the defaults. Each passes its operations on to
 // the default handler and counts them.
 use crate::lawspec_abilities::lawspec_crypto::{KeyExchange, Signature};
 use crate::lawspec_data::*;

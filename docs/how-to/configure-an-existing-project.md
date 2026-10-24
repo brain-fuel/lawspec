@@ -12,7 +12,7 @@ directory layout. The complete schema is in the
 
 ## Create the configuration
 
-Run `init` for the first target. It creates `lawspec.json` and a starter
+Run `init` for the first target. It creates `lawspec.edn` and a starter
 specification in `laws/`. It creates build files only when it detects none in
 the target root:
 
@@ -31,18 +31,28 @@ npx lawspec init --target python --project python
 ```
 
 Use `--config <path>` with any command to select a configuration file other than
-`./lawspec.json`.
+`./lawspec.edn`.
 
 ## Choose sources and targets
 
-```json
+```edn
 {
-  "version": 1,
-  "sources": ["laws"],
-  "targets": [
-    {"language": "java", "root": "java"},
-    {"language": "python", "root": "python", "python": ".venv/bin/python"},
-    {"language": "haskell", "root": "haskell"}
+  :version 1
+  :sources ["laws"]
+  :targets [
+    {
+      :language :java
+      :root "java"
+    }
+    {
+      :language :python
+      :root "python"
+      :python ".venv/bin/python"
+    }
+    {
+      :language :haskell
+      :root "haskell"
+    }
   ]
 }
 ```
@@ -96,13 +106,21 @@ Hpack; `doctor` reads that description without rewriting it.
 
 ## Set the machine profile and generation limits
 
-```json
+```edn
 {
-  "version": 1,
-  "sources": ["laws"],
-  "machineBits": 32,
-  "generation": {"cases": 200, "exhaustiveLimit": 1024},
-  "targets": [{"language": "go", "root": "."}]
+  :version 1
+  :sources ["laws"]
+  :machine-bits 32
+  :generation {
+    :cases 200
+    :exhaustive-limit 1024
+  }
+  :targets [
+    {
+      :language :go
+      :root "."
+    }
+  ]
 }
 ```
 
@@ -115,15 +133,22 @@ Hpack; `doctor` reads that description without rewriting it.
 ## Depend on packages
 
 `dependencies` maps package names to version ranges. `packages` lists the
-package directories to load, each containing a `lawspec-package.json`:
+package directories to load, each containing a `lawspec.edn`:
 
-```json
+```edn
 {
-  "version": 1,
-  "sources": ["orders.lawspec"],
-  "dependencies": {"shop.domain": "^1.0.0"},
-  "packages": ["../shop-domain"],
-  "targets": [{"language": "java", "root": "java"}]
+  :version 1
+  :sources ["orders.lawspec"]
+  :dependencies {
+    "shop.domain" "^1.0.0"
+  }
+  :packages ["../shop-domain"]
+  :targets [
+    {
+      :language :java
+      :root "java"
+    }
+  ]
 }
 ```
 

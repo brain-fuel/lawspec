@@ -25,7 +25,7 @@ In a directory without build files, `init` creates a `pyproject.toml` with
 `requires-python = ">=3.13"`, a `test` extra with pytest and Hypothesis, and
 pytest settings `pythonpath = ["src"]` and `testpaths = ["tests"]`.
 
-Set the target's `python` field in `lawspec.json` to the interpreter that has
+Set the target's `python` field in `lawspec.edn` to the interpreter that has
 the test dependencies, for example `.venv/bin/python`. `doctor` and the printed
 test command use it.
 

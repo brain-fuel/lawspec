@@ -267,7 +267,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         [if ty == Named "Unit" then runtime (if py then "unit_result" else "unitResult") [value] else value,
          quoted (typeKey ty),width]
     -- A handler's values cross with the handler schema: the bound native
-    -- types when lawspec.json binds them (ls.handler_schema).
+    -- types when lawspec.edn binds them (ls.handler_schema).
     handlerSchema name args = invoke (Doc.render Doc.Compact (runtime (if py then "handler_schema" else "handlerSchema") [text "_lawspec_schema"]) ++ "." ++ name)
       (args ++ [text "symbols"])
     handlerInput ty value = if usesData ty
@@ -318,7 +318,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       C.SpecHandler _ -> Nothing
     construct context@(shared, resourceOf) ability choice = let made = maybe [] pure (resourceOf ability choice) in case choice of
       C.ProductionHandler -> case abilityNamed ability >>= C.abilityNative of
-        -- A production handler bound in lawspec.json.
+        -- A production handler bound in lawspec.edn.
         Just parts | py -> runtime "native_handler" ([quoted (intercalate "." (init parts)), quoted (last parts)] ++ made)
                    | otherwise -> invoke ("new " ++ boundAlias parts) made
         Nothing -> case abilityNamed ability of
@@ -343,7 +343,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     boundAlias parts = "_lawspecHandler" ++ show (length (takeWhile (/= parts) boundHandlers))
     abilityNamed = unitAbility u
     -- An adapter that fails with E: native code raises the runtime's Fail
-    -- with a native E (or an exception lawspec.json maps to one), which
+    -- with a native E (or an exception lawspec.edn maps to one), which
     -- becomes the Fail E failure.
     nativeFailures decl call = case [a | d <- C.unitDeclarations u, C.declarationId d == decl, a@(C.AbilityRef _ [_]) <- C.declarationUses d, C.isFail a] of
       ability@(C.AbilityRef _ [failure]) : _ | not asyncMode ->

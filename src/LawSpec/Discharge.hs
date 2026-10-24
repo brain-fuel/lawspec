@@ -457,11 +457,11 @@ bindingEvidence plan =
   | (declaration, _) <- bindingCalls plan ]
 
 -- The production handler of each built-in ability (LawSpec.Builtins): the
--- runtime's default handler, unless lawspec.json binds another.
+-- runtime's default handler, unless lawspec.edn binds another.
 defaultHandlerEvidence :: Program -> BindingPlan -> [Obligation]
 defaultHandlerEvidence program plan =
   [ if bound then Obligation (unitId u) key "handler" Nothing Assumed
-        "bound in lawspec.json: native handler taken on trust; checked by its ability's laws"
+        "bound in lawspec.edn: native handler taken on trust; checked by its ability's laws"
       else Obligation (unitId u) key "handler" Nothing DefaultHandler
         (defaultHandlerReason (abilityName a) ++ (if lawful then "; checked by its ability's laws" else ""))
   | u <- programUnits program, idText (unitId u) `elem` defaultedUnits

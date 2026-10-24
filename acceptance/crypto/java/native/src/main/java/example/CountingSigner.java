@@ -1,4 +1,4 @@
-// Application code: the Signature handler bound in lawspec.json in place of
+// Application code: the Signature handler bound in lawspec.edn in place of
 // the default. It passes its operations on to the default and counts them.
 package example;
 

@@ -39,7 +39,7 @@ three F# projects under `lawspec/`: `LawSpec.Runtime`, `LawSpec.Testing` and
 | --- | --- |
 | Adapters (yours): one static class per unit, such as `Example/AtoiCodec.cs` | `src` |
 | Entries and the embedding API | `src/LawSpec` |
-| Application code bound in `lawspec.json` | anywhere in `src`, such as `src/Native` |
+| Application code bound in `lawspec.edn` | anywhere in `src`, such as `src/Native` |
 | The model, in F# | `lawspec/LawSpec.Model` |
 | Generated tests | `tests/LawSpec` |
 
@@ -96,7 +96,7 @@ bridges, sessions and default handlers.
 Each ability is an F# interface `I<Name>` in `LawSpec.Abilities.<Unit>`; C#
 implements it as any interface. The adapter's `GatewayHandler()` makes the
 production handler; the stub returns a private class for you to fill in.
-`handlers` in `lawspec.json` names a class of yours to make it with `new`
+`handlers` in `lawspec.edn` names a class of yours to make it with `new`
 instead. `LawSpec.DefaultHandlers.Clock()` and its siblings give the
 runtime's handlers of the built-in abilities.
 
@@ -131,7 +131,7 @@ broker.State = snapshot;
 
 ## Native bindings
 
-`lawspec.json` can bind functions, constructors, methods, handlers and
+`lawspec.edn` can bind functions, constructors, methods, handlers and
 failures to your C# code, but not types: a C# program uses the model's types.
 A bound function is a static method. A method binding calls a method of the
 handle, found when it is called, since C# sees the handle as an `object`. A

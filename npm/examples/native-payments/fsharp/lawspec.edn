@@ -1,0 +1,123 @@
+{
+  :manifest-version 1
+  :component {
+    :name "fsharp"
+    :version "0.1.0"
+  }
+  :sources ["laws"]
+  :machine-bits 64
+  :targets [
+    {
+      :language :fsharp
+      :root "."
+      :native-bindings {
+        :types [
+          {
+            :type "example.payments::type::Currency"
+            :native ["Domain" "PaymentsDomain" "CurrencyCode"]
+            :constructors [
+              {
+                :constructor "USD"
+                :native ["Domain" "PaymentsDomain" "CurrencyCode" "Dollars"]
+                :style "unit"
+                :fields []
+              }
+              {
+                :constructor "EUR"
+                :native ["Domain" "PaymentsDomain" "CurrencyCode" "Euros"]
+                :style "unit"
+                :fields []
+              }
+              {
+                :constructor "GBP"
+                :native ["Domain" "PaymentsDomain" "CurrencyCode" "Pounds"]
+                :style "unit"
+                :fields []
+              }
+            ]
+          }
+          {
+            :type "example.payments::type::Money"
+            :native ["Domain" "PaymentsDomain" "Price"]
+            :constructors [
+              {
+                :constructor "Money"
+                :native ["Domain" "PaymentsDomain" "Price"]
+                :style "record"
+                :fields [
+                  {
+                    :field "amount"
+                    :native "major"
+                  }
+                  {
+                    :field "currency"
+                    :native "unit"
+                  }
+                ]
+              }
+            ]
+          }
+          {
+            :type "example.payments::type::Payment"
+            :native ["Domain" "PaymentsDomain" "PaymentStatus"]
+            :constructors [
+              {
+                :constructor "Paid"
+                :native ["Domain" "PaymentsDomain" "PaymentStatus" "Settled"]
+                :style "variant"
+                :fields [
+                  {
+                    :field "value"
+                    :native "price"
+                  }
+                ]
+              }
+              {
+                :constructor "Declined"
+                :native ["Domain" "PaymentsDomain" "PaymentStatus" "Rejected"]
+                :style "variant"
+                :fields [
+                  {
+                    :field "value"
+                    :native "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        :functions [
+          {
+            :declaration "example.payments::addFee"
+            :native ["Domain" "PaymentsDomain" "apply_fee"]
+          }
+          {
+            :declaration "example.payments::roundTrip"
+            :native ["Domain" "PaymentsDomain" "restore"]
+          }
+          {
+            :declaration "example.payments::archive"
+            :native ["Domain" "PaymentsDomain" "store"]
+          }
+        ]
+        :generators [
+          {
+            :type "example.payments::type::Money"
+            :factory ["Domain" "PaymentGenerators" "prices"]
+          }
+        ]
+      }
+    }
+  ]
+  :language-profile "1.0-rc.2"
+  :verification {
+    :layers [
+      :proof
+      :exhaustive
+      :property
+      :examples
+      :runtime
+      :model
+    ]
+  }
+}

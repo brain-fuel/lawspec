@@ -43,7 +43,7 @@ npx lawspec doctor
 
 `init` writes:
 
-- `lawspec.json`, the [project configuration](../reference/configuration.md);
+- `lawspec.edn`, the [project configuration](../reference/configuration.md);
 - `laws/atoi_codec.lawspec`, a starter specification with two functions,
   `itoa` and `atoi`, and a round-trip law with a three-row expectation table;
 - the target's build files, when the directory has none.
@@ -56,7 +56,7 @@ lists the build setup `init` creates and the toolchain it expects.
 New projects have `verification.layers: []`. Compiler checks for definitions
 remain mandatory, and `check` reports that no optional law checks were selected.
 To run the starter's properties and examples, set `verification.layers` to
-`["property", "examples"]` in the generated `lawspec.json`, then generate:
+`["property", "examples"]` in the generated `lawspec.edn`, then generate:
 
 ```sh
 npx lawspec generate

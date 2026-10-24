@@ -178,7 +178,7 @@ unitFactories lang bits declarations units unit = do
   productions <- forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), not (Effects.hasDefault a) || C.abilityNative a /= Nothing] $ \a -> do
     resourceCodec <- traverse (Data.codec lang bits names []) (C.abilityResource a)
     let (_, name) = Effects.productionFunction a
-        -- A handler bound in lawspec.json is made by its native type or
+        -- A handler bound in lawspec.edn is made by its native type or
         -- function; otherwise the unit's adapter makes it.
         made = case C.abilityNative a of
           Just ref -> intercalate "." ref

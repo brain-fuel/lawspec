@@ -125,21 +125,27 @@ reason.
 ## Packages
 
 A package is a named, versioned directory of units, described by
-`lawspec-package.json`:
+`lawspec.edn`:
 
-```json
+```edn
 {
-  "name": "shop.domain",
-  "version": "1.2.0",
-  "sources": ["src"],
-  "dependencies": {}
+  :manifest-version 1
+  :package {
+    :name "shop.domain"
+    :version "1.2.0"
+  }
+  :language-profile "1.0-rc.2"
+  :sources ["src"]
+  :dependencies {
+
+  }
 }
 ```
 
 Every unit of a package is named after it: `shop.domain` or
 `shop.domain.<name>`. A project or another package declares the packages it
-depends on with version ranges, and a project lists the package directories to
-load (see [configuration](../configuration.md)).
+depends on with version ranges and explicit local, Git or archive sources
+(see [configuration](../configuration.md#contract-resolution-and-component-descriptions)).
 
 ### Visibility
 

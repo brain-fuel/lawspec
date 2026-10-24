@@ -1,7 +1,7 @@
 package vault
 
 // Application code the vault's bindings name: a vault that throws its own
-// exceptions, which lawspec.json maps to the operation's failures.
+// exceptions, which lawspec.edn maps to the operation's failures.
 final class Overdraft(message: String) extends RuntimeException(message)
 
 final class FrozenVault extends RuntimeException("frozen")

@@ -530,7 +530,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                [Doc.text ("native_arg_" ++ show i) | i <- [0..length args-1]])
             plain = if declarationAsync d then invoke "ls::block_on" [call] else call
             -- An adapter that fails with E: its native code calls ls::fail
-            -- with a native E (or panics with what lawspec.json maps).
+            -- with a native E (or panics with what lawspec.edn maps).
             called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
               (Just native, ability@(AbilityRef _ [failure]) : _) -> invoke ("ls::native_failures::<" ++ native ++ ", _>")
                 [string (abilityKey ability), Doc.text "|native| ls::IntoValue::into_value(native)", Doc.text "|| " <> plain,

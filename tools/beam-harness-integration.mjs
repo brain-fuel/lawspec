@@ -1,4 +1,5 @@
 // Generated from templates/tools/beam-harness-integration.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Exercise public harness compilation through the actual installed npm archive.
 // Native callbacks independently audit selection, skips and benchmarks.
 // ref:REQ-harness-units ref:DEC-tests-cite-requirements
@@ -43,7 +44,7 @@ const installation = path.join(base, 'installation');
 await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
   '--prefix', installation, path.join(base, packed.filename)], base);
 const packageRoot = path.join(installation, 'node_modules/lawspec');
-const cli = path.join(packageRoot, 'bin/lawspec.mjs'), configFile = path.join(base, 'lawspec.json');
+const cli = path.join(packageRoot, 'bin/lawspec.mjs'), configFile = path.join(base, 'lawspec.edn');
 const layoutFlags = minify ? ['--minify'] : [];
 async function call(verb, flags = [], options = {}) {
   const result = await run(process.execPath, [cli, verb, '--config', configFile, ...flags], base, options);
@@ -82,12 +83,12 @@ for (const entry of fixtureSources) {
   await writeFile(path.join(base, source.path), source.content);
 }
 sources.sort((a, b) => a.path.localeCompare(b.path));
-const config = JSON.parse(await readFile(configFile, 'utf8'));
+const config = parseManifest(await readFile(configFile, 'utf8'));
 config.verification = canonical.verification;
 // Keep the strategy/search fixtures sampled and the Boolean fixtures exhaustive.
 config.generation = {cases: 100, maxAttempts: 10000, maxShrinks: 1000, exhaustiveLimit: 256};
 config.sources = sources.map(source => source.path);
-await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
+await writeFile(configFile, writeManifest(config, null, 2) + '\n');
 await call('generate', ['--json', ...layoutFlags]);
 for (const suite of suites)
   for (const kind of ['files', 'native'])

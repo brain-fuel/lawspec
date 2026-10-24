@@ -66,7 +66,7 @@ end unit
 
 ## Which plane a thing belongs to
 
-| Law plane (the unit) | Harness plane (the harness) | Toolchain (`lawspec.json`, the CLI) |
+| Law plane (the unit) | Harness plane (the harness) | Toolchain (`lawspec.edn`, the CLI) |
 | --- | --- | --- |
 | laws, examples, definitions, types | strategies: how inputs are drawn | report paths: `--report junit=…` |
 | abilities and handlers | `test with`: which lawful handlers tests use | coverage: `--coverage` |
@@ -422,7 +422,7 @@ virtual one. It is never
 asserted: a performance requirement belongs in a law, as a budget. A
 benchmark may call adapters and checked definitions, and what it calls may
 use abilities: it runs under each ability's production handler (the one
-bound in `lawspec.json`, the native one, or the runtime's default), installed
+bound in `lawspec.edn`, the native one, or the runtime's default), installed
 around it. Benchmarks run with the target's own test command, and with
 `lawspec test --benchmarks`.
 

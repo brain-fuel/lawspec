@@ -179,7 +179,7 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
       statusOf "lawspec.crypto::ability::Signature" (defaultHandlerEvidence compiled emptyBindingPlan) `shouldBe` [DefaultHandler]
       statusOf "lawspec.crypto::ability::Signature" (defaultHandlerEvidence compiled bound) `shouldBe` [Assumed]
       statusOf "lawspec.time::ability::Clock" (defaultHandlerEvidence compiled emptyBindingPlan) `shouldBe` [DefaultHandler]
-    it "give way to a handler bound in lawspec.json" $ do
+    it "give way to a handler bound in lawspec.edn" $ do
       let bound = emptyBindingPlan { bindingHandlers = [(C.Id "lawspec.crypto::ability::Signature", NativeRef ["app", "signers", "Signer"])] }
           Right emitted = program crypto >>= planTesting >>= emitPlanWithNativeOptions False "python" Nothing Nothing bound
       concat [artifactContent f | f <- emitted, "test_lawspec_crypto_lawspec" `isInfixOf` artifactPath f]

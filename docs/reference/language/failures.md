@@ -108,7 +108,7 @@ catches the matching `Fail` ability; an unrelated exception remains an
 exception.
 
 An application that raises its own exceptions maps them to constructors in
-`lawspec.json` under `failures` (see [Handlers](handlers.md)); that mapping
+`lawspec.edn` under `failures` (see [Handlers](handlers.md)); that mapping
 is the implementation plane, never part of a law. A mapped constructor with
 one `Text` payload gets the exception's message; a constructor pattern such as
 `fails with Rejected "negative"` checks that payload directly. Automatic native

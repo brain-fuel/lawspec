@@ -57,7 +57,7 @@ untouched. Rebar and Mix must configure the bridge's build hook. See the
   the printed setup instructions. The [target guide](targets/index.md) lists
   them too.
 - **Source or test directories do not match.** Either change your build to
-  compile the directories in `lawspec.json`, or change `sourceDir` and
+  compile the directories in `lawspec.edn`, or change `sourceDir` and
   `testDir` to match your build.
 - **Custom filtering cannot be verified.** `doctor` rejects configuration it
   cannot check, such as Surefire includes, Gradle test filters, pytest

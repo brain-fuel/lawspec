@@ -193,7 +193,7 @@ data Ability = Ability
   -- The type arguments the unit uses the ability at (its operation types
   -- are already instantiated at them).
   , abilityArguments :: [Type]
-  -- The production handler's native constructor when lawspec.json binds
+  -- The production handler's native constructor when lawspec.edn binds
   -- one (handlers), set for the target being emitted; otherwise the tests
   -- use the hand-written <Ability>Handler in the unit's adapter module.
   , abilityNative :: Maybe [String]
@@ -502,7 +502,7 @@ data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContra
   , unitMailboxes :: [Mailbox]
   -- The unit's abilities, and its spec handlers for them.
   , unitAbilities :: [Ability], unitHandlers :: [Handler]
-  -- The native exceptions lawspec.json maps to failures, for the target
+  -- The native exceptions lawspec.edn maps to failures, for the target
   -- being emitted (set by LawSpec.CoreEmit; empty otherwise).
   , unitFailureBindings :: [FailureBinding]
   -- The unit's harness settings beyond its laws', if it has a harness.

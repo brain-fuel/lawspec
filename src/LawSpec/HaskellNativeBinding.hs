@@ -269,7 +269,7 @@ emitBindings minify plan testing files = do
           C.Constructor handleName [] -> Left (context ++ " is bound to the method " ++ name ++ " of its handle " ++
             lastPart handleName ++ ", but " ++ lastPart handleName ++ " has no type binding. Haskell finds " ++ name ++
             " in the module of the handle's native type, so add {\"type\": \"" ++ handleName ++
-            "\", \"native\": [\"Module\", \"Type\"]} to nativeBindings.types in lawspec.json")
+            "\", \"native\": [\"Module\", \"Type\"]} to nativeBindings.types in lawspec.edn")
           _ -> Left (context ++ ": a method binding needs a handle argument")
         pure (Method position (NativeRef (init (referenceParts owner) ++ [name])))
     isHandle ty = case ty of

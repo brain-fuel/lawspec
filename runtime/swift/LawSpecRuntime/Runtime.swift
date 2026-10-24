@@ -111,7 +111,7 @@ public enum Runtime {
         let start = manager.currentDirectoryPath
         var folder = URL(fileURLWithPath: start)
         while true {
-            if manager.fileExists(atPath: folder.appendingPathComponent("lawspec.json").path)
+            if manager.fileExists(atPath: folder.appendingPathComponent("lawspec.edn").path)
                 || manager.fileExists(atPath: folder.appendingPathComponent("recorded").path) {
                 return folder.appendingPathComponent("recorded").path
             }

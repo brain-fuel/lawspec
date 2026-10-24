@@ -1,0 +1,48 @@
+{
+  :manifest-version 1
+  :component {
+    :name "prolog"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
+  :sources ["laws"]
+  :machine-bits 64
+  :verification {
+    :layers [
+      :proof
+      :exhaustive
+      :property
+      :examples
+      :runtime
+      :model
+    ]
+  }
+  :targets [
+    {
+      :language :prolog
+      :root "."
+      :native-bindings {
+        :functions [
+          {
+            :declaration "example.payments::addFee"
+            :native ["domain" "payments" "apply_fee"]
+          }
+          {
+            :declaration "example.payments::roundTrip"
+            :native ["domain" "payments" "restore"]
+          }
+          {
+            :declaration "example.payments::archive"
+            :native ["domain" "payments" "store"]
+          }
+        ]
+        :generators [
+          {
+            :type "example.payments::type::Money"
+            :factory ["domain" "payment_generators" "prices"]
+          }
+        ]
+      }
+    }
+  ]
+}

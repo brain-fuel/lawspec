@@ -22,7 +22,7 @@ Technical descriptions of the language, the tools and the interfaces.
 ## Tools and interfaces
 
 - [CLI](cli.md): every `lawspec` command and option.
-- [Configuration](configuration.md): `lawspec.json` and `lawspec-package.json`.
+- [Configuration](configuration.md): `lawspec.edn` and `lawspec.edn`.
 - [Prolog target](prolog.md): SWI-Prolog predicates, Janus bindings and execution scope.
 - [Configuration and build targets](artifact-targets.md): HCL, YAML, ANTLR
   grammars and Make pipelines, with explicit execution and validation limits.

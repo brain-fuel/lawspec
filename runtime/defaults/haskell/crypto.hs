@@ -420,7 +420,7 @@ signatureHandler = P.pure Abilities.Signature
   }
 
 -- | SLH-DSA-SHAKE-128f, hedged: the alternative Signature handler. Bind it
--- in lawspec.json: {"ability": "lawspec.crypto::Signature", "native":
+-- in lawspec.edn: {"ability": "lawspec.crypto::Signature", "native":
 -- ["Lawspec", "Crypto", "slhDsaSignatureHandler"]}.
 slhDsaSignatureHandler :: P.IO Abilities.Signature
 slhDsaSignatureHandler = P.pure Abilities.Signature

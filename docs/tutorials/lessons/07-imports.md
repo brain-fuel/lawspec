@@ -38,9 +38,9 @@ adapter for the menu, and the menu cannot call one of the library's. That keeps
 each unit a complete contract with its own code.
 
 To share a library between projects, publish its units as a **package**: a
-directory with a `lawspec-package.json` naming it and giving it a version.
+directory with a `lawspec.edn` naming it and giving it a version.
 Projects list the packages they depend on, with version ranges, in
-`lawspec.json`. See [use imports and packages](../../how-to/use-imports-and-packages.md).
+`lawspec.edn`. See [use imports and packages](../../how-to/use-imports-and-packages.md).
 
 ## Implement the adapters
 

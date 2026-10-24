@@ -252,7 +252,7 @@ public final class LawSpecNetwork {
       return new NodeIdentity(secureBytes(32));
     }
 
-    /** The identity lawspec.json binds (lawspec-network.conf, written by the compiler), or a fresh one. */
+    /** The identity lawspec.edn binds (lawspec-network.conf, written by the compiler), or a fresh one. */
     public static NodeIdentity configured() {
       var identity = networkConfig().identity();
       return identity != null ? identity : generate();
@@ -288,7 +288,7 @@ public final class LawSpecNetwork {
   private record NetworkConfig(NodeIdentity identity, java.util.Set<String> trusted) {}
 
   /**
-   * lawspec-network.conf, which the compiler writes from lawspec.json's network binding: the file
+   * lawspec-network.conf, which the compiler writes from lawspec.edn's network binding: the file
    * LAWSPEC_NETWORK_CONF names, or the first found in the working directory and the directories
    * above it. Lines `identity <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per
    * line), relative to it; `#` begins a comment.

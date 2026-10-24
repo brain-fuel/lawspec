@@ -12,10 +12,20 @@ generated code is laid out.
 ## Select a 32-bit machine profile
 
 `IntSize`, `UIntSize` and `UIntPtr` are 64-bit by default. To specify a 32-bit
-platform, set `machineBits` in `lawspec.json`:
+platform, set `machineBits` in `lawspec.edn`:
 
-```json
-{"version": 1, "sources": ["laws"], "machineBits": 32, "targets": [{"language": "go", "root": "."}]}
+```edn
+{
+  :version 1
+  :sources ["laws"]
+  :machine-bits 32
+  :targets [
+    {
+      :language :go
+      :root "."
+    }
+  ]
+}
 ```
 
 Or pass it for a single command:
@@ -60,7 +70,7 @@ npx lawspec init --target kotlin --minify
 
 The compiler API accepts `minify: true` on generation requests.
 
-The mode applies to one invocation. It is not saved in `lawspec.json`, so
+The mode applies to one invocation. It is not saved in `lawspec.edn`, so
 `generate` without `--minify` returns to readable output. Compact output keeps
 the newlines, indentation and token separators each language requires, and
 preserves comments and literal contents.

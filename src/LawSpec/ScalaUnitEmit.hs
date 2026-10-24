@@ -100,7 +100,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       | custom ty = ScalaExpr.call "_schema.equal" [java (ScalaExpr.reference ty),a,b,Doc.text (show bits),Doc.text "symbols"]
       | otherwise = ScalaExpr.call "LawSpecRuntime.truth" [ScalaExpr.call "LawSpecRuntime.binary" [ScalaExpr.quoted "==",a,b]]
     -- An adapter that fails with E answers Either[E, R]: a Left, or an
-    -- exception lawspec.json maps, becomes the failure.
+    -- exception lawspec.edn maps, becomes the failure.
     failingAs failing call = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
         let native = java (ScalaData.scalaDataType dataDeclarations failure)

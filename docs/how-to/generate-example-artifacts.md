@@ -54,7 +54,7 @@ Each project contains:
 - application-owned domain types and functions, with different names from the
   specification (`Price` for `Money`, `major` for `amount`);
 - a native price generator;
-- `lawspec.json` with the [native bindings](bind-native-types.md) that connect them;
+- `lawspec.edn` with the [native bindings](bind-native-types.md) that connect them;
 - build files and a README with the target's commands.
 
 Exported projects use configuration version 2, the explicit `1.0-rc.2` language

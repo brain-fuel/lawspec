@@ -165,7 +165,7 @@ These come with LawSpec, from the built-in unit `lawspec.resources`:
 
 Each acquires and releases through [`lawspec.host`](host.md#resources)'s
 abilities, under their production handlers, so binding another `FileSystem`,
-`Environment` or `Ports` handler in `lawspec.json` changes how they do it.
+`Environment` or `Ports` handler in `lawspec.edn` changes how they do it.
 
 `SavedEnvironment` lets a law change the environment through its adapters,
 and puts it back afterwards. A JVM cannot change its process environment, so

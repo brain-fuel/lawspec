@@ -188,7 +188,7 @@ fails with `E`, fails by raising the runtime's `Fail` with a native `E`:
 | Haskell | `throwIO (LS.Fail value)` |
 
 Application code that throws its own exceptions can keep them: `failures` in
-`lawspec.json` maps each to a failure constructor (see
+`lawspec.edn` maps each to a failure constructor (see
 [Handlers](handlers.md#native-failures)).
 
 ## Effects in order

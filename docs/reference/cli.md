@@ -30,7 +30,7 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 
 | Option | Meaning |
 | --- | --- |
-| `--config <path>` | The project configuration file. Default: `./lawspec.json`. Relative paths in it resolve from its directory. |
+| `--config <path>` | The project configuration file. Default: `./lawspec.edn`. Relative paths in it resolve from its directory. |
 | `--target <language>` | Select configured targets of this language. Without it, generation uses every configured target and testing uses the configured program targets. |
 | `--machine-bits <32\|64>` | Override the configuration's machine profile for this command. |
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
@@ -101,7 +101,7 @@ their inputs change. The results are the same as without the cache.
 - It contains its own `.gitignore`, so it is never committed.
 - A damaged entry is recomputed and replaced. Deleting the folder is always
   safe.
-- `--no-cache`, or `"cache": false` in `lawspec.json`, turns it off. It is also
+- `--no-cache`, or `"cache": false` in `lawspec.edn`, turns it off. It is also
   off when the configuration file is outside the working directory, which the
   WebAssembly compiler cannot reach.
 
@@ -119,7 +119,7 @@ Creates or extends a project configuration.
 - `--machine-bits <32|64>`: write `machineBits` into the configuration.
 - `--minify`: write compact scaffolds and configuration JSON.
 
-When there is no configuration file, `init` creates `lawspec.json` with
+When there is no configuration file, `init` creates `lawspec.edn` with
 `sources: ["laws"]` and a starter specification `laws/atoi_codec.lawspec`. It
 fails if the starter already exists. When the file exists, it adds the target.
 A target of the same language with the same root is an error.
@@ -186,7 +186,7 @@ and its harness are kept apart: the harness can never change the obligation.
   wired and whether it was the real dependency or a stand-in. Each tested law
   that relies on an attested dependency gets a line saying where it ran and
   against what, and an `ENVIRONMENT` section lists the dependencies. Without
-  it, the `attestation` path in `lawspec.json` is read; without either, each
+  it, the `attestation` path in `lawspec.edn` is read; without either, each
   law shows the attested `lawspec test` run it last passed in, if any. When
   the named attestation's run id is one `lawspec test` recorded, each law
   run in it is reported as completed, with its outcome, the run's exit code
@@ -303,10 +303,10 @@ them.
 - `--fresh`: run every law's tests.
 - `--update-recorded`: run every law's tests, and record each value a law
   compares with `recorded "name"` again, under `recorded/<unit>/<name>` beside
-  `lawspec.json`. Without it, a missing or different recording fails its law.
+  `lawspec.edn`. Without it, a missing or different recording fails its law.
   See [recorded values](language/laws-and-examples.md#recorded-values).
 - `--attestation <file>`: the environment attestation of the environment the
-  tests run in (default: the `attestation` path in `lawspec.json`). It is
+  tests run in (default: the `attestation` path in `lawspec.edn`). It is
   checked, kept with the run's results, and each law it touches that passes
   names it, so `lawspec evidence` later shows which laws ran against
   stand-ins. A law it touches runs again when its dependencies are wired
@@ -410,7 +410,7 @@ Checks a package directory on its own and prints its name, version, units, laws,
 data types and dependencies.
 
 - `--project <directory>`: the package directory, containing
-  `lawspec-package.json`. Default: the current directory.
+  `lawspec.edn`. Default: the current directory.
 
 The package's own `dependencies` and `packages` fields are used to resolve its
 dependencies. See [configuration](configuration.md#lawspec-packagejson).

@@ -1,4 +1,5 @@
 // Generated from templates/tools/model-layer-integration.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Exercise independent law/model selection through the public CLI and native runners.
 // ref:REQ-progressive-verification ref:DEC-stateful-models-linearizability
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ assert.ok([32,64].includes(bits));
 const base=path.join(repo,'.artifacts/model-layer-integration',`${language}-${bits}-${minify}`);
 await rm(base,{recursive:true,force:true});await mkdir(base,{recursive:true});
 const project=path.join(base,'project with spaces');await mkdir(project);
-const cli=path.join(packageRoot,'bin/lawspec.mjs'),configPath=path.join(project,'lawspec.json');
+const cli=path.join(packageRoot,'bin/lawspec.mjs'),configPath=path.join(project,'lawspec.edn');
 const env={...process.env,PYTHONDONTWRITEBYTECODE:'1'};
 if(env.LAWSPEC_OFFLINE==='1')Object.assign(env,{CARGO_NET_OFFLINE:'true',GOPROXY:'off',GOTOOLCHAIN:'local',HEX_OFFLINE:'1'});
 let step=0;
@@ -65,7 +66,7 @@ const before='Pair (n + amount) (n + amount)',after='Pair (n + 2 * amount) (n + 
 assert.equal(source.split(before).length,2);
 const specification=path.join(project,'laws/actors.lawspec');await mkdir(path.dirname(specification),{recursive:true});
 async function select(layers,content=source){
-  await writeFile(configPath,JSON.stringify({version:2,languageProfile:'1.0-rc.2',machineBits:bits,
+  await writeFile(configPath,writeManifest({manifestVersion: 1, component: {name: "example", version: "0.1.0"},languageProfile:'1.0-rc.2',machineBits:bits,
     verification:{layers},sources:['laws'],targets:[target]},null,2)+'\n');
   await writeFile(specification,content);
 }

@@ -1,0 +1,25 @@
+{
+  :manifest-version 1
+  :component {
+    :name "orders"
+    :version "0.1.0"
+  }
+  :sources ["orders.lawspec"]
+  :dependencies {
+    "shop.domain" "^1.0.0"
+    "shop.tax" "^2.0.0"
+  }
+  :packages ["../shop-domain" "../shop-tax-1" "../shop-tax-2"]
+  :targets []
+  :language-profile "1.0-rc.2"
+  :verification {
+    :layers [
+      :proof
+      :exhaustive
+      :property
+      :examples
+      :runtime
+      :model
+    ]
+  }
+}

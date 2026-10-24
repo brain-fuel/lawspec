@@ -31,7 +31,7 @@ include!("lawspec_modules.rs");
 ```
 
 An existing library can include those declarations itself. Set a target's
-`rustc` and `cargo` fields in `lawspec.json` to use other commands.
+`rustc` and `cargo` fields in `lawspec.edn` to use other commands.
 
 ## Layout
 

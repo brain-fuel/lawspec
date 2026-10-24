@@ -2,7 +2,7 @@
 ;; not types, so money is {:lawspec/tag :money/money :amount 1.20M
 ;; :currency :currency/eur}.
 (ns domain.payments
-  "Payments: the functions lawspec.json binds.")
+  "Payments: the functions lawspec.edn binds.")
 
 (defn apply-fee [money] (update money :amount + 0.2M))
 

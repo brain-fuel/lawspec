@@ -1,5 +1,5 @@
 // Application code: the Signature and KeyExchange handlers bound in
-// lawspec.json in place of the defaults. Each passes its operations on to
+// lawspec.edn in place of the defaults. Each passes its operations on to
 // the default handler and counts them. Each Go package has its own
 // abilities, so each that uses them has this file.
 package crypto

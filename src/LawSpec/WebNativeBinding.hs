@@ -124,7 +124,7 @@ emitBindings ts minify bindings plan files = do
               (if ts then D.text ": " <> (if async then D.text "Promise<" <> returnType <> D.text ">" else returnType) else mempty)
         pure (signature <> D.text " " <> D.block 2 (D.text "const symbols = new Map();" <> D.hardline <>
           D.text "try " <> D.block 2 resultBody <> D.text " catch (error) " <>
-          -- The application's own errors pass through, so lawspec.json can map
+          -- The application's own errors pass through, so lawspec.edn can map
           -- them to failures.
           D.block 2 (D.text "if (!(error instanceof TypeError || error instanceof RangeError)) throw error;" <> D.hardline <>
             D.text "throw " <> E.call "new TypeError"

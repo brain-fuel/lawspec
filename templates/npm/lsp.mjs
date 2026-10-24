@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { createCompiler } from './api.mjs';
+import {findManifest, readManifest} from './component.mjs';
 
 export function utf16Position(text, location) {
   const line = Math.max(0, location.line - 1);
@@ -43,11 +44,15 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
       else if (file.endsWith('.lawspec')) sources.set(file, { path: file, content: await readFile(file, 'utf8') });
     }
     let config;
-    try { config = JSON.parse(await readFile(path.join(workspace, 'lawspec.json'), 'utf8')); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-    if(config&&(config.version!==2||config.languageProfile!=='1.0-rc.2'))
-      throw new Error('The language server requires configuration version 2 and languageProfile 1.0-rc.2.');
-    for (const entry of config?.sources ?? []) await visit(path.resolve(workspace, entry));
+    let root = workspace;
+    try {
+      const file = await findManifest(workspace);
+      config = await readManifest(file);
+      root = path.dirname(file);
+    } catch (error) {
+      if (!/No lawspec\.edn found/.test(error.message)) throw error;
+    }
+    for (const entry of config?.sources ?? []) await visit(path.resolve(root, entry));
     for (const [uri, document] of documents) sources.set(fileURLToPath(uri), { path: fileURLToPath(uri), content: document.text });
     return [...sources.values()];
   }

@@ -1,4 +1,4 @@
-// Application code bound in lawspec.json: the till's money type, its
+// Application code bound in lawspec.edn: the till's money type, its
 // production handler, a payment function and the errors it throws.
 public enum Till {
     /// The application's own money type.

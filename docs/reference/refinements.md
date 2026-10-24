@@ -195,7 +195,7 @@ Shrinking checks refinements again, and repairs later inputs when an earlier one
 changes. An overflowing counterexample can shrink to `(1, 127)` but not to
 `(0, 127)`, which is outside the domain.
 
-Generation limits are set in `lawspec.json` or the compiler request; see
+Generation limits are set in `lawspec.edn` or the compiler request; see
 [configuration](configuration.md#generation). An exhausted search reports an
 error with reproduction information; it does not prove that the domain is
 empty. A domain that is statically empty, and an example outside its domain,

@@ -1,3 +1,4 @@
+import {configEDN, parseManifest} from './manifest-fixtures.mjs';
 // The CLI reads package manifests and sends them with the project's sources;
 // the compiler checks versions, namespaces and import visibility.
 import {test} from 'node:test';
@@ -43,9 +44,9 @@ test('a project checks against a package dependency', async t => {
 
 test('an unsatisfied version range is rejected', async t => {
   const root = await copyExample(t);
-  const config = path.join(root, 'orders', 'lawspec.json');
-  const settings = JSON.parse(await readFile(config, 'utf8'));
-  await writeFile(config, JSON.stringify({...settings, dependencies: {'shop.domain': '^2.0.0'}}));
+  const config = path.join(root, 'orders', 'lawspec.edn');
+  const settings = parseManifest(await readFile(config, 'utf8'));
+  await writeFile(config, configEDN({...settings, dependencies: {'shop.domain': '^2.0.0'}}));
   const result = await lawspec(path.join(root, 'orders'), 'check');
   assert.match(result.diagnostics[0].message, /requires shop\.domain \^2\.0\.0, but version 1\.2\.0 is supplied/);
 });

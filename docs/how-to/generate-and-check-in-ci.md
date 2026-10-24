@@ -21,7 +21,7 @@ mandatory definition validation. It needs no target build tools. New projects
 select no optional law checks: their laws remain `not-verified` even when
 intrinsic definition checks pass.
 
-Choose the checks you want in the project's version-2 `lawspec.json`. For
+Choose the checks you want in the project's version-2 `lawspec.edn`. For
 generated property tests and authored examples, set:
 
 ```json
@@ -113,7 +113,7 @@ cannot be combined.
 
 Commit:
 
-- your `.lawspec` sources and `lawspec.json`;
+- your `.lawspec` sources and `lawspec.edn`;
 - the generated tests and runtime sources;
 - `.lawspec/generated.json`, the ownership manifest in each target root;
 - your adapters.
@@ -139,6 +139,6 @@ npx lawspec evidence example.codec::codec
 `generate --check` catches a specification change that someone forgot to
 regenerate. `test` runs the selected native checks and records their scoped
 results; `--fresh` reruns them. Keep the verification-layer selections in
-`lawspec.json` under version control so the job runs the intended checks.
+`lawspec.edn` under version control so the job runs the intended checks.
 Use `--json` on `check`, `doctor`, `generate`, `explain` and `evidence` for
 machine-readable output.

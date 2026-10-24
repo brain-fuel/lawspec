@@ -27,7 +27,7 @@ mvn test
 In a directory without build files, `init` creates a readable `pom.xml` with
 these settings. In an existing Maven project it changes nothing and prints the
 settings to add. Use `init --minify` for a compact POM. Set a target's `maven`
-field in `lawspec.json` to use a Maven command other than `mvn`.
+field in `lawspec.edn` to use a Maven command other than `mvn`.
 
 ## Layout
 

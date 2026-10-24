@@ -135,7 +135,7 @@ export class NodeIdentity {
   static generate() {
     return new NodeIdentity(secureRandom(32));
   }
-  /** The identity lawspec.json binds (lawspec-network.conf), or a fresh one. */
+  /** The identity lawspec.edn binds (lawspec-network.conf), or a fresh one. */
   static configured() {
     return networkConfig().identity ?? NodeIdentity.generate();
   }
@@ -157,7 +157,7 @@ function verifySigned(verifyingKey, message, signature) {
 }
 
 /**
- * lawspec-network.conf, which the compiler writes from lawspec.json's
+ * lawspec-network.conf, which the compiler writes from lawspec.edn's
  * network binding: the file LAWSPEC_NETWORK_CONF names, or the first found
  * in the working directory and the directories above it. Lines `identity
  * <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per

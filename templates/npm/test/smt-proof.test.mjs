@@ -1,3 +1,4 @@
+import {configEDN} from './manifest-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {spawnSync} from 'node:child_process';
@@ -457,10 +458,10 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
   const directory=await mkdtemp(path.join(tmpdir(),'lawspec-prove-cli-'));
   try {
     const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
-    const config={version:2,languageProfile:'1.0-rc.2',sources:['input.lawspec'],targets:[],verification:{layers:['proof']}};
+    const config={manifestVersion: 1,languageProfile:'1.0-rc.2',sources:['input.lawspec'],targets:[],verification:{layers:['proof']}};
     const save=async(body,layers=['proof'])=>{
       await writeFile(path.join(directory,'input.lawspec'),'unit smt\n'+body+'\nend unit\n');
-      await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,verification:{layers}}));
+      await writeFile(path.join(directory,'lawspec.edn'),configEDN({...config,verification:{layers}}));
     };
     const run=()=>spawnSync(process.execPath,[cli,'prove','--solver',z3,'--json'],{cwd:directory,encoding:'utf8'});
     await save(square);
@@ -482,12 +483,12 @@ laws for next are
   partial until 1.2.0 because "cancelled orders come later"
 end laws
 `,['exhaustive']);
-    await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,projectVersion:'1.1.4',verification:{layers:['exhaustive']}}));
+    await writeFile(path.join(directory,'lawspec.edn'),configEDN({...config,component:{...config.component,version:'1.1.4'},verification:{layers:['exhaustive']}}));
     const exempted=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
     assert.equal(exempted.status,0,exempted.stdout+exempted.stderr);
     assert.match(exempted.stdout,/EXEMPTED \(1\)/);
     assert.match(exempted.stdout,/until 1\.2\.0 \(project is 1\.1\.4\)/);
-    await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,projectVersion:'1.2.0',verification:{layers:['exhaustive']}}));
+    await writeFile(path.join(directory,'lawspec.edn'),configEDN({...config,component:{...config.component,version:'1.2.0'},verification:{layers:['exhaustive']}}));
     const expired=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
     assert.equal(expired.status,1,expired.stdout+expired.stderr);
     assert.match(expired.stdout,/REFUTED \(1\)/);

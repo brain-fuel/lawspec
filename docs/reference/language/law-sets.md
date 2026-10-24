@@ -92,7 +92,7 @@ not fail. `exempted` is weaker than `assumed`.
 `until` takes one of:
 
 - a version, like `1.2.0`. It is compared with the package's `version` in
-  `lawspec-package.json`, or with `projectVersion` in `lawspec.json`. A
+  `lawspec.edn`, or with `projectVersion` in `lawspec.edn`. A
   version without either is an error.
 - a UTC date-time, like `2027-03-01T00:00Z` or `2027-03-01T00:00:00Z`. Other
   time zones are rejected.

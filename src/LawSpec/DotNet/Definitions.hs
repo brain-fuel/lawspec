@@ -27,7 +27,7 @@ import LawSpec.NativeRequest (NativeCall(..))
 import Control.Monad (forM)
 import Data.List (intercalate)
 
--- | The adapters bound in lawspec.json to application code, by declaration.
+-- | The adapters bound in lawspec.edn to application code, by declaration.
 type Calls = [(C.Id, NativeCall)]
 
 -- | The declarations a unit's adapter implements: those that are not definitions.

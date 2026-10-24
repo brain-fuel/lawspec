@@ -328,7 +328,7 @@ terraformPredicate environment expression = case C.expressionNode expression of
 -- install tools nor claim execution merely because the file was generated.
 makePipeline :: String
 makePipeline = unlines
-  [ "# Generated LawSpec pipeline. Run from the directory containing lawspec.json."
+  [ "# Generated LawSpec pipeline. Run from the directory containing lawspec.edn."
   , "LAWSPEC ?= lawspec"
   , ".PHONY: all check generate test verify"
   , "all: verify"
