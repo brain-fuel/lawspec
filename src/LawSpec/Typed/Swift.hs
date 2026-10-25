@@ -16,8 +16,12 @@ module LawSpec.Typed.Swift (SwiftTyped(..), emitSwiftTyped, swiftTypedDeclaratio
 
 import Control.Monad (forM)
 import Control.Monad.State.Strict
-import Data.List (intercalate)
+import Data.List (intercalate, nub, sort)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
 import LawSpec.Scalar
@@ -53,6 +57,7 @@ swiftTypedDeclarations bound declarations =
 
 data Env = Env
   { envPlan :: TypedPlan
+  , envIdentity :: Identity.Graph
   , envBits :: Int
   , envNames :: Data.Names
   , envData :: M.Map String DataDeclaration
@@ -99,10 +104,10 @@ emitSwiftTyped bits bound allDeclarations units = do
                | (h, name) <- zip [h | h <- typedHandlers, Just _ <- [handlerState h]] (drop (length (typedRepresentatives plan)) functionNames)
                , Just (ty, start) <- [handlerState h] ]
   names <- dataNames allDeclarations
-  let env = Env plan bits names (M.fromList [(idText (dataId d), d) | d <- datas])
+  let env = Env plan (Identity.dependencyGraphWithBits bits allDeclarations units) bits names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units allDeclarations Nothing moduleScope
   docs <- flip evalStateT (moduleScope, []) $ do
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+    fs <- mapM (\(c, d) -> lift' (memoFunction env c d)) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, ty, start) -> do
       t <- lift' (nativeType env ty)
       modify (\(_, _) -> (moduleScope, []))
@@ -206,6 +211,35 @@ nativeType env = Data.nativeType (envBits env) (envNames env) []
 
 -- | Where a block's value goes: returned, or assigned to a constant.
 data Sink = Return | Assign String
+
+-- A function's document and local scope are independent of functions emitted
+-- before it. Reserve only globals it calls; an unrelated global may safely
+-- share the spelling of one of its locals.
+functionTable :: Table (Either String D.Doc)
+functionTable = unsafePerformIO (newPersistentTable "typed-swift-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+memoFunction :: Env -> Int -> Definition -> Either String D.Doc
+memoFunction env classification definition = memoized functionTable
+  (Identity.fullKey (envIdentity env) ("swift-function:" ++ show
+    (envBits env, called, nativeNames)) definition)
+  (evalStateT (functionDoc localEnv classification definition) (localBase, []))
+  where
+    callees expression = case expressionNode expression of
+      ExternalCall callee arguments -> callee : concatMap callees arguments
+      _ -> concatMap callees (children expression)
+    called = sort (nub [(name, selected == classification) |
+      selected <- classification : [c | callee <- callees (definitionBody definition),
+        Just c <- [definitionClass (envPlan env) callee]],
+      Just name <- [M.lookup selected (envFunctions env)]])
+    reachable = Identity.closure (envIdentity env) (Identity.referencesOf (envIdentity env) definition)
+    recursive = Data.recursiveTypes (envDeclarations env)
+    nativeNames = [(idText identity, name, maybe False (Data.isStruct recursive)
+      (M.lookup (idText identity) (envData env))) |
+      Identity.TypeNode identity <- S.toAscList reachable,
+      Just name <- [lookup identity (envNames env)]]
+    localBase = Nm.scopeWith ("schema" : "symbols" : map fst called)
+    localEnv = env { envBase = localBase }
 
 functionDoc :: Env -> Int -> Definition -> M D.Doc
 functionDoc env c d = do

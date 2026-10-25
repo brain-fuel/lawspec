@@ -8,6 +8,7 @@ import qualified Data.Aeson.KeyMap as KeyMap
 import qualified LawSpec.Code.Doc as Doc
 import qualified Data.Binary as Binary
 import qualified Control.Monad.State.Strict as State
+import Control.Monad (forM_)
 import Data.Version (showVersion)
 import Paths_lawspec (version)
 import Test.Hspec
@@ -136,12 +137,12 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       run ["initial"] (error "re-lowered a cached structured chunk")
         `shouldBe` Right (Doc.text "call conversion", ["initial", "conversion"])
       run ["different"] action `shouldBe` Right (Doc.text "call conversion", ["different", "conversion"])
-    it "reuses an unchanged Rust function document after an unrelated body edit" $ do
-      root <- (</> "lawspec-rust-definition-memo-test") <$> getTemporaryDirectory
+    forM_ ["rust", "swift", "erlang"] $ \target -> it ("reuses an unchanged " ++ target ++ " function document after an unrelated body edit") $ do
+      root <- (</> ("lawspec-" ++ target ++ "-definition-memo-test")) <$> getTemporaryDirectory
       removePathForcibly root
       let run body = decode (dispatch (encode (object
             ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
-             "method" .= ("planGeneration" :: String), "target" .= ("rust" :: String), "cacheDirectory" .= root,
+             "method" .= ("planGeneration" :: String), "target" .= (target :: String), "cacheDirectory" .= root,
              "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
                ["unit incremental.nativeChunks",
                 "function unrelated (value :: Integer) -> Integer is value + " ++ body ++ " end function",
@@ -150,10 +151,11 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
           good _ = False
       run "1" `shouldSatisfy` good
       [versioned] <- listDirectory root
-      first <- listDirectory (root </> versioned </> "typed-rust-function")
+      let tableName = "typed-" ++ (if target == "erlang" then "beam" else target) ++ "-function"
+      first <- listDirectory (root </> versioned </> tableName)
       length first `shouldBe` 2
       run "(if value >= 0 then 2 else -2 end if)" `shouldSatisfy` good
-      second <- listDirectory (root </> versioned </> "typed-rust-function")
+      second <- listDirectory (root </> versioned </> tableName)
       length second `shouldBe` 3
       removePathForcibly root
   describe "the on-disk cache" $ do

@@ -21,7 +21,13 @@ module LawSpec.Typed.Beam
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Char (isAlphaNum, isAscii, isUpper, toUpper)
-import Data.List (intercalate, isPrefixOf, sortOn, nub)
+import Data.List (intercalate, isPrefixOf, sortOn, sort, nub)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.CorePersist ()
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -29,7 +35,6 @@ import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Typed.Plan
-import LawSpec.Digest (digestHex, digestString)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamNames as Names
@@ -40,7 +45,9 @@ import LawSpec.Backend (prettyType)
 -- | The conversions of a typed value: from and to the dynamic values the
 -- laws use, and from and to the target's native values.
 data Crossing = FromDynamic | ToDynamic | FromNative | ToNative | Ordered
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
+
+instance Binary Crossing
 
 data BeamTyped = BeamTyped
   { beamTypedSource :: Maybe String
@@ -69,6 +76,8 @@ data Env = Env
   , envAll :: M.Map String DataDeclaration
   , envConstructors :: M.Map Id (DataDeclaration, DataConstructor)
   , envFunctions :: M.Map Int String
+  , envIdentity :: Identity.Graph
+  , envHelperNames :: M.Map (Crossing, Type) String
   }
 
 data St = St
@@ -77,7 +86,9 @@ data St = St
   , stOrdering :: Bool
     -- The handler context a function's body uses (Schema, Symbols).
   , stContext :: S.Set String
-  }
+  } deriving (Show, Generic)
+
+instance Binary St
 
 type M = StateT St (Either String)
 
@@ -113,8 +124,12 @@ emitBeamTyped target bound allDeclarations units = do
   let declarations = beamTypedDeclarations bound allDeclarations
       plan = typedPlanPerforming scalarTypes declarations units
       functions = functionNames
-      env = Env target plan names (M.fromList [(idText (dataId d), d) | d <- allDeclarations])
+      baseEnv = Env target plan names (M.fromList [(idText (dataId d), d) | d <- allDeclarations])
         (M.fromList [(constructorId c, (d, c)) | d <- allDeclarations, c <- dataConstructors d]) functions
+        (Identity.dependencyGraph allDeclarations units) M.empty
+      env = baseEnv { envHelperNames = helperAllocation baseEnv
+        (boundary ++ concatMap definitionTypes (M.elems (typedDefinitions plan)) ++
+          concatMap (expressionTypes . snd) startStates) }
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       starts = zipWith (\(i, start) n -> (i, n, start)) startStates
         (drop (M.size functions) (uniqueNames (M.elems functions ++ [ "start_" ++ Names.functionAtom (handlerName h) | h <- typedHandlers, Just _ <- [handlerState h] ])))
@@ -131,7 +146,7 @@ emitBeamTyped target bound allDeclarations units = do
   (docs, st) <- flip runStateT (St S.empty M.empty False S.empty) $ do
     forM_ [ (k, t) | t <- boundary, supportedType plan t, k <- conversions ] $ \(k, t) ->
       unless (identity env k t) (() <$ helperName env k t)
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+    fs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, start) -> do
       startFunction ["Schema", "Symbols"]
       body <- cstmt env [] start
@@ -193,6 +208,73 @@ caseDoc subject arms = E.forceBreak <> D.group (D.text "case" <> D.nest 4 (D.sof
   D.hardline <> D.text "end"
 
 type Scope = [(Id, String)]
+
+-- Helper names are allocated before lowering, rather than by the order in
+-- which functions happen to request them. A cached function can then replay
+-- its helper requests without depending on any previously emitted function.
+expressionTypes :: Expr -> [Type]
+expressionTypes expression = expressionType expression : concatMap expressionTypes (children expression)
+
+definitionTypes :: Definition -> [Type]
+definitionTypes definition = map binderType (definitionArguments definition) ++
+  declarationType (definitionDeclaration definition) : expressionTypes (definitionBody definition)
+
+-- Traverse instantiated fields as well as type arguments. Stop expanding a
+-- recursive type constructor on its current path; a later request for another
+-- instantiation has a deterministic, content-addressed fallback name.
+typeClosure :: Env -> [Type] -> [Type]
+typeClosure env = S.toAscList . S.unions . map (walk S.empty)
+  where
+    walk seen ty = S.insert ty $ case ty of
+      Constructor name arguments ->
+        let args = [t | TypeArgument t <- arguments]
+            fields = case M.lookup name (envAll env) of
+              Just declaration | name `S.notMember` seen ->
+                concatMap (fieldTypes declaration args) (dataConstructors declaration)
+              _ -> []
+        in S.unions (map (walk (S.insert name seen)) (args ++ fields))
+      Arrow a b -> S.union (walk seen a) (walk seen b)
+      _ -> S.empty
+
+helperKinds :: [Crossing]
+helperKinds = [FromDynamic, ToDynamic, FromNative, ToNative, Ordered]
+
+helperAllocation :: Env -> [Type] -> M.Map (Crossing, Type) String
+helperAllocation env seeds = M.fromList [(pair, chosen pair) | pair <- pairs]
+  where
+    pairs = [(kind, ty) | ty <- typeClosure env seeds, supportedType (envPlan env) ty, kind <- helperKinds]
+    grouped = M.fromListWith (++) [(conversionName kind ty, [pair]) | pair@(kind, ty) <- pairs]
+    chosen (kind, ty) = case M.lookup (conversionName kind ty) grouped of
+      Just [_] -> conversionName kind ty
+      _ -> conversionDigestName env kind ty
+
+functionTable :: Table (Either String (D.Doc, St))
+functionTable = unsafePerformIO (newPersistentTable "typed-beam-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+memoFunction :: Env -> Int -> Definition -> M D.Doc
+memoFunction env classification definition = do
+  before <- get
+  (document, requested) <- lift (memoized functionTable key
+    (runStateT (functionDoc env classification definition) (St S.empty M.empty False S.empty)))
+  put before { stWanted = M.union (stWanted requested) (stWanted before)
+             , stOrdering = stOrdering requested || stOrdering before }
+  pure document
+  where
+    key = Identity.fullKey (envIdentity env) ("beam-function:" ++ show
+      (envTarget env, called, nativeNames, helperNames)) definition
+    callees expression = case expressionNode expression of
+      ExternalCall callee arguments -> callee : concatMap callees arguments
+      _ -> concatMap callees (children expression)
+    called = sort (nub [(name, selected == classification) |
+      selected <- classification : [c | callee <- callees (definitionBody definition),
+        Just c <- [definitionClass (envPlan env) callee]],
+      Just name <- [M.lookup selected (envFunctions env)]])
+    reachable = Identity.closure (envIdentity env) (Identity.referencesOf (envIdentity env) definition)
+    nativeNames = [(idText identity, name) | Identity.TypeNode identity <- S.toAscList reachable,
+      Just name <- [lookup identity (envNames env)]]
+    helperNames = [(kind, ty, allocatedHelperName env kind ty) |
+      ty <- typeClosure env (definitionTypes definition), kind <- helperKinds]
 
 functionDoc :: Env -> Int -> Definition -> M D.Doc
 functionDoc env c d = do
@@ -781,8 +863,9 @@ identity env k ty = case k of
 conversionName :: Crossing -> Type -> String
 conversionName k ty = crossingPrefix k ++ "_" ++ intercalate "_" (concatMap nameWords (typeWords ty))
 
-conversionDigestName :: Crossing -> Type -> String
-conversionDigestName k ty = crossingPrefix k ++ "_" ++ take 12 (digestHex (digestString (show ty)))
+conversionDigestName :: Env -> Crossing -> Type -> String
+conversionDigestName env k ty = conversionName k ty ++ "_" ++
+  take 12 (Identity.namedKey (envIdentity env) "beam-conversion-interface" ty)
 
 crossingPrefix :: Crossing -> String
 crossingPrefix k = prefix
@@ -796,15 +879,13 @@ crossingPrefix k = prefix
 
 -- | A conversion or comparison's function, made once.
 helperName :: Env -> Crossing -> Type -> M String
-helperName _ k ty = do
-  wanted <- gets stWanted
-  -- A type's words name its conversion; were two types to share them, the
-  -- later is named by a digest instead.
-  let n = case M.lookup (conversionName k ty) wanted of
-        Just (k', ty') | (k', ty') /= (k, ty) -> conversionDigestName k ty
-        _ -> conversionName k ty
+helperName env k ty = do
+  let n = allocatedHelperName env k ty
   modify (\st -> st { stWanted = M.insert n (k, ty) (stWanted st) })
   pure n
+
+allocatedHelperName :: Env -> Crossing -> Type -> String
+allocatedHelperName env k ty = M.findWithDefault (conversionDigestName env k ty) (k, ty) (envHelperNames env)
 
 convert :: Env -> Crossing -> Type -> D.Doc -> M D.Doc
 convert env k ty x = if identity env k ty then pure x else do
