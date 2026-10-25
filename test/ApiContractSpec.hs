@@ -125,6 +125,50 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
       tests `shouldSatisfy` isInfixOf "../../library/core/lawspec_runtime.rs"
       tests `shouldSatisfy` isInfixOf "../../library/core/rust_example.rs"
 
+  describe "Web output layout" $ do
+    it "resolves imports before printing and preserves authored import-like text across warm layouts" $ do
+      let input = source "layout.lawspec" $ unlines
+            [ "unit layout_probe"
+            , "function keep (value :: Text) -> Text is value end function"
+            , "law preserved is"
+            , " definition: keep \"from '../src/preserve'\" = \"from '../src/preserve'\" end definition"
+            , "end law"
+            , "end unit" ]
+      forM_ ["javascript", "typescript"] $ \target ->
+        forM_ [False, True] $ \compact ->
+          forM_ [("library/core", "checks/unit", "../../library/core"),
+                 ("code", "code", "."),
+                 ("src", "test", "../src")] $ \(src, tests, expectedRoot) -> do
+            let result = call ["method" .= ("planGeneration" :: String), "target" .= (target :: String),
+                  "sources" .= [input], "sourceDir" .= (src :: String), "testDir" .= (tests :: String),
+                  "minify" .= compact]
+                generated = content (fileWhere (isSuffixOf (if target == "javascript" then ".lawspec.test.mjs" else ".lawspec.test.ts")) result)
+            diagnostics result `shouldBe` []
+            generated `shouldSatisfy` isInfixOf "from '../src/preserve'"
+            generated `shouldSatisfy` isInfixOf (expectedRoot ++ "/lawspec_runtime.")
+            generated `shouldSatisfy` isInfixOf (expectedRoot ++ "/lawspec_definition_bodies.")
+
+    it "uses the resolved root in bound generator support and regenerated property tests" $ do
+      let input = source "draws.lawspec" $ unlines
+            [ "unit draws"
+            , "function keep (value :: Int8) -> Int8 is value end function"
+            , "law identity is definition: for all (value :: Int8) => keep value = value end for all end definition end law"
+            , "end unit" ]
+      forM_ ["javascript", "typescript"] $ \target -> do
+        let result = call ["method" .= ("planGeneration" :: String), "target" .= (target :: String),
+              "sources" .= [input], "sourceDir" .= ("library/core" :: String), "testDir" .= ("checks/unit" :: String),
+              "generation" .= object ["exhaustiveLimit" .= (16 :: Int)],
+              "verification" .= object ["layers" .= (["property", "examples"] :: [String])],
+              "nativeBindings" .= object ["generators" .= [object ["type" .= ("Int8" :: String),
+                "factory" .= (["factories", "nested", "values"] :: [String]), "stub" .= True]]]]
+            generated suffix = content (fileWhere (isSuffixOf suffix) result)
+            extension = if target == "javascript" then "mjs" else "ts"
+        diagnostics result `shouldBe` []
+        generated ("lawspec_native_generators." ++ extension) `shouldSatisfy` isInfixOf "../../library/core/lawspec_native."
+        generated ("lawspec_data_strategies." ++ extension) `shouldSatisfy` isInfixOf "../../library/core/lawspec_runtime."
+        generated ("draws.lawspec.test." ++ extension) `shouldSatisfy` isInfixOf "../../library/core/lawspec_definition_bodies."
+        if target == "typescript" then generated "factories/nested.ts" `shouldSatisfy` isInfixOf "../../../library/core/lawspec_runtime.js" else pure ()
+
   describe "native bindings" $ do
     payments <- runIO (readFile "examples/specs/payments.lawspec")
     bindings <- runIO (fromMaybe Null . decode <$> BL.readFile "test/fixtures/native-payments/bindings.json")

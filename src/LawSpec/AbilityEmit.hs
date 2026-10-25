@@ -3,7 +3,7 @@
 -- recording per ability. See LawSpec.AbilityNames for their names, and
 -- docs/explanation/abilities.md for how handlers reach the code that
 -- performs operations.
-module LawSpec.AbilityEmit (abilityArtifacts) where
+module LawSpec.AbilityEmit (abilityArtifacts, abilityArtifactsWithNativeBridge) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..), Diagnostic(..))
@@ -18,7 +18,10 @@ import qualified LawSpec.AbilityEmit.Scala as Scala
 import qualified LawSpec.AbilityEmit.Haskell as Haskell
 
 abilityArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-abilityArtifacts minify target plan
+abilityArtifacts = abilityArtifactsWithNativeBridge False
+
+abilityArtifactsWithNativeBridge :: Bool -> Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+abilityArtifactsWithNativeBridge nativeBridge minify target plan
   | not (any unitAbilityPieces units) = Right []
   | otherwise = either (\message -> Left [Diagnostic "abilities" message Nothing]) Right (emitter target)
   where
@@ -26,9 +29,9 @@ abilityArtifacts minify target plan
     datas = planDataDeclarations plan
     bits = planMachineBits plan
     emitter t = case t of
-      "python" -> Python.emit minify bits datas units
-      "javascript" -> Web.emit False minify bits datas units
-      "typescript" -> Web.emit True minify bits datas units
+      "python" -> Python.emitWithNativeBridge nativeBridge minify bits datas units
+      "javascript" -> Web.emitWithNativeBridge nativeBridge False minify bits datas units
+      "typescript" -> Web.emitWithNativeBridge nativeBridge True minify bits datas units
       "go" -> Go.emit minify bits datas units
       "java" -> Java.emit minify bits datas units
       "kotlin" -> Kotlin.emit minify bits datas units

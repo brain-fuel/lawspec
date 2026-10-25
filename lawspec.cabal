@@ -822,6 +822,7 @@ library
       LawSpec.NativeRequestView
       LawSpec.Network
       LawSpec.OperationChecks
+      LawSpec.OutputLayout
       LawSpec.Packages
       LawSpec.Parser
       LawSpec.Persist

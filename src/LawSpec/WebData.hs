@@ -1,5 +1,5 @@
 -- | Native JS classes and TS generic unions rendered from checked Core.
-module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeOf, webDataTypeOfWith, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema, testStrategies, printWith) where
+module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeOf, webDataTypeOfWith, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema, testStrategies, testStrategiesWithSourceRoot, printWith) where
 
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
@@ -214,7 +214,11 @@ printWith layout ts = case layout of
 -- at the runtime and schema in src/. Only the paths change, so the module
 -- stays as Prettier lays it out.
 testStrategies :: Bool -> String
-testStrategies ts = (if ts then "// @ts-nocheck\n" else "") ++
-  replace "\"./lawspec_schema.mjs\"" ("\"../src/lawspec_schema." ++ extension ++ "\"")
-    (replace "\"./lawspec_runtime.mjs\"" ("\"../src/lawspec_runtime." ++ extension ++ "\"") (runtimeSource "web-data-strategies"))
+testStrategies = testStrategiesWithSourceRoot "../src"
+
+-- | Imports in the maintained runtime template use the resolved test root.
+testStrategiesWithSourceRoot :: String -> Bool -> String
+testStrategiesWithSourceRoot sourceRoot ts = (if ts then "// @ts-nocheck\n" else "") ++
+  replace "\"./lawspec_schema.mjs\"" ("\"" ++ sourceRoot ++ "/lawspec_schema." ++ extension ++ "\"")
+    (replace "\"./lawspec_runtime.mjs\"" ("\"" ++ sourceRoot ++ "/lawspec_runtime." ++ extension ++ "\"") (runtimeSource "web-data-strategies"))
   where extension = if ts then "js" else "mjs"
