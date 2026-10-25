@@ -239,7 +239,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
               native `shouldSatisfy` isInfixOf (if target == "elixir" then ":model_counter__parallel," else "example.actor_abilities::model_counter__parallel")
               case target of
                 "elixir" -> native `shouldSatisfy` isInfixOf "use ExUnit.Case"
-                "gleam" -> native `shouldSatisfy` isInfixOf "model_counter__parallel_test() -> Nil"
+                "gleam" -> native `shouldSatisfy` isInfixOf "model_counter__parallel_test_() -> dynamic.Dynamic"
                 _ -> native `shouldSatisfy` isInfixOf "model_counter__parallel_cases()"
     ) ["erlang", "elixir", "gleam"]
   mapM_ (\target -> it (target ++ " emits scenarios with native model calls and complete wire descriptors") $ do
@@ -282,7 +282,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
                 case target of
                   "erlang" -> native `shouldSatisfy` isInfixOf "lawspec_beam_test_run:select_units"
                   "elixir" -> native `shouldSatisfy` isInfixOf "use ExUnit.Case"
-                  _ -> native `shouldSatisfy` isInfixOf "supervision_test() -> Nil"
+                  _ -> native `shouldSatisfy` isInfixOf "supervision_test_() -> dynamic.Dynamic"
     ) ["erlang", "elixir", "gleam"]
   mapM_ (\target -> it (target ++ " builds typed actor APIs through checked adapters and native OTP entry points") $ do
     input <- readFile "examples/specs/actors.lawspec"
@@ -581,7 +581,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         paths standard `shouldNotContain` ["lib/src/lawspec_data.erl", "src/lib/example_echo.ex"]
       failure -> expectationFailure (show failure)
   -- ref:DEC-native-property-frameworks ref:DEC-adapter-ownership
-  it "emits typed Gleam adapters and one native Gleeunit entry per case" $ do
+  it "emits typed Gleam adapters and native generators for individual cases" $ do
     input <- readFile "examples/specs/scalar_adapters.lawspec"
     case (generatedFor "gleam" False input, generatedFor "gleam" True input) of
       (Right readable,Right compact) -> do
@@ -595,7 +595,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         files `shouldNotContain` ["test-support/gleam.toml", "test/lawspec_beam_qcheck.erl", "test/example_scalar_adapters_lawspec_cases.erl"]
         concatMap artifactContent (user readable) `shouldSatisfy` isInfixOf "types.Optional(types.Nullable(Int))"
         let tests = concat [artifactContent a | a <- readable, artifactPath a == "test/example_scalar_adapters_lawspec_test.gleam"]
-        tests `shouldSatisfy` isInfixOf "_test() -> Nil"
+        tests `shouldSatisfy` isInfixOf "_test_() -> dynamic.Dynamic"
       failure -> expectationFailure (show failure)
   -- ref:DEC-idiomatic-generated-types ref:DEC-total-definitions
   it "emits Gleam algebraic data and checked production FFI wrappers" $ do
@@ -665,7 +665,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["fun(First)", "fun(Second)", "lawspec_beam_resources:with_resource", "|fresh| example |still open|", "property", "boundary 1"]
+            ["fun(First)", "fun(Second)", "lawspec_beam_resources:with_resource", "|fresh| example |still open|", "property", "lawspec_beam_finite:values"]
     ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-never-pass-vacuously ref:REQ-harness-units
   it "emits shared resource leases with their checked acquire, reset and release clauses" $ do
@@ -737,7 +737,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             [":such_that(", ":frequency(", "lists:nth(", "lawspec_beam_generators:check_drawn",
              "_LsDraw", "_LsKeep", "340282366920938463463374607431768211456",
-             "examples are outside the strategy", "boundary"]
+             "examples are outside the strategy", "lawspec_beam_finite:plan_cases"]
           body `shouldSatisfy` (not . isInfixOf "<<\"neverDrawn\"/utf8>>")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-never-pass-vacuously

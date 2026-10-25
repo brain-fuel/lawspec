@@ -96,6 +96,7 @@ extra-source-files:
     runtime/lawspec_beam_effects.erl
     runtime/lawspec_beam_endpoint.erl
     runtime/lawspec_beam_fast.erl
+    runtime/lawspec_beam_finite.erl
     runtime/lawspec_beam_generators.erl
     runtime/lawspec_beam_gleam.erl
     runtime/lawspec_beam_handler.erl
@@ -419,6 +420,7 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_effects_tests.erl
     test/fixtures/beam/lawspec_beam_endpoint_tests.erl
     test/fixtures/beam/lawspec_beam_failure_inputs_tests.erl
+    test/fixtures/beam/lawspec_beam_finite_tests.erl
     test/fixtures/beam/lawspec_beam_gleam_tests.erl
     test/fixtures/beam/lawspec_beam_harness_tests.erl
     test/fixtures/beam/lawspec_beam_history_tests.erl

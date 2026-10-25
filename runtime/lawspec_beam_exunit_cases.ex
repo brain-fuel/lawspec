@@ -17,6 +17,7 @@ defmodule LawSpec.Beam.ExUnitCases do
             order: order
           ] do
       factory = :"#{name}_test_"
+      case_at = :"#{name}_case_at"
 
       for {{label, action}, index} <- Enum.with_index(apply(module, factory, [])) do
         @tag lawspec: Atom.to_string(name)
@@ -26,7 +27,7 @@ defmodule LawSpec.Beam.ExUnitCases do
 
         if order do
           @tag lawspec_order: {order, index}
-          @tag lawspec_case: {module, factory, index}
+          @tag lawspec_case: {module, factory, case_at, index}
           @tag timeout: :infinity
         else
           @tag timeout: allowance
@@ -43,7 +44,14 @@ defmodule LawSpec.Beam.ExUnitCases do
           end
         else
           test List.to_string(label) do
-            {_, run} = Enum.at(apply(unquote(module), unquote(factory), []), unquote(index))
+            {_, run} =
+              :lawspec_beam_finite.lookup(
+                unquote(module),
+                unquote(case_at),
+                unquote(factory),
+                unquote(index)
+              )
+
             run.()
           end
         end

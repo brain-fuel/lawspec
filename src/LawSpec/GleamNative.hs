@@ -89,16 +89,19 @@ emitNative layout declarations units = do
         if C.dataHandle d || null cases then mempty else
           D.text " {" <> D.nest 2 (D.hardline <> D.joinWith D.hardline cases) <> D.hardline <> D.text "}")
 
--- | The checked case factories live in test-only Erlang modules. Every case
--- gets a native Gleeunit function so a boundary or example cannot disappear.
-unitTests :: D.Layout -> C.Unit -> [(String,[String],Bool)] -> Artifact
+-- | Native Gleeunit generators return separately named EUnit cases from the
+-- checked plan. The native reporter sees every row without one wrapper per row.
+-- Benchmarks keep their independently selectable native entry points.
+unitTests :: D.Layout -> C.Unit -> [(String,[String],Bool,Bool)] -> Artifact
 unitTests layout unit laws = Artifact ("test/" ++ E.moduleName (C.unitId unit) ++ "_lawspec_test.gleam")
   (D.render (G.layoutFor layout) (G.fileDocFrom (unitSourceFile unit) ([D.text "import gleam/dynamic",
     G.external owner "lawspec_suite" "lawspec_suite" [] (D.text "dynamic.Dynamic"),
     G.function "lawspec_unit" [] (D.text "String") [G.string (C.idText (C.unitId unit))]] ++
     concat [if skipped then [G.external owner (name ++ "_skipped_cases") (name ++ "__skipped_test_") [] (D.text "dynamic.Dynamic")]
-      else [G.external owner (named name suffix "_case") (named name suffix "_test") [] (D.text "Nil")
-        | suffix <- suffixes] | (name,suffixes,skipped) <- laws]))) "generated" "test"
+      else if benchmark then [G.external owner (named name suffix "_case") (named name suffix "_test") [] (D.text "Nil")
+        | suffix <- suffixes]
+      else [G.external owner (name ++ "_gleeunit_cases") (name ++ "_test_") [] (D.text "dynamic.Dynamic")]
+      | (name,suffixes,skipped,benchmark) <- laws]))) "generated" "test"
   where
     owner = E.moduleName (C.unitId unit) ++ "_lawspec_cases"
     -- Each case's test is named for it (BeamProperties.caseFunction).

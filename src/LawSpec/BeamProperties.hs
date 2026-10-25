@@ -17,6 +17,7 @@ import qualified LawSpec.GleamNative as Gleam
 import qualified LawSpec.AbilityNames as N
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Cover
 import LawSpec.NativeRequest (BindingPlan)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
 import LawSpec.Search (lawDescriptors, searchable)
@@ -84,7 +85,7 @@ emit target layout bindings plan = do
           counts = [(n, caseSuffixes plan p) | (n,p) <- zip names properties] ++
             [(ModelChecks.checkName c,[""]) | c <- models] ++ [(n,[""]) | n <- benchmarkNames]
           skips = [n | (n,p) <- zip names properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) /= Nothing]
-          gleamCases = [(n,i,suffix) | (n,suffixes) <- counts, (i,suffix) <- zip [0 :: Int ..] suffixes, target == "gleam", n `notElem` skips]
+          gleamCases = [(n,i,suffix) | (n,suffixes) <- counts, (i,suffix) <- zip [0 :: Int ..] suffixes, target == "gleam", n `elem` benchmarkNames, n `notElem` skips]
           gleamSkips = [n | n <- skips, target == "gleam"]
           caseEntry n suffix = caseFunction n suffix "_case"
           settings = C.unitHarnessSettings unit
@@ -96,15 +97,11 @@ emit target layout bindings plan = do
               E.atom (if parallel then "true" else "false"), groups]
           selected groups = E.remote "lawspec_beam_test_run" "select" [E.binary (C.idText (C.unitId unit)), groups]
           groupLabel n = E.string ("lawspec:" ++ C.idText (C.unitId unit) ++ "::" ++ n)
-          facade = Definitions.adapterModule unit ++ "_lawspec_test"
-          gleamNative n suffix = E.remote "erlang" "make_fun"
-            [E.atom facade, E.atom (caseFunction n suffix "_test"), D.text "0"]
           gleamGroups = selected (E.array
-            [E.tuple [E.binary n, E.tuple [groupLabel n, E.array (if n `elem` skips
-                then [E.tuple [E.atom "generator", E.remote "erlang" "make_fun"
-                  [E.atom facade, E.atom (n ++ "__skipped_test_"), D.text "0"]]]
-                else [E.tuple [E.atom "timeout", D.text (show ((allowance n + 999) `div` 1000)), E.tuple [E.string (caseFunction n suffix ""), gleamNative n suffix]]
-                  | suffix <- suffixes])]] | (n,suffixes) <- counts])
+            [E.tuple [E.binary n, E.tuple [groupLabel n, E.call (n ++ "_gleeunit_cases") []]] | n <- allNames])
+          gleamFactories = [E.function (n ++ "_gleeunit_cases") []
+            [E.remote "lawspec_beam_finite" "with_timeout"
+              [D.text (show ((allowance n + 999) `div` 1000)), eunitCases n]] | target == "gleam", n <- allNames]
           gleamSuite = [E.function "lawspec_suite" [] [if scheduled then schedule gleamGroups else gleamGroups]
             | target == "gleam"]
           bridges = [E.function (caseEntry n suffix) [] [E.remote "lawspec_beam_gleam" "run_case"
@@ -114,8 +111,9 @@ emit target layout bindings plan = do
           exports = case target of
             "erlang" -> [("cases",0),("scheduled_cases",0),("suite",0)] ++ [(n ++ "_cases",0) | n <- allNames]
             "gleam" -> [(caseEntry n suffix,0) | (n,_,suffix) <- gleamCases] ++ [(n ++ "_skipped_cases",0) | n <- gleamSkips] ++
-              [("lawspec_suite",0)]
+              [("lawspec_suite",0)] ++ [(n ++ "_gleeunit_cases",0) | n <- allNames]
             _ -> [(n ++ "_test_",0) | n <- allNames]
+          indexedExports = [(n ++ "_case_at", 1) | n <- names, n `notElem` skips]
           grouped = [E.function "cases" [] [E.array
             [E.tuple [groupLabel n, eunitCases n] | (_,n) <- groups]] | target == "erlang"]
           erlangSelected = selected (E.remote "lists" "zip" [E.array (map E.binary allNames), E.call "cases" []])
@@ -138,9 +136,9 @@ emit target layout bindings plan = do
             | check <- models]
       measurements <- sequence [benchmarkTest unit n label body | (n,(label,body)) <- zip benchmarkNames measured]
       pure (Artifact (testSupport ++ name ++ ".erl")
-        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name exports (bodies ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite))) "generated" "test" :
+        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name (exports ++ indexedExports) (bodies ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite ++ gleamFactories))) "generated" "test" :
         [Elixir.unitTests layout unit [(n, allowance n, described n) | n <- allNames] | target == "elixir"] ++
-        [Gleam.unitTests layout unit [(n,suffixes,n `elem` skips) | (n,suffixes) <- counts] | target == "gleam"])
+        [Gleam.unitTests layout unit [(n,suffixes,n `elem` skips,n `elem` benchmarkNames) | (n,suffixes) <- counts] | target == "gleam"])
     benchmarkTest unit name label expression = do
       body <- Expr.renderExpression bits schema symbols
         (\identity -> error ("unbound BEAM benchmark binder: " ++ C.idText identity))
@@ -248,8 +246,18 @@ emit target layout bindings plan = do
         let body' = if plainScope && null resources && not hasPolicies then statements
               else [workflowScope (if plainScope then acquired else scoped schema exampleSchema acquired)]
         pure (test suffix exampleLink False body')
-      let boundaryTests = [test (boundaryTestSuffix i) lawLink False [check (invoke (E.array (map (E.value symbols) values)))]
-            | (i,values) <- zip [0::Int ..] (maybe (boundaryCases planned) id (finiteCases planned))]
+      cover <- caseCover planned
+      let coverExpression = beamCover cover
+          finiteIndex = D.text "CaseIndex"
+          finiteFactories = D.text "CaseFactories"
+          finiteValues = E.remote "lawspec_beam_finite" "values" [symbols, finiteFactories]
+          finiteStatements = [check (invoke finiteValues)]
+          finiteBody = withHarnessNamed label
+            (E.remote "lawspec_beam_finite" "name" [E.binary (label ++ " " ++ label ++ " boundary_"), finiteIndex])
+            harness (not (null resources)) False (E.sequenceDoc (contextFor finiteStatements ++ finiteStatements))
+          finiteMake = E.lambda [finiteIndex, finiteFactories] (nativeTimeout (E.tuple
+            [E.remote "lawspec_beam_finite" "description" [E.binary shown, finiteIndex], E.lambda [] finiteBody]))
+          finiteGroups = [E.tuple [E.atom "finite", coverExpression, finiteMake] | Cover.coverCount cover > 0]
       randomTests <- case finiteCases planned of
         -- An exhaustive law has no random samples to satisfy cover. Still
         -- report zero observations; a cover clause must not silently pass.
@@ -300,22 +308,17 @@ emit target layout bindings plan = do
           pure [test "search" lawLink False [E.remote "lawspec_beam_search" "climb"
             [lawIdentity,E.array (map E.binary descriptors),E.lambda [values] guarded]]]
       acquired <- bracket schema (raw schema (D.text "Values"))
-      let -- Validate explicitly requested draws before a deterministic failure
-          -- can satisfy `known failing` and bypass strategy/coverage checks.
-          ordinaryPairs
+      let -- Validate explicitly requested draws before deterministic checks
+          -- can satisfy a known failure and bypass strategy/coverage checks.
+          (before, after)
             | C.harnessKnownFailing harness /= Nothing && sampleFinite plan planned =
-                randomTests ++ examples ++ boundaryTests ++ searchTests
-            | otherwise = examples ++ boundaryTests ++ randomTests ++ searchTests
-          ordinaryItems = map fst ordinaryPairs
-          caseFunctions = map snd ordinaryPairs
-          -- BEAM functions cannot keep more than 1024 closure values live
-          -- while building a list. Construct large suites in small helpers,
-          -- retaining one independently named test for every original case.
-          parts = if length ordinaryItems >= 1024 then groupsOf 64 ordinaryItems else []
-          partName i = name ++ "_tests_part_" ++ show i
-          partDocs = [E.function (partName i) [] [E.array items] | (i,items) <- zip [0::Int ..] parts]
-          ordinary = if null parts then E.array ordinaryItems else E.remote "lists" "append"
-            [E.array [E.call (partName i) [] | i <- [0 .. length parts - 1]]]
+                (randomTests ++ examples, searchTests)
+            | otherwise = (examples, randomTests ++ searchTests)
+          fixed pairs = [E.tuple [E.atom "fixed", E.array (map fst pairs)] | not (null pairs)]
+          planName = name ++ "_plan"
+          planDoc = E.function planName [] [E.array (fixed before ++ finiteGroups ++ fixed after)]
+          ordinary = E.remote "lawspec_beam_finite" "plan_cases" [E.call planName []]
+          caseFunctions = map snd (before ++ after)
           tests = case C.harnessKnownFailing harness of
             Nothing -> ordinary
             Just reason ->
@@ -330,10 +333,19 @@ emit target layout bindings plan = do
               [E.array [E.variable v body | (_,v) <- resourceAliases] | not (null resources)]) [body]
           caseDoc = E.function caseName [D.text (if plainScope then "Schema" else "BaseSchema"),symbols,D.text "Values"]
             [workflowScope (if plainScope then acquired else scoped (D.text "BaseSchema") schema acquired)]
-      pure ([bodyDoc] ++ [caseDoc | not plainCase] ++ [E.function (name ++ "_test_") [] [tests]] ++ caseFunctions ++ partDocs)
+          caseAtDoc = E.function (name ++ "_case_at") [D.text "Index"]
+            [if C.harnessKnownFailing harness == Nothing
+               then E.remote "lawspec_beam_finite" "case_at" [E.call planName [], D.text "Index"]
+               else E.remote "lists" "nth" [E.operator "+" (D.text "Index") (D.text "1"), E.call (name ++ "_test_") []]]
+      pure ([bodyDoc] ++ [caseDoc | not plainCase] ++
+        [planDoc, E.function (name ++ "_test_") [] [tests], caseAtDoc] ++ caseFunctions)
 
-    groupsOf _ [] = []
-    groupsOf count values = let (group,rest) = splitAt count values in group : groupsOf count rest
+    beamCover (Cover.Complete count) = E.tuple [E.atom "copies", D.text (show count)]
+    beamCover (Cover.Alternatives branches) = E.tuple [E.atom "branches", E.array
+      [E.tuple [domainDoc domain, beamCover suffix] | (domain, suffix) <- branches]]
+    domainDoc (Cover.Values values) = E.tuple [E.atom "values", E.array
+      [E.lambda [symbols] (E.value symbols value) | value <- values]]
+    domainDoc (Cover.IntegerInterval _ first last') = E.tuple [E.atom "integers", D.text (show first), D.text (show last')]
 
 -- | The names of a law's cases, in the order its test list runs them:
 -- each example's own words, boundary_1, boundary_2, ..., then property,
@@ -375,7 +387,10 @@ caseDescriptions plan planned = uniqueNames (map bounded (zipWith describe (case
       ("statistics", _) -> shown ++ " statistics"
       ("search", _) -> shown ++ " search"
       (_, Just e) | not (isBoundary suffix) -> shown ++ " example " ++ e
-      _ -> shown ++ " " ++ map (\c -> if c == '_' then ' ' else c) suffix
+      _ | isBoundary suffix ->
+            let ending = " " ++ map (\c -> if c == '_' then ' ' else c) suffix
+            in take (max 0 (200 - length ending)) shown ++ ending
+        | otherwise -> shown ++ " " ++ map (\c -> if c == '_' then ' ' else c) suffix
     isBoundary suffix = take 9 suffix == "boundary_" && all (`elem` ['0'..'9']) (drop 9 suffix)
     bounded text = if length text <= 200 then text else take 197 text ++ "..."
 
@@ -443,9 +458,12 @@ runnerAllowance planned = runnerGuard + count * (attempts * timeout + cleanup)
       Just _ -> 2 + toInteger (length (C.propertyExamples law) + length (maybe (boundaryCases planned) id (finiteCases planned)))
 
 withHarness :: String -> String -> C.LawHarness -> Bool -> Bool -> D.Doc -> D.Doc
-withHarness label kind harness resources observations body
+withHarness label kind = withHarnessNamed label (E.binary (label ++ " " ++ kind))
+
+withHarnessNamed :: String -> D.Doc -> C.LawHarness -> Bool -> Bool -> D.Doc -> D.Doc
+withHarnessNamed label testName harness resources observations body
   | not observations && not controlled = body
-  | otherwise = E.remote "lawspec_beam_harness" "run" ([E.binary label,E.binary (label ++ " " ++ kind),
+  | otherwise = E.remote "lawspec_beam_harness" "run" ([E.binary label,testName,
       E.array [E.tuple [D.text (show percent),E.binary name] | observations, C.Cover percent name _ <- C.harnessCover harness]] ++
       [E.record ([(E.atom "repeat",D.text (show (C.harnessRepeat harness))),
         (E.atom "retries",D.text (show (C.harnessRetries harness))),

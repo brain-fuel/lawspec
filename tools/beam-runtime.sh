@@ -33,7 +33,7 @@ erl -noshell -pa "$beam_artifacts" -eval '
     lawspec_beam_wire_tests:vectors(".artifacts/beam-runtime/network-frames.json"),
     lawspec_beam_memory_network_tests:vectors(".artifacts/beam-runtime/network-faults.json"),
     lawspec_beam_channel_protocol_tests:vectors(".artifacts/beam-runtime/channel-states.json"),
-    case eunit:test([lawspec_beam_scalar_tests, lawspec_beam_schema_tests,
+    case eunit:test([lawspec_beam_finite_tests, lawspec_beam_scalar_tests, lawspec_beam_schema_tests,
             lawspec_beam_values_tests, lawspec_beam_search_tests, lawspec_beam_schedule_tests, lawspec_beam_benchmark_tests, lawspec_beam_report_tests,
             lawspec_beam_runtime_tests, lawspec_beam_recorded_tests, lawspec_beam_effects_tests, lawspec_beam_resources_tests, lawspec_beam_owner_tests,
             lawspec_beam_defaults_tests, lawspec_beam_crypto_tests, lawspec_beam_waits_tests,

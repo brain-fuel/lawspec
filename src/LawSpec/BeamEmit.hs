@@ -161,7 +161,7 @@ emitBeamWithBindings target minify bindings plan = do
       any (not . null . C.declarationUses) (concatMap C.unitDeclarations units)
     generators tests = if null tests then [] else
         [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
-          | name <- ["generators", "index", "harness", "schedule"]] ++
+          | name <- ["generators", "index", "harness", "schedule", "finite"]] ++
         [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | target == "erlang"] ++
         [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
         [Artifact "test/support/lawspec_beam_exunit_formatter.ex" (runtimeSource "beam-exunit-formatter") "generated" "test" | target == "elixir"] ++

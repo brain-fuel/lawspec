@@ -44,11 +44,11 @@ defmodule LawSpec.Beam.ExUnitSchedule do
 
     jobs =
       Enum.map(ordered, fn test ->
-        {owner, factory, index} = test.tags.lawspec_case
+        {owner, factory, case_at, index} = test.tags.lawspec_case
 
         {test.name,
          fn ->
-           {_, run} = Enum.at(apply(owner, factory, []), index)
+           {_, run} = :lawspec_beam_finite.lookup(owner, case_at, factory, index)
            run.()
          end}
       end)

@@ -38,7 +38,7 @@ runtimeFiles =
   , ("beam-runtime", "lawspec_beam_runtime.erl"), ("beam-proper", "lawspec_beam_proper.erl")
   , ("beam-effects", "lawspec_beam_effects.erl"), ("beam-handler", "lawspec_beam_handler.erl")
   , ("beam-resource", "lawspec_beam_resource.erl"), ("beam-resources", "lawspec_beam_resources.erl")
-  , ("beam-test_run", "lawspec_beam_test_run.erl"), ("beam-harness", "lawspec_beam_harness.erl")
+  , ("beam-finite", "lawspec_beam_finite.erl"), ("beam-test_run", "lawspec_beam_test_run.erl"), ("beam-harness", "lawspec_beam_harness.erl")
   , ("beam-report", "lawspec_beam_report.erl")
   , ("beam-coverage", "lawspec_beam_coverage.erl")
   , ("beam-exunit-formatter", "lawspec_beam_exunit_formatter.ex"), ("beam-exunit-cases", "lawspec_beam_exunit_cases.ex")
