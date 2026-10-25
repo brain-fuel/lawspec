@@ -12,6 +12,7 @@
 -- several checks. The manifest records their actual files and native slots.
 module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, testManifestWithNativeContext, testManifestWithBindings, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 import LawSpec.Targets (artifactTargets)
+import LawSpec.Network (usesNetworkUnits)
 import LawSpec.Naming (displayLabel)
 
 import Data.Char (isAlphaNum, toUpper)
@@ -151,7 +152,7 @@ testManifestWithContext modelsSelected nativeBindings bound generators target te
     -- Until native dependencies are explicit, preserve that conservative
     -- implementation closure. Pure laws retain precise per-law reuse.
     generatedNativeAPI = semanticKey graph "native-generated-public-api"
-      ( [ (idText (declarationId declaration), declarationName declaration,
+      (( [ (idText (declarationId declaration), declarationName declaration,
            declarationId declaration,
            [binderName binder | namedArguments, binder <- definitionArguments definition])
         | unit <- programUnits program, definition <- unitDefinitions unit,
@@ -168,7 +169,8 @@ testManifestWithContext modelsSelected nativeBindings bound generators target te
       , [ (idText (unitId unit), semanticKey graph "native-supervisors" (unitSupervisors unit),
            [(idText (abilityId ability), abilityName ability, abilityId ability) | ability <- unitAbilities unit],
            [(idText (handlerId handler), handlerName handler, handlerId handler) | handler <- unitHandlers unit])
-        | unit <- programUnits program, not (null (unitSupervisors unit) && null (unitAbilities unit) && null (unitHandlers unit)) ] )
+        | unit <- programUnits program, not (null (unitSupervisors unit) && null (unitAbilities unit) && null (unitHandlers unit)) ])
+      , usesNetworkUnits (programUnits program) )
     namedArguments = target `elem` ["python", "csharp", "fsharp", "kotlin"]
     -- Spec-handler initial state is executable Core too, beyond its clauses.
     handlers p = [handler | unit <- programUnits program, handler <- unitHandlers unit,
