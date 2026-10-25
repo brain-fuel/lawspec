@@ -1,7 +1,7 @@
 -- | Native data declarations follow the resolved-plan/renderer separation used
 -- by Go+. Public fields retain native types; runtime Value is only the bridge
 -- for primitive domains with no faithful Java representation.
-module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaCodecDocIn, javaDataName, identifier, javaCodecName) where
+module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaCodecDocIn, javaDataName, identifier, javaCodecName, namesFor) where
 
 import LawSpec.JvmNames (googleCase)
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)

@@ -1,7 +1,7 @@
 -- | Native entry points and checked implementation helpers for total definitions.
 module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, emitScalaDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
 
-import LawSpec.JavaText (javaText)
+import qualified LawSpec.JavaLayout as J
 import LawSpec.Core.Stages (stageFailures)
 import LawSpec.JvmLets (flattenStrictLets)
 import LawSpec.Core.Policy
@@ -189,18 +189,19 @@ emitDefinitions style layout bits declarations units = do
           nativeResult <- Native.javaDataTypeDoc declarations result
           let declaration = definitionDeclaration d
               parameters = D.text "Map<String, Object> symbols" : [ty <> D.text (" value" ++ show i) | (i, ty) <- zip [0::Int ..] nativeArgs]
-          pure (D.group (D.text "public static " <> nativeResult <> D.text (" " ++ apiName declaration ++ "(") <>
-              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")") <> D.hardline <>
-            D.block 2 (D.text "return " <> E.call toNative [E.call function
-              [E.call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]] <> D.text ";"))
+          pure (J.block (J.signature "public static " nativeResult (apiName declaration) parameters)
+            [J.returned (E.call toNative [E.call function
+              [E.call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]])])
       | otherwise = nativeDynamic d
     -- A definition's method: its name as Google Java Style writes it
     -- (nOfStack is nofStack).
     -- A definition's API name is jvmLocal's (nofStack, shortValue), or its
     -- own in Google's case where jvmLocal would drop its digits.
-    apiName declaration = let n = declarationName declaration
-                              j = jvmLocal "java" [] n
-      in if filter isDigit j == filter isDigit n then j else googleCase n
+    apiName declaration =
+      let (arguments, _) = functionType (declarationType declaration)
+          name = readableDefinitionName (declarationName declaration) arguments
+          local = jvmLocal "java" [] name
+      in if filter isDigit local == filter isDigit name then local else googleCase name
     nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
@@ -218,14 +219,7 @@ emitDefinitions style layout bits declarations units = do
           installs = [E.call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
             E.call "java.util.Map.<String, Object>of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
             | not (null handlers)]
-          opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ apiName declaration ++ "("
-          normalSignature = D.group (D.text "public static " <> nativeResult <>
-            D.text (" " ++ apiName declaration ++ "(") <>
-            D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")")
-          wrappedSignature = D.text "public static " <> nativeResult <>
-            D.nest 4 (D.hardline <> D.text (apiName declaration ++ "(") <>
-              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ")")
-          signature = D.prefixChoice opening normalSignature wrappedSignature
+          signature = J.signature "public static " nativeResult (apiName declaration) parameters
           input i codec = [assign ("codec" ++ show i) codec,
             D.text ("var argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ");")]
           invocation = E.call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
@@ -352,7 +346,7 @@ emitDefinitions style layout bits declarations units = do
             codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits . expressionType) args
             resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits (expressionType expression)
             let call = D.group (handlerDoc (operationAbility op) <> D.nest 4 (D.softbreak <> E.call ("." ++ operationName op)
-                  [E.call (D.render D.Compact codec ++ ".decode") [value] | (codec, value) <- zip codecs values]))
+                  [J.method codec "decode" [value] | (codec, value) <- zip codecs values]))
             -- An operation that fails with E: a native handler throws
             -- LawSpecRuntime.Fail with a native E, which becomes the failure.
             pure $ failingAs (maybe [] pure (findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd)) $
@@ -433,27 +427,31 @@ emitDefinitions style layout bits declarations units = do
         start <- evaluator (breakerStart b)
         admit <- evaluator (breakerAdmit b)
         record <- evaluator (breakerRecord b)
-        pure (gate "breaker" (start ++ "(symbols, LawSpecRuntime.integer64(now))") (admit ++ "(symbols, state, LawSpecRuntime.integer64(now))")
-          (Just (record ++ "(symbols, " ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++
-            ", state, LawSpecRuntime.integer64(now), LawSpecRuntime.bool(succeeded))")) (-2))
+        pure (gate "breaker" (E.call start [symbols, now]) (E.call admit [symbols, state, now])
+          (Just (E.call record ([symbols] ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++
+            [state, now, E.call "LawSpecRuntime.bool" [D.text "succeeded"]]))) (-2))
       limit <- forM (policyLimit policy) $ \l -> do
         start <- evaluator (limitStart l)
         admit <- evaluator (limitAdmit l)
         let numbers = integers [limitCount l, limitPeriod l]
-        pure (gate "limit" (start ++ "(symbols, " ++ numbers ++ ", LawSpecRuntime.integer64(now))")
-          (admit ++ "(symbols, " ++ numbers ++ ", state, LawSpecRuntime.integer64(now))") Nothing (waitCode (limitWait l)))
+        pure (gate "limit" (E.call start ([symbols] ++ numbers ++ [now]))
+          (E.call admit ([symbols] ++ numbers ++ [state, now])) Nothing (waitCode (limitWait l)))
       bulkhead <- forM (policyBulkhead policy) $ \b -> do
         start <- evaluator (bulkheadStart b)
         admit <- evaluator (bulkheadAdmit b)
         release <- evaluator (bulkheadRelease b)
-        let n = integers [bulkheadLimit b]
-        pure (gate "bulkhead" (start ++ "(symbols, " ++ n ++ ", LawSpecRuntime.integer64(now))")
-          (admit ++ "(symbols, " ++ n ++ ", state, LawSpecRuntime.integer64(now))") (Just (release ++ "(symbols, state)")) (waitCode (bulkheadWait b)))
+        let numbers = integers [bulkheadLimit b]
+        pure (gate "bulkhead" (E.call start ([symbols] ++ numbers ++ [now]))
+          (E.call admit ([symbols] ++ numbers ++ [state, now]))
+          (Just (E.call release [symbols, state])) (waitCode (bulkheadWait b)))
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
     gate kind start admit finish wait = E.call "new LawSpecRuntime.Gate"
-      [E.quoted kind, javaText ("now -> " ++ start), javaText ("(state, now) -> " ++ admit),
-       javaText (maybe "null" ("(state, now, succeeded) -> " ++) finish), long wait]
-    integers numbers = intercalate ", " ["LawSpecRuntime.integer64(" ++ show n ++ ")" | n <- numbers]
+      [E.quoted kind, J.lambdaValue ["now"] start, J.lambdaValue ["state", "now"] admit,
+       maybe (D.text "null") (J.lambdaValue ["state", "now", "succeeded"]) finish, long wait]
+    symbols = D.text "symbols"
+    state = D.text "state"
+    now = E.call "LawSpecRuntime.integer64" [D.text "now"]
+    integers numbers = [E.call "LawSpecRuntime.integer64" [D.text (show n)] | n <- numbers]
     waitCode wait = case wait of
       Nothing -> -2
       Just Nothing -> -1
