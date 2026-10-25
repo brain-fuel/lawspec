@@ -379,9 +379,10 @@ copyChain :: Chain -> Chain
 copyChain value=value
 `;
 function haskellCheck(bits,result){
-  const record=labels=>result.dataTypes.find(type=>type.structure&&
-    JSON.stringify(type.structure.fields.map(field=>field.name))===JSON.stringify(labels)).name;
-  const payload=record(['first','last']),details=record(['count','flag']);
+  // The fixture's public native names come from the constructor using the
+  // outer record and the inner record's fields; Core's digest names stay
+  // internal to the compiler.
+  const payload='PackedDetails',details='CountFlag';
   return `module Main where
 import qualified Prelude as P
 import Prelude (IO,($),(>>=),(>>),pure,fail,otherwise)
