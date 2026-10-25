@@ -283,7 +283,8 @@ renderWith declarations bits schema typeReference typeKey callees = render
               Local _ -> True
               Construct _ inner -> all inline inner
               _ -> False
-            locals = ["constructor_field_" ++ show i | i <- [0 :: Int .. length fields - 1]]
+            locals = fst (claimAll (scopeWith (reservedLocals ++ map snd names))
+              ["field_" ++ show i | i <- [0 :: Int .. length fields - 1]])
         -- Preserve evaluation order and keep block-valued fields out of vec!
         -- argument layouts, whose packing rules differ from ordinary calls.
         pure (if all inline fields then construct values else
