@@ -231,11 +231,14 @@ unit's test/stub product. Full definition admission and namespace checks still
 run before reuse. Public Go data/schema/codec artifacts are assembled outside
 this unit memo, preserving the complete public API in every package.
 
-Model-bearing unit products retain their complete schema/definition context
-until those dependencies are exposed separately. Other remaining emission
-work includes JVM per-definition adoption and public per-type emitters beyond
-the typed chunks above; shared Go scalar-generator helpers also retain their
-actual global scalar-set dependency.
+Model products use the same checked dependency closure: machine callbacks,
+argument descriptors, scenarios and contracts retain their real dependencies,
+while unrelated type contents and unused bodies do not invalidate them. Public
+Go scalar registry and assertion helpers are assembled as a separate test
+companion, preserving exactly the previously selected primitive generators.
+Adding a public type with a new scalar updates that companion without
+re-lowering independent unit tests. Remaining public per-type emitter adoption
+outside the JVM and typed chunks is tracked by target family.
 
 The regression oracle compares warm products against a cold compiler baseline
 that bypasses all Haskell memo-table reads and writes. It covers type/name and

@@ -402,6 +402,40 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       case run "0" of
         Just (Object result) -> KeyMap.lookup "diagnostics" result `shouldSatisfy` maybe False (\case Array diagnostics -> not (null diagnostics); _ -> False)
         result -> expectationFailure (show result)
+  describe "model unit emission dependencies" $ do
+    forM_ ["java","kotlin","scala","go","haskell"] $ \target ->
+      it ("reuses " ++ target ++ " model products after unrelated type/body edits") $ do
+        root <- (</> ("lawspec-model-outer-" ++ target ++ "-memo-test")) <$> getTemporaryDirectory
+        removePathForcibly root
+        let input fieldType increment = encode (object
+              ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+               "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
+               "verification" .= object ["layers" .= (["examples","model"] :: [String])],
+               "sources" .= [object ["path" .= ("models.lawspec" :: String), "content" .= unlines
+                 ["unit modelChunks.counter", "type Counter is a record { id :: Int32 } end type",
+                  "newCounter :: Unit -> Counter", "read :: Counter -> Int64",
+                  "function modelRead (value :: Int64) -> Pair Int64 Int64 is Pair value value end function",
+                  "function unused (value :: Integer) -> Integer is value + " ++ increment ++ " end function",
+                  "model counter :: shared Counter by Int64 is start newCounter ~ 0 read ~ modelRead end model", "end unit"]],
+                 object ["path" .= ("other.lawspec" :: String), "content" .= unlines
+                  ["unit modelChunks.other", "type Other is a record { marker :: " ++ fieldType ++ " } end type",
+                   "nativeOther :: Other -> Bool", "end unit"]]]])
+            run ty value = decode (dispatch (input ty value)) :: Maybe Value
+            good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+            good _ = False
+        run "Unit" "1" `shouldSatisfy` good
+        [versioned] <- listDirectory root
+        let directory = root </> versioned </> "emit-product"
+        first <- listDirectory directory
+        length first `shouldBe` 2
+        run "Text" "1" `shouldSatisfy` good
+        second <- listDirectory directory
+        length second `shouldBe` 3
+        run "Text" "2" `shouldSatisfy` good
+        listDirectory directory >>= (`shouldMatchList` second)
+        cold <- evaluate (decode (withoutMemoization dispatch (input "Text" "2")) :: Maybe Value)
+        run "Text" "2" `shouldBe` cold
+        removePathForcibly root
   describe "native execution context" $ do
     it "keys the actual shared node budget without imposing it on Python or Web" $ do
       let sources count =

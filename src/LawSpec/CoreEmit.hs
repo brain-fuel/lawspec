@@ -62,7 +62,7 @@ import LawSpec.Network (withNetworkModules, usesNetworkUnits)
 import qualified LawSpec.Core as C
 import LawSpec.BuiltinDefaults (withBuiltinDefaults, withBuiltinDefaultsFor, javaVectorCases)
 import LawSpec.Builtins (defaultedUnits)
-import LawSpec.Scalar (primitive,primitiveName,primitives)
+import LawSpec.Scalar (primitive)
 import LawSpec.TargetNames (nativeName, phraseNativeName, allTargetKeywords)
 import qualified LawSpec.Targets as Targets
 import qualified LawSpec.ArtifactEmit as ArtifactEmit
@@ -631,26 +631,23 @@ emitPlanProduct javaStyle minify target Plan{..} = do
     emitUnit laws u = do
       let owned = filter ((== unitName u) . owner) laws
           testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
-          -- Models retain the complete context until their schema/wire
-          -- dependencies are exposed by their own structured products.
-          models = not (null (C.unitMachines testing) && null (C.unitSupervisors testing))
-          interface = testing { C.unitProperties = [], C.unitDefinitions = if models then C.unitDefinitions testing else [] }
+          -- Machine callbacks, scenarios and their argument descriptors are
+          -- checked references in the graph. Bodies are emitted separately;
+          -- their signatures still determine callback arity and public stubs.
+          interface = testing { C.unitProperties = [], C.unitDefinitions = [] }
           definitions = [(C.definitionDeclaration definition,C.definitionArguments definition,
             C.definitionOrchestrates definition,C.definitionPolicy definition) | definition <- C.unitDefinitions testing]
           reached = D.closure graph (D.referencesOf graph (interface,owned))
-          types = if models then planDataDeclarations else D.reachableData graph reached
+          types = D.reachableData graph reached
           selectedIds = Set.fromList [identity | declaration <- types,
             identity <- C.dataId declaration : map C.constructorId (C.dataConstructors declaration)]
           neededCalls = Set.fromList (map C.declarationId (C.unitDeclarations testing) ++
             map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions testing) ++
             [identity | D.DeclarationNode identity <- Set.toList reached])
-          callNames = if models then calls else filter ((`Set.member` neededCalls) . fst) calls
+          callNames = filter ((`Set.member` neededCalls) . fst) calls
           globalFlags = (not (null planDataDeclarations),not (null calls),any (("Workflows." `isPrefixOf`) . snd) calls,
             hasConstructorContracts planDataDeclarations)
           collectionFlag = target == "haskell" && any (isCollectionsType . C.idText . C.dataId) planDataDeclarations
-          scalarNames = if target == "go" then Set.toAscList (Set.fromList
-            (concat [scalars (C.binderType field) | declaration <- planDataDeclarations,
-              constructor <- C.dataConstructors declaration,field <- C.constructorFields constructor])) else []
       allocated <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right nativeNames
       -- Namespace validation is independent of the memo. An unrelated public
       -- type may newly collide with an adapter even when its law is unchanged.
@@ -661,7 +658,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
           key = digestHex (digestString (show ("unit-context-2",javaStyle,minify,target,planMachineBits,
             D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
             map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
-            Native.dataBudget laws,globalFlags,collectionFlag,scalarNames)))
+            Native.dataBudget laws,globalFlags,collectionFlag)))
       cached <- fmap unstoreProduct $ memoized emitTable key (fmap storeProduct (emitUnitWith laws testing))
       companions <- if target == "go" then Native.goCompanionArtifacts [] False minify planDataDeclarations calls planMachineBits testing laws else pure []
       pure cached { Product.jvmArtifacts = companions ++ Product.jvmArtifacts cached }
@@ -675,11 +672,6 @@ emitPlanProduct javaStyle minify target Plan{..} = do
       "haskell" -> HaskellData.namesFor planDataDeclarations
       "go" -> concatMap (\(declaration,names) -> zip (C.dataId declaration : map C.constructorId (C.dataConstructors declaration)) names) <$> GoData.goEmittedNames planDataDeclarations
       _ -> pure []
-    scalars ty = case ty of
-      C.Constructor name arguments -> [name | name `elem` map primitiveName primitives] ++
-        concat [scalars value | C.TypeArgument value <- arguments]
-      C.Arrow argument result -> scalars argument ++ scalars result
-      _ -> []
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
           Native.nativeScalarUnitProductWithAdapterBindings javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws

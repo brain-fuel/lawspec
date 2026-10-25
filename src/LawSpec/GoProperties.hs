@@ -13,7 +13,6 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.GoExpr as E
-import qualified LawSpec.GoTestHelpers as Helpers
 import Data.List (intercalate, stripPrefix)
 
 -- | What the Go test emitter needs besides the plan: names, layout and
@@ -24,8 +23,6 @@ data Config = Config
   , local :: C.Id -> String
   -- The wrappers of the adapters the laws call (lawspec<Adapter>).
   , adapterWrappers :: [D.Doc]
-  -- The scalar types whose generators data strategies may ask for.
-  , scalarsUsed :: [String]
   -- An async adapter's call, awaited.
   , awaitResult :: String -> D.Doc -> D.Doc
   , schemaNeeded :: Bool
@@ -108,13 +105,12 @@ emitTests Config{..} unit laws = do
   let refinedOnly e = not (constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
         || any (structural . inputType) (inputs e)) && (any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract")
       needsRapid = schemaNeeded || harnessed || any (\e -> finiteCases e == Nothing && not (refinedOnly e)) laws
-      definitionsDocs = [Helpers.dataHelpersDoc scalarsUsed generator | schemaNeeded] ++
-        adapterWrappers ++ map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
+      definitionsDocs = adapterWrappers ++ map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
       -- rapid is imported where the tests draw with it; LAWSPEC_SEED still
       -- seeds it for a harnessed unit's runtime.
       usesRapid = "rapid" `elem` E.identifiers (D.render D.Compact (D.joinWith D.hardline definitionsDocs))
       importDoc = text "import (" <> D.nest 8 (D.hardline <>
-        statements ([quoted "flag" | needsRapid] ++ [quoted "fmt" | schemaNeeded] ++ [quoted "os" | needsRapid || sharing || orderRandom || parallel] ++
+        statements ([quoted "flag" | needsRapid] ++ [quoted "os" | needsRapid || sharing || orderRandom || parallel] ++
           [quoted "testing" | not (null laws)]) <>
         (if usesRapid then D.hardline <> D.hardline <> quoted "pgregory.net/rapid" else mempty)) <>
         D.hardline <> text ")"
