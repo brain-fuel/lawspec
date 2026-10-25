@@ -347,6 +347,20 @@ test('Node structured reports preserve phrase names and literal XML entities wit
   } finally {await rm(scratch,{recursive:true,force:true});}
 });
 
+test("Go finite containers do not stand for executed cases", async () => {
+  const entry = law(1, "example/unit/lawspec_test.go", undefined, "go");
+  const [run] = invocations({language: "go"}, [entry]);
+  const parent = {name: "TestLaw1_Boundaries", status: "passed"};
+  const child = {name: "TestLaw1_Boundaries/Boundary256", status: "passed"};
+  assert.deepEqual(run.matches(parent), []);
+  assert.deepEqual(run.ran(parent), []);
+  assert.deepEqual(run.matches(child), [entry]);
+  assert.deepEqual(run.ran(child), [entry]);
+  assert.deepEqual(run.ran({...child, status: "failed"}), []);
+  assert.deepEqual(await ranLaws({language: "go"}, [entry], undefined,
+    JSON.stringify({Action: "pass", Test: parent.name, Package: "p"}) + "\n"), []);
+});
+
 test("reads Go events, Rust results and hspec examples", async () => {
   const go = [law(0, "example/unit/lawspec_test.go", undefined, "go"), law(1, "example/unit/lawspec_test.go", undefined, "go")];
   assert.deepEqual(await ranLaws({ language: "go" }, go, undefined,

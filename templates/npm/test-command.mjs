@@ -385,7 +385,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
           `^(${[...new Set(laws.map(e=>regex(e.name)+(model(e)?"$":"_")))].join("|")})`:
           `^(${laws.map((e) => regex(e.name)).join("|")})_`],
       report: { kind: "go-json" },
-      ran: (test) => laws.filter((e) => named(e).test(test.name)) }));
+      ran: (test) => laws.filter((e) => named(e).test(test.name) && test.name !== `${e.name}_Boundaries`) }));
   if (language === "java") {
     const byClass = groupBy(entries, (e) => className(e.file, "src/test/java", ".java"));
     return [{ laws: entries, command: target.maven || "mvn",

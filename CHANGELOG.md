@@ -8,18 +8,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Complete scoped finite searches share one typed candidate body and enumerate
+- Complete and bounded scoped searches share one typed candidate body and enumerate
   their domain at runtime. Their ordered, three-outcome execution preserves
   short-circuiting and incomplete results. Source comments retain the original
   checked proposition, independently of its execution plan.
 
 - Finite test plans store ordered shared prefixes and inclusive integer ranges.
-  JavaScript, TypeScript and Python enumerate that data at runtime and register
+  JavaScript, TypeScript, Python and Go enumerate that data at runtime and register
   each case separately, with fresh values and a fresh context for every run.
   In the handler-bindings suite, the JavaScript test file shrinks from 1,096,011
   lines to 2,771 and Python from 1,127,192 to 3,026. Both still execute all 8,012
-  cases and reject the two adapter mutations. Other target emitters and partial
-  search schedules are still being converted.
+  cases and reject the two adapter mutations. Go shrinks from 309,600 lines to
+  1,030, preserving 8,004 finite rows plus four property checks and four replay
+  checks. Its native runner can execute one selected row, and a container with
+  no executed child no longer supplies execution evidence. Other target emitters
+  and proof-term lowering are still being converted.
 - **Content identity.** Every type, declaration, handler, ability and law
   has a semantic hash of what it does and a presentation hash of its names,
   docs and spans ([Content identity](docs/explanation/content-identity.md)).

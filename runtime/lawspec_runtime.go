@@ -47,6 +47,81 @@ import (
 //go:noinline
 func lsEvaluate(expression func() LawSpecValue) LawSpecValue { return expression() }
 
+// Finite covers hold value factories, rather than mutable case values. Every
+// test attempt supplies its own symbol table when it materializes the row.
+type lsFiniteValue func(map[string]*lawSpecSymbol) LawSpecValue
+
+type lsFiniteDomain struct {
+	Values []lsFiniteValue
+	Type   string
+	First  string
+	Last   string
+}
+
+type lsFiniteBranch struct {
+	Domain lsFiniteDomain
+	Suffix *lsFiniteCover
+}
+
+type lsFiniteCover struct {
+	Copies   int
+	Branches []lsFiniteBranch
+}
+
+// Returning false stops a lazy traversal. Prefixes, duplicates and branch
+// order are preserved; a row owns its factory slice even if its test is parallel.
+func lsFiniteCases(cover *lsFiniteCover, visit func(int, []lsFiniteValue) bool) {
+	index := 0
+	var walk func(*lsFiniteCover, []lsFiniteValue) bool
+	walk = func(current *lsFiniteCover, prefix []lsFiniteValue) bool {
+		if current == nil || current.Copies < 0 {
+			panic("invalid finite cover")
+		}
+		for copy := 0; copy < current.Copies; copy++ {
+			row := append([]lsFiniteValue(nil), prefix...)
+			if !visit(index, row) {
+				return false
+			}
+			index++
+		}
+		for _, branch := range current.Branches {
+			if branch.Domain.Type == "" {
+				for _, value := range branch.Domain.Values {
+					if !walk(branch.Suffix, append(prefix, value)) {
+						return false
+					}
+				}
+			} else {
+				last := lsInt(branch.Domain.Last)
+				for value := lsInt(branch.Domain.First); value.Cmp(last) <= 0; value.Add(value, big.NewInt(1)) {
+					captured := new(big.Int).Set(value)
+					factory := func(_ map[string]*lawSpecSymbol) LawSpecValue {
+						return LawSpecValue{branch.Domain.Type, new(big.Int).Set(captured)}
+					}
+					if !walk(branch.Suffix, append(prefix, factory)) {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}
+	walk(cover, nil)
+}
+
+func lsFiniteCaseName(index int) string { return fmt.Sprintf("Boundary%d", index+1) }
+
+func lsFiniteCaseContext(law string, index int) string {
+	return fmt.Sprintf("%s boundary %d", law, index+1)
+}
+
+func lsSourceContext(context, source string) string {
+	if source == "" {
+		return context
+	}
+	return context + " — " + source
+}
+
 // LawSpecValue is a value of a LawSpec type together with that type, because a
 // Go value alone cannot say whether it is an Int32, a BigInt or a Decimal, and
 // the law's semantics depend on which. ref:DEC-portable-exact-arithmetic

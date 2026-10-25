@@ -1,8 +1,8 @@
 {-# LANGUAGE NoOverloadedStrings #-}
 -- | The reviewed runtime sources, embedded in the native and WASM compiler as
--- src/LawSpec/RuntimeSources.hs. Strings are quoted as Python's json.dumps
--- quotes them (ASCII only), which is also valid Haskell string syntax.
-module Gen.Embed (runtimeFiles, embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift) where
+-- src/LawSpec/RuntimeSources.hs. Non-ASCII code points use Haskell's numeric
+-- escapes, terminated explicitly so adjacent digits cannot extend an escape.
+module Gen.Embed (runtimeFiles, embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift, quote) where
 
 import Data.Char (ord)
 import Numeric (showHex)
@@ -207,7 +207,5 @@ quote s = "\"" ++ concatMap escape s ++ "\""
     escape '\f' = "\\f"
     escape c
       | c >= ' ' && c <= '~' = [c]
-      | ord c > 0xffff = let n = ord c - 0x10000
-                         in unicode (0xd800 + n `div` 0x400) ++ unicode (0xdc00 + n `mod` 0x400)
       | otherwise = unicode (ord c)
-    unicode n = let digits = showHex n "" in "\\u" ++ replicate (4 - length digits) '0' ++ digits
+    unicode n = "\\x" ++ showHex n "" ++ "\\&"

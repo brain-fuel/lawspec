@@ -5,10 +5,10 @@ import LawSpec.Bounds (inputRange, drawRange)
 import LawSpec.Backend hiding (inputId, localName, bindings, contractArguments, contractResult)
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames, lawWords)
-import LawSpec.Naming (exampleTestSuffix, boundaryTestSuffix, displayLabel, cased, Casing(..))
+import LawSpec.Naming (exampleTestSuffix, displayLabel, cased, Casing(..), claimAll, scopeWith)
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
 import LawSpec.Testing
-import LawSpec.Scalar (scalarName)
+import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -228,12 +228,13 @@ emitTests Config{..} unit laws = do
       ([text "lsHarnessShuffle()" | orderRandom] ++ [call "lsHarnessParallelism" [quoted (C.idText (C.unitId unit))] | parallel] ++ [text "code := m.Run()"] ++ [text "lsReleaseShared()" | sharing] ++ [text "os.Exit(code)"]))
     -- A failing assertion names its law and case and points at the
     -- expectation's source line, or the law's.
-    assertionDoc fallback context proposition = case proposition of
-      AssertAll ps -> statements (map (assertionDoc fallback context) ps)
+    assertionDoc fallback context = assertionDocWith fallback (quoted context)
+    assertionDocWith fallback context proposition = case proposition of
+      AssertAll ps -> statements (map (assertionDocWith fallback context) ps)
       AssertImplies guard rest -> text "if " <> truth (expr guard) <> text " " <>
-        block (assertionDoc fallback context rest)
+        block (assertionDocWith fallback context rest)
       AssertEqual a b ->
-        let message = quoted (labelled context (maybe fallback Just (expectationLink proposition)))
+        let message = call "lsSourceContext" [context,quoted (maybe "" id (maybe fallback Just (expectationLink proposition)))]
             thunk = closure "" "LawSpecValue" . returned . expr
         in if structural (expressionType a)
           then call "_lawspecDataAssert" [message,reference (expressionType a),text "symbols",thunk a,thunk b]
@@ -253,11 +254,23 @@ emitTests Config{..} unit laws = do
       in text ("func _lawspec_call_" ++ contractName c ++ "(" ++ params ++ ") LawSpecValue ") <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),returned (text rn)])
-    -- Text, characters, booleans and unbounded integers are always valid as
-    -- written.
-    checkedLiteral ty value doc = case value of
-      V.ScalarValue scalar | ty `elem` map C.scalarType ["Text", "Char", "Bool", "Integer", "BigInt"], C.scalarType (scalarName scalar) == ty -> doc
-      _ -> checked ty doc
+    coverDoc (Cover.Complete count) = pure (E.keyed "lsFiniteCover" [("Copies",number count)])
+    coverDoc (Cover.Alternatives branches) = do
+      values <- mapM (\(domain,suffix) -> do
+        rest <- coverDoc suffix
+        dimension <- case domain of
+          Cover.IntegerInterval name first last -> pure (E.keyed "lsFiniteDomain"
+            [("Type",quoted name),("First",quoted (show first)),("Last",quoted (show last))])
+          Cover.Values literals -> do
+            factories <- mapM (\value -> do
+              rendered <- literal value
+              pure (closure "symbols map[string]*lawSpecSymbol" "LawSpecValue" (returned rendered))) literals
+            pure (E.keyed "lsFiniteDomain" [("Values",slice "lsFiniteValue" factories)])
+        pure (E.keyed "lsFiniteBranch" [("Domain",dimension),("Suffix",text "&" <> rest)])) branches
+      pure (E.keyed "lsFiniteCover" [("Branches",slice "lsFiniteBranch" values)])
+    slice ty [] = text ("[]" ++ ty ++ "{}")
+    slice ty values = text ("[]" ++ ty ++ "{") <> D.nest 8
+      (D.hardline <> D.joinWith (text "," <> D.hardline) values <> text ",") <> D.hardline <> text "}"
     law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
           shown = owner e ++ "::" ++ displayLabel (name e)
@@ -267,26 +280,51 @@ emitTests Config{..} unit laws = do
           h = C.propertyHarness (original e)
           base = drop 4 (testNames !! index)
           fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
-          finite = maybe (boundaryCases e) id (finiteCases e)
-          -- An example's test is named after the example; boundaries are
-          -- numbered from 1.
-          boundarySuffixes = map (pascal . boundaryTestSuffix) [0 .. length finite - 1]
+          parameters = map inputId (inputs e) ++
+            [local (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
+          (generated,_) = claimAll (scopeWith ("symbols":parameters)) ["caseIndex","caseValues","caseContext"]
+          [indexName,valuesName,contextName] = generated
+          checkName = "lawspecCheck" ++ base
+          check context = call checkName (text "symbols" : context : map text parameters)
+          checkDoc = text ("func " ++ checkName ++ "(" ++ intercalate ", "
+            (["symbols map[string]*lawSpecSymbol",contextName ++ " string"] ++ [name ++ " LawSpecValue" | name <- parameters]) ++ ") ") <>
+            block (assertionDocWith lawLink (text contextName) (assertion e))
+          -- Finite rows are separate native subtests; an example keeps its
+          -- own top-level name and cannot collide with a numbered child.
           exampleSuffixes = map pascal (exampleTestSuffix "go"
-            ("property" : "replay" : "search" : "skipped" : "known_failing" : map boundaryTestSuffix [0 .. length finite - 1])
+            ["property","replay","search","skipped","known_failing","boundaries"]
             (map exampleName (examples (original e))))
           bindingsOf ex = [Declare (local i) (expr v) | (i, v) <- C.exampleBindings ex]
           exampleDocs = [linked ("example " ++ displayLabel (exampleName ex)) (locationLink <$> exampleLocation ex) $
             testFunction (fn ++ "_" ++ suffix) $ body
               ([symbols] ++ plainAll (handlerInstalls e) ++ bindingsOf ex ++ resourceDocs e ++
                [Plain (assertionDoc lawLink (shown ++ " example " ++ displayLabel (exampleName ex)) p) | p <- expectations ex] ++
-               [Plain (assertionDoc lawLink shown (assertion e))])
+               [Plain (check (quoted shown))])
             | (suffix, ex) <- zip exampleSuffixes (examples (original e))]
-      boundaryDocs <- mapM (\(i,vs) -> do
-        values <- mapM literal vs
-        pure $ linked (short ++ ", boundary " ++ show (i + 1)) lawLink $ testFunction (fn ++ "_" ++ boundarySuffixes !! i) $ body
-          ([symbols] ++ plainAll (handlerInstalls e) ++ [Declare (inputId inp) (checkedLiteral (inputType inp) v doc) | (inp,v,doc) <- zip3 (inputs e) vs values] ++
-          resourceDocs e ++ [Plain (assertionDoc lawLink (shown ++ " boundary " ++ show (i + 1)) (assertion e))]))
-        (zip [0::Int ..] finite)
+      cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
+      coverExpression <- coverDoc cover
+      let coverName = "lawspec" ++ base ++ "Cases"
+          finiteBody = body ([symbols] ++ plainAll (handlerInstalls e) ++
+            [Declare (inputId input) (checked (inputType input)
+              (call (valuesName ++ "[" ++ show i ++ "]") [text "symbols"])) | (i,input) <- zip [0::Int ..] (inputs e)] ++
+            resourceDocs e ++ [Plain (check (call "lsFiniteCaseContext" [quoted shown,text indexName]))])
+          visitParameters = indexName ++ " int, " ++ valuesName ++ " []lsFiniteValue"
+          enumeration visit = call "lsFiniteCases" [text ("&" ++ coverName),closure visitParameters "bool"
+            (statements [visit,text "return true"])]
+          knownFailing = C.harnessKnownFailing h /= Nothing
+          boundaryFunction
+            | knownFailing = testFunction ("harness:" ++ base ++ "_Boundaries") (enumeration finiteBody)
+            | otherwise = goTest (base ++ "_Boundaries") (enumeration
+                (call "t.Run" [call "lsFiniteCaseName" [text indexName],closure "t *testing.T" "" (statements
+                  ([text "t.Parallel()" | parallel] ++
+                   [if runSettings h then call "lsHarnessRun" [text "t",quoted label,text "t.Name()",
+                      number (maybe 0 id (C.harnessTimeout h)),number (C.harnessRepeat h),number (C.harnessRetries h),
+                      text "nil",text "false",closure "t rapid.TB" "" finiteBody]
+                    else finiteBody]))]))
+          boundaryDocs = if Cover.coverCount cover > 0 && C.harnessSkip h == Nothing
+            then [text ("var " ++ coverName ++ " = ") <> coverExpression,
+                  linked (short ++ ", finite cases") lawLink boundaryFunction]
+            else []
       -- LawSpec's own search (LawSpec.Search): a failing generated case's
       -- inputs are kept in the failure database and replayed first; a law
       -- with `target maximize` also climbs, as rapid has no targeting.
@@ -309,31 +347,36 @@ emitTests Config{..} unit laws = do
                     ([symbols] ++ plainAll (handlerInstalls e) ++
                      [Declare (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
                      [Plain (text "if !(" <> conjunction (map (truth . expr) refinements) <> text ") " <> block (text "return 0, false")) | not (null refinements)] ++
-                     resourceDocs e ++ [Plain (assertionDoc lawLink (shown ++ " search") (assertion e)),
+                     resourceDocs e ++ [Plain (check (quoted (shown ++ " search"))),
                      Plain (text "return " <> maybe (text "0") (\score -> call "lsSearchNumber" [expr score]) (C.harnessTarget h) <> text ", true")]))
               in ( [ text ("var " ++ inputsName ++ " = []string{") <> D.joinWith (text ", ") (map quoted ds) <> text "}"
                    , caseDoc
                    , goTest (base ++ "_Replay") (call "LawSpecSearchReplay" [quoted label, text inputsName, withCase]) ]
                  , [goTest (base ++ "_Search") (call "LawSpecSearchClimb" [quoted label, text inputsName, withCase]) | C.harnessTarget h /= Nothing] )
-      let check = statements (observations e ++ [remembered (assertionDoc lawLink (shown ++ " property") (assertion e))])
+      let propertyCheck = statements (observations e ++ [remembered (check (quoted (shown ++ " property")))])
       property <- if finiteCases e /= Nothing then pure []
-        else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn e check
+        else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn e propertyCheck
         else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
-          then (:[]) <$> contextualProperty fn label e check
-        else if any (structural . inputType) (inputs e) then pure [structuralProperty fn label e check]
+          then (:[]) <$> contextualProperty fn label e propertyCheck
+        else if any (structural . inputType) (inputs e) then pure [structuralProperty fn label e propertyCheck]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
-          then (:[]) <$> refinedProperty fn e check
+          then (:[]) <$> refinedProperty fn e propertyCheck
           else pure [testFunction (fn ++ "_Property") $ call "rapid.Check" [text "t",
             closure "t *rapid.T" "" $ body ([Declare "seed" (text "rapid.Int32().Draw(t, \"seed\")"),symbols] ++ plainAll (handlerInstalls e) ++
               [Declare (inputId inp) (call "lsSample" [quoted (typeKey (inputType inp)),
-                text (if i == 0 then "int(seed)" else "int(seed)+" ++ show i),bitsDoc]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ resourceDocs e ++ [Plain check])]]
-      let kinds = map ("_" ++) (take (length exampleDocs) exampleSuffixes) ++ map ("_" ++) (take (length boundaryDocs) boundarySuffixes) ++
-            ["_Property" | not (null property)]
+                text (if i == 0 then "int(seed)" else "int(seed)+" ++ show i),bitsDoc]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ resourceDocs e ++ [Plain propertyCheck])]]
+      let exampleKinds = map ("_" ++) (take (length exampleDocs) exampleSuffixes)
+          propertyKinds = ["_Property" | not (null property)]
+          kinds = exampleKinds ++ ["_Boundaries" | not (null boundaryDocs)] ++ propertyKinds
           linkedProperty = map (linked (short ++ ", property") lawLink) property
       -- The law's comment stands apart from its first test, so gofmt never
       -- reads it as that test's documentation.
       let comment = D.joinWith D.hardline (map text (lines (D.render D.Compact (mconcat (map (D.lineComment 100 "// ") (lawCommentLines e))))))
-          tests = fst searchDocs ++ harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ linkedProperty) ++ snd searchDocs
+          wrapped
+            | knownFailing || C.harnessSkip h /= Nothing = harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ linkedProperty)
+            | otherwise = harnessTests base label h exampleKinds exampleDocs ++ boundaryDocs ++
+                harnessTests base label h propertyKinds linkedProperty
+          tests = checkDoc : fst searchDocs ++ wrapped ++ snd searchDocs
       pure $ if null tests then comment else comment <> D.hardline <> D.hardline <> separate tests
     pascal = cased Pascal . splitOn '_'
     splitOn c xs = case break (== c) xs of

@@ -347,6 +347,7 @@ coreSteps =
   [ step "integrity" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "integrity"]
   , step "boundaries" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "boundaries"]
   , step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"]
+  , step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"]
   , step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"]
   , step "compiler-tests" ["stack", "--no-terminal", "test"]
   , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
@@ -470,6 +471,7 @@ targetSteps target | target `elem` Targets.artifactTargets =
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
   [ step "jvm-finite-cover" ["python3", "-B", "test/finite_cases_jvm.py"] | target == "java" ] ++
+  [ step "go-finite-cover" ["python3", "-B", "test/finite_cases_go.py"] | target == "go" ] ++
   [ Step name [("PYTHONPATH","runtime")] [".integration/prolog/.venv/bin/python", "-B", file]
   | target == "prolog", (name,file) <- [("prolog-runtime","test/prolog_runtime.py"),
       ("prolog-execution-reporting","test/prolog_reporting.py")] ] ++
