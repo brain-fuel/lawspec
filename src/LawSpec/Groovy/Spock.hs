@@ -44,7 +44,7 @@ header generated package imports =
 spockSpecification :: String -> String -> String -> String -> Bool -> Bool -> [Feature] -> String
 spockSpecification generated package testClass description orderRandom parallel features =
   D.render (D.Pretty 100) $ header generated package ["spock.lang.Specification"] <>
-    D.text ("// " ++ description) <> D.hardline <>
+    D.lineComment 100 "// " description <>
     (if orderRandom then D.text "@lawspec.testing.LawSpecRandomOrder" <> D.hardline else mempty) <>
     (if parallel then D.text "@spock.lang.Execution(org.spockframework.runtime.model.parallel.ExecutionMode.CONCURRENT)" <> D.hardline else mempty) <>
     D.text ("class " ++ specClassName testClass ++ " extends Specification") <> D.hardline <>
@@ -64,7 +64,7 @@ spockSpecification generated package testClass description orderRandom parallel 
 classSpecification :: String -> String -> String -> String
 classSpecification generated package testClass =
   D.render (D.Pretty 100) $ header generated package ["lawspec.testing.LawSpecGroovy", "spock.lang.Specification"] <>
-    D.text ("// The JUnit tests of " ++ testClass ++ ", a feature each.") <> D.hardline <>
+    D.lineComment 100 "// " ("The JUnit tests of " ++ testClass ++ ", a feature each.") <>
     D.text ("class " ++ specClassName testClass ++ " extends Specification") <> D.hardline <>
     D.block 2 (D.text "def \"#method\"()" <> D.hardline <> D.block 2 (D.joinWith D.hardline
       [ D.text "setup:"

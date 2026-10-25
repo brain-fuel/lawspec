@@ -43,8 +43,13 @@ remote owner name args = D.text owner <> D.text "." <> call name args
 -- | def name(args) do ... end, its body on lines of its own, as mix
 -- format writes a do block.
 function :: String -> [D.Doc] -> [D.Doc] -> D.Doc
-function name args body = D.text "def " <> D.nest 4 (call name args) <> D.text " do" <>
+function name args body = header <> D.text " do" <>
   D.nest 2 (D.hardline <> D.joinWith D.hardline body) <> D.hardline <> D.text "end"
+  where
+    -- mix fits the function's signature without its trailing do token.
+    -- Keep both layouts structured; compact rendering only measures it.
+    flat = D.text ("def " ++ name ++ "(") <> D.joinWith (D.text ", ") args <> D.text ")"
+    header = D.prefixChoice (D.render D.Compact flat) flat (D.text "def " <> D.nest 4 (call name args))
 
 -- | @spec or @type, Left :: Right, in a module body, laid out as mix format
 -- lays it out at width 98: on one line when it fits; otherwise a union's
