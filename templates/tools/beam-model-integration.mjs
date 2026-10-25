@@ -100,7 +100,7 @@ assert.ok(first.ok && !first.unrun, JSON.stringify(first));
 assert.deepEqual(first.ran, plan.tests.map(test => test.law));
 const junit = await readFile(path.join(base, 'models.xml'), 'utf8');
 for (const check of [...models, plan.tests.find(test => test.name === 'supervision')])
-  assert.ok(junit.includes(language === 'erlang' ? check.label : check.name), `Missing native JUnit case ${check.name}`);
+  assert.ok(junit.includes(language === 'gleam' ? check.name : check.label), `Missing native JUnit case ${check.name}`);
 const cached = (await call('test', ['--json', ...layoutFlags])).json[0];
 assert.ok(cached.ok && cached.ran.length === 0 && cached.unchanged === plan.tests.length, JSON.stringify(cached));
 
