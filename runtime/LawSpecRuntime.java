@@ -555,6 +555,30 @@ public final class LawSpecRuntime
     return bool(true);
   }
 
+  public static Value searchElements(
+      boolean universal, Value value, Function<Value, Value> predicate)
+  {
+    int decisive = universal ? -1 : 1;
+    int result = -decisive;
+    for (var item : listElements(value))
+    {
+      int code = ((BigInteger) predicate.apply(item).data).intValueExact();
+      if (code == decisive)
+      {
+        return integer("Int8", Integer.toString(code));
+      }
+      if (code == 0)
+      {
+        result = 0;
+      }
+      else if (code != -decisive)
+      {
+        throw new IllegalArgumentException("invalid finite search outcome");
+      }
+    }
+    return integer("Int8", Integer.toString(result));
+  }
+
   public static Value matchList(
       Value value, Supplier<Value> nil, BiFunction<Value, Value, Value> cons)
   {

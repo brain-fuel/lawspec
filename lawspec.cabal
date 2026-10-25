@@ -1027,6 +1027,7 @@ test-suite lawspec-test
       ExplainSpec
       FieldDefinitionExpansionSpec
       FiniteCoverSpec
+      FiniteSearchLoopSpec
       FixtureSource
       FlowSpec
       GadtSpec

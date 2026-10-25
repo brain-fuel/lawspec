@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
-from lawspec_runtime import finite_cases, register_finite_cases  # noqa: E402
+from lawspec_runtime import finite_cases, register_finite_cases, search_elements  # noqa: E402
 
 
 def constant(value):
@@ -73,4 +73,32 @@ registered = register_finite_cases(
 registered[0]()
 assert wrapped == ["test_wrapped__boundary_1"]
 assert observations[-1] == ([], "wrapped boundary 1")
+
+from itertools import product as cartesian_product  # noqa: E402
+
+for length in range(6):
+    for codes in cartesian_product([-1, 0, 1], repeat=length):
+        for universal in [False, True]:
+            decisive = -1 if universal else 1
+            expected = decisive if decisive in codes else 0 if 0 in codes else -decisive
+            visited = []
+
+            def evaluate(code):
+                visited.append(code)
+                return code
+
+            assert search_elements(universal, codes, evaluate) == expected
+            stop = codes.index(decisive) + 1 if decisive in codes else len(codes)
+            assert visited == list(codes[:stop])
+
+try:
+    search_elements(False, [2], lambda code: code)
+    raise AssertionError("invalid outcome was accepted")
+except ValueError:
+    pass
+try:
+    search_elements(False, [False], lambda code: code)
+    raise AssertionError("a boolean was accepted as an incomplete outcome")
+except ValueError:
+    pass
 print("finite cover Python conformance passed")

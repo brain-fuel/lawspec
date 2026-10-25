@@ -12,8 +12,28 @@
     async_call/1,
     worker_context/0,
     with_worker_context/2,
-    recorded/4
+    recorded/4,
+    search_elements/3
 ]).
+
+%% A three-valued finite search, in candidate order and with short circuiting.
+search_elements(Universal, Values, Evaluate) ->
+    Decisive =
+        case Universal of
+            true -> -1;
+            false -> 1
+        end,
+    search_elements(Values, Evaluate, Decisive, -Decisive).
+
+search_elements([], _Evaluate, _Decisive, Result) ->
+    Result;
+search_elements([Value | Rest], Evaluate, Decisive, Result) ->
+    case Evaluate(Value) of
+        Decisive -> Decisive;
+        0 -> search_elements(Rest, Evaluate, Decisive, 0);
+        Code when Code =:= -Decisive -> search_elements(Rest, Evaluate, Decisive, Result);
+        _ -> erlang:error(invalid_finite_search_outcome)
+    end.
 
 %% LawSpec's allocator, active handler operation, cancellation scopes and
 %% workflow runtime/frame cross workers. Application entries stay process-local.

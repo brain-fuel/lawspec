@@ -102,6 +102,7 @@ declarations = joinWith (softbreak <> softbreak)
       , variant "update" [("constructor", "string"), ("index", "number"), ("value", "Expr"), ("field", "Expr")]
       , variant "match" [("value", "Expr"), ("cases", "MatchCase[]")]
       , variant "allElements" [("value", "Expr"), ("binder", "Binder"), ("predicate", "Expr")]
+      , variant "searchElements" [("universal", "boolean"), ("value", "Expr"), ("binder", "Binder"), ("predicate", "Expr")]
       , variant "allPayloads" [("value", "Expr"), ("predicates", "PayloadPredicate[]")]
       , variant "construct" [("constructor", "string"), ("arguments", "Expr[]")]
       , variant "local" [("id", "string")]

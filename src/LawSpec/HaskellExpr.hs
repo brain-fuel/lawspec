@@ -149,6 +149,10 @@ renderExpressionWith declarations Context{..} = render
         argument <- render value
         body <- render predicate
         pure (H.call "LS.allElements" [argument, lam binder body])
+      SearchElements universal value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (H.call "LS.searchElements" [H.var (if universal then "P.True" else "P.False"), argument, lam binder body])
       Local identity -> pure (H.var (contextLocal identity))
       -- let x = e in body: e runs first, once.
       Let binder value body -> do

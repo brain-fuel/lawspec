@@ -314,6 +314,12 @@ renderExpressionWithContext declarations width schema ref key local external = r
         pure (call "lsAllElements" [argument,
           D.text ("func(" ++ local (binderId binder) ++ " LawSpecValue) LawSpecValue ") <>
             D.block 8 (D.text "return " <> body)])
+      SearchElements universal value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (call "lsSearchElements" [D.text (if universal then "true" else "false"), argument,
+          D.text ("func(" ++ local (binderId binder) ++ " LawSpecValue) LawSpecValue ") <>
+            D.block 8 (D.text "return " <> body)])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
       Let binder value body -> do

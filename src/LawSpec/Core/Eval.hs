@@ -90,6 +90,21 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
                 Right result -> Right result
             if accepted then every (index + 1) rest else Right (ScalarValue (SBool False))
       every (0 :: Int) items
+    SearchElements universal value binder predicate -> do
+      items <- go value >>= listItems
+      let decisive = if universal then -1 else 1
+          finished result = Right (ScalarValue (SInteger "Int8" result))
+          search result [] = finished result
+          search result (item : rest) = do
+            checked <- validateValueWithContracts registry bits (binderType binder) item
+            outcome <- run (M.insert (binderId binder) checked env) predicate
+            case outcome of
+              ScalarValue (SInteger "Int8" code)
+                | code == decisive -> finished code
+                | code == 0 -> search 0 rest
+                | code == negate decisive -> search result rest
+              _ -> Left "invalid finite search outcome"
+      search (negate decisive) items
     AllPayloads value predicates -> do
       payload <- go value
       let check (binder,predicate) item = do

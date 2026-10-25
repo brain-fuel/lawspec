@@ -46,6 +46,23 @@ def finite_cases(cover):
     yield from enumerate(_finite_cover_rows(cover, []))
 
 
+def search_elements(universal, values, evaluate):
+    """Fold three outcomes, preserving unknown and ordered single evaluation."""
+    decisive = -1 if universal else 1
+    result = -decisive
+    for value in values:
+        code = evaluate(value)
+        if type(code) is not int:
+            raise ValueError("invalid finite search outcome")
+        if code == decisive:
+            return code
+        if code == 0:
+            result = 0
+        elif code != -decisive:
+            raise ValueError("invalid finite search outcome")
+    return result
+
+
 def register_finite_cases(namespace, prefix, cover, check, context, wrap=None):
     """Register individually selectable pytest functions with a shared check."""
 

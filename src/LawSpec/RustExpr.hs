@@ -252,6 +252,13 @@ renderWith declarations bits schema typeReference typeKey callees = render
         pure (L.Block [L.Let "values" argument]
           (Just (tried (L.call "ls::all_elements" [L.atom "values",
             L.closure ("|" ++ unusedAs name (L.expr body) ++ "|") (L.Block [L.Let "accepted" body] (Just (L.call "Ok" [L.atom "accepted"])))]))))
+      SearchElements universal value binder predicate -> do
+        argument <- render names value
+        let name = boundLocal names binder
+        body <- render ((binderId binder,name):names) predicate
+        pure (L.Block [L.Let "values" argument]
+          (Just (tried (L.call "ls::search_elements" [L.atom (if universal then "true" else "false"),L.atom "values",
+            L.closure ("|" ++ unusedAs name (L.expr body) ++ "|") (L.Block [L.Let "outcome" body] (Just (L.call "Ok" [L.atom "outcome"])))]))))
       Constant scalar -> scalarExpr scalar
       -- let x = e in body: e runs first, once.
       Let binder value body -> do

@@ -49,6 +49,27 @@ public enum Runtime {
     return .bool(true)
   }
 
+  /// Three-valued finite search, visiting every needed item exactly once.
+  public static func searchElements(
+    _ universal: Bool, _ value: Value, _ predicate: (Value) throws -> Value
+  ) throws -> Value {
+    guard case .list(let items) = value else { throw Fail.with("ListRequired") }
+    let decisive = BigInt(universal ? -1 : 1)
+    var result = -decisive
+    for item in items {
+      guard case .int(let code) = try predicate(item) else {
+        throw Fail.with("InvalidFiniteSearchOutcome")
+      }
+      if code == decisive { return .int(code) }
+      if code == 0 {
+        result = 0
+      } else if code != -decisive {
+        throw Fail.with("InvalidFiniteSearchOutcome")
+      }
+    }
+    return .int(result)
+  }
+
   /// Whether every payload of a container satisfies its parameter's predicate.
   public static func allPayloads(
     _ value: Value, _ t: TypeRef, _ predicates: [(Value) throws -> Value], _ schema: Schema

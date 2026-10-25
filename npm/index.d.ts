@@ -131,6 +131,13 @@ export type ExprNode =
     } |
     {kind: 'match'; value: Expr; cases: MatchCase[];} |
     {kind: 'allElements'; value: Expr; binder: Binder; predicate: Expr;} |
+    {
+      kind: 'searchElements';
+      universal: boolean;
+      value: Expr;
+      binder: Binder;
+      predicate: Expr;
+    } |
     {kind: 'allPayloads'; value: Expr; predicates: PayloadPredicate[];} |
     {kind: 'construct'; constructor: string; arguments: Expr[];} |
     {kind: 'local'; id: string;} |

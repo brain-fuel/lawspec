@@ -228,7 +228,7 @@ lowerSearchProposition domain search limit searchBudget identity choices proposi
             with value result = Expr code (Let binder value result) origin
         complete <- if total > toInteger limit then pure (outcome 0) else case available of
           Nothing -> pure (outcome 0)
-          Just terms -> aggregate (kind == ForEvery) [with term required | term <- terms]
+          Just terms -> pure (Expr code (SearchElements (kind == ForEvery) (finiteTerms binder terms) binder required) origin)
         sampled <- if available /= Nothing && total <= toInteger limit then pure [] else lift (search q body)
         let configured = [Candidate (witnessValue w) | w <- choices,witnessTarget w == binderId binder]
             candidates = take (fromInteger (max 0 (toInteger searchBudget `quot` max 1 cost))) (configured ++ sampled)
@@ -238,3 +238,22 @@ lowerSearchProposition domain search limit searchBudget identity choices proposi
         let decisive = if kind == ForEvery then -1 else 1
         result <- bind attempted $ \x -> pure (branch (is decisive x) (outcome decisive) complete)
         pure (result,if null candidates then total else min total (toInteger (length candidates) * max 1 cost))
+
+-- | Keep the candidate body outside its domain. Consecutive constants use the
+-- existing half-open range plus the final value, so a bounded maximum needs
+-- no overflowing upper-plus-one constant. Other checked domains retain their
+-- order as ordinary List data.
+finiteTerms :: Binder -> [Expr] -> Expr
+finiteTerms binder terms = case terms of
+  first@(Expr ty (Constant (SInteger name start)) _) : rest
+    | length rest >= 2
+    , and [expressionType term == ty && expressionNode term == Constant (SInteger name expected)
+           | (expected, term) <- zip [start + 1 ..] rest]
+    , final : _ <- reverse rest ->
+        Expr listType (Helper Append [Expr listType (Helper Range [first, final]) origin, cons final nil]) origin
+  _ -> foldr cons nil terms
+  where
+    origin = GeneratedFrom (binderId binder)
+    listType = Constructor "List" [TypeArgument (binderType binder)]
+    nil = Expr listType (Construct (Id "List::Nil") []) origin
+    cons first rest = Expr listType (Construct (Id "List::Cons") [first, rest]) origin

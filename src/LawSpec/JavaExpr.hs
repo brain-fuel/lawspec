@@ -175,6 +175,12 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey named 
         pure (runtime "allElements" [argument,
           D.group (D.text (local (binderId binder) ++ " ->") <>
             D.nest 4 (D.softline <> body))])
+      SearchElements universal value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "searchElements" [D.text (if universal then "true" else "false"), argument,
+          D.group (D.text (local (binderId binder) ++ " ->") <>
+            D.nest 4 (D.softline <> body))])
       -- A text literal is already its type's value.
       Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
         expressionType term == scalarType n -> literal (expressionType term) value
@@ -345,6 +351,7 @@ scopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x1f'
       Local i -> S.singleton i
       Let b v body -> freeLocals v `S.union` S.delete (binderId b) (freeLocals body)
       AllElements v b body -> freeLocals v `S.union` S.delete (binderId b) (freeLocals body)
+      SearchElements _ v b body -> freeLocals v `S.union` S.delete (binderId b) (freeLocals body)
       AllPayloads v ps -> S.unions (freeLocals v : [S.delete (binderId b) (freeLocals x) | (b, x) <- ps])
       Match v cs -> S.unions (freeLocals v : [freeLocals (caseBody c) `S.difference` S.fromList (map binderId (caseBinders c)) | c <- cs])
       _ -> S.unions (map freeLocals (children e))
@@ -353,6 +360,8 @@ scopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x1f'
         in e { expressionNode = Let b' (go scope value) (go inner body0) }
       AllElements value b body -> let ([b'], body0, inner) = bindAll scope [b] body
         in e { expressionNode = AllElements (go scope value) b' (go inner body0) }
+      SearchElements universal value b body -> let ([b'], body0, inner) = bindAll scope [b] body
+        in e { expressionNode = SearchElements universal (go scope value) b' (go inner body0) }
       AllPayloads value ps -> e { expressionNode = AllPayloads (go scope value)
         [let ([b'], x0, inner) = bindAll scope [b] x in (b', go inner x0) | (b, x) <- ps] }
       Match value cs -> e { expressionNode = Match (go scope value)
@@ -373,11 +382,13 @@ scopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x1f'
       Local i | i == from -> e { expressionNode = Local to }
       Let b v body | binderId b == from -> e { expressionNode = Let b (renameFree from to v) body }
       AllElements v b body | binderId b == from -> e { expressionNode = AllElements (renameFree from to v) b body }
+      SearchElements universal v b body | binderId b == from -> e { expressionNode = SearchElements universal (renameFree from to v) b body }
       _ -> mapChildren (renameFree from to) e
     freshIds e = [binderId b | b <- introduced e, '\x1f' `elem` idText (binderId b)] ++ concatMap freshIds (children e)
     introduced e = case expressionNode e of
       Let b _ _ -> [b]
       AllElements _ b _ -> [b]
+      SearchElements _ _ b _ -> [b]
       AllPayloads _ ps -> map fst ps
       Match _ cs -> concatMap caseBinders cs
       _ -> []

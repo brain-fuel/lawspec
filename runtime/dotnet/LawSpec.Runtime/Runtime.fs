@@ -58,6 +58,25 @@ let allElements (value: Value) (predicate: Value -> Value) =
     | List items -> Bool(items |> List.forall (predicate >> truth))
     | _ -> Fail.raiseWith "ListRequired" ""
 
+/// Fold a finite search once, preserving incomplete inner outcomes.
+[<CompiledName("SearchElements")>]
+let searchElements (universal: bool) (value: Value) (predicate: Value -> Value) =
+    let decisive = if universal then -1I else 1I
+
+    let rec search result items =
+        match items with
+        | [] -> Int result
+        | item :: rest ->
+            match predicate item with
+            | Int code when code = decisive -> Int code
+            | Int code when code = 0I -> search 0I rest
+            | Int code when code = -decisive -> search result rest
+            | _ -> Fail.raiseWith "InvalidFiniteSearchOutcome" ""
+
+    match value with
+    | List items -> search -decisive items
+    | _ -> Fail.raiseWith "ListRequired" ""
+
 /// Whether every payload of a container satisfies its parameter's predicate.
 [<CompiledName("AllPayloads")>]
 let allPayloads (value: Value) (t: TypeRef) (predicates: (Value -> Value) list) (schema: Schema.Schema) =

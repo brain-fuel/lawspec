@@ -963,6 +963,7 @@ performOperations (Operations operations handlers) = go
       C.Construct tag fields -> C.Construct tag (map go fields)
       C.Match value cases -> C.Match (go value) [c { C.caseBody = go (C.caseBody c) } | c <- cases]
       C.AllElements value binder predicate -> C.AllElements (go value) binder (go predicate)
+      C.SearchElements universal value binder predicate -> C.SearchElements universal (go value) binder (go predicate)
       C.AllPayloads value predicates -> C.AllPayloads (go value) [(b, go p) | (b, p) <- predicates]
       C.Local identity -> C.Local identity
       C.Binary op ev a b -> C.Binary op ev (go a) (go b)

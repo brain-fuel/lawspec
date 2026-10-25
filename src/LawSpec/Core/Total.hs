@@ -282,6 +282,9 @@ proofExpression schema bits = proof
         (T.TypedDomain (case binderType binder of
           Constructor name [] -> T.integerAssumptions bits (binderId binder) name
           _ -> []) (proof predicate))
+      -- Search is introduced only in an execution plan. It is never an
+      -- admission shortcut or an uninterpreted replacement in a proof goal.
+      SearchElements {} -> T.Absurd "execution-only finite search"
       ExternalCall identity arguments -> T.Call identity (map proof arguments)
       ShortCircuit op left right -> T.Logical op (proof left) (proof right)
       -- An operation's checked result (LawSpec.OperationChecks): past the

@@ -84,6 +84,9 @@ viewIn names e = object ["type" .= typeView (C.expressionType e),"origin" .= ori
     C.AllElements value binder predicate -> object
       ["kind" .= str "allElements", "value" .= expr value, "binder" .= binderView binder,
        "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
+    C.SearchElements universal value binder predicate -> object
+      ["kind" .= str "searchElements", "universal" .= universal, "value" .= expr value, "binder" .= binderView binder,
+       "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
     C.AllPayloads value predicates -> object
       ["kind" .= str "allPayloads", "value" .= expr value, "predicates" .=
        [object ["binder" .= binderView binder,
@@ -130,6 +133,8 @@ textIn names e = case C.expressionNode e of
      " then " ++ textIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch)
       | branch <- cases] ++ " end case"
   C.AllElements value binder predicate -> "allElements (" ++ go value ++ ") (" ++ C.binderName binder ++
+    " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
+  C.SearchElements universal value binder predicate -> "searchElements " ++ show universal ++ " (" ++ go value ++ ") (" ++ C.binderName binder ++
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ go value ++ ") [" ++ unwords
     [C.binderName binder ++ " -> " ++

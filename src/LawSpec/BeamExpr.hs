@@ -24,6 +24,7 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
   where
     binders = nubBy (\a b -> C.binderId a == C.binderId b) [binder | term <- terms root, binder <- case C.expressionNode term of
       C.AllElements _ b _ -> [b]
+      C.SearchElements _ _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
       C.Let b _ _ -> [b]
@@ -69,6 +70,11 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
             argument <- render value
             body <- render predicate
             pure (E.remote "lists" "all" [E.lambda [bound body binder] body,argument])
+          C.SearchElements universal value binder predicate -> do
+            argument <- render value
+            body <- render predicate
+            pure (E.remote "lawspec_beam_runtime" "search_elements"
+              [E.atom (if universal then "true" else "false"),argument,E.lambda [bound body binder] body])
           C.AllPayloads value predicates -> do
             argument <- render value
             ref <- reference (C.expressionType value)

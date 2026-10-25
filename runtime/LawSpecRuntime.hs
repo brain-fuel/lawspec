@@ -475,6 +475,21 @@ allElements :: Scalar -> (Scalar -> Scalar) -> Scalar
 allElements (SList values) predicate = SBool (all (truth . predicate) values)
 allElements _ _ = error "expected List in element predicate"
 
+-- | Ordered three-valued search. Unknown is retained unless an item decides
+-- the aggregate; a failed bounded inner search never proves absence.
+searchElements :: Bool -> Scalar -> (Scalar -> Scalar) -> Scalar
+searchElements universal (SList values) predicate = search (negate decisive) values
+  where
+    decisive = if universal then -1 else 1
+    search result [] = SInteger "Int8" result
+    search result (value : rest) = case predicate value of
+      SInteger _ code
+        | code == decisive -> SInteger "Int8" code
+        | code == 0 -> search 0 rest
+        | code == negate decisive -> search result rest
+      _ -> error "invalid finite search outcome"
+searchElements _ _ _ = error "finite search requires a List"
+
 construct :: String -> [Scalar] -> Scalar
 construct "List::Nil" [] = SList []
 construct "List::Cons" [headValue, SList tailValues] =

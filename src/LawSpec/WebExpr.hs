@@ -117,6 +117,7 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
     local identity = Map.findWithDefault (outerLocal identity) identity names
     collect term = (case expressionNode term of
       AllElements _ binder _ -> [binder]
+      SearchElements _ _ binder _ -> [binder]
       AllPayloads _ predicates -> map fst predicates
       Match _ cases -> concatMap caseBinders cases
       Let binder _ _ -> [binder]
@@ -156,13 +157,23 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
       AllElements value binder predicate -> do
         argument <- render value
         body <- render predicate
-        pure (runtime "allElements" [argument, E.arrow [annotated (local (binderId binder)) "unknown"] body])
+        let invocation = runtime (if asynchronous then "allElementsAsync" else "allElements")
+              [argument, E.Arrow asynchronous [annotated (local (binderId binder)) "unknown"] Nothing (E.ExpressionBody body)]
+        pure (if asynchronous then E.Await invocation else invocation)
+      SearchElements universal value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        let invocation = runtime (if asynchronous then "searchElementsAsync" else "searchElements")
+              [E.BoolLit universal, argument,
+               E.Arrow asynchronous [annotated (local (binderId binder)) "unknown"] Nothing (E.ExpressionBody body)]
+        pure (if asynchronous then E.Await invocation else invocation)
       Local identity -> pure (E.Ident (local identity))
       -- let x = e in body: e runs first, once.
       Let binder value body -> do
         argument <- render value
         inner <- render body
-        pure (E.Call (E.arrow [annotated (local (binderId binder)) "any"] inner) [] [argument] False)
+        let invocation = E.Call (E.Arrow asynchronous [annotated (local (binderId binder)) "any"] Nothing (E.ExpressionBody inner)) [] [argument] False
+        pure (if asynchronous then E.Await invocation else invocation)
       Constant value
         | plainConstant (expressionType term) value, Just native <- scalarLiteral value -> pure native
         | otherwise -> checked (expressionType term) (runtime "literal" [literalValue (A.toJSON value),E.Ident "symbols"])

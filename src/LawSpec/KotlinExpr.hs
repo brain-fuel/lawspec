@@ -128,6 +128,11 @@ renderExpressionIn scope@(schema, width) declarations local external = render . 
         argument <- render value
         body <- render predicate
         pure (runtime "allElements" [argument, L.lambda [local (binderId binder)] [body]])
+      SearchElements universal value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "searchElements" [D.text (if universal then "true" else "false"), argument,
+          L.lambda [local (binderId binder)] [body]])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
       -- A chain of lets is a block of declarations in one callback (the

@@ -335,6 +335,6 @@ test_payloadPredicatesTraverseRecursiveParametersScoped = describe "recursive pa
             (Equation (Structural boolean) body truth) [] defaultGeneration "" "" [] [] [] [] noHarness NonemptyDomain emptyLawMetadata
           unit = Unit (Id "payload") [] [] [property] [] []
           plan = Testing.Plan 64 [tree]
-            [Testing.PlannedUnit unit [Testing.PlannedProperty property Nothing [] []]] True True
+            [Testing.PlannedUnit unit [Testing.PlannedProperty property Nothing [] [] (propertyBody property)]] True True
       forM_ targets $ \target ->
         emitPlan target plan `shouldSatisfy` isRight

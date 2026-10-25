@@ -49,6 +49,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
   case expressionNode of
     Match value _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
+    SearchElements _ value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllPayloads value _ -> validateExpressionWithRegistry registry bits declarations scope value
     -- A let's body sees its binder; the Let case below checks both.
     Let _ _ _ -> pure ()
@@ -88,6 +89,16 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
         (M.insert (binderId binder) (binderType binder) scope) predicate
       requireType "Bool" predicate
       pure (scalarType "Bool")
+    SearchElements _ value binder predicate -> do
+      case expressionTypeOf value of
+        Constructor "List" [TypeArgument element] ->
+          unless (binderType binder == element) (Left "search binder type mismatch")
+        _ -> Left "finite search requires a List"
+      unless (M.notMember (binderId binder) scope) (Left "duplicate finite search binder identity")
+      validateExpressionWithRegistry registry bits declarations
+        (M.insert (binderId binder) (binderType binder) scope) predicate
+      requireType "Int8" predicate
+      pure (scalarType "Int8")
     AllPayloads value predicates -> do
       arguments <- case expressionTypeOf value of
         Constructor name args -> do

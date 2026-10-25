@@ -330,6 +330,35 @@ func lsAllElements(value LawSpecValue, predicate func(LawSpecValue) LawSpecValue
 	return lsBool(true)
 }
 
+func lsSearchElements(universal bool, value LawSpecValue, predicate func(LawSpecValue) LawSpecValue) LawSpecValue {
+	decisive := int64(1)
+	if universal {
+		decisive = -1
+	}
+	result := -decisive
+	values, ok := value.Data.([]LawSpecValue)
+	if !ok {
+		panic("finite search requires a List")
+	}
+	for _, item := range values {
+		outcome := predicate(item)
+		code, ok := outcome.Data.(*big.Int)
+		if !ok || !code.IsInt64() {
+			panic("invalid finite search outcome")
+		}
+		n := code.Int64()
+		if n == decisive {
+			return lsInteger("Int8", fmt.Sprint(n))
+		}
+		if n == 0 {
+			result = 0
+		} else if n != -decisive {
+			panic("invalid finite search outcome")
+		}
+	}
+	return lsInteger("Int8", fmt.Sprint(result))
+}
+
 func lsMatchMaybe(value LawSpecValue, nothing func() LawSpecValue, just func(LawSpecValue) LawSpecValue) LawSpecValue {
 	data := lsDataValue(value)
 	switch data.tag {

@@ -134,13 +134,17 @@ data Origin = SourceSpan Span | GeneratedFrom Id deriving (Eq, Show, Generic)
 -- type and every diagnostic can point at source. ref:DEC-typed-core-boundary
 data Expr = Expr { expressionType :: Type, expressionNode :: Node, expressionOrigin :: Origin } deriving (Eq, Show, Generic)
 -- | The closed set of operations a law or definition may perform; each target
--- must implement every one, so the set grows only through the front end.
+-- must implement every one. Source operations enter through the front end;
+-- checked execution planning may introduce its finite-search operation.
 -- ref:DEC-elaborate-before-core
 data Node
   = Constant Scalar
   | Construct Id [Expr]
   | Match Expr [MatchCase]
   | AllElements Expr Binder Expr
+  -- Execution-only finite search. The body returns -1 (false), 0 (unknown)
+  -- or 1 (true); each item is evaluated once, stopping at a decisive result.
+  | SearchElements Bool Expr Binder Expr
   | AllPayloads Expr [(Binder, Expr)]
   | Local Id
   | ExternalCall Id [Expr]
@@ -579,6 +583,7 @@ children :: Expr -> [Expr]
 children Expr{expressionNode=node} = case node of
   Match value cases -> value : map caseBody cases
   AllElements value _ predicate -> [value,predicate]
+  SearchElements _ value _ predicate -> [value,predicate]
   AllPayloads value predicates -> value : map snd predicates
   Construct _ es -> es
   ExternalCall _ es -> es
@@ -609,6 +614,7 @@ mapChildren f e = e { expressionNode = case expressionNode e of
   Construct n args -> Construct n (map f args)
   Match value cases -> Match (f value) [c { caseBody = f (caseBody c) } | c <- cases]
   AllElements value binder body -> AllElements (f value) binder (f body)
+  SearchElements universal value binder body -> SearchElements universal (f value) binder (f body)
   AllPayloads value predicates -> AllPayloads (f value) [(b, f x) | (b, x) <- predicates]
   ExternalCall n args -> ExternalCall n (map f args)
   Binary op evidence a b -> Binary op evidence (f a) (f b)
@@ -677,6 +683,7 @@ traverseChildren f e = (\node -> e { expressionNode = node }) <$> case expressio
   Construct n args -> Construct n <$> traverse f args
   Match value cases -> Match <$> f value <*> traverse (\c -> (\b -> c { caseBody = b }) <$> f (caseBody c)) cases
   AllElements value binder body -> AllElements <$> f value <*> pure binder <*> f body
+  SearchElements universal value binder body -> SearchElements universal <$> f value <*> pure binder <*> f body
   AllPayloads value predicates -> AllPayloads <$> f value <*> traverse (\(b, x) -> (,) b <$> f x) predicates
   ExternalCall n args -> ExternalCall n <$> traverse f args
   Binary op evidence a b -> Binary op evidence <$> f a <*> f b
@@ -716,6 +723,8 @@ performed e = case expressionNode e of
 freeBinders :: Expr -> [Id]
 freeBinders e = case expressionNode e of
   AllElements value binder predicate -> freeBinders value ++
+    filter (/= binderId binder) (freeBinders predicate)
+  SearchElements _ value binder predicate -> freeBinders value ++
     filter (/= binderId binder) (freeBinders predicate)
   AllPayloads value predicates -> freeBinders value ++ concat
     [filter (/= binderId binder) (freeBinders predicate) | (binder,predicate) <- predicates]

@@ -333,6 +333,7 @@ normalizeExpression original = do
       let before=case expressionNode original of Update _ _ subject _ -> expressionType subject; _ -> expressionType value
       Update <$> constructorAt before (expressionType value) identity <*> pure index <*> pure value <*> pure field
     AllElements value bound predicate -> AllElements value <$> binder bound <*> pure predicate
+    SearchElements universal value bound predicate -> SearchElements universal value <$> binder bound <*> pure predicate
     AllPayloads value predicates -> AllPayloads value <$> mapM (\(bound,predicate) -> (,) <$> binder bound <*> pure predicate) predicates
     Convert conversion target value -> Convert conversion <$> ty target <*> pure value
     Perform op values -> Perform <$> operation op <*> pure values

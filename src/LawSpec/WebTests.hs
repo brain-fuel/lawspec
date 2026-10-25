@@ -336,7 +336,8 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
         wrap r inner =
           [ E.constDecl (localName (C.binderId (C.resourceBinder r))) (render (C.resourceAcquire r))
           , E.Try inner Nothing (Just [E.ExprStmt (render (C.resourceRelease r))]) ]
-    render term = either error id (X.renderExpression ts declarations localName external term)
+    render term = either error id ((if asyncMode then X.renderAsyncExpression else X.renderExpression)
+      ts declarations localName external term)
       where
         external expression values = case C.expressionNode expression of
           -- raise aborts to the nearest attempt of its Fail ability.

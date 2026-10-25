@@ -134,6 +134,11 @@ renderExpression declarations bits local external = render . flattenLets
         argument <- render value
         body <- render predicate
         pure (runtime "allElements" [argument, lambda [(local (binderId binder), valueType)] body])
+      SearchElements universal value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "searchElements" [D.text (if universal then "true" else "false"), argument,
+          lambda [(local (binderId binder), valueType)] body])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
       -- A chain of lets is a block of declarations in one callback, which

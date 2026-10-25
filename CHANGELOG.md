@@ -8,6 +8,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Complete scoped finite searches share one typed candidate body and enumerate
+  their domain at runtime. Their ordered, three-outcome execution preserves
+  short-circuiting and incomplete results. Source comments retain the original
+  checked proposition, independently of its execution plan.
+
 - Finite test plans store ordered shared prefixes and inclusive integer ranges.
   JavaScript, TypeScript and Python enumerate that data at runtime and register
   each case separately, with fresh values and a fresh context for every run.

@@ -247,6 +247,9 @@ typedPlanOf performing scalars declarations units = TypedPlan
       Construct _ _ -> True
       Match value cases -> supported (expressionType value) && all (all (supported . binderType) . caseBinders) cases
       AllElements _ binder _ -> supported (binderType binder)
+      -- Finite searches belong to the law execution plan, not checked
+      -- definition bodies selected for the typed implementation fast path.
+      SearchElements {} -> False
       AllPayloads _ _ -> False
       Local _ -> True
       ExternalCall _ _ -> True

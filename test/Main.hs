@@ -3,6 +3,7 @@
 -- ref:DEC-tests-cite-requirements
 module Main where
 import qualified FiniteCoverSpec
+import qualified FiniteSearchLoopSpec
 import qualified ArtifactTargetSpec
 import qualified PrologTargetSpec
 import qualified WitnessSpec
@@ -125,6 +126,7 @@ concrete d = "law \"|codec| is definition: " ++ d ++ " end definition end law\n"
 main :: IO ()
 main = hspec $ do
   FiniteCoverSpec.test_finiteCoversPreserveEveryOrderedCase
+  FiniteSearchLoopSpec.test_finiteSearchHasOneCheckedBody
   ArtifactTargetSpec.test_artifactTargets
   PrologTargetSpec.test_prologEmitter
   NamedBlocksSpec.test_namedBlocks

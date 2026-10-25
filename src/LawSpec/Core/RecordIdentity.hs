@@ -186,6 +186,11 @@ expressionValue scope expression = do
       (types,inner) <- bind scope [binder]
       predicate' <- expressionValue inner predicate
       pure (tag "all-elements" [value',toJSON types,predicate'])
+    SearchElements universal value binder predicate -> do
+      value' <- go value
+      (types,inner) <- bind scope [binder]
+      predicate' <- expressionValue inner predicate
+      pure (tag "search-elements" [toJSON universal,value',toJSON types,predicate'])
     AllPayloads value predicates -> do
       value' <- go value
       predicates' <- mapM callback predicates
@@ -271,6 +276,7 @@ expressionTypeVariables expression = typeVariables (expressionType expression) +
     own = case expressionNode expression of
       Match _ cases -> concatMap (concatMap (typeVariables . binderType) . caseBinders) cases
       AllElements _ binder _ -> typeVariables (binderType binder)
+      SearchElements _ _ binder _ -> typeVariables (binderType binder)
       AllPayloads _ predicates -> concatMap (typeVariables . binderType . fst) predicates
       Let binder _ _ -> typeVariables (binderType binder)
       Binary _ evidence _ _ -> case evidence of Numeric ty -> typeVariables ty; Structural ty -> typeVariables ty
@@ -297,6 +303,7 @@ expressionDependencies expression = typeDependencies (expressionType expression)
       ExternalCall identity _ -> [identity]
       Match _ cases -> concat [caseConstructor branch : concatMap (typeDependencies . binderType) (caseBinders branch) | branch <- cases]
       AllElements _ binder _ -> typeDependencies (binderType binder)
+      SearchElements _ _ binder _ -> typeDependencies (binderType binder)
       AllPayloads _ predicates -> concatMap (typeDependencies . binderType . fst) predicates
       Let binder _ _ -> typeDependencies (binderType binder)
       Binary _ evidence _ _ -> case evidence of Numeric ty -> typeDependencies ty; Structural ty -> typeDependencies ty
@@ -455,6 +462,7 @@ mapExpressionTypes transform expression = expression
       Let binder value body -> Let (bound binder) value body
       Match value branches -> Match value [branch{caseBinders=map bound (caseBinders branch)} | branch <- branches]
       AllElements value binder predicate -> AllElements value (bound binder) predicate
+      SearchElements universal value binder predicate -> SearchElements universal value (bound binder) predicate
       AllPayloads value predicates -> AllPayloads value [(bound binder,predicate) | (binder,predicate) <- predicates]
       Convert conversion ty value -> Convert conversion (transform ty) value
       Perform (Operation ref name) values -> Perform (Operation (ability ref) name) values
@@ -483,6 +491,7 @@ renameExpression parameters fields expression = expression
       Match value cases -> Match (go value)
         [branch { caseBinders = map binder (caseBinders branch),caseBody = under (caseBinders branch) (caseBody branch) } | branch <- cases]
       AllElements value bound predicate -> AllElements (go value) (binder bound) (under [bound] predicate)
+      SearchElements universal value bound predicate -> SearchElements universal (go value) (binder bound) (under [bound] predicate)
       AllPayloads value predicates -> AllPayloads (go value) [(binder bound,under [bound] predicate) | (bound,predicate) <- predicates]
       _ -> node (expressionNode (mapChildren go expression)) }
   where

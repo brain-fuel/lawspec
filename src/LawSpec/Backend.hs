@@ -191,6 +191,8 @@ prettyExprWith readable local = prettyExpr' where
       " -> " ++ prettyExpr' (C.caseBody branch) | branch <- branches] ++ " }"
   C.AllElements value binder predicate -> "allElements (" ++ prettyExpr' value ++ ") (" ++
     local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
+  C.SearchElements universal value binder predicate -> "searchElements " ++ show universal ++ " (" ++ prettyExpr' value ++ ") (" ++
+    local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ prettyExpr' value ++ ") [" ++
     intercalate ", " [local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate
       | (binder,predicate) <- predicates] ++ "]"
@@ -253,8 +255,8 @@ prettyExpanded = prettyExpandedWith False localName
 prettyExpandedWith :: Bool -> (C.Id -> String) -> Expanded -> String
 prettyExpandedWith _ _ e | propertyKind e == "contract" = description (original e)
 prettyExpandedWith readable local e
-  | null (inputs e) = propositionTextWith readable local (assertion e)
-  | otherwise = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " => " ++ propositionTextWith readable local (assertion e) ++ " end for all"
+  | null (inputs e) = propositionTextWith readable local (sourceBody e)
+  | otherwise = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " => " ++ propositionTextWith readable local (sourceBody e) ++ " end for all"
 -- | As prettyExpr, for propositions.
 propositionText :: Assertion -> String
 propositionText = propositionTextWith False localName
@@ -291,6 +293,7 @@ propertyBinders property =
 expressionBinders :: Expr -> [C.Binder]
 expressionBinders term = (case C.expressionNode term of
   C.AllElements _ binder _ -> [binder]
+  C.SearchElements _ _ binder _ -> [binder]
   C.AllPayloads _ predicates -> map fst predicates
   C.Match _ cases -> concatMap C.caseBinders cases
   C.Let binder _ _ -> [binder]

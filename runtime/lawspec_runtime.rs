@@ -2005,6 +2005,30 @@ pub fn all_elements(
     Ok(Value::Bool(true))
 }
 
+pub fn search_elements(
+    universal: bool,
+    value: Value,
+    mut predicate: impl FnMut(Value) -> Result<Value>,
+) -> Result<Value> {
+    let Value::List(values) = value else {
+        return Err("finite search requires a List".into());
+    };
+    let decisive = if universal { -1 } else { 1 };
+    let mut result = -decisive;
+    for item in values {
+        let outcome = predicate(item)?.integer()?;
+        if outcome == BigInt::from(decisive) {
+            return Ok(Value::Integer(outcome));
+        }
+        if outcome == BigInt::from(0) {
+            result = 0;
+        } else if outcome != BigInt::from(-decisive) {
+            return Err("invalid finite search outcome".into());
+        }
+    }
+    Ok(Value::Integer(BigInt::from(result)))
+}
+
 pub fn construct(tag: &str, mut fields: Vec<Value>) -> Result<Value> {
     Ok(match (tag, fields.len()) {
         ("List::Nil", 0) => Value::List(vec![]),

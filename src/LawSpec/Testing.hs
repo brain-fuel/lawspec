@@ -51,6 +51,9 @@ data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [Plan
 data PlannedProperty = PlannedProperty
   { plannedProperty :: Property, finiteCover :: Maybe FiniteCover, boundaryCases :: [[Value]]
   , generatorRequirements :: [GeneratorRequirement]
+  -- Presentation keeps the checked claim, not the execution loop or its
+  -- three-valued implementation. It must never expand into one body per value.
+  , sourceBody :: Proposition
   } deriving (Eq, Show, Generic)
 
 -- | Reference/evidence compatibility view. Native emitters consume caseCover
@@ -194,7 +197,7 @@ planProperty registry bits invoke definitions p
           -- the execution plan needs neither generators nor a body evaluation.
           let boolean = scalarType "Bool"
               truth = Expr boolean (Constant (SBool True)) (GeneratedFrom (propertyId p))
-          pure (PlannedProperty (p { propertyBody = Equation (Structural boolean) truth truth }) (Just (Alternatives [])) [] [])
+          pure (PlannedProperty (p { propertyBody = Equation (Structural boolean) truth truth }) (Just (Alternatives [])) [] [] (propertyBody p))
         _ -> planPopulatedProperty registry bits invoke definitions p
   | otherwise = planPopulatedProperty registry bits invoke definitions p
 
@@ -265,7 +268,7 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
           (exhaustiveLimit settings) (propertyId p)) (exampleExpectations example)
         pure (example { exampleExpectations = expectations })) (propertyExamples p)
       cover <- traverse compressCases finite
-      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) cover cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
+      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) cover cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs] (propertyBody p))
 
 -- | Bounded deterministic search shares typed strategy expressions with the
 -- ordinary harness. Samples are never exposed as complete finite covers.

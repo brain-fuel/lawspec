@@ -43,6 +43,41 @@ export function* finiteCases(cover) {
   for (const values of finiteCoverRows(cover, [])) yield [index++, values];
 }
 
+// Three-valued finite search: a miss in an incomplete inner search stays
+// unknown unless a later item decides the aggregate. No item is evaluated twice.
+export function searchElements(universal, values, evaluate) {
+  const decisive = universal ? -1 : 1;
+  let result = -decisive;
+  for (const value of values) {
+    const code = evaluate(value);
+    if (code === decisive) return code;
+    if (code === 0) result = 0;
+    else if (code !== -decisive)
+      throw new Error("invalid finite search outcome");
+  }
+  return result;
+}
+
+export async function allElementsAsync(values, evaluate) {
+  for (const value of values) {
+    if (!truth(await evaluate(value))) return false;
+  }
+  return true;
+}
+
+export async function searchElementsAsync(universal, values, evaluate) {
+  const decisive = universal ? -1 : 1;
+  let result = -decisive;
+  for (const value of values) {
+    const code = await evaluate(value);
+    if (code === decisive) return code;
+    if (code === 0) result = 0;
+    else if (code !== -decisive)
+      throw new Error("invalid finite search outcome");
+  }
+  return result;
+}
+
 export class Rational {
   constructor(n, d = 1n) {
     n = BigInt(n);

@@ -147,6 +147,7 @@ runViews canonical declarations convert outer wanted source =
       Let bound value body -> uses name value + if binderId bound==name then 0 else uses name body
       Match value branches -> uses name value + sum [uses name (caseBody branch) | branch<-branches,name `notElem` map binderId (caseBinders branch)]
       AllElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
+      SearchElements _ value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
       AllPayloads value predicates -> uses name value + sum [uses name body | (bound,body)<-predicates,binderId bound/=name]
       _ -> sum (map (uses name) (children expression))
     finite wanted value = do
@@ -203,6 +204,10 @@ runViews canonical declarations convert outer wanted source =
         value'<-go scope value
         predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate
         pure original{expressionNode=AllElements value' bound predicate'}
+      SearchElements universal value bound predicate -> do
+        value'<-go scope value
+        predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate
+        pure original{expressionNode=SearchElements universal value' bound predicate'}
       AllPayloads value predicates -> do
         value'<-go scope value
         predicates'<-mapM (\(bound,predicate)->do
