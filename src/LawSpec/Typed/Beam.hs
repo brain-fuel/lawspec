@@ -477,7 +477,7 @@ cexpr env scope e = case expressionNode e of
     item <- fresh (binderName binder)
     lines' <- cstmt env ((binderId binder, item) : scope) predicate
     let shown = if binderId binder `elem` freeBinders predicate then item else "_" ++ item
-    pure (sx, E.remote "lists" "all" [D.text ("fun(" ++ shown ++ ") ->") <> sequenceBlock lines' <> D.hardline <> D.text "end", xs])
+    pure (sx, E.remote "lists" "all" [D.multiline (D.text ("fun(" ++ shown ++ ") ->") <> sequenceBlock lines' <> D.hardline <> D.text "end"), xs])
   Perform (Operation ref "raise") [x] | isFail ref, Just failure <- failedWith ref -> do
     (s, v) <- cexpr env scope x
     out <- convert env ToDynamic failure v
