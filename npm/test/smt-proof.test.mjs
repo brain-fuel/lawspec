@@ -53,7 +53,7 @@ test('actual Z3 establishes nonlinear and dependent laws from rebuilt-WASM tasks
     assert.equal(proof.status,'proved');assert.equal(proof.outcome,'unsat');
     assert.equal(proof.exitCode,0);assert.equal(proof.prover.name,'z3');
     assert.match(proof.prover.version,/^Z3 version /);
-    for(const value of [proof.taskFingerprint,proof.programFingerprint,proof.prover.binaryFingerprint,
+    for(const value of [proof.taskFingerprint,proof.lawFingerprint,proof.prover.binaryFingerprint,
       proof.prover.fingerprint,proof.runFingerprint])assert.match(value,/^[0-9a-f]{64}$/);
     assert.ok(result.evidence.some(row=>row.stage==='law'&&row.status==='proved'));
     assert.equal(proof.configuration.timeoutMs,5000);
@@ -348,7 +348,7 @@ test('a broken counterexample translation gives model-not-confirmed, never refut
     return {...result,proofTasks:result.proofTasks.map(task=>{
       const script=task.counterexample.script.replace(/\(assert \(not [^\n]*\)\n$/,'(assert (= lawspec_input_0 3))\n');
       return {...task,counterexample:{...task.counterexample,script,fingerprint:bind(['lawspec-smtlib-v2',
-        task.programFingerprint,String(task.machineBits),task.owner,task.declaration,script])}};
+        task.lawFingerprint,String(task.machineBits),task.owner,task.declaration,script])}};
     })};
   }};
   const result=await proveWithZ3(mutant,request(law('for all (n :: Integer) => n * n != 4 end for all')),{binary:z3});

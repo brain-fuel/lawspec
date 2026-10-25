@@ -16,19 +16,23 @@
 -- by what the law does rather than by how the program is written.
 -- ref:DEC-content-identity
 module LawSpec.Dependencies
-  ( Graph, Ref(..), dependencyGraph, references, closure, contentHash
-  , Identity(..), nodeIdentity, identityOf, semanticKey, fullKey, namedKey
+  ( Graph, Ref(..), dependencyGraph, dependencyGraphWithBits, references, referencesOf, closure, contentHash
+  , Identity(..), nodeIdentity, identityOf, semanticKey, fullKey, namedKey, adapterKey
   , lawReferences, unitReferences, reachableData, reachableDefinitions
   ) where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Graph as G
+import Data.List (sort)
+import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text
 import qualified Data.Map.Strict as M
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
 import LawSpec.Blake3 (blake3, hashMany, hexOf)
 import LawSpec.Core
+import LawSpec.Scalar (integerBounds)
 import LawSpec.Core.Identity (Encode, Encoded(..), Reference(..), Resolver(..))
 import qualified LawSpec.Core.Identity as Identity
 
@@ -49,7 +53,8 @@ data Node' = DataNode String | DeclNode Id | HandlerNode Id | AbilityNode Id der
 -- | The dependency graph with each node's identity.
 -- ref:DEC-incremental-compilation
 data Graph = Graph
-  { graphEdges :: M.Map Ref [Ref]
+  { graphMachineBits :: Int
+  , graphEdges :: M.Map Ref [Ref]
   , graphIdentities :: M.Map Node' Identity
   , graphConstructors :: M.Map Id (String, Int)
   , graphNodes :: M.Map String Node'
@@ -63,7 +68,13 @@ data Graph = Graph
 
 -- | Built once per program and shared by planning, emission and discharge.
 dependencyGraph :: [DataDeclaration] -> [Unit] -> Graph
-dependencyGraph dataDeclarations units = Graph edges identities constructors nodeNames dataTable definitionTable owners handlerTable
+dependencyGraph = dependencyGraphWithBits 64
+
+-- | Only machine-sized primitive meanings depend on this profile. Fixed-width
+-- and exact types keep the same identity at 32 and 64; the profile propagates
+-- through references only when a node actually reaches a machine-sized type.
+dependencyGraphWithBits :: Int -> [DataDeclaration] -> [Unit] -> Graph
+dependencyGraphWithBits bits dataDeclarations units = Graph bits edges identities constructors nodeNames dataTable definitionTable owners handlerTable
   where
     handlerTable = M.fromList [(handlerId h, map snd (handlerClauses h)) | u <- units, h <- unitHandlers u]
     dataTable = M.fromList [(dataId d, d) | d <- dataDeclarations]
@@ -108,7 +119,7 @@ dependencyGraph dataDeclarations units = Graph edges identities constructors nod
     identities = foldl addGroup M.empty groups
     addGroup done group = case group of
       G.AcyclicSCC n ->
-        let e = encodeNode (resolverOver constructors nodeNames done M.empty) n
+        let e = encodeNode (resolverOver bits constructors nodeNames done M.empty) n
         in combine done [n] [blake3 (semanticBytes e)] [e]
       G.CyclicSCC members ->
         -- Each member roots an ordered graph traversal. First encounters,
@@ -133,12 +144,12 @@ dependencyGraph dataDeclarations units = Graph edges identities constructors nod
             rooted member =
               let ordered = snd (visit S.empty [member])
                   positions = M.fromList (zip ordered (map Just [0 ..]))
-                  encoded = map (encodeNode (resolverOver constructors nodeNames done positions)) ordered
+                  encoded = map (encodeNode (resolverOver bits constructors nodeNames done positions)) ordered
               in blake3 (B.concat (BC.pack ("rooted-group:1:" ++ show (length ordered) ++ ":") :
                                   hashMany (map semanticBytes encoded)))
             -- Presentation keeps the actual names and spans of each member.
             positions = M.fromList (zip members (map Just [0 ..]))
-            encoded = map (encodeNode (resolverOver constructors nodeNames done positions)) members
+            encoded = map (encodeNode (resolverOver bits constructors nodeNames done positions)) members
         in combine done members (map rooted members) encoded
     -- A group's names and presentation hashes cover its members' and what
     -- the group reaches outside itself.
@@ -161,8 +172,8 @@ mentioned constructors nodeNames name = case M.lookup (Id name) constructors of
 
 -- | References resolve to finished nodes' hashes, or to positions inside
 -- the group being hashed (Nothing while its order is being decided).
-resolverOver :: M.Map Id (String, Int) -> M.Map String Node' -> M.Map Node' Identity -> M.Map Node' (Maybe Int) -> Resolver
-resolverOver constructors nodeNames done group = Resolver resolveName resolveTypeName
+resolverOver :: Int -> M.Map Id (String, Int) -> M.Map String Node' -> M.Map Node' Identity -> M.Map Node' (Maybe Int) -> Resolver
+resolverOver bits constructors nodeNames done group = Resolver resolveName resolveTypeName
   where
     node n = case M.lookup n group of
       Just (Just i) -> Just (Member i)
@@ -173,7 +184,9 @@ resolverOver constructors nodeNames done group = Resolver resolveName resolveTyp
       Nothing -> M.lookup (idText i) nodeNames >>= node
     resolveTypeName name = case M.lookup name nodeNames of
       Just n@(DataNode _) -> node n
-      _ -> Nothing
+      _ | name `elem` ["IntSize", "UIntSize", "UIntPtr"] -> Just (Hashed (blake3
+            (Text.encodeUtf8 (Text.pack (show ("lawspec.primitive-profile.v1", name, integerBounds bits name))))))
+        | otherwise -> Nothing
 
 -- | A node's identity.
 nodeIdentity :: Graph -> Ref -> Maybe Identity
@@ -185,7 +198,7 @@ nodeIdentity graph ref = M.lookup (case ref of TypeNode i -> DataNode (idText i)
 identityOf :: Encode a => Graph -> a -> Identity
 identityOf graph value = Identity (blake3 (semanticBytes e)) names shown
   where
-    e = Identity.encode (resolverOver (graphConstructors graph) (graphNodes graph) (graphIdentities graph) M.empty) value
+    e = Identity.encode (resolverOver (graphMachineBits graph) (graphConstructors graph) (graphNodes graph) (graphIdentities graph) M.empty) value
     deps = mapMaybe (\n -> mentioned (graphConstructors graph) (graphNodes graph) n >>= (`M.lookup` graphIdentities graph)) (Identity.references value)
     names = blake3 (B.concat (BC.pack "names:" : nameBytes e : map namesHash deps))
     shown = blake3 (B.concat (BC.pack "presentation:" : names : docBytes e : map presentationHash deps))
@@ -194,20 +207,40 @@ identityOf graph value = Identity (blake3 (semanticBytes e)) names shown
 -- outcome or a proof: some context (a machine width, settings) and the
 -- value's semantic hash.
 semanticKey :: Encode a => Graph -> String -> a -> String
-semanticKey graph context value = hexOf (blake3 (B.concat [BC.pack ("semantic:" ++ show (length context) ++ ":" ++ context), semanticHash (identityOf graph value)]))
+semanticKey graph context value = hexOf (blake3 (B.concat [keyContext "semantic" context, semanticHash (identityOf graph value)]))
 
 -- | A key for work whose result shows names but not docs or spans, such as
 -- a test that runs native code bound by name.
 namedKey :: Encode a => Graph -> String -> a -> String
 namedKey graph context value = let i = identityOf graph value
-  in hexOf (blake3 (B.concat [BC.pack ("named:" ++ show (length context) ++ ":" ++ context), semanticHash i, namesHash i]))
+  in hexOf (blake3 (B.concat [keyContext "named" context, semanticHash i, namesHash i]))
+
+-- | Native interfaces retain their public names; checked implementation
+-- locals and declaration spellings remain presentation. Keep that boundary
+-- narrow: hashing every name reached by an adapter-calling law would make
+-- harmless local renames rerun it. Adapter code/configuration is additionally
+-- bound by the host's result key.
+adapterKey :: Encode a => Graph -> String -> a -> String
+adapterKey graph context value = hexOf (blake3 (B.concat
+  [BC.pack "adapter:", BC.pack (semanticKey graph context value), Text.encodeUtf8 (Text.pack (show public))]))
+  where
+    reached = closure graph (referencesOf graph value)
+    public = sort
+      [(idText (dataId d), dataName d,
+        [(idText (constructorId c), constructorName c, map binderName (constructorFields c)) | c <- dataConstructors d])
+      | TypeNode identity <- S.toList reached, Just d <- [M.lookup identity (graphData graph)]]
 
 -- | A memo key for work whose result shows names, docs or spans, such as a
 -- plan or emitted code: both hashes, so it is exact, yet an edit the value
 -- does not reach leaves it unchanged.
 fullKey :: Encode a => Graph -> String -> a -> String
 fullKey graph context value = let i = identityOf graph value
-  in hexOf (blake3 (B.concat [BC.pack ("full:" ++ show (length context) ++ ":" ++ context), semanticHash i, presentationHash i]))
+  in hexOf (blake3 (B.concat [keyContext "full" context, semanticHash i, presentationHash i]))
+
+-- Context is Unicode data too. Char8 would alias U+0100 with U+0000.
+keyContext :: String -> String -> B.ByteString
+keyContext label context = let bytes = Text.encodeUtf8 (Text.pack context)
+  in B.concat [BC.pack (label ++ ":" ++ show (B.length bytes) ++ ":"), bytes]
 
 -- | A declaration's semantic hash in hexadecimal: its remote identity.
 -- ref:DEC-remote-semantic-identity
@@ -217,6 +250,17 @@ contentHash graph node = hexOf . semanticHash <$> nodeIdentity graph node
 -- | The known nodes among some references, without repeats.
 references :: Graph -> [Ref] -> [Ref]
 references graph = filter (`M.member` graphEdges graph) . S.toList . S.fromList
+
+-- | Resolve the semantic references of any checked Core value to graph
+-- roots, including constructor owners and spec-handler clause definitions.
+referencesOf :: Identity.Collect a => Graph -> a -> [Ref]
+referencesOf graph value = references graph (concatMap resolve (Identity.references value))
+  where
+    resolve name = case mentioned (graphConstructors graph) (graphNodes graph) name of
+      Just (DataNode name') -> [TypeNode (Id name')]
+      Just (DeclNode identity) -> [DeclarationNode identity]
+      Just (HandlerNode identity) -> map DeclarationNode (M.findWithDefault [] identity (graphHandlers graph))
+      _ -> []
 
 -- | Everything reachable from some nodes, the nodes included.
 closure :: Graph -> [Ref] -> S.Set Ref

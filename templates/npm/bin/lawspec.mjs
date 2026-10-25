@@ -14,7 +14,7 @@ import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.m
 import { collectScalaCoverage } from "../scala-coverage.mjs";
 import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { benchmarkInvocations, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, previousResult, projectDigest, recordedDigest, selectByTags, mergeJunit,
+import { benchmarkInvocations, presentationInvocations, presentationDigest, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, previousResult, projectDigest, recordedDigest, selectByTags, mergeJunit,
   harnessStatistics, coverageTools, junitFromTests, testsToRun } from "../test-command.mjs";
 import {
   readOptional,
@@ -474,13 +474,22 @@ async function runTests(compiler, input, selected, roots, config) {
       build, target, machineBits: input.machineBits, minify: options.minify === true,
       tests: planned.tests,
       // Recorded values are spec data: a changed recording runs its laws again.
-      environment: await environmentDigest(root, report_) + (await recordedDigest(recordedFolder)),
-      project: await projectDigest(root, generated),
+      environment: await environmentDigest(root, report_,target.language) + (await recordedDigest(recordedFolder)),
+      project: await projectDigest(root, generated,target.language),
       attested,
     });
     const identity = projectKey(root);
     const resultsFile = path.join(configRoot, ".lawspec", "results", `${target.language}-${identity}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
+    const presentation=presentationDigest(planned.files,await environmentDigest(root,report_,target.language));
+    if(previous.presentation!==presentation){
+      const checks=presentationInvocations(target,planned.files,{offline});
+      if(!checks.length)throw new Error(`${target.language}: no native source validator is available`);
+      for(const check of checks){
+        const result=await spawned(check.command,check.args,root,{...process.env,...check.environment});
+        if(!result.ok)throw new Error(`${target.language}: current generated source failed native validation`);
+      }
+    }
     const attempts = {...(previous.attempts ?? {})};
     const {directory: failures, file: databaseFile, database} = await failureDatabase(configRoot, target.language, root);
     // Recording again runs every law, so each records what it sees now.
@@ -632,7 +641,7 @@ async function runTests(compiler, input, selected, roots, config) {
     const attestations = Object.fromEntries(Object.entries({ ...(previous.attestations ?? {}),
       ...(attestation ? { [attestation.run.id]: attestation } : {}) })
       .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id)));
-    await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,
+    await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,presentation,
       ...(Object.keys(attestations).length ? { attestations } : {}) }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
     const unmet = statistics.flatMap((s) => (s.cover ?? []).filter((c) => !c.met).map((c) => `${s.law}: cover ${c.required}% "${c.label}" (${c.observed}%)`));

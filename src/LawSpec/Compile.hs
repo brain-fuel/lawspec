@@ -13,6 +13,7 @@ import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..)
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
+import LawSpec.SurfaceContext (contextFor)
 import LawSpec.Inference
 import LawSpec.DefinitionTotality (auditTemplatesWithContext, auditTemplatesWithDeferrals)
 import LawSpec.OperationChecks (checkOperationResults)
@@ -508,7 +509,13 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
      pure (unitName u,filter (\(definition,_,_,_)->functionName definition `elem` originalNames) templates)
    let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
        signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
-       expansionKey u l = key (show (sourceProfile (unitName u), bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
+       expansionKey u l =
+         let invoked = invokedLaws table l
+             bindingTypes = functions u ++ [(name, Qualified requirements (foldr Arrow result (map snd arguments)))
+               | (name, arguments, result, requirements) <- signatures u]
+             context@(selected, _, _) = contextFor bindingTypes dataTypes sourceTypes (l, invoked)
+             usedSignatures = [signature | signature@(name, _, _, _) <- signatures u, name `elem` map fst selected]
+         in key (show (sourceProfile (unitName u), bits, settings, context, unitName u, usedSignatures, l, invoked))
        typedChecked environment expression = do
          (tree, requirements) <- typedExpressionWithSchemesContext sourceTypes dataTypes bits environment expression
          forM_ requirements $ \requirement -> unless (satisfiedWithContext sourceTypes dataTypes bits [] requirement)

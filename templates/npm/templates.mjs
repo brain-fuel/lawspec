@@ -5,6 +5,8 @@ export const programTargets = /*@ program-targets @*/;
 export const artifactTargets = /*@ artifact-targets @*/;
 export const targetLabels = /*@ target-labels @*/;
 
+export const presentationChecks = /*@ presentation-checks @*/;
+
 export const commands = /*@ commands @*/;
 
 export const setup = /*@ setup @*/;

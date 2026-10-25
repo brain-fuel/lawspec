@@ -33,7 +33,7 @@ import qualified LawSpec.Targets as Targets
 import LawSpec.Collections (collectionsSource)
 import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
-import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
+import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
 
 data Output = Output { outputPath :: FilePath, outputContent :: String, outputExecutable :: Bool }
@@ -149,6 +149,11 @@ factFills version =
   , ("artifact-targets", Inline (json (Array (map String Targets.artifactTargets))))
   , ("target-labels", Inline (json (Array [Array [String t, String (targetLabel t)] | t <- scaffoldTargets])))
   , ("commands", Inline (json (Object [(t, String c) | t <- scaffoldTargets, Just c <- [testCommand t]])))
+  , ("presentation-checks", Inline (json (Object
+      [(t, Array [Object [("command", String (checkCommand c)), ("args", Array (map String (checkArguments c))),
+        ("suffix", maybe Null String (checkSuffix c)), ("each", Bool (checkEach c)),
+        ("environment", Object [(k, String v) | (k,v) <- checkEnvironment c])] | c <- presentationChecks t])
+      | t <- Targets.programTargets])))
   , ("setup", Inline (json (Object [(t, String s) | t <- scaffoldTargets, Just s <- [setupAdvice t]])))
   , ("scaffolds", Inline (json (Object
       [ (t, Object [(layout, Object [(path, String content) | (path, content) <- files]) | (layout, minify) <- [("readable", False), ("compact", True)], Right files <- [scaffoldFiles minify t]])

@@ -22,7 +22,7 @@ import LawSpec.CorePersist ()
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Data.Binary (Binary)
-import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, fullKey, reachableData, reachableDefinitions)
+import LawSpec.Dependencies (dependencyGraphWithBits, lawReferences, closure, fullKey, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (evaluate)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -145,7 +145,7 @@ lawPlanner :: Program -> Either [Diagnostic] (Property -> Either String PlannedP
 lawPlanner program@Program{..} = do
   invoke <- prepareDefinitions program
   _ <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
-  let graph = dependencyGraph programDataDeclarations programUnits
+  let graph = dependencyGraphWithBits programMachineBits programDataDeclarations programUnits
   pure $ \p ->
     let refs = lawReferences graph p
         reached = closure graph refs

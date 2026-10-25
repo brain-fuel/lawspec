@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { benchmarkInvocations, configurationInvocations, preparationInvocations, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests,
+import { benchmarkInvocations, configurationInvocations, preparationInvocations, presentationInvocations, presentationDigest, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests,
   environmentDigest, projectDigest, testsToRun, previousResult, executedTests } from "../test-command.mjs";
 
 // A manifest entry, named as each target names a law's tests (LawSpec.TestNames).
@@ -8,6 +8,21 @@ const names = { python: (i) => `test_law_${i}`, go: (i) => `TestLaw${i}`, rust: 
 const law = (index, file, label = `example.unit::law ${index}`, language = "python") =>
   ({ law: `example.unit::law::law ${index}`, unit: "example.unit", label, index, file, key: `k${index}`, callsAdapters: true,
     name: (names[language] ?? ((i) => `lawLaw${i}`))(index), tags: [] });
+
+test("layout changes only the validation digest, while profile and toolchain change execution keys",()=>{
+  const input={build:'compiler',target:{language:'javascript'},machineBits:64,tests:[law(1,'test/a')],environment:'node22',project:'adapter'};
+  const key=lawKeys({...input,minify:false});
+  assert.deepEqual(lawKeys({...input,minify:true}),key);
+  assert.notDeepEqual(lawKeys({...input,machineBits:32}),key);
+  assert.notDeepEqual(lawKeys({...input,environment:'node23'}),key);
+  assert.notDeepEqual(lawKeys({...input,project:'changed-adapter'}),key);
+  assert.notEqual(presentationDigest([{path:'test/a',ownership:'generated',content:'old'}],'node22'),
+    presentationDigest([{path:'test/a',ownership:'generated',content:'new'}],'node22'));
+  assert.deepEqual(presentationInvocations({language:'javascript'},[{path:'test/a.mjs'},{path:'src/a.mjs'}]),[
+    {command:'node',args:['--check','test/a.mjs'],environment:{}},
+    {command:'node',args:['--check','src/a.mjs'],environment:{}}]);
+  assert.deepEqual(presentationInvocations({language:'rust'},[],{offline:true})[0].args,['test','--no-run','--offline']);
+});
 
 test("recorded failures replay even after restoring a previously passing adapter", () => {
   const entries = [law(1, "test/a"), law(2, "test/a")];

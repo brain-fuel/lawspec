@@ -73,7 +73,7 @@ type M = State St
 -- semantic. A name here moves the field's whole content to that stream.
 presentationFields :: M.Map String Stream
 presentationFields = M.fromList $
-  [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "dataId", "dataName", "constructorId", "constructorName"
+  [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "declarationTemplate", "dataId", "dataName", "constructorId", "constructorName"
                       , "abilityName", "handlerId", "handlerName", "propertyId", "propertyName", "contractDeclaration"
                       , "sessionId", "sessionName", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
   [ (f, Docs) | f <- [ "declarationOrigin", "dataOrigin", "constructorOrigin", "expressionOrigin", "abilityOrigin"
@@ -184,13 +184,14 @@ instance Encode a => GEncode (K1 i a) where
 instance Encode Id where
   enc r i = do
     s <- get
-    if stBindTypes s then bindType i else
-      case (M.lookup i (stBinders s), M.lookup i (stTypeVariables s)) of
-        (Just level, _) -> emit (BB.char7 'b') >> number (toInteger level) >> aside Names (idText i)
-        (_, Just level) -> emit (BB.char7 'v') >> number (toInteger level) >> aside Names (idText i)
-        _ -> case resolveId r i of
-          Just ref -> reference ref >> aside Names (idText i)
-          Nothing -> emit (BB.char7 'f') >> text (idText i)
+    if stStream s /= Semantic then text (idText i)
+    else if stBindTypes s then bindType i
+    else case (M.lookup i (stBinders s), M.lookup i (stTypeVariables s)) of
+      (Just level, _) -> emit (BB.char7 'b') >> number (toInteger level) >> aside Names (idText i)
+      (_, Just level) -> emit (BB.char7 'v') >> number (toInteger level) >> aside Names (idText i)
+      _ -> case resolveId r i of
+        Just ref -> reference ref >> aside Names (idText i)
+        Nothing -> emit (BB.char7 'f') >> text (idText i)
 
 bindType :: Id -> M ()
 bindType i = do

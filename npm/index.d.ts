@@ -553,6 +553,7 @@ export interface ModelResult {
   outcome: string;
   values: string;
   invariant: string;
+  inputs?: string[];
 }
 
 export interface ModelTaskRow {
@@ -563,6 +564,7 @@ export interface ModelTaskRow {
 
 export interface ModelTask {
   fingerprint: string;
+  semanticFingerprint: string;
   kind: string;
   script: string;
   inputs: string[];
@@ -579,6 +581,7 @@ export interface AnalysisResult {
   fingerprint: string;
   outcome: string;
   values: string;
+  inputs?: string[];
 }
 
 export type AnalysisStage = 'completeness' | 'overlap' | 'conflict' | 'vacuity';
@@ -601,6 +604,7 @@ export type AnalysisTaskRow =
 
 export interface AnalysisTask {
   fingerprint: string;
+  semanticFingerprint: string;
   encoding: 'lawspec-smtlib-v2';
   script: string;
   inputs: string[];
@@ -687,7 +691,7 @@ export type ProofTask =
       owner: string;
       declaration: string;
       at: Location;
-      programFingerprint: string;
+      lawFingerprint: string;
       machineBits: 32 | 64;
       status: 'ready';
       script: string;
@@ -704,7 +708,7 @@ export type ProofTask =
       owner: string;
       declaration: string;
       at: Location;
-      programFingerprint: string;
+      lawFingerprint: string;
       machineBits: 32 | 64;
       status: 'unsupported';
       reason: string;
@@ -757,6 +761,7 @@ export type CounterexampleQuery =
       encoding: 'lawspec-smtlib-v2';
       script: string;
       fingerprint: string;
+      semanticFingerprint: string;
       inputs: {name: string; binder: string}[];
     };
 

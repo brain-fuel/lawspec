@@ -297,3 +297,18 @@ The mandatory definition audit reduces variable aliases by capture-avoiding
 substitution, following [Lean's zeta reduction of local definitions](https://lean-lang.org/doc/reference/latest/The--grind--tactic/Local-Definitions/).
 Both source and Core lowering share that reduction. Other strict bindings retain
 their evaluated prefix so an unused partial computation still fails validation.
+
+### Reusing a completed law proof
+
+With a configured compiler cache, the Node host may reuse a completed `unsat`
+law receipt after current mandatory admission and proof-task validation. Its
+key includes the law fingerprint, compiler build metadata, host implementation
+and the actual solver executable, version and configuration. The original
+exact task and run fingerprints remain unchanged; `reused` records provenance
+and `currentTaskFingerprint` identifies the current task. This is reuse of an
+earlier execution, not a new solver run. `--no-cache` forces execution again.
+
+The cache is a trusted local compiler memo. Satisfiable/refuted, unsupported,
+unknown and incomplete law results are retried; counterexamples are replayed
+by the current evaluator. The separate law-set and temporal/model solver
+workflows still execute and are not covered by this law-receipt cache.

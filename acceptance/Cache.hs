@@ -42,7 +42,10 @@ cacheMode = lookupEnv "LAWSPEC_CACHE" >>= \case
 -- | The labels name the run (suite, target, profile, mode); the contents are the
 -- project files as written; the paths are further files the run reads.
 runKey :: String -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
-runKey target labels contents paths = do
+runKey target = runKeyWith target environmentNames
+
+runKeyWith :: String -> [String] -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
+runKeyWith target environmentNames labels contents paths = do
   existing <- filterM doesFileExist paths
   files <- forM (sort existing) $ \path -> (,) path <$> B.readFile path
   tools <- toolFingerprint target
@@ -57,7 +60,7 @@ runKey target labels contents paths = do
 -- hashes of what the project was generated from in place of its files.
 meaningKey :: String -> [String] -> String -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
 meaningKey target labels build semantic contents paths =
-  runKey target ("lawspec-acceptance-meaning-1" : build : labels ++ semantic) contents paths
+  runKeyWith target (filter (/= "LAWSPEC_MINIFY") environmentNames) ("lawspec-acceptance-meaning-3" : build : labels ++ semantic) contents paths
 
 utf8 :: String -> B.ByteString
 utf8 = T.encodeUtf8 . T.pack

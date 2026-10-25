@@ -14,7 +14,7 @@ module LawSpec.Core.LawTasks
   ( Purpose(..), AnalysisTask(..), Answer(..), analysisTasks, settle
   ) where
 
-import Control.Monad (foldM, forM, zipWithM)
+import Control.Monad (foldM, forM, zipWithM, unless)
 import qualified Data.ByteString as B
 import Data.List (nub)
 import qualified Data.Map.Strict as M
@@ -27,6 +27,7 @@ import LawSpec.Core.LawAnalysis
 import LawSpec.Core.Smt (Ground(..), groundQuery, catalog, outerQuantifiers)
 import LawSpec.Core.Value (Value(..), equalValues)
 import LawSpec.Digest (digestHex, digestString)
+import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey)
 import LawSpec.Scalar (Scalar(..))
 
 data Purpose = Uncovered | Overlapping Clause Clause | Conflicting Clause Clause | Witness Property
@@ -36,18 +37,22 @@ data AnalysisTask = AnalysisTask
   { taskUnit :: Id, taskFunction :: Id, taskCheck :: Check, taskPurpose :: Purpose
   -- The constants, and for each the identity its value binds when the
   -- evaluator confirms a model (a second clause's inputs are copies).
-  , taskBinders :: [(Binder, Id)], taskScript :: String, taskNames :: [String], taskFingerprint :: String }
+  , taskBinders :: [(Binder, Id)], taskScript :: String, taskNames :: [String], taskFingerprint :: String, taskSemanticFingerprint :: String }
   deriving (Eq, Show)
 
 -- | What the host saw: sat, unsat or another outcome, and on sat Z3's
 -- get-value answer.
-data Answer = Answer { answerOutcome :: String, answerValues :: String } deriving (Eq, Show)
+data Answer = Answer
+  { answerOutcome :: String, answerValues :: String, answerInputNames :: Maybe [String] } deriving (Eq, Show)
 
 -- | The tasks of each undecided row, or why it cannot have them.
 analysisTasks :: Program -> M.Map Id Claims -> [Row] -> [(Row, Either String [AnalysisTask])]
 analysisTasks program claims rows =
   [ (row, tasksOf row) | row <- rows, Undecided _ <- [rowOutcome row] ]
   where
+    graph = dependencyGraphWithBits (programMachineBits program) (programDataDeclarations program) (programUnits program)
+    goal (Established proposition) = (True, proposition)
+    goal (NotEstablished proposition) = (False, proposition)
     tasksOf row = do
       let f = rowFunction row
           clauses = clausesFor program f
@@ -55,7 +60,9 @@ analysisTasks program claims rows =
           build purpose binders assertions = do
             (script, names) <- groundQuery program (checkStage (rowCheck row) ++ " of " ++ idText f) (map fst binders) assertions
             pure (AnalysisTask (rowUnit row) f (rowCheck row) purpose binders script names
-              (digestHex (digestString (concatMap frame [idText f, checkStage (rowCheck row), script]))))
+              (digestHex (digestString (concatMap frame [idText f, checkStage (rowCheck row), script])))
+              (semanticKey graph (show ("lawspec.analysis-goal.v1", programMachineBits program, checkStage (rowCheck row)))
+                (map fst binders, map goal assertions)))
       tasks <- case rowCheck row of
         Completeness -> do
           binders <- maybe (Left "the function has no arguments to quantify") Right (arguments program f)
@@ -129,7 +136,10 @@ settle program claims results =
       "sat" -> either (\why -> ("incomplete", "Z3's model is not confirmed: " ++ why)) id $ do
         c <- ctx
         named <- readValues (answerValues answer)
-        values <- forM (zip (taskNames task) (taskBinders task)) $ \(name, (binder, _)) ->
+        let inputNames = maybe (taskNames task) id (answerInputNames answer)
+        unless (length inputNames == length (taskBinders task) && length inputNames == length (nub inputNames))
+          (Left "cached model input names do not match the current positional binders")
+        values <- forM (zip inputNames (taskBinders task)) $ \(name, (binder, _)) ->
           maybe (Left ("Z3 gave no value for " ++ binderName binder)) (valueOf (catalog program) (binderType binder)) (lookup name named)
         let env = [(identity, v) | ((_, identity), v) <- zip (taskBinders task) values]
             split k = splitAt (length (clauseInputs k)) env

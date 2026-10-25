@@ -5,11 +5,12 @@ import qualified Data.Map.Strict as M
 import Data.List (isInfixOf)
 import Test.Hspec
 import qualified LawSpec.Core as C
-import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, identityOf, nodeIdentity)
+import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, dependencyGraphWithBits, identityOf, nodeIdentity, semanticKey)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import qualified LawSpec.Core.Smt as Smt
 import LawSpec.TestManifest (TestEntry(..), testManifest)
+import FixtureSource (extendUnit)
 
 -- | A program's laws and declarations by their source names, each with its
 -- identity.
@@ -85,6 +86,15 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     semantic "twice" after (at "double") `shouldBe` True
     semantic "twices" after (at "doubles") `shouldBe` True
     names "twices" after (at "doubles") `shouldBe` False
+  it "keeps a unit's names hash when a same-width behaviour edit changes only a dependency's body" $ do
+    let unitIdentity source =
+          let program = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines source)])
+              graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
+          in identityOf graph (head (C.programUnits program))
+        first = unitIdentity base
+        changed = unitIdentity (edit "is x + x end" "is x - x end" base)
+    semanticHash changed `shouldNotBe` semanticHash first
+    namesHash changed `shouldBe` namesHash first
   it "keeps the semantic and names hashes when a description is edited" $ do
     let after = identities (edit "Doubling adds a number to itself." "Doubling a number adds it to itself." base)
     same "doubles" after `shouldBe` True
@@ -125,6 +135,33 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     semantic "zeta" renamed (first M.! "alpha") `shouldBe` True
     semantic "beta" renamed (first M.! "beta") `shouldBe` True
     semantic "alpha" changed (first M.! "alpha") `shouldBe` False
+  it "keeps adapter-calling test keys under checked local and definition renames" $ do
+    let source = edit "double x = x * 2" "observe (double x) = observe (x * 2)"
+          (take 1 base ++ ["observe :: Integer -> Integer"] ++ drop 1 base)
+        keys text = [entryKey e | e <- testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines text)]))]
+    keys (edit "(x :: Integer) -> Integer is x + x end" "(local :: Integer) -> Integer is local + local end" source)
+      `shouldBe` keys source
+    keys (edit "double" "twice" source) `shouldBe` keys source
+    keys (edit "observe" "readNative" source) `shouldNotBe` keys source
+  it "erases a checked generic definition's specialization provenance from semantic keys" $ do
+    let source name variable = unlines
+          ["unit identity.generic", "function " ++ name ++ " (value :: " ++ variable ++ ") -> " ++ variable ++ " is value end function",
+           "law selected is definition: for all (input :: Int8) => " ++ name ++ " input = input end for all end definition end law", "end unit"]
+        keys text = [entryKey e | e <- testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source "generic.lawspec" text]))]
+    keys (source "identity" "a") `shouldBe` keys (source "unchanged" "element")
+  it "keeps model test keys when an unrelated checked definition changes" $ do
+    let fixture = "test/fixtures/canonical-model-layer-selection.lawspec"
+    original <- readFile fixture
+    let source body = extendUnit original ("function unrelated (value :: Integer) -> Integer is " ++ body ++ " end function")
+        keys text = [entryKey e | e <- testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source fixture text])), entryKind e == Just "model"]
+        first = keys (source "value + 1")
+    first `shouldSatisfy` (not . null)
+    keys (source "value + 2") `shouldBe` first
+    keys (unlines (edit "Pair n n end function" "Pair 0 n end function" (lines (source "value + 1"))))
+      `shouldNotBe` first
   it "reruns no test and no proof after a reformat and a local rename" $ do
     let compiled source = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines source)])
         edited = concatMap (\line -> [line, ""]) (edit "(x :: Integer) -> Integer is x + x end" "(y :: Integer) -> Integer is y + y end" base)
@@ -133,6 +170,20 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     testKeys (compiled edited) `shouldBe` testKeys (compiled base)
     length (testKeys (compiled base)) `shouldSatisfy` (> 0)
     proofKeys (compiled edited) `shouldBe` proofKeys (compiled base)
+  it "includes machine bounds only in definitions that depend on machine types" $ do
+    let identity bits ty =
+          let source = unlines ["unit identity.profile", "function identity (value :: " ++ ty ++ ") -> " ++ ty ++ " is value end function", "end unit"]
+              program = either (error . show) id (compileCore bits defaultGeneration [Source "profile.lawspec" source])
+              graph = dependencyGraphWithBits bits (C.programDataDeclarations program) (C.programUnits program)
+              definition = head (C.unitDefinitions (head (C.programUnits program)))
+          in semanticHash (identityOf graph definition)
+    mapM_ (\ty -> identity 32 ty `shouldNotBe` identity 64 ty) ["IntSize", "UIntSize", "UIntPtr"]
+    mapM_ (\ty -> identity 32 ty `shouldBe` identity 64 ty) ["Int32", "UInt64", "Integer"]
+  it "keeps distinct Unicode key contexts distinct" $ do
+    let program = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines base)])
+        graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
+        value = head (C.programUnits program)
+    semanticKey graph "\x100" value `shouldNotBe` semanticKey graph "\x0" value
   it "leaves names and spans out of the semantic encoding" $
     show (semanticHash (at "doubles")) `shouldSatisfy` (not . ("doubles" `isInfixOf`))
   where

@@ -11,6 +11,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import {presentationChecks,templates} from "./templates.mjs";
 
 // Folders that hold dependencies, build output or caches, not code under test.
 const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle", "bin", "obj", "TestResults",
@@ -44,7 +45,9 @@ export function isAttestation(content) {
 
 // Every file in a project that LawSpec did not generate, by content, except
 // environment attestations.
-export async function projectDigest(root, generated) {
+export async function projectDigest(root, generated, language) {
+  const readable=language?templates(language):{};
+  const compact=language?templates(language,{minify:true}):{};
   const hash = createHash("sha256");
   async function walk(folder) {
     const entries = (await readdir(path.join(root, folder), { withFileTypes: true }))
@@ -56,7 +59,7 @@ export async function projectDigest(root, generated) {
       } else if (entry.isFile() && !generated.has(relative) && !cryptoBuildOutput(relative)) {
         const content = await readFile(path.join(root, relative));
         if (relative.endsWith(".json") && isAttestation(content.toString("utf8"))) continue;
-        hash.update(relative + "\0").update(content).update("\0");
+        hash.update(relative + "\0").update(content.toString("utf8")===compact[relative]?readable[relative]:content).update("\0");
       }
     }
   }
@@ -64,13 +67,20 @@ export async function projectDigest(root, generated) {
   return hash.digest("hex");
 }
 
-export async function environmentDigest(root, report) {
+export async function environmentDigest(root, report, language) {
   // Coverage locations describe build output; native tools can discover more
   // output directories after the first run. Build configuration is hashed below.
   const {coverage: _coverage, ...toolchain} = report ?? {};
   const parts = [JSON.stringify(report ? toolchain : null)];
   const names = (await readdir(root)).filter((name) => environmentFiles.includes(name) || name.endsWith(".cabal")).sort();
-  for (const name of names) parts.push(name, await readFile(path.join(root, name), "utf8"));
+  const readable=language?templates(language):{};
+  const compact=language?templates(language,{minify:true}):{};
+  for (const name of names) {
+    const content=await readFile(path.join(root,name),"utf8");
+    // Only byte-exact compiler-owned scaffold alternatives are equivalent.
+    // A user edit to build configuration always remains an execution input.
+    parts.push(name,content===compact[name]?readable[name]:content);
+  }
   return digest(JSON.stringify(parts));
 }
 
@@ -104,7 +114,7 @@ export async function recordedDigest(folder) {
 export function lawKeys({ build, target, machineBits, minify, tests, environment, project, attested = new Map() }) {
   const configuration = JSON.stringify({ ...target, root: undefined });
   return new Map(tests.map((entry) => [entry.law, digest(JSON.stringify([
-    build, configuration, machineBits, minify, entry.key,
+    build, configuration, machineBits, entry.key,
     environment, entry.callsAdapters ? project : null,
     ...(attested.has(entry.law) ? [attested.get(entry.law)] : []),
   ]))]));
@@ -137,6 +147,27 @@ export function preparationInvocations(target, files) {
   return target.language === "gleam" && files.some((file) => file.path === "priv/lawspec_crypto_native.c")
     ? [{command: "escript", args: ["lawspec_crypto_build.escript"]}]
     : [];
+}
+
+// A changed layout must be accepted by the target compiler/parser before a
+// semantic execution result can be reused. No property cases run here.
+export function presentationInvocations(target,files,{offline=false}={}) {
+  const overrides={python3:target.python,mvn:target.maven,gradle:target.gradle,
+    scala:target.scala,swift:target.swift,clojure:target.clojure};
+  return (presentationChecks[target.language]??[]).flatMap(check=>{
+    const paths=check.suffix?files.filter(file=>file.path.endsWith(check.suffix)).map(file=>file.path):[];
+    const extra=offline?({cargo:['--offline'],mvn:['-o'],gradle:['--offline'],dotnet:['--no-restore']}[check.command]??[]):[];
+    const args=[...check.args,...extra];
+    return (check.each?paths.map(file=>[file]):[paths]).map(paths=>({
+      command:overrides[check.command]??check.command,args:[...args,...paths],environment:check.environment}));
+  });
+}
+
+// Presentation bytes are deliberately kept out of lawKeys. This separate
+// digest records which current artifacts have passed native source validation.
+export function presentationDigest(files,environment) {
+  return digest(JSON.stringify([environment,files.filter(file=>file.ownership==='generated')
+    .map(file=>[file.path,file.content])]));
 }
 
 // The native invocations that run the harness's benchmarks (lawspec test

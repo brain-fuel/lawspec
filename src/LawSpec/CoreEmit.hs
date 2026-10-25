@@ -577,7 +577,7 @@ emitPlanFormatted minify target Plan{..} = do
     -- (emitters disambiguate type names across the program) and the table naming each checked
     -- definition. Editing a definition's body elsewhere re-emits only the
     -- units whose laws reach it.
-    graph = D.dependencyGraph planDataDeclarations (map plannedUnit plannedUnits)
+    graph = D.dependencyGraphWithBits planMachineBits planDataDeclarations (map plannedUnit plannedUnits)
     dataDigest = D.fullKey graph "data" [C.Constructor (C.idText (C.dataId d)) [] | d <- planDataDeclarations]
     calls
       | target `elem` ["java","kotlin","scala"] = definitionCalls

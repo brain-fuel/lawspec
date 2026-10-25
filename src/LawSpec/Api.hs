@@ -192,10 +192,13 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     -- The host's answers to model tasks, by fingerprint.
     modelAnswers = case decode bytes of
       Just (Object o) | Just (Array given) <- KM.lookup "modelResults" o ->
-        [ (T.unpack fp, ModelProof.Answer (T.unpack outcome) (text "values" a) (text "invariant" a))
+        [ (T.unpack fp, ModelProof.Answer (T.unpack outcome) (text "values" a) (text "invariant" a) (inputNames a))
         | Object a <- toList given, Just (String fp) <- [KM.lookup "fingerprint" a], Just (String outcome) <- [KM.lookup "outcome" a] ]
       _ -> []
-      where text k a = case KM.lookup k a of Just (String v) -> T.unpack v; _ -> ""
+      where inputNames a = case KM.lookup "inputs" a of
+              Just (Array ns) -> traverse (\v -> case v of String n -> Just (T.unpack n); _ -> Nothing) (toList ns)
+              _ -> Nothing
+            text k a = case KM.lookup k a of Just (String v) -> T.unpack v; _ -> ""
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
@@ -207,10 +210,13 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           withTasks = KM.insert "analysisTasks" (toJSON (either (const []) (\claims -> analysisTaskViews core claims rows) claimsOf)) response
           answers = case decode bytes of
             Just (Object o) | Just (Array given) <- KM.lookup "analysisResults" o ->
-              Just [ (T.unpack fp, Tasks.Answer (T.unpack outcome) (maybe "" T.unpack values))
+              Just [ (T.unpack fp, Tasks.Answer (T.unpack outcome) (maybe "" T.unpack values) inputNames)
                    | Object a <- toList given, Just (String fp) <- [KM.lookup "fingerprint" a]
                    , Just (String outcome) <- [KM.lookup "outcome" a]
-                   , let values = case KM.lookup "values" a of Just (String v) -> Just v; _ -> Nothing ]
+                   , let values = case KM.lookup "values" a of Just (String v) -> Just v; _ -> Nothing
+                         inputNames = case KM.lookup "inputs" a of
+                           Just (Array names) -> Just [T.unpack name | String name <- toList names]
+                           _ -> Nothing ]
             _ -> Nothing
       in case answers of
         Nothing -> Object withTasks
@@ -381,7 +387,7 @@ withModelTasks us core evidence answers (Object response) =
       existing = case KM.lookup "diagnostics" response of Just (Array ds) -> toList ds; _ -> []
       view (owner, law, ts) = object
         [ "owner" .= C.idText owner, "declaration" .= C.idText law
-        , "tasks" .= [ object [ "fingerprint" .= ModelProof.taskFingerprint t, "kind" .= ModelProof.taskKind t
+        , "tasks" .= [ object [ "fingerprint" .= ModelProof.taskFingerprint t, "semanticFingerprint" .= ModelProof.taskSemanticFingerprint t, "kind" .= ModelProof.taskKind t
                               , "script" .= ModelProof.taskScript t, "inputs" .= ModelProof.taskInputs t ] | t <- ts ] ]
   in Object (KM.insert "modelTasks" (toJSON (map view tasks)) $ KM.insert "modelEvidence" (toJSON rows) $
        (if null refuted then id else KM.insert "diagnostics" (toJSON (existing ++ map toJSON refuted))) response)

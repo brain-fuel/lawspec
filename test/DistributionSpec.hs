@@ -39,6 +39,15 @@ test_distributionIsSecureByDefaultAndContentAddressed = describe "distribution" 
         shifted body = unlines ["unit app.remote\n", "\nfunction shifted (x :: Int32) -> Int64 is " ++ body ++ " end" ++ " function\n", "end unit"]
     it "are named by a semantic content hash that names its algorithm and encoding" $ do
       map remoteDigest (remotes (shifted "x + 1000")) `shouldSatisfy` all (\d -> "blake3-semantic-1:" `isPrefixOf` d && length d == 18 + 64)
+    it "distinguish machine-dependent remote functions while fixed-width functions stay portable" $ do
+      let hashes bits ty = case compileCore bits defaultGeneration [Source "profile.lawspec" (unlines
+            ["unit app.profile", "function identity (value :: " ++ ty ++ ") -> " ++ ty ++ " is value end function", "end unit"])] >>= planTesting of
+            Left ds -> error (show ds)
+            Right plan -> map remoteDigest (snd (remoteManifest plan))
+      forM_ ["IntSize", "UIntSize", "UIntPtr"] $ \ty -> do
+        hashes 32 ty `shouldSatisfy` (not . null)
+        hashes 32 ty `shouldNotBe` hashes 64 ty
+      forM_ ["Int32", "UInt64"] $ \ty -> hashes 32 ty `shouldBe` hashes 64 ty
     it "change hash exactly when the definition does" $ do
       map remoteDigest (remotes (shifted "x + 1000")) `shouldBe` map remoteDigest (remotes (shifted "x + 1000"))
       map remoteDigest (remotes (shifted "x + 1000")) `shouldNotBe` map remoteDigest (remotes (shifted "x + 1001"))

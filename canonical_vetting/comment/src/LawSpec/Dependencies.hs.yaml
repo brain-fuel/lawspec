@@ -13,14 +13,8 @@ decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/functio
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/dependencyGraph:
   digest: sha256:a485a458d1e0f011
   verdict: pending
-decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/keyOf:
-  digest: sha256:db3c27ad8684d8cc
-  verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/lawReferences:
   digest: sha256:017966b6a501e7cb
-  verdict: pending
-decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/nodeDigest:
-  digest: sha256:95d3b2724986b3bd
   verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/reachableData:
   digest: sha256:1d71619519e83e82

@@ -142,6 +142,246 @@ export const targetLabels = [
                               ]
                             ];
 
+export const presentationChecks = {
+                                    "java": [
+                                      {
+                                        "command": "mvn",
+                                        "args": [
+                                          "-q",
+                                          "test-compile"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "python": [
+                                      {
+                                        "command": "python3",
+                                        "args": [
+                                          "-B",
+                                          "-c",
+                                          "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]"
+                                        ],
+                                        "suffix": ".py",
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "javascript": [
+                                      {
+                                        "command": "node",
+                                        "args": [
+                                          "--check"
+                                        ],
+                                        "suffix": ".mjs",
+                                        "each": true,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "typescript": [
+                                      {
+                                        "command": "npm",
+                                        "args": [
+                                          "exec",
+                                          "--",
+                                          "tsc",
+                                          "-p",
+                                          "tsconfig.json"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "go": [
+                                      {
+                                        "command": "go",
+                                        "args": [
+                                          "test",
+                                          "./...",
+                                          "-run",
+                                          "^$"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "haskell": [
+                                      {
+                                        "command": "stack",
+                                        "args": [
+                                          "--no-terminal",
+                                          "build",
+                                          "--test",
+                                          "--no-run-tests"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "kotlin": [
+                                      {
+                                        "command": "gradle",
+                                        "args": [
+                                          "testClasses",
+                                          "--console=plain"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "rust": [
+                                      {
+                                        "command": "cargo",
+                                        "args": [
+                                          "test",
+                                          "--no-run"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "erlang": [
+                                      {
+                                        "command": "rebar3",
+                                        "args": [
+                                          "as",
+                                          "test",
+                                          "compile"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "elixir": [
+                                      {
+                                        "command": "mix",
+                                        "args": [
+                                          "compile"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {
+                                          "MIX_ENV": "test"
+                                        }
+                                      }
+                                    ],
+                                    "gleam": [
+                                      {
+                                        "command": "gleam",
+                                        "args": [
+                                          "build"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "fsharp": [
+                                      {
+                                        "command": "dotnet",
+                                        "args": [
+                                          "build"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "csharp": [
+                                      {
+                                        "command": "dotnet",
+                                        "args": [
+                                          "build"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "scala": [
+                                      {
+                                        "command": "scala",
+                                        "args": [
+                                          "compile",
+                                          "--test",
+                                          "."
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "groovy": [
+                                      {
+                                        "command": "gradle",
+                                        "args": [
+                                          "testClasses",
+                                          "--console=plain"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "clojure": [
+                                      {
+                                        "command": "clojure",
+                                        "args": [
+                                          "-M",
+                                          "-e",
+                                          "(require 'lawspec.build) (lawspec.build/compile-java! true) (shutdown-agents)"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "swift": [
+                                      {
+                                        "command": "swift",
+                                        "args": [
+                                          "build",
+                                          "--build-tests"
+                                        ],
+                                        "suffix": null,
+                                        "each": false,
+                                        "environment": {}
+                                      }
+                                    ],
+                                    "prolog": [
+                                      {
+                                        "command": "python3",
+                                        "args": [
+                                          "-B",
+                                          "-c",
+                                          "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]"
+                                        ],
+                                        "suffix": ".py",
+                                        "each": false,
+                                        "environment": {}
+                                      },
+                                      {
+                                        "command": "swipl",
+                                        "args": [
+                                          "-q",
+                                          "-g",
+                                          "halt",
+                                          "-s"
+                                        ],
+                                        "suffix": ".pl",
+                                        "each": true,
+                                        "environment": {}
+                                      }
+                                    ]
+                                  };
+
 export const commands = {
                           "java": "mvn test",
                           "python": "python -m pytest",

@@ -18,7 +18,7 @@ import Data.List (intercalate, stripPrefix, isSuffixOf)
 import qualified Data.Set as S
 import LawSpec.Core
 import qualified LawSpec.Core.Evidence as Evidence
-import LawSpec.Dependencies (dependencyGraph, semanticKey, namedKey)
+import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey, adapterKey)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
@@ -107,20 +107,33 @@ testManifestWithModelChecks modelsSelected target testDir program =
     -- A test's result depends on what the law does, never on how it is
     -- written: its key is the law's semantic hash, the machine width and the
     -- unit's harness settings, not the generated file. A law that runs
-    -- native code is bound to it by name, so its names count too.
+    -- native code keeps its public interface names, not checked locals.
     -- ref:DEC-content-identity
-    lawKey u p = (if callsAdapters p then namedKey else semanticKey) graph (show (programMachineBits program))
-      (p, unitHarnessSettings u)
+    lawKey u p = if callsAdapters p
+      then adapterKey graph (show (programMachineBits program)) (p, unitHarnessSettings u)
+      else semanticKey graph (show (programMachineBits program)) (p, unitHarnessSettings u)
     callsAdapters p = any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
     -- Model, scenario and supervision checks run the unit's machines against
     -- native code.
-    modelKey u check = namedKey graph (show (programMachineBits program, ModelChecks.checkAction check))
-      (u, concatMap unitSessions (programUnits program))
+    modelKey u check = adapterKey graph (show (programMachineBits program, actionKind (ModelChecks.checkAction check)))
+      (selectedModels (ModelChecks.checkAction check),
+        concatMap unitSessions (programUnits program),
+        (unitMailboxes u, unitSupervisors u), unitHarnessSettings u)
+    selectedModels action = case action of
+      ModelChecks.Sequential _ machine -> [machine]
+      ModelChecks.Parallel _ machine -> [machine]
+      ModelChecks.Scenario _ machine _ -> [machine]
+      ModelChecks.Supervision -> []
+    actionKind action = case action of
+      ModelChecks.Sequential _ _ -> "sequential"
+      ModelChecks.Parallel _ _ -> "parallel"
+      ModelChecks.Scenario _ _ program -> "scenario:" ++ show program
+      ModelChecks.Supervision -> "supervision"
     obligations unit check=[(Evidence.obligationDeclaration item,Evidence.obligationStage item) |
       item<-ModelChecks.checkObligations unit check]
-    graph = dependencyGraph (programDataDeclarations program) (programUnits program)
+    graph = dependencyGraphWithBits (programMachineBits program) (programDataDeclarations program) (programUnits program)
     native h = case h of
       ProductionHandler -> True
       RecordingHandler inner -> native inner

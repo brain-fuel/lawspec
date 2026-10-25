@@ -10,6 +10,9 @@ import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Api (dispatch)
 import LawSpec.Dependencies (dependencyGraph, fullKey)
+import LawSpec.SurfaceContext (contextFor)
+import LawSpec.SourceContext (emptyContext)
+import qualified LawSpec.Model as Surface
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
@@ -93,6 +96,23 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
           reasons = [obligationReason o | o <- evidence, obligationStage o == "law"]
       planned `shouldSatisfy` (not . null)
       reasons `shouldSatisfy` all (\r -> any (\n -> (show n ++ " boundary case") `isInfixOf` r) planned)
+  describe "surface memo contexts" $ do
+    let declarations = C.programDataDeclarations (compiled (unlines
+          ["unit incremental.context", wrapper "Score" "0", wrapper "Wide" "1234", "end unit"]))
+        selected value bindings = let (_, ds, _) = contextFor bindings declarations emptyContext value
+                                  in map C.dataName ds
+    it "leaves unrelated nominal types and signatures out of a law's presentation memo" $ do
+      let (bindings, _, _) = contextFor [("unused", Surface.Named "Wide")] declarations emptyContext (Surface.Named "Score")
+      bindings `shouldBe` []
+      selected (Surface.Named "Score") [] `shouldContain` ["Score"]
+      selected (Surface.Named "Score") [] `shouldSatisfy` (not . elem "Wide")
+    it "closes called signatures through their nominal argument and result types" $ do
+      selected (Surface.Var "convert")
+        [("convert", Surface.Arrow (Surface.Named "Score") (Surface.Named "Wide"))]
+        `shouldContain` ["Score", "Wide"]
+    it "finds nominal owners mentioned by constructor literals and dependent annotations" $ do
+      selected (Surface.ConstructLit "Score" [Surface.Number 1]) [] `shouldContain` ["Score"]
+      selected (Surface.Annotate (Surface.Var "input") (Surface.Named "Wide")) [] `shouldContain` ["Wide"]
   describe "the on-disk cache" $ do
     it "reads an entry another process stored, and recomputes one it cannot read" $ do
       root <- (</> "lawspec-memo-test") <$> getTemporaryDirectory

@@ -50,7 +50,7 @@ remoteManifest :: Plan -> ([String], [Remote])
 remoteManifest plan = (map snd (reverse table), reverse remotes)
   where
     units = map plannedUnit (plannedUnits plan)
-    graph = D.dependencyGraph (planDataDeclarations plan) units
+    graph = D.dependencyGraphWithBits bits (planDataDeclarations plan) units
     bits = planMachineBits plan
     datas = planDataDeclarations plan
     (table, remotes) = foldl add ([], []) [d | u <- units, d <- C.unitDefinitions u, not (C.definitionOrchestrates d)]

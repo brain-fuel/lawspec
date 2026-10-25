@@ -3,7 +3,7 @@
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
   ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith
-  , gleamTestPackage
+  , PresentationCheck(..), presentationChecks, gleamTestPackage
   ) where
 
 import Data.List (intercalate)
@@ -36,6 +36,42 @@ testCommand target = lookup target
   , ("groovy", "gradle test")
   , ("clojure", "clojure -M:test")
   , ("swift", "swift test") ]
+
+-- | Native source validation without executing selected property cases. The
+-- host substitutes generated paths in these command recipes; the compiler
+-- owns which commands establish a valid presented artifact.
+data PresentationCheck = PresentationCheck
+  { checkCommand :: String, checkArguments :: [String]
+  , checkSuffix :: Maybe String, checkEach :: Bool
+  , checkEnvironment :: [(String, String)]
+  }
+
+presentationChecks :: String -> [PresentationCheck]
+presentationChecks target = case target of
+  "rust" -> one "cargo" ["test", "--no-run"]
+  "java" -> one "mvn" ["-q", "test-compile"]
+  "kotlin" -> one "gradle" ["testClasses", "--console=plain"]
+  "groovy" -> one "gradle" ["testClasses", "--console=plain"]
+  "scala" -> one "scala" ["compile", "--test", "."]
+  "go" -> one "go" ["test", "./...", "-run", "^$"]
+  "haskell" -> one "stack" ["--no-terminal", "build", "--test", "--no-run-tests"]
+  "fsharp" -> one "dotnet" ["build"]
+  "csharp" -> one "dotnet" ["build"]
+  "swift" -> one "swift" ["build", "--build-tests"]
+  "erlang" -> one "rebar3" ["as", "test", "compile"]
+  "elixir" -> [PresentationCheck "mix" ["compile"] Nothing False [("MIX_ENV", "test")]]
+  "gleam" -> one "gleam" ["build"]
+  "clojure" -> one "clojure" ["-M", "-e", "(require 'lawspec.build) (lawspec.build/compile-java! true) (shutdown-agents)"]
+  "python" -> python
+  "prolog" -> python ++ [PresentationCheck "swipl" ["-q", "-g", "halt", "-s"] (Just ".pl") True []]
+  "javascript" -> [PresentationCheck "node" ["--check"] (Just ".mjs") True []]
+  "typescript" -> one "npm" ["exec", "--", "tsc", "-p", "tsconfig.json"]
+  _ -> []
+  where
+    one command args = [PresentationCheck command args Nothing False []]
+    python = [PresentationCheck "python3"
+      ["-B", "-c", "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]"]
+      (Just ".py") False []]
 
 -- | The pinned toolchain each target is verified against, stated once so doctor,
 -- the CLI and the docs give the same advice.

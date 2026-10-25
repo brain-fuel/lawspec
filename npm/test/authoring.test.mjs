@@ -148,7 +148,7 @@ test('formatting retains long scenario arguments and typed behavior through nest
         // dependency hashes. Retain every other byte, including definitions,
         // dispatch names and descriptors, while accounting for that rekeying.
         const remote=/(?:^|\/)(?:LawSpecRemote\.(?:java|hs)|lawspec_remote\.(?:py|mjs|ts|go|rs|erl)|RemoteDefinitions\.fs|LawSpecRemoteDefinitions\.swift)$/.test(before.path);
-        const identities=file=>remote?{...file,content:file.content.replace(/sha3-256:[0-9a-f]{64}/g,'<remote dependency hash>')}:file;
+        const identities=file=>remote?{...file,content:file.content.replace(/blake3-semantic-1:[0-9a-f]{64}/g,'<remote dependency hash>')}:file;
         assert.deepEqual(identities(after),identities(before),target+': '+before.path);
       }
       assert.deepEqual(rewritten.tests,[]);assert.deepEqual(original.tests,[]);

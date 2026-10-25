@@ -11,7 +11,7 @@ import Control.Monad.State.Strict
 import Data.Aeson (ToJSON(..), Value, object, (.=))
 import qualified Data.Map.Strict as M
 import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
-import Data.List (intercalate, isInfixOf, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf, findIndex)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
@@ -21,7 +21,8 @@ import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
 import LawSpec.Digest (digestHex, digestString)
-import LawSpec.Dependencies (dependencyGraph, semanticKey)
+import LawSpec.Blake3 (blake3, hexOf)
+import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey)
 import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
 import LawSpec.Regex (Regex(..), parseRegex)
 import Numeric (showHex)
@@ -184,17 +185,23 @@ proofTasks = proofTasksWith M.empty
 proofTasksWith :: M.Map Id LawProof -> Program -> Either [Diagnostic] [ProofTask]
 proofTasksWith settings program = do
   validateProgram program
-  let graph = dependencyGraph (programDataDeclarations program) (programUnits program)
+  let graph = dependencyGraphWithBits (programMachineBits program) (programDataDeclarations program) (programUnits program)
       lawsById = M.fromList [(propertyId l, l) | u <- programUnits program, l <- unitProperties u]
       -- A receipt is bound to what the law does: its semantic hash (which
       -- covers everything it reaches), its encoding, the machine width and
       -- how it is proved, never to the program's bytes. Renaming a local,
       -- reformatting or editing another law keeps it current.
       -- ref:DEC-smt-semantic-receipts
-      lawFingerprint encoding law proof = digestHex (digestString (concatMap frame $
-        ["lawspec.receipt.v2", encodingName encoding, show (programMachineBits program), show proof,
-         semanticKey graph "" law] ++ [ semanticKey graph "lemma" lemma | InductionOn _ lemmas <- [proofInduction proof]
-                                               , Just lemma <- map (`M.lookup` lawsById) lemmas ]))
+      lawFingerprint encoding law proof = hexOf (blake3 (T.encodeUtf8 (T.pack (concatMap frame $
+        ["lawspec.receipt.v2", encodingName encoding, show (programMachineBits program),
+         show (proofUnfolding proof), inductionIdentity law (proofInduction proof), semanticKey graph "" law] ++
+        [ semanticKey graph "lemma" lemma | InductionOn _ lemmas <- [proofInduction proof]
+                                         , Just lemma <- map (`M.lookup` lawsById) lemmas ]))))
+      inductionIdentity law mode = case mode of
+        DefaultInduction -> "default"
+        NoInduction -> "none"
+        InductionOn name _ -> "input:" ++ show (findIndex ((== name) . binderName . quantifiedBinder)
+          (fst (outerQuantifiers law)))
       frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
   pure [ProofTask (unitId owner) (propertyId law) (propertyLocation law)
           (lawFingerprint encoding law proof) (programMachineBits program) (scriptOf <$> task)
