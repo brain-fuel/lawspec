@@ -21,6 +21,7 @@ test_generatedTestsStayProportionalToTheirSpecification = describe "compact gene
          (["test/fixtures/canonical-smt-arithmetic.lawspec"], programTargets),
          (["examples/specs/total_functions.lawspec", "examples/specs/refined_definitions.lawspec",
            "examples/specs/data_types.lawspec"], ["kotlin"]),
+         (["examples/specs/builtins.lawspec"], ["haskell"]),
          (["examples/rc1/bounded-witness-search.lawspec"], programTargets),
          (["test/fixtures/canonical-set-domains.lawspec"], programTargets),
          (["test/fixtures/canonical-set-domains.lawspec", "test/fixtures/canonical-set-generation.lawspec"], programTargets),
