@@ -20,7 +20,7 @@ import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.Char (isAlphaNum, toLower, toUpper)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
 import LawSpec.TestNames (unitTestNames, lawWords)
-import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase, jvmClaimAll, jvmClaim)
+import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase, jvmLocal, jvmClaimAll, jvmClaim)
 import LawSpec.Naming (displayLabel)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, originLocation, exampleLocation)
 
@@ -360,7 +360,7 @@ emitTests Config{..} unit laws = do
                 captured = fst (jvmClaim allTaken (googleCase (function ++ "CapturedValues")))
                 binders = M.elems (M.fromList [(C.binderId binder,binder) | binder <- Draws.drawCaptures node ++ bound (Draws.drawStep node)])
                 aliases = zip (map C.binderId binders) (fst (jvmClaimAll (S.insert captured allTaken)
-                  [googleCase (function ++ " " ++ localName (C.binderId binder)) | binder <- binders]))
+                  [jvmLocal "java" [] (function ++ " " ++ localName (C.binderId binder)) | binder <- binders]))
                 renamed identity = maybe (localName identity) id (lookup identity aliases)
                 captures = [bind (renamed (C.binderId binder)) (callDoc (captured ++ ".get") [number i])
                   | (i,binder) <- zip [0::Int ..] (Draws.drawCaptures node)]

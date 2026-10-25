@@ -66,7 +66,7 @@ spockSpecification generated package testClass description orderRandom parallel 
             Abi.SingleCase -> mempty
             Abi.FiniteCases source _ _ -> D.hardline <> D.hardline <>
               D.text "where:" <> D.hardline <>
-              D.text ("finiteCase << " ++ testClass ++ "." ++ source ++ "()") <> D.hardline <>
+              D.group (D.text "finiteCase <<" <> D.nest 4 (D.softline <> D.text (testClass ++ "." ++ source ++ "()"))) <> D.hardline <>
               D.text "caseIndex = finiteCase.index()")
 
 -- | A specification running every JUnit test of a Java test class, one
