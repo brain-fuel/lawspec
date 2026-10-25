@@ -80,6 +80,11 @@ test_parallelStepsNeverShareWhatTheyClaim = describe "the CI worker pool" $ do
       (results, events) <- run 1 False [] chain
       map fst results `shouldBe` map taskName chain
       events `shouldBe` concat [[Start (taskName t), End (taskName t)] | t <- chain]
+    it "honors later-listed bootstrap prerequisites with one job" $ do
+      let bootstraps = ["typescript-bootstrap", "javascript-bootstrap", "python-bootstrap"]
+          checks = task "npm-tests" bootstraps [] : [task name [] [] | name <- bootstraps]
+      (results, _) <- run 1 False [] checks
+      map fst results `shouldBe` bootstraps ++ ["npm-tests"]
     it "never runs more than the jobs at once, and does run tasks together" $ do
       (results, events) <- run 3 False [] (chain ++ [task ("n" ++ show i) [] [] | i <- [1 .. 8 :: Int]])
       length results `shouldBe` 14

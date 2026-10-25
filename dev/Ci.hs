@@ -15,7 +15,7 @@
 --
 -- Steps run in parallel, --jobs at a time (LAWSPEC_CI_JOBS, or half the
 -- processors by default; ref:DEC-parallel-ci). --jobs 1 runs them one after
--- another in the order below. In parallel, a line is printed as each step
+-- another, honoring the same prerequisites. In parallel, a line is printed as each step
 -- finishes, so the order is the order of completion, and a terminal also
 -- shows the running steps. Each step declares what it must follow and the
 -- resources it shares (see plan): a target's environment in .integration, a
@@ -89,7 +89,7 @@ ci args = do
   editor <- doesDirectoryExist "editors/vscode/node_modules"
   let groups = stepGroups options editor
       ordered = concatMap snd groups
-      tasks = if workers == 1 then [Task (stepName s) [] [] s | s <- ordered] else plan workers groups
+      tasks = plan workers groups
   console <- newConsole (workers == 1)
   when (parallel console) $
     say console (show (length tasks) ++ " steps, at most " ++ show workers ++ " at once (--jobs).")
@@ -100,7 +100,8 @@ ci args = do
   ticker <- if parallel console then Just <$> forkIO (forever (threadDelay 5000000 >> showRunning console)) else pure Nothing
   results <- handle (interrupted children) $
     schedule workers (failFast options) tasks
-      (runCached console children (fresh options) repository . taskItem)
+      (\task -> handle (stepError console (taskName task))
+        (runCached console children (fresh options) repository (taskItem task)))
       (\t -> modifyIORef' (running console) (++ [taskName t]))
       (\t _ -> modifyIORef' (running console) (filter (/= taskName t)))
   mapM_ killThread ticker
@@ -344,6 +345,13 @@ interrupted children e = case e of
 
 logs :: FilePath
 logs = ".artifacts/ci"
+
+-- | A log or cache write can fail before runStep reports its result. Keep
+-- the step and I/O error visible even when the log itself cannot be written.
+stepError :: Console -> String -> IOException -> IO Bool
+stepError console name error' = do
+  say console (name ++ " FAIL: " ++ show error')
+  pure False
 
 localGradle :: FilePath
 localGradle = ".tools/gradle-9.3.0/bin"
