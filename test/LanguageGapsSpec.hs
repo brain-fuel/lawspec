@@ -16,7 +16,9 @@ import LawSpec.Discharge (dischargeEvidence)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Regex (parseRegex, regexMatches, regexSamples)
-import LawSpec.Testing (planTesting)
+import LawSpec.Testing (planTesting, plannedUnits, plannedUnit, plannedProperties, boundaryCases)
+import qualified LawSpec.Core.Value as Value
+import LawSpec.Scalar (Scalar(..))
 
 program :: String -> Either [Diagnostic] C.Program
 program source = compileCore 64 defaultGeneration [Source "gaps.lawspec" source]
@@ -230,16 +232,21 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
       length samples `shouldSatisfy` (> 10)
       samples `shouldSatisfy` all (regexMatches regex . map fromEnum)
     it "gives a text refined through a definition regex hints" $ do
-      files <- either (\ds -> fail (show ds)) pure (program (unlines
+      plan <- either (\ds -> fail (show ds)) pure (program (unlines
         [ "unit gaps.regex"
          ++ "\n", ""
         , "function valid (name :: Text) -> Bool is let n = prelude.length name in n >= 1 && name matches regex \"[a-z]+\" end let  end function"
         , "law \"|named| is definition : for all (t :: Text where valid t) => prelude.length t >= 1 end for all end definition end law"
         , "\nend unit" ])
-        >>= planTesting >>= emitPlan "python")
+        >>= planTesting)
+      files <- either (\ds -> fail (show ds)) pure (emitPlan "python" plan)
       let tests = [artifactContent f | f <- files, "test_gaps_regex_lawspec.py" `isSuffixOf` artifactPath f]
-      -- Regex samples are boundary values, written as Python string literals.
-      tests `shouldSatisfy` any ("    t = \"a\"\n" `isInfixOf`)
+          boundaries = concat [boundaryCases property | unit <- plannedUnits plan,
+            C.idText (C.unitId (plannedUnit unit)) == "gaps.regex", property <- plannedProperties unit]
+      -- The regex hint must remain an actual planned case and be carried as
+      -- a Python value, whether the target writes bindings or a case table.
+      boundaries `shouldContain` [[Value.ScalarValue (SSequence "Text" [fromEnum 'a'])]]
+      tests `shouldSatisfy` any ("\"a\"" `isInfixOf`)
     it "mixes regex hints into laws that also draw records" $ do
       let source = unlines
             [ "unit gaps.mixed"

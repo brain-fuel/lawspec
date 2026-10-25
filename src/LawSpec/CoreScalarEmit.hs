@@ -465,9 +465,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           cases' = maybe (boundaryCases e) id finite
       cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
       coverExpression <- caseCoverExpression cover
-      let coverCheck = "_lawspec_" ++ drop 5 base ++ "_finite_case"
+      let coverCheck = "_check_" ++ drop 5 base
           coverRun = coverCheck ++ "_run"
-          coverFunctions = coverCheck ++ "_tests"
+          coverFunctions = "_cases_" ++ drop 5 base
           coverPrefix = if wrapped then base ++ "_" else prefix
           coverContext link = Doc.operation [text "_case_context", message (labelled "" link)] ["+"]
           coverAssignments = [assign (inputId input)

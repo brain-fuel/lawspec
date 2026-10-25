@@ -112,6 +112,14 @@ test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $
             | target `elem` ["javascript", "typescript"] ->
                 -- Labels are inside native string literals there.
                 content `shouldSatisfy` isInfixOf (init (drop 1 (javascriptLiteral (text (field "label" t)))))
+            | target == "python", field "kind" t /= String "model" ->
+                -- Finite functions are registered by their public prefix;
+                -- property/example functions retain ordinary declarations.
+                let registered source = named target name `isInfixOf` source ||
+                      ("ls.register_finite_cases" `isInfixOf` source &&
+                       javascriptLiteral (name ++ "_") `isInfixOf` source)
+                in if registered content then pure () else expectationFailure
+                  ("Python manifest entry has no function or registered prefix: " ++ name ++ " in " ++ file)
             -- Haskell and Kotlin split long string literals into pieces.
             | otherwise -> unsplit content `shouldSatisfy` isInfixOf
                 (if field "kind" t == String "model" then modelNamed target name else named target name)
