@@ -908,6 +908,7 @@ library
       LawSpec.Testing
       LawSpec.Testing.Budget
       LawSpec.Testing.Cover
+      LawSpec.Testing.Draws
       LawSpec.Testing.Literals
       LawSpec.Testing.Size
       LawSpec.TestManifest
@@ -1101,6 +1102,7 @@ test-suite lawspec-test
       DocumentSpec
       DomainModelSpec
       DotNetSpec
+      DrawSharingSpec
       ECMAScriptSpec
       EqSetOperationsSpec
       EqSetSpec
