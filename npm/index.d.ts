@@ -926,7 +926,7 @@ export interface NativeExecutionAttempt {
 
 export type RecordedNativeExecutionAttempt =
     Omit<NativeExecutionAttempt, 'outcome'> &
-      {outcome: NativeOutcome | 'known-discrepancy';};
+      {outcome: NativeOutcome | 'known-failing';};
 
 export interface NativeExecutionObservation {
   target: string;

@@ -63,11 +63,11 @@ const runtimeStages=new Set(['law','model','linearizable','sequentially consiste
 
 // Display archived observations in the current vocabulary; retain their raw
 // attempts and use those original values for freshness and completion checks.
-const observationOutcome=outcome=>outcome==='known-discrepancy'?'known-discrepancy':outcome;
+const observationOutcome=outcome=>outcome==='known-failing'?'known-discrepancy':outcome;
 
 // Only observations with matching current compiler/configuration/source/native
 // inputs are eligible for completed evidence. A stored timestamp alone is not.
-export async function readNativeObservations({compiler,input,selected,roots,configRoot,build,evidence,attestation}) {
+export async function readNativeObservations({compiler,input,selected,roots,configRoot,config={},build,evidence,attestation}) {
   const records=await Promise.all(selected.map(async(target,index)=>{
     const root=roots[index],file=path.join(configRoot,'.lawspec/results',`${target.language}-${projectKey(root)}.json`);
     const record=JSON.parse(await readFile(file,'utf8').catch(error=>{
@@ -122,7 +122,7 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
             const owned=new Set(generated.files.filter(file=>file.ownership==='generated').map(file=>file.path));
             const keys=lawKeys({build,target,machineBits:input.machineBits,minify,tests:generated.tests,files:generated.files,
               environment,recorded:await recordedDigest(path.join(configRoot,'recorded')),
-              project:await projectDigest(root,owned,target.language),attested:attestedKeys(generated)});
+              project:await projectDigest(root,owned,target.language,{inputRoot:configRoot,inputs:config.inputs??[]}),attested:attestedKeys(generated)});
             result={generated,keys};
           }
         }

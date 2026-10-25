@@ -23,7 +23,7 @@ test('historical discrepancy observations use the current vocabulary without rew
     const targets=[{language:'javascript',root:'.'}];
     const file=path.join(root,'.lawspec/results','javascript-'+projectKey(root)+'.json');
     await mkdir(path.dirname(file),{recursive:true});
-    for(const selected of [true,false])for(const outcome of ['known-discrepancy','known-discrepancy','failed','passed']){
+    for(const selected of [true,false])for(const outcome of ['known-failing','known-discrepancy','failed','passed']){
       const attempt=recordNativeAttempts({laws:[entry],command:'native-runner',matches:()=>[entry]},
         [{name:'balance',status:'passed'}],{...settings,keys:new Map([[entry.law,'old-key']]),ok:true,
           profile:{target:'javascript',root,machineBits:64,minify:false,build:'old-build'}})[entry.law];
@@ -35,14 +35,14 @@ test('historical discrepancy observations use the current vocabulary without rew
         input:{machineBits:64},selected:targets,roots:[root],configRoot:root,build:'current-build',evidence:[]});
       assert.equal(observations.length,1);
       const row=observations[0];
-      assert.equal(row.outcome,outcome==='known-discrepancy'?'known-discrepancy':outcome);
+      assert.equal(row.outcome,outcome==='known-failing'?'known-discrepancy':outcome);
       assert.equal(row.freshness,selected?'stale':'not-selected');
       assert.deepEqual(row.attempt,JSON.parse(original).attempts[entry.law]);
       assert.equal(await readFile(file,'utf8'),original);
       const [view]=attachNativeEvidence([{declaration:entry.law,stage:'law',status:'planned',reason:'awaiting execution'}],observations);
       assert.equal(view.status,'planned');
       assert.equal(view.nativeEvidence.searchCompleteness,'not-established');
-      assert.doesNotMatch(nativeEvidenceText(view),/known-discrepancy/);
+      assert.doesNotMatch(nativeEvidenceText(view),/known-failing/);
     }
   }finally{await rm(root,{recursive:true,force:true});}
 });
