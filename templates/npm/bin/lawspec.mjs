@@ -457,7 +457,7 @@ async function runTests(compiler, input, selected, roots, config) {
       tests: planned.tests, files: planned.files,
       // Recorded values are spec data: a changed recording runs its laws again.
       environment: await environmentDigest(root, report_) + (await recordedDigest(recordedFolder)),
-      project: await projectDigest(root, generated),
+      project: await projectDigest(root, generated, {inputRoot:configRoot,inputs:config.inputs??[]}),
       attested,
     });
     const identity = projectKey(root);
@@ -949,7 +949,7 @@ async function main() {
       ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) })));
     if (result.refuted) process.exitCode = 1;
     let evidence = attachNativeEvidence(result.evidence,await readNativeObservations({compiler,input,selected,roots,
-      configRoot,build:await buildDigest(),evidence:result.evidence,attestation:named}));
+      configRoot,config,build:await buildDigest(),evidence:result.evidence,attestation:named}));
     const environments = named ? [result.attestation] : [];
     if (!named) for (const [id, attestation] of attestations) {
       const laws = new Set([...runs].filter(([, run]) => run.environment === id).map(([law]) => law));
@@ -1051,7 +1051,7 @@ async function main() {
     const view = options.view ?? "developer";
     if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join("|")}`);
     const observed={...result,evidence:attachNativeEvidence(result.evidence,await readNativeObservations({
-      compiler,input,selected,roots,configRoot,build:await buildDigest(),evidence:result.evidence,
+      compiler,input,selected,roots,configRoot,config,build:await buildDigest(),evidence:result.evidence,
       attestation:await readAttestation(config)}))};
     const explanations = indices.map(({e}) => explainLaw(e, observed, view));
     output(options.json ? explanations : explanations.map(e => e.text).join("\n\n"));

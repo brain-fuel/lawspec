@@ -200,7 +200,13 @@ There is no LawSpec package registry.
 `:provides` declares contract packages and checked ability identities implemented
 by the component. Named `:requires` entries declare the contract, abilities, native
 `:declarations` and injected `:settings` needed by a connection. `:inputs` lists
-native code and data that must contribute to the component fingerprint.
+native code and data that must contribute to the component fingerprint and
+the cached results of laws that use native implementations. Paths resolve from
+the component manifest, including sibling directories outside the target root.
+Build/cache directories are excluded. LawSpec also validates and excludes its
+own generated outputs from native cache inputs. Other implementation sources
+still count. Pure checked laws that use no native implementations do not depend
+on these inputs.
 
 `lawspec describe --json` returns the checked `lawspec-component` version 1
 descriptor, including component identity, fingerprint, targets, resolved contract

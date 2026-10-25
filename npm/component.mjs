@@ -1,12 +1,13 @@
 // Generated from templates/npm/component.mjs by lawspec-dev generate. Do not edit.
 import {toEDNString} from 'edn-data';
 import {EDNListParser} from 'edn-data/dist/parse.js';
-import {readFile, stat, lstat, mkdir, writeFile, realpath} from 'node:fs/promises';
+import {readFile, stat, mkdir, writeFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {loadCore} from './launcher.mjs';
 import {createCompiler} from './api.mjs';
 import {collectSources} from './files.mjs';
+import {fingerprintInputs} from './input-files.mjs';
 
 export const manifestName = 'lawspec.edn';
 export const lockName = 'lawspec.lock.edn';
@@ -204,21 +205,4 @@ export async function resolveComponent(file, options = {}) {
     dependencies: dependencies.identities,
     laws: checked.laws ?? [], declarations: [...declarations].sort(),
   };
-}
-
-async function fingerprintInputs(root, inputs) {
-  const {readdir} = await import('node:fs/promises');
-  const rows = [];
-  async function visit(file, relative) {
-    const info = await lstat(file);
-    if (info.isSymbolicLink()) throw new Error(`Symbolic links are not supported in component inputs: ${relative}`);
-    if (info.isDirectory()) {
-      for (const entry of (await readdir(file)).sort()) {
-        if (['.git', '.lawspec', 'node_modules', 'target', 'bin', 'obj'].includes(entry)) continue;
-        await visit(path.join(file, entry), relative + '/' + entry);
-      }
-    } else if (info.isFile()) rows.push([relative, contentDigest(await readFile(file))]);
-  }
-  for (const entry of inputs) await visit(path.resolve(root, entry), entry);
-  return rows;
 }
