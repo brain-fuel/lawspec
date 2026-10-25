@@ -26,11 +26,19 @@ Core (`lawspec.semantic.v1`). The encoding follows four rules.
 - **Literals are normalized.** Decimals drop trailing zeros and rationals are
   reduced, as structural record identities already do.
 
-Mutually recursive declarations form one group. The group is hashed as a
-whole, and each member's hash is the group hash and its position. Members are
-ordered by their hash with group references hidden, as Unison does. Members
-with identical shapes are ordered by name; that is the only place a name can
-affect a semantic hash.
+Mutually recursive declarations form one group. Each member roots a traversal
+of that group in Core field and reference order. First encounters assign
+positions; back-references use those positions. Each member reaches the whole
+group, so its hash covers all members and all edges. Renaming or reordering
+members cannot change the traversal. Symmetric rooted groups share an identity.
+There is no name-based tie-break and no factorial search for a permutation.
+
+This uses the positional back-reference technique registered for CBOR shared
+values (tags 28 and 29), rather than copying Unison's cycle-ordering shortcut:
+Unison explicitly reports ambiguous equal-shape cycle ordering. LawSpec's
+versioned, ordered Core serializer and traversal are compiler code that must
+be trusted and tested; this is structural identity, not a proof of equivalent
+behaviour. ref:DEC-content-identity
 
 Hashing is structural. It never evaluates. `2 + 2` and `4` have different
 hashes. This is Rune's rule: identity up to computation would mean running

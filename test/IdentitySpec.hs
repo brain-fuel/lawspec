@@ -110,6 +110,21 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     let changed = identities (edit "1 + count tail" "2 + count tail" base)
     same "count" changed `shouldBe` False
     same "counts" changed `shouldBe` False
+  it "keeps tied-shape recursive graph identities under renaming and declaration reordering" $ do
+    let first = cycleIdentities [("alpha","beta","beta"),("beta","alpha","alpha")]
+        renamed = cycleIdentities [("zeta","beta","beta"),("beta","zeta","zeta")]
+        reordered = cycleIdentities [("beta","zeta","zeta"),("zeta","beta","beta")]
+    semantic "zeta" renamed (first M.! "alpha") `shouldBe` True
+    semantic "beta" renamed (first M.! "beta") `shouldBe` True
+    semanticHash (renamed M.! "zeta") `shouldBe` semanticHash (reordered M.! "zeta")
+    semanticHash (first M.! "alpha") `shouldBe` semanticHash (first M.! "beta")
+  it "changes tied-shape recursive identities when the call graph changes" $ do
+    let first = cycleIdentities [("alpha","beta","beta"),("beta","alpha","gamma"),("gamma","beta","alpha")]
+        renamed = cycleIdentities [("zeta","beta","beta"),("beta","zeta","gamma"),("gamma","beta","zeta")]
+        changed = cycleIdentities [("alpha","beta","gamma"),("beta","alpha","gamma"),("gamma","beta","alpha")]
+    semantic "zeta" renamed (first M.! "alpha") `shouldBe` True
+    semantic "beta" renamed (first M.! "beta") `shouldBe` True
+    semantic "alpha" changed (first M.! "alpha") `shouldBe` False
   it "reruns no test and no proof after a reformat and a local rename" $ do
     let compiled source = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines source)])
         edited = concatMap (\line -> [line, ""]) (edit "(x :: Integer) -> Integer is x + x end" "(y :: Integer) -> Integer is y + y end" base)
@@ -122,3 +137,31 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     show (semanticHash (at "doubles")) `shouldSatisfy` (not . ("doubles" `isInfixOf`))
   where
     everything = ["double", "triple", "count", "doubles", "counts"]
+
+-- Internal graph fixtures isolate SCC hashing from admission. Mutual total
+-- recursion is deliberately unsupported by the language's current validator;
+-- these fixtures exercise the graph representation, not a new admitted
+-- program or any claim of termination/proof support.
+cycleIdentities :: [(String, String, String)] -> M.Map String Identity
+cycleIdentities members = M.fromList [(name, i) | (name, _, _) <- members,
+  Just i <- [nodeIdentity graph (DeclarationNode (identity name))]]
+  where
+    program = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines base)])
+    unit = head (C.programUnits program)
+    template = head (C.unitDefinitions unit)
+    integer = C.scalarType "Integer"
+    identity name = C.Id ("identity.cycle::" ++ name)
+    make (name, left, right) = template
+      { C.definitionDeclaration = (C.definitionDeclaration template)
+          { C.declarationId = identity name, C.declarationName = name, C.declarationType = C.Arrow integer integer }
+      , C.definitionArguments = [binder]
+      , C.definitionBody = C.Expr integer (C.Binary C.Add (C.Numeric integer) (call left) (call right)) origin }
+      where
+        origin = C.GeneratedFrom (identity name)
+        binder = C.Binder (C.Id (name ++ "::input")) "input" integer
+        call target = C.Expr integer (C.ExternalCall (identity target)
+          [C.Expr integer (C.Local (C.binderId binder)) origin]) origin
+    definitions = map make members
+    graph = dependencyGraph (C.programDataDeclarations program)
+      [unit { C.unitDefinitions = definitions, C.unitDeclarations = map C.definitionDeclaration definitions,
+              C.unitContracts = [], C.unitProperties = [] }]

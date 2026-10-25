@@ -24,7 +24,6 @@ module LawSpec.Dependencies
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Graph as G
-import Data.List (sortOn)
 import qualified Data.Map.Strict as M
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
@@ -112,14 +111,35 @@ dependencyGraph dataDeclarations units = Graph edges identities constructors nod
         let e = encodeNode (resolverOver constructors nodeNames done M.empty) n
         in combine done [n] [blake3 (semanticBytes e)] [e]
       G.CyclicSCC members ->
-        let hidden = M.fromList [ (m, Nothing) | m <- members ]
-            shapes = hashMany [ semanticBytes (encodeNode (resolverOver constructors nodeNames done hidden) m) | m <- members ]
-            ordered = map snd (sortOn fst (zip (zip shapes (map show members)) members))
-            positions = M.fromList (zip ordered (map Just [0 ..]))
-            encoded = [ encodeNode (resolverOver constructors nodeNames done positions) m | m <- ordered ]
-            groupHash = blake3 (B.concat (BC.pack ("group:" ++ show (length ordered) ++ ":") : hashMany (map semanticBytes encoded)))
-            memberHashes = [ blake3 (B.concat [BC.pack "member:", groupHash, BC.pack (show i)]) | i <- [0 .. length ordered - 1 :: Int] ]
-        in combine done ordered memberHashes encoded
+        -- Each member roots an ordered graph traversal. First encounters,
+        -- in Core field/reference order, assign positions; later references
+        -- use those positions. Every member reaches the whole SCC. Thus
+        -- this is a finite structural encoding, including every edge, with
+        -- no name-based tie-break or permutation search. Symmetric roots
+        -- have the same identity, as their rooted structures are identical.
+        -- The positional back-reference precedent is CBOR shared values;
+        -- the versioned Core encoding remains LawSpec's trust boundary.
+        -- ref:DEC-content-identity
+        let inside = S.fromList members
+            visit seen [] = (seen, [])
+            visit seen (n : rest)
+              | S.member n seen = visit seen rest
+              | otherwise =
+                  let children = [ d | name <- mentions n
+                                     , Just d <- [mentioned constructors nodeNames name]
+                                     , S.member d inside ]
+                      (after, ordered) = visit (S.insert n seen) (children ++ rest)
+                  in (after, n : ordered)
+            rooted member =
+              let ordered = snd (visit S.empty [member])
+                  positions = M.fromList (zip ordered (map Just [0 ..]))
+                  encoded = map (encodeNode (resolverOver constructors nodeNames done positions)) ordered
+              in blake3 (B.concat (BC.pack ("rooted-group:1:" ++ show (length ordered) ++ ":") :
+                                  hashMany (map semanticBytes encoded)))
+            -- Presentation keeps the actual names and spans of each member.
+            positions = M.fromList (zip members (map Just [0 ..]))
+            encoded = map (encodeNode (resolverOver constructors nodeNames done positions)) members
+        in combine done members (map rooted members) encoded
     -- A group's names and presentation hashes cover its members' and what
     -- the group reaches outside itself.
     combine done members semantic encoded =

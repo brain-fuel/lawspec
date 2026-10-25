@@ -688,3 +688,12 @@ nix-content-addressed:
   kind: article
   title: "Nix: content-addressed store objects"
   locator: https://nix.dev/manual/nix/latest/store/store-object/content-address
+
+unison-cycle-implementation:
+  kind: package
+  title: "Unison ABT hashing: positional references and explicit incomplete cycle ordering"
+  locator: https://github.com/unisonweb/unison/blob/trunk/unison-hashing-v2/src/Unison/Hashing/V2/ABT.hs
+cbor-shared-values:
+  kind: article
+  title: "IANA CBOR tags 28 and 29: marked shared values and positional back-references"
+  locator: https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
