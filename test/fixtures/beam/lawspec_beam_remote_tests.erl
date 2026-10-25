@@ -41,7 +41,7 @@ definition_content_hash_is_the_wire_selector_test_() -> {timeout, 60, fun() ->
         Remote = proxy(A, Address, <<"eval">>, Table),
         ?assertEqual(1007, lawspec_beam_remote:call(Remote, Digest, [7])),
         ?assertEqual(1, atomics:get(Count, 1)),
-        Expected = <<73, Digest/binary, 14>>,
+        Expected = <<(byte_size(Digest)), Digest/binary, 14>>,
         ?assert(lists:any(fun(Bytes) -> case lawspec_beam_wire:read_frame(Bytes) of
             {ok, #{kind := <<"eval">>, payload := Expected}} -> true;
             _ -> false
