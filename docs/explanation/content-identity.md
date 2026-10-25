@@ -319,7 +319,10 @@ including a workflow whose stages are native adapters. Validated native bindings
 are scoped to the laws that reach their types or declarations, including nested
 data, primitive generators, selected strategies, checked definitions and
 contracts, and spec-handler state and clauses. An unrelated binding in the same
-target does not make a pure law opaque. Reached user codecs, constructors and
+target does not make a pure law opaque. Generator factories follow selected
+input/search draws and their nested payload types, rather than types appearing
+only in assertions; a configured Bool factory does not taint every Boolean law.
+Reached user codecs, constructors and
 generators can invoke native code or any generated public API, even when the law
 calls only checked definitions. Their implementation and public generated API
 therefore remain cache inputs. The SDK honors the compiler's per-law classification;

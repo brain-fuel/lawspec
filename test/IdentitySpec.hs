@@ -282,9 +282,10 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
           in testManifestWithBindings True resolved "javascript" Nothing core
         flags bindings = map entryCallsAdapters (entries bindings source)
     flags (request [codec] []) `shouldBe` [True,True,True,True,False]
-    flags (request [] [generator token]) `shouldBe` [True,True,True,True,False]
-    flags (request [] [generator (C.Id "Int8")]) `shouldBe` [True,True,True,True,False]
+    flags (request [] [generator token]) `shouldBe` [True,False,False,False,False]
+    flags (request [] [generator (C.Id "Int8")]) `shouldBe` [True,False,False,False,False]
     flags (request [] [generator (C.Id "Int16")]) `shouldBe` [False,False,False,False,True]
+    flags (request [] [generator (C.Id "Bool")]) `shouldBe` replicate 5 False
     let before=map entryKey (entries (request [codec] []) source)
         changed=map entryKey (entries (request [codec] []) (unlines (edit "-> Integer is 1" "-> Integer is 2" (lines source))))
     take 4 changed `shouldNotBe` take 4 before
@@ -297,6 +298,14 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
         withBindings = either error id (Native.resolveNativeRequest withStrategy (request [codec] []))
     map entryCallsAdapters (testManifestWithBindings True withBindings "javascript" Nothing withStrategy)
       `shouldBe` replicate 5 True
+    let fixed = unlines ["harness identity.bindings.testing for identity.bindings is",
+          "strategy chosen :: Envelope is one of Envelope record{ token = Token record{ value = 7 } } end strategy",
+          "for law nested use chosen for value end for law", "end harness"]
+        withConstants = either (error . show) id (compileCore 64 defaultGeneration
+          [Source "bindings.lawspec" source, Source "constants.lawspec" fixed])
+        unusedFactory = either error id (Native.resolveNativeRequest withConstants (request [] [generator token]))
+    map entryCallsAdapters (testManifestWithBindings True unusedFactory "javascript" Nothing withConstants)
+      `shouldBe` replicate 5 False
   it "preserves opaque generated API dependencies for explicitly bound native codecs" $ do
     let make body = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec"
           (unlines (edit "x + x + x" body base))])

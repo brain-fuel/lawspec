@@ -17,6 +17,7 @@ import LawSpec.Naming (displayLabel)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix, isSuffixOf)
 import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 import LawSpec.Core
 import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Evidence as Evidence
@@ -71,26 +72,26 @@ testManifestWithModelChecks modelsSelected = testManifestWithNativeContext model
 -- when the law's checked call graph contains no ordinary adapter declaration.
 testManifestWithNativeContext :: Bool -> Bool -> String -> Maybe String -> Program -> [TestEntry]
 testManifestWithNativeContext modelsSelected nativeBindings =
-  testManifestWithContext modelsSelected nativeBindings S.empty
+  testManifestWithContext modelsSelected nativeBindings S.empty S.empty
 
 -- | Validated bindings affect the laws that reach their declarations or types,
 -- including nested data, strategies, handler state and primitive generators.
 -- Opaque implementations still keep their conservative public API closure.
 testManifestWithBindings :: Bool -> BindingPlan -> String -> Maybe String -> Program -> [TestEntry]
-testManifestWithBindings modelsSelected bindings = testManifestWithContext modelsSelected False bound
+testManifestWithBindings modelsSelected bindings = testManifestWithContext modelsSelected False bound generators
   where
     representation = bindingRepresentations bindings
     bound = S.fromList (map idText
       (map (dataId . resolvedDeclaration) (resolvedTypes representation) ++
-       map resolvedGeneratorType (resolvedGenerators representation) ++
        map (declarationId . fst) (bindingFunctions bindings) ++
        map (declarationId . fst) (bindingCalls bindings)))
+    generators = S.fromList (map (idText . resolvedGeneratorType) (resolvedGenerators representation))
 
-testManifestWithContext :: Bool -> Bool -> S.Set String -> String -> Maybe String -> Program -> [TestEntry]
-testManifestWithContext _ _ _ target _ _ | target `elem` artifactTargets = []
-testManifestWithContext modelsSelected nativeBindings bound "prolog" testDir program =
-  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithContext modelsSelected nativeBindings bound "python" testDir program]
-testManifestWithContext modelsSelected nativeBindings bound target testDir program =
+testManifestWithContext :: Bool -> Bool -> S.Set String -> S.Set String -> String -> Maybe String -> Program -> [TestEntry]
+testManifestWithContext _ _ _ _ target _ _ | target `elem` artifactTargets = []
+testManifestWithContext modelsSelected nativeBindings bound generators "prolog" testDir program =
+  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithContext modelsSelected nativeBindings bound generators "python" testDir program]
+testManifestWithContext modelsSelected nativeBindings bound generators target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ displayLabel (propertyName p)) index
       (relocated (unitTestPath target unit)) (lawKey u p)
       (callsAdapters p)
@@ -187,6 +188,30 @@ testManifestWithContext modelsSelected nativeBindings bound target testDir progr
           concatMap Identity.references (Dependencies.reachableDefinitions graph nodes) ++
           concat [Identity.references contract | unit <- programUnits program, contract <- unitContracts unit,
             Dependencies.DeclarationNode (contractDeclaration contract) `S.member` nodes]
+    -- A factory replaces generation, not every occurrence of its result type.
+    -- Follow selected draws and their payloads; constants and Boolean assertion
+    -- results must not acquire a dependency on an unused Bool generator.
+    boundGenerator p = not (S.null (S.intersection generators (S.fromList names)))
+      where
+        harness = propertyHarness p
+        names = concat [drawNames (maybe (DrawAny (binderType binder) (Just quantifier)) id
+          (lookup (binderId binder) [(identity,draw) | (identity,_,draw) <- harnessDraws harness])) |
+          quantifier <- propertyParameters p ++ propertyInputs p, let binder = quantifiedBinder quantifier] ++
+          concat [drawNames draw | (_,_,_,draw) <- harnessSearches harness]
+    drawNames draw = case draw of
+      DrawAny ty _ -> generatorTypes S.empty ty
+      DrawOneOf _ _ -> []
+      DrawFrequency choices -> concatMap (drawNames . snd) choices
+      DrawSuchThat inner _ _ _ -> drawNames inner
+      DrawBind _ first rest -> drawNames first ++ drawNames rest
+    dataTypes = M.fromList [(idText (dataId declaration),declaration) | declaration <- programDataDeclarations program]
+    generatorTypes seen ty = case ty of
+      Constructor name arguments -> name : concat [generatorTypes seen argument | TypeArgument argument <- arguments] ++
+        if name `S.member` seen then [] else
+          [reference | Just declaration <- [M.lookup name dataTypes], constructor <- dataConstructors declaration,
+            field <- constructorFields constructor, reference <- generatorTypes (S.insert name seen) (binderType field)]
+      Arrow input output -> generatorTypes seen input ++ generatorTypes seen output
+      TypeVariable _ -> []
     nodeName node = case node of
       Dependencies.DeclarationNode name -> idText name
       Dependencies.TypeNode name -> idText name
@@ -204,7 +229,7 @@ testManifestWithContext modelsSelected nativeBindings bound target testDir progr
         recorded expression = case expressionNode expression of
           Helper Recorded _ -> True
           _ -> any recorded (children expression)
-    opaqueNative p = nativeBindings || boundNative p || any unimplemented (S.toList (reached p)) ||
+    opaqueNative p = nativeBindings || boundNative p || boundGenerator p || any unimplemented (S.toList (reached p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
       where
