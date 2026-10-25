@@ -47,6 +47,8 @@ export function recordNativeAttempts(run, tests, {keys,seed,ok,profile,output,al
 // reported beside it are not inputs, so they change no key.
 export function attestedKeys(result) {
   const wiring=d=>[d.dependency,d.endpoint,d.kind,
+    ...(d.implementation?[[d.implementation.kind,d.implementation.product,d.implementation.version,
+      d.implementation.commit??null,d.implementation.digest??null]]:[]),
     ...(d.standIn?[d.standIn.identity,d.standIn.version,d.standIn.conformance]:[])];
   return new Map((result.evidence??[]).filter(item=>item.against||item.plannedAgainst)
     .map(item=>[item.declaration,JSON.stringify([

@@ -5,7 +5,7 @@
 -- and a bounded run search looks for a step that breaks it, which the
 -- reference evaluator replays before it is reported. ref:DEC-model-induction
 module LawSpec.ModelProof
-  ( ModelTask(..), Answer(..), modelTasks, settleModel, invariantClaims
+  ( ModelTask(..), Answer(..), modelTasks, settleModel, modelAnswerChecks, invariantClaims
   ) where
 
 import Control.Monad (forM, unless, when)
@@ -233,6 +233,20 @@ settleModel units program tasks answers =
                                                        [ "no run of up to " ++ show depth ++ " steps breaks it" | [a] <- [outcome "bounded search"], answerOutcome a == "unsat" ] ++
                                                        [ "Z3 gave a run the evaluator does not replay: " ++ why | Just (Left why) <- [replayed] ]))
   ]
+
+-- | Raw bounded SAT answers are hints until the current evaluator replays
+-- them. Expose that decision structurally so a host can retry an obsolete
+-- cached model without interpreting diagnostic prose or rewriting SMT text.
+modelAnswerChecks :: [S.Unit] -> C.Program -> [(C.Id, C.Id, [ModelTask])] -> [(String, Answer)]
+  -> [(String, String, String)]
+modelAnswerChecks units program tasks answers =
+  [ (taskFingerprint task, status, reason)
+  | (owner,law,queries) <- tasks, task <- queries, taskKind task == "bounded search"
+  , Just answer <- [lookup (taskFingerprint task) answers], answerOutcome answer == "sat"
+  , let (status,reason) = case replay units program owner law task answer of
+          Just (Right run) -> ("confirmed", run)
+          Just (Left why) -> ("model-not-confirmed", why)
+          Nothing -> ("model-not-confirmed", "no current evaluator replay is available") ]
 
 -- | The bounded search's run, replayed by the reference evaluator: Z3's
 -- first state must be one the model starts in, and each chosen command

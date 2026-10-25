@@ -518,7 +518,7 @@ export async function proveWithZ3(compiler,request,options={}) {
         outcome:selected.outcome,reason:selected.error,configuration:config});
   }
   if(modelTasks.length&&!selected.error) {
-    const answered=new Map(),modelAnswers=[],modelRows=new Map();
+    const answered=new Map(),modelAnswers=[],modelRows=new Map(),runs=new Map();
     let pending=modelTasks;
     for(let round=0;round<4;round++) {
       let fresh=0;
@@ -545,25 +545,43 @@ export async function proveWithZ3(compiler,request,options={}) {
         const done=await analysisQuery(cache,row,task,selected,executeQuery);
         const answer={fingerprint:task.fingerprint,outcome:done.outcome,values:done.values,invariant:done.invariant??'',inputs:done.inputs??task.inputs};
         answered.set(task.fingerprint,answer);modelAnswers.push(answer);
-        // A memoized query is still only an input to the current compiler's
-        // induction/re-check/replay settlement below. It cannot settle a model.
-        await saveQuery(done);
-        const run=done.run,outcome=done.outcome;
-        solverEvidence.push({kind:'model',owner:law.owner,declaration:law.declaration,task:task.kind,
-          taskFingerprint:done.reused?.taskFingerprint??task.fingerprint,
-          ...(done.reused?{currentTaskFingerprint:task.fingerprint,reused:done.reused}:{}),
-          encoding:'lawspec-smtlib-v2',status:outcome==='unsat'?'proved':'incomplete',outcome,reason:task.kind+': '+outcome+
-            (done.reused?'; reused original solver query; current compiler rechecks the model evidence':''),
-          prover:{name:'z3',version:selected.version,binary:selected.binary,binaryFingerprint:selected.binaryFingerprint,
-            fingerprint:selected.fingerprint,arguments:selected.args},
-          runFingerprint:done.runFingerprint,elapsedMs:run.elapsedMs,
-          exitCode:run.exitCode,signal:run.signal,stdout:run.stdout,stderr:run.stderr,configuration:config});
+        runs.set(task.fingerprint,{row,task,done});
       }
       if(!fresh)break;
-      const checked=await compiler.proofTasks({...request,modelResults:modelAnswers});
+      let checked=await compiler.proofTasks({...request,modelResults:modelAnswers});
+      let retry=false;
+      for(const check of checked.modelChecks??[]){
+        const observation=runs.get(check.fingerprint);
+        if(check.status!=='model-not-confirmed'||!observation?.done.reused||!observation.done.rerun)continue;
+        await rm(observation.done.cacheFile,{force:true}).catch(()=>{});
+        observation.done=await observation.done.rerun();
+        const {task,done}=observation;
+        const answer={fingerprint:task.fingerprint,outcome:done.outcome,values:done.values,
+          invariant:done.invariant??'',inputs:done.inputs??task.inputs};
+        answered.set(task.fingerprint,answer);
+        modelAnswers[modelAnswers.findIndex(value=>value.fingerprint===task.fingerprint)]=answer;
+        retry=true;
+      }
+      if(retry)checked=await compiler.proofTasks({...request,modelResults:modelAnswers});
       for(const row of checked.modelEvidence??[])modelRows.set(row.declaration,row);
       for(const d of checked.diagnostics??[])if(d.code==='refuted'&&!found.some(e=>e.message===d.message))found=[...found,d];
       pending=checked.modelTasks??[];
+    }
+    for(const {row,task,done} of runs.values()){
+      // Current model settlement still checks every proof/replay obligation.
+      // A reused raw query never substitutes for that compiler decision.
+      if(task.kind!=='bounded search'||done.outcome!=='sat'||modelRows.get(row.declaration)?.status==='refuted')
+        await saveQuery(done);
+      const run=done.run,outcome=done.outcome;
+      solverEvidence.push({kind:'model',owner:row.owner,declaration:row.declaration,task:task.kind,
+        taskFingerprint:done.reused?.taskFingerprint??task.fingerprint,
+        ...(done.reused?{currentTaskFingerprint:task.fingerprint,reused:done.reused}:{}),
+        encoding:'lawspec-smtlib-v2',status:outcome==='unsat'?'proved':'incomplete',outcome,reason:task.kind+': '+outcome+
+          (done.reused?'; reused original solver query; current compiler rechecks the model evidence':''),
+        prover:{name:'z3',version:selected.version,binary:selected.binary,binaryFingerprint:selected.binaryFingerprint,
+          fingerprint:selected.fingerprint,arguments:selected.args},
+        runFingerprint:done.runFingerprint,elapsedMs:run.elapsedMs,
+        exitCode:run.exitCode,signal:run.signal,stdout:run.stdout,stderr:run.stderr,configuration:config});
     }
     settled=settled.map(row=>row.stage==='law'&&modelRows.has(row.declaration)?{...row,...modelRows.get(row.declaration)}:row);
   }

@@ -12,6 +12,7 @@ import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.GoOperation (planGoOperation, operationDoc)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
 import LawSpec.Typed.Plan (TypedPlan(..), sharedDefinitions)
 import qualified Data.Map.Strict as M
@@ -108,7 +109,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                                , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                                , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
             boundary = nub ([t | i <- held, Just d <- [M.lookup i everyDefinition], let (args, result) = functionType (declarationType (definitionDeclaration d)), t <- result : args] ++ handlerTypes)
-        source <- goTypedSource typed performDoc packageName held boundary
+        source <- goTypedSource typed (planGoOperation bits declarations units schema) packageName held boundary
         pure [ Artifact (directory ++ "/lawspec_typed.go") source "generated" "source"
              , Artifact (directory ++ "/lawspec_fast.go") (replace "RUNTIME_PACKAGE" packageName (runtimeSource "go-fast")) "generated" "source" ]
   -- A workflow calls its own package's adapters, so only that package has it;
@@ -124,36 +125,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
     -- An operation goes to the handler the law installed in symbols for its
     -- ability (evidence passing), through the codecs; typed code calls it
     -- with its arguments' dynamic values.
-    performDoc term values = case expressionNode term of
-      Perform op args -> do
-        let parameterTypes = map expressionType args
-            resultType = expressionType term
-        codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
-        resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
-        let call = E.call (handlerOf (operationAbility op) ++ "." ++ capitalize (operationName op))
-              [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
-            result
-              | resultType == Constructor "Unit" [] =
-                  line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
-              | otherwise = E.call "resultCodec.fromNative" [call]
-        let performed = line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-              (E.declare ([("schema", line schema, True), ("bits", line (show bits), True)] ++
-                 [("codec" ++ show i, line codec, True) | (i, codec) <- zip [0::Int ..] codecs] ++
-                 [("resultCodec", line resultCodec, True)])
-               [line "return " <> result])) <> line "()"
-        -- An operation that fails with E: a native handler panics with
-        -- LawSpecFail and a native E, which becomes the failure.
-        case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
-          Just failing@(AbilityRef _ [failure]) -> do
-            failureCodec <- Native.goCodecWithContext "symbols" declarations failure
-            failureType <- Native.goDataType declarations failure
-            pure (E.call "lsNativeFailures" [E.quoted (abilityKey failing),
-              line "func(native any) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                (E.declare [("schema", line schema, True), ("bits", line (show bits), True)]
-                 [line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")])),
-              line "func() LawSpecValue " <> D.block 8 (line "return " <> performed)])
-          _ -> pure performed
-      _ -> Left "not an operation"
+    performDoc term values = operationDoc <$> planGoOperation bits declarations units schema term <*> pure values
     replace old new text = case text of
       [] -> []
       _ | take (length old) text == old -> new ++ replace old new (drop (length old) text)

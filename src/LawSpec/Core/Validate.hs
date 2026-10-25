@@ -4,6 +4,7 @@
 module LawSpec.Core.Validate (validateProgram, validateProgramWithScopes, module LawSpec.Core.Expression) where
 
 import LawSpec.Core
+import LawSpec.Core.ResourceScope (validateResourceSharing)
 import LawSpec.Core.Eval (evaluateValuePure)
 import LawSpec.Core.Expression
 import LawSpec.Core.Total (validateDefinitionContractsWithScopes)
@@ -176,6 +177,7 @@ validateProgramWith scopes registry Program{..} = do
       -- A law's resources are in scope in its body and examples; each one's
       -- acquire sees none of them, and its release sees it.
       resourceScope <- foldM (\s r -> do
+        validateResourceSharing p r
         expression current ds M.empty (resourceAcquire r)
         unless (expressionType (resourceAcquire r) == binderType (resourceBinder r)) (Left "a resource's acquire must give its type")
         own <- extend M.empty (resourceBinder r)

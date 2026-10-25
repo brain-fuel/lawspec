@@ -18,6 +18,8 @@ import Control.Monad.State.Strict (State, evalState, get, put)
 import Data.Char (isAlphaNum, isAsciiLower, isAsciiUpper, isDigit, toLower)
 import Data.List (dropWhileEnd, isPrefixOf, isSuffixOf)
 import Data.Maybe (isJust, isNothing, fromMaybe)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import LawSpec.Code.Literal (literalFor)
 import LawSpec.Code.Prettier (Doc, text, cat, indent, align, dedent, group, groupBroken, groupWithId
   , conditionalGroup, fill, ifBreak, ifBreakFor, indentIfBreak, line, softline, hardline
@@ -25,7 +27,7 @@ import LawSpec.Code.Prettier (Doc, text, cat, indent, align, dedent, group, grou
 import qualified LawSpec.Code.Prettier as P
 
 -- | JavaScript modules (Prettier's babel parser) or TypeScript.
-data Dialect = JavaScript | TypeScript deriving (Eq, Show)
+data Dialect = JavaScript | TypeScript deriving (Eq, Show, Generic)
 
 data Expr
   = Ident String
@@ -52,24 +54,24 @@ data Expr
   | Assign String Expr Expr
   | As Expr Type
   | NonNull Expr
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
-data Body = ExpressionBody Expr | BlockBody [Stmt] deriving (Eq, Show)
+data Body = ExpressionBody Expr | BlockBody [Stmt] deriving (Eq, Show, Generic)
 
 data Param = Param
   { paramPattern :: Pattern
   , paramType :: Maybe Type
   , paramDefault :: Maybe Expr
   , paramRest :: Bool
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- | An object pattern's properties: a key and its pattern, or a shorthand.
-data Pattern = PIdent String | PArray [Pattern] | PObject [(String, Maybe Pattern)] deriving (Eq, Show)
+data Pattern = PIdent String | PArray [Pattern] | PObject [(String, Maybe Pattern)] deriving (Eq, Show, Generic)
 
 -- | An object's property; a commented one has comment lines before it.
-data Prop = Prop Key Expr | Shorthand String | SpreadProp Expr | CommentedProp [String] Prop deriving (Eq, Show)
+data Prop = Prop Key Expr | Shorthand String | SpreadProp Expr | CommentedProp [String] Prop deriving (Eq, Show, Generic)
 
-data Key = KName String | KString String | KComputed Expr deriving (Eq, Show)
+data Key = KName String | KString String | KComputed Expr deriving (Eq, Show, Generic)
 
 data Type
   = TRef String [Type]
@@ -82,7 +84,7 @@ data Type
   | TFunction [Param] Type
   | TObject [(String, Bool, Type)]
   | TRaw String   -- printed as written, on one line
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data Member
   = Field { fieldModifiers :: [String], fieldName :: String, fieldType :: Maybe Type, fieldValue :: Maybe Expr }
@@ -91,7 +93,7 @@ data Member
   | Signature { signatureName :: String, signatureParams :: [Param], signatureReturn :: Maybe Type }
   | MemberComment [String]
   | MemberBlank
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data Import
   = ImportNamespace String
@@ -99,7 +101,7 @@ data Import
   | ImportDefault String
   | ImportDefaultNamed String [(String, Maybe String)]
   | ImportEffect
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data Stmt
   = ExprStmt Expr
@@ -128,7 +130,20 @@ data Stmt
   | Namespace Bool String [Stmt]
   | Comment [String]
   | Blank
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+
+instance Binary Dialect
+instance Binary Expr
+instance Binary Body
+instance Binary Param
+instance Binary Pattern
+instance Binary Prop
+instance Binary Key
+instance Binary Type
+instance Binary Member
+instance Binary Import
+instance Binary Stmt
 
 -- Conveniences for emitters.
 str :: String -> Expr

@@ -5,6 +5,7 @@ import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
 import qualified LawSpec.SourceContext as Source
 import LawSpec.SurfaceContext (contextFor)
+import LawSpec.Core.ResourceScope (resourceSharingKey)
 import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.EqSet as EqSet
@@ -197,16 +198,16 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
     -- share R per group | unit | run: the key of the scope whose cases share
     -- one R (the harness has checked that R declares reset).
     shared settings p = p { C.propertyResources =
-      [ r { C.resourceShared = case lookup (resourceName r) (maybe [] C.harnessShares settings) of
-              Just "run" -> Just ("run/" ++ resourceName r)
-              Just "unit" -> Just (unitOf p ++ "/" ++ resourceName r)
-              Just _ -> Just (unitOf p ++ "/" ++ maybe ("law " ++ C.propertyName p) ("group " ++) (C.harnessGroup (C.propertyHarness p)) ++ "/" ++ resourceName r)
-              Nothing -> Nothing }
+      [ let scope = case lookup (resourceName r) (maybe [] C.harnessShares settings) of
+              Just "run" -> Just C.ResourcePerRun
+              Just "unit" -> Just C.ResourcePerUnit
+              Just _ -> Just (maybe C.ResourcePerLaw C.ResourceGroup (C.harnessGroup (C.propertyHarness p)))
+              Nothing -> Nothing
+        in r { C.resourceShared = resourceSharingKey p r <$> scope, C.resourceSharedScope = scope }
       | r <- C.propertyResources p ] }
     resourceName r = case C.binderType (C.resourceBinder r) of
       C.Constructor n _ -> baseName n
       _ -> ""
-    unitOf p = takeWhile (/= ':') (C.idText (C.propertyId p))
     performedIn e = case C.expressionNode e of
       C.Perform op args -> op : concatMap performedIn args
       _ -> concatMap performedIn (C.children e)
@@ -276,7 +277,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
                   "environment" -> (perform fieldType "Environment" "environmentSnapshot" [],
                     releasing (perform unit' "Environment" "restoreEnvironment" [fieldValue]))
                   _ -> (perform fieldType "Ports" "freePort" [], C.Expr (C.scalarType "Bool") (C.Constant (SBool True)) (C.GeneratedFrom rid))
-            pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release Nothing Nothing False)
+            pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release Nothing Nothing False Nothing)
           _ -> case [r | r <- S.resourceDeclarations u, S.resourceType r == ty] of
             [declaration] -> do
               acquire <- term (S.Annotate (S.resourceAcquire declaration) ty)
@@ -289,7 +290,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
                   (\name -> if name == resetParameter then rid else resolve name) (monoEnvironment ((resetParameter, ty) : S.functions u)) resetBody
               -- A law that releases its own resource is rejected over the
               -- whole program (LawSpec.Release), once definitions are known.
-              pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration))
+              pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration) Nothing)
             [] -> lift (Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end"))
             _ -> lift (Left ("more than one resource is declared for " ++ S.prettyType ty))
       references <- lift (mapM (traverseReference (\target -> case target of

@@ -81,6 +81,7 @@ instance Binary C.Draw
 instance Binary C.UnitHarness
 instance Binary C.Property
 instance Binary C.Resource
+instance Binary C.ResourceSharingScope
 instance Binary C.Proposition
 instance Binary C.Quantifier
 instance Binary C.Type

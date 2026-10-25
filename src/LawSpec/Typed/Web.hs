@@ -15,6 +15,12 @@ module LawSpec.Typed.Web (WebTyped(..), emitWebTyped) where
 
 import Control.Monad (forM, forM_)
 import Control.Monad.State.Strict
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as Context
 import Data.Char (toUpper)
 import Data.List (intercalate, sortOn)
 import qualified Data.Map.Strict as M
@@ -22,6 +28,7 @@ import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Set as S
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
+import LawSpec.CorePersist ()
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import LawSpec.WebTypes (namesFor, webByValue, webTypeReference)
@@ -51,6 +58,8 @@ data Env = Env
   , envClasses :: M.Map Id String       -- typed class of each constructor (and type, for a sum's union)
   , envNative :: M.Map Id String
   , envUnits :: [Unit]
+  , envIdentity :: Identity.Graph
+  , envHelperNames :: M.Map (String,String) String
   , envBits :: Int
   , envTs :: Bool
   }
@@ -60,7 +69,9 @@ data Env = Env
 -- its kind and type, with _2 only on a clash.
 data St = St { stLocals :: N.Scope, stBase :: N.Scope, stModule :: N.Scope, stNames :: M.Map (String, String) String
              , stShown :: M.Map String String
-             , stHelpers :: M.Map String Type, stWanted :: S.Set (String, String) }
+             , stHelpers :: M.Map String Type, stWanted :: S.Set (String, String) } deriving (Show, Generic)
+
+instance Binary St
 
 type M = StateT St (Either String)
 
@@ -81,14 +92,12 @@ enterFunction = modify (\s -> s { stLocals = stBase s })
 helper :: String -> Type -> M String
 helper kind ty = do
   let key = show ty
-  modify (\st -> st { stHelpers = M.insert key ty (stHelpers st), stWanted = S.insert (kind, key) (stWanted st) })
-  s <- get
-  case M.lookup (kind, key) (stNames s) of
-    Just existing -> pure existing
-    Nothing -> do
-      let (chosen, scope) = claim (stModule s) (helperBase (stShown s) kind ty)
-      put s { stModule = scope, stNames = M.insert (kind, key) chosen (stNames s) }
-      pure chosen
+  st <- get
+  case M.lookup (kind,key) (stNames st) of
+    Nothing -> lift' (Left ("typed Web: unplanned helper " ++ kind ++ " " ++ key))
+    Just name -> do
+      put st { stHelpers = M.insert key ty (stHelpers st), stWanted = S.insert (kind,key) (stWanted st) }
+      pure name
 
 -- | A helper's name: its kind's words, then its type's (toPairInt64Int64).
 helperBase :: M.Map String String -> String -> Type -> String
@@ -170,7 +179,7 @@ emitWebTyped ts bits declarations units = do
       functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
       env = Env plan (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions classTable
-        (M.fromList names) units bits ts
+        (M.fromList names) units graph helperNames bits ts
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       handlerTypes = [ t | h <- typedHandlers, ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ] ++
@@ -181,10 +190,16 @@ emitWebTyped ts bits declarations units = do
       (startNames, startScope) = claimAll moduleScope
         [ "start" ++ nativeIdentifier "javascript" TypeName (handlerName h) | h <- stateful ]
       starts = [ (handlerId h, name, ty, start) | (h, name) <- zip stateful startNames, Just (ty, start) <- [handlerState h] ]
-      startState = St startScope startScope startScope M.empty (M.fromList [(idText i, n) | (i, n) <- names]) M.empty S.empty
+      graph = Identity.dependencyGraphWithBits bits declarations units
+      allTypes = Context.typeClosure (envData env) (boundary ++ handlerTypes ++
+        concatMap (Context.definitionTypes . snd) (typedRepresentatives plan) ++ concatMap (Context.expressionTypes . fourth) starts)
+      fourth (_,_,_,value) = value
+      helperNames = Context.helperAllocation graph (M.elems classTable ++ functionNames ++ startNames ++ reservedFor "javascript" ++ moduleReserved)
+        (helperBase (M.fromList [(idText i,n) | (i,n) <- names])) helperKinds allTypes
+      startState = St startScope startScope startScope helperNames (M.fromList [(idText i, n) | (i, n) <- names]) M.empty S.empty
   ((classStmts, functionStmts, startStmts, helperStmts), final) <- flip runStateT startState $ do
     cs <- concat <$> mapM (classDoc env) datas
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+    fs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, ty, start) -> do
       enterFunction
       body <- cstmt env Nothing [(symbolsId, "symbols")] Return start
@@ -220,8 +235,10 @@ emitWebTyped ts bits declarations units = do
         [] -> Nothing
     , webTypedPlan = plan }
   where
-    moduleReserved = ["data", "ls", "lsf", "schema", "symbols", "orderingOf", "_lawspec_schema"]
     usedNames text = S.fromList (words (map (\c -> if c `elem` ('_' : '$' : ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']) then c else ' ') text))
+
+moduleReserved :: [String]
+moduleReserved = ["data", "ls", "lsf", "schema", "symbols", "orderingOf", "_lawspec_schema"]
 
 -- | The class of each typed constructor, and the union of a sum's.
 classNames :: (DataDeclaration -> String) -> N.Scope -> [DataDeclaration] -> (M.Map Id String, N.Scope)
@@ -344,6 +361,34 @@ type Scope = [(Id, String)]
 
 symbolsId :: Id
 symbolsId = Id "lawspec::symbols"
+
+helperKinds :: [String]
+helperKinds = ["eq", "cmp", "to", "from", "nin", "nout", "tonative", "fromnative"]
+
+functionTable :: Table (Either String ([E.Stmt], St))
+functionTable = unsafePerformIO (newPersistentTable "typed-web-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+memoFunction :: Env -> Int -> Definition -> M [E.Stmt]
+memoFunction env classification definition = do
+  before <- get
+  let calls = Context.calledFunctions (envPlan env) (envFunctions env) classification definition
+      types = Context.typeClosure (envData env) (Context.definitionTypes definition)
+      helpersForFunction = [(kind,show ty,name) | ty <- types, kind <- helperKinds,
+        Just name <- [M.lookup (kind,show ty) (envHelperNames env)]]
+      names = scopeWith ([name | (name,_,_,_) <- calls] ++ [name | (_,_,name) <- helpersForFunction] ++ moduleReserved ++
+        reservedFor "javascript")
+      allocated = M.fromList [((kind,ty),name) | (kind,ty,name) <- helpersForFunction]
+      own = St names names names allocated (stShown before) M.empty S.empty
+      reached = Identity.reachableData (envIdentity env) (Identity.closure (envIdentity env)
+        (Identity.referencesOf (envIdentity env) definition))
+      nativeNames = [(identity,M.lookup identity (envNative env),M.lookup identity (envClasses env)) | declaration <- reached,
+        identity <- dataId declaration : map constructorId (dataConstructors declaration)]
+      key = Identity.fullKey (envIdentity env) ("typed-web:" ++ show ((envBits env,envTs env),calls,helpersForFunction,nativeNames)) definition
+  (document,requested) <- lift' (memoized functionTable key (runStateT (functionDoc env classification definition) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before)
+             , stWanted = S.union (stWanted requested) (stWanted before) }
+  pure document
 
 functionDoc :: Env -> Int -> Definition -> M [E.Stmt]
 functionDoc env c d = do

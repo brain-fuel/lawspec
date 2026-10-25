@@ -253,7 +253,7 @@ test_recordNormalizationPreservesPrograms=describe "structural record normalizat
         p=Property (Id "law") "find matching record" (Location "records" 1 1)
           [Quantifier original [] []]
           (Quantified ForSome (Quantifier selected [] []) (Equation (Structural before) (local selected) (local original)))
-          [example] defaultGeneration "" "" [] [] [] [Resource resource payload release (Just release) Nothing False]
+          [example] defaultGeneration "" "" [] [] [] [Resource resource payload release (Just release) Nothing False Nothing]
           h UniversalDomain emptyLawMetadata
         source=Program 64 [generic] [Unit (Id "coverage") [] [] [p] [] []]
     case normalizeProgramRecords source of

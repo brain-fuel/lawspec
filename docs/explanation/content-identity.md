@@ -116,11 +116,20 @@ substitution.
 
 A native adapter's declaration and configured binding identify a real entry
 point. Its public type and constructor/field names remain inputs to native
-result keys. Checked local names do not: changing a helper's parameter must
-not rerun every adapter-calling law. The host additionally hashes actual
-adapter sources, toolchain and binding configuration. Model checks hash the
-selected model and reachable checked definitions rather than an unrelated
-unit definition's body.
+result keys. Local bindings inside checked bodies stay out. Public exported names and
+keyword parameter names belong to native interfaces where the target exposes
+them. The host additionally hashes actual adapter sources, toolchain and
+binding configuration.
+
+Opaque native code can call a generated helper that its law never references,
+or look up an actor/handler/session interface dynamically. Such laws therefore
+also key on a conservative generated public API footprint: callable checked
+bodies, public type/constructor/field names and runtime interfaces. An edit to
+a potentially callable generated helper invalidates these adapter results
+until precise native dependency metadata can establish that it is unrelated.
+Pure laws and solver goals retain precise semantic dependency closure. These
+keys assume adapters use the documented generated API, rather than reflecting
+private helper spellings or formatted source text.
 
 A cached acceptance execution is separate from presentation validation. A
 changed generated file is formatted and compiled/parsed by its native tools
@@ -160,13 +169,89 @@ context, key each structured document. Editing an independent function adds
 one cache entry rather than re-lowering both functions. The document's Binary
 encoding preserves layout choices; no emitted source text is parsed back.
 
-Other emitter families also accumulate shared codec, literal or helper state.
-`memoizedState` memoizes their full structured state transition, including the
-exact incoming name/helper state. Their family-specific adoption remains work
-in progress; the whole-unit memo remains conservative in the meantime.
+F# typed functions cache their structured layout and their literal/helper
+requests independently. Byte literals receive checked content-derived names
+before lowering, so adding a literal to an earlier independent function does
+not change a later function's cache key. Replaying a function merges its
+requests into the current module; no prior module request set is part of its
+key. The current called names, native type names and target context remain
+presentation inputs.
+
+Python, JavaScript and TypeScript likewise cache individual checked functions
+with structured documents or syntax trees. Helper allocation walks the checked
+argument, result, expression and instantiated field types before lowering.
+Each cached function replays only its requested helper/type set. Its context
+contains the names of called functions and reachable native types, alongside
+the selected helper names, rather than the previously accumulated module.
+An unplanned helper is an explicit compiler error, not an order-dependent
+name-allocation fallback.
+
+Go and Haskell cache independent typed function and data documents. They
+replay helper requests into the current module, and Haskell likewise replays
+its content-named Text/Bytes literals. Go's effectful path consumes an abstract
+`GoOperationPlan`: the same checked plan supplies both typed and dynamic
+rendering, including the selected handler/interface, native codecs, failure
+mapping and machine profile. Thus an operation profile change invalidates its
+function while an independent pure function remains reusable. No function
+closure is treated as a cache identity.
+
+`memoizedState` remains an exact state-transition primitive for emitters whose
+incoming helper state is relevant. Independent chunks instead isolate their
+request sets as above; hashing the accumulated prior module state would make
+an unrelated earlier function invalidate later chunks.
+
+Remaining emission work includes JVM per-definition adoption, public per-type
+emitters beyond these typed chunks, and splitting the outer unit emitter's
+all-data presentation context into actual per-type/name dependencies. The
+whole-unit memo remains conservative until those contexts are established;
+semantic test and proof reuse already uses the checked dependency closure.
 
 Generated type suffixes use checked semantic identities. Specialization
 structurally lowers the already-checked concrete carrier rather than hashing
 its printed surface type. Distinct native nominal interfaces with equal
 semantic shapes receive deterministic presentation disambiguation. F# aliases
 also retain their readable public type name.
+
+
+## Scenario bindings
+
+A checked scenario stores lexical variable and channel/end names as strings.
+Identity traverses that structured AST and numbers bindings in lexical order.
+A fork captures its incoming bindings and keeps new branch bindings local;
+a receive-or-else handler cannot see a value that was never received.
+Machine command references use their positions inside the enclosing checked
+machine. The command's real adapter/reference identities remain semantic.
+Constructor literals resolve through their type identity and constructor
+position. A model's retained short state-type name resolves in the namespace
+of its already-resolved system entry point.
+
+Sequential/parallel model checks exclude scenario bodies from their keys;
+a selected scenario includes its own body. Changing one scenario therefore
+stales that scenario's execution without invalidating unrelated random-run
+checks. Model/scenario titles and bound local/channel names are presentation.
+Free machine/protocol/type descriptor strings outside an enclosing checked
+context remain identity inputs, rather than being guessed or erased.
+
+
+## Resources and persisted host caches
+
+Resource binders are registered before the law body and examples encode their
+uses. Generated sharing keys retain their runtime spelling and carry explicit
+scope provenance (law, unit, run or named group). Mandatory Core validation
+checks the key and group against that provenance. Only validated generated
+spellings are presentation; unknown or explicit user keys remain semantic.
+Resolved strategy aliases and harness names are presentation beside their
+actual draw ASTs. Benchmarks are measured independently on every request.
+
+The Node SDK mounts an explicitly requested host cache root at a dedicated
+WASI path and puts compiler memos below the actual `core.wasm` SHA-256. Calls
+that switch cache roots are serialized and use independent instances. The
+proof host keeps the original host directory for its receipts. An absolute
+host path is never accidentally treated as a path below the working directory,
+and two binaries with the same package version cannot share compiler memos.
+
+A cached bounded SAT model that the current evaluator cannot replay is deleted
+and its current solver task is retried once. A structured compiler replay
+result controls the retry; the host does not classify diagnostic prose or
+rewrite solver/model text. This covers obsolete public constructor symbols
+while preserving explicit incomplete outcomes for unconfirmed fresh models.

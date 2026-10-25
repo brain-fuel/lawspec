@@ -389,7 +389,7 @@ withModelTasks us core evidence answers (Object response) =
         [ "owner" .= C.idText owner, "declaration" .= C.idText law
         , "tasks" .= [ object [ "fingerprint" .= ModelProof.taskFingerprint t, "semanticFingerprint" .= ModelProof.taskSemanticFingerprint t, "kind" .= ModelProof.taskKind t
                               , "script" .= ModelProof.taskScript t, "inputs" .= ModelProof.taskInputs t ] | t <- ts ] ]
-  in Object (KM.insert "modelTasks" (toJSON (map view tasks)) $ KM.insert "modelEvidence" (toJSON rows) $
+  in Object (KM.insert "modelChecks" (toJSON [object ["fingerprint" .= fp, "status" .= status, "reason" .= reason] | (fp,status,reason) <- ModelProof.modelAnswerChecks us core tasks answers]) $ KM.insert "modelTasks" (toJSON (map view tasks)) $ KM.insert "modelEvidence" (toJSON rows) $
        (if null refuted then id else KM.insert "diagnostics" (toJSON (existing ++ map toJSON refuted))) response)
 withModelTasks _ _ _ _ value = value
 

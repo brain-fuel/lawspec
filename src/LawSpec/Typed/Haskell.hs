@@ -17,12 +17,19 @@ module LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped) where
 
 import Control.Monad (forM, forM_)
 import Control.Monad.State.Strict
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as Context
 import Data.List (intercalate, sortOn, nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
+import LawSpec.CorePersist ()
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import LawSpec.HaskellData (namesFor, haskellDataType, moduleImports)
@@ -58,6 +65,9 @@ data Env = Env
   , envNames :: M.Map Id String          -- type and constructor names, as LawSpecData's
   , envUnits :: [Unit]
   , envDeclarations :: [DataDeclaration]
+  , envIdentity :: Identity.Graph
+  , envHelperNames :: M.Map (String,String) String
+  , envLiteralNames :: M.Map String String
   }
 
 -- | The function being written's locals, the module's names, the
@@ -69,7 +79,9 @@ data St = St
   , stWanted :: S.Set (String, String)
   , stHelperNames :: M.Map (String, String) String
   , stLiterals :: M.Map String (String, H.Expr)
-  }
+  } deriving (Show, Generic)
+
+instance Binary St
 
 type M = StateT St (Either String)
 
@@ -99,15 +111,14 @@ helper :: String -> Type -> M String
 helper kind ty = do
   let key = show ty
   st <- get
-  case M.lookup (kind, key) (stHelperNames st) of
+  case M.lookup (kind,key) (stHelperNames st) of
+    Nothing -> lift' (Left ("typed Haskell: unplanned helper " ++ kind ++ " " ++ key))
     Just name -> do
-      put st { stWanted = S.insert (kind, key) (stWanted st) }
+      put st { stHelpers = M.insert key ty (stHelpers st), stWanted = S.insert (kind,key) (stWanted st) }
       pure name
-    Nothing -> do
-      let (name, scope) = claim (stModule st) (H.camelName (kindWord kind : typeNameWords ty))
-      put st { stModule = scope, stHelpers = M.insert key ty (stHelpers st), stWanted = S.insert (kind, key) (stWanted st)
-             , stHelperNames = M.insert (kind, key) name (stHelperNames st) }
-      pure name
+
+helperBase :: String -> Type -> String
+helperBase kind ty = H.camelName (kindWord kind : typeNameWords ty)
   where
     kindWord k = case k of
       "to" -> "to"
@@ -127,18 +138,43 @@ typeNameWords ty = case ty of
       (_, rest) -> lastSegment (dropWhile (== ':') rest)
 
 -- | A literal Text or ByteString, made once and named after what it holds.
-literal :: String -> String -> H.Expr -> M String
-literal key base definition = do
+literal :: Env -> String -> H.Expr -> M String
+literal env key definition = do
   st <- get
   case M.lookup key (stLiterals st) of
-    Just (name, _) -> pure name
-    Nothing -> do
-      -- Distinct from the module's names and from the function's locals,
-      -- which would otherwise shadow it.
-      let (name, locals') = claim (stLocals st) base
-          (_, module') = claim (stModule st) name
-      put st { stModule = module', stLocals = locals', stLiterals = M.insert key (name, definition) (stLiterals st) }
-      pure name
+    Just (name,_) -> pure name
+    Nothing -> case M.lookup key (envLiteralNames env) of
+      Nothing -> lift' (Left "typed Haskell: unplanned sequence literal")
+      Just name -> do
+        put st { stLiterals = M.insert key (name,definition) (stLiterals st) }
+        pure name
+
+sequenceLiterals :: Expr -> [Scalar]
+sequenceLiterals expression = case expressionNode expression of
+  Constant value@(SSequence name _) | name `elem` ["Text","Bytes"] -> [value]
+  _ -> concatMap sequenceLiterals (children expression)
+
+literalKey :: Scalar -> String
+literalKey (SSequence name units) = name ++ " " ++ show units
+literalKey _ = error "typed Haskell: not a sequence literal"
+
+literalAllocation :: Identity.Graph -> [String] -> [Scalar] -> M.Map String String
+literalAllocation graph reserved values = M.fromList [(literalKey value,chosen value) | value <- nub values]
+  where
+    base (SSequence "Text" units) = let words' = nameWords (map toEnum units)
+      in if null words' then "emptyText" else H.camelName ("text" : take 3 words')
+    base _ = "bytes"
+    suffix value = Identity.semanticKey graph "typed-haskell-literal" value
+    short value = base value ++ "_" ++ take 12 (suffix value)
+    chosen value
+      | length [other | other <- nub values,short other == short value] == 1,short value `notElem` reserved = short value
+      | otherwise = base value ++ "_" ++ suffix value
+
+operationTypes :: [Unit] -> Expr -> [Type]
+operationTypes units expression = case expressionNode expression of
+  Perform operation arguments ->
+    [failure | Just (AbilityRef _ [failure]) <- [performedFailure units operation]] ++ concatMap (operationTypes units) arguments
+  _ -> concatMap (operationTypes units) (children expression)
 
 emitHaskellTyped :: [DataDeclaration] -> [Unit] -> Either String HaskellTyped
 emitHaskellTyped declarations units = do
@@ -153,7 +189,7 @@ emitHaskellTyped declarations units = do
   natives <- namesFor declarations
   let env = Env plan (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions
-        (M.union (M.fromList natives) (fallbackNames datas)) units declarations
+        (M.union (M.fromList natives) (fallbackNames datas)) units declarations graph helperNames literalNames
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       handlerTypes = [ t | h <- typedHandlers, ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ] ++
@@ -163,11 +199,20 @@ emitHaskellTyped declarations units = do
       stateful = [h | h <- typedHandlers, Just _ <- [handlerState h]]
       (startNames, startScope) = claimAll moduleScope [nativeIdentifier "haskell" FunctionName ("start " ++ handlerName h) | h <- stateful]
       starts = [ (handlerId h, name, ty, start) | (h, name) <- zip stateful startNames, Just (ty, start) <- [handlerState h] ]
+      graph = Identity.dependencyGraph declarations units
+      definitionTypes definition = Context.definitionTypes definition ++ operationTypes units (definitionBody definition)
+      allTypes = Context.typeClosure (envData env) (boundary ++ handlerTypes ++
+        concatMap (definitionTypes . snd) (typedRepresentatives plan) ++ concatMap (Context.expressionTypes . fourth) starts)
+      fourth (_,_,_,value) = value
+      helperNames = Context.helperAllocation graph (functionNames ++ startNames ++ moduleReserved) helperBase helperKinds allTypes
+      literalNames = literalAllocation graph (functionNames ++ startNames ++ M.elems helperNames ++ moduleReserved)
+        (concatMap (sequenceLiterals . definitionBody . snd) (typedRepresentatives plan) ++ concatMap (sequenceLiterals . fourth) starts)
+      allocatedScope = scopeWith (functionNames ++ startNames ++ M.elems helperNames ++ M.elems literalNames ++ moduleReserved)
       abilityModules = nub [ abilityModule u | d <- M.elems (typedDefinitions plan), op <- performedIn (definitionBody d)
                            , Just (u, _) <- [findAbility units (operationAbility op)] ]
-  dataDocs <- mapM (dataDoc env) datas
-  ((functionDocs, startDocs, helperDocs, literalDocs), final) <- flip runStateT (St startScope startScope M.empty S.empty M.empty M.empty) $ do
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+  dataDocs <- mapM (memoData env) datas
+  ((functionDocs, startDocs, helperDocs, literalDocs), final) <- flip runStateT (St allocatedScope allocatedScope M.empty S.empty helperNames M.empty) $ do
+    fs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, ty, start) -> do
       enterFunction ()
       body <- cstmt env [(symbolsId, "symbols")] start
@@ -334,6 +379,46 @@ strictLet name = H.Let ("!" ++ name)
 strictBind :: String -> H.Expr -> Stmt
 strictBind name = Bind ("!" ++ name)
 
+helperKinds :: [String]
+helperKinds = ["to","from","tn","fn"]
+
+functionTable :: Table (Either String (D.Doc,St))
+functionTable = unsafePerformIO (newPersistentTable "typed-haskell-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+dataTable :: Table (Either String [D.Doc])
+dataTable = unsafePerformIO (newPersistentTable "typed-haskell-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE dataTable #-}
+
+nativeContext :: Env -> [Type] -> [(Id,Maybe String)]
+nativeContext env types = [(identity,M.lookup identity (envNames env)) |
+  Constructor name _ <- types, Just declaration <- [M.lookup name (envData env)],
+  identity <- dataId declaration : map constructorId (dataConstructors declaration)]
+
+memoData :: Env -> DataDeclaration -> Either String [D.Doc]
+memoData env declaration = memoized dataTable key (dataDoc env declaration)
+  where
+    types = Context.typeClosure (envData env) [Constructor (idText (dataId declaration)) []]
+    key = Identity.fullKey (envIdentity env) ("typed-haskell-data:" ++ show (nativeContext env types)) declaration
+
+memoFunction :: Env -> Int -> Definition -> M D.Doc
+memoFunction env classification definition = do
+  before <- get
+  let calls = Context.calledFunctions (envPlan env) (envFunctions env) classification definition
+      types = Context.typeClosure (envData env) (Context.definitionTypes definition ++ operationTypes (envUnits env) (definitionBody definition))
+      selectedHelpers = [((kind,show ty),name) | ty <- types, kind <- helperKinds,
+        Just name <- [M.lookup (kind,show ty) (envHelperNames env)]]
+      selectedLiterals = [(literalKey value,name) | value <- nub (sequenceLiterals (definitionBody definition)),
+        Just name <- [M.lookup (literalKey value) (envLiteralNames env)]]
+      names = scopeWith (moduleReserved ++ [name | (name,_,_,_) <- calls] ++ map snd selectedHelpers ++ map snd selectedLiterals)
+      own = St names names M.empty S.empty (M.fromList selectedHelpers) M.empty
+      key = Identity.fullKey (envIdentity env) ("typed-haskell:" ++ show (calls,selectedHelpers,selectedLiterals,nativeContext env types)) definition
+  (document,requested) <- lift' (memoized functionTable key (runStateT (functionDoc env classification definition) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before),
+               stWanted = S.union (stWanted requested) (stWanted before),
+               stLiterals = M.union (stLiterals requested) (stLiterals before) }
+  pure document
+
 functionDoc :: Env -> Int -> Definition -> M D.Doc
 functionDoc env c d = do
   let declaration = definitionDeclaration d
@@ -397,7 +482,7 @@ cexpr env scope e = case expressionNode e of
   Match {} -> viaStatements
   If {} -> viaStatements
   Helper Select _ -> viaStatements
-  Constant s -> constant s
+  Constant s -> constant env s
   Local i -> do
     name <- lift' (maybe (Left ("typed Haskell: unbound local " ++ idText i)) Right (lookup i scope))
     pure ([], var name)
@@ -589,18 +674,16 @@ convert target source (s, x)
          else narrowTo target (s, integral source x)
   | otherwise = pure (s, x)
 
-constant :: Scalar -> M ([Stmt], H.Expr)
-constant s = case s of
+constant :: Env -> Scalar -> M ([Stmt], H.Expr)
+constant env s = case s of
   SBool b -> pure ([], var (if b then "P.True" else "P.False"))
   SAbsent "Unit" -> pure ([], var "()")
   SInteger t n | Just h <- lookup t scalarHs -> pure ([], H.Typed (integer n) h)
   SSequence "Text" units -> do
-    let text = map toEnum units :: String
-    name <- literal ("text " ++ show units) (if null (nameWords text) then "emptyText" else H.camelName ("text" : take 3 (nameWords text)))
-      (call "T.pack" [string text])
+    name <- literal env (literalKey s) (call "T.pack" [string (map toEnum units)])
     pure ([], var name)
   SSequence "Bytes" units -> do
-    name <- literal ("bytes " ++ show units) "bytes" (call "B.pack" [H.List (map (integer . toInteger) units)])
+    name <- literal env (literalKey s) (call "B.pack" [H.List (map (integer . toInteger) units)])
     pure ([], var name)
   _ -> lift' (Left ("typed Haskell: unsupported constant " ++ show s))
 

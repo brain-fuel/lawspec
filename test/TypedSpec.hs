@@ -14,6 +14,7 @@ import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 import LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped)
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
+import LawSpec.GoOperation (planGoOperation)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
 import LawSpec.Typed.Beam (BeamTyped(..), emitBeamTyped)
 import qualified LawSpec.BeamAbilities as BeamAbilities
@@ -125,7 +126,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
         units = C.programUnits p
     case emitGoTyped declarations units of
       Left e -> expectationFailure e
-      Right typed -> case goTypedSource typed (\_ _ -> Left "no operation") "ledger" (named p "credit" ++ named p "total") [] of
+      Right typed -> case goTypedSource typed (\_ -> Left "no operation") "ledger" (named p "credit" ++ named p "total") [] of
         Left e -> expectationFailure e
         Right source -> do
           source `shouldSatisfy` isInfixOf "lsfPut("
@@ -179,7 +180,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
         Left e -> expectationFailure e
         Right typed -> do
           let ids = [C.declarationId (C.definitionDeclaration d) | u <- units, d <- C.unitDefinitions u]
-          case goTypedSource typed (\_ _ -> Right (D.text "lawSpecPerformed()")) "composition" ids [] of
+          case goTypedSource typed (planGoOperation 64 declarations units "_lawspecSchema") "composition" ids [] of
             Left e -> expectationFailure e
             Right source -> source `shouldSatisfy` isInfixOf "panic(&LawSpecFailure{"
     it "types raise and attempt on Python, JavaScript, TypeScript and Haskell" $ do

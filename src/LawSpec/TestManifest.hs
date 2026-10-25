@@ -17,6 +17,7 @@ import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix, isSuffixOf)
 import qualified Data.Set as S
 import LawSpec.Core
+import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Evidence as Evidence
 import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey, adapterKey)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
@@ -110,26 +111,53 @@ testManifestWithModelChecks modelsSelected target testDir program =
     -- native code keeps its public interface names, not checked locals.
     -- ref:DEC-content-identity
     lawKey u p = if callsAdapters p
-      then adapterKey graph (show (programMachineBits program)) (p, unitHarnessSettings u)
-      else semanticKey graph (show (programMachineBits program)) (p, unitHarnessSettings u)
+      then adapterKey graph (show (programMachineBits program, generatedNativeAPI)) (p, settings u)
+      else semanticKey graph (show (programMachineBits program)) (p, settings u)
+    -- Benchmarks are measured independently on every request. Their
+    -- names/bodies cannot stale ordinary law or model execution results.
+    settings u = fmap (\harness -> harness { harnessBenchmarks = [] }) (unitHarnessSettings u)
+    -- Opaque native code may call any exported generated definition or
+    -- runtime API, including a helper absent from the law's Core call graph.
+    -- Until native dependencies are explicit, preserve that conservative
+    -- implementation closure. Pure laws retain precise per-law reuse.
+    generatedNativeAPI = semanticKey graph "native-generated-public-api"
+      ( [ (idText (declarationId declaration), declarationName declaration,
+           declarationId declaration,
+           [binderName binder | namedArguments, binder <- definitionArguments definition])
+        | unit <- programUnits program, definition <- unitDefinitions unit,
+          let declaration = definitionDeclaration definition ]
+      , [ (idText (dataId declaration), dataName declaration, dataId declaration,
+           [(constructorName constructor, map binderName (constructorFields constructor)) | constructor <- dataConstructors declaration])
+        | declaration <- programDataDeclarations program ]
+      , [ (idText (unitId unit),
+           [(Machine.machineName machine, map Machine.commandName (Machine.machineCommands machine),
+             semanticKey graph "native-model" machine { Machine.machineScenarios = [] }) | machine <- unitMachines unit],
+           [(idText (sessionId session), sessionName session, semanticKey graph "native-session" session) | session <- unitSessions unit],
+           [(mailboxName mailbox, semanticKey graph "native-mailbox" mailbox) | mailbox <- unitMailboxes unit])
+        | unit <- programUnits program, not (null (unitMachines unit) && null (unitSessions unit) && null (unitMailboxes unit)) ]
+      , [ (idText (unitId unit), semanticKey graph "native-supervisors" (unitSupervisors unit),
+           [(idText (abilityId ability), abilityName ability, abilityId ability) | ability <- unitAbilities unit],
+           [(idText (handlerId handler), handlerName handler, handlerId handler) | handler <- unitHandlers unit])
+        | unit <- programUnits program, not (null (unitSupervisors unit) && null (unitAbilities unit) && null (unitHandlers unit)) ] )
+    namedArguments = target `elem` ["python", "csharp", "fsharp", "kotlin"]
     callsAdapters p = any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
     -- Model, scenario and supervision checks run the unit's machines against
     -- native code.
-    modelKey u check = adapterKey graph (show (programMachineBits program, actionKind (ModelChecks.checkAction check)))
+    modelKey u check = adapterKey graph (show (programMachineBits program, generatedNativeAPI, actionKind (ModelChecks.checkAction check)))
       (selectedModels (ModelChecks.checkAction check),
         concatMap unitSessions (programUnits program),
-        (unitMailboxes u, unitSupervisors u), unitHarnessSettings u)
+        (unitMailboxes u, unitSupervisors u), settings u)
     selectedModels action = case action of
-      ModelChecks.Sequential _ machine -> [machine]
-      ModelChecks.Parallel _ machine -> [machine]
-      ModelChecks.Scenario _ machine _ -> [machine]
+      ModelChecks.Sequential _ machine -> [machine { Machine.machineScenarios = [] }]
+      ModelChecks.Parallel _ machine -> [machine { Machine.machineScenarios = [] }]
+      ModelChecks.Scenario _ machine program -> [machine { Machine.machineScenarios = [program] }]
       ModelChecks.Supervision -> []
     actionKind action = case action of
       ModelChecks.Sequential _ _ -> "sequential"
       ModelChecks.Parallel _ _ -> "parallel"
-      ModelChecks.Scenario _ _ program -> "scenario:" ++ show program
+      ModelChecks.Scenario _ _ _ -> "scenario"
       ModelChecks.Supervision -> "supervision"
     obligations unit check=[(Evidence.obligationDeclaration item,Evidence.obligationStage item) |
       item<-ModelChecks.checkObligations unit check]

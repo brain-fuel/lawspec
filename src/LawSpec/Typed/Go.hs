@@ -10,6 +10,13 @@ module LawSpec.Typed.Go (GoTyped(..), emitGoTyped) where
 
 import Control.Monad (forM, forM_)
 import Control.Monad.State.Strict
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as Context
+import LawSpec.GoOperation (GoOperationPlan, operationDoc)
 import Data.Char (isAlphaNum, isDigit, isUpper, toUpper, ord)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
@@ -18,6 +25,7 @@ import qualified Data.Set as S
 import Numeric (showHex)
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
+import LawSpec.CorePersist ()
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import LawSpec.GoTypeRefs (goDataKey)
@@ -25,7 +33,6 @@ import qualified LawSpec.GoData as GoData
 import LawSpec.DataNames (isProduct)
 import LawSpec.Time (isDurationType)
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords)
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.RuntimeSources (runtimeSource)
@@ -35,7 +42,7 @@ import qualified LawSpec.GoExpr as E
 data GoTyped = GoTyped
   { -- A package's file: its typed definitions and boundary types, with the
     -- dynamic code's rendering of an operation (over dynamic arguments).
-    goTypedSource :: (Expr -> [D.Doc] -> Either String D.Doc) -> String -> [Id] -> [Type] -> Either String String
+    goTypedSource :: (Expr -> Either String GoOperationPlan) -> String -> [Id] -> [Type] -> Either String String
   , goTypedFunction :: Id -> Maybe String
   , goTypedType :: Type -> Either String String
   , goTypedFrom :: Type -> Either String String  -- LawSpecValue -> typed, a function name
@@ -68,7 +75,8 @@ data Env = Env
   , envFunctions :: M.Map Int String
   , envDeclarations :: [DataDeclaration]
   , envNative :: M.Map Id String
-  , envPerform :: Expr -> [D.Doc] -> Either String D.Doc
+  , envPerform :: Expr -> Either String GoOperationPlan
+  , envIdentity :: Identity.Graph
     -- Package-level names a helper must not take: the runtime's, the data
     -- types' and the typed functions'.
   , envTaken :: S.Set String
@@ -77,7 +85,9 @@ data Env = Env
 -- | Fresh names, and the per-type helpers the code asks for.
 -- | The locals a function has named, the per-type helpers the code asks
 -- for, and which of them are wanted.
-data St = St { stTaken :: S.Set String, stHelpers :: M.Map String (Int, Type), stWanted :: S.Set (String, String) }
+data St = St { stTaken :: S.Set String, stHelpers :: M.Map String (Int, Type), stWanted :: S.Set (String, String) } deriving (Show, Generic)
+
+instance Binary St
 
 emptySt :: St
 emptySt = St (S.fromList localReserved) M.empty S.empty
@@ -131,7 +141,7 @@ helper env kind ty = do
 helperName :: Env -> String -> Type -> String
 helperName env kind ty
   | clear && candidate `S.notMember` envTaken env = candidate
-  | otherwise = candidate ++ "_" ++ take 12 (digestHex (digestString (show ty)))
+  | otherwise = candidate ++ "_" ++ Identity.semanticKey (envIdentity env) "typed-go-helper" ty
   where
     candidate = "lsf" ++ helperKind kind ++ concat parts
     (parts, clear) = typeSlug (envNames env) ty
@@ -180,14 +190,15 @@ emitGoTyped declarations units = do
   nativeNames <- GoData.goEmittedNames declarations
   let envWith perform = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions declarations
-        (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames])) perform taken
-      env = envWith (\_ _ -> Left "typed Go: an operation outside a package's file")
+        (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames])) perform graph taken
+      graph = Identity.dependencyGraph declarations units
+      env = envWith (\_ -> Left "typed Go: an operation outside a package's file")
       handlerTypes = [ t | h <- concatMap unitHandlers units, isTypedHandler plan h
                          , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ] ++ handlerTypes
-  dataDocs <- mapM (dataDoc env) datas
+  dataDocs <- mapM (memoData env) datas
   let line = D.text
       -- A package holds the typed definitions its bodies reach, with the
       -- helpers they and its boundaries need.
@@ -196,7 +207,7 @@ emitGoTyped declarations units = do
             classes = S.fromList [c | i <- identities, Just c <- [definitionClass plan i]]
             members = [(c, d) | (c, d) <- typedRepresentatives plan, c `S.member` classes]
         ((functionDocs, helperDocs), _) <- flip runStateT emptySt $ do
-          fs <- mapM (\(c, d) -> enterFunction >> functionDoc env' c d) members
+          fs <- mapM (\(c, d) -> memoFunction env' c d) members
           forM_ boundaryTypes $ \t -> helper env' "to" t >> helper env' "from" t
           forM_ [t | t <- boundaryTypes, nativeDirect env' S.empty t] $ \t -> helper env' "tonative" t >> helper env' "fromnative" t
           hs <- helpers env'
@@ -352,6 +363,49 @@ orderingHelper env = case M.lookup (collectionsUnit ++ "::type::Ordering") (envN
 data Target = Return | Assign String
 
 type Scope = [(Id, String)]
+
+helperKinds :: [String]
+helperKinds = ["eq","cmp","to","from","tonative","fromnative"]
+
+functionTable :: Table (Either String (D.Doc,St))
+functionTable = unsafePerformIO (newPersistentTable "typed-go-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+dataTable :: Table (Either String D.Doc)
+dataTable = unsafePerformIO (newPersistentTable "typed-go-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE dataTable #-}
+
+nativeContext :: Env -> [Type] -> ([(String,Maybe String)],[(Id,Maybe String)])
+nativeContext env types =
+  ([(name,M.lookup name (envNames env)) | Constructor name _ <- types],
+   [(identity,M.lookup identity (envNative env)) | Constructor name _ <- types,
+     Just declaration <- [M.lookup name (envData env)], identity <- dataId declaration : map constructorId (dataConstructors declaration)])
+
+memoData :: Env -> DataDeclaration -> Either String D.Doc
+memoData env declaration = memoized dataTable key (dataDoc env declaration)
+  where
+    types = Context.typeClosure (envData env) [Constructor (idText (dataId declaration)) []]
+    key = Identity.fullKey (envIdentity env) ("typed-go-data:" ++ show (nativeContext env types)) declaration
+
+memoFunction :: Env -> Int -> Definition -> M D.Doc
+memoFunction env classification definition = do
+  before <- get
+  -- The callback returns checked structured plans. These are all of the
+  -- operation renderer's inputs, including native codecs and the profile.
+  operations <- lift' (mapM (envPerform env) (performed (definitionBody definition)))
+  let calls = Context.calledFunctions (envPlan env) (envFunctions env) classification definition
+      types = Context.typeClosure (envData env) (Context.definitionTypes definition)
+      helpersForFunction = [(kind,ty,helperName env kind ty) | ty <- types, kind <- helperKinds]
+      own = emptySt { stTaken = S.fromList (localReserved ++ [name | (name,_,_,_) <- calls] ++ [name | (_,_,name) <- helpersForFunction]) }
+      key = Identity.fullKey (envIdentity env) ("typed-go:" ++ show (calls,helpersForFunction,nativeContext env types,operations)) definition
+  (document,requested) <- lift' (memoized functionTable key (runStateT (functionDoc env classification definition) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before),
+               stWanted = S.union (stWanted requested) (stWanted before) }
+  pure document
+  where
+    performed expression = case expressionNode expression of
+      Perform (Operation ability _) arguments | not (isFail ability) -> expression : concatMap performed arguments
+      _ -> concatMap performed (children expression)
 
 functionDoc :: Env -> Int -> Definition -> M D.Doc
 functionDoc env c d = do
@@ -534,7 +588,8 @@ cexpr env scope e = case expressionNode e of
     parts <- mapM (cexpr env scope) args
     tos <- mapM (helper env "to" . expressionType) args
     from <- helper env "from" (expressionType e)
-    viaDynamic <- lift' (envPerform env e [D.text (to ++ "(") <> x <> D.text ")" | (to, x) <- zip tos (map snd parts)])
+    operation <- lift' (envPerform env e)
+    let viaDynamic = operationDoc operation [D.text (to ++ "(") <> x <> D.text ")" | (to, x) <- zip tos (map snd parts)]
     t <- fresh "performed"
     pure (concatMap fst parts ++ [D.text (t ++ " := " ++ from ++ "(") <> viaDynamic <> D.text ")"], D.text t)
   -- attempt e: Right of e's value, or Left of the failure it raised.

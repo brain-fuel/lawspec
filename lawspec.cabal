@@ -638,6 +638,7 @@ library
       LawSpec.Core.RecordViewFunctions
       LawSpec.Core.RecordViews
       LawSpec.Core.RefinementProof
+      LawSpec.Core.ResourceScope
       LawSpec.Core.Schema
       LawSpec.Core.Search
       LawSpec.Core.Semantics
@@ -697,6 +698,7 @@ library
       LawSpec.GoDefinitions
       LawSpec.GoExpr
       LawSpec.GoNativeBinding
+      LawSpec.GoOperation
       LawSpec.GoProperties
       LawSpec.GoTestHelpers
       LawSpec.GoTypeRefs
@@ -846,6 +848,7 @@ library
       LawSpec.TestNames
       LawSpec.Time
       LawSpec.Typed.Beam
+      LawSpec.Typed.EmissionContext
       LawSpec.Typed.FSharp
       LawSpec.Typed.Go
       LawSpec.Typed.Haskell

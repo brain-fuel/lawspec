@@ -563,6 +563,12 @@ export interface ModelResult {
   inputs?: string[];
 }
 
+export interface ModelAnswerCheck {
+  fingerprint: string;
+  status: 'confirmed' | 'model-not-confirmed';
+  reason: string;
+}
+
 export interface ModelTaskRow {
   owner: string;
   declaration: string;
@@ -945,6 +951,7 @@ export interface Result {
   analysisEvidence?: ObligationEvidence[];
   analysisChecks?: AnalysisCheck[];
   modelTasks?: ModelTaskRow[];
+  modelChecks?: ModelAnswerCheck[];
   modelEvidence?: ObligationEvidence[];
   counterexampleChecks?: CounterexampleCheck[];
   evidence?: ObligationEvidence[];

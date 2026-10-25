@@ -245,6 +245,7 @@ declarations = joinWith (softbreak <> softbreak)
        ("analysisResults?", text "AnalysisResult[]"), ("projectVersion?", text "string"), ("now?", text "string"),
        ("modelResults?", text "ModelResult[]")]
   , interface "ModelResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string"), ("invariant", "string"), ("inputs?", "string[]")])
+  , interface "ModelAnswerCheck" (fields [("fingerprint", "string"), ("status", "'confirmed' | 'model-not-confirmed'"), ("reason", "string")])
   , interface "ModelTaskRow" (fields [("owner", "string"), ("declaration", "string"), ("tasks", "ModelTask[]")])
   , interface "ModelTask" (fields [("fingerprint", "string"), ("semanticFingerprint", "string"), ("kind", "string"), ("script", "string"), ("inputs", "string[]")])
   , interface "Exemption"
@@ -345,7 +346,7 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
        [("proofTasks?",text "ProofTask[]"),
         ("analysisTasks?", text "AnalysisTaskRow[]"), ("analysisEvidence?", text "ObligationEvidence[]"),
-        ("analysisChecks?", text "AnalysisCheck[]"), ("modelTasks?", text "ModelTaskRow[]"),
+        ("analysisChecks?", text "AnalysisCheck[]"), ("modelTasks?", text "ModelTaskRow[]"), ("modelChecks?", text "ModelAnswerCheck[]"),
         ("modelEvidence?", text "ObligationEvidence[]"),
         ("counterexampleChecks?",text "CounterexampleCheck[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
