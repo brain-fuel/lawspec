@@ -170,3 +170,23 @@ structurally lowers the already-checked concrete carrier rather than hashing
 its printed surface type. Distinct native nominal interfaces with equal
 semantic shapes receive deterministic presentation disambiguation. F# aliases
 also retain their readable public type name.
+
+
+## Scenario bindings
+
+A checked scenario stores lexical variable and channel/end names as strings.
+Identity traverses that structured AST and numbers bindings in lexical order.
+A fork captures its incoming bindings and keeps new branch bindings local;
+a receive-or-else handler cannot see a value that was never received.
+Machine command references use their positions inside the enclosing checked
+machine. The command's real adapter/reference identities remain semantic.
+Constructor literals resolve through their type identity and constructor
+position. A model's retained short state-type name resolves in the namespace
+of its already-resolved system entry point.
+
+Sequential/parallel model checks exclude scenario bodies from their keys;
+a selected scenario includes its own body. Changing one scenario therefore
+stales that scenario's execution without invalidating unrelated random-run
+checks. Model/scenario titles and bound local/channel names are presentation.
+Free machine/protocol/type descriptor strings outside an enclosing checked
+context remain identity inputs, rather than being guessed or erased.

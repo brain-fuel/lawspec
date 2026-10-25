@@ -6,6 +6,7 @@ import Data.List (isInfixOf, isPrefixOf)
 import Data.Char (isHexDigit)
 import Test.Hspec
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Program as Scenario
 import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, dependencyGraphWithBits, identityOf, nodeIdentity, semanticKey)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
@@ -175,6 +176,21 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     keys (source "value + 2") `shouldBe` first
     keys (unlines (edit "Pair n n end function" "Pair 0 n end function" (lines (source "value + 1"))))
       `shouldNotBe` first
+  it "keeps admitted model/scenario keys under local/channel renames and isolates a changed scenario" $ do
+    let fixture = "test/fixtures/canonical-model-layer-selection.lawspec"
+    original <- readFile fixture
+    let keys text = [(entryLaw entry,entryKey entry) | entry <- testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source fixture text])), entryKind entry == Just "model"]
+        rename = unlines . edit "send receipt n" "send transport deposited" .
+          edit "n <- deposit 5" "deposited <- deposit 5" . edit "channel receipt ::" "channel transport ::" .
+          edit "receive receipt m" "receive transport received" . edit "expect m = 5" "expect received = 5" . lines
+        first = keys original
+        changed = keys (unlines (edit "expect m = 5" "expect m = 6" (lines original)))
+    first `shouldSatisfy` (not . null)
+    keys (rename original) `shouldBe` first
+    let invalidated = [name | (name,key) <- changed, lookup name first /= Just key]
+    invalidated `shouldSatisfy` (not . null)
+    invalidated `shouldSatisfy` all (("scenario" `isInfixOf`) . C.idText)
   it "reruns no test and no proof after a reformat and a local rename" $ do
     let compiled source = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines source)])
         edited = concatMap (\line -> [line, ""]) (edit "(x :: Integer) -> Integer is x + x end" "(y :: Integer) -> Integer is y + y end" base)
@@ -192,6 +208,31 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
           in semanticHash (identityOf graph definition)
     mapM_ (\ty -> identity 32 ty `shouldNotBe` identity 64 ty) ["IntSize", "UIntSize", "UIntPtr"]
     mapM_ (\ty -> identity 32 ty `shouldBe` identity 64 ty) ["Int32", "UInt64", "Integer"]
+  it "resolves a model's state type by semantic identity under a nominal rename" $ do
+    let source name = unlines ["unit identity.modelType", "type " ++ name ++ " is a record { identifier :: Int32 } end type",
+          "openBox :: Unit -> " ++ name, "bump :: " ++ name ++ " -> Unit",
+          "function next (value :: Integer) -> Integer is value + 1 end function",
+          "model box :: shared " ++ name ++ " by Integer is", "  start openBox ~ 0", "  bump ~ next", "end model", "end unit"]
+        key text = let program = either (error . show) id (compileCore 64 defaultGeneration [Source "state.lawspec" text])
+                       graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
+                   in semanticHash (identityOf graph (C.unitMachines (head (C.programUnits program))))
+    key (source "Carrier") `shouldBe` key (source "Payload")
+  it "alpha-normalizes scenario locals, captured fork bindings and delegated channel ends" $ do
+    let program variable channel = Scenario.Program "displayed title" "free-machine" [channel]
+          [Scenario.Invoke "new" (Just variable) [],
+           Scenario.Fork [[Scenario.Deliver channel (Scenario.Variable variable)],
+             [Scenario.Accept channel "received" (Just [Scenario.Assert variable (Scenario.IntConst 0)]),
+              Scenario.Deliver "received" (Scenario.Literal (Scenario.IntConst 3))]],
+           Scenario.Assert variable (Scenario.IntConst 0)] ["Protocol"] "" [] False
+        graph = dependencyGraph [] []
+        first = identityOf graph (program "outer" "messages")
+        renamed = identityOf graph (program "renamed" "transport")
+        changed = identityOf graph ((program "renamed" "transport") { Scenario.programActs = [Scenario.Assert "unbound" (Scenario.IntConst 0)] })
+    semanticHash renamed `shouldBe` semanticHash first
+    namesHash renamed `shouldNotBe` namesHash first
+    semanticHash changed `shouldNotBe` semanticHash first
+    semanticHash (identityOf graph ((program "outer" "messages") { Scenario.programMachine = "other-free-machine" }))
+      `shouldNotBe` semanticHash first
   it "keeps distinct Unicode key contexts distinct" $ do
     let program = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines base)])
         graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)

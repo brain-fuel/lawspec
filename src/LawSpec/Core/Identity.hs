@@ -75,7 +75,7 @@ presentationFields :: M.Map String Stream
 presentationFields = M.fromList $
   [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "declarationTemplate", "dataId", "dataName", "constructorId", "constructorName"
                       , "abilityName", "handlerId", "handlerName", "propertyId", "propertyName", "contractDeclaration"
-                      , "sessionId", "sessionName", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
+                      , "sessionId", "sessionName", "machineName", "commandName", "programTitle", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
   [ (f, Docs) | f <- [ "declarationOrigin", "dataOrigin", "constructorOrigin", "expressionOrigin", "abilityOrigin"
                      , "handlerOrigin", "propertyLocation", "propertyDescription", "propertyRationale"
                      , "propertyReferences", "propertyTrace", "propertyMetadata" ] ]
@@ -167,7 +167,7 @@ instance GEncode a => GEncode (M1 D c a) where
   genc r (M1 a) = genc r a
 instance (Constructor c, GEncode a) => GEncode (M1 C c a) where
   genc r m@(M1 a) = tag (conName m) >> genc r a
-instance (Selector s, GEncode a) => GEncode (M1 S s a) where
+instance {-# OVERLAPPABLE #-} (Selector s, GEncode a) => GEncode (M1 S s a) where
   genc r m@(M1 a) = case M.lookup (selName m) presentationFields of
     Just stream -> inStream stream (genc r a)
     Nothing
@@ -176,6 +176,14 @@ instance (Selector s, GEncode a) => GEncode (M1 S s a) where
           genc r a
           modify' (\s -> s { stBindTypes = False })
       | otherwise -> genc r a
+-- A model's state is stored as a nominal constructor name in the checked
+-- machine representation. Resolve that reference exactly like a Core type.
+instance {-# OVERLAPPING #-} Selector selector => GEncode (M1 S selector (K1 index String)) where
+  genc resolver field@(M1 (K1 value)) = case M.lookup (selName field) presentationFields of
+    Just stream -> inStream stream (text value)
+    Nothing | selName field == "machineState" -> enc resolver (Constructor value [])
+            | otherwise -> text value
+
 instance Encode a => GEncode (K1 i a) where
   genc r (K1 a) = enc r a
 
@@ -327,7 +335,40 @@ instance Encode LawMetadata
 instance Encode ReferenceSelector
 instance Encode DocumentaryTarget
 instance Encode a => Encode (DocumentaryReference a)
-instance Encode a => Encode (Machine a)
+instance {-# OVERLAPPABLE #-} Encode a => Encode (Machine a) where
+  enc = encodeMachine
+
+instance {-# OVERLAPPING #-} Encode (Machine Id) where
+  enc resolver machine = encodeMachine scoped machine
+    where
+      scoped = resolver { resolveType = \name -> if name == machineState machine
+        then case resolveType resolver (machineStateIdentity machine) of
+          Just reference' -> Just reference'
+          Nothing -> resolveType resolver name
+        else resolveType resolver name }
+
+-- The checked machine retains its state's short name, while every system
+-- entry point is already a resolved declaration identity. That owner's type
+-- namespace disambiguates equal short names in different units.
+machineStateIdentity :: Machine Id -> String
+machineStateIdentity machine = case maybe [] (pure . startSystem) (machineStart machine) ++ map commandSystem (machineCommands machine) of
+  Id resolved : _ -> takeWhile (/= ':') resolved ++ "::type::" ++ machineState machine
+  [] -> machineState machine
+
+encodeMachine :: Encode a => Resolver -> Machine a -> M ()
+encodeMachine resolver machine = do
+    -- Commands are bound positions inside this machine. Their public
+    -- adapters/reference definitions still contribute resolved identities.
+    let commands = M.fromList [(commandName command, "command:" ++ show index) |
+          (index,command) <- zip [0 :: Int ..] (machineCommands machine)]
+        renameProgram program = program { Scenario.programMachine = "<enclosing-machine>", Scenario.programActs = map renameAct (Scenario.programActs program) }
+        renameAct action = case action of
+          Scenario.Invoke command bound operands -> Scenario.Invoke (M.findWithDefault ("unresolved:" ++ command) command commands) bound operands
+          Scenario.Accept channel variable handler -> Scenario.Accept channel variable (fmap (map renameAct) handler)
+          Scenario.Fork branches -> Scenario.Fork (map (map renameAct) branches)
+          other -> other
+    mapM_ (aside Names) (concatMap scenarioNames (machineScenarios machine))
+    genc resolver (from machine { machineScenarios = map renameProgram (machineScenarios machine) })
 instance Encode Consistency
 instance Encode a => Encode (MachineStart a)
 instance Encode a => Encode (Command a)
@@ -353,10 +394,58 @@ instance Encode ConstructorIndex
 instance Encode FamilyIndex
 instance Encode Family
 instance Encode Primitive
-instance Encode Scenario.Program
+instance Encode Scenario.Program where
+  enc resolver program = do
+    mapM_ (aside Names) (scenarioNames program)
+    genc resolver (from (canonicalScenario program))
 instance Encode Scenario.Act
 instance Encode Scenario.Operand
-instance Encode Scenario.Constant
+instance Encode Scenario.Constant where
+  enc resolver value = case value of
+    Scenario.TagConst constructor -> tag "TagConst" >> enc resolver (Id constructor)
+    _ -> genc resolver (from value)
+
+-- Checked scenarios have lexical value/end binders represented by strings.
+-- Canonicalize the structured AST, never its emitted descriptor text. A fork
+-- captures incoming bindings and keeps its new binders local to that branch;
+-- receive-or-else runs without the unsuccessful receive's binder.
+canonicalScenario :: Scenario.Program -> Scenario.Program
+canonicalScenario program = program
+  { Scenario.programChannels = ["channel:" ++ show index | index <- [0 .. length (Scenario.programChannels program) - 1]]
+  , Scenario.programMailboxes = [("mailbox:" ++ show index, ty) | (index,(_,ty)) <- zip [0 :: Int ..] (Scenario.programMailboxes program)]
+  , Scenario.programActs = walk [] static 0 (Scenario.programActs program) }
+  where
+    static = M.fromList (zip (Scenario.programChannels program) ["channel:" ++ show index | index <- [0 :: Int ..]] ++
+      zip (map fst (Scenario.programMailboxes program)) ["mailbox:" ++ show index | index <- [0 :: Int ..]])
+    walk _ _ _ [] = []
+    walk path scope next (action:rest) =
+      let bound = "bound:" ++ show path ++ ":" ++ show next
+          variable name = M.findWithDefault ("unbound:" ++ name) name scope
+          operand value = case value of
+            Scenario.Variable name -> Scenario.Variable (variable name)
+            other -> other
+          (current,scope',next') = case action of
+            Scenario.Invoke command (Just name) operands ->
+              (Scenario.Invoke command (Just bound) (map operand operands), M.insert name bound scope, next + 1)
+            Scenario.Invoke command Nothing operands -> (Scenario.Invoke command Nothing (map operand operands), scope, next)
+            Scenario.Deliver channel value -> (Scenario.Deliver (variable channel) (operand value), scope, next)
+            Scenario.Accept channel name handler -> (Scenario.Accept (variable channel) bound
+              (fmap (walk (path ++ [-1,next]) scope 0) handler), M.insert name bound scope, next + 1)
+            Scenario.Fork branches -> (Scenario.Fork [walk (path ++ [index]) scope 0 branch | (index,branch) <- zip [0..] branches], scope, next)
+            Scenario.Assert name value -> (Scenario.Assert (variable name) value, scope, next)
+      in current : walk path scope' next' rest
+
+scenarioNames :: Scenario.Program -> [String]
+scenarioNames program = Scenario.programMachine program : Scenario.programChannels program ++ map fst (Scenario.programMailboxes program) ++ concatMap act (Scenario.programActs program)
+  where
+    act action = case action of
+      Scenario.Invoke command bound operands -> command : maybe [] pure bound ++ concatMap operand operands
+      Scenario.Deliver channel value -> channel : operand value
+      Scenario.Accept channel variable handler -> channel : variable : maybe [] (concatMap act) handler
+      Scenario.Fork branches -> concatMap (concatMap act) branches
+      Scenario.Assert variable _ -> [variable]
+    operand (Scenario.Variable name) = [name]
+    operand _ = []
 
 -- References -----------------------------------------------------------------
 
@@ -377,8 +466,12 @@ instance (GCollect a, GCollect b) => GCollect (a :+: b) where
   gcollect (R1 b) = gcollect b
 instance GCollect a => GCollect (M1 D c a) where gcollect (M1 a) = gcollect a
 instance GCollect a => GCollect (M1 C c a) where gcollect (M1 a) = gcollect a
-instance (Selector s, GCollect a) => GCollect (M1 S s a) where
+instance {-# OVERLAPPABLE #-} (Selector s, GCollect a) => GCollect (M1 S s a) where
   gcollect m@(M1 a) = if M.member (selName m) presentationFields || S.member (selName m) typeBinderFields then id else gcollect a
+instance {-# OVERLAPPING #-} Selector selector => GCollect (M1 S selector (K1 index String)) where
+  gcollect field@(M1 (K1 value)) =
+    if selName field == "machineState" then (value :) else id
+
 instance Collect a => GCollect (K1 i a) where gcollect (K1 a) = collect a
 
 -- | Every mention, without repeats, in first-mention order.
@@ -462,7 +555,9 @@ instance Collect LawMetadata
 instance Collect ReferenceSelector
 instance Collect DocumentaryTarget
 instance Collect a => Collect (DocumentaryReference a)
-instance Collect a => Collect (Machine a)
+instance {-# OVERLAPPABLE #-} Collect a => Collect (Machine a)
+instance {-# OVERLAPPING #-} Collect (Machine Id) where
+  collect machine = (machineStateIdentity machine :) . gcollect (from machine)
 instance Collect Consistency
 instance Collect a => Collect (MachineStart a)
 instance Collect a => Collect (Command a)
@@ -491,4 +586,7 @@ instance Collect Primitive
 instance Collect Scenario.Program
 instance Collect Scenario.Act
 instance Collect Scenario.Operand
-instance Collect Scenario.Constant
+instance Collect Scenario.Constant where
+  collect value = case value of
+    Scenario.TagConst constructor -> collect (Id constructor)
+    _ -> id

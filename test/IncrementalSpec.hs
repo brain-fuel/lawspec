@@ -7,7 +7,7 @@ import Data.List (find, isInfixOf, isPrefixOf)
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified LawSpec.Code.Doc as Doc
 import qualified Data.Binary as Binary
-import qualified Control.Monad.Trans.State.Strict as State
+import qualified Control.Monad.State.Strict as State
 import Data.Version (showVersion)
 import Paths_lawspec (version)
 import Test.Hspec

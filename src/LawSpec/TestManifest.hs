@@ -17,6 +17,7 @@ import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix, isSuffixOf)
 import qualified Data.Set as S
 import LawSpec.Core
+import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Evidence as Evidence
 import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey, adapterKey)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
@@ -122,14 +123,14 @@ testManifestWithModelChecks modelsSelected target testDir program =
         concatMap unitSessions (programUnits program),
         (unitMailboxes u, unitSupervisors u), unitHarnessSettings u)
     selectedModels action = case action of
-      ModelChecks.Sequential _ machine -> [machine]
-      ModelChecks.Parallel _ machine -> [machine]
-      ModelChecks.Scenario _ machine _ -> [machine]
+      ModelChecks.Sequential _ machine -> [machine { Machine.machineScenarios = [] }]
+      ModelChecks.Parallel _ machine -> [machine { Machine.machineScenarios = [] }]
+      ModelChecks.Scenario _ machine program -> [machine { Machine.machineScenarios = [program] }]
       ModelChecks.Supervision -> []
     actionKind action = case action of
       ModelChecks.Sequential _ _ -> "sequential"
       ModelChecks.Parallel _ _ -> "parallel"
-      ModelChecks.Scenario _ _ program -> "scenario:" ++ show program
+      ModelChecks.Scenario _ _ _ -> "scenario"
       ModelChecks.Supervision -> "supervision"
     obligations unit check=[(Evidence.obligationDeclaration item,Evidence.obligationStage item) |
       item<-ModelChecks.checkObligations unit check]
