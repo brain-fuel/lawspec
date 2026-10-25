@@ -24,6 +24,8 @@ import System.FilePath ((</>), takeDirectory, takeExtension)
 import System.IO (readFile')
 import System.Process (readProcessWithExitCode)
 import Gen.Api (apiSources)
+import LawSpec.JavaTestingRuntime (renderDataStrategies)
+import LawSpec.JavaTestStyle (TestStyle(..))
 import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift)
 import Gen.Json
 import Gen.Template
@@ -91,6 +93,8 @@ planOutputs = do
   let api = apiSources (Pretty 80)
       wide = [name | (name, content) <- api, any ((> 80) . length) (lines content)]
   unless (null wide) (die ("Generated API lines exceed 80 columns in: " ++ unwords wide))
+  javaStrategiesBody <- readFile' "runtime/LawSpecDataStrategies.inc"
+  let javaStrategies = renderDataStrategies JUnit javaStrategiesBody
   runtimes <- embedRuntimes
   defaults <- embedDefaults
   dotnet <- embedDotNet
@@ -101,7 +105,7 @@ planOutputs = do
   displayWidths <- displayWidthData
   unicodeLicense <- readFile' "vendor/unicode/LICENSE.txt"
   normalizationLicenses <- readFile' "vendor/unicode/NORMALIZATION-LICENSES.txt"
-  let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
+  let whole = [ Output "runtime/LawSpecDataStrategies.java" javaStrategies False, Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
               , Output "src/LawSpec/GroovySources.hs" groovy False
               , Output "src/LawSpec/ClojureSources.hs" clojure False
@@ -122,6 +126,7 @@ strayScripts outputs = do
   let scripts = [f | f <- lines listing, any (`isSuffixOf` f) [".mjs", ".js", ".cjs", ".ts"]]
       exempt f = any (`isPrefixOf` f) ["templates/", "runtime/", "acceptance/", "bench/", "examples/", "npm/examples/", "test/fixtures/"]
         || f == "npm/core_jsffi.js"
+        || f == "test/finite-cases.mjs"  -- Independent black-box checks of the embedded JS runtime.
   exists <- mapM doesFileExist scripts
   pure [f | (f, True) <- zip scripts exists, not (exempt f), f `notElem` outputs]
 

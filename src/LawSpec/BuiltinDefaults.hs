@@ -9,9 +9,11 @@
 -- @@Type/Constructor@@; each becomes the target's native name, which depends
 -- on the program (a type a user unit also declares is qualified by its
 -- unit). @@VECTORS@@ is the vectors' text, inside a raw string literal.
-module LawSpec.BuiltinDefaults (withBuiltinDefaults, adapterPath, vectorTestPath) where
+module LawSpec.BuiltinDefaults (withBuiltinDefaults, withBuiltinDefaultsFor, javaVectorCases, adapterPath, vectorTestPath) where
 
 import qualified LawSpec.JavaExpr as JavaExpr
+import qualified LawSpec.JavaAbi as Abi
+import LawSpec.JavaTestStyle (TestStyle(..))
 import Data.Char (toUpper)
 import Data.List (intercalate, isPrefixOf)
 import qualified LawSpec.Core as C
@@ -33,14 +35,17 @@ import LawSpec.RustData (rustDataType)
 -- Replace each built-in unit's adapter module with its default handlers, and
 -- add the vector test when lawspec.crypto is used.
 withBuiltinDefaults :: String -> [C.DataDeclaration] -> [C.Unit] -> [Artifact] -> Either String [Artifact]
-withBuiltinDefaults target datas units artifacts
+withBuiltinDefaults = withBuiltinDefaultsFor JUnit
+
+withBuiltinDefaultsFor :: TestStyle -> String -> [C.DataDeclaration] -> [C.Unit] -> [Artifact] -> Either String [Artifact]
+withBuiltinDefaultsFor style target datas units artifacts
   | null present = Right artifacts
   | otherwise = do
       adapters <- concat <$> mapM adapter present
       copies <- concat <$> mapM packageCopies (if target == "go" then units else [])
       tests <- sequence
         [ if null source then Left ("no vector test " ++ file ++ " for " ++ target)
-          else (\c -> Artifact path c "generated" "test") <$> resolve target datas (fill target datas "crypto" source)
+          else (\c -> Artifact path c "generated" "test") <$> resolve target datas (fill target datas "crypto" (testTemplate source))
         | "lawspec.crypto" `elem` map name present, (path, file) <- vectorTests target
         , let source = defaultSource (directory target ++ "/" ++ file) ]
       companions <- sequence
@@ -50,6 +55,9 @@ withBuiltinDefaults target datas units artifacts
       let replaced = map artifactPath (adapters ++ copies ++ tests ++ companions)
       pure ([a | a <- artifacts, artifactPath a `notElem` replaced] ++ adapters ++ copies ++ tests ++ companions)
   where
+    testTemplate = replace "@@TEST_IMPORT@@" (if style == JUnit then "import org.junit.jupiter.api.Test;\n\n" else "") .
+      replace "@@TEST_MARK@@" (if style == JUnit then "  @Test\n" else "") .
+      replace "@@ASSERTIONS@@" (if style == PlainCases then "lawspec.testing.check.Assertions" else "org.junit.jupiter.api.Assertions")
     name = C.idText . C.unitId
     present = [u | u <- units, name u `elem` defaultedUnits, not (null (ownAbilities u))]
     adapter u = do
@@ -69,6 +77,17 @@ withBuiltinDefaults target datas units artifacts
           , owner `elem` defaultedUnits
           , let source = defaultSource ("go/" ++ shortName owner ++ ".go"), not (null source) ]
     nubOrd = foldr (\x seen -> if x `elem` seen then seen else x : seen) []
+
+-- | The reviewed vector runtime has one callable method per independent
+-- known-answer family. JVM runners consume this inventory directly.
+javaVectorCases :: Abi.CaseClass
+javaVectorCases = Abi.CaseClass "src/test/java/lawspec/CryptoVectorsTest.java"
+  "lawspec" "CryptoVectorsTest" Nothing
+  [Abi.CaseInfo name name Nothing Nothing Abi.SingleCase | name <-
+    ["sha3_256", "shake256", "aes256Gcm", "mlKem768KeyGeneration", "mlKem768Encapsulation",
+     "mlKem768Decapsulation", "mlDsa65KeyGeneration", "mlDsa65Verification",
+     "mlDsa65DeterministicSignature", "slhDsaKeyGeneration", "slhDsaVerification", "slhDsaRoundTrip"]]
+  False False
 
 goDirectory :: String -> String
 goDirectory = map (\c -> if c == '.' then '/' else c)

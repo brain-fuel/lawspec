@@ -96,6 +96,8 @@
           (binding [t/report (recording results t/report)]
             (doseq [n nss] (run-namespace n selections exact)))
           (let [counters @t/*report-counters*]
+            (when (and (seq queries) (zero? (:test counters)))
+              (throw (ex-info "The requested selection matched no tests" {:selections queries})))
             (.mkdirs (io/file "target/test-results"))
             (doseq [[ns-name cases] (group-by ffirst (dissoc @results nil))]
               (spit (str "target/test-results/TEST-" ns-name ".xml")

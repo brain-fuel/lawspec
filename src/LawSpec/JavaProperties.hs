@@ -515,7 +515,9 @@ emitTests Config{..} unit laws = do
               (statements ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] checkNames] ++
                 [contextualAssertion (const (text "context")) (assertion e)])),
              braced (D.group (text "public static Iterable<LawSpecRuntime.FiniteCase>" <> D.nest 4 (D.softline <> call source [])))
-              (returned (runtime "finiteCases" [coverData])),
+              (returned (if testStyle == Style.SpockCases
+                then runtime "selectedFiniteCases" [coverData, quoted (show (Cover.coverCount cover))]
+                else runtime "finiteCases" [coverData])),
              braced (call ("public void " ++ action) [text "LawSpecRuntime.FiniteCase finiteCase"] <> text " throws Throwable") runCase,
              braced (call ("private void " ++ helper) [text "LawSpecRuntime.FiniteCase finiteCase"])
               (withSymbols (bind "values" (call "finiteCase.values" [text "symbols"]) : handlerInstalls e ++

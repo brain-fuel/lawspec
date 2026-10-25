@@ -16,9 +16,9 @@
 
 (defn holds
   "Runs one of a law's tests: the case method of that name."
-  [cases method]
+  [cases method & arguments]
   (try
-    (clojure.lang.Reflector/invokeInstanceMethod cases method (object-array 0))
+    (clojure.lang.Reflector/invokeInstanceMethod cases method (object-array arguments))
     (t/do-report {:type :pass})
     (catch Throwable e
       (t/do-report {:type :fail :message (str (.getMessage e)) :expected (symbol method) :actual e}))))
@@ -27,6 +27,30 @@
   "A test the harness skips, with its reason."
   [reason]
   (t/do-report {:type :lawspec/skip :message reason}))
+
+(defn register-cases
+  "Registers one ordinary clojure.test var per checked case. Finite sources
+  provide reusable factories; the Java action materializes fresh values."
+  [namespace cases descriptors]
+  (vec
+   (mapcat
+    (fn [{:keys [name method source statement skipped]}]
+      (let [register (fn [test-name arguments]
+                       (let [body (fn []
+                                    (if skipped
+                                      (skip skipped)
+                                      (t/testing (or statement test-name)
+                                        (apply holds cases method arguments))))
+                             variable (intern namespace (symbol test-name) body)]
+                         (alter-meta! variable assoc :test body)
+                         variable))]
+        (if source
+          (mapv (fn [row]
+                  (register (str name "-" (.index row)) [row]))
+                (clojure.lang.Reflector/invokeStaticMethod
+                 (.getClass cases) source (object-array 0)))
+          [(register name [])])))
+    descriptors)))
 
 (defmethod t/report :lawspec/skip [m]
   (t/with-test-out (println "SKIPPED" (t/testing-vars-str m) "-" (:message m))))

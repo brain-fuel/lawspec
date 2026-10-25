@@ -64,6 +64,7 @@ extra-source-files:
     runtime/LawSpecNetwork.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
+    runtime/LawSpecDataStrategies.inc
     runtime/LawSpecKotlin.kt
     runtime/LawSpecKotlinCodecs.kt
     runtime/LawSpecKotlinDraws.kt
@@ -597,7 +598,6 @@ library
       LawSpec.Clojure.Bindings
       LawSpec.Clojure.Bridge
       LawSpec.Clojure.Emit
-      LawSpec.Clojure.Tests
       LawSpec.ClojureSources
       LawSpec.Code.Doc
       LawSpec.Code.ECMAScript
@@ -721,6 +721,7 @@ library
       LawSpec.JavaNativeBinding
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
+      LawSpec.JavaTestingRuntime
       LawSpec.JavaTestStyle
       LawSpec.JavaText
       LawSpec.JvmCases

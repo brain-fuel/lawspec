@@ -70,7 +70,7 @@ runtimeFiles =
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs"), ("web-fast", "lawspec_fast.mjs")
   , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java")
-  , ("java-data-strategies", "LawSpecDataStrategies.java"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")
+  , ("java-data-strategies-body", "LawSpecDataStrategies.inc"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")
   , ("go-schema", "lawspec_schema.go"), ("go-codecs", "lawspec_codecs.go")
   , ("go-data-strategies", "lawspec_data_strategies.go"), ("haskell", "LawSpecRuntime.hs")
   , ("haskell-schema", "LawSpecSchema.hs"), ("haskell-codecs", "LawSpecCodecs.hs"), ("haskell-fast", "LawSpecFast.hs")

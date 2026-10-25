@@ -172,7 +172,7 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
       args: ["test", "-count=1", "-v", `./${directory}`, "-run", `^(${marks.map((e) => regex(e.name)).join("|")})$`] }));
   if (language === "java") {
     const byClass = groupBy(entries, (e) => className(e.file, "src/test/java", ".java"));
-    return [{ command: target.maven || "mvn", args: [...(offline ? ["-o"] : []), "-B", "test",
+    return [{ command: target.maven || "mvn", env: { LAWSPEC_CASE: "" }, args: [...(offline ? ["-o"] : []), "-B", "test",
       `-Dtest=${byClass.map(([name, marks]) => `${name}#${marks.map((e) => e.name).join("+")}`).join(",")}`] }];
   }
   if (language === "kotlin")
@@ -190,7 +190,7 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
   }
   // Spock names each feature in words; Gradle's filters select it by name.
   if (language === "groovy")
-    return [{ command: target.gradle || "gradle",
+    return [{ command: target.gradle || "gradle", env: { LAWSPEC_CASE: "" },
       args: [...(offline ? ["--offline"] : []), "--console=plain", "test", "--rerun",
         ...entries.flatMap((e) => ["--tests", `${className(e.file, "src/test/groovy", ".groovy")}.${e.name}`])] }];
   if (language === "rust")
@@ -347,7 +347,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
       ran: (test) => laws.filter((e) => named(e).test(test.name)) }));
   if (language === "java") {
     const byClass = groupBy(entries, (e) => className(e.file, "src/test/java", ".java"));
-    return [{ laws: entries, command: target.maven || "mvn",
+    return [{ laws: entries, command: target.maven || "mvn", env: { LAWSPEC_CASE: "" },
       args: [...(offline ? ["-o"] : []), "-B", ...(coverage ? ["org.jacoco:jacoco-maven-plugin:prepare-agent"] : []), "test",
         ...(coverage ? ["org.jacoco:jacoco-maven-plugin:report"] : []),
         `-Dtest=${byClass.map(([name, laws]) => `${name}#${[...new Set(laws.map((e) => model(e)?e.name:`${e.name}_*`))].join("+")}`).join(",")}`],
@@ -404,7 +404,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
   // (LawSpec.TestNames), so "name: *" selects one law's features only.
   if (language === "groovy") {
     const name = (e) => className(e.file, "src/test/groovy", ".groovy");
-    return [{ laws: entries, command: target.gradle || "gradle",
+    return [{ laws: entries, command: target.gradle || "gradle", env: { LAWSPEC_CASE: "" },
       args: [...(offline ? ["--offline"] : []), "--console=plain", "test", ...(coverage ? ["jacocoTestReport"] : []), "--rerun",
         ...[...new Set(entries.map(e=>`${e.scope??name(e)}.${e.name}${model(e)?"":": *"}`))].flatMap(name=>["--tests",name])],
       report: { kind: "junit", directory: "build/test-results/test" },

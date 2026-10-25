@@ -1,9 +1,6 @@
 decision/haskell/src/LawSpec/Clojure/Emit.hs/module/LawSpec.Clojure.Emit:
   digest: sha256:d567b9b3bd595b70
   verdict: pending
-decision/haskell/src/LawSpec/Clojure/Emit.hs/module/LawSpec.Clojure.Emit/function/clojureFromJava:
-  digest: sha256:36e0b7dbdd17478d
-  verdict: pending
 decision/haskell/src/LawSpec/Clojure/Emit.hs/module/LawSpec.Clojure.Emit/function/clojureLayout:
   digest: sha256:9db68f0f93be67e3
   verdict: pending
@@ -21,7 +18,4 @@ decision/haskell/src/LawSpec/Clojure/Emit.hs/module/LawSpec.Clojure.Emit/functio
   verdict: pending
 decision/haskell/src/LawSpec/Clojure/Emit.hs/module/LawSpec.Clojure.Emit/function/tagWords:
   digest: sha256:e49a4dea9cab266a
-  verdict: pending
-decision/haskell/src/LawSpec/Clojure/Emit.hs/module/LawSpec.Clojure.Emit/function/testNamespace:
-  digest: sha256:72a72539475e2a19
   verdict: pending

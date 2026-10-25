@@ -207,6 +207,15 @@ test("runs each unit's laws separately where names repeat across units", () => {
   assert.equal(java[0].args.at(-1), "-Dtest=a.ALawSpecTest#lawLaw0_*,b.BLawSpecTest#lawLaw2_*");
 });
 
+test("law and benchmark invocations clear inherited JVM finite-case selection", () => {
+  for (const [language, file] of [["java", "src/test/java/example/UnitLawSpecTest.java"],
+    ["groovy", "src/test/groovy/example/UnitLawSpec.groovy"]]) {
+    const entry = law(0, file, undefined, language);
+    for (const run of [...invocations({language}, [entry]), ...benchmarkInvocations({language}, [entry])])
+      assert.equal({...{LAWSPEC_CASE: "7"}, ...run.env}.LAWSPEC_CASE, "");
+  }
+});
+
 test("selects JavaScript and TypeScript tests by their law's label", () => {
   const entries = [law(0, "test/example_unit.lawspec.test.ts", "example.unit::a (special) law")];
   const [compile, run] = invocations({ language: "typescript" }, entries);
