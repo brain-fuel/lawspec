@@ -31,10 +31,10 @@ localRoots plan = nub [root | binding <- resolvedGenerators (bindingRepresentati
       _ -> False]
 
 -- | Generators bound by the project are imported where the tests use them.
-generatorImports :: BindingPlan -> Either String [D.Doc]
+generatorImports :: BindingPlan -> Either String [(String,D.Doc)]
 generatorImports plan = forM (localRoots plan) $ \root -> do
   name <- B.rustReference (NativeRef [root])
-  pure (D.text ("#[path = \"support/" ++ root ++ ".rs\"]") <> D.hardline <>
+  pure (name,D.text ("#[path = \"support/" ++ root ++ ".rs\"]") <> D.hardline <>
     D.text ("mod " ++ name ++ ";"))
 
 -- | User-owned factories always use the readable layout. Signatures describe the

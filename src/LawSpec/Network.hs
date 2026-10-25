@@ -10,8 +10,7 @@ module LawSpec.Network
   ( networkUnit, networkSource, usesNetwork, usesNetworkUnits, withNetworkModules, cryptoUsed
   ) where
 
-import Data.List (isInfixOf, isPrefixOf, stripPrefix)
-import Data.Maybe (mapMaybe)
+import Data.List (isPrefixOf)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.RuntimeSources (runtimeSource)
@@ -40,78 +39,39 @@ usesNetwork = elem networkUnit
 cryptoUsed :: [String] -> Bool
 cryptoUsed units = any (`elem` units) ["lawspec.crypto", networkUnit]
 
--- The network module beside each runtime file, for a program that uses it;
--- in Rust it is lawspec.network's own module, lawspec_network.
-withNetworkModules :: String -> Bool -> [Artifact] -> [Artifact]
-withNetworkModules target uses files
-  | not uses = files
-  | otherwise = map declare (filter (not . replaced) files) ++ mapMaybe sibling files
+-- | Companion runtime modules, selected from checked unit/package metadata.
+-- Test headers and initialization belong to their structured target emitters.
+withNetworkModules :: String -> [C.Unit] -> [Artifact] -> Either String [Artifact]
+withNetworkModules target units files
+  | not (usesNetworkUnits units) = Right files
+  | otherwise = (filter (not . replaced) files ++) . concat <$> mapM sibling files
   where
-    sibling a = do
-      (directory, name) <- Just (splitPath (artifactPath a))
-      (file, source, prefix) <- case name of
-        "lawspec_runtime.py" -> Just ("lawspec_network.py", "python-network", "")
-        "lawspec_runtime.mjs" -> Just ("lawspec_network.mjs", "javascript-network", "")
-        "lawspec_runtime.ts" -> Just ("lawspec_network.ts", "javascript-network", "// @ts-nocheck\n")
-        "LawSpecRuntime.java" -> Just ("LawSpecNetwork.java", "java-network", "")
-        "lawspec_runtime.go" -> Just ("lawspec_network.go", "go-network", "")
-        "LawSpecRuntime.hs" -> Just ("LawSpecNetwork.hs", "haskell-network", "")
-        -- Rust: the module is lawspec.network's own (lawspec_network, in
-        -- src/lawspec/network.rs), in place of its scaffold.
-        "lawspec_runtime.rs" | "src/" `isPrefixOf` artifactPath a -> Just ("lawspec/network.rs", "rust-network", "")
-        _ -> Nothing
-      let content = prefix ++ (if target == "go" then goPackage (artifactContent a) else id) (runtimeSource source)
-      Just (Artifact (directory ++ file) content (ownership a) (artifactPlacement a))
-    replaced a = target == "rust" && artifactPath a == "src/lawspec/network.rs"
-    declare a
-      -- Rust test crates mount the module (adapters may use it), and Rust
-      -- and Haskell tests install it before their laws run.
-      | target == "rust" && artifactPlacement a == "test" && any (`isInfixOf` artifactContent a) ["mod lawspec_runtime;", "::lawspec_runtime;"] =
-          a { artifactContent = unlines . concatMap installing . lines $
-                -- lawspec.network's own test crate has it already, as its adapter.
-                (if "#[path = \"../src/lawspec/network.rs\"]" `isInfixOf` artifactContent a
-                  then replace "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;"
-                    "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;\nuse adapter as lawspec_network;"
-                  else mountNetwork) $
-                mountLibrary (artifactContent a) }
-      | target == "haskell" && artifactPlacement a == "test" && "runIO (LS.useVirtualClock 0)" `isInfixOf` artifactContent a =
-          a { artifactContent =
-                replace "runIO (LS.useVirtualClock 0)" "runIO (LS.useVirtualClock 0)\n  runIO LawSpecNetwork.install" $
-                withImport "import qualified LawSpecNetwork" (artifactContent a) }
-      | otherwise = a
-    -- An import among the others, in ormolu's order (Prelude last).
-    withImport line content =
-      let (before, rest) = break (\l -> "import " `isPrefixOf` l && importKey l > importKey line) (lines content)
-      in unlines (before ++ [line] ++ rest)
-    importKey l = let ws = filter (/= "qualified") (drop 1 (words l)) in case ws of
-      m : _ -> (m == "Prelude", m)
-      [] -> (False, "")
-    -- Each law's context is made after installing the module.
-    installing l = case break (/= ' ') l of
-      (indent, "let ctx = &mut ls::Context::testing();") -> [indent ++ "lawspec_network::install();", l]
-      _ -> [l]
-    -- The module is mounted among the others in name order, as rustfmt
-    -- orders them: before the first one named after it, with its attributes.
-    mountNetwork content =
-      let ls' = lines content
-          later i = case stripPrefix "mod " (ls' !! i) of
-            Just rest | last rest == ';' -> init rest > "lawspec_network"
-            _ -> False
-          start i = if i > 0 && "#[" `isPrefixOf` (ls' !! (i - 1)) then start (i - 1) else i
-      in case filter later [0 .. length ls' - 1] of
-        i : _ -> let (before, after) = splitAt (start i) ls'
-                 in unlines (before ++ ["#[path = \"../src/lawspec/network.rs\"]", "mod lawspec_network;"] ++ after)
-        [] -> content
-    -- A test of a bound library crate uses the library's module.
-    mountLibrary content = case [l | l <- lines content, "use " `isPrefixOf` l, "::lawspec_runtime;" `isInfixOf` l] of
-      l : _ -> replace (l ++ "\n") (l ++ "\n" ++ replace "::lawspec_runtime;" "::lawspec_network;" l ++ "\n") content
-      [] -> content
-    -- The runtime copy's package, for the module beside it.
-    goPackage runtime = replace "RUNTIME_PACKAGE"
-      (head ([p | l <- lines runtime, Just p <- [stripPrefix "package " l]] ++ ["main"]))
-    splitPath p = let (file, rest) = break (== '/') (reverse p) in (reverse rest, reverse file)
-    replace old new s = case s of
+    packages = [(map (\c -> if c == '.' then '/' else c) identity ++ "/", lastPart identity)
+      | unit <- units, let identity = C.idText (C.unitId unit)]
+    sibling artifact = case splitPath (artifactPath artifact) of
+      (directory, name) -> case moduleFor name of
+        Nothing -> pure []
+        Just (filename, source, prefix) -> do
+          content <- if target == "go"
+            then case lookup directory packages of
+              Nothing -> Left ("no checked Go package for network runtime at " ++ artifactPath artifact)
+              Just package -> pure (replace "RUNTIME_PACKAGE" package (runtimeSource source))
+            else pure (runtimeSource source)
+          pure [Artifact (directory ++ filename) (prefix ++ content) (ownership artifact) (artifactPlacement artifact)]
+    moduleFor name = case name of
+      "lawspec_runtime.py" -> Just ("lawspec_network.py", "python-network", "")
+      "lawspec_runtime.mjs" -> Just ("lawspec_network.mjs", "javascript-network", "")
+      "lawspec_runtime.ts" -> Just ("lawspec_network.ts", "javascript-network", "// @ts-nocheck\n")
+      "LawSpecRuntime.java" -> Just ("LawSpecNetwork.java", "java-network", "")
+      "lawspec_runtime.go" -> Just ("lawspec_network.go", "go-network", "")
+      "LawSpecRuntime.hs" -> Just ("LawSpecNetwork.hs", "haskell-network", "")
+      "lawspec_runtime.rs" -> Just ("lawspec/network.rs", "rust-network", "")
+      _ -> Nothing
+    replaced artifact = target == "rust" && artifactPath artifact == "src/lawspec/network.rs"
+    lastPart value = reverse (takeWhile (/= '.') (reverse value))
+    splitPath value = let (name, directory) = break (== '/') (reverse value) in (reverse directory, reverse name)
+    -- A reviewed runtime template placeholder, never previously generated code.
+    replace old new value = case value of
       [] -> []
-      c : rest | old `isPrefixOf` s -> new ++ replace old new (drop (length old) s)
+      c : rest | old `isPrefixOf` value -> new ++ replace old new (drop (length old) value)
                | otherwise -> c : replace old new rest
-

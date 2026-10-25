@@ -9,6 +9,7 @@ import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName, fieldName)
 import LawSpec.Backend (inputs, inputType)
 import LawSpec.Common
 import LawSpec.Testing
+import LawSpec.Network (usesNetworkUnits)
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.HaskellData as H
@@ -101,7 +102,7 @@ emitBindings minify plan testing files = do
       wrappers <- mapM (wrapper unit) [(a, r) | not (null boundAdapters), (a, r) <- boundHandlers']
       let effectful = any (\(_,c) -> case c of Static _ -> False; _ -> True) boundAdapters
       ordinary <- either (Left . show) Right $
-        Scalar.nativeScalarEmitWithAdapterBindings
+        Scalar.nativeScalarEmitWithNetwork (usesNetworkUnits (map plannedUnit (plannedUnits testing)))
           [(C.declarationId d,C.declarationName d) | (d,_) <- boundAdapters]
           (not (null usedGenerators)) minify declarations (Definitions.definitionCalls (map plannedUnit (plannedUnits testing)))
           bits "haskell" (modelTestUnit testing unit) (plannedProperties p)
