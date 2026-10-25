@@ -6,6 +6,7 @@
 module LawSpec.DotNet.Properties (emitTests, testNames, emitNativeGenerators) where
 
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
@@ -335,33 +336,55 @@ tCover = Ty "Finite.Cover" "Finite.Cover"
 
 -- | Covers retain shared suffixes as ordinary local bindings. Values stay
 -- factories over an invocation's symbol context until the runtime selects one.
-finiteCoverExpression :: Cover.FiniteCover -> Either String Expr
-finiteCoverExpression root = do
-  plan <- Literals.planLiterals (Literals.coverLiterals root)
+data LiteralFunctions = LiteralFunctions
+  { literalDeclarations :: [(String,Ty,Expr)]
+  , literalValue :: Expr -> V.Value -> Either String Expr
+  }
+
+-- These closures are compiler-side renderers, not runtime values or cache
+-- identities. Every emitted invocation supplies its own symbol context.
+literalFunctions :: String -> [V.Value] -> Either String LiteralFunctions
+literalFunctions prefix values = do
+  plan <- Literals.planLiterals values
   shapeFunctions <- forM (Literals.literalShapes plan) $ \(index, shape) -> do
     body <- shapeBody shape
     pure (shapeName index, tFun [tSymbols,tValues] tValue,
-      Lambda [("symbols",tSymbols),("fields",tValues)] tValue body)
+      Lambda [(symbolsName,tSymbols),(fieldsName,tValues)] tValue body)
   factories <- forM (Literals.literalFactories plan) $ \(index, body) -> do
-    expression <- termExpr body
-    pure (factoryName index, tFun [tSymbols] tValue, Lambda [("symbols",tSymbols)] tValue expression)
-  (reference, (_, bindings)) <- S.runStateT (cover plan root) ([], [])
-  let coverBody = foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings)
-  pure (foldr (\(name,ty,value) rest -> Let name ty value rest) coverBody (shapeFunctions ++ factories))
+    expression <- termExpr (Var symbolsName) body
+    pure (factoryName index, tFun [tSymbols] tValue, Lambda [(symbolsName,tSymbols)] tValue expression)
+  let value symbols literal = case Literals.literalReference plan literal of
+        Right term -> termExpr symbols term
+        Left _ -> pure (X.value symbols literal)
+  pure (LiteralFunctions (shapeFunctions ++ factories) value)
   where
-    shapeName index = "literalShape" ++ show index
-    factoryName index = "literal" ++ show index
-    termExpr = Literals.foldLiteral (pure . X.literal (Var "symbols"))
-      (\index fields -> pure (Invoke (Var (shapeName index)) [Var "symbols",ListOf tValue fields]))
-      (\index -> pure (Invoke (Var (factoryName index)) [Var "symbols"]))
+    symbolsName = prefix ++ "LiteralSymbols"
+    fieldsName = prefix ++ "LiteralFields"
+    shapeName index = prefix ++ "LiteralShape" ++ show index
+    factoryName index = prefix ++ "Literal" ++ show index
+    termExpr symbols = Literals.foldLiteral (pure . X.literal symbols)
+      (\index fields -> pure (Invoke (Var (shapeName index)) [symbols,ListOf tValue fields]))
+      (\index -> pure (Invoke (Var (factoryName index)) [symbols]))
     shapeBody shape = case shape of
-      Literals.ConstructorShape _ tag -> pure (X.valueCall "Data" [Str (C.idText tag),Var "fields"])
-      Literals.ListShape _ -> pure (X.valueCall "List" [Var "fields"])
+      Literals.ConstructorShape _ tag -> pure (X.valueCall "Data" [Str (C.idText tag),Var fieldsName])
+      Literals.ListShape _ -> pure (X.valueCall "List" [Var fieldsName])
       Literals.PresenceShape (C.Constructor name _) present -> pure (if present
-        then call "Runtime" "present" [Str name,Call (Fn "List.head" "Microsoft.FSharp.Collections.ListModule.Head") [Var "fields"]]
+        then call "Runtime" "present" [Str name,Call (Fn "List.head" "Microsoft.FSharp.Collections.ListModule.Head") [Var fieldsName]]
         else call "Runtime" "absent" [Str name])
       _ -> Left "invalid planned .NET presence type"
-    cover :: Literals.LiteralPlan -> Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
+
+withLiteralFunctions :: LiteralFunctions -> Expr -> Expr
+withLiteralFunctions functions expression = foldr (\(name,ty,value) rest -> Let name ty value rest)
+  expression (literalDeclarations functions)
+
+finiteCoverExpression :: Cover.FiniteCover -> Either String Expr
+finiteCoverExpression root = do
+  functions <- literalFunctions "finite" (Literals.coverLiterals root)
+  (reference, (_, bindings)) <- S.runStateT (cover functions root) ([], [])
+  let coverBody = foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings)
+  pure (withLiteralFunctions functions coverBody)
+  where
+    cover :: LiteralFunctions -> Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
     cover plan node = do
       (known, _) <- S.get
       case lookup node known of
@@ -373,7 +396,7 @@ finiteCoverExpression root = do
               branches <- forM alternatives $ \(domain, suffix) -> do
                 values <- case domain of
                   Cover.Values items -> do
-                    expressions <- S.lift (mapM (\item -> Literals.literalReference plan item >>= termExpr) items)
+                    expressions <- S.lift (mapM (literalValue plan (Var "symbols")) items)
                     pure (call "Finite" "values" [ListOf (tFun [tSymbols] tValue)
                       [Lambda [("symbols",tSymbols)] tValue expression | expression <- expressions]])
                   Cover.IntegerInterval name first last' -> pure (call "Finite" "range" [Str name, BigLit first, BigLit last'])
@@ -413,10 +436,23 @@ observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify
 generators :: Int -> Plan -> (X.Context -> C.Expr -> [Expr] -> Either String Expr) -> (C.Id -> String) -> PlannedProperty -> Either String Expr
 generators bits plan external local planned = do
   -- Each input is drawn by a step that knows the inputs drawn before it.
+  functions <- seedLiterals
   steps <- walk [] (generatorRequirements planned)
-  pure (call "Gen" "dependent" [ListOf (tFun [tValues] (Ty "Gen<Value>" "Gen<Value>")) steps])
+  pure (withLiteralFunctions functions (call "Gen" "dependent" [ListOf (tFun [tValues] (Ty "Gen<Value>" "Gen<Value>")) steps]))
   where
     strategies = C.harnessDraws (C.propertyHarness (plannedProperty planned))
+    seedLiterals = do
+      extra <- concat <$> mapM witnessesFor (nub
+        [ty | requirement <- generatorRequirements planned, (identity,_,draw) <- strategies,
+          identity == C.binderId (generatorBinder requirement), ty <- anyTypes draw,
+          ty /= C.binderType (generatorBinder requirement)])
+      literalFunctions "seed" (concatMap generatorBoundaries (generatorRequirements planned) ++ extra)
+    anyTypes draw = case draw of
+      C.DrawAny ty _ -> [ty]
+      C.DrawOneOf {} -> []
+      C.DrawFrequency branches -> concatMap (anyTypes . snd) branches
+      C.DrawSuchThat child _ _ _ -> anyTypes child
+      C.DrawBind _ from rest -> anyTypes from ++ anyTypes rest
     renderWith names = X.render (X.Context bits X.schemaVar X.symbolsVar names external X.typeRef X.typeKeyOf)
     genTy = Ty "Gen<Value>" "Gen<Value>"
     listGen = Ty "Gen<Value list>" "Gen<FSharpList<Value>>"
@@ -458,8 +494,10 @@ generators bits plan external local planned = do
           target <- renderWith names (indexedTarget indexed)
           pure (call "Generators" "index" [target, ListOf tString [Str (C.idText tag) | (tag, _) <- indexedEquations indexed],
             ListOf (tList tString) [ListOf tString (map Str terms) | (_, terms) <- indexedEquations indexed]])
+      functions <- seedLiterals
+      seeds <- mapM (literalValue functions X.symbolsVar) (generatorBoundaries requirement)
       pure (call "Generators" "generator" [Var "generation", ref, ListOf (Ty "Generators.Bound" "Generators.Bound") (bounds ++ lengths),
-        ListOf tValue (map (X.value X.symbolsVar) (generatorBoundaries requirement) ++ hints), index])
+        ListOf tValue (seeds ++ hints), index])
     directed quantifier witnesses = GeneratorRequirement (C.quantifiedBinder quantifier)
       (C.quantifiedPredicates quantifier) witnesses (C.quantifiedBounds quantifier) (domainHints quantifier)
       (indexedGeneration (planDataDeclarations plan) (concatMap (C.unitDefinitions . plannedUnit) (plannedUnits plan)) quantifier)
