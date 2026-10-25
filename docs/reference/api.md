@@ -28,6 +28,17 @@ Laws expose documentary scalars as `metadata: {id?: string, owner?: string}`.
 The top-level law `id` and `owner` continue to identify its declaration and unit;
 documentary metadata neither renames them nor establishes verification evidence.
 
+From 0.30.0, acknowledged law mismatches use `knownDiscrepancy` in harness and
+test-manifest fields and `known-discrepancy` in evidence and native outcomes.
+The reason records the need for human review of the specification and
+implementation; it does not decide which needs correction. Concrete `failed`
+execution outcomes and validated `refuted` laws retain their meanings.
+Current observation views also use the neutral name for older stored runs.
+Their `attempt` retains the original recorded outcome, represented by
+`RecordedNativeExecutionAttempt`, while newly produced attempts use
+`NativeExecutionAttempt` and the current vocabulary. Reading an older record
+does not rewrite it or promote a stale or unselected result to current evidence.
+
 The compiler exposes the following methods through `createCompiler()` in the `lawspec`
 package. Each takes a JSON request and returns a JSON result. The TypeScript
 declarations in `index.d.ts` describe the protocol exactly; this page explains
@@ -99,7 +110,7 @@ interface GenerationRequest extends CheckRequest {
   `attestation`. It changes nothing that is compiled; it only annotates the
   evidence.
 - `attestedOutcomes` maps a law obligation's `declaration` to the outcome
-  (`passed`, `failed`, `known-failing`, `skipped` or `incomplete`) a native
+  (`passed`, `failed`, `known-discrepancy`, `skipped` or `incomplete`) a native
   run recorded for it under the attestation's `run.id`. A planned native
   check listed there is linked to that run as completed, unless the
   attestation's `execution.status` is `wired` or `running`. The CLI supplies

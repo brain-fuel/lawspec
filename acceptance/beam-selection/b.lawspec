@@ -9,7 +9,7 @@ harness example.selectionB.testing for example.selectionB is
     skip "not implemented"
   end for law
 for law "|known|
-    known failing "known native mismatch"
+    known discrepancy "known native mismatch"
 end for law
 end harness
 end unit

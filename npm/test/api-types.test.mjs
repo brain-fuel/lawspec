@@ -6,7 +6,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';
@@ -14,6 +14,11 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '../..');
 const local = path.join(root, '.integration/typescript/node_modules/.bin/tsc');
 const tsc = process.env.LAWSPEC_TSC ?? (existsSync(local) ? local : null);
+
+test('recorded native outcomes retain history without widening newly produced outcomes', {skip: tsc === null && 'tsc is not installed'}, () => {
+  execFileSync(tsc, ['--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext',
+    '--moduleResolution', 'NodeNext', 'test/fixtures/native_observation_api.ts'], {cwd: root, stdio: 'pipe'});
+});
 
 test('published expression types pass exhaustive TypeScript visitor checks', {skip: tsc === null && 'tsc is not installed'}, () => {
   execFileSync(tsc, [
@@ -77,4 +82,34 @@ end unit
   assert.deepEqual(children(fixtures.find(node => node.kind === 'if')), [value, value, value]);
   assert.throws(() => children({kind: 'future-node'}), /Unrecognized expression node/);
   t.diagnostic(`Traversed ${expressions.length} emitted expressions across ${kinds.size} node kinds; both handler forms and call filters were present.`);
+});
+
+
+test('published component and completed evidence types resolve through package exports', {skip: tsc === null && 'tsc is not installed'}, async t => {
+  const directory = await mkdtemp(path.join(root, 'npm/.component-types-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const file = path.join(directory, 'consumer.mts');
+  await writeFile(file, `
+import {parseManifest, writeManifest, resolveComponent, type ComponentManifest, type ComponentDescriptor} from 'lawspec/component';
+import type {AttestationView, NativeExecutionAttempt} from 'lawspec';
+const manifest: ComponentManifest = {
+  manifestVersion: 1, languageProfile: '1.0-rc.2', sources: ['src'],
+  component: {name: 'bank', version: '1.0.0'},
+  targets: [{language: 'rust', root: '.', cargo: 'cargo'}],
+  dependencies: {api: {version: '^1.0.0', git: 'https://example.com/api.git'}},
+};
+const serialized: string = writeManifest(manifest, {compact: true});
+const resolved: Promise<ComponentDescriptor> = resolveComponent('lawspec.edn', {locked: true});
+const raw = parseManifest('{}');
+// @ts-expect-error Parsing data alone does not establish a checked manifest.
+const unchecked: ComponentManifest = raw;
+declare const evidence: AttestationView;
+declare const attempt: NativeExecutionAttempt;
+const status: 'wired' | 'running' | 'completed' | undefined = evidence.run.execution?.status;
+const fingerprint: string | undefined = evidence.application?.component?.fingerprint;
+const executionRun: string | undefined = attempt.executionRun;
+export {manifest, resolved, status, fingerprint, executionRun};
+`);
+  execFileSync(tsc, ['--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext',
+    '--moduleResolution', 'NodeNext', file], {cwd: root, stdio: 'pipe'});
 });

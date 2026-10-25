@@ -2,7 +2,7 @@
 -- laws and spec handlers, added to a program that imports them (see
 -- docs/reference/language/builtins.md). Each ability's production handler is
 -- the runtime's default handler, generated into the unit's adapter module on
--- every target (LawSpec.BuiltinDefaults); lawspec.json may bind another.
+-- every target (LawSpec.BuiltinDefaults); lawspec.edn may bind another.
 --
 --   lawspec.time    Clock (with Instant), and the virtual clock
 --   lawspec.randomness  Random (seeded), SecureRandom, and seeded random n

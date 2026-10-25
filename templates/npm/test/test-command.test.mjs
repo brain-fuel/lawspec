@@ -592,7 +592,7 @@ async function swiftReport(entries, change = () => {}, xmlChange = (xml) => xml)
     const [run] = invocations({language:"swift"}, entries, {scratch});
     const rows = [], units = new Map();
     for (const entry of entries.filter((entry) => entry.scope === "ordered")) {
-      const cases = Array.from({length:entry.knownFailing ? 1 : entry.coverage?.cases ?? 1}, (_,index) =>
+      const cases = Array.from({length:entry.knownDiscrepancy ? 1 : entry.coverage?.cases ?? 1}, (_,index) =>
         ({law:entry.name,name:entry.name+"_boundary",id:entry.name+"#"+index}));
       units.set(entry.unit,[...(units.get(entry.unit)??[]),...cases]);
     }
@@ -696,7 +696,7 @@ test("Swift concrete failures and framework failures cannot become positive law 
   const ordinary = law(2,"tests/LawSpec/OtherUnit.swift",undefined,"swift");
   const mixed = await swiftReport([first,ordinary],(rows) => rows.pop());
   assert.deepEqual(mixed.tests.flatMap(mixed.run.ran),[ordinary]);
-  const known = {...orderedSwift(1,100),knownFailing:"tracked failure"};
+  const known = {...orderedSwift(1,100),knownDiscrepancy:"tracked failure"};
   assert.equal((await swiftReport([known])).tests.length,1);
   const sampled = {...orderedSwift(1),coverage:{kind:"sampled",scopedQuantifiers:true}};
   assert.equal((await swiftReport([sampled])).tests.length,1);

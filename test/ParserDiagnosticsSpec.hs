@@ -83,6 +83,18 @@ test_parserDiagnostics = describe "parser error recovery" $ do
           , "end unit" ])
     map code errors `shouldBe` ["block-close-mismatch","block-close-mismatch"]
     map (fmap line . at) errors `shouldBe` map Just [2,3]
+  it "keeps a malformed triple-quoted literal opaque while recovering later field errors" $ do
+    let source = Source "triple-errors.lawspec" $ unlines
+          [ "unit quoted"
+          , "law samples is definition: true end definition"
+          , "expect true = expected in table (value,expected):"
+          , "row record{a = \"\"\"bad\\q end unit,"
+          , "function bogus\"\"\", b = MadeUp},true"
+          , "row record{a = \"fine\", b = Invented},true"
+          , "end table end law end unit" ]
+        errors = diagnostics source
+    map (fmap line . at) errors `shouldBe` map Just [4,5,6]
+    length [() | err <- errors, "unknown literal constructor" `isInfixOf` message err] `shouldBe` 2
   it "resumes at later sections of a law after a malformed definition" $ do
     let errors = diagnostics (Source "sections.lawspec" $ unlines
           [ "unit broken", "law samples is", "definition: ? end definition"

@@ -40,7 +40,7 @@ scala test .
 ```
 
 LawSpec runs `scala` from your `PATH`. Set a target's `scala` field in
-`lawspec.json` to use another command.
+`lawspec.edn` to use another command.
 
 ## Layout
 
@@ -115,7 +115,7 @@ schema-directed, not case-class equality.
 ## Failures and async adapters
 
 An adapter or operation that `fails with E` returns `Either[E, R]`: a `Left` is
-the failure a law expects. An exception `lawspec.json` maps to a failure
+the failure a law expects. An exception `lawspec.edn` maps to a failure
 becomes that failure too. An `async` adapter returns a `Future`.
 
 ## Checked definitions

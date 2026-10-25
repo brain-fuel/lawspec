@@ -1,3 +1,4 @@
+import {configEDN} from './manifest-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {PassThrough} from 'node:stream';
@@ -65,7 +66,7 @@ end unit
 test('CLI match warnings do not fail checking or pollute JSON, while intrinsic errors still fail',async()=>{
   const root=await mkdtemp(path.join(tmpdir(),'lawspec-match-warnings-'));
   try{
-    await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',verification:{layers:[]},sources:['source.lawspec'],targets:[],cache:false}));
+    await writeFile(path.join(root,'lawspec.edn'),configEDN({manifestVersion: 1,languageProfile:'1.0-rc.2',verification:{layers:[]},sources:['source.lawspec'],targets:[],cache:false}));
     await writeFile(path.join(root,'source.lawspec'),text);
     const cli=fileURLToPath(new URL('../bin/lawspec.mjs',import.meta.url));
     const invoke=(...args)=>spawnSync(process.execPath,[cli,'check',...args],{cwd:root,encoding:'utf8',timeout:120000});

@@ -259,7 +259,7 @@ emitData layout bits bound declarations
         cached "bound-type" names recursive opaque (resolvedDeclaration b) $ do
           let d = resolvedDeclaration b
           name <- named names d
-          pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound in lawspec.json.") <> D.hardline <>
+          pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound in lawspec.edn.") <> D.hardline <>
             D.text ("public typealias " ++ name ++ typeParams d ++ " = " ++ refText (resolvedNativeType b) ++ typeParams d))
       boundCodecs <- mapM (\b -> cached "bound-codec" names recursive opaque (resolvedDeclaration b) (boundCodec names b))
         [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))]

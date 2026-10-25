@@ -323,8 +323,13 @@ generationFiles response = do
 -- | A package as the lawspec CLI sends it: its manifest with the sources read.
 loadPackage :: FilePath -> IO Value
 loadPackage directory = do
-  manifest <- BL.readFile (directory </> "lawspec-package.json")
-  value <- maybe (die ("invalid " ++ directory ++ "/lawspec-package.json")) pure (decode manifest)
+  (status, text, errors) <- readCreateProcessWithExitCode
+    (proc "node" ["--input-type=module", "-e", "import {readManifest} from './npm/component.mjs'; console.log(JSON.stringify(await readManifest(process.argv[1])));", directory </> "lawspec.edn"]) ""
+  unless (status == ExitSuccess) (die errors)
+  manifest <- maybe (die ("invalid " ++ directory ++ "/lawspec.edn")) pure (decode (BLC.pack text))
+  let value = case manifest of
+        Object fields | Just (Object identity) <- KM.lookup "package" fields -> Object (KM.union identity (KM.delete "package" fields))
+        _ -> manifest
   let roots = [T.unpack s | Just (Array values) <- [field "sources" value], String s <- V.toList values]
   files <- concat <$> mapM (walk . (directory </>)) roots
   sources <- forM (sort (filter (".lawspec" `isSuffixOf`) files)) $ \path -> do
@@ -332,7 +337,7 @@ loadPackage directory = do
     pure (object ["path" .= path, "content" .= content])
   case value of
     Object o -> pure (Object (KM.insert "sources" (toJSON sources) o))
-    _ -> die ("invalid " ++ directory ++ "/lawspec-package.json")
+    _ -> die ("invalid " ++ directory ++ "/lawspec.edn")
 
 field :: K.Key -> Value -> Maybe Value
 field key (Object o) = KM.lookup key o

@@ -1,3 +1,4 @@
+import {configEDN} from './manifest-fixtures.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -23,8 +24,8 @@ async function project(t, config = {}) {
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, "laws"));
   await writeFile(path.join(root, "laws/example.lawspec"), spec);
-  await writeFile(path.join(root, "lawspec.json"), JSON.stringify({
-    version: 2, languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ["laws"], targets: [{ language: "python", root: "." }], ...config,
+  await writeFile(path.join(root, "lawspec.edn"), configEDN({
+    manifestVersion: 1, languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ["laws"], targets: [{ language: "python", root: "." }], ...config,
   }));
   return root;
 }

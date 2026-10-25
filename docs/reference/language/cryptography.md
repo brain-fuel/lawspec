@@ -119,7 +119,7 @@ holds exactly for the message signed and the signer's key. Laws:
 
 **SLH-DSA** (FIPS 205, SLH-DSA-SHAKE-128f), a hash-based scheme whose
 security rests on SHAKE256 alone, is the alternative handler. Bind it in
-`lawspec.json` to use it instead; the Signature laws then check it:
+`lawspec.edn` to use it instead; the Signature laws then check it:
 
 | Target | `native` |
 | --- | --- |

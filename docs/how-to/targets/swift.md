@@ -39,7 +39,7 @@ declares four targets:
 | --- | --- |
 | Adapters (yours): one file per unit, such as `Example/ParsePort.swift` | `src` |
 | Data types, codecs, ability protocols, schema, entries, embedding API | `src/LawSpec` |
-| Application code bound in `lawspec.json` | `src/Native` |
+| Application code bound in `lawspec.edn` | `src/Native` |
 | Generated tests | `tests/LawSpec` |
 | Runtime and test support targets | `lawspec` |
 
@@ -78,7 +78,7 @@ by LawSpec's order and equality. For a type with constructors
 | `Duration` | Swift's `Duration`, in whole microseconds |
 | `Unit`, `Null`, `Undefined` | `Unit` (or `Void`), `Null`, `Undefined` |
 | `Symbol` | `Symbol`, compared by identity |
-| A handle | `AnyHandle`, or the type bound in `lawspec.json` |
+| A handle | `AnyHandle`, or the type bound in `lawspec.edn` |
 
 The runtime's types are in the `LawSpecRuntime` module.
 
@@ -103,7 +103,7 @@ operation. An operation that can fail throws its failure type. The adapter of
 the ability's unit makes the production handler, such as
 `gatewayHandler()`, usually a small `struct` or `final class` that conforms
 to the protocol. To use application code instead, name its type under
-`handlers` in `lawspec.json`; it must conform to the protocol.
+`handlers` in `lawspec.edn`; it must conform to the protocol.
 `LawSpec.DefaultHandlers` gives the runtime's handlers of the built-in
 abilities as these protocols.
 
@@ -156,7 +156,7 @@ broker.state = snapshot
 
 ## Native bindings
 
-`lawspec.json` can bind types, functions, methods, constructors, handlers and
+`lawspec.edn` can bind types, functions, methods, constructors, handlers and
 failures to application code:
 
 - A bound type becomes a `public typealias` of yours, so the type must be
@@ -214,7 +214,7 @@ Swift's cooperative pool.
 `order random` orders its laws and cases by the run's seed. A `parallel` unit
 is a suite of its own that Swift Testing runs at once with other suites;
 other units run one at a time. Cover, classify, labels, targeted search,
-retries, timeouts, known failures and benchmarks follow the harness, and
+retries, timeouts, known discrepancies and benchmarks follow the harness, and
 their statistics go to `LAWSPEC_STATS`.
 
 `npx lawspec test` runs only the laws an edit can affect: it selects their

@@ -30,7 +30,7 @@ import Data.List (intercalate)
 import LawSpec.Naming (claimAll, scopeWith)
 import qualified LawSpec.Naming as Naming
 
--- | The adapters bound in lawspec.json to application code, by declaration.
+-- | The adapters bound in lawspec.edn to application code, by declaration.
 type Calls = [(C.Id, NativeCall)]
 
 -- | The declarations a unit's adapter implements: those that are not definitions.
@@ -184,7 +184,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           adapterInvocation = callDoc adapter (map D.text nativeNames)
           bound = lookup (C.declarationId declaration) calls
           refText = intercalate "." . referenceParts
-          -- Application code bound in lawspec.json: a function, a type's
+          -- Application code bound in lawspec.edn: a function, a type's
           -- initializer, or a method of the first argument.
           boundCallee = case bound of
             Just (StaticCall ref) -> Just (refText ref, nativeNames)
@@ -208,7 +208,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
             _ -> Pure adapter (map Var nativeNames)
           converted = if voidResult then Do [Statement invocation] (Raw "Value.unit") else codecInvoke resultCodec "fromNative" [invocation]
       -- A bound function fails by throwing: its declared failure type, or
-      -- an error lawspec.json maps to one of its constructors.
+      -- an error lawspec.edn maps to one of its constructors.
       mapped <- case (bound, declarationFailure declaration, failure, failureCodec) of
         (Just _, Just failureTy, Just e, Just fc) -> do
           ref <- X.typeRef failureTy

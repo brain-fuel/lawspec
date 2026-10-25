@@ -1,7 +1,7 @@
 // The harness plane at run time (see docs/reference/language/harness.md):
 // how a law's tests run, never what the law means. Generated tests call it
 // for strategies (frequency, one of, such that), adequacy (cover, classify,
-// label), run metadata (known failing, timeout, repeat, retry flaky) and
+// label), run metadata (known discrepancy, timeout, repeat, retry flaky) and
 // benchmarks. Java and Kotlin tests share it.
 //
 // Statistics go to standard output, and, when LAWSPEC_STATS names a
@@ -543,8 +543,8 @@ public final class LawSpecHarness
     }
   }
 
-  /** A known-failing law's tests must fail; one that passes is reported. */
-  public static void knownFailing(String law, String name, String reason, List<Body> tests)
+  /** A known-discrepancy law's tests must fail; one that passes is reported. */
+  public static void knownDiscrepancy(String law, String name, String reason, List<Body> tests)
   {
     var entry = new LinkedHashMap<String, Object>();
     entry.put("law", law);
@@ -558,24 +558,24 @@ public final class LawSpecHarness
       }
       catch (Throwable error)
       {
-        entry.put("outcome", "known-failing");
+        entry.put("outcome", "known-discrepancy");
         record(name, entry);
         System.out.println(
             law
-                + " is known to fail ("
+                + " has a known discrepancy ("
                 + reason
                 + "): "
                 + String.valueOf(error.getMessage()).lines().findFirst().orElse(""));
         return;
       }
     }
-    entry.put("outcome", "known-failing-passed");
+    entry.put("outcome", "known-discrepancy-passed");
     record(name, entry);
     throw new HarnessError(
         law
-            + " is marked known failing ("
+            + " is marked known discrepancy ("
             + reason
-            + "), but it passes; remove `known failing` from its harness");
+            + "), but it passes; remove `known discrepancy` from its harness");
   }
 
   /** Measured, never asserted: the mean and fastest time of body. */

@@ -1,7 +1,7 @@
 //! The harness plane at run time (see docs/reference/language/harness.md):
 //! how a law's tests run, never what the law means. Generated tests call it
 //! for strategies (drawn from a seed proptest chooses), adequacy (cover,
-//! classify, label), run metadata (known failing, timeout, repeat, retry
+//! classify, label), run metadata (known discrepancy, timeout, repeat, retry
 //! flaky) and benchmarks.
 //!
 //! Statistics go to standard output, and, when LAWSPEC_STATS names a
@@ -351,9 +351,9 @@ where
     Ok(())
 }
 
-/// A known-failing law's test must fail. One that passes is reported: the
-/// harness should no longer say it is known to fail.
-pub fn known_failing(
+/// A known-discrepancy law's test must fail. One that passes is reported: the
+/// harness should no longer say it has a known discrepancy.
+pub fn known_discrepancy(
     law: &str,
     name: &str,
     reason: &str,
@@ -366,12 +366,12 @@ pub fn known_failing(
                 &[
                     ("law", quote(law)),
                     ("test", quote(name)),
-                    ("outcome", quote("known-failing")),
+                    ("outcome", quote("known-discrepancy")),
                     ("reason", quote(reason)),
                 ],
             );
             println!(
-                "{law} is known to fail ({reason}): {}",
+                "{law} has a known discrepancy ({reason}): {}",
                 message.lines().next().unwrap_or("")
             );
             Ok(())
@@ -382,12 +382,12 @@ pub fn known_failing(
                 &[
                     ("law", quote(law)),
                     ("test", quote(name)),
-                    ("outcome", quote("known-failing-passed")),
+                    ("outcome", quote("known-discrepancy-passed")),
                     ("reason", quote(reason)),
                 ],
             );
             Err(format!(
-                "{law} is marked known failing ({reason}), but it passes; remove `known failing` from its harness"
+                "{law} is marked known discrepancy ({reason}), but it passes; remove `known discrepancy` from its harness"
             ))
         }
     }

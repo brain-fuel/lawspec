@@ -73,7 +73,7 @@ test('the CLI rejects old project configuration before changing files',async t=>
     await assert.rejects(exec(process.execPath,[cli,...args,'--json'],{cwd:root}),error=>{
       assert.equal(error.code,1);
       const result=JSON.parse(error.stdout);
-      assert.match(result.diagnostics[0].message,/version 2/);
+      assert.match(result.diagnostics[0].message,/lawspec.edn/);
       return true;
     });
     assert.deepEqual((await readdir(root)).sort(),before);
@@ -81,5 +81,5 @@ test('the CLI rejects old project configuration before changing files',async t=>
   }
   await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,sources:['boundary.lawspec'],targets:[]}));
   await assert.rejects(exec(process.execPath,[cli,'check','--json'],{cwd:root}),error=>
-    /requires languageProfile 1.0-rc.2/.test(error.stdout));
+    /lawspec.edn/.test(error.stdout));
 });

@@ -39,7 +39,7 @@ definitionLabel d = labelled (sourceDefinitionName (C.declarationName d)) (sourc
 xmlComment :: String -> String
 xmlComment = concatMap (\c -> case c of '&' -> "&amp;"; '<' -> "&lt;"; '>' -> "&gt;"; _ -> [c])
 
--- | The adapters bound in lawspec.json to application code, by declaration.
+-- | The adapters bound in lawspec.edn to application code, by declaration.
 type Calls = [(C.Id, NativeCall)]
 
 -- | The declarations a unit's adapter implements: those that are not definitions.

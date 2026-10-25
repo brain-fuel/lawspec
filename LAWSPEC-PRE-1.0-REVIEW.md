@@ -40,6 +40,27 @@ usable by other deployment tools. Evidence carries architecture, contract,
 implementation and run identities, distinguishes planned wiring from completed
 execution, and identifies real-provider versus fixture results.
 
+### Component manifests and CALM execution — 24 October 2026
+
+For the component integration increment, the owner selected unified
+EDN manifests, named lawspec.edn, replacing both project and package JSON
+configuration immediately. Older JSON manifests are rejected without migration
+or fallback. This supersedes historical configuration-2 references below for
+ordinary file-based consumers; compiler API schema 5 and profile 1.0-rc.2 remain.
+
+Each independently built component has its own manifest. LawSpec checks its
+contracts and resolves local, Git and integrity-checked archive dependencies
+with a portable lawspec.lock.edn. The checked lawspec-component descriptor is
+Ironframe's public input; Ironframe neither interprets EDN nor scrapes generated
+code. CALM nodes may provide and require contracts simultaneously. Compatibility
+includes the selected transitive contract closure, not just root package bytes.
+
+Ironframe owns wiring, environment bindings and native integration lifecycles.
+Fresh execution identities distinguish actual runs from old observations and
+planned wiring; component identity is distinct from published contract identity.
+This increment does not sign off other gates, provider fidelity, performance
+budgets or the deferred human and external adoption requirements.
+
 | Order | Required completion gate | Status at adoption |
 | --- | --- | --- |
 | 1 | Upgrade LawTwin's 0.23 compiler pin, contracts, configuration, OpenAPI importer and generated consumers to 0.26; recheck the historical gap report; replace source scraping with supported embedding interfaces; pass Kafka/HTTP conformance, replay and mutation controls. | Open. |
@@ -176,6 +197,19 @@ The packed 0.28.0 archive matches the installed-package smoke archive byte
 for byte. Integration review also adds regressions for missing induction
 obligations, bounded reachability and open-history deadlines; main's
 runtime-correlated BEAM overlap controls and stalled-hedge controls are retained.
+
+### Known discrepancies — 23 October 2026
+
+The owner's terminology is `known discrepancy "reason"`, not `known failing`.
+A mismatch does not establish whether the specification, implementation, or
+both need correction; that requires human review. Current evidence reports
+`known-discrepancy` and current API fields use `knownDiscrepancy`. The harness
+annotation is separate from completed native observations, does not establish
+the law, and does not weaken mandatory definition validation. A run must
+reproduce the discrepancy; an unexpected pass requires review before removing
+the annotation. Concrete execution failures and validated proof refutations
+retain their existing meanings. Historical execution receipts remain unchanged.
+The decision is recorded as `DEC-known-discrepancy`.
 
 ### Working-tree alignment increment — 20 October 2026
 
@@ -5383,7 +5417,7 @@ Earlier working defaults were 100 generated cases, 10,000 generation attempts, 1
 
 ### 11.5 Evidence vocabulary
 
-Preserve proved, exhaustively checked, property tested, runtime checked, measured, assumed or external, known failing, flaky, and skipped distinctions. Keep the existing default-handler provenance where relevant. Add explicit incomplete, unsupported, and not-verified reporting where the redesign requires them.
+Preserve proved, exhaustively checked, property tested, runtime checked, measured, assumed or external, known discrepancy, flaky, and skipped distinctions. A known discrepancy assigns no fault: human review determines whether the specification, implementation, or both need correction. Keep the existing default-handler provenance where relevant. Add explicit incomplete, unsupported, and not-verified reporting where the redesign requires them.
 
 Evidence is not a single ordered confidence score. A runtime check of a production boundary and a proof about a reference model establish different things.
 
@@ -5431,6 +5465,14 @@ records add two spaces per level. Independent recoverable parse failures are
 reported together across source files, without admitting recovered terms or
 writing any file. This applies generally to grammar failures, including repeated
 bad constructors, malformed types, expressions, sections and block closers.
+Triple-double-quoted multiline text uses the ordinary string escape decoder.
+Its literal newlines, indentation, tabs and leading/trailing whitespace remain
+part of the value, with no implicit dedent or newline trimming. The formatter
+retains its delimiters and complete literal spelling, and editor/site tokens
+keep its contents opaque until the unescaped closing triple quote. Ordinary
+strings retain their existing behavior. An unterminated triple string prevents
+all formatting writes.
+
 Quoted tokens remain opaque while finding resumption points; severe structural
 damage can limit recovery. The formatter preserves literal contents,
 comments and supported annotation wording. Parser-owned record-type separators

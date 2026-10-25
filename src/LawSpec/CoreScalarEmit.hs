@@ -242,7 +242,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         [if ty == Named "Unit" then runtime "unit_result" [value] else value,
          quoted (typeKey ty),width]
     -- A handler's values cross with the handler schema: the bound native
-    -- types when lawspec.json binds them (ls.handler_schema).
+    -- types when lawspec.edn binds them (ls.handler_schema).
     handlerSchema name args = PythonExpr.handlerSchemaCall name (args ++ [text "symbols"])
     handlerInput ty value = if usesData ty
       then handlerSchema "to_native" [referenceDoc ty,value,width] else value
@@ -292,7 +292,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       C.SpecHandler _ -> Nothing
     construct context@(shared, resourceOf) ability choice = let made = maybe [] pure (resourceOf ability choice) in case choice of
       C.ProductionHandler -> case abilityNamed ability >>= C.abilityNative of
-        -- A production handler bound in lawspec.json.
+        -- A production handler bound in lawspec.edn.
         Just parts -> runtime "native_handler" ([quoted (intercalate "." (init parts)), quoted (last parts)] ++ made)
         Nothing -> case abilityNamed ability of
           -- An imported ability's production handler is its owner's.
@@ -312,7 +312,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       [] -> "handler"
     abilityNamed = unitAbility u
     -- An adapter that fails with E: native code raises the runtime's Fail
-    -- with a native E (or an exception lawspec.json maps to one), which
+    -- with a native E (or an exception lawspec.edn maps to one), which
     -- becomes the Fail E failure.
     nativeFailures decl call = case [a | d <- C.unitDeclarations u, C.declarationId d == decl, a@(C.AbilityRef _ [_]) <- C.declarationUses d, C.isFail a] of
       ability@(C.AbilityRef _ [failure]) : _ ->
@@ -440,15 +440,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let label = owner e ++ "::" ++ name e
           harness = C.propertyHarness (original e)
           -- Python names a law's tests after its label (LawSpec.TestNames);
-          -- a known-failing law's tests are helpers its one test calls.
+          -- a known-discrepancy law's tests are helpers its one test calls.
           base = testNames !! index
-          wrapped = C.harnessSkip harness == Nothing && C.harnessKnownFailing harness == Nothing && runSettings harness
-          prefix = (if C.harnessKnownFailing harness /= Nothing then "_lawspec_known_" ++ drop 5 base
+          wrapped = C.harnessSkip harness == Nothing && C.harnessKnownDiscrepancy harness == Nothing && runSettings harness
+          prefix = (if C.harnessKnownDiscrepancy harness /= Nothing then "_lawspec_known_" ++ drop 5 base
             else if wrapped then "_" ++ base else base) ++ "_"
           -- Python names an example's test after the example
           -- (normalizers_agree__spaces_become_hyphens) and numbers boundaries
           -- from 1; each test's comment links it to its source line.
-          exampleSuffixes = map ("_" ++) (exampleTestSuffix "python" ("property" : "replay" : "skipped" : "known_failing" :
+          exampleSuffixes = map ("_" ++) (exampleTestSuffix "python" ("property" : "replay" : "skipped" : "known_discrepancy" :
               map boundaryTestSuffix [0 .. length cases' - 1]) (map exampleName (examples (original e))))
           sharedAssertion = "_assert_" ++ drop 5 base
           assertionNames = map inputId (inputs e) ++
@@ -546,13 +546,13 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
              array [text (prefix ++ suffix) | suffix <- propertySuffixes]] ["+", "+"]
       pure ((if C.harnessSkip harness /= Nothing then "" else renderDocument assertionFunction) ++
         Doc.render outputLayout (mconcat (map (Doc.lineComment 88 "# ") (lawCommentLines e))) ++ fst searchDocs ++ (++ snd searchDocs) (
-        case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+        case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
           -- A skipped law runs nothing; it is still an obligation.
           (Just reason, _) -> renderDocument (function (base ++ "__skipped") []
             (statement (invoke "_harness.skip" [message label, message reason])))
           (_, Just reason) -> concatMap renderDocument examples' ++ boundariesText ++ concatMap renderDocument propertyDocs ++
-            renderDocument (function (base ++ "__known_failing") []
-            (statement (invoke "_harness.known_failing" [message label, quoted (base ++ "__known_failing"), message reason,
+            renderDocument (function (base ++ "__known_discrepancy") []
+            (statement (invoke "_harness.known_discrepancy" [message label, quoted (base ++ "__known_discrepancy"), message reason,
               knownCases])))
           _ -> renderTests exampleSuffixes examples' ++ boundariesText ++ renderTests propertySuffixes propertyDocs))
     -- The harness plane (LawSpec.Harness). A law whose harness sets how its

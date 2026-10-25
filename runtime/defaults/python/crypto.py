@@ -530,7 +530,7 @@ class SignatureHandler:
 
 class SlhDsaSignatureHandler:
     """SLH-DSA-SHAKE-128f, hedged: the alternative Signature handler. Bind it
-    in lawspec.json: {"ability": "lawspec.crypto::Signature",
+    in lawspec.edn: {"ability": "lawspec.crypto::Signature",
     "native": ["lawspec", "crypto", "SlhDsaSignatureHandler"]}."""
 
     def signingKeyPair(self) -> @@SigningKeyPair@@:

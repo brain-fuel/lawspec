@@ -28,7 +28,7 @@ In a directory without build files, `init` creates `settings.gradle.kts` and a
 `tasks.test { useJUnitPlatform() }`.
 
 LawSpec uses a local `gradlew` if there is one, otherwise `gradle` on `PATH`. Set
-a target's `gradle` field in `lawspec.json` to use another command.
+a target's `gradle` field in `lawspec.edn` to use another command.
 
 ## Layout
 

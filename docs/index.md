@@ -53,7 +53,7 @@ The documentation has four sections. Each one serves a different purpose.
   an existing project, generating tests in CI, binding your own domain types,
   and setting up each target.
 - **[Reference](reference/index.md)** describes the language, the prelude, the
-  scalar catalog, the CLI, `lawspec.json` and the compiler API.
+  scalar catalog, the CLI, `lawspec.edn` and the compiler API.
 - **[Explanation](explanation/index.md)** covers the ideas behind the design:
   why laws should be executable, how the compiler works, how evidence is
   reported and how generated files are owned.

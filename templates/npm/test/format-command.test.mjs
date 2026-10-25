@@ -1,3 +1,4 @@
+import {configEDN, packageEDN} from './manifest-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
@@ -11,6 +12,45 @@ const draft = 'unit draft\n-- Keep this comment.\nfunction broken (x :: Rational
 const input = sources => ({languageProfile:'1.0-rc.2', verification:{layers:[]}, sources});
 const run = (root, args) => spawnSync(process.execPath, [cli, ...args], {cwd:root, encoding:'utf8'});
 const text = result => result.stdout + result.stderr;
+
+test('triple-quoted multiline text preserves its exact value and spelling through checked and draft formatting', async () => {
+  const compiler = await createCompiler();
+  const expected = 'first "quote"  \n-- end unit\n   \nlast 😀';
+  const literal = '"""'+expected+'"""';
+  const content = 'unit triple\nfunction text (ignored :: Bool) -> Text is '+literal+' end function\n'
+    + 'law exact is definition: text true must be '+JSON.stringify(expected)+' end definition end law\nend unit\n';
+  for (const machineBits of [32,64]) {
+    const sources = [{path:'triple.lawspec',content}];
+    const checked = await compiler.check({...input(sources),machineBits,verification:{layers:['exhaustive']}});
+    assert.deepEqual(checked.diagnostics,[]);
+    assert.equal(checked.evidence.find(row=>row.stage==='law').status,'exhaustively-checked');
+    for (const compile of [false,true]) {
+      const formatted = await compiler.format({...input(sources),machineBits,compile});
+      assert.deepEqual(formatted.diagnostics,[]);
+      assert.ok(formatted.formattedSources[0].content.includes(literal));
+      const repeated = await compiler.format({...input(formatted.formattedSources),machineBits,compile});
+      assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
+    }
+  }
+});
+
+test('an unterminated triple-quoted string prevents every formatting write', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(),'lawspec-triple-errors-'));
+  try {
+    const valid = 'unit valid\nfunction same (x :: Bool) -> Bool is\nx\nend function\nend unit\n';
+    const broken = 'unit broken\nfunction text (x :: Bool) -> Text is """unfinished\nend function\nend unit\n';
+    await writeFile(path.join(root,'valid.lawspec'),valid);
+    await writeFile(path.join(root,'broken.lawspec'),broken);
+    await writeFile(path.join(root,'lawspec.edn'),configEDN({manifestVersion: 1,languageProfile:'1.0-rc.2',sources:['valid.lawspec','broken.lawspec']}));
+    for (const flags of [[],['--compile']]) {
+      const result = run(root,['fmt','--json',...flags]);
+      assert.equal(result.status,1,text(result));
+      assert.ok(JSON.parse(result.stdout).diagnostics.some(d=>d.message.includes('closing triple quote')));
+      assert.equal(await readFile(path.join(root,'valid.lawspec'),'utf8'),valid);
+      assert.equal(await readFile(path.join(root,'broken.lawspec'),'utf8'),broken);
+    }
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
 
 test('fmt parses by default; --compile validates definitions before writing', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-fmt-modes-'));
@@ -49,7 +89,7 @@ test('fmt refuses syntax errors transactionally and ignores unavailable packages
     await mkdir(path.join(root,'laws'));
     const file = path.join(root,'laws/draft.lawspec');
     await writeFile(file, draft);
-    await writeFile(path.join(root,'lawspec.json'), JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(root,'lawspec.edn'), configEDN({manifestVersion: 1,languageProfile:'1.0-rc.2',
       sources:['laws'],packages:['missing-package'],targets:[],verification:{layers:[]}}));
     const parsed = run(root, ['fmt']);
     assert.equal(parsed.status, 0, text(parsed));
@@ -76,11 +116,11 @@ test('fmt uses available generic package headers without checking their definiti
   const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-fmt-headers-'));
   try {
     await mkdir(path.join(root,'dependency'));
-    await writeFile(path.join(root,'dependency','lawspec-package.json'), JSON.stringify({
+    await writeFile(path.join(root,'dependency','lawspec.edn'), packageEDN({
       name:'acme.box', version:'1.0.0', sources:['box.lawspec']}));
     await writeFile(path.join(root,'dependency','box.lawspec'),
       'unit acme.box\ntype Box (a :: Type) is a record{value :: a} end type\nfunction broken (x :: Bool) -> Bool is 1 end function\nend unit\n');
-    await writeFile(path.join(root,'lawspec.json'), JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(root,'lawspec.edn'), configEDN({manifestVersion: 1,languageProfile:'1.0-rc.2',
       sources:['app.lawspec'],packages:['dependency'],dependencies:{'acme.box':'^1.0.0'}}));
     const file = path.join(root,'app.lawspec');
     await writeFile(file,'unit app\nimport acme.box as boxes (Box)\ntype Wrapped is a record{box :: Box Bool} end type\nend unit\n');
@@ -145,7 +185,7 @@ test('fmt reports independent parse errors together across fields, rows, declara
     const second = 'unit second\nfunction bad (x :: Bool) -> Bool is ? end function\nend unit\n';
     await writeFile(path.join(root,'first.lawspec'),content);
     await writeFile(path.join(root,'second.lawspec'),second);
-    await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(root,'lawspec.edn'),configEDN({manifestVersion: 1,languageProfile:'1.0-rc.2',
       sources:['first.lawspec','second.lawspec']}));
     for(const flags of [[],['--check'],['--compile'],['--compile','--check']]){
       const result = run(root,['fmt',...flags,'--json']);

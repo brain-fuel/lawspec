@@ -42,7 +42,7 @@ during parsing. This is a maximum, rather than a fixed allocation; adjust
 | Files | Directory |
 | --- | --- |
 | Adapters (yours): one class per unit, such as `example/AtoiCodec.groovy` | `src/main/groovy` |
-| Application code bound in `lawspec.json` | anywhere in `src/main/groovy` |
+| Application code bound in `lawspec.edn` | anywhere in `src/main/groovy` |
 | The Java model: runtime, data types, definitions, abilities | `src/main/java` |
 | Specifications, such as `example/AtoiCodecLawSpec.groovy` | `src/test/groovy` |
 | JetCheck helpers and the harness runtime | `src/test/java` |
@@ -96,7 +96,7 @@ Groovy's joint-compilation stubs drop an import used only as an outer name.
 
 ## Native bindings
 
-`lawspec.json` binds types, functions, methods, handlers and failures to
+`lawspec.edn` binds types, functions, methods, handlers and failures to
 Groovy classes, as it does to Java ones. A bound type that the Java model
 constructs must declare its canonical constructor and accessors, since the
 stubs the Java side compiles against leave a record's out:

@@ -288,7 +288,7 @@ data HarnessSetting
   | TargetMaximize Expr                 -- target maximize e
   | TagsSetting [String]
   | SkipSetting String
-  | KnownFailingSetting String
+  | KnownDiscrepancySetting String
   | TimeoutSetting Integer              -- milliseconds
   | RepeatSetting Integer
   | RetryFlakySetting Integer
@@ -310,7 +310,7 @@ data Proving
 -- inputs (LawSpec.Frontend elaborates them).
 data HarnessPlan = HarnessPlan
   { planHarness :: String, planTags :: [String], planSkip :: Maybe String
-  , planKnownFailing :: Maybe String, planTimeout :: Maybe Integer
+  , planKnownDiscrepancy :: Maybe String, planTimeout :: Maybe Integer
   , planRepeat :: Integer, planRetries :: Integer
   , planCover :: [(Integer, String, Expr)], planClassify :: [(Expr, String)]
   , planLabels :: [Expr], planTarget :: Maybe Expr

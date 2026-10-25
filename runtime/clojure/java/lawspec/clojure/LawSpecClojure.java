@@ -824,7 +824,7 @@ public final class LawSpecClojure
     {
       return new LawSpecRuntime.Fail(untyped(data.valAt(FAILURE)));
     }
-    // A failure lawspec.json binds: an ex-info whose :type it names.
+    // A failure lawspec.edn binds: an ex-info whose :type it names.
     if (data != null && data.valAt(TYPE) instanceof Keyword kind)
     {
       String[] bound = boundFailures().get(kind.toString().substring(1));

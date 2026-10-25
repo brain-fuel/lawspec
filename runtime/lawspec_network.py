@@ -95,7 +95,7 @@ class NodeIdentity:
 
     @staticmethod
     def configured():
-        """The identity lawspec.json binds (lawspec-network.conf, written by
+        """The identity lawspec.edn binds (lawspec-network.conf, written by
         the compiler), or a fresh one."""
         identity, _ = _network_config()
         return identity if identity is not None else NodeIdentity.generate()
@@ -121,7 +121,7 @@ def _verify(verifying_key, message, signature):
 
 
 def _network_config():
-    """lawspec-network.conf, which the compiler writes from lawspec.json's
+    """lawspec-network.conf, which the compiler writes from lawspec.edn's
     network binding: the file LAWSPEC_NETWORK_CONF names, or the first found
     in the working directory and the directories above it. Lines `identity
     <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per

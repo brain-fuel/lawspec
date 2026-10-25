@@ -1,0 +1,123 @@
+{
+  :manifest-version 1
+  :component {
+    :name "swift"
+    :version "0.1.0"
+  }
+  :sources ["laws"]
+  :machine-bits 64
+  :targets [
+    {
+      :language :swift
+      :root "."
+      :native-bindings {
+        :types [
+          {
+            :type "example.payments::type::Currency"
+            :native ["PaymentsDomain" "CurrencyCode"]
+            :constructors [
+              {
+                :constructor "USD"
+                :native ["PaymentsDomain" "CurrencyCode" "dollars"]
+                :style "unit"
+                :fields []
+              }
+              {
+                :constructor "EUR"
+                :native ["PaymentsDomain" "CurrencyCode" "euros"]
+                :style "unit"
+                :fields []
+              }
+              {
+                :constructor "GBP"
+                :native ["PaymentsDomain" "CurrencyCode" "pounds"]
+                :style "unit"
+                :fields []
+              }
+            ]
+          }
+          {
+            :type "example.payments::type::Money"
+            :native ["PaymentsDomain" "Price"]
+            :constructors [
+              {
+                :constructor "Money"
+                :native ["PaymentsDomain" "Price"]
+                :style "record"
+                :fields [
+                  {
+                    :field "amount"
+                    :native "major"
+                  }
+                  {
+                    :field "currency"
+                    :native "unit"
+                  }
+                ]
+              }
+            ]
+          }
+          {
+            :type "example.payments::type::Payment"
+            :native ["PaymentsDomain" "PaymentStatus"]
+            :constructors [
+              {
+                :constructor "Paid"
+                :native ["PaymentsDomain" "PaymentStatus" "settled"]
+                :style "variant"
+                :fields [
+                  {
+                    :field "value"
+                    :native "price"
+                  }
+                ]
+              }
+              {
+                :constructor "Declined"
+                :native ["PaymentsDomain" "PaymentStatus" "rejected"]
+                :style "variant"
+                :fields [
+                  {
+                    :field "value"
+                    :native "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        :functions [
+          {
+            :declaration "example.payments::addFee"
+            :native ["PaymentsDomain" "applyFee"]
+          }
+          {
+            :declaration "example.payments::roundTrip"
+            :native ["PaymentsDomain" "restore"]
+          }
+          {
+            :declaration "example.payments::archive"
+            :native ["PaymentsDomain" "store"]
+          }
+        ]
+        :generators [
+          {
+            :type "example.payments::type::Money"
+            :factory ["PaymentGenerators" "prices"]
+          }
+        ]
+      }
+    }
+  ]
+  :language-profile "1.0-rc.2"
+  :verification {
+    :layers [
+      :proof
+      :exhaustive
+      :property
+      :examples
+      :runtime
+      :model
+    ]
+  }
+}

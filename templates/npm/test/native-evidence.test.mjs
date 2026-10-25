@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {recordNativeAttempts} from '../native-evidence.mjs';
+import {readNativeObservations,nativeEvidenceText} from '../native-evidence.mjs';
+import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {projectKey} from '../failure-database.mjs';
 
 const model=(id,name)=>({law:id,key:'plan:'+id,unit:'bank',file:'bank-test',name,label:name,
   obligations:[{declaration:'bank::model::account',stage:'model'}]});
@@ -9,6 +14,37 @@ const supervisor=model('supervision','supervision');
 function run(entries){return {laws:entries,command:'native-runner',matches:test=>entries.filter(entry=>entry.name===test.name)};}
 const keys=new Map([first,second,supervisor].map(entry=>[entry.law,'key:'+entry.law]));
 const settings={keys,seed:811,profile:{target:'java',root:'/bank',machineBits:64,minify:false},at:'2026-10-17T20:00:00Z'};
+
+test('historical discrepancy observations use the current vocabulary without rewriting or promoting the receipt',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-old-observation-'));
+  try{
+    const entry={law:'bank::law::balance',key:'old-plan',unit:'bank',file:'bank-test',name:'balance',label:'balance'};
+    const targets=[{language:'javascript',root:'.'}];
+    const file=path.join(root,'.lawspec/results','javascript-'+projectKey(root)+'.json');
+    await mkdir(path.dirname(file),{recursive:true});
+    for(const selected of [true,false])for(const outcome of ['known-discrepancy','known-discrepancy','failed','passed']){
+      const attempt=recordNativeAttempts({laws:[entry],command:'native-runner',matches:()=>[entry]},
+        [{name:'balance',status:'passed'}],{...settings,keys:new Map([[entry.law,'old-key']]),ok:true,
+          profile:{target:'javascript',root,machineBits:64,minify:false,build:'old-build'}})[entry.law];
+      attempt.outcome=outcome;
+      const original=JSON.stringify({attempts:{[entry.law]:attempt}});
+      await writeFile(file,original);
+      const observations=await readNativeObservations({
+        compiler:{planGeneration:async()=>({diagnostics:[],tests:selected?[entry]:[],files:[]})},
+        input:{machineBits:64},selected:targets,roots:[root],configRoot:root,build:'current-build',evidence:[]});
+      assert.equal(observations.length,1);
+      const row=observations[0];
+      assert.equal(row.outcome,outcome==='known-discrepancy'?'known-discrepancy':outcome);
+      assert.equal(row.freshness,selected?'stale':'not-selected');
+      assert.deepEqual(row.attempt,JSON.parse(original).attempts[entry.law]);
+      assert.equal(await readFile(file,'utf8'),original);
+      const [view]=attachNativeEvidence([{declaration:entry.law,stage:'law',status:'planned',reason:'awaiting execution'}],observations);
+      assert.equal(view.status,'planned');
+      assert.equal(view.nativeEvidence.searchCompleteness,'not-established');
+      assert.doesNotMatch(nativeEvidenceText(view),/known-discrepancy/);
+    }
+  }finally{await rm(root,{recursive:true,force:true});}
+});
 
 test('a failed combined native model method cannot establish either included check',()=>{
   const rows=recordNativeAttempts(run([first,second,supervisor]),[

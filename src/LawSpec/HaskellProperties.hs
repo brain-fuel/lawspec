@@ -195,10 +195,10 @@ emitTests Config{..} unit laws = do
             pairs [(l, c) | (c, l) <- C.harnessClassify h], H.List (map expr (C.harnessLabels h))]) | observed h] ++
          [Run (call "LawSpecHarness.target" [expr score, string label]) | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds tests = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds tests = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [[example (fn ++ "_skipped: " ++ label) (call "pendingWith" [string reason])]]
-      (_, Just reason) -> tests ++ [pure $ example (fn ++ "_knownFailing: " ++ label) (call "LawSpecHarness.knownFailing"
-        [string label, string (fn ++ "_knownFailing"), string reason, H.List [var ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
+      (_, Just reason) -> tests ++ [pure $ example (fn ++ "_knownDiscrepancy: " ++ label) (call "LawSpecHarness.knownDiscrepancy"
+        [string label, string (fn ++ "_knownDiscrepancy"), string reason, H.List [var ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
       _ | runSettings h -> tests ++ [pure $ example (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) (call "LawSpecHarness.run"
             [string label, string (fn ++ k), integer (maybe 0 id (C.harnessTimeout h)), integer (toInteger (C.harnessRepeat h)),
              integer (toInteger (C.harnessRetries h)),
@@ -328,7 +328,7 @@ emitTests Config{..} unit laws = do
           short = case stripPrefix "law" base' of
             Just (c : rest) -> cased Camel (nameWords (c : rest))
             _ -> base'
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base'
           lawLink = propertyLink (original e)
           boundaryValues = maybe (boundaryCases e) id (finiteCases e)
           boundaryName = short ++ "Boundary"
@@ -350,7 +350,7 @@ emitTests Config{..} unit laws = do
           -- Examples are named by their words (lawX_spacesBecomeHyphens),
           -- boundaries numbered from 1.
           exampleSuffixes = map camel (exampleTestSuffix "haskell"
-            ("property" : "replay" : "search" : "skipped" : "known_failing" : map boundaryTestSuffix [0 .. length boundaryValues - 1])
+            ("property" : "replay" : "search" : "skipped" : "known_discrepancy" : map boundaryTestSuffix [0 .. length boundaryValues - 1])
             (map exampleName (examples (original e))))
           boundaryHelper = D.joinWith D.hardline
             [ H.signature boundaryName ["P.String", "(LS.SymbolContext -> [Scalar])", "P.IO ()"]
@@ -377,10 +377,10 @@ emitTests Config{..} unit laws = do
              integer (toInteger (C.harnessRetries h)), H.List [], var "False", finiteAction] else finiteAction
           enumerate body = Run (call "P.mapM_" [lambda ["(" ++ indexName ++ ", " ++ valuesName ++ ")"] body,
             call "LS.finiteCases" [var coverName]])
-          knownFailing = C.harnessKnownFailing h /= Nothing
+          knownDiscrepancy = C.harnessKnownDiscrepancy h /= Nothing
           boundaryDocs = if Cover.coverCount cover > 0 && C.harnessSkip h == Nothing
             then [[Comment (wrapComment 78 [labelled (displayLabel (name e) ++ ", finite cases") lawLink]),
-              if knownFailing
+              if knownDiscrepancy
                 then Let ("lawspecHarness" ++ base' ++ "_boundaries") (H.Do [enumerate finiteAction])
                 else enumerate (H.Do [exampleNamed finiteName wrappedAction])]]
             else []
@@ -428,7 +428,7 @@ emitTests Config{..} unit laws = do
           lawLine (first : rest) = ("law " ++ first) : rest
           lawLine [] = []
           wrapped
-            | knownFailing || C.harnessSkip h /= Nothing = harnessTests base' label h kinds tests
+            | knownDiscrepancy || C.harnessSkip h /= Nothing = harnessTests base' label h kinds tests
             | otherwise = harnessTests base' label h ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] exampleDocs ++
                 boundaryDocs ++ harnessTests base' label h ["_property" | not (null property)] (map pure property)
           groups = filter (not . null) ([searchBefore] ++ wrapped ++ map pure searchAfter)

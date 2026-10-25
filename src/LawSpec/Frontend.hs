@@ -259,7 +259,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
         case t of
           -- A built-in resource acquires and releases through lawspec.host's
           -- abilities, under their handlers (the default ones, or those
-          -- lawspec.json binds).
+          -- lawspec.edn binds).
           C.Constructor typeName [] | Just kind <- builtinResourceKind typeName -> do
             let constructor = C.Id (typeName ++ "::" ++ baseName typeName)
                 fieldType = if kind == "freePort" then C.scalarType "Int32" else C.scalarType "Text"
@@ -351,7 +351,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
             (lift (Left "two strategies select the same expanded input or search binder"))
           pure cp { C.propertyHarness = C.LawHarness
             { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
-            , C.harnessSkip = S.planSkip plan, C.harnessKnownFailing = S.planKnownFailing plan
+            , C.harnessSkip = S.planSkip plan, C.harnessKnownDiscrepancy = S.planKnownDiscrepancy plan
             , C.harnessTimeout = S.planTimeout plan, C.harnessRepeat = S.planRepeat plan
             , C.harnessRetries = S.planRetries plan, C.harnessCover = covers, C.harnessClassify = classes
             , C.harnessLabels = labels, C.harnessTarget = target

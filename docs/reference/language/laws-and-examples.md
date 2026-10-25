@@ -206,7 +206,7 @@ end description
 ## Recorded values
 
 A recorded value is stored in the project, under
-`recorded/<unit>/<name>` beside `lawspec.json`. It is spec data: commit it.
+`recorded/<unit>/<name>` beside `lawspec.edn`. It is spec data: commit it.
 
 ```lawspec fragment
 law "|the first label is recorded| is
@@ -240,7 +240,7 @@ example "|parcel 42|:
   with `.` or a space.
 - The generated tests find the folder through `LAWSPEC_RECORDED`, which
   `lawspec test` sets. Run by hand, they look for `recorded/` in the nearest
-  folder, from the working one up, that holds `lawspec.json` or `recorded/`.
+  folder, from the working one up, that holds `lawspec.edn` or `recorded/`.
 
 Recordings use the declared types, including fields inside data constructors.
 Extended scalars have explicit forms:

@@ -19,7 +19,8 @@ export const digest = (text) =>
 export async function collectSources(root,entries,relativeTo=root){
   const files=[];
   async function visit(file){
-    const info=await stat(file);
+    const info=await lstat(file);
+    if(info.isSymbolicLink())throw new Error(`Symbolic links are not supported in LawSpec sources: ${file}`);
     if(info.isDirectory())for(const entry of (await readdir(file)).sort())await visit(path.join(file,entry));
     else if(file.endsWith('.lawspec'))files.push(file);
   }

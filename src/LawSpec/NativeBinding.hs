@@ -57,7 +57,7 @@ data TypeBinding = TypeBinding
 -- values only the user knows how to build.
 data GeneratorBinding = GeneratorBinding
   { generatorType :: C.Id, generatorFactory :: NativeRef, generatorStub :: Bool } deriving (Eq, Show)
--- | What lawspec.json says about native types and generators, before it is
+-- | What lawspec.edn says about native types and generators, before it is
 -- checked against the program.
 data Bindings = Bindings
   { typeBindings :: [TypeBinding], generatorBindings :: [GeneratorBinding]

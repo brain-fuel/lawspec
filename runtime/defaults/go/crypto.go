@@ -242,7 +242,7 @@ func (handler *SignatureHandler) Verify(value0 @@VerifyingKey@@, value1 []byte, 
 }
 
 // SlhDsaSignatureHandler is SLH-DSA-SHAKE-128f, hedged: the alternative
-// Signature handler. Bind it in lawspec.json: {"ability":
+// Signature handler. Bind it in lawspec.edn: {"ability":
 // "lawspec.crypto::Signature", "native": ["NewSlhDsaSignatureHandler"]}.
 type SlhDsaSignatureHandler struct{}
 

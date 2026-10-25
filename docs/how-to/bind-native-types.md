@@ -28,25 +28,25 @@ npx lawspec examples --example payments --target python
 
 It exports an application with its own names for the specification's types
 (`Price` for `Money`, `CurrencyCode.Dollars` for `Currency.USD`) and a
-`lawspec.json` that binds them. See
+`lawspec.edn` that binds them. See
 [Generate example artifacts](generate-example-artifacts.md#export-the-runnable-payment-project).
 
 ## Add bindings to a target
 
 Bindings belong to a target, under `nativeBindings`:
 
-```json
+```edn
 {
-  "version": 1,
-  "sources": ["laws"],
-  "targets": [
+  :version 1
+  :sources ["laws"]
+  :targets [
     {
-      "language": "python",
-      "root": ".",
-      "nativeBindings": {
-        "types": [],
-        "functions": [],
-        "generators": []
+      :language :python
+      :root "."
+      :native-bindings {
+        :types []
+        :functions []
+        :generators []
       }
     }
   ]

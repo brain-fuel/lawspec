@@ -1,5 +1,5 @@
 ;; Application code: the Signature and KeyExchange handlers bound in
-;; lawspec.json in place of the defaults. They pass their operations on to
+;; lawspec.edn in place of the defaults. They pass their operations on to
 ;; the defaults and count them.
 (ns example.counting
   "Counting crypto handlers."

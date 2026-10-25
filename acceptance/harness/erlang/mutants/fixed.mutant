@@ -1,4 +1,4 @@
-expect: remove
+expect: review the specification and implementation before removing `known discrepancy`
 @@ src/example_harness.erl
 <<<<<<<
 ((Cents + 4) div 10) * 10

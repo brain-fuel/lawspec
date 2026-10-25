@@ -43,13 +43,13 @@ scenarios and the harness). Neither is a NuGet package; both are source.
 | --- | --- |
 | Adapters (yours): one module per unit, such as `Example/AtoiCodec.fs` | `src` |
 | Data types, codecs, ability interfaces, schema, entries, embedding API | `src/LawSpec` |
-| Application code bound in `lawspec.json` | `src/Native` |
+| Application code bound in `lawspec.edn` | `src/Native` |
 | Generated tests | `tests/LawSpec` |
 | Runtime and test support projects | `lawspec` |
 
 F# compiles files in order, so the generated props list them in order:
 
-1. `Native/Types/**`: application types bound in `lawspec.json`.
+1. `Native/Types/**`: application types bound in `lawspec.edn`.
 2. The data types, codecs, ability interfaces and bridges, and the schema.
 3. `Native/**`: other application code, which may implement the interfaces.
 4. Per unit, in an order where each unit follows the units it calls: its
@@ -89,7 +89,7 @@ type is `LawSpec.Data.Tree<'T0>` with cases `Leaf of value: 'T0` and
 | `Duration` | `TimeSpan` of whole microseconds |
 | `Unit`, `Null`, `Undefined` | `unit`, `LawSpec.Null`, `LawSpec.Undefined` |
 | `Symbol` | `LawSpec.Symbol`, compared by identity |
-| A handle | `obj`, or the type bound in `lawspec.json` |
+| A handle | `obj`, or the type bound in `lawspec.edn` |
 
 An adapter that `fails with E` returns `Result<T, E>`. An `async` adapter
 returns `Task<T>`.
@@ -108,7 +108,7 @@ Each ability is an interface `I<Name>` in `LawSpec.Abilities.<Unit>`, with a
 PascalCase method per operation; an operation that can fail returns a
 `Result`. The adapter of the ability's unit makes the production handler, such
 as `gatewayHandler ()`, usually as an object expression. To use application
-code instead, name its class under `handlers` in `lawspec.json`; it must
+code instead, name its class under `handlers` in `lawspec.edn`; it must
 implement the interface. `LawSpec.DefaultHandlers` gives the runtime's
 handlers of the built-in abilities as these interfaces.
 
@@ -159,7 +159,7 @@ broker.State <- snapshot
 
 ## Native bindings
 
-`lawspec.json` can bind types, functions, methods, constructors, handlers and
+`lawspec.edn` can bind types, functions, methods, constructors, handlers and
 failures to application code:
 
 - A bound type becomes an abbreviation of yours. A record style binding
@@ -217,7 +217,7 @@ linearizability and scenarios run on the runtime's model runner.
 prints the seed. A unit with `order random` orders its methods
 and cases by the run's seed, and a `parallel` unit puts each law in a class of
 its own, so xUnit runs them at once; other units run one at a time. Cover,
-classify, labels, targeted search, retries, timeouts, known failures and
+classify, labels, targeted search, retries, timeouts, known discrepancies and
 benchmarks follow the harness, and their statistics go to `LAWSPEC_STATS`.
 
 `npx lawspec test` runs only the laws an edit can affect: it selects their

@@ -860,7 +860,7 @@ export async function attemptAsync(ability, body, right, left) {
 }
 
 // The schema a handler's values cross with: the bound native types when
-// lawspec.json binds them (the native bindings module sets it).
+// lawspec.edn binds them (the native bindings module sets it).
 let boundHandlerSchema = null;
 export function setHandlerSchema(schema) {
   boundHandlerSchema = schema;
@@ -897,7 +897,7 @@ export class Fail extends Error {
 }
 
 // Calls native code that may fail: a Fail it throws, or an error
-// lawspec.json maps to a failure ([class, make] pairs), becomes a failure of
+// lawspec.edn maps to a failure ([class, make] pairs), becomes a failure of
 // the ability.
 export function nativeFailures(ability, convert, body, mapped = []) {
   try {
@@ -2584,7 +2584,7 @@ const nodeModule = (name) => globalThis.process.getBuiltinModule(name);
 // Recorded values: a law compares a value's portable rendering with the
 // text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
 // names the folder; otherwise it is recorded/ in the nearest folder, from
-// the working one up, that holds lawspec.json or recorded/. With
+// the working one up, that holds lawspec.edn or recorded/. With
 // LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
 // the value instead.
 export function recordedRoot() {
@@ -2595,7 +2595,7 @@ export function recordedRoot() {
   let folder = path.resolve(globalThis.process.cwd());
   for (;;) {
     if (
-      fs.existsSync(path.join(folder, "lawspec.json")) ||
+      fs.existsSync(path.join(folder, "lawspec.edn")) ||
       fs.existsSync(path.join(folder, "recorded"))
     )
       return path.join(folder, "recorded");
@@ -6318,7 +6318,7 @@ export class Node {
   closed;
   arrivals;
   /**
-   * identity: a NodeIdentity (by default the one lawspec.json binds, or a
+   * identity: a NodeIdentity (by default the one lawspec.edn binds, or a
    * fresh one); trusted: the fingerprints of the only peers to talk to (by
    * default any peer, each address keeping the first identity it shows). A
    * transport made for tests only (InsecureMemoryTransport) skips the

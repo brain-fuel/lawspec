@@ -179,7 +179,7 @@ for(const target of ['java','kotlin','scala','groovy']){
   const compilerTool=target==='kotlin'?'kotlinc':target==='scala'?'scala':'javac';
   test(`${target} native layouts compile and enforce nested boundary refinements`,
     {skip:!required(target)&&(!available(compilerTool)?`${compilerTool} is not installed`:
-      target==='scala'&&!existsSync(new URL('../../.integration/scala/lawspec.json',import.meta.url))?'Scala acceptance environment is not installed':false)},async()=>{
+      target==='scala'&&!existsSync(new URL('../../.integration/scala/lawspec.edn',import.meta.url))?'Scala acceptance environment is not installed':false)},async()=>{
     for(const machineBits of [32,64])for(const minify of [false,true]){
       const result=await compiler.planGeneration({...options,target,machineBits,minify,
         sources:[{path:'layouts.lawspec',content:chainSource}],nativeBindings:jvmBindings()});

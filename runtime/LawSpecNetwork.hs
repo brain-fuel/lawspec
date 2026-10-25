@@ -97,7 +97,7 @@ install =
 secureLayer :: SecureLayer -> NodeLayer
 secureLayer layer = NodeLayer (secureSend layer) (secureReceive layer) (toDyn (secureIdentity layer))
 
--- | A node's identity (by default the one lawspec.json binds, or a fresh
+-- | A node's identity (by default the one lawspec.edn binds, or a fresh
 -- one) and the fingerprints of the only peers it talks to (by default any
 -- peer, each address keeping the first identity it shows).
 data NodeOptions = NodeOptions
@@ -284,7 +284,7 @@ generateNodeIdentity = do
   seed <- secureRandom 32
   maybe (throwIO (ErrorCall "ML-DSA-65 key generation failed")) pure (nodeIdentityFromSeed seed)
 
--- | The identity lawspec.json binds (lawspec-network.conf, written by the
+-- | The identity lawspec.edn binds (lawspec-network.conf, written by the
 -- compiler), or a fresh one.
 configuredNodeIdentity :: IO NodeIdentity
 configuredNodeIdentity = networkConfig >>= maybe generateNodeIdentity pure . fst
@@ -297,7 +297,7 @@ identityFingerprint = hexOf . sha3Of . identityVerifyingKey
 identitySign :: NodeIdentity -> ByteString -> IO ByteString
 identitySign identity message = DSA.encode <$> DSA.sign (identityKey identity) message emptyContext
 
--- | lawspec-network.conf, which the compiler writes from lawspec.json's
+-- | lawspec-network.conf, which the compiler writes from lawspec.edn's
 -- network binding: the file LAWSPEC_NETWORK_CONF names, or the first found
 -- in the working directory and the directories above it. Lines `identity
 -- <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per

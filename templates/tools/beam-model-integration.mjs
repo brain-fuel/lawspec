@@ -1,3 +1,4 @@
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Installed BEAM model evidence must participate in exact native selection,
 // cache invalidation, JUnit reporting and failed-seed replay.
 // ref:REQ-test-manifest ref:DEC-stateful-models-linearizability
@@ -39,10 +40,10 @@ const packageSource = process.env.LAWSPEC_NPM_SOURCE;
 const packed = JSON.parse((await run('npm', ['pack', '--json', '--pack-destination', base,
   ...(packageSource ? ['--ignore-scripts'] : [])], path.resolve(packageSource ?? path.join(repo, 'npm')))).stdout)[0];
 const installation = path.join(base, 'installation');
-await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+await run('npm', ['install', ...(process.env.LAWSPEC_OFFLINE === '1' ? ['--offline'] : ['--prefer-offline']), '--ignore-scripts', '--no-audit', '--no-fund',
   '--prefix', installation, path.join(base, packed.filename)], base);
 const packageRoot = path.join(installation, 'node_modules/lawspec');
-const cli = path.join(packageRoot, 'bin/lawspec.mjs'), configFile = path.join(base, 'lawspec.json');
+const cli = path.join(packageRoot, 'bin/lawspec.mjs'), configFile = path.join(base, 'lawspec.edn');
 const layoutFlags = minify ? ['--minify'] : [];
 async function call(verb, flags = [], options = {}) {
   const result = await run(process.execPath, [cli, verb, '--config', configFile, ...flags], base, options);
@@ -70,10 +71,10 @@ const sources = await Promise.all(['test/fixtures/cli-canonical/models.lawspec',
   .map(async file => ({path: path.basename(file), content: await readFile(path.join(repo, file), 'utf8')})));
 sources.sort((a, b) => a.path.localeCompare(b.path));
 for (const source of sources) await writeFile(path.join(base, source.path), source.content);
-const config = JSON.parse(await readFile(configFile, 'utf8'));
+const config = parseManifest(await readFile(configFile, 'utf8'));
 config.verification = canonical.verification;
 config.sources = sources.map(source => source.path);
-await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
+await writeFile(configFile, writeManifest(config, null, 2) + '\n');
 await call('generate', ['--json', ...layoutFlags]);
 for (const suite of ['models', 'actors'])
   for (const kind of ['files', 'native'])

@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/native-ownership.test.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest} from './manifest-fixtures.mjs';
 import {generateInput} from './compiler-input.mjs';
 // Filesystem acceptance for adopting and regenerating native bindings.
 import assert from 'node:assert/strict';
@@ -124,7 +125,7 @@ for (const [target, sourceRoot, generator] of [
 ]) {
   test(`${target}: adopting and removing native bindings preserves application files`, async () => {
     const example = new URL(`../examples/native-payments/${target}/`, import.meta.url);
-    const configuration = JSON.parse(await readFile(new URL('lawspec.json', example), 'utf8'));
+    const configuration = parseManifest(await readFile(new URL('lawspec.edn', example), 'utf8'));
     const nativeBindings = configuration.targets[0].nativeBindings;
     const sources = [{path:'payments.lawspec',content:await readFile(
       new URL('../examples/rc1/native-payments.lawspec',import.meta.url),'utf8')}];

@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/artifact-targets.test.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest} from './manifest-fixtures.mjs';
 // Artifact generation has its own acceptance contract: checked definitions and
 // explicit incomplete configuration, with no native law execution claims.
 import assert from 'node:assert/strict';
@@ -165,7 +166,7 @@ for(const target of artifactTargets) test(`${target}: CLI initialization, doctor
   const generated = JSON.parse((await run(['generate','--json'])).stdout);
   assert.equal(generated[0].test,null);
   assert.doesNotMatch((await run(['generate','--check'])).stdout,/undefined/u);
-  const config = JSON.parse(await readFile(path.join(root,'lawspec.json'),'utf8'));
+  const config = parseManifest(await readFile(path.join(root,'lawspec.edn'),'utf8'));
   assert.equal(config.targets[0].language,target);
   const expected = {hcl:'variables.tf',yaml:'configuration.yaml',antlr4:'LawSpecData.g4',make:'Makefile'}[target];
   assert.ok((await readFile(path.join(root,expected),'utf8')).length > 0);

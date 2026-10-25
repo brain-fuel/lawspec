@@ -367,7 +367,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
     });
   if (language === "javascript" || language === "typescript") {
     const pattern = (e) => model(e)?`^${regex(e.label)}$`:
-      `^${regex(e.label)}( example: .*| boundary \\d+| property| known failing| skipped| replay| search)?$`;
+      `^${regex(e.label)}( example: .*| boundary \\d+| property| known discrepancy| skipped| replay| search)?$`;
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const file = path.join(scratch, "node-events.jsonl");
@@ -479,7 +479,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
   if (language === "fsharp" || language === "csharp") {
     const report = "lawspec-junit.xml";
     const results = path.resolve(scratch, "dotnet-results");
-    const kinds = "example \\d+: .*|boundary(?: \\d+(?: — .*)?(?:\\(caseIndex: \\d+\\))?)?|statistics|property|search|replay|skipped|known failing";
+    const kinds = "example \\d+: .*|boundary(?: \\d+(?: — .*)?(?:\\(caseIndex: \\d+\\))?)?|statistics|property|search|replay|skipped|known discrepancy";
     const pattern = (e) => new RegExp(`^${regex(e.label)}( (${kinds}))?$`);
     const measured = coverage ? path.resolve(coverage, "dotnet.cobertura.xml") : null;
     return [{ laws: entries, command: "dotnet",
@@ -509,7 +509,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
         LAWSPEC_SWIFT_REPORT: ordered.length ? events : "", LAWSPEC_SWIFT_RUN: ordered.length ? token : "" },
       report: ordered.length ? { kind: "swift-events", files, file: events, run: token,
         groups: ordered.map((e) => ({unit:e.unit,law:e.name,suite:suite(e),
-          minimum:typeof e.knownFailing === "string" ? 1 : Math.max(1,e.coverage?.cases ?? 1)})) } :
+          minimum:typeof e.knownDiscrepancy === "string" ? 1 : Math.max(1,e.coverage?.cases ?? 1)})) } :
         { kind: "junit", files },
       ran: (result) => entries.filter((e) => e.scope === "ordered" ?
         result.unit === e.unit && result.nativeName === e.name :
@@ -629,7 +629,7 @@ export function mergeJunit(reports) {
 const escapeXml = (text) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
 // The harness statistics a run wrote (LAWSPEC_STATS): cover results, label
-// counts, flaky and known-failing outcomes, benchmarks.
+// counts, flaky and known-discrepancy outcomes, benchmarks.
 export async function harnessStatistics(directory) {
   const names = await readdir(directory).catch(() => []);
   const entries = [];

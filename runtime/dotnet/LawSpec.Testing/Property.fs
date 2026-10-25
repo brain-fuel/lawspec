@@ -172,7 +172,7 @@ let generation (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (attempts
         Attempts = attempts
     }
 
-/// As generation, with the application's generators (bound in lawspec.json)
+/// As generation, with the application's generators (bound in lawspec.edn)
 /// in place of the built-in ones for their types.
 [<CompiledName("GenerationWith")>]
 let generationWith

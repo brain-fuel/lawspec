@@ -135,9 +135,9 @@ release_failure_cannot_be_caught_into_a_pass_test() ->
     end)),
     ?assertEqual(release_attempt, event()), no_event().
 
-known_failing_cannot_conceal_timeout_or_cleanup_failure_test() ->
+known_discrepancy_cannot_conceal_timeout_or_cleanup_failure_test() ->
     lists:foreach(fun(Body) ->
-        Failure = failed(fun() -> lawspec_beam_harness:known_failing(<<"owner">>, <<"expected">>, <<"bug">>,
+        Failure = failed(fun() -> lawspec_beam_harness:known_discrepancy(<<"owner">>, <<"expected">>, <<"bug">>,
             [{"case", fun() -> run(#{timeout => 50, cleanup_timeout => 30}, Body) end}]) end),
         ?assertMatch({lawspec, _}, Failure)
     end, [fun() -> receive never -> ok end end,

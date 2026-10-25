@@ -101,7 +101,7 @@ impl crate::lawspec_abilities::lawspec_crypto::Signature for SignatureHandler {
 }
 
 /// SLH-DSA-SHAKE-128f, hedged: the alternative Signature handler. Bind it in
-/// lawspec.json: {"ability": "lawspec.crypto::Signature", "native": ["crate",
+/// lawspec.edn: {"ability": "lawspec.crypto::Signature", "native": ["crate",
 /// "lawspec_crypto", "SlhDsaSignatureHandler"]}.
 #[derive(Default)]
 pub struct SlhDsaSignatureHandler;

@@ -777,7 +777,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         ) [[V.Exhaustive], [V.Exhaustive,V.Property]]
     ) ["erlang","elixir","gleam"]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
-  mapM_ (\(target,bits,compact) -> it (target ++ " groups known failures and omits skipped law bodies " ++ show (bits,compact)) $ do
+  mapM_ (\(target,bits,compact) -> it (target ++ " groups known discrepancies and omits skipped law bodies " ++ show (bits,compact)) $ do
     input <- readFile "acceptance/beam-status/status.lawspec"
     case compileCore bits defaultGeneration [Source "status.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
@@ -786,7 +786,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_harness:known_failing", "|known property failure| known failing", "|skipped completely| skipped"]
+            ["lawspec_beam_harness:known_discrepancy", "|known property failure| known discrepancy", "|skipped completely| skipped"]
           body `shouldSatisfy` (not . isInfixOf "law_skipped_completely_body")
           body `shouldSatisfy` (not . isInfixOf "also skipped")
           if target == "elixir" then body `shouldSatisfy` isInfixOf "law(:example_status_lawspec_cases, :law_skipped_completely,"

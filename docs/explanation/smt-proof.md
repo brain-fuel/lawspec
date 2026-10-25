@@ -10,7 +10,7 @@ compiler produces a typed SMT-LIB task. A separate Node host executes Z3 and
 records the result. Mandatory definition checks still run before tasks are
 available, including when no law verification layers are selected.
 
-Select `proof` in configuration version 2's `verification.layers`, then run:
+Select `:proof` in the manifest's `:verification {:layers [...]}`, then run:
 
 ```sh
 lawspec prove --solver /path/to/z3 --json

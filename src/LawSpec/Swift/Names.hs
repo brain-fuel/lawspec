@@ -85,9 +85,9 @@ reservedLocals = words "schema symbols inputs resources values scoped withResour
 -- declaration fits a line.
 exampleSuffixes :: Int -> [String] -> [String]
 exampleSuffixes budget names = map (filter (/= '_')) $ fst (N.claimAll (N.scopeWith kinds) (map (fit . concatMap N.nameWords . splitUnderscores)
-  (N.exampleTestSuffix "swift" ["boundary", "property", "statistics", "search", "skipped", "known_failing"] names)))
+  (N.exampleTestSuffix "swift" ["boundary", "property", "statistics", "search", "skipped", "known_discrepancy"] names)))
   where
-    kinds = ["boundary", "property", "statistics", "search", "skipped", "knownFailing"]
+    kinds = ["boundary", "property", "statistics", "search", "skipped", "knownDiscrepancy"]
     fit ws = N.cased N.Camel (case takeFitting 0 ws of [] -> take 1 ws; kept -> kept)
     takeFitting _ [] = []
     takeFitting n (w : rest)

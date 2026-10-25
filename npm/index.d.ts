@@ -245,7 +245,7 @@ export interface LawHarness {
   unit: string | null;
   tags: string[];
   skip: string | null;
-  knownFailing: string | null;
+  knownDiscrepancy: string | null;
   timeoutMilliseconds: number | null;
   repeat: number;
   retries: number;
@@ -434,7 +434,7 @@ export type DischargeStatus =
     'not-verified' |
     'incomplete' |
     'unsupported' |
-    'known-failing' |
+    'known-discrepancy' |
     'flaky' |
     'skipped' |
     'pending' |
@@ -462,6 +462,7 @@ export interface ObligationEvidence {
   plannedEnvironment?: string;
   plannedEnvironmentRun?: AttestedRun;
   plannedAgainst?: AttestedDependency[];
+  environmentOutcome?: NativeOutcome;
   nativeEvidence?: NativeConformanceEvidence;
   adequacy?: NativeAdequacy[];
   plannedEvidence?: {status: DischargeStatus; reason: string};
@@ -471,6 +472,56 @@ export interface AttestedRun {
   id: string;
   startedAt: string;
   recordedAt: string;
+  execution?: AttestedExecution;
+}
+
+export interface AttestedExecution {
+  status: 'wired' | 'running' | 'completed';
+  exitCode?: number;
+  finishedAt?: string;
+}
+
+export interface AttestedArchitecture {
+  document: string;
+  digest: string;
+  uniqueId?: string;
+  decorators?: string;
+  decoratorsDigest?: string;
+  topologyDigest?: string;
+  elements?: string[];
+}
+
+export interface AttestedComponent extends PackageVersion {
+  fingerprint: string;
+  [key: string]: unknown;
+}
+
+export interface AttestedCompletion {
+  reached: boolean;
+  historyDigest?: string;
+  historyEntries?: number;
+}
+
+export interface AttestedContract {
+  package: string;
+  version: string;
+  abilities?: string[];
+  digest?: string;
+}
+
+export interface AttestedImplementation {
+  kind: string;
+  product: string;
+  version: string;
+  commit?: string;
+  imageDigest?: string;
+}
+
+export interface AttestedApplication {
+  node: string;
+  contract?: AttestedContract;
+  implementation: AttestedImplementation;
+  component?: AttestedComponent;
 }
 
 export interface AttestedStandIn {
@@ -478,6 +529,8 @@ export interface AttestedStandIn {
   version: string;
   conformance: string;
   historyDigest?: string;
+  historyEntries?: number;
+  standsInFor?: AttestedContract;
 }
 
 export interface AttestedDependency {
@@ -486,12 +539,19 @@ export interface AttestedDependency {
   reached: boolean;
   kind: 'real' | 'stand-in';
   standIn?: AttestedStandIn;
+  node?: string;
+  edge?: string;
+  contract?: AttestedContract;
+  implementation?: AttestedImplementation;
+  completed?: AttestedCompletion;
 }
 
 export interface AttestationView {
   environment: string;
   run: AttestedRun;
   producer?: PackageVersion;
+  application?: AttestedApplication;
+  architecture?: AttestedArchitecture;
   dependencies: (AttestedDependency &
     {obligations: string[]; plannedObligations: string[];})[];
 }
@@ -799,7 +859,7 @@ export type NativeConformanceStatus =
     'partial' |
     'incomplete' |
     'skipped' |
-    'known-failing' |
+    'known-discrepancy' |
     'not-selected' |
     'stale' |
     'unavailable';
@@ -810,7 +870,7 @@ export type NativeOutcome =
     'skipped' |
     'incomplete' |
     'not-run' |
-    'known-failing';
+    'known-discrepancy';
 
 export interface NativeCompletedTest {
   name: string;
@@ -860,7 +920,13 @@ export interface NativeExecutionAttempt {
   invocation: NativeInvocation;
   verification: 'native-execution';
   searchCompleteness: 'not-established';
+  executionRun?: string;
+  environment?: string;
 }
+
+export type RecordedNativeExecutionAttempt =
+    Omit<NativeExecutionAttempt, 'outcome'> &
+      {outcome: NativeOutcome | 'known-discrepancy';};
 
 export interface NativeExecutionObservation {
   target: string;
@@ -871,7 +937,7 @@ export interface NativeExecutionObservation {
   check?: {id: string; obligations: NativeEvidenceTarget[]};
   obligations?: NativeEvidenceTarget[];
   coverage?: NativeCheckCoverage;
-  attempt?: NativeExecutionAttempt;
+  attempt?: RecordedNativeExecutionAttempt;
   harness?: {flaky?: boolean; adequacy?: NativeAdequacy[]};
 }
 
@@ -919,7 +985,7 @@ export interface NativeTestEntry {
   name: string;
   tags: string[];
   skip: string | null;
-  knownFailing: string | null;
+  knownDiscrepancy: string | null;
   parallel: boolean;
   kind?: 'model';
   scope?: string;

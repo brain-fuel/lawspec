@@ -22,8 +22,8 @@ pub fn install() {
 }
 
 /// A secure node on transport. identity: the node's (by default the one
-/// lawspec.json binds, or a fresh one); trusted: the fingerprints of the only
-/// peers to talk to (by default those lawspec.json names, else any peer, each
+/// lawspec.edn binds, or a fresh one); trusted: the fingerprints of the only
+/// peers to talk to (by default those lawspec.edn names, else any peer, each
 /// address keeping the first identity it shows). On the transport made for
 /// tests only, the node skips the handshake.
 pub fn node(
@@ -360,7 +360,7 @@ impl NodeIdentity {
         NodeIdentity::from_seed(&pq::random_bytes(32)).expect("a 32-byte seed")
     }
 
-    /// The identity lawspec.json binds (lawspec-network.conf, written by
+    /// The identity lawspec.edn binds (lawspec-network.conf, written by
     /// the compiler), or a fresh one.
     pub fn configured() -> ls::Result<NodeIdentity> {
         Ok(network_config()?.0.unwrap_or_else(NodeIdentity::generate))
@@ -385,7 +385,7 @@ impl NodeIdentity {
     }
 }
 
-/// lawspec-network.conf, which the compiler writes from lawspec.json's
+/// lawspec-network.conf, which the compiler writes from lawspec.edn's
 /// network binding: the file LAWSPEC_NETWORK_CONF names, or the first
 /// found in the working directory and the directories above it. Lines
 /// `identity <file>` (a hex seed) and `trusted <file>` (hex fingerprints,

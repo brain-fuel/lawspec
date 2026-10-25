@@ -1,3 +1,4 @@
+import {configEDN} from './manifest-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {spawnSync} from 'node:child_process';
@@ -66,7 +67,7 @@ test('actual Z3 establishes nonlinear and dependent laws from rebuilt-WASM tasks
   }
 });
 
-test('task planning remains separate from the ordinary proof cache and honors known-failing harnesses',requiresZ3,async()=>{
+test('task planning remains separate from the ordinary proof cache and honors known-discrepancy harnesses',requiresZ3,async()=>{
   const input=request(law('true'));
   const checked=await compiler.check(input);
   const planned=await compiler.proofTasks(input);
@@ -75,14 +76,14 @@ test('task planning remains separate from the ordinary proof cache and honors kn
   assert.equal(planned.evidence.find(row=>row.stage==='law').status,'planned');
   assert.deepEqual(repeated,checked);
   const guarded=request(square);
-  guarded.sources.push({path:'harness.lawspec',content:`harness smt.testing for smt is for law selected known failing "investigate"
+  guarded.sources.push({path:'harness.lawspec',content:`harness smt.testing for smt is for law selected known discrepancy "investigate"
 end for law
 end harness
 `});
   const result=await proveWithZ3(compiler,guarded,{binary:z3});
   assert.ok(result.diagnostics.some(row=>row.code==='harness'));
   assert.equal(result.solverEvidence[0].outcome,'unsat');
-  assert.equal(result.evidence.find(row=>row.stage==='law').status,'known-failing');
+  assert.equal(result.evidence.find(row=>row.stage==='law').status,'known-discrepancy');
 });
 
 test('a false law is refuted only at values the reference evaluator confirms',requiresZ3,async()=>{
@@ -457,10 +458,10 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
   const directory=await mkdtemp(path.join(tmpdir(),'lawspec-prove-cli-'));
   try {
     const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
-    const config={version:2,languageProfile:'1.0-rc.2',sources:['input.lawspec'],targets:[],verification:{layers:['proof']}};
+    const config={manifestVersion: 1,languageProfile:'1.0-rc.2',sources:['input.lawspec'],targets:[],verification:{layers:['proof']}};
     const save=async(body,layers=['proof'])=>{
       await writeFile(path.join(directory,'input.lawspec'),'unit smt\n'+body+'\nend unit\n');
-      await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,verification:{layers}}));
+      await writeFile(path.join(directory,'lawspec.edn'),configEDN({...config,verification:{layers}}));
     };
     const run=()=>spawnSync(process.execPath,[cli,'prove','--solver',z3,'--json'],{cwd:directory,encoding:'utf8'});
     await save(square);
@@ -482,12 +483,12 @@ laws for next are
   partial until 1.2.0 because "cancelled orders come later"
 end laws
 `,['exhaustive']);
-    await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,projectVersion:'1.1.4',verification:{layers:['exhaustive']}}));
+    await writeFile(path.join(directory,'lawspec.edn'),configEDN({...config,component:{...config.component,version:'1.1.4'},verification:{layers:['exhaustive']}}));
     const exempted=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
     assert.equal(exempted.status,0,exempted.stdout+exempted.stderr);
     assert.match(exempted.stdout,/EXEMPTED \(1\)/);
     assert.match(exempted.stdout,/until 1\.2\.0 \(project is 1\.1\.4\)/);
-    await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,projectVersion:'1.2.0',verification:{layers:['exhaustive']}}));
+    await writeFile(path.join(directory,'lawspec.edn'),configEDN({...config,component:{...config.component,version:'1.2.0'},verification:{layers:['exhaustive']}}));
     const expired=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
     assert.equal(expired.status,1,expired.stdout+expired.stderr);
     assert.match(expired.stdout,/REFUTED \(1\)/);

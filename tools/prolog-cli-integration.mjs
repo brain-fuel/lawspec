@@ -1,4 +1,5 @@
 // Generated from templates/tools/prolog-cli-integration.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Exercise fresh initialization, native completion, unknown results and benchmarks.
 // Execution observations remain scoped to the actual generated cases.
 // ref:DEC-prolog-janus
@@ -31,12 +32,12 @@ async function call(command,flags=[],pass=true,extraEnv={}){
 }
 
 await call('init',['--target','prolog','--machine-bits',String(bits)]);
-const configFile=path.join(project,'lawspec.json');
-const config=JSON.parse(await readFile(configFile,'utf8'));
+const configFile=path.join(project,'lawspec.edn');
+const config=parseManifest(await readFile(configFile,'utf8'));
 config.sources=['laws/basic.lawspec','laws/benchmark.lawspec','laws/benchmark-testing.lawspec'];
 config.verification.layers=['exhaustive','property','examples','runtime','model'];
 Object.assign(config.targets[0],{python,sourceDir:'app/code',testDir:'checks/generated'});
-await writeFile(configFile,JSON.stringify(config,null,2)+'\n');
+await writeFile(configFile,writeManifest(config,null,2)+'\n');
 const manifest=path.join(project,'pyproject.toml');
 await writeFile(manifest,(await readFile(manifest,'utf8'))
   .replaceAll('["src"]','["app/code"]').replaceAll('["tests"]','["checks/generated"]'));
@@ -100,7 +101,7 @@ end unit
 config.sources=['laws/selection.lawspec'];
 const resultFile=path.join(results,(await readdir(results)).find(file=>file.endsWith('.json')));
 for(const [layers,cases]of [[['examples'],1],[['exhaustive'],2],[[],0]]){
-  config.verification.layers=layers;await writeFile(configFile,JSON.stringify(config,null,2)+'\n');
+  config.verification.layers=layers;await writeFile(configFile,writeManifest(config,null,2)+'\n');
   await call('generate',compact?['--minify']:[]);
   const identity='example_selection';
   await writeFile(path.join(project,'app/code/example/selection.pl'),

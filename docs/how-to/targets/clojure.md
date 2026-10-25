@@ -38,7 +38,7 @@ alone, for a REPL or an application.
 | Files | Directory |
 | --- | --- |
 | Adapters (yours): one namespace per unit, such as `example/parse_port.clj` | `src` |
-| Application code bound in `lawspec.json` | anywhere in `src` |
+| Application code bound in `lawspec.edn` | anywhere in `src` |
 | LawSpec's Clojure runtime: `lawspec.clojure`, `lawspec.build` | `src/lawspec` |
 | The Java model, and a bridge class per unit that calls your namespace | `java/src` |
 | Tests, such as `example/parse_port_lawspec_test.clj` | `test` |
@@ -116,7 +116,7 @@ whose data holds `:lawspec/failure`:
 
 ## Native bindings
 
-`lawspec.json` binds functions, constructors, methods, handlers and failures
+`lawspec.edn` binds functions, constructors, methods, handlers and failures
 to Clojure. A name is a namespace's segments and a function, with
 underscores for hyphens: `["till", "payments", "native_till"]` is
 `till.payments/native-till`.

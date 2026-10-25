@@ -241,15 +241,15 @@ emitTestsWith split Config{..} unit laws = do
             call "Array[LawSpecRuntime.Value]" (map expr (C.harnessLabels h))] | observed h] ++
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [braced (call "ignore" [quoted (fn ++ "_skipped: " ++ label)]) [text ("// " ++ reason)]]
-      (_, Just reason) -> docs ++ [braced (call register [quoted (fn ++ "_knownFailing: " ++ label)])
+      (_, Just reason) -> docs ++ [braced (call register [quoted (fn ++ "_knownDiscrepancy: " ++ label)])
         ([bind "knownFailures" (call "new java.util.ArrayList[lawspec.testing.LawSpecHarness.Body]" [])] ++
          [finiteBodyCall "knownFailures.add" (call (harnessValue (fn ++ k)) []) | k <- kinds, k /= "_property"] ++
          extraBodies ++
          [finiteBodyCall "knownFailures.add" (call (harnessValue (fn ++ k)) []) | k <- kinds, k == "_property"] ++
-         [harness "knownFailing"
-           [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, text "knownFailures"]])]
+         [harness "knownDiscrepancy"
+           [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason, text "knownFailures"]])]
       _ | runSettings h -> docs ++ [braced (call register [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else ""))]) [harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "Array[Int]" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -375,9 +375,9 @@ emitTestsWith split Config{..} unit laws = do
           shown = shownLaw e
           h = C.propertyHarness (original e)
           base' = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base'
           boundaryCount = length (maybe (boundaryCases e) id (finiteCases e))
-          exampleSuffixes = exampleTestNames ("property" : "skipped" : "knownFailing" : "replay" : "search" :
+          exampleSuffixes = exampleTestNames ("property" : "skipped" : "knownDiscrepancy" : "replay" : "search" :
             map boundaryTestName [0 .. boundaryCount - 1]) (map exampleName (examples (original e)))
           exampleContext ex = shown ++ " example " ++ displayLabel (exampleName ex)
           checkNames = map inputId (inputs e) ++
@@ -425,7 +425,7 @@ emitTestsWith split Config{..} unit laws = do
               [bind "finiteCases" (finiteChain (text "LawSpecRuntime") [("finiteCases", [coverData]), ("iterator", [])]),
                braced (text "while (finiteCases.hasNext())")
                  [bind "finiteCase" (call "finiteCases.next" []), braced (call register [caseName]) [runCase]]]
-            | C.harnessSkip h == Nothing, C.harnessKnownFailing h == Nothing]
+            | C.harnessSkip h == Nothing, C.harnessKnownDiscrepancy h == Nothing]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs

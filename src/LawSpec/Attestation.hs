@@ -101,6 +101,7 @@ data Contract = Contract
   { contractPackage :: String
   , contractVersion :: String
   , contractAbilities :: [String]
+  , contractDigest :: Maybe String
   } deriving (Eq, Show)
 
 -- | The real provider, a fixture, or the application itself.
@@ -114,8 +115,9 @@ data Implementation = Implementation
 
 data Application = Application
   { applicationNode :: String
-  , applicationContract :: Contract
+  , applicationContract :: Maybe Contract
   , applicationImplementation :: Implementation
+  , applicationComponent :: Maybe Value
   } deriving (Eq, Show)
 
 -- | Version 1 of the format. Unknown fields are ignored, so a writer may add
@@ -155,8 +157,19 @@ parseAttestation = parseEither $ withObject "attestation" $ \o -> do
   architecture <- o .:? "architecture" >>= traverse (withObject "architecture" (\a ->
     Architecture <$> nonEmpty a "document" <*> a .: "digest" <*> a .:? "unique_id" <*> a .:? "decorators"
       <*> a .:? "decorators_digest" <*> a .:? "topology_digest" <*> a .:? "elements" .!= []))
-  application <- o .:? "application" >>= traverse (withObject "application" (\a ->
-    Application <$> nonEmpty a "node" <*> (a .: "contract" >>= contract) <*> (a .: "implementation" >>= implementation)))
+  application <- o .:? "application" >>= traverse (withObject "application" (\a -> do
+    selected <- a .:? "contract" >>= traverse contract
+    component <- a .:? "component"
+    unless (isJust selected || isJust component) (fail "application needs contract or component")
+    case component of
+      Nothing -> pure ()
+      Just value -> withObject "component" (\c -> do
+        _ <- nonEmpty c "name"
+        _ <- nonEmpty c "version"
+        digest <- nonEmpty c "fingerprint"
+        unless (length digest == 64 && all (`elem` ("0123456789abcdef" :: String)) digest)
+          (fail "component fingerprint must be a SHA-256 digest")) value
+    Application <$> nonEmpty a "node" <*> pure selected <*> (a .: "implementation" >>= implementation) <*> pure component))
   let named = map dependencyName dependencies
   case [n | (n, i) <- zip named [0 :: Int ..], n `elem` take i named] of
     n : _ -> fail ("dependency " ++ show n ++ " is named twice")
@@ -201,7 +214,7 @@ parseAttestation = parseEither $ withObject "attestation" $ \o -> do
       StandIn <$> nonEmpty s "product" <*> nonEmpty s "version" <*> nonEmpty s "conformance" <*> s .:? "history_digest"
         <*> (s .:? "stands_in_for" >>= traverse contract)
     contract = withObject "contract" $ \c ->
-      Contract <$> nonEmpty c "package" <*> nonEmpty c "version" <*> c .:? "abilities" .!= []
+      Contract <$> nonEmpty c "package" <*> nonEmpty c "version" <*> (c .:? "abilities" .!= []) <*> c .:? "digest"
     implementation = withObject "implementation" $ \i -> do
       kind <- i .: "kind"
       unless (kind `elem` ["real-provider", "fixture", "application"])
@@ -273,7 +286,7 @@ relied program = M.fromList
 touched :: Attestation -> M.Map Id [String] -> Obligation -> [(Dependency, [String])]
 touched attestation reliance o
   | obligationStage o /= "law" = []
-  | obligationStatus o `notElem` [ExhaustivelyChecked, PropertyTested, Measured, KnownFailing] = []
+  | obligationStatus o `notElem` [ExhaustivelyChecked, PropertyTested, Measured, KnownDiscrepancy] = []
   | otherwise =
       [ (d, matched) | d <- attestationDependencies attestation
       , let matched = filter (== dependencyName d) names, not (null matched) ]
@@ -382,7 +395,8 @@ dependencyPairs d =
 
 contractView :: Contract -> Value
 contractView c = object (["package" .= contractPackage c, "version" .= contractVersion c] ++
-  [ "abilities" .= contractAbilities c | not (null (contractAbilities c)) ])
+  [ "abilities" .= contractAbilities c | not (null (contractAbilities c)) ] ++
+  [ "digest" .= digest | Just digest <- [contractDigest c] ])
 
 implementationView :: Implementation -> Value
 implementationView i = object (
@@ -406,8 +420,10 @@ attestationView attestation outcomes program obligations = object (
       [ "topologyDigest" .= u | Just u <- [architectureTopologyDigest a] ] ++
       [ "elements" .= architectureElements a | not (null (architectureElements a)) ])
   | Just a <- [attestationArchitecture attestation] ] ++
-  [ "application" .= object [ "node" .= applicationNode a, "contract" .= contractView (applicationContract a)
-                            , "implementation" .= implementationView (applicationImplementation a) ]
+  [ "application" .= object ([ "node" .= applicationNode a
+                            , "implementation" .= implementationView (applicationImplementation a) ] ++
+                            ["contract" .= contractView c | Just c <- [applicationContract a]] ++
+                            ["component" .= c | Just c <- [applicationComponent a]])
   | Just a <- [attestationApplication attestation] ] ++
   [ "dependencies" .=
       [ object (dependencyPairs d ++

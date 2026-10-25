@@ -1,4 +1,4 @@
-// Application code: a Clock bound in lawspec.json in place of the default
+// Application code: a Clock bound in lawspec.edn in place of the default
 // one. It keeps the default clock's readings.
 import * as time from '../lawspec/time.js';
 import * as data from '../lawspec_data.js';

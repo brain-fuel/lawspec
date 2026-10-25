@@ -116,7 +116,7 @@ let check (label: string) (index: int) (values: Value list) (law: Value list -> 
         let shown = "(" + String.Join(", ", values |> List.map Recorded.renderPlain) + ")"
         raise (LawSpecException("BoundaryFailed", sprintf "%s boundary %d %s: %s" label index shown e.Message, [], e))
 
-/// A known-failing law remains one harness control, walking the same cover
+/// A known-discrepancy law remains one harness control, walking the same cover
 /// instead of embedding a copy of every row in its generated source.
 [<CompiledName("CheckAll")>]
 let checkAll label cover symbols law =

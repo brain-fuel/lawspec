@@ -209,7 +209,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
       else runtime "validate"
         [if ty == Named "Unit" then runtime "unitResult" [value] else value, E.Str (typeKey ty),width]
     -- A handler's values cross with the handler schema: the bound native
-    -- types when lawspec.json binds them (ls.handlerSchema).
+    -- types when lawspec.edn binds them (ls.handlerSchema).
     handlerSchema name' args = E.method (runtime "handlerSchema" [E.Ident "_lawspec_schema"]) name' (args ++ [E.Ident "symbols"])
     handlerInput ty value = if usesData ty
       then handlerSchema "toNative" [referenceOf ty,value,width] else value
@@ -259,7 +259,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
       C.SpecHandler _ -> Nothing
     construct context@(shared, resourceOf) ability choice = let made = maybe [] pure (resourceOf ability choice) in case choice of
       C.ProductionHandler -> case abilityNamed ability >>= C.abilityNative of
-        -- A production handler bound in lawspec.json.
+        -- A production handler bound in lawspec.edn.
         Just ps -> E.New (E.Ident (boundAlias ps)) [] made
         Nothing -> case abilityNamed ability of
           -- An imported ability's production handler is its owner's.
@@ -280,7 +280,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     abilityNamed = unitAbility u
     failureCallback failure = lambda [E.param "_failure"] (checkedResult failure (E.Ident "_failure"))
     -- An adapter that fails with E: native code raises the runtime's Fail
-    -- with a native E (or an exception lawspec.json maps to one), which
+    -- with a native E (or an exception lawspec.edn maps to one), which
     -- becomes the Fail E failure.
     nativeFailures decl invocation = case [a | d <- C.unitDeclarations u, C.declarationId d == decl, a@(C.AbilityRef _ [_]) <- C.declarationUses d, C.isFail a] of
       ability@(C.AbilityRef _ [failure]) : _ | not asyncMode ->
@@ -513,19 +513,19 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     object fields = E.Object [E.Prop (E.KName k) v | (k, v) <- fields]
     -- JavaScript and TypeScript register a law's tests through `test`; a
     -- harness redefines it in a block around them, so each registered test
-    -- runs under the harness (run settings), is collected (known failing), or
+    -- runs under the harness (run settings), is collected (known discrepancy), or
     -- is replaced by one skipped test.
     webHarness label harness tests =
       let register = E.constDecl "_register" (E.Ident "test")
           rendered = concatMap (\t -> E.Blank : t) tests
-      in case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+      in case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
         (Just reason, _) -> [E.ExprStmt (E.call "test" [E.Str (label ++ " skipped"), object [("skip", E.Str reason)],
           lambda [] (E.call "_harness.skip" [E.Str label, E.Str reason])])]
         (_, Just reason) -> [E.Block
           [ register, E.constDecl "_known" (E.Array [])
           , E.Block (E.constDecl "test" (E.arrowBlock [E.param "_name", E.param "body"] [E.ExprStmt (E.method (E.Ident "_known") "push" [E.Ident "body"])]) : rendered)
-          , E.ExprStmt (E.call "_register" [E.Str (label ++ " known failing"), lambda []
-              (E.call "_harness.knownFailing" [E.Str label, E.Str (label ++ " known failing"), E.Str reason, E.Ident "_known"])]) ]]
+          , E.ExprStmt (E.call "_register" [E.Str (label ++ " known discrepancy"), lambda []
+              (E.call "_harness.knownDiscrepancy" [E.Str label, E.Str (label ++ " known discrepancy"), E.Str reason, E.Ident "_known"])]) ]]
         _ | runSettings harness -> [E.Block
               [ register
               , E.Block (E.constDecl "test" (E.arrow [E.param "name", E.param "body"] (E.call "_register" [E.Ident "name", lambda []

@@ -18,6 +18,7 @@ sourceTokens = scan 0 Nothing
       | "--" `isPrefixOf` input = let (a,b) = break (== '\n') input in (CommentToken,a,b)
       | "\"|" `isPrefixOf` input = let (a,b) = delimited '|' (drop 2 input) in (PhraseToken,"\"|" ++ a,b)
       | "`|" `isPrefixOf` input = let (a,b) = delimited '|' (drop 2 input) in (PhraseToken,"`|" ++ a,b)
+      | "\"\"\"" `isPrefixOf` input = let (a,b) = tripleQuoted (drop 3 input) in (LiteralToken,"\"\"\"" ++ a,b)
       | '"':rest <- input = let (a,b) = delimited '"' rest in (LiteralToken,'"':a,b)
       -- These existing constructs retain paired-backtick names in the
       -- canonical profile. Words inside a name (including if, all and end)
@@ -45,5 +46,11 @@ sourceTokens = scan 0 Nothing
     delimited end ('\\':c:rest) = let (a,b) = delimited end rest in ('\\':c:a,b)
     delimited end (c:rest) | c == end = ([c],rest)
                          | otherwise = let (a,b) = delimited end rest in (c:a,b)
+    tripleQuoted [] = ("",[])
+    tripleQuoted ('\\':c:rest) = let (a,b) = tripleQuoted rest in ('\\':c:a,b)
+    tripleQuoted input
+      | "\"\"\"" `isPrefixOf` input = ("\"\"\"",drop 3 input)
+      | c:rest <- input = let (a,b) = tripleQuoted rest in (c:a,b)
+      | otherwise = ("",[])
 restoreSource :: [Token] -> String
 restoreSource = concatMap tokenText

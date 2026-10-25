@@ -1,7 +1,7 @@
 -- The harness plane at run time (see docs/reference/language/harness.md):
 -- how a law's tests run, never what the law means. Generated tests call it
 -- for strategies' refinement checks, adequacy (cover, classify, label), run
--- metadata (known failing, timeout, repeat, retry flaky) and benchmarks.
+-- metadata (known discrepancy, timeout, repeat, retry flaky) and benchmarks.
 --
 -- Statistics go to standard output, and, when LAWSPEC_STATS names a
 -- directory, to one JSON file per test there, which lawspec test reads.
@@ -11,7 +11,7 @@ module LawSpecHarness
     observe,
     target,
     run,
-    knownFailing,
+    knownDiscrepancy,
     benchmark,
     record,
     shuffled,
@@ -216,20 +216,20 @@ run law name milliseconds repeats retries covers observed test = do
       Just (HarnessError _) -> True
       Nothing -> False
 
--- A known-failing law's tests must fail. One that passes is reported: the
--- harness should no longer say it is known to fail.
-knownFailing :: String -> String -> String -> [IO ()] -> IO ()
-knownFailing law name reason tests = go tests
+-- A known discrepancy must reproduce. A passing run requires human review; the
+-- harness requires human review of the specification and implementation.
+knownDiscrepancy :: String -> String -> String -> [IO ()] -> IO ()
+knownDiscrepancy law name reason tests = go tests
   where
     go [] = do
-      record name [("law", JString law), ("test", JString name), ("outcome", JString "known-failing-passed"), ("reason", JString reason)]
-      throwIO (HarnessError (law ++ " is marked known failing (" ++ reason ++ "), but it passes; remove `known failing` from its harness"))
+      record name [("law", JString law), ("test", JString name), ("outcome", JString "known-discrepancy-passed"), ("reason", JString reason)]
+      throwIO (HarnessError (law ++ " is marked known discrepancy (" ++ reason ++ "), but it passes; review the specification and implementation before removing `known discrepancy` from its harness"))
     go (test : rest) = do
       outcome <- try test :: IO (Either SomeException ())
       case outcome of
         Left e -> do
-          record name [("law", JString law), ("test", JString name), ("outcome", JString "known-failing"), ("reason", JString reason)]
-          putStrLn (law ++ " is known to fail (" ++ reason ++ "): " ++ takeWhile (/= '\n') (show e))
+          record name [("law", JString law), ("test", JString name), ("outcome", JString "known-discrepancy"), ("reason", JString reason)]
+          putStrLn (law ++ " has a known discrepancy (" ++ reason ++ "): " ++ takeWhile (/= '\n') (show e))
         Right () -> go rest
 
 -- Measured, never asserted: the mean and fastest time of body.

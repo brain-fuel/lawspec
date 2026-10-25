@@ -516,7 +516,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       | ktCustom ty = KotlinExpr.call "SCHEMA.equal" [java (KotlinExpr.reference ty),a,b,Doc.text "MACHINE_BITS",Doc.text "symbols"]
       | otherwise = KotlinExpr.call "LawSpecRuntime.truth" [KotlinExpr.call "LawSpecRuntime.binary" [KotlinExpr.quoted "==",a,b]]
     -- An adapter that fails with E: its native code throws
-    -- LawSpecRuntime.Fail with a native E, or an exception lawspec.json maps.
+    -- LawSpecRuntime.Fail with a native E, or an exception lawspec.edn maps.
     jvmFailing n = jvmFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n]
     -- (nativeValue as T), broken before the as when it does not fit.
     ktCast native = Doc.text "(nativeValue" <> Doc.group (Doc.nest 4 (Doc.softline <> Doc.text ("as " ++ native))) <> Doc.text ")"
@@ -677,7 +677,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
     hsConstructValue ty tag fields = hsInSchema "built" ty [H.string tag, H.List fields]
     hsModuleOf unit = intercalate "." (map hsPart (split unit))
     -- An adapter that fails with E: its native code throws LS.Fail with a
-    -- native E, or an exception lawspec.json maps to a failure.
+    -- native E, or an exception lawspec.edn maps to a failure.
     hsFailing n = hsFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n]
     hsFailingAs failing call' = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->

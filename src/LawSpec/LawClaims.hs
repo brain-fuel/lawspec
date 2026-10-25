@@ -131,7 +131,7 @@ expiredAt expiry e = case A.exemptUntil e of
   Nothing -> Right (False, "")
   Just (A.UntilVersion v) -> case expiryVersion expiry of
     Nothing -> Left [Diagnostic "laws-for" ("an exemption until " ++ v ++
-      " needs the project's version: set projectVersion in lawspec.json, or version in lawspec-package.json") Nothing]
+      " needs the project's version: set projectVersion in lawspec.edn, or version in lawspec.edn") Nothing]
     Just current -> Right (compareVersions current v /= LT, " (project is " ++ current ++ ")")
   Just (A.UntilTime t) -> case expiryNow expiry of
     Nothing -> Right (False, " (no current time given)")

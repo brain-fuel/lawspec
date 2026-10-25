@@ -224,14 +224,14 @@ emitTests Config{..} unit laws = do
             call "arrayOf<LawSpecRuntime.Value>" (map expr (C.harnessLabels h))] | observed h] ++
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [D.group (quoted (fn ++ "_skipped: " ++ label) <> D.nest 4 (D.softbreak <> text ".config(enabled = false) " <> L.block [text ("// " ++ reason)]))]
-      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> L.lambda []
+      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownDiscrepancy: " ++ label) <> text " " <> L.lambda []
         ([bind "knownFailures" (call "mutableListOf<lawspec.testing.LawSpecHarness.Body>" [])] ++
          [call "knownFailures.add" [harnessBody (harnessValue (fn ++ k))] | k <- kinds, k /= "_property"] ++
          extraBodies ++
          [call "knownFailures.add" [harnessBody (harnessValue (fn ++ k))] | k <- kinds, k == "_property"] ++
-         [harness "knownFailing" [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, text "knownFailures"]])]
+         [harness "knownDiscrepancy" [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason, text "knownFailures"]])]
       _ | runSettings h -> docs ++ [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text " " <> L.lambda [] [harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "intArrayOf" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -358,9 +358,9 @@ emitTests Config{..} unit laws = do
           shown = shownLaw e
           h = C.propertyHarness (original e)
           base' = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base'
           boundaryCount = length (maybe (boundaryCases e) id (finiteCases e))
-          exampleSuffixes = exampleTestNames ("property" : "skipped" : "knownFailing" : "replay" : "search" :
+          exampleSuffixes = exampleTestNames ("property" : "skipped" : "knownDiscrepancy" : "replay" : "search" :
             map boundaryTestName [0 .. boundaryCount - 1]) (map exampleName (examples (original e)))
           exampleContext ex = shown ++ " example " ++ displayLabel (exampleName ex)
           checkNames = map inputId (inputs e) ++
@@ -405,7 +405,7 @@ emitTests Config{..} unit laws = do
                   | otherwise = caseCall
           boundaryDocs = [braced (D.group (text "for (finiteCase in" <> D.nest 4 (D.softline <> coverCases) <> text ")"))
               [text "(" <> caseName <> text ") " <> L.lambda [] [runCase]]
-            | C.harnessSkip h == Nothing, C.harnessKnownFailing h == Nothing]
+            | C.harnessSkip h == Nothing, C.harnessKnownDiscrepancy h == Nothing]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs
@@ -450,7 +450,7 @@ emitTests Config{..} unit laws = do
           chunks [] = []
           chunks docs = take 64 docs : chunks (drop 64 docs)
           registered
-            | length tests > 64 && not (runSettings h) && C.harnessKnownFailing h == Nothing =
+            | length tests > 64 && not (runSettings h) && C.harnessKnownDiscrepancy h == Nothing =
                 [braced (text ("fun chunk" ++ show i ++ "()")) [separate docs] | (i,docs) <- zip [1::Int ..] (chunks tests)] ++
                 [text ("chunk" ++ show i ++ "()") | i <- [1..length (chunks tests)]]
             | otherwise = tests

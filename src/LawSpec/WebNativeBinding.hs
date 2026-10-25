@@ -126,7 +126,7 @@ emitBindings ts minify bindings plan files = do
           (if ts then Just (if async then E.TRef "Promise" [returnType] else returnType) else Nothing)
           [ E.constDecl "symbols" (E.new' "Map" [])
           , E.Try resultBody (Just (Just (E.PIdent "error"),
-              -- The application's own errors pass through, so lawspec.json can map
+              -- The application's own errors pass through, so lawspec.edn can map
               -- them to failures.
               [ E.IfSingle (E.notE (E.or' (E.Binary "instanceof" (E.Ident "error") (E.Ident "TypeError"))
                                           (E.Binary "instanceof" (E.Ident "error") (E.Ident "RangeError")))) (E.Throw (E.Ident "error"))

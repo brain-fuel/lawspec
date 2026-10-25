@@ -47,14 +47,20 @@ they are declared.
 
 ## Create a package
 
-A package is a directory with a `lawspec-package.json`:
+A package is a directory with a `lawspec.edn`:
 
-```json
+```edn
 {
-  "name": "shop.domain",
-  "version": "1.2.0",
-  "sources": ["src"],
-  "dependencies": {}
+  :manifest-version 1
+  :package {
+    :name "shop.domain"
+    :version "1.2.0"
+  }
+  :language-profile "1.0-rc.2"
+  :sources ["src"]
+  :dependencies {
+
+  }
 }
 ```
 
@@ -70,15 +76,22 @@ types and dependencies. Add `--json` for a machine-readable summary.
 
 ## Depend on a package
 
-In the project's `lawspec.json`, give the version range and the directory to load:
+In the project's `lawspec.edn`, give the version range and the directory to load:
 
-```json
+```edn
 {
-  "version": 1,
-  "sources": ["orders.lawspec"],
-  "dependencies": {"shop.domain": "^1.0.0"},
-  "packages": ["../shop-domain"],
-  "targets": [{"language": "java", "root": "java"}]
+  :version 1
+  :sources ["orders.lawspec"]
+  :dependencies {
+    "shop.domain" "^1.0.0"
+  }
+  :packages ["../shop-domain"]
+  :targets [
+    {
+      :language :java
+      :root "java"
+    }
+  ]
 }
 ```
 

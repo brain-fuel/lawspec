@@ -269,7 +269,7 @@ different targets interoperate:
 - every frame then crosses **sealed** with AES-256-GCM (NIST SP 800-38D),
   under a key derived with SHAKE256 (FIPS 202).
 
-Nothing in `lawspec.json` turns this off. The one exception is made for tests
+Nothing in `lawspec.edn` turns this off. The one exception is made for tests
 of the frame layer: `MemoryNetwork(...).insecure_transport_for_tests(name)`
 (`insecureTransportForTests` on the other targets) gives an in-memory
 transport whose node skips the handshake. Only an in-memory network makes
@@ -286,7 +286,7 @@ made with `trusted` fingerprints talks only to those peers. Otherwise a node
 accepts any peer, but each address keeps the first identity it showed: a
 later handshake from that address with another key is refused.
 
-`lawspec.json` binds both, per target, in `nativeBindings`:
+`lawspec.edn` binds both, per target, in `nativeBindings`:
 
 ```json
 "nativeBindings": {

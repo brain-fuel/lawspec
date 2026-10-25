@@ -51,7 +51,7 @@ python3 -m venv python/.venv
 python/.venv/bin/python -m pip install -e "python[test]"
 ```
 
-Point LawSpec at that interpreter: in `lawspec.json`, give the Python target
+Point LawSpec at that interpreter: in `lawspec.edn`, give the Python target
 `"python": "python/.venv/bin/python"`. Then run `npx lawspec doctor`.
 :::
 
@@ -68,7 +68,7 @@ npx lawspec doctor
 ```
 :::
 
-`init` writes `lawspec.json`, a starter specification in `laws/`, and the
+`init` writes `lawspec.edn`, a starter specification in `laws/`, and the
 build files of the new project. `doctor` checks that your toolchain is ready.
 Delete the starter specification: you will write your own.
 
@@ -106,7 +106,7 @@ case, with the values it must produce.
 
 ## Generate the tests
 
-New projects start with no law checks selected. In `lawspec.json`, set
+New projects start with no law checks selected. In `lawspec.edn`, set
 `verification.layers` to `["property", "examples"]` before generating this
 lesson's property tests and example. Intrinsic definition checking always runs.
 

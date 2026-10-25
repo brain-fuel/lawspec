@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-25
+
 ### Changed
 
 - Complete and bounded scoped searches share one typed candidate body and enumerate
@@ -344,6 +346,51 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   agree byte for byte.
 - The dev view brackets terms only where LawSpec's precedence needs them, for
   example `a > 0 and b implies f a = X`.
+
+### Changed
+
+- Replace project and package JSON manifests with `lawspec.edn`. The component
+  and published contract identities are explicit; obsolete JSON is rejected.
+- Native runtimes, editor discovery, examples and test tooling use the same
+  manifest. Optional verification still leaves definition validation mandatory.
+
+### Added
+
+- Local, Git-tag/revision and SHA-256 HTTPS archive contract dependencies,
+  `lawspec.lock.edn`, fetch/update and locked/offline execution.
+- Deterministic contract archives and the checked `lawspec/component` SDK and
+  `lawspec describe --json` descriptor for CALM consumers.
+- Completed evidence can identify a component independently of its contracts,
+  retaining architecture, implementation and selected contract content digests.
+
+## [0.30.0] - 2026-10-23
+
+### Added
+
+- Triple-double-quoted multiline text literals (`"""..."""`) support ordinary
+  quotes within their content and share existing text escapes. Literal
+  whitespace, newlines and Unicode are preserved without implicit indentation
+  removal. Parser recovery, formatting and editor highlighting recognize the
+  same delimiters.
+
+### Changed
+
+- Acknowledged law mismatches are called **known discrepancies**. Use
+  `known discrepancy "reason"` in harnesses, `knownDiscrepancy` in API fields,
+  and `known-discrepancy` in evidence and native observations. The prior
+  `known failing` vocabulary is replaced in this pre-1.0 interface.
+- A known discrepancy assigns no fault to the specification or implementation;
+  human review determines whether either or both need correction. Unexpected
+  passing checks still fail the run and request review before removing the
+  annotation. Concrete execution failures and proof refutations retain their
+  meanings, and mandatory definition validation is unchanged.
+
+### Fixed
+
+- Current observation reports use neutral discrepancy wording for older stored
+  runs while preserving the archived receipt and its freshness status.
+- Formatting preserves trailing whitespace on the opening line of a multiline
+  literal, retaining its exact text value across repeated formatting.
 
 ## [0.29.2] - 2026-10-22
 
@@ -2283,7 +2330,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...v0.29.0

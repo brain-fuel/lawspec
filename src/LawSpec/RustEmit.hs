@@ -546,7 +546,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               ([Doc.text ("&*" ++ n) | n <- handlerNames] ++ map (Doc.text . native) argumentNames)
             plain = if declarationAsync d then invoke "ls::block_on" [call] else call
             -- An adapter that fails with E: its native code calls ls::fail
-            -- with a native E (or panics with what lawspec.json maps).
+            -- with a native E (or panics with what lawspec.edn maps).
             called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
               (Just native, ability@(AbilityRef _ [failure]) : _) -> RL.expr (RL.call ("ls::native_failures::<" ++ native ++ ", _>")
                 [RL.Laid (string (abilityKey ability)), RL.closure "|native|" (RL.call "ls::IntoValue::into_value" [RL.atom "native"]), RL.closure "||" (RL.Laid plain),
@@ -833,7 +833,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             finiteCall = RL.method (RL.call "check" (RL.atom "ctx" : map RL.Laid valueArgs)) "map_err" [finiteFailure]
             finiteCheck = statements (opened [RL.stmt (RL.Let "values" finiteValues), RL.expr finiteCall])
             rowAction
-              | runSettings h && harnessKnownFailing h == Nothing = statements
+              | runSettings h && harnessKnownDiscrepancy h == Nothing = statements
                   [binding "factories" (Doc.text "factories.to_vec()"),
                    closureCall "lawspec_harness::run"
                      [string (unitName ++ "::" ++ label), RL.expr (RL.prefix "&" (RL.Macro "format!" "(" ")"
@@ -851,7 +851,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             property = [(replay ++ generated ++ climb, Nothing) | Nothing <- [finiteCases pp]]
             asStatements (stmts, final) = statements (stmts ++ [statement (final' <> Doc.text "?") | Just final' <- [final]])
             asBody (stmts, final) = statements (stmts ++ [maybe (Doc.text "Ok(())") id final])
-            taken = ["check", "check_body", "valid", "observe", "score", "search_case", "property", "exhaustive", "skipped", "known_failing"]
+            taken = ["check", "check_body", "valid", "observe", "score", "search_case", "property", "exhaustive", "skipped", "known_discrepancy"]
             exampleNames = exampleTestSuffix "rust" taken (map (exampleName . fst) examples)
             boundaryNames = fst (claimAll (scopeWith (taken ++ exampleNames)) ["boundaries" | not (null boundaryTests)])
             caseTests = [(escapeKeyword "rust" n, Just e, ([d], Nothing)) | (n, (e, d)) <- zip exampleNames examples] ++
@@ -870,11 +870,11 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                       Doc.text (if isProperty && observed h then "true" else "false")] runner
                 -- (a test the harness orders waits for its turn, not its file)
                 else if null (turn k) then withStack turned else onStack "ls::on_stack" turned
-            testsOf = case (harnessSkip h, harnessKnownFailing h) of
+            testsOf = case (harnessSkip h, harnessKnownDiscrepancy h) of
               (Just reason, _) -> [Doc.text "#[test]" <> Doc.hardline <> Doc.text ("#[ignore = " ++ q (shown ++ ": " ++ reason) ++ "]") <> Doc.hardline <>
                 Doc.text "fn skipped() {}"]
-              (_, Just reason) -> [Doc.text "#[test]" <> Doc.hardline <> function "known_failing" [] "ls::Result<()>"
-                (closureCall "lawspec_harness::known_failing" [string (unitName ++ "::" ++ label), string (moduleName ++ "::known_failing"), string reason]
+              (_, Just reason) -> [Doc.text "#[test]" <> Doc.hardline <> function "known_discrepancy" [] "ls::Result<()>"
+                (closureCall "lawspec_harness::known_discrepancy" [string (unitName ++ "::" ++ label), string (moduleName ++ "::known_discrepancy"), string reason]
                   (stackClosure whole))]
               _ -> [ maybe mempty (\e -> Doc.lineComment 96 "// " (labelled ("example " ++ displayLabel (exampleName e)) (sourceLinkOf e))) example <>
                      Doc.text "#[test]" <> Doc.hardline <> function name' [] "ls::Result<()>" (harnessed (index * 1000 + k) name' (name' == "property") d)

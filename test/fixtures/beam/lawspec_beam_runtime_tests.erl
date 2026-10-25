@@ -210,7 +210,7 @@ recording_finds_nearest_project_and_honors_override_test() -> with_recording_fol
     {ok, PreviousCwd} = file:get_cwd(),
     Child = filename:join([Folder, "application", "subdirectory"]),
     ok = filelib:ensure_dir(filename:join(Child, "unused")),
-    ok = file:write_file(filename:join(Folder, "lawspec.json"), <<"{}">>),
+    ok = file:write_file(filename:join(Folder, "lawspec.edn"), <<"{}">>),
     os:unsetenv("LAWSPEC_RECORDED"),
     os:putenv("LAWSPEC_UPDATE_RECORDED", "1"),
     try

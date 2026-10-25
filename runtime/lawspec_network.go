@@ -141,7 +141,7 @@ func LawSpecGenerateNodeIdentity() *LawSpecNodeIdentity {
 	return identity
 }
 
-// LawSpecConfiguredNodeIdentity is the identity lawspec.json binds
+// LawSpecConfiguredNodeIdentity is the identity lawspec.edn binds
 // (lawspec-network.conf, written by the compiler), or a fresh one.
 func LawSpecConfiguredNodeIdentity() *LawSpecNodeIdentity {
 	if identity, _ := lsNetworkConfig(); identity != nil {
@@ -179,7 +179,7 @@ func lsNetVerify(verifyingKey, message, signature []byte) bool {
 }
 
 // lsNetworkConfig reads lawspec-network.conf, which the compiler writes from
-// lawspec.json's network binding: the file LAWSPEC_NETWORK_CONF names, or
+// lawspec.edn's network binding: the file LAWSPEC_NETWORK_CONF names, or
 // the first found in the working directory and the directories above it.
 // Lines `identity <file>` (a hex seed) and `trusted <file>` (hex
 // fingerprints, one per line), relative to it; `#` begins a comment. It

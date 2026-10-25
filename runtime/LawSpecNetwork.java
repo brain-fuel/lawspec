@@ -362,7 +362,7 @@ public final class LawSpecNetwork
     }
 
     /**
-     * The identity lawspec.json binds (lawspec-network.conf, written by the compiler), or a fresh
+     * The identity lawspec.edn binds (lawspec-network.conf, written by the compiler), or a fresh
      * one.
      */
     public static NodeIdentity configured()
@@ -412,7 +412,7 @@ public final class LawSpecNetwork
   {}
 
   /**
-   * lawspec-network.conf, which the compiler writes from lawspec.json's network binding: the file
+   * lawspec-network.conf, which the compiler writes from lawspec.edn's network binding: the file
    * LAWSPEC_NETWORK_CONF names, or the first found in the working directory and the directories
    * above it. Lines `identity <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per
    * line), relative to it; `#` begins a comment.

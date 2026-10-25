@@ -1,7 +1,7 @@
 unit example.till
 
 -- An ability whose production handler is application code, named in
--- lawspec.json under handlers. Money is bound to a native type there too, so
+-- lawspec.edn under handlers. Money is bound to a native type there too, so
 -- the handler's operations take and give that type.
 
 type Money is a record{  cents :: Int64} end type
@@ -26,7 +26,7 @@ handler fakeDrawer for Drawer is
 end handler
 
 -- A native adapter that fails. Its native code raises the application's own
--- exceptions; lawspec.json maps them to PayError's constructors.
+-- exceptions; lawspec.edn maps them to PayError's constructors.
 pay :: Int64 -> Money uses Drawer fails with PayError
 
 law "|small payments go through| is

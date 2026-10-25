@@ -100,8 +100,8 @@ emitDotNetWithBindings target minify bindings plan = do
             [drop (4 :: Int) (artifactPath a) | a <- handlerClasses ++ actorHandlers ++ remoteLate]
           sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ typedFile ++ actorClasses ++ entries ++ adapters ++ api ++ handlerClasses ++ actorHandlers ++ remoteLate
       pure (runtimeArtifacts ++ sources ++ tests ++ vectors ++
-        [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application types bound in lawspec.json go in Native/Types/, before the data types; other application code goes in Native/, after the ability interfaces." ordered
-        , props "tests/LawSpec.Tests.props" "test" "The generated tests; application generators bound in lawspec.json go in Native/, before them."
+        [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application types bound in lawspec.edn go in Native/Types/, before the data types; other application code goes in Native/, after the ability interfaces." ordered
+        , props "tests/LawSpec.Tests.props" "test" "The generated tests; application generators bound in lawspec.edn go in Native/, before them."
             (["Native/**/*.fs" | not (null generators)] ++ [drop (6 :: Int) (artifactPath t) | t <- tests ++ vectors]) ])
     orderSources first adapters entries api =
       ["Native/Types/**/*" ++ extension lang] ++ [drop (4 :: Int) (artifactPath a) | a <- first] ++ ["Native/**/*" ++ extension lang] ++
@@ -166,7 +166,7 @@ emitDotNetWithBindings target minify bindings plan = do
             , "</Project>" ]) "generated" "test"
       vectors <- cryptoVectorTests
       pure (runtimeArtifacts ++ modelFiles ++ [modelProject] ++ entries ++ adapters ++ api ++ handlerClasses ++ actorHandlers ++ remoteLate ++ nativeGenerators ++ laws ++ models ++ vectors ++ [sourcesProps, testsProps])
-    -- Types bound in lawspec.json come before the data that uses them; the
+    -- Types bound in lawspec.edn come before the data that uses them; the
     -- rest of the application's code after the interfaces it implements.
     exclude f = if f == "Native/**/*" ++ extension lang then " Exclude=\"Native/Types/**\"" else ""
     lastModule u = last (splitDots (generatedModule (C.unitId u)))

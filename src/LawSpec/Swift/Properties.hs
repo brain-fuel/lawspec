@@ -267,10 +267,10 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
       let ordinaryActions = [Lambda [] tVoid (wrapHarness label display observations harness body) | (_, display, _, observations, body) <- examples] ++
             [Lambda [] tVoid boundaryLoop | Cover.coverCount cover > 0] ++
             [Lambda [] tVoid (wrapHarness label display observations harness body) | (_, display, _, observations, body) <- random]
-          tests = case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+          tests = case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
             (Just reason, _) -> [SkipTest (name ++ "_skipped") (displayLabel (C.propertyName law) ++ " skipped") label reason]
-            (_, Just reason) -> [Test name (name ++ "_knownFailing") (displayLabel (C.propertyName law) ++ " known failing") lawComment Nothing
-              (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
+            (_, Just reason) -> [Test name (name ++ "_knownDiscrepancy") (displayLabel (C.propertyName law) ++ " known discrepancy") lawComment Nothing
+              (call "Harness" "knownDiscrepancy" [Str label, Str (label ++ " known discrepancy"), Str reason,
                 ListOf (Ty "[() throws -> Void]") ordinaryActions])]
             _ -> [Test name n display link Nothing (wrapHarness label display observations harness body)
                     | (n, display, link, observations, body) <- examples] ++ finiteTests ++
@@ -417,7 +417,7 @@ shortPath p = show (depth (dropWhile isDigit p) :: Int)
       _ : rest -> depth rest
       [] -> 0
 
--- | The application's generators bound in lawspec.json, by type: each
+-- | The application's generators bound in lawspec.edn, by type: each
 -- factory gives a generator of native values, which its type's codec makes
 -- portable. ref:DEC-native-bindings-typed-identity
 emitNativeGenerators :: D.Layout -> Int -> [C.DataDeclaration] -> [(C.Id, [String], Int)] -> Either String [Artifact]
@@ -433,7 +433,7 @@ emitNativeGenerators layout bits declarations bound = do
         (D.text (ref ++ "().map {") <> D.nest 2 (D.hardline <>
           codecCall nativeCodec "fromNative" [D.text "$0"]) <> D.hardline <> D.text "}") <> D.text "),")
   let doc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime", "import LawSpecTesting"], ["@testable import " ++ moduleName]] <> D.hardline <>
-        D.text "/// The application's generators, bound in lawspec.json, made afresh for each use." <> D.hardline <>
+        D.text "/// The application's generators, bound in lawspec.edn, made afresh for each use." <> D.hardline <>
         D.text "var nativeGeneratorFactories: [(String, Generators.Factory)] {" <> D.nest 2 (D.hardline <> D.text "[" <> D.nest 2 (D.hardline <>
           D.joinWith D.hardline entries) <> D.hardline <> D.text "]") <> D.hardline <> D.text "}" <> D.hardline
   pure [Artifact "tests/LawSpec/NativeGenerators.swift" (D.render layout doc) "generated" "test"]

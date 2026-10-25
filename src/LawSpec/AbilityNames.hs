@@ -2,7 +2,7 @@
 -- docs/reference/language/handlers.md):
 --
 --   * the interface, named like the ability: Gateway;
---   * the production handler, written by hand (or bound in lawspec.json):
+--   * the production handler, written by hand (or bound in lawspec.edn):
 --     GatewayHandler;
 --   * a spec handler's class, its name capitalized: fakeGateway is
 --     FakeGateway;

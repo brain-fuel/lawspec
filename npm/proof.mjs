@@ -434,11 +434,11 @@ export async function proveWithZ3(compiler,request,options={}) {
     const found=solverEvidence.find(item=>item.owner===row.owner&&item.declaration===row.declaration);
     if(row.stage!=='law'||!found)return row;
     if(found.status!=='proved') {
-      if(['proved','exhaustively-checked','known-failing','skipped','flaky'].includes(row.status))return row;
+      if(['proved','exhaustively-checked','known-discrepancy','skipped','flaky'].includes(row.status))return row;
       return {...row,status:found.status==='unsupported'?'unsupported':found.status==='refuted'?'refuted':'incomplete',reason:found.reason};
     }
-    if(row.status==='known-failing') {
-      diagnostics.push({code:'harness',message:`Z3 proved ${row.declaration}; its harness cannot mark it known failing`,at:found.at});
+    if(row.status==='known-discrepancy') {
+      diagnostics.push({code:'harness',message:`Z3 proved ${row.declaration}; its harness cannot mark it as a known discrepancy`,at:found.at});
       return row;
     }
     return {...row,status:'proved',reason:found.reason+`; task ${found.taskFingerprint}`};

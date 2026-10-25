@@ -143,9 +143,9 @@ emitTests Config{..} unit laws = do
             text "[]LawSpecValue{" <> D.joinWith (text ", ") (map expr (C.harnessLabels h)) <> text "}"] | observed h] ++
          [call "lsHarnessTarget" [text "t", expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [goTest (fn ++ "_Skipped") (call "lsHarnessSkip" [text "t", quoted label, quoted reason])]
-      (_, Just reason) -> docs ++ [goTest (fn ++ "_KnownFailing") (call "lsHarnessKnownFailing" [text "t", quoted label, quoted ("Test" ++ fn ++ "_KnownFailing"), quoted reason,
+      (_, Just reason) -> docs ++ [goTest (fn ++ "_KnownDiscrepancy") (call "lsHarnessKnownDiscrepancy" [text "t", quoted label, quoted ("Test" ++ fn ++ "_KnownDiscrepancy"), quoted reason,
         text "[]func(rapid.TB){" <> D.joinWith (text ", ") [text ("lawspecHarness" ++ fn ++ k) | k <- kinds] <> text "}"])]
       _ | runSettings h -> docs ++ [goTest (fn ++ k) (call "lsHarnessRun" [text "t", quoted label, quoted ("Test" ++ fn ++ k),
             number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
@@ -275,7 +275,7 @@ emitTests Config{..} unit laws = do
           linked context link test = D.lineComment 100 "// " (labelled context link) <> test
           h = C.propertyHarness (original e)
           base = drop 4 (testNames !! index)
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base
           parameters = map inputId (inputs e) ++
             [local (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           (generated,_) = claimAll (scopeWith ("symbols":parameters)) ["caseIndex","caseValues","caseContext"]
@@ -288,7 +288,7 @@ emitTests Config{..} unit laws = do
           -- Finite rows are separate native subtests; an example keeps its
           -- own top-level name and cannot collide with a numbered child.
           exampleSuffixes = map pascal (exampleTestSuffix "go"
-            ["property","replay","search","skipped","known_failing","boundaries"]
+            ["property","replay","search","skipped","known_discrepancy","boundaries"]
             (map exampleName (examples (original e))))
           bindingsOf ex = [Declare (local i) (expr v) | (i, v) <- C.exampleBindings ex]
           exampleDocs = [linked ("example " ++ displayLabel (exampleName ex)) (locationLink <$> exampleLocation ex) $
@@ -307,9 +307,9 @@ emitTests Config{..} unit laws = do
           visitParameters = indexName ++ " int, " ++ valuesName ++ " []lsFiniteValue"
           enumeration visit = call "lsFiniteCases" [text ("&" ++ coverName),closure visitParameters "bool"
             (statements [visit,text "return true"])]
-          knownFailing = C.harnessKnownFailing h /= Nothing
+          knownDiscrepancy = C.harnessKnownDiscrepancy h /= Nothing
           boundaryFunction
-            | knownFailing = testFunction ("harness:" ++ base ++ "_Boundaries") (enumeration finiteBody)
+            | knownDiscrepancy = testFunction ("harness:" ++ base ++ "_Boundaries") (enumeration finiteBody)
             | otherwise = goTest (base ++ "_Boundaries") (enumeration
                 (call "t.Run" [call "lsFiniteCaseName" [text indexName],closure "t *testing.T" "" (statements
                   ([text "t.Parallel()" | parallel] ++
@@ -369,7 +369,7 @@ emitTests Config{..} unit laws = do
       -- reads it as that test's documentation.
       let comment = D.joinWith D.hardline (map text (lines (D.render D.Compact (mconcat (map (D.lineComment 100 "// ") (lawCommentLines e))))))
           wrapped
-            | knownFailing || C.harnessSkip h /= Nothing = harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ linkedProperty)
+            | knownDiscrepancy || C.harnessSkip h /= Nothing = harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ linkedProperty)
             | otherwise = harnessTests base label h exampleKinds exampleDocs ++ boundaryDocs ++
                 harnessTests base label h propertyKinds linkedProperty
           tests = checkDoc : fst searchDocs ++ wrapped ++ snd searchDocs

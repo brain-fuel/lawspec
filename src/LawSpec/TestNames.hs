@@ -78,7 +78,7 @@ testIdentifier target ws = case target of
         capital [] = []
 
 -- What a target adds to the base identifier for one of a law's tests:
--- example0, boundary0, property, skipped, knownFailing.
+-- example0, boundary0, property, skipped, knownDiscrepancy.
 kindSuffix :: String -> String -> String
 kindSuffix target kind = case target of
   "python" -> "__" ++ snake kind
@@ -90,7 +90,7 @@ kindSuffix target kind = case target of
   _ -> "_" ++ kind
   where capital (c : cs) = toUpper c : cs
         capital [] = []
-        -- knownFailing is known failing, example12 example 12.
+        -- knownDiscrepancy is known discrepancy, example12 example 12.
         spaced (a : b : rest) | not (isDigit a), isDigit b = a : ' ' : spaced (b : rest)
         spaced (c : rest) | c `elem` ['A' .. 'Z'] = ' ' : toLower c : spaced rest
                           | otherwise = c : spaced rest

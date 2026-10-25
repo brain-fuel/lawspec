@@ -32,7 +32,7 @@ harness example.harness.testing for example.harness is
 
   end for law
   for law "|rounding never lowers a price|
-    known failing "rounds half down; see PRICE-12"
+    known discrepancy "rounds half down; see PRICE-12"
 
   end for law
   for law "|a refund is never booked twice|

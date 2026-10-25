@@ -1,4 +1,4 @@
-;; Application generators lawspec.json binds: test.check generators of the
+;; Application generators lawspec.edn binds: test.check generators of the
 ;; model's tagged values.
 (ns domain.payment-generators
   "Prices between 1.00 and 2.00 euros."

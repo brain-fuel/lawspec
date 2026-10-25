@@ -1,6 +1,6 @@
 // The harness plane in Swift: how often a law runs, how long it may take,
 // whether its cases were adequate (cover, classify, labels), targeted search
-// scores, known failures, skips and benchmarks. Statistics go to
+// scores, known discrepancies, skips and benchmarks. Statistics go to
 // LAWSPEC_STATS as the same JSON records every target writes.
 // ref:REQ-harness-units ref:DEC-never-pass-vacuously
 
@@ -257,7 +257,7 @@ public enum Harness {
       record.text)
   }
 
-  /// The expected-failure context of a `known failing` law.
+  /// The expected-failure context of a `known discrepancy` law.
   final class Expected: @unchecked Sendable {
     let law: String
     var checks: [JSON] = []
@@ -499,7 +499,7 @@ public enum Harness {
 
   /// A law known to fail: its checks must fail, and a law that passes fails
   /// the run so the mark is removed.
-  public static func knownFailing(
+  public static func knownDiscrepancy(
     _ law: String, _ name: String, _ reason: String, _ checks: [() throws -> Void]
   ) throws {
     let previous = expected.value
@@ -522,14 +522,14 @@ public enum Harness {
     }
     switch (failure, context.aborted) {
     case (nil, nil):
-      record("known-failing-passed", [])
+      record("known-discrepancy-passed", [])
       let message =
-        "\(law) is marked known failing (\(reason)), but it passes; remove `known failing` from its harness"
+        "\(law) is marked known discrepancy (\(reason)), but it passes; remove `known discrepancy` from its harness"
       FileHandle.standardError.write(Data((message + "\n").utf8))
-      throw LawSpecError("KnownFailingPassed", message)
+      throw LawSpecError("KnownDiscrepancyPassed", message)
     case (let e?, nil):
-      record("known-failing", [("failure", .string("\(e)"))])
-      print("\(law) is known to fail (\(reason)): \(e)")
+      record("known-discrepancy", [("failure", .string("\(e)"))])
+      print("\(law) has a known discrepancy (\(reason)): \(e)")
     case (let e?, _?):
       record("failed", [("failureKind", .string("harness")), ("failure", .string("\(e)"))])
       throw e

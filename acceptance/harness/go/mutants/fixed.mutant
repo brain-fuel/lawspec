@@ -1,4 +1,4 @@
-expect: is marked known failing
+expect: review the specification and implementation before removing `known discrepancy`
 @@ example/harness/adapter.go
 <<<<<<<
 	return (value0 + 4) / 10 * 10

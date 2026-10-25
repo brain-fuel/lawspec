@@ -76,7 +76,7 @@ spec handler, as for any ability.
   CLI): the handler is reviewed runtime code, its ability's laws are
   property-tested on it, and the cryptographic ones are checked against
   NIST's vectors. See [evidence and discharge](evidence-and-discharge.md).
-- **Another handler.** `handlers` in `lawspec.json` binds a different
+- **Another handler.** `handlers` in `lawspec.edn` binds a different
   production handler, as for any ability (see [handlers](handlers.md)):
   `{"ability": "lawspec.time::Clock", "native": [...]}`. The ability's laws
   then check the bound handler, and evidence reports it as assumed. The

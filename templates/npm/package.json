@@ -22,9 +22,14 @@
     "./proof": {
       "types": "./proof.d.ts",
       "import": "./proof.mjs"
+    },
+    "./component": {
+      "types": "./component.d.ts",
+      "import": "./component.mjs"
     }
   },
   "types": "index.d.ts",
+  "dependencies": {"edn-data": "1.2.2", "tar": "7.5.22"},
   "files": /*@ package-files @*/,
   "scripts": {
     "prepack": /*@ copy-documents @*/,

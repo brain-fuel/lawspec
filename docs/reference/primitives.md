@@ -150,7 +150,7 @@ user-owned.
 
 ## Machine profiles
 
-`machineBits` is `32` or `64` (the default), set in `lawspec.json`, a compiler
+`machineBits` is `32` or `64` (the default), set in `lawspec.edn`, a compiler
 request, or with `--machine-bits`. It sets the bounds of machine-sized types for
 examples, generators and bridges. Go, Haskell and Rust bind machine-sized types
 to native integers and report an architecture mismatch when the host's word

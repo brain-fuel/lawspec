@@ -4,6 +4,8 @@ import { readFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { createCompiler } from "../api.mjs";
+import {readManifest, writeManifest, findManifest, dependencyRanges, resolveComponent} from "../component.mjs";
+import {resolveDependencies, packComponent} from "../component-packages.mjs";
 import { targets, artifactTargets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { proveWithZ3 } from "../proof.mjs";
@@ -25,7 +27,7 @@ import {
   safePath,
   collectSources,
 } from "../files.mjs";
-const VERSION = "0.29.2";
+const VERSION = "0.31.0";
 const args = process.argv.slice(2);
 const verb = args.shift();
 const options = {};
@@ -41,13 +43,13 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches", "--compile"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches", "--compile", "--locked", "--offline"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
 }
-const configFile = path.resolve(options.config || "lawspec.json");
-const configRoot = path.dirname(configFile);
+let configFile = path.resolve(options.config || "lawspec.edn");
+let configRoot = path.dirname(configFile);
 const output = (value) =>
   console.log(
     typeof value === "string" ? value : JSON.stringify(value, null, 2),
@@ -100,46 +102,18 @@ async function sources(config) {
   return lawspecFiles(configRoot, config.sources);
 }
 async function lawspecFiles(root,entries){return collectSources(root,entries,configRoot);}
-// A package directory holds lawspec-package.json: its name, version, source
-// directories and dependency ranges. The compiler checks names, versions,
-// namespaces and which units may import which.
-async function loadPackage(directory) {
-  const file = path.join(directory, "lawspec-package.json");
-  const manifest = JSON.parse(await readFile(file, "utf8"));
-  if (
-    typeof manifest.name !== "string" ||
-    typeof manifest.version !== "string" ||
-    !Array.isArray(manifest.sources)
-  )
-    throw new Error(`${file}: expected name, version and a sources array`);
-  return {
-    manifest,
-    package: {
-      name: manifest.name,
-      version: manifest.version,
-      dependencies: manifest.dependencies ?? {},
-      sources: await lawspecFiles(directory, manifest.sources),
-    },
-  };
-}
 async function packageInput(owner, root, optional = false) {
-  if (owner.packages !== undefined && !Array.isArray(owner.packages))
-    throw new Error("packages must be an array of package directories");
-  const packages = await Promise.all(
-    (owner.packages ?? []).map(async (p) => {
-      try { return (await loadPackage(path.resolve(root, p))).package; }
-      catch (error) { if (optional && error.code === "ENOENT") return null; throw error; }
-    }),
-  );
-  return {
-    ...(packages.some(Boolean) ? { packages: packages.filter(Boolean) } : {}),
-    ...(owner.dependencies !== undefined ? { dependencies: owner.dependencies } : {}),
-  };
+  try {
+    const resolved = await resolveDependencies(path.join(root, "lawspec.edn"), owner,
+      {locked: !!options.locked, offline: optional || !!options.offline});
+    return {packages: resolved.packages, dependencies: dependencyRanges(owner), ...(owner.package ? {package: owner.package} : {})};
+  } catch (error) {
+    if (optional && (error.code === "ENOENT" || /Offline:/.test(error.message))) return {};
+    throw error;
+  }
 }
 async function formatCommand() {
-  const config = positional.length ? null : JSON.parse(await readFile(configFile, "utf8"));
-  if(config&&(config.version!==2||config.languageProfile!=="1.0-rc.2"))
-    throw new Error("Formatting a project requires configuration version 2 and languageProfile 1.0-rc.2");
+  const config = positional.length ? null : await readManifest(configFile);
   const root = positional.length ? process.cwd() : configRoot;
   const files = await collectSources(root, positional.length ? positional : config.sources);
   const compiler = await createCompiler();
@@ -156,8 +130,11 @@ async function formatCommand() {
 }
 
 async function packageCommand() {
-  const directory = path.resolve(options.project || ".");
-  const { manifest, package: own } = await loadPackage(directory);
+  const file = options.config ? configFile : path.resolve(options.project || ".", "lawspec.edn");
+  const directory = path.dirname(file);
+  const manifest = await readManifest(file);
+  if (!manifest.package) throw new Error(`${file}: expected a package identity`);
+  const own = {...manifest.package, dependencies: dependencyRanges(manifest), sources: await lawspecFiles(directory, manifest.sources)};
   const compiler = await createCompiler();
   const result = diagnostics(
     await compiler.check({
@@ -183,6 +160,7 @@ async function packageCommand() {
       .filter((d) => units.some((u) => d.id.startsWith(u + "::")))
       .map((d) => d.id),
   };
+  if (options.output) summary.archive = await packComponent(file, options.output);
   output(
     options.json
       ? summary
@@ -198,13 +176,16 @@ async function init() {
   if (!targets.includes(language))
     throw new Error(`Choose --target ${targets.join("|")}`);
   const root = path.resolve(configRoot, options.project || ".");
+  if (path.extname(configFile) !== '.edn') throw new Error('Use lawspec.edn; JSON configuration is no longer supported');
+  for (const old of ['lawspec.json', 'lawspec-package.json']) {
+    if (await readOptional(path.join(configRoot, old)) !== null)
+      throw new Error(`${old} is no longer supported; use lawspec.edn`);
+  }
   const current = await readOptional(configFile);
   const config =
     current === null
-      ? { version: 2, languageProfile: "1.0-rc.2", verification: { layers: [] }, sources: ["laws"], targets: [] }
-      : JSON.parse(current);
-  if(config.version!==2||config.languageProfile!=='1.0-rc.2')
-    throw new Error('Existing projects require configuration version 2 and languageProfile 1.0-rc.2');
+      ? { manifestVersion: 1, component: {name: path.basename(configRoot), version: "0.1.0"}, languageProfile: "1.0-rc.2", verification: { layers: [] }, sources: ["laws"], targets: [] }
+      : await readManifest(configFile);
   if (
     config.targets.some(
       (t) =>
@@ -241,7 +222,7 @@ async function init() {
   await safePath(configRoot, path.basename(configFile));
   if (current === null && (await readOptional(starter)) !== null)
     throw new Error(
-      "Starter specification already exists; create lawspec.json manually to use it",
+      "Starter specification already exists; create lawspec.edn manually to use it",
     );
   if (!hasBuild && language !== "go")
     await mkdir(path.join(root, "src"), { recursive: true });
@@ -262,7 +243,7 @@ async function init() {
   });
   await atomicWrite(
     configFile,
-    JSON.stringify(config, null, options.minify ? undefined : 2) + "\n",
+    writeManifest(config, {compact: options.minify === true}),
     current === null,
   );
   output(
@@ -309,7 +290,7 @@ async function lastRuns() {
   // The outcome each law last had in each attested run, by run id; across
   // targets a failure outweighs a pass.
   const outcomes = new Map();
-  const rank = (o) => ["passed", "known-failing", "skipped", "incomplete", "failed"].indexOf(o);
+  const rank = (o) => ["passed", "known-discrepancy", "skipped", "incomplete", "failed"].indexOf(o);
   for (const name of (await readOptionalDirectory(folder)) ?? []) {
     if (!name.endsWith(".json")) continue;
     const recorded = JSON.parse((await readOptional(path.join(folder, name))) ?? "{}");
@@ -334,7 +315,7 @@ async function lastRuns() {
 }
 // An environment attestation: a versioned JSON document any tool may write,
 // recording for one run where each dependency was wired and whether it was
-// the real dependency or a stand-in. --attestation names one, or lawspec.json
+// the real dependency or a stand-in. --attestation names one, or lawspec.edn
 // does; the compiler checks it. It is reporting only and changes no evidence.
 async function readAttestation(config) {
   const file = options.attestation !== undefined ? path.resolve(options.attestation)
@@ -390,7 +371,7 @@ function harnessText(item) {
   if (h.repeat > 1) parts.push(`repeat ${h.repeat}`);
   if (h.retries) parts.push(`retry flaky ${h.retries}`);
   if (h.skip) parts.push(`skip "${h.skip}"`);
-  if (h.knownFailing) parts.push(`known failing "${h.knownFailing}"`);
+  if (h.knownDiscrepancy) parts.push(`known discrepancy "${h.knownDiscrepancy}"`);
   if (h.orderRandom) parts.push("order random");
   if (h.parallel) parts.push("parallel");
   const lines = [`  ${item.declaration.replace("::law::", "::")}: ${parts.join("; ") || "no harness settings"}`];
@@ -437,7 +418,7 @@ async function buildDigest() {
 // harness tags, and a skipped law runs nothing. A law whose last run failed
 // runs first, and its failing inputs are replayed first (.lawspec/failures).
 async function runTests(compiler, input, selected, roots, config) {
-  // Recorded values live beside lawspec.json, under recorded/<unit>/<name>.
+  // Recorded values live beside lawspec.edn, under recorded/<unit>/<name>.
   const recordedFolder = path.join(configRoot, "recorded");
   const seed = options.seed ?? String(1 + Math.floor(Math.random() * 2147483646));
   const offline = process.env.LAWSPEC_OFFLINE === "1";
@@ -548,9 +529,9 @@ async function runTests(compiler, input, selected, roots, config) {
     if (target.language === "python" && stale.some((entry) => entry.parallel)) {
       xdist = spawnSync(target.python || "python3", ["-c", "import xdist"], { cwd: root, stdio: "ignore" }).status === 0;
     }
-    // A skipped law runs nothing. BEAM known-failing checks finish as native
+    // A skipped law runs nothing. BEAM known-discrepancy checks finish as native
     // passing tests, so their completion must appear in the native report.
-    const expected = (entry) => !entry.skip && (!entry.knownFailing || ["erlang", "elixir", "gleam"].includes(target.language));
+    const expected = (entry) => !entry.skip && (!entry.knownDiscrepancy || ["erlang", "elixir", "gleam"].includes(target.language));
     const benchmarking = options.benchmarks ? (planned.benchmarks ?? []) : [];
     if (batches.length || benchmarking.length) {
       for (const preparation of preparationInvocations(target, planned.files)) {
@@ -576,7 +557,7 @@ async function runTests(compiler, input, selected, roots, config) {
         for (const law of run.laws) seedOf.set(law.law, batch.seed);
         // A completed combined model method remains scoped to its own checks,
         // even if another selected method in this invocation failed.
-        passed.push(...run.laws.filter(entry=>['passed','known-failing'].includes(observed[entry.law]?.outcome)||!expected(entry)));
+        passed.push(...run.laws.filter(entry=>['passed','known-discrepancy'].includes(observed[entry.law]?.outcome)||!expected(entry)));
         if (report) junit.push({ target: `${target.language} (${target.root})`, xml: await junitOf(run, executed, root, since) });
         if (!ok || executed.some((test) => test.status === "failed")) { failed = true; break batches; }
         // A runner whose filter matched nothing reports success, so a law
@@ -637,12 +618,15 @@ async function runTests(compiler, input, selected, roots, config) {
     await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
     // Each attempt at a law the attestation touches names the run it was
     // made in, whatever its outcome.
-    if (attestation) for (const entry of stale)
-      if (attested.has(entry.law) && attempts[entry.law]) attempts[entry.law] = { ...attempts[entry.law], environment: attestation.run.id };
+    if (attestation) for (const entry of stale) {
+      if (!seedOf.has(entry.law) || !attempts[entry.law]) continue;
+      attempts[entry.law] = {...attempts[entry.law], executionRun: attestation.run.id,
+        ...(attested.has(entry.law) ? {environment: attestation.run.id} : {})};
+    }
     // Each attestation a recorded law ran under is kept with the results.
     const attestations = Object.fromEntries(Object.entries({ ...(previous.attestations ?? {}),
       ...(attestation ? { [attestation.run.id]: attestation } : {}) })
-      .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id)));
+      .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id || run.executionRun === id)));
     await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,presentation,
       ...(Object.keys(attestations).length ? { attestations } : {}) }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
@@ -770,7 +754,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -780,7 +764,7 @@ async function main() {
     return;
   }
   if (options.compile && verb !== "fmt") throw new Error("--compile applies to fmt");
-  if (verb !== "fmt" && positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))
+  if (verb !== "fmt" && positional.length > (["explain", "evidence", "update"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
   if (verb === "examples") {
     if (
@@ -814,7 +798,7 @@ async function main() {
   if (["solver","proof-timeout","proof-memory","proof-rlimit","proof-seed"].some(key => options[key] !== undefined) && verb !== "prove")
     throw new Error("Z3 options apply to prove");
   if (options.view && verb !== "explain") throw new Error("--view applies to explain");
-  if (options.output) throw new Error("--output is only supported by examples");
+  if (options.output && verb !== "package") throw new Error("--output is only supported by examples and package");
   if (options.example) throw new Error("--example is only supported by examples");
   if (options.minify && !["init", "generate", "examples", "test"].includes(verb))
     throw new Error("--minify applies to init, generate, test and examples");
@@ -831,21 +815,23 @@ async function main() {
     if (!options.stdio) throw new Error("lsp requires --stdio");
     return serveLanguage();
   }
+  if (!options.config && verb !== "init" && verb !== "package" && !(verb === "fmt" && positional.length)) {
+    configFile = await findManifest();
+    configRoot = path.dirname(configFile);
+  }
+  if (verb === "describe") return output(await resolveComponent(configFile, options));
+  if (verb === "fetch" || verb === "update") {
+    const manifest = await readManifest(configFile);
+    const resolved = await resolveDependencies(configFile, manifest, {...options, update: verb === "update" ? positional[0] ?? true : false});
+    return output(options.json ? resolved.lock : `Resolved ${resolved.packages.length} contract package(s).`);
+  }
   if (verb === "fmt") return formatCommand();
   if (verb === "init") return init();
   if (verb === "package") return packageCommand();
   if (!["check", "doctor", "evidence", "explain", "generate", "test", "prove"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
-  const config = JSON.parse(await readFile(configFile, "utf8"));
-  if (
-    config.version!==2 ||
-    !Array.isArray(config.sources) ||
-    !Array.isArray(config.targets)
-  )
-    throw new Error(
-      "Expected lawspec.json version 2 with languageProfile 1.0-rc.2, sources and targets arrays",
-    );
-  if (config.languageProfile !== "1.0-rc.2") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.2");
+  const config = await readManifest(configFile);
+  config.targets ??= [];
   if (verb === "test" && artifactTargets.includes(options.target))
     throw new Error(`${options.target} is an artifact target and cannot execute application laws`);
   const selected = config.targets.filter(
@@ -853,7 +839,7 @@ async function main() {
       (verb !== "test" || !artifactTargets.includes(t.language)),
   );
   if (["doctor", "generate", "test"].includes(verb) && !selected.length &&
-      !(verb === "test" && !options.benchmarks && config.version === 2 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))))
+      !(verb === "test" && !options.benchmarks && config.manifestVersion === 1 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))))
     throw new Error("No matching configured target");
   const roots = selected.map((t) => path.resolve(configRoot, t.root));
   if (new Set(roots).size !== roots.length)
@@ -889,12 +875,11 @@ async function main() {
     machineBits: options.machineBits ?? config.machineBits ?? 64,
     // What a law-set exemption's until is compared with: the project's
     // version and the current UTC time.
-    ...(typeof config.projectVersion === "string" ? { projectVersion: config.projectVersion } : {}),
+    ...((config.component?.version ?? config.package?.version) ? {projectVersion: config.component?.version ?? config.package?.version} : {}),
     now: new Date().toISOString(),
   };
   const compiler = await createCompiler();
   if (verb === "prove") {
-    if (config.version !== 2) throw new Error("prove requires configuration version 2 and languageProfile 1.0-rc.2");
     const result = diagnostics(await proveWithZ3(compiler, input, {
       ...(options.solver !== undefined ? {binary: options.solver} : {}),
       ...Object.fromEntries([["proof-timeout","timeoutMs"],["proof-memory","memoryMb"],
@@ -924,9 +909,9 @@ async function main() {
     ["exempted", "EXEMPTED"],
     // A law a confirmed counterexample shows false; the build fails.
     ["refuted", "REFUTED"],
-    // The harness plane: a law it marks as known to fail, a law whose last
+    // The harness plane: an acknowledged discrepancy, a law whose last
     // run was flaky, and a law whose tests it skips.
-    ["known-failing", "KNOWN FAILING"],
+    ["known-discrepancy", "KNOWN DISCREPANCY"],
     ["flaky", "FLAKY"],
     ["skipped", "SKIPPED"],
     // A law about an open history that the entries so far do not decide.
@@ -964,7 +949,7 @@ async function main() {
     return;
   }
   if (verb === "evidence") {
-    // An attestation named here, or in lawspec.json, says where the tests
+    // An attestation named here, or in lawspec.edn, says where the tests
     // ran; otherwise each law shows the attested run it last passed in.
     // A named attestation of a run lawspec test recorded links each law to
     // that run, with the outcome recorded for it, unless the document says
@@ -1052,7 +1037,8 @@ async function main() {
           ...environments.map((e) => `ENVIRONMENT ${e.environment} (run ${e.run.id}, recorded ${e.run.recordedAt}${executionText(e.run)})\n` +
             (e.architecture ? `  architecture ${e.architecture.document} ${e.architecture.digest}` +
               (e.architecture.topologyDigest ? `, topology ${e.architecture.topologyDigest}` : "") + "\n" : "") +
-            (e.application ? `  application ${e.application.node}: contract ${e.application.contract.package} ${e.application.contract.version}; ` +
+            (e.application ? `  application ${e.application.node}: ` +
+              (e.application.component ? `component ${e.application.component.name} ${e.application.component.version} (${e.application.component.fingerprint}); ` : `contract ${e.application.contract.package} ${e.application.contract.version}; `) +
               `${e.application.implementation.kind} ${e.application.implementation.product} ${e.application.implementation.version}` +
               (e.application.implementation.commit ? ` (commit ${e.application.implementation.commit})` : "") + "\n" : "") +
             e.dependencies.map((d) => {
@@ -1079,7 +1065,7 @@ async function main() {
     output(options.json ? explained.explanations : explained.text);
     return;
   }
-  if (verb === "test" && !options.benchmarks && config.version === 2 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))) {
+  if (verb === "test" && !options.benchmarks && config.manifestVersion === 1 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))) {
     const checked = diagnostics(await compiler.check(input));
     output(options.json ? { verification: checked.verification, evidence: checked.evidence, testsExecuted: 0 }
       : (config.verification?.layers?.length ? "No native law checks selected. See lawspec evidence for the selected static analyses." : "No law verification layers selected. Intrinsic definition checks passed; no law checks ran."));

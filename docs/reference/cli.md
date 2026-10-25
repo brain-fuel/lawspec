@@ -30,7 +30,7 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 
 | Option | Meaning |
 | --- | --- |
-| `--config <path>` | The project configuration file. Default: `./lawspec.json`. Relative paths in it resolve from its directory. |
+| `--config <path>` | The project configuration file. Default: `./lawspec.edn`. Relative paths in it resolve from its directory. |
 | `--target <language>` | Select configured targets of this language. Without it, generation uses every configured target and testing uses the configured program targets. |
 | `--machine-bits <32\|64>` | Override the configuration's machine profile for this command. |
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
@@ -101,7 +101,7 @@ their inputs change. The results are the same as without the cache.
 - It contains its own `.gitignore`, so it is never committed.
 - A damaged entry is recomputed and replaced. Deleting the folder is always
   safe.
-- `--no-cache`, or `"cache": false` in `lawspec.json`, turns it off. It is also
+- `--no-cache`, or `"cache": false` in `lawspec.edn`, turns it off. It is also
   off when the configuration file is outside the working directory, which the
   WebAssembly compiler cannot reach.
 
@@ -117,15 +117,15 @@ Creates or extends a project configuration.
 - `--project <directory>`: the target's root, relative to the configuration
   file. Default: the configuration file's directory.
 - `--machine-bits <32|64>`: write `machineBits` into the configuration.
-- `--minify`: write compact scaffolds and configuration JSON.
+- `--minify`: write compact scaffolds and an EDN configuration.
 
-When there is no configuration file, `init` creates `lawspec.json` with
+When there is no configuration file, `init` creates `lawspec.edn` with
 `sources: ["laws"]` and a starter specification `laws/atoi_codec.lawspec`. It
 fails if the starter already exists. When the file exists, it adds the target.
 A target of the same language with the same root is an error.
 
-New configurations use version 2, `languageProfile: "1.0-rc.2"` and
-`verification.layers: []`. Select optional law checks explicitly; intrinsic
+New manifests use `:manifest-version 1`, `:language-profile "1.0-rc.2"` and
+`:verification {:layers []}`. Select optional law checks explicitly; intrinsic
 definition validation remains mandatory.
 
 If the target root has no build files (such as `pom.xml`, `pyproject.toml`,
@@ -146,7 +146,7 @@ the compiler's full result.
 
 ## `prove`
 
-Requires configuration version 2 and selects the configured `proof` layer.
+Requires a version 1 `lawspec.edn` manifest and selects the configured `proof` layer.
 The compiler prepares typed tasks; the Node host invokes the specified Z3
 executable, or `z3` on `PATH`. With no proof layer selected, no solver is invoked.
 See [proof with Z3](../explanation/smt-proof.md) for supported theories, resource
@@ -168,7 +168,7 @@ contracts retain their own guarantees.
 Lists every obligation with its stage, identity, claim and reason, grouped by
 status. Completed evidence, `PLANNED`, `NOT VERIFIED`, `INCOMPLETE`,
 `UNSUPPORTED`, `ASSUMED / EXTERNAL`, `EXEMPTED` and `PENDING` retain their distinct meanings, alongside
-the harness plane's `KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section
+the harness plane's `KNOWN DISCREPANCY`, `FLAKY` and `SKIPPED`. A `HARNESS` section
 follows: for each
 law with a [harness](language/harness.md), how it is tested (strategies,
 `cover`, `classify`, `label`, tags, timeout, retries) and, from the last
@@ -186,7 +186,7 @@ and its harness are kept apart: the harness can never change the obligation.
   wired and whether it was the real dependency or a stand-in. Each tested law
   that relies on an attested dependency gets a line saying where it ran and
   against what, and an `ENVIRONMENT` section lists the dependencies. Without
-  it, the `attestation` path in `lawspec.json` is read; without either, each
+  it, the `attestation` path in `lawspec.edn` is read; without either, each
   law shows the attested `lawspec test` run it last passed in, if any. When
   the named attestation's run id is one `lawspec test` recorded, each law
   run in it is reported as completed, with its outcome, the run's exit code
@@ -355,7 +355,7 @@ native test run, preserving shared resource lifetimes. Law identities include
 their unit, so identical labels in different units remain independently
 selectable. EUnit and ExUnit completion events supply the execution report;
 an incomplete report or a report from an earlier invocation cannot count as
-evidence. Skipped laws run no checks. A known-failing BEAM law must complete
+evidence. Skipped laws run no checks. A known-discrepancy BEAM law must complete
 its native test to count as checked.
 
 BEAM selections also include each model's sequential check, its parallel
@@ -368,10 +368,10 @@ them.
 - `--fresh`: run every law's tests.
 - `--update-recorded`: run every law's tests, and record each value a law
   compares with `recorded "name"` again, under `recorded/<unit>/<name>` beside
-  `lawspec.json`. Without it, a missing or different recording fails its law.
+  `lawspec.edn`. Without it, a missing or different recording fails its law.
   See [recorded values](language/laws-and-examples.md#recorded-values).
 - `--attestation <file>`: the environment attestation of the environment the
-  tests run in (default: the `attestation` path in `lawspec.json`). It is
+  tests run in (default: the `attestation` path in `lawspec.edn`). It is
   checked, kept with the run's results, and each law it touches that passes
   names it, so `lawspec evidence` later shows which laws ran against
   stand-ins. A law it touches runs again when its dependencies are wired
@@ -423,7 +423,7 @@ them.
   test runners' output goes to standard error.
 
 A law's [harness](language/harness.md) shapes the run: a skipped law has no
-test to run, a known-failing law's one test is expected to fail, flaky retries
+test to run, a known-discrepancy law's one test is expected to fail, flaky retries
 and unmet `cover` requirements are listed after the summary. Benchmarks are
 not laws, so `lawspec test` runs them only with `--benchmarks`; the target's
 own test command runs them too, and prints their measurements. The harness runtimes write their statistics to
@@ -475,7 +475,7 @@ Checks a package directory on its own and prints its name, version, units, laws,
 data types and dependencies.
 
 - `--project <directory>`: the package directory, containing
-  `lawspec-package.json`. Default: the current directory.
+  `lawspec.edn`. Default: the current directory.
 
 The package's own `dependencies` and `packages` fields are used to resolve its
 dependencies. See [configuration](configuration.md#lawspec-packagejson).

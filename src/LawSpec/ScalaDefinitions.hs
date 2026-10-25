@@ -187,7 +187,7 @@ emitScalaDefinitions layout bits declarations units = do
     abilitiesObjectOf unit = let parts = split '.' unit
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     -- An adapter that fails with E: its native code answers Left with a
-    -- native E (or throws an exception lawspec.json maps to a failure).
+    -- native E (or throws an exception lawspec.edn maps to a failure).
     failing owner adapter = failingAs [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a]
       [b | u <- units, unitId u == owner, b <- unitFailureBindings u]
     failingAs failures failureBindings body = case failures of

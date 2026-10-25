@@ -57,7 +57,7 @@ Cleanup has a separate five-second allowance per resource for draining
 borrowers and another five seconds for release. A callback that exceeds its
 cleanup allowance is terminated and the run reports a cleanup failure.
 Other resources still get their cleanup attempt. A failed or timed-out
-cleanup cannot be accepted by `known failing` or retried into a passing run.
+cleanup cannot be accepted by `known discrepancy` or retried into a passing run.
 The native runner waits for surviving owners before finishing the suite.
 
 An acquisition that never returns has not supplied a value to `release`.
@@ -165,7 +165,7 @@ These come with LawSpec, from the built-in unit `lawspec.resources`:
 
 Each acquires and releases through [`lawspec.host`](host.md#resources)'s
 abilities, under their production handlers, so binding another `FileSystem`,
-`Environment` or `Ports` handler in `lawspec.json` changes how they do it.
+`Environment` or `Ports` handler in `lawspec.edn` changes how they do it.
 
 `SavedEnvironment` lets a law change the environment through its adapters,
 and puts it back afterwards. A JVM cannot change its process environment, so

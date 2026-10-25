@@ -1,4 +1,5 @@
 // Generated from templates/tools/beam-crypto-integration.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // The installed CLI must connect crypto planning, native build hooks, the C NIF,
 // native properties/vectors, coverage, caching and failure replay.
 import assert from 'node:assert/strict';
@@ -40,11 +41,11 @@ const packageSource = process.env.LAWSPEC_NPM_SOURCE;
 const packed = JSON.parse((await run('npm', ['pack', '--json', '--pack-destination', base,
   ...(packageSource ? ['--ignore-scripts'] : [])], path.resolve(packageSource ?? path.join(repo, 'npm')))).stdout)[0];
 const installation = path.join(base, 'installation');
-await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+await run('npm', ['install', ...(process.env.LAWSPEC_OFFLINE === '1' ? ['--offline'] : ['--prefer-offline']), '--ignore-scripts', '--no-audit', '--no-fund',
   '--prefix', installation, path.join(base, packed.filename)], base);
 const packageRoot = path.join(installation, 'node_modules/lawspec');
 const cli = path.join(packageRoot, 'bin/lawspec.mjs');
-const configFile = path.join(base, 'lawspec.json');
+const configFile = path.join(base, 'lawspec.edn');
 async function call(verb, flags = [], options = {}) {
   const result = await run(process.execPath, [cli, verb, '--config', configFile, ...flags], base, options);
   return {...result, ...(flags.includes('--json') ? {json: JSON.parse(result.stdout)} : {})};
@@ -71,11 +72,11 @@ if (language === 'gleam') await run('gleam', ['build']);
 
 const source = await readFile(path.join(repo, 'test/fixtures/cli-canonical/crypto.lawspec'), 'utf8');
 await writeFile(path.join(base, 'crypto.lawspec'), source);
-const config = JSON.parse(await readFile(configFile, 'utf8'));
+const config = parseManifest(await readFile(configFile, 'utf8'));
 config.verification = canonical.verification;
 config.sources = ['crypto.lawspec'];
 config.targets[0].nativeBindings = JSON.parse(await readFile(path.join(repo, 'acceptance/crypto', language, 'bindings.json'), 'utf8'));
-await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
+await writeFile(configFile, writeManifest(config, null, 2) + '\n');
 for (const kind of ['files', 'native'])
   await cp(path.join(repo, 'acceptance/crypto', language, kind), project, {recursive: true});
 

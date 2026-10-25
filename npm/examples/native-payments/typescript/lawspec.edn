@@ -1,0 +1,123 @@
+{
+  :manifest-version 1
+  :component {
+    :name "typescript"
+    :version "0.1.0"
+  }
+  :sources ["laws"]
+  :machine-bits 64
+  :targets [
+    {
+      :language :typescript
+      :root "."
+      :native-bindings {
+        :types [
+          {
+            :type "example.payments::type::Currency"
+            :native ["payments_domain" "CurrencyCode"]
+            :constructors [
+              {
+                :constructor "USD"
+                :native ["payments_domain" "Dollars"]
+                :style "unit"
+                :fields []
+              }
+              {
+                :constructor "EUR"
+                :native ["payments_domain" "Euros"]
+                :style "unit"
+                :fields []
+              }
+              {
+                :constructor "GBP"
+                :native ["payments_domain" "Pounds"]
+                :style "unit"
+                :fields []
+              }
+            ]
+          }
+          {
+            :type "example.payments::type::Money"
+            :native ["payments_domain" "Price"]
+            :constructors [
+              {
+                :constructor "Money"
+                :native ["payments_domain" "Price"]
+                :style "record"
+                :fields [
+                  {
+                    :field "amount"
+                    :native "major"
+                  }
+                  {
+                    :field "currency"
+                    :native "unit"
+                  }
+                ]
+              }
+            ]
+          }
+          {
+            :type "example.payments::type::Payment"
+            :native ["payments_domain" "PaymentStatus"]
+            :constructors [
+              {
+                :constructor "Paid"
+                :native ["payments_domain" "Settled"]
+                :style "variant"
+                :fields [
+                  {
+                    :field "value"
+                    :native "price"
+                  }
+                ]
+              }
+              {
+                :constructor "Declined"
+                :native ["payments_domain" "Rejected"]
+                :style "variant"
+                :fields [
+                  {
+                    :field "value"
+                    :native "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        :functions [
+          {
+            :declaration "example.payments::addFee"
+            :native ["payments_domain" "apply_fee"]
+          }
+          {
+            :declaration "example.payments::roundTrip"
+            :native ["payments_domain" "restore"]
+          }
+          {
+            :declaration "example.payments::archive"
+            :native ["payments_domain" "store"]
+          }
+        ]
+        :generators [
+          {
+            :type "example.payments::type::Money"
+            :factory ["lawspec_generators" "prices"]
+          }
+        ]
+      }
+    }
+  ]
+  :language-profile "1.0-rc.2"
+  :verification {
+    :layers [
+      :proof
+      :exhaustive
+      :property
+      :examples
+      :runtime
+      :model
+    ]
+  }
+}

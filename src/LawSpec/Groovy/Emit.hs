@@ -121,7 +121,7 @@ groovyTestTitle pu name =
     capital (c : cs) = toUpper c : cs
     capital [] = []
 
--- | A method name's words: knownFailing is known failing, example0 example 0.
+-- | A method name's words: knownDiscrepancy is known discrepancy, example0 example 0.
 spaced :: String -> String
 spaced = unwords . words . go
   where

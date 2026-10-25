@@ -610,7 +610,7 @@ terraformPredicate environment expression = case C.expressionNode expression of
 makePipeline :: Maybe FilePath -> String
 makePipeline source = unlines
   [ "# " ++ generatedHeader source
-  , "# Run from the directory that holds lawspec.json."
+  , "# Run from the directory that holds lawspec.edn."
   , ""
   , "LAWSPEC ?= lawspec"
   , ""

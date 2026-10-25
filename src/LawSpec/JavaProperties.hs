@@ -118,9 +118,9 @@ testCases unit laws = concat (zipWith cases (unitTestNames "java" (map name laws
           finite = [TestCase (base ++ "_boundary") Nothing (Just e)
             (Abi.FiniteCases (memberName base "Cases") (memberName base "Boundary") boundaries) | boundaries > 0]
           property' = [TestCase (base ++ "_property") Nothing (Just e) Abi.SingleCase | finiteCover e == Nothing]
-      in case (C.harnessSkip h, C.harnessKnownFailing h) of
+      in case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
         (Just reason, _) -> [TestCase (base ++ "_skipped") (Just (owner e ++ "::" ++ name e ++ ": " ++ reason)) (Just e) Abi.SingleCase]
-        (_, Just _) -> [TestCase (base ++ "_knownFailing") Nothing (Just e) Abi.SingleCase]
+        (_, Just _) -> [TestCase (base ++ "_knownDiscrepancy") Nothing (Just e) Abi.SingleCase]
         _ -> examples' ++ finite ++ property'
 
 boundaryCount :: Expanded -> Integer
@@ -162,7 +162,7 @@ caseMethodFor Style.PlainCases name = "case" ++ capital (camel name)
 
 -- | The test names of a law's examples, after its own name.
 exampleSuffixesOf :: Expanded -> [String]
-exampleSuffixesOf e = exampleTestNames ("property" : "skipped" : "knownFailing" : "replay" :
+exampleSuffixesOf e = exampleTestNames ("property" : "skipped" : "knownDiscrepancy" : "replay" :
   map boundaryTestName [0 .. boundaries - 1]) (map exampleName (examples (original e)))
   where boundaries = length (maybe (boundaryCases e) id (finiteCases e))
 
@@ -266,7 +266,7 @@ emitTests Config{..} unit laws = do
     propertyName index e =
       let h = C.propertyHarness (original e)
           base = unitTestNames "java" (map name laws) !! index
-      in (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
+      in (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base
     testMark = if testStyle == Style.JUnit then text "@Test" <> D.hardline else mempty
     junitTest name body = testMark <> braced (text ("public void " ++ caseMethodFor testStyle name ++ "()")) body
     throwingTest name body = testMark <> braced (text ("public void " ++ caseMethodFor testStyle name ++ "() throws Throwable")) body
@@ -283,15 +283,15 @@ emitTests Config{..} unit laws = do
             E.array (map expr (C.harnessLabels h))]) | observed h] ++
          [statement (call "LawSpecHarness.target" [expr score, quoted label]) | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownDiscrepancy h) of
       (Just reason, _) -> [(if testStyle == Style.JUnit then text "@org.junit.jupiter.api.Disabled(" <> quoted (label ++ ": " ++ reason) <> text ")" <> D.hardline else mempty) <>
         junitTest (fn ++ "_skipped") mempty]
-      (_, Just reason) -> docs ++ [junitTest (fn ++ "_knownFailing") (statements
+      (_, Just reason) -> docs ++ [junitTest (fn ++ "_knownDiscrepancy") (statements
         ([bind "knownFailures" (call "new java.util.ArrayList<lawspec.testing.LawSpecHarness.Body>" [])] ++
          [statement (call "knownFailures.add" [text ("this::" ++ harnessMethod (fn ++ k))]) | k <- kinds, k /= "_property"] ++
          extraBodies ++
          [statement (call "knownFailures.add" [text ("this::" ++ harnessMethod (fn ++ k))]) | k <- kinds, k == "_property"] ++
-         [statement (call "LawSpecHarness.knownFailing" [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, text "knownFailures"])]))]
+         [statement (call "LawSpecHarness.knownDiscrepancy" [quoted label, quoted (fn ++ "_knownDiscrepancy"), quoted reason, text "knownFailures"])]))]
       _ | runSettings h -> docs ++ [throwingTest (fn ++ k) (statement (call "LawSpecHarness.run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              text "new int[] {" <> D.commaSep [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h] <> text "}",
@@ -429,7 +429,7 @@ emitTests Config{..} unit laws = do
           shown = shownLaw e
           h = C.propertyHarness (original e)
           base = testNames !! index
-          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownDiscrepancy h /= Nothing || runSettings h) then "harness:" else "") ++ base
           exampleSuffixes = exampleSuffixesOf e
           checkNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
@@ -484,7 +484,7 @@ emitTests Config{..} unit laws = do
             text "@org.junit.jupiter.params.ParameterizedTest(name = " <> quoted "{0}" <> text ")" <> D.hardline <>
             call "@org.junit.jupiter.params.provider.MethodSource" [quoted argumentsSource] <> D.hardline <>
             braced (call ("public void " ++ base ++ "_boundary") [text "LawSpecRuntime.FiniteCase finiteCase"] <> text " throws Throwable") runCase]
-            | testStyle == Style.JUnit, Cover.coverCount cover > 0, C.harnessSkip h == Nothing, C.harnessKnownFailing h == Nothing]
+            | testStyle == Style.JUnit, Cover.coverCount cover > 0, C.harnessSkip h == Nothing, C.harnessKnownDiscrepancy h == Nothing]
           extraBodies = [braced (text "for (var finiteCase : " <> call source [] <> text ")")
             (statement (call "knownFailures.add" [caseBody]))]
       let descriptors = searchDescriptors e

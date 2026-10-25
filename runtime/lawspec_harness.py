@@ -1,7 +1,7 @@
 # The harness plane at run time (see docs/reference/language/harness.md):
 # how a law's tests run, never what the law means. Generated tests call it
 # for strategies (frequency, such that, bind), adequacy (cover, classify,
-# label), run metadata (skip, known failing, timeout, repeat, retry flaky,
+# label), run metadata (skip, known discrepancy, timeout, repeat, retry flaky,
 # order random) and benchmarks.
 #
 # Statistics go to standard output, and, when LAWSPEC_STATS names a
@@ -245,9 +245,9 @@ def skip(law, reason):
     pytest.skip(f"{law}: {reason}")
 
 
-def known_failing(law, name, reason, tests):
-    """A known-failing law's tests must fail. One that passes is reported:
-    the harness should no longer say it is known to fail."""
+def known_discrepancy(law, name, reason, tests):
+    """A known-discrepancy law's tests must fail. One that passes is reported:
+    the harness requires human review of the specification and implementation."""
     import pytest
 
     for test in tests:
@@ -259,18 +259,18 @@ def known_failing(law, name, reason, tests):
                 {
                     "law": law,
                     "test": name,
-                    "outcome": "known-failing",
+                    "outcome": "known-discrepancy",
                     "reason": reason,
                 },
             )
-            pytest.xfail(f"{law} is known to fail ({reason}): {type(error).__name__}")
+            pytest.xfail(f"{law} has a known discrepancy ({reason}): {type(error).__name__}")
     _record(
         name,
-        {"law": law, "test": name, "outcome": "known-failing-passed", "reason": reason},
+        {"law": law, "test": name, "outcome": "known-discrepancy-passed", "reason": reason},
     )
     raise HarnessError(
-        f"{law} is marked known failing ({reason}), but it passes; "
-        "remove `known failing` from its harness"
+        f"{law} is marked known discrepancy ({reason}), but it passes; "
+        "remove `known discrepancy` from its harness"
     )
 
 

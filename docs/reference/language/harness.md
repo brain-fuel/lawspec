@@ -66,12 +66,12 @@ end unit
 
 ## Which plane a thing belongs to
 
-| Law plane (the unit) | Harness plane (the harness) | Toolchain (`lawspec.json`, the CLI) |
+| Law plane (the unit) | Harness plane (the harness) | Toolchain (`lawspec.edn`, the CLI) |
 | --- | --- | --- |
 | laws, examples, definitions, types | strategies: how inputs are drawn | report paths: `--report junit=…` |
 | abilities and handlers | `test with`: which lawful handlers tests use | coverage: `--coverage` |
 | `using`: a handler that is part of the claim | adequacy: `cover`, `classify`, `label`, `target maximize` | the failure database, `.lawspec/failures` |
-| resources, and whether they can `reset` | run metadata: `tags`, `skip`, `known failing`, `timeout`, `repeat`, `retry flaky`, `order random`, `parallel` | selection: `--tag`, `--exclude-tag` |
+| resources, and whether they can `reset` | run metadata: `tags`, `skip`, `known discrepancy`, `timeout`, `repeat`, `retry flaky`, `order random`, `parallel` | selection: `--tag`, `--exclude-tag` |
 | refinements of inputs | `share R per group \| unit \| run` | native handler bindings |
 | performance budgets | `benchmark`: measured, never asserted | |
 
@@ -249,15 +249,21 @@ example.harness::a discount is never more than the total: 100 generated case(s)
 | --- | --- |
 | `tags a, b` | Tags for selecting laws: `lawspec test --tag a --exclude-tag b`. |
 | `skip "reason"` | Run none of the law's tests. The law is still an obligation, reported as `skipped`. |
-| `known failing "reason"` | The law's tests must fail. If they pass, the run fails: "… is marked known failing (…), but it passes; remove `known failing` from its harness". Evidence reports `known-failing`. |
+| `known discrepancy "reason"` | Acknowledge a mismatch between the law and its implementation or model. Checks must reproduce it; a passing run fails and requests human review before removing the annotation. Evidence reports `known-discrepancy`. |
 | `timeout 2 s` | Fail a test that takes longer (`ms`, `s` or `min`), in real time, even for a law `using virtual clock`: a virtual clock moves only when the law moves it, so a stuck law would never time out by it. |
 | `repeat n` | Run each test `n` times; every run must pass. |
 | `retry flaky n` | Run a failing test again, up to `n` times. A test that then passes is reported as flaky, and evidence shows `flaky` until a clean run. A harness failure (an unmet `cover`, a strategy's value outside the refinement) is never retried. |
 | `order random` | (unit) Run the law tests in an order chosen by the run's seed. |
 | `parallel` | (unit) Let the law tests run at the same time. |
 
-`known failing` cannot be put on a law the compiler proves or evaluates
-itself: such a law is either true or a compile error.
+The annotation does not decide which side is wrong. Human review determines
+whether the specification, implementation, or both need correction. It neither
+proves the law nor changes what the law requires. Before execution, the evidence
+reason identifies it as a harness annotation; completed native observations
+record whether the discrepancy was reproduced.
+
+`known discrepancy` cannot override a compiler proof or a completed exhaustive
+check. Mandatory definition validation remains independent of harness settings.
 
 ## Proof settings
 
@@ -306,15 +312,15 @@ native generation and shrinking. It stops the test worker and joins its
 LawSpec asynchronous children. Resource owners then finish cleanup within
 their separate [cleanup allowance](resources.md#beam-ownership-and-cancellation).
 A timeout or cleanup failure is a harness failure: it cannot be retried or
-accepted by `known failing`. Native runner timeouts include extra room for
+accepted by `known discrepancy`. Native runner timeouts include extra room for
 the configured repetitions and cleanup.
 
-On BEAM, a known-failing law runs its checks until the first law failure.
+On BEAM, a known-discrepancy law runs its checks until the first law failure.
 Its report includes the checks it attempted and the original failure.
 Generator errors and unmet coverage requirements remain harness failures;
-they cannot satisfy a known-failing annotation. If all checks pass, including
+they cannot satisfy a known-discrepancy annotation. If all checks pass, including
 after configured retries, the run fails and asks you to remove the annotation.
-The shared search policy excludes known-failing laws from extra targeted
+The shared search policy excludes known-discrepancy laws from extra targeted
 searches; their native property cases still report target scores.
 
 Elixir reports skipped laws with ExUnit's native skip tag. Erlang and Gleam
@@ -373,7 +379,7 @@ Every harness setting holds on every target:
 | strategies | yes | yes | yes | yes | yes | yes | yes |
 | `cover`, `classify`, `label` | yes | yes | yes | yes | yes | yes | yes |
 | `target maximize` | yes (Hypothesis) | yes (LawSpec climbs) | yes (LawSpec) | yes (LawSpec) | yes (LawSpec) | yes (LawSpec) | yes (LawSpec) |
-| `tags`, `skip`, `known failing` | yes | yes | yes | yes | yes | yes | yes |
+| `tags`, `skip`, `known discrepancy` | yes | yes | yes | yes | yes | yes | yes |
 | `timeout`, `repeat`, `retry flaky` | yes | yes | yes | yes | yes | yes | yes |
 | `order random` | yes | yes | yes | yes | yes | yes | yes |
 | `parallel` | yes (see above) | yes (see above) | yes | yes | yes | yes | yes |
@@ -416,7 +422,7 @@ virtual one. It is never
 asserted: a performance requirement belongs in a law, as a budget. A
 benchmark may call adapters and checked definitions, and what it calls may
 use abilities: it runs under each ability's production handler (the one
-bound in `lawspec.json`, the native one, or the runtime's default), installed
+bound in `lawspec.edn`, the native one, or the runtime's default), installed
 around it. Benchmarks run with the target's own test command, and with
 `lawspec test --benchmarks`.
 
@@ -451,12 +457,12 @@ failing inputs the [failure database](../cli.md#the-failure-database) kept
 with `target maximize` a `search` test, LawSpec's climb (Java and Rust climb
 at its end). The
 test manifest (`tests` in a generation result) carries each law's name, tags,
-`skip` and `knownFailing`, which `lawspec test` uses to select tests.
+`skip` and `knownDiscrepancy`, which `lawspec test` uses to select tests.
 
 ## Evidence
 
 `lawspec evidence` keeps the two planes apart. Each law's obligation comes
 from the law; how it was discharged comes from the harness, shown after the
 obligations, with the last run's adequacy. The harness adds three statuses:
-`known-failing`, `flaky` and `skipped`. See
+`known-discrepancy`, `flaky` and `skipped`. See
 [Evidence and discharge](evidence-and-discharge.md).

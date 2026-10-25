@@ -237,7 +237,7 @@ export class SignatureHandler implements abilities.Signature {
 
 /**
  * SLH-DSA-SHAKE-128f, hedged: the alternative Signature handler. Bind it in
- * lawspec.json: {"ability": "lawspec.crypto::Signature", "native": ["lawspec",
+ * lawspec.edn: {"ability": "lawspec.crypto::Signature", "native": ["lawspec",
  * "crypto", "SlhDsaSignatureHandler"]}.
  */
 export class SlhDsaSignatureHandler implements abilities.Signature {

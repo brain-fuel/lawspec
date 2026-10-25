@@ -162,7 +162,7 @@ Handlers.clusterState symbols`, then `Handlers.clusterBroker symbols state`
 and `Handlers.clusterAdmin symbols state` share one state.
 
 Arguments and results convert directly between the native types and the
-typed forms, without the dynamic values the laws use (when `lawspec.json`
+typed forms, without the dynamic values the laws use (when `lawspec.edn`
 binds native types, they cross through the handler schema instead). The
 handler is safe to share between threads on Rust, Go, Java, Kotlin, Python and
 Haskell, and between processes on the BEAM: its operations apply one at a time, each to the state the previous

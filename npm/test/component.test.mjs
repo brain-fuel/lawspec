@@ -1,0 +1,116 @@
+// Generated from templates/npm/test/component.test.mjs by lawspec-dev generate. Do not edit.
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp, writeFile, mkdir, rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {parseManifest, writeManifest, readManifest, findManifest, resolveComponent} from '../component.mjs';
+
+const project = {manifestVersion: 1, component: {name: 'example', version: '0.1.0'}, languageProfile: '1.0-rc.2', sources: ['laws'], targets: [{language: 'javascript', root: '.'}]};
+async function directory(t) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-component-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  return root;
+}
+
+test('manifest EDN preserves nested binding keys, Unicode and enum values', () => {
+  const value = {...project, targets: [{language: 'rust', root: '.', nativeBindings: {functions: [{declaration: 'example::read', native: ['example', 'read']}], types: []}}]};
+  const readable = writeManifest(value), compact = writeManifest(value, {compact: true});
+  assert.deepEqual(parseManifest(readable), value);
+  assert.deepEqual(parseManifest(compact), value);
+  assert.equal(compact.trim().split('\n').length, 1);
+  assert.match(readable, /\n  :component \{/);
+  assert.throws(() => writeManifest(value, {compact: 'yes'}), /boolean/);
+  assert.equal(parseManifest('{:component {:name "λ" :version "0.1.0"} :manifest-version 1}').component.name, 'λ');
+});
+
+test('init forwards the compact layout to its EDN manifest', async t => {
+  const root = await directory(t);
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  await promisify(execFile)(process.execPath, [path.resolve(import.meta.dirname, '../bin/lawspec.mjs'),
+    'init', '--target', 'javascript', '--machine-bits', '32', '--minify'], {cwd: root});
+  const manifest = await readManifest(path.join(root, 'lawspec.edn'));
+  const {readFile} = await import('node:fs/promises');
+  const content = await readFile(path.join(root, 'lawspec.edn'), 'utf8');
+  assert.equal(content.trim().split('\n').length, 1);
+  assert.equal(manifest.manifestVersion, 1);
+  assert.equal(manifest.machineBits, 32);
+  assert.equal(manifest.targets[0].language, 'javascript');
+});
+
+test('EDN duplicate and normalized duplicate keys are rejected before conversion', () => {
+  for (const text of ['{:sources [] :sources ["other"]}', '{:source-dir "a" :sourceDir "b"}'])
+    assert.throws(() => parseManifest(text), /duplicate/i);
+});
+
+test('EDN must be exactly one complete data map and never evaluates tags', () => {
+  for (const text of ['{:name "unfinished"', '{} {}', '[{}]', '{:x #=(println "never")}', '{:x (code)}', '{:x symbol}', '{:x #{1 2}}'])
+    assert.throws(() => parseManifest(text), /complete|map|unsupported|one/i);
+  assert.deepEqual(parseManifest('{} ; trailing comment'), {});
+});
+
+test('manifest discovery ascends to the nearest component and rejects JSON', async t => {
+  const root = await directory(t);
+  await mkdir(path.join(root, 'laws/nested'), {recursive: true});
+  await writeFile(path.join(root, 'lawspec.edn'), writeManifest(project));
+  assert.equal(await findManifest(path.join(root, 'laws/nested')), path.join(root, 'lawspec.edn'));
+  await writeFile(path.join(root, 'laws/lawspec.json'), '{}');
+  await assert.rejects(findManifest(path.join(root, 'laws')), /lawspec\.edn/);
+});
+
+test('readManifest reports independent manifest validation failures', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  await writeFile(file, '{:manifest-version 1 :component {:name "" :version "bad"} :sources false :targets []}');
+  await assert.rejects(readManifest(file), error => error.diagnostics.length >= 3);
+});
+
+test('dependency source fields reject wrong types and source-incompatible options', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  for (const dependency of [
+    {version: '^1.0.0', git: false},
+    {version: '^1.0.0', path: 'api', rev: 'main'},
+    {version: '^1.0.0', git: 'https://example.com/api.git', tagPrefix: 1},
+  ]) {
+    await writeFile(file, writeManifest({...project, dependencies: {api: dependency}}));
+    await assert.rejects(readManifest(file), /nonempty string|Git dependency|tagPrefix/);
+  }
+});
+
+test('resolved component describes checked laws, fingerprints and declaration reliance', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  await mkdir(path.join(root, 'laws'));
+  await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nread :: Unit -> Int32\nlaw "|the recorded answer| is definition: read unitValue = 42 end definition end law\nend unit\n');
+  await writeFile(file, writeManifest(project));
+  const described = await resolveComponent(file);
+  assert.equal(described.format, 'lawspec-component');
+  assert.equal(described.version, 1);
+  assert.equal(described.component.name, 'example');
+  assert.equal(described.laws.length, 1);
+  assert.match(described.fingerprint, /^[a-f0-9]{64}$/);
+  const previous = described.fingerprint;
+  await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nread :: Unit -> Int32\nlaw "|the recorded answer| is definition: read unitValue = 43 end definition end law\nend unit\n');
+  assert.notEqual((await resolveComponent(file)).fingerprint, previous);
+});
+
+test('descriptions validate native bindings even with optional verification disabled', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  await mkdir(path.join(root, 'laws'));
+  await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nread :: Unit -> Int32\nend unit\n');
+  await writeFile(file, writeManifest({...project, verification: {layers: []}, targets: [{language: 'javascript', root: '.', nativeBindings: {functions: [{declaration: 'example::missing', native: ['example', 'read']}]}}]}));
+  await assert.rejects(resolveComponent(file), /missing|unknown|binding/i);
+});
+
+test('absolute component locations keep WASI caches inside the component without duplicating host paths', async t => {
+  const root = await directory(t), file = path.join(root, 'lawspec.edn');
+  await mkdir(path.join(root, 'laws'));
+  await writeFile(path.join(root, 'laws/example.lawspec'), 'unit example\nfunction answer (u :: Unit) -> Int32 is 42 end function\nend unit\n');
+  await writeFile(file, writeManifest(project));
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  const {readdir} = await import('node:fs/promises');
+  await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `import {resolveComponent} from ${JSON.stringify(new URL('../component.mjs', import.meta.url).href)}; await resolveComponent(${JSON.stringify(file)});`], {cwd: root});
+  assert.ok((await readdir(path.join(root, '.lawspec/cache'))).some(name => /^[a-f0-9]{16}$/.test(name)));
+  const entries = await readdir(root);
+  assert.ok(!entries.includes('Users') && !entries.includes('var') && !entries.includes('private'));
+});

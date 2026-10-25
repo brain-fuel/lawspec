@@ -9,7 +9,7 @@ A handler gives an ability's operations meaning. LawSpec has three kinds:
 
 - **Spec handlers**, written in LawSpec: fakes, models, test doubles.
 - **The native production handler**, written by hand on each target, or bound
-  to existing code in `lawspec.json`.
+  to existing code in `lawspec.edn`.
 - **Recordings**, built in: `recording h` wraps any handler and counts its
   calls.
 
@@ -330,7 +330,7 @@ atomic update.
 ## Binding a production handler
 
 In a unit with bound adapters, or to use existing code, bind each ability's
-production handler under `handlers` in the native bindings of `lawspec.json`:
+production handler under `handlers` in the native bindings of `lawspec.edn`:
 
 ```json
 "handlers": [
@@ -366,7 +366,7 @@ production handlers too.
 ## Native failures
 
 Application code that fails with its own exceptions maps them to failure
-constructors under `failures` in `lawspec.json`:
+constructors under `failures` in `lawspec.edn`:
 
 ```json
 "failures": [

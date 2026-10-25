@@ -148,7 +148,7 @@ emit target layout bindings plan = do
           test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (contextFor [measure] ++ [measure]))]
       pure (E.function (name ++ "_test_") [] [E.array
         [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
-    single h = C.harnessSkip h /= Nothing || C.harnessKnownFailing h /= Nothing
+    single h = C.harnessSkip h /= Nothing || C.harnessKnownDiscrepancy h /= Nothing
     lawTests unit name planned
       | Just reason <- C.harnessSkip (C.propertyHarness (plannedProperty planned)) =
           let law = plannedProperty planned
@@ -311,7 +311,7 @@ emit target layout bindings plan = do
       let -- Validate explicitly requested draws before deterministic checks
           -- can satisfy a known failure and bypass strategy/coverage checks.
           (before, after)
-            | C.harnessKnownFailing harness /= Nothing && sampleFinite plan planned =
+            | C.harnessKnownDiscrepancy harness /= Nothing && sampleFinite plan planned =
                 (randomTests ++ examples, searchTests)
             | otherwise = (examples, randomTests ++ searchTests)
           fixed pairs = [E.tuple [E.atom "fixed", E.array (map fst pairs)] | not (null pairs)]
@@ -319,12 +319,12 @@ emit target layout bindings plan = do
           planDoc = E.function planName [] [E.array (fixed before ++ finiteGroups ++ fixed after)]
           ordinary = E.remote "lawspec_beam_finite" "plan_cases" [E.call planName []]
           caseFunctions = map snd (before ++ after)
-          tests = case C.harnessKnownFailing harness of
+          tests = case C.harnessKnownDiscrepancy harness of
             Nothing -> ordinary
             Just reason ->
               let expected = E.tuple [E.string (firstDescriptionOf plan planned),
-                    E.lambda [] (E.remote "lawspec_beam_harness" "known_failing"
-                      [lawIdentity,E.binary (label ++ " known failing"),E.binary reason,ordinary])]
+                    E.lambda [] (E.remote "lawspec_beam_harness" "known_discrepancy"
+                      [lawIdentity,E.binary (label ++ " known discrepancy"),E.binary reason,ordinary])]
               in E.array [nativeTimeout expected]
           parameterList = E.array [E.variable v body | (_,v) <- aliases]
           bodyDoc = E.define macroName (E.binary label) <> D.hardline <> D.hardline <>
@@ -334,7 +334,7 @@ emit target layout bindings plan = do
           caseDoc = E.function caseName [D.text (if plainScope then "Schema" else "BaseSchema"),symbols,D.text "Values"]
             [workflowScope (if plainScope then acquired else scoped (D.text "BaseSchema") schema acquired)]
           caseAtDoc = E.function (name ++ "_case_at") [D.text "Index"]
-            [if C.harnessKnownFailing harness == Nothing
+            [if C.harnessKnownDiscrepancy harness == Nothing
                then E.remote "lawspec_beam_finite" "case_at" [E.call planName [], D.text "Index"]
                else E.remote "lists" "nth" [E.operator "+" (D.text "Index") (D.text "1"), E.call (name ++ "_test_") []]]
       pure ([bodyDoc] ++ [caseDoc | not plainCase] ++
@@ -349,11 +349,11 @@ emit target layout bindings plan = do
 
 -- | The names of a law's cases, in the order its test list runs them:
 -- each example's own words, boundary_1, boundary_2, ..., then property,
--- statistics or search. A skipped or known-failing law has one case.
+-- statistics or search. A skipped or known-discrepancy law has one case.
 caseSuffixes :: Plan -> PlannedProperty -> [String]
 caseSuffixes plan planned
   | C.harnessSkip harness /= Nothing = ["skipped"]
-  | C.harnessKnownFailing harness /= Nothing = ["known_failing"]
+  | C.harnessKnownDiscrepancy harness /= Nothing = ["known_discrepancy"]
   | otherwise = examples ++ boundarySuffixes ++ random ++ search
   where
     law = plannedProperty planned
@@ -363,7 +363,7 @@ caseSuffixes plan planned
       Just _ | not (sampleFinite plan planned) -> ["statistics" | observed harness]
       _ -> ["property"]
     search = ["search" | targetSearch plan planned /= Nothing]
-    examples = exampleTestSuffix "erlang" (["skipped", "known_failing", "statistics", "property", "search"] ++ boundarySuffixes)
+    examples = exampleTestSuffix "erlang" (["skipped", "known_discrepancy", "statistics", "property", "search"] ++ boundarySuffixes)
       (map C.exampleName (C.propertyExamples law))
 
 firstDescriptionOf :: Plan -> PlannedProperty -> String
@@ -382,7 +382,7 @@ caseDescriptions plan planned = uniqueNames (map bounded (zipWith describe (case
     examples = map (displayLabel . C.exampleName) (C.propertyExamples law)
     describe suffix example = case (suffix, example) of
       ("skipped", _) -> shown ++ " skipped"
-      ("known_failing", _) -> shown ++ " known failing"
+      ("known_discrepancy", _) -> shown ++ " known discrepancy"
       ("property", _) -> shown ++ " property"
       ("statistics", _) -> shown ++ " statistics"
       ("search", _) -> shown ++ " search"
@@ -453,7 +453,7 @@ runnerAllowance planned = runnerGuard + count * (attempts * timeout + cleanup)
     timeout = maybe 0 id (C.harnessTimeout harness)
     attempts = C.harnessRepeat harness * (1 + C.harnessRetries harness)
     cleanup = 10000 * toInteger (length (C.propertyResources law))
-    count = case C.harnessKnownFailing harness of
+    count = case C.harnessKnownDiscrepancy harness of
       Nothing -> 1
       Just _ -> 2 + toInteger (length (C.propertyExamples law) + length (maybe (boundaryCases planned) id (finiteCases planned)))
 
@@ -471,7 +471,7 @@ withHarnessNamed label testName harness resources observations body
         (E.atom "observed",E.atom (if observations then "true" else "false"))] ++
         [(E.atom "timeout",D.text (show ms)) | Just ms <- [C.harnessTimeout harness]]) | controlled] ++ [E.lambda [] body])
   where controlled = resources || C.harnessTimeout harness /= Nothing || C.harnessRepeat harness /= 1 ||
-          C.harnessRetries harness /= 0 || C.harnessKnownFailing harness /= Nothing
+          C.harnessRetries harness /= 0 || C.harnessKnownDiscrepancy harness /= Nothing
 
 -- | Acquire and release in a surviving resource owner. The case borrows its
 -- handle; nested brackets release in reverse order, including on cancellation.

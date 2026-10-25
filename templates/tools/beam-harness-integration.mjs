@@ -1,3 +1,4 @@
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Exercise public harness compilation through the actual installed npm archive.
 // Native callbacks independently audit selection, skips and benchmarks.
 // ref:REQ-harness-units ref:DEC-tests-cite-requirements
@@ -39,10 +40,10 @@ const packageSource = process.env.LAWSPEC_NPM_SOURCE;
 const packed = JSON.parse((await run('npm', ['pack', '--json', '--pack-destination', base,
   ...(packageSource ? ['--ignore-scripts'] : [])], path.resolve(packageSource ?? path.join(repo, 'npm')))).stdout)[0];
 const installation = path.join(base, 'installation');
-await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+await run('npm', ['install', ...(process.env.LAWSPEC_OFFLINE === '1' ? ['--offline'] : ['--prefer-offline']), '--ignore-scripts', '--no-audit', '--no-fund',
   '--prefix', installation, path.join(base, packed.filename)], base);
 const packageRoot = path.join(installation, 'node_modules/lawspec');
-const cli = path.join(packageRoot, 'bin/lawspec.mjs'), configFile = path.join(base, 'lawspec.json');
+const cli = path.join(packageRoot, 'bin/lawspec.mjs'), configFile = path.join(base, 'lawspec.edn');
 const layoutFlags = minify ? ['--minify'] : [];
 async function call(verb, flags = [], options = {}) {
   const result = await run(process.execPath, [cli, verb, '--config', configFile, ...flags], base, options);
@@ -81,12 +82,12 @@ for (const entry of fixtureSources) {
   await writeFile(path.join(base, source.path), source.content);
 }
 sources.sort((a, b) => a.path.localeCompare(b.path));
-const config = JSON.parse(await readFile(configFile, 'utf8'));
+const config = parseManifest(await readFile(configFile, 'utf8'));
 config.verification = canonical.verification;
 // Keep the strategy/search fixtures sampled and the Boolean fixtures exhaustive.
 config.generation = {cases: 100, maxAttempts: 10000, maxShrinks: 1000, exhaustiveLimit: 256};
 config.sources = sources.map(source => source.path);
-await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
+await writeFile(configFile, writeManifest(config, null, 2) + '\n');
 await call('generate', ['--json', ...layoutFlags]);
 for (const suite of suites)
   for (const kind of ['files', 'native'])
@@ -136,7 +137,7 @@ assert.ok(!first.benchmarks);
 assert.deepEqual((await benchmarkCalls()).map(row => row.name), ['ordinary']);
 const records = await harnessStatistics(statsPath);
 assert.ok(records.some(row => row.law === lawIdentity('example.selectionB', 'skipped') && row.outcome === 'skipped'));
-assert.ok(records.some(row => row.law === lawIdentity('example.selectionB', 'known') && row.outcome === 'known-failing'));
+assert.ok(records.some(row => row.law === lawIdentity('example.selectionB', 'known') && row.outcome === 'known-discrepancy'));
 assert.ok(records.some(row => row.law === lawIdentity('example.adequacy', 'generated observations') && row.cases === 100
   && row.cover.every(cover => cover.met)));
 assert.ok(records.some(row => row.law === lawIdentity('example.repetition', 'repeated random cases')
@@ -146,7 +147,7 @@ assert.ok(records.some(row => row.law === lawIdentity('example.resourceOwners', 
 const junit = await readFile(path.join(base, 'harness.xml'), 'utf8');
 assert.ok(junit.includes('example.selectionA') && junit.includes('example.selectionB'));
 assert.match(junit, /<skipped/);
-console.log('PASS public compiler, all harness laws, skip/known-fail, flaky retries, repeat/coverage/search, parallelism and JUnit');
+console.log('PASS public compiler, all harness laws, skip/known-discrepancy, flaky retries, repeat/coverage/search, parallelism and JUnit');
 
 await rm(selectionAudit, {force: true});
 await rm(benchmarkAudit, {force: true});
@@ -190,15 +191,15 @@ await writeFile(helper, original.replace('    N.', '    case N of 4 -> 5; _ -> N
 try {
   const repairedKnown = await test(['--fresh', '--seed', '811'], {pass: false, environment});
   assert.equal(repairedKnown.json[0].ok, false);
-  assert.match(repairedKnown.output, /known_failing_passed|KnownFailingPassed/);
-  assert.ok((await harnessStatistics(statsPath)).some(row => row.outcome === 'known-failing-passed'));
+  assert.match(repairedKnown.output, /known_discrepancy_passed|KnownDiscrepancyPassed/);
+  assert.ok((await harnessStatistics(statsPath)).some(row => row.outcome === 'known-discrepancy-passed'));
 } finally {
   await new Promise(resolve => setTimeout(resolve, 1100));
   await writeFile(helper, original);
 }
 const recovered = (await test()).json[0];
 assert.ok(recovered.ok && !recovered.unrun, JSON.stringify(recovered));
-console.log('PASS unexpectedly passing known failure is rejected, and restoration replays successfully');
+console.log('PASS unexpectedly passing known discrepancy is rejected, and restoration replays successfully');
 
 // The CLI owns recording selection and cache invalidation; the native runtime
 // owns comparison and the explicit write. Exercise both from the installed package.

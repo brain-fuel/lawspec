@@ -6,19 +6,43 @@ title: Configuration and build targets
 # Configuration and build targets
 
 The `hcl`, `yaml`, `antlr4` and `make` targets generate artifacts from checked
-LawSpec definitions and data. They use the same `lawspec.json` target entries
+LawSpec definitions and data. They use the same `lawspec.edn` target entries
 and `lawspec generate` command as program targets. They emit no application
 law tests or benchmarks. `lawspec test` runs the configured program targets;
 selecting an artifact target explicitly reports that it cannot execute laws.
 Definition validation remains mandatory for every target.
 
-```json
-{"version":2,"languageProfile":"1.0-rc.2","verification":{"layers":[]},
- "sources":["laws"],"targets":[
-   {"language":"yaml","root":"configuration"},
-   {"language":"hcl","root":"terraform"},
-   {"language":"antlr4","root":"grammar"},
-   {"language":"make","root":"."}]}
+```edn
+{
+  :manifest-version 1
+  :component {
+    :name "example"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
+  :verification {
+    :layers []
+  }
+  :sources ["laws"]
+  :targets [
+    {
+      :language :yaml
+      :root "configuration"
+    }
+    {
+      :language :hcl
+      :root "terraform"
+    }
+    {
+      :language :antlr4
+      :root "grammar"
+    }
+    {
+      :language :make
+      :root "."
+    }
+  ]
+}
 ```
 
 Artifacts go directly in their target root. An optional `sourceDir` puts all
@@ -220,7 +244,7 @@ failed stage stops the later stages. The default goal is `verify`.
 
 ```sh
 make
-make LAWSPEC='lawspec --config ../lawspec.json'
+make LAWSPEC='lawspec --config ../lawspec.edn'
 ```
 
 Run from the directory containing `lawspec.json`, or specify its path as

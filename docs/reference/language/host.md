@@ -100,5 +100,5 @@ abilities: `TemporaryDirectory` and `TemporaryFile` acquire through
 `SavedEnvironment` through `environmentSnapshot` and `restoreEnvironment`,
 and `FreePort` through `freePort`. A law that takes one runs those
 operations under the ability's production handler: the default one, or the
-one `lawspec.json` binds. A program that names a built-in resource gets
+one `lawspec.edn` binds. A program that names a built-in resource gets
 `lawspec.host` without importing it.

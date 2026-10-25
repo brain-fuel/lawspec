@@ -584,7 +584,7 @@ export function data(tag, fields) {
   return new ls.DataValue(tag, fields);
 }
 
-// Whether lawspec.json bound the native types a handler's values cross
+// Whether lawspec.edn bound the native types a handler's values cross
 // with: then they cross through the handler schema, not directly.
 export function bound() {
   return ls.handlerSchemaBound();

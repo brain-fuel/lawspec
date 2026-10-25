@@ -160,7 +160,7 @@ let private recordedRoot () =
 
         let rec find (folder: string) =
             if
-                File.Exists(Path.Combine(folder, "lawspec.json"))
+                File.Exists(Path.Combine(folder, "lawspec.edn"))
                 || Directory.Exists(Path.Combine(folder, "recorded"))
             then
                 Path.Combine(folder, "recorded")

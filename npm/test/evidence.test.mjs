@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/evidence.test.mjs by lawspec-dev generate. Do not edit.
+import {configEDN} from './manifest-fixtures.mjs';
 // lawspec evidence reports how every obligation is discharged.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,7 +40,7 @@ async function project(t, source) {
   t.after(() => rm(root, {recursive: true, force: true}));
   await mkdir(path.join(root, 'laws'));
   await writeFile(path.join(root, 'laws', 'evidence.lawspec'), source);
-  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: []}));
+  await writeFile(path.join(root, 'lawspec.edn'), configEDN({manifestVersion: 1, languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: []}));
   return root;
 }
 
@@ -152,9 +153,9 @@ test('evidence --attestation reports which tested laws ran against stand-ins, ch
   assert.match(text, /PLANNED \(2\)/);
 });
 
-test('lawspec.json names an attestation, and a malformed one is rejected', async t => {
+test('lawspec.edn names an attestation, and a malformed one is rejected', async t => {
   const root = await project(t, attestedSpec);
-  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: [], attestation: 'staging.json'}));
+  await writeFile(path.join(root, 'lawspec.edn'), configEDN({manifestVersion: 1, languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: [], attestation: 'staging.json'}));
   await writeFile(path.join(root, 'staging.json'), JSON.stringify(attestation('run-2')));
   const evidence = JSON.parse(await lawspec(root, 'evidence', '--json'));
   assert.equal(evidence.find(item => item.declaration === 'shop.orders::law::checkoutCharges').plannedEnvironmentRun.id, 'run-2');
@@ -269,7 +270,7 @@ test('a named completed attestation links the laws of its run, and wiring, runni
 
 test('no selected layers are visible in check and evidence without a verification claim', async t => {
   const root = await project(t, spec);
-  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2,
+  await writeFile(path.join(root, 'lawspec.edn'), configEDN({manifestVersion: 1,
     languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ['laws'], targets: []}));
   assert.match(await lawspec(root, 'check'), /Intrinsic definition checks passed\. No law checks selected\./);
   const evidence = JSON.parse(await lawspec(root, 'evidence', '--json'));

@@ -1,4 +1,5 @@
 // Generated from templates/tools/package-smoke.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -7,6 +8,7 @@ import path from "node:path";
 import { programTargets as targets } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
+const env = {...process.env, npm_config_cache: path.join(repo, '.artifacts/npm-cache')};
 const output = process.env.LAWSPEC_PACKAGE_DIR ??
   path.join(repo, ".artifacts/package-smoke");
 await mkdir(output, { recursive: true });
@@ -15,7 +17,7 @@ const packed = JSON.parse(
     await exec(
       "npm",
       ["pack", "./npm", "--pack-destination", output, "--json"],
-      { cwd: repo, encoding: "utf8" },
+      { cwd: repo, env, encoding: "utf8" },
     )
   ).stdout,
 );
@@ -27,6 +29,7 @@ async function run(cmd, args, cwd = root, {timeout = 1800000} = {}) {
   try {
     const result = await exec(cmd, args, {
       cwd,
+      env,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
       timeout,
@@ -71,16 +74,18 @@ try {
     ],
     app,
   );
+  await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+    '--prefix', path.join(root, 'offline-installation'), archive]);
   const cli = path.join(app, "node_modules/lawspec/bin/lawspec.mjs");
   // Init deliberately selects no optional law checks. This smoke run opts in
   // before exercising the generated native tests.
-  const configPath = path.join(app, "lawspec.json");
-  const config = JSON.parse(await readFile(configPath, "utf8"));
-  if (config.version !== 2 || config.languageProfile !== "1.0-rc.2" ||
+  const configPath = path.join(app, "lawspec.edn");
+  const config = parseManifest(await readFile(configPath, "utf8"));
+  if (config.manifestVersion !== 1 || config.languageProfile !== "1.0-rc.2" ||
       config.verification.layers.length !== 0)
     throw new Error("Init did not create the canonical profile with no selected checks");
   config.verification = {layers: ["property", "examples"]};
-  await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
+  await writeFile(configPath, writeManifest(config, null, 2) + "\n");
   await run("npm", ["exec", "--no", "--", "lawspec", "check"], app);
   const explanation = await run(
     "npm",
@@ -211,10 +216,10 @@ try {
   const rust=path.join(root,'rust');
   await mkdir(rust);
   await run(process.execPath,[cli,'init','--target','rust'],rust);
-  const rustConfigPath = path.join(rust, 'lawspec.json');
-  const rustConfig = JSON.parse(await readFile(rustConfigPath, 'utf8'));
+  const rustConfigPath = path.join(rust, 'lawspec.edn');
+  const rustConfig = parseManifest(await readFile(rustConfigPath, 'utf8'));
   rustConfig.verification = {layers: ['property', 'examples']};
-  await writeFile(rustConfigPath, JSON.stringify(rustConfig, null, 2) + '\n');
+  await writeFile(rustConfigPath, writeManifest(rustConfig, null, 2) + '\n');
   await run(process.execPath,[cli,'doctor'],rust);
   await run(process.execPath,[cli,'generate'],rust);
   await writeFile(path.join(rust,'src/example/codec.rs'),'pub fn itoa(value:i32)->String {value.to_string()}\npub fn atoi(value:String)->i32 {value.parse().unwrap()}\n');

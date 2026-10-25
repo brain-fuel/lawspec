@@ -1,7 +1,8 @@
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Initializes isolated reference projects; dependency installation is explicit developer tooling.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { access, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { access, readFile, writeFile, mkdir, copyFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { programTargets as targets, templates } from "../npm/templates.mjs";
 const exec = promisify(execFile);
@@ -23,13 +24,17 @@ async function run(cmd, args, cwd, environment = {}) {
 async function setup(target) {
   if (!targets.includes(target)) throw new Error(`Unknown target ${target}`);
   const root = path.join(repo, ".integration", target);
-  const configPath = path.join(root, "lawspec.json");
+  const configPath = path.join(root, "lawspec.edn");
   const exists = await access(configPath).then(
     () => true,
     () => false,
   );
-  if (!exists)
-    await run(
+  const oldFixture = await access(path.join(root, 'lawspec.json')).then(() => true, () => false);
+  if (!exists && oldFixture) {
+    await rm(path.join(root, 'lawspec.json'));
+    await writeFile(configPath, writeManifest({manifestVersion: 1, component: {name: target, version: '0.1.0'},
+      languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ['laws'], targets: [{language: target, root: '.'}]}));
+  } else if (!exists) await run(
       process.execPath,
       [
         path.join(repo, "npm/bin/lawspec.mjs"),
@@ -50,7 +55,7 @@ async function setup(target) {
       await writeFile(destination, content);
     }
   }
-  const config = JSON.parse(await readFile(configPath, "utf8"));
+  const config = parseManifest(await readFile(configPath, "utf8"));
   if (["javascript", "typescript"].includes(target)) {
     const lock = path.join(repo, "test/locks", target, "package-lock.json");
     if (
@@ -169,7 +174,7 @@ async function setup(target) {
     }
     if (target === "gleam") await run("gleam", ["build"], root);
   }
-  await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
+  await writeFile(configPath, writeManifest(config, null, 2) + "\n");
 }
 const chosen = process.argv.slice(2);
 const results = await Promise.allSettled(

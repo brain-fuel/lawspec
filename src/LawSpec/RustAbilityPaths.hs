@@ -42,7 +42,7 @@ performBridges units =
 bridgeName :: C.Ability -> String -> String
 bridgeName a op = nativeIdentifier "rust" FunctionName (if null (C.abilityArguments a) then op else interfaceName a ++ " " ++ op)
 
--- The panic payloads lawspec.json maps to failures of this type, as the
+-- The panic payloads lawspec.edn maps to failures of this type, as the
 -- last argument of ls::native_failures: each payload type T becomes its
 -- constructor, given T's Debug text when the constructor takes a message.
 mappedFailures :: Int -> Maybe String -> [C.FailureBinding] -> C.Type -> L.Expr

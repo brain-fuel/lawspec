@@ -1,4 +1,5 @@
 // Generated from templates/tools/parity.mjs by lawspec-dev generate. Do not edit.
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Compare complete compiler responses across native and WASM boundaries.
 // Matching rejections are counted separately from accepted backend generation.
 import {execFileSync} from 'node:child_process';
@@ -83,11 +84,11 @@ for(const machineBits of [32,64])for(const minify of [false,true]){
   console.log('Generation full-response parity:',machineBits,'bits, compact=',minify);
 }
 const projectRoot=path.join(root,'examples/packages/orders');
-const config=JSON.parse(await readFile(path.join(projectRoot,'lawspec.json'),'utf8'));
+const config=parseManifest(await readFile(path.join(projectRoot,'lawspec.edn'),'utf8'));
 const packages=await Promise.all(config.packages.map(async name=>{
   const directory=path.resolve(projectRoot,name);
-  const manifest=JSON.parse(await readFile(path.join(directory,'lawspec-package.json'),'utf8'));
-  return {name:manifest.name,version:manifest.version,...(manifest.dependencies?{dependencies:manifest.dependencies}:{}),
+  const manifest=parseManifest(await readFile(path.join(directory,'lawspec.edn'),'utf8'));
+  return {name:manifest.package.name,version:manifest.package.version,...(manifest.dependencies?{dependencies:manifest.dependencies}:{}),
     sources:await collectSources(directory,manifest.sources)};
 }));
 const packaged={...options,sources:await collectSources(projectRoot,config.sources),dependencies:config.dependencies,packages};

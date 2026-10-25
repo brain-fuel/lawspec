@@ -1,7 +1,7 @@
 unit example.bank
 
 -- A bound production handler whose operation fails: the application's
--- handler throws its own exceptions, and lawspec.json maps them to the
+-- handler throws its own exceptions, and lawspec.edn maps them to the
 -- operation's failures.
 
 type VaultError is one of

@@ -21,7 +21,8 @@ import qualified LawSpec.Core.Program as P
 -- when the tests ran, weaker than a property test. DefaultHandler is a
 -- built-in ability's default handler: reviewed runtime code whose ability's
 -- laws are property-tested. The last three come from the harness plane: a law
--- its harness skips, or marks as known to fail, is still an obligation; flaky
+-- its harness skips, or acknowledges as a discrepancy, is still an obligation;
+-- a discrepancy assigns no fault to the specification or implementation. Flaky
 -- is a run's outcome (a test that failed, then passed on a retry), which
 -- lawspec evidence reads from the last run.
 -- Refuted is no evidence for a law: a confirmed counterexample shows it
@@ -30,7 +31,7 @@ import qualified LawSpec.Core.Program as P
 -- Exempted is a law-set check a `laws for` block excuses, with a reason and
 -- maybe an expiry: weaker than assumed, it keeps its counterexample.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | Exempted | Refuted | KnownFailing | Flaky | Skipped | Pending | Planned | NotVerified | Incomplete | Unsupported
+  | Exempted | Refuted | KnownDiscrepancy | Flaky | Skipped | Pending | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -50,7 +51,7 @@ statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"
 statusName Refuted = "refuted"
 statusName Exempted = "exempted"
-statusName KnownFailing = "known-failing"
+statusName KnownDiscrepancy = "known-discrepancy"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"
 statusName Pending = "pending"

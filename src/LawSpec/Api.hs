@@ -44,13 +44,16 @@ import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
 import qualified Data.Text as T
 import System.IO.Unsafe (unsafePerformIO)
+import qualified LawSpec.Component as Component
 
 -- | One function from request bytes to response bytes, because that is all a
 -- WASM export can carry without a shared heap; the work every method shares is
 -- memoised so a host asking for several targets compiles once.
 -- ref:DEC-incremental-compilation
 dispatch :: B.ByteString -> B.ByteString
-dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
+dispatch bytes
+  | Just value <- decode bytes, Just result <- Component.componentRequest value = encode result
+  | otherwise = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
   Right (_, _, Left err) -> failure [Diagnostic "attestation" err Nothing]
   Right ((method,sources,_,_,_,_,_,_,_,_),(project,packages),Right _)
@@ -81,8 +84,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                         obligationStage item=="law", obligationStatus item==NotVerified =
                           case [why | unit<-C.programUnits core, law<-C.unitProperties unit,
                             C.propertyId law==obligationDeclaration item,
-                            Just why<-[C.harnessKnownFailing (C.propertyHarness law)]] of
-                            why:_ -> item{obligationStatus=KnownFailing,obligationReason="marked known failing: "++why}
+                            Just why<-[C.harnessKnownDiscrepancy (C.propertyHarness law)]] of
+                            why:_ -> item{obligationStatus=KnownDiscrepancy,obligationReason="marked known discrepancy: "++why++"; human review must determine whether the specification, implementation, or both need correction"}
                             [] -> item{obligationStatus=Planned,obligationReason="an SMT proof task is requested; no solver execution has completed"}
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
@@ -347,7 +350,7 @@ withTests original verification testing entries (Object o) = Object (KM.insert "
       [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
       , "index" .= entryIndex e, "file" .= entryFile e, "key" .= entryKey e
       , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
-      , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e
+      , "skip" .= entrySkip e, "knownDiscrepancy" .= entryKnownDiscrepancy e
       , "parallel" .= entryParallel e ] ++
       ["coverage" .= coverage e] ++
       ["kind" .= kind | Just kind<-[entryKind e]] ++ ["scope" .= scope | Just scope<-[entryScope e]] ++

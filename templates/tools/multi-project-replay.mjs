@@ -1,3 +1,4 @@
+import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Projects sharing a language must retain independent failing seeds and inputs.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -34,7 +35,7 @@ const source = process.env.LAWSPEC_NPM_SOURCE;
 const packed = JSON.parse((await run('npm', ['pack', '--json', '--pack-destination', base,
   ...(source ? ['--ignore-scripts'] : [])], path.resolve(source ?? path.join(repo, 'npm')))).stdout)[0];
 const installation = path.join(base, 'installation');
-await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+await run('npm', ['install', ...(process.env.LAWSPEC_OFFLINE === '1' ? ['--offline'] : ['--prefer-offline']), '--ignore-scripts', '--no-audit', '--no-fund',
   '--prefix', installation, path.join(base, packed.filename)]);
 const cli = path.join(installation, 'node_modules/lawspec/bin/lawspec.mjs');
 const call = (verb, flags = [], pass = true) => run(process.execPath, [cli, verb, ...flags,
@@ -71,11 +72,11 @@ for (const project of projects) {
     if (language === 'gleam') await run('gleam', ['build'], project);
   }
 }
-const configFile = path.join(base, 'lawspec.json');
-const config = JSON.parse(await readFile(configFile, 'utf8'));
+const configFile = path.join(base, 'lawspec.edn');
+const config = parseManifest(await readFile(configFile, 'utf8'));
 config.sources = ['replay.lawspec'];
 config.verification = {layers: ['property', 'examples']};
-await writeFile(configFile, JSON.stringify(config, null, 2));
+await writeFile(configFile, writeManifest(config, null, 2));
 const replayLaw = name => `law "|${name}| is definition: for all (value :: Int32 where value >= 100 && value <= 200) => observe value must be value end for all end definition end law
 `;
 await writeFile(path.join(base, 'replay.lawspec'),
@@ -150,9 +151,9 @@ assert.deepEqual(await readdir(path.join(directories[0], 'inputs')), []);
 console.log('PASS repair replays only the failed project and clears its own counterexample');
 
 // Project identity remains stable when another target is removed and re-added.
-await writeFile(configFile, JSON.stringify({...config, targets: config.targets.slice(0, 1)}, null, 2));
+await writeFile(configFile, writeManifest({...config, targets: config.targets.slice(0, 1)}, null, 2));
 assert.deepEqual(JSON.parse((await call('test', ['--json'])).stdout)[0].ran, []);
-await writeFile(configFile, JSON.stringify(config, null, 2));
+await writeFile(configFile, writeManifest(config, null, 2));
 assert.ok(JSON.parse((await call('test', ['--json'])).stdout).every(result => result.ran.length === 0));
 console.log(`PASS project state survives removing and re-adding another target (${language}, ${bits}, compact=${minify}, max_failures=${maxFailures})`);
 
