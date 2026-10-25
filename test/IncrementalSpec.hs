@@ -1,6 +1,7 @@
 -- | Incremental compilation and its cache keys.
 module IncrementalSpec (test_incrementalCompilationGivesTheSameResultAsAFreshOne) where
 
+import Control.Monad (forM_)
 import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
 import Data.List (find, isInfixOf, isPrefixOf)
@@ -178,6 +179,27 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       -- A cached function must replay its own request even if another function
       -- now introduces a distinct literal before it in the module.
       removePathForcibly root
+    forM_ [("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function")] $ \(target, table) ->
+      it ("reuses an unchanged " ++ target ++ " function when an earlier function requests a new helper") $ do
+        root <- (</> ("lawspec-" ++ target ++ "-definition-memo-test")) <$> getTemporaryDirectory
+        removePathForcibly root
+        let run body = decode (dispatch (encode (object
+              ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+               "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
+               "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
+                 ["unit incremental.helperChunks",
+                  "function unrelated (value :: Integer) -> Integer is " ++ body ++ " end function",
+                  "function unchanged (values :: List Integer) -> Bool is values = values end function", "end unit"]]]]))) :: Maybe Value
+            good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+            good _ = False
+        run "value + 1" `shouldSatisfy` good
+        [versioned] <- listDirectory root
+        first <- listDirectory (root </> versioned </> table)
+        length first `shouldBe` 2
+        run "if [\"x\"] = [\"x\"] then value else -value end if" `shouldSatisfy` good
+        second <- listDirectory (root </> versioned </> table)
+        length second `shouldBe` 3
+        removePathForcibly root
   describe "the on-disk cache" $ do
     it "reads an entry another process stored, and recomputes one it cannot read" $ do
       root <- (</> "lawspec-memo-test") <$> getTemporaryDirectory

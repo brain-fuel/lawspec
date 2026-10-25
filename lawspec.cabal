@@ -834,6 +834,7 @@ library
       LawSpec.TestNames
       LawSpec.Time
       LawSpec.Typed.Beam
+      LawSpec.Typed.EmissionContext
       LawSpec.Typed.FSharp
       LawSpec.Typed.Go
       LawSpec.Typed.Haskell

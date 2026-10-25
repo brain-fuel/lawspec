@@ -12,6 +12,12 @@ module LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped) where
 
 import Control.Monad (forM, forM_)
 import Control.Monad.State.Strict
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as Context
 import Data.Char (isAlphaNum, isUpper, toLower, ord)
 import Data.List (intercalate, isPrefixOf, sortOn)
 import qualified Data.Map.Strict as M
@@ -20,6 +26,7 @@ import qualified Data.Set as S
 import Numeric (showHex)
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
+import LawSpec.CorePersist ()
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import LawSpec.PythonTypes (namesFor, pythonHashable, pythonTypeReferenceDoc, pythonLayout)
@@ -56,6 +63,8 @@ data Env = Env
   , envFunctions :: M.Map Int String
   , envNative :: M.Map Id String
   , envUnits :: [Unit]
+  , envIdentity :: Identity.Graph
+  , envHelperNames :: M.Map (String,String) String
   , envBits :: Int
   }
 
@@ -64,7 +73,9 @@ data Env = Env
 -- for its kind and type (to_settings), with _2 only on a clash.
 data St = St { stLocals :: N.Scope, stBase :: N.Scope, stModule :: N.Scope, stNames :: M.Map (String, String) String
              , stShown :: M.Map String String
-             , stHelpers :: M.Map String Type, stWanted :: S.Set (String, String) }
+             , stHelpers :: M.Map String Type, stWanted :: S.Set (String, String) } deriving (Show, Generic)
+
+instance Binary St
 
 type M = StateT St (Either String)
 
@@ -86,15 +97,12 @@ enterFunction = modify (\s -> s { stLocals = stBase s })
 helper :: String -> Type -> M String
 helper kind ty = do
   let key = show ty
-  s <- get
-  name <- case M.lookup (kind, key) (stNames s) of
-    Just existing -> pure existing
-    Nothing -> do
-      let (chosen, scope) = claim (stModule s) (kind ++ "_" ++ intercalate "_" (typeSlug (stShown s) ty))
-      put s { stModule = scope, stNames = M.insert (kind, key) chosen (stNames s) }
-      pure chosen
-  modify (\st -> st { stHelpers = M.insert key ty (stHelpers st), stWanted = S.insert (kind, key) (stWanted st) })
-  pure name
+  st <- get
+  case M.lookup (kind,key) (stNames st) of
+    Nothing -> lift' (Left ("typed Python: unplanned helper " ++ kind ++ " " ++ key))
+    Just name -> do
+      put st { stHelpers = M.insert key ty (stHelpers st), stWanted = S.insert (kind,key) (stWanted st) }
+      pure name
 
 -- | The runtime functions the module uses, imported as lsf_<name>.
 runtimeNames :: [String]
@@ -119,7 +127,7 @@ emitPythonTyped bits declarations units = do
   names <- namesFor [d | d <- declarations, collectionContainer (idText (dataId d)) == Nothing, not (isDurationType (idText (dataId d))), not (dataHandle d)]
   let env = Env plan (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions
-        (M.fromList names) units bits
+        (M.fromList names) units graph helperNames bits
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       handlerTypes = [ t | h <- typedHandlers, ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ] ++
@@ -132,9 +140,16 @@ emitPythonTyped bits declarations units = do
         [ "start_" ++ nativeIdentifier "python" FunctionName (handlerName h) | h <- typedHandlers, Just _ <- [handlerState h] ]
       starts = [ (handlerId h, name, start) | (h, name) <- zip [h | h <- typedHandlers, Just _ <- [handlerState h]] startNames
                , Just (_, start) <- [handlerState h] ]
-      startState = St startScope startScope startScope M.empty (M.fromList [(idText i, n) | (i, n) <- names]) M.empty S.empty
+      graph = Identity.dependencyGraphWithBits bits declarations units
+      allTypes = Context.typeClosure (envData env) (boundary ++ handlerTypes ++
+        concatMap (Context.definitionTypes . snd) (typedRepresentatives plan) ++ concatMap (Context.expressionTypes . third) starts)
+      third (_,_,value) = value
+      helperNames = Context.helperAllocation graph (functionNames ++ startNames ++ reservedFor "python" ++ moduleReserved)
+        (\kind ty -> kind ++ "_" ++ intercalate "_" (typeSlug (M.fromList [(idText i,n) | (i,n) <- names]) ty))
+        helperKinds allTypes
+      startState = St startScope startScope startScope helperNames (M.fromList [(idText i, n) | (i, n) <- names]) M.empty S.empty
   ((functionDocs, startDocs, helperDocs), final) <- flip runStateT startState $ do
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+    fs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, start) -> do
       enterFunction
       body <- cstmt env Nothing [(Id "lawspec::symbols", "symbols")] Return start
@@ -176,7 +191,6 @@ emitPythonTyped bits declarations units = do
         [] -> Nothing
     , pyTypedPlan = plan }
   where
-    moduleReserved = ["data", "ls", "symbols", "ordering_of", "MACHINE_BITS"] ++ ["lsf_" ++ n | n <- runtimeNames]
 
 -- | A type's words for a helper's name, with data types by the names the
 -- generated code shows them (an anonymous record's display name).
@@ -273,6 +287,37 @@ type Scope = [(Id, String)]
 
 symbolsId :: Id
 symbolsId = Id "lawspec::symbols"
+
+moduleReserved :: [String]
+moduleReserved = ["data", "ls", "symbols", "ordering_of", "MACHINE_BITS"] ++ ["lsf_" ++ n | n <- runtimeNames]
+
+helperKinds :: [String]
+helperKinds = ["eq", "cmp", "to", "from", "nin", "nout", "tonative", "fromnative"]
+
+functionTable :: Table (Either String (D.Doc, St))
+functionTable = unsafePerformIO (newPersistentTable "typed-python-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+memoFunction :: Env -> Int -> Definition -> M D.Doc
+memoFunction env classification definition = do
+  before <- get
+  let calls = Context.calledFunctions (envPlan env) (envFunctions env) classification definition
+      types = Context.typeClosure (envData env) (Context.definitionTypes definition)
+      helpersForFunction = [(kind,show ty,name) | ty <- types, kind <- helperKinds,
+        Just name <- [M.lookup (kind,show ty) (envHelperNames env)]]
+      names = scopeWith ([name | (name,_,_,_) <- calls] ++ [name | (_,_,name) <- helpersForFunction] ++ moduleReserved ++
+        reservedFor "python")
+      allocated = M.fromList [((kind,ty),name) | (kind,ty,name) <- helpersForFunction]
+      own = St names names names allocated (stShown before) M.empty S.empty
+      reached = Identity.reachableData (envIdentity env) (Identity.closure (envIdentity env)
+        (Identity.referencesOf (envIdentity env) definition))
+      nativeNames = [(identity,M.lookup identity (envNative env)) | declaration <- reached,
+        identity <- dataId declaration : map constructorId (dataConstructors declaration)]
+      key = Identity.fullKey (envIdentity env) ("typed-python:" ++ show (envBits env,calls,helpersForFunction,nativeNames)) definition
+  (document,requested) <- lift' (memoized functionTable key (runStateT (functionDoc env classification definition) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before)
+             , stWanted = S.union (stWanted requested) (stWanted before) }
+  pure document
 
 functionDoc :: Env -> Int -> Definition -> M D.Doc
 functionDoc env c d = do

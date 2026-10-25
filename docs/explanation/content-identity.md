@@ -177,6 +177,15 @@ requests into the current module; no prior module request set is part of its
 key. The current called names, native type names and target context remain
 presentation inputs.
 
+Python, JavaScript and TypeScript likewise cache individual checked functions
+with structured documents or syntax trees. Helper allocation walks the checked
+argument, result, expression and instantiated field types before lowering.
+Each cached function replays only its requested helper/type set. Its context
+contains the names of called functions and reachable native types, alongside
+the selected helper names, rather than the previously accumulated module.
+An unplanned helper is an explicit compiler error, not an order-dependent
+name-allocation fallback.
+
 Other emitter families also accumulate shared codec, literal or helper state.
 `memoizedState` memoizes their full structured state transition, including the
 exact incoming name/helper state. Their family-specific adoption remains work
