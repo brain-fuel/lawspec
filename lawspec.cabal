@@ -725,6 +725,7 @@ library
       LawSpec.JavaData
       LawSpec.JavaDefinitions
       LawSpec.JavaExpr
+      LawSpec.JavaLayout
       LawSpec.JavaNativeBinding
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
