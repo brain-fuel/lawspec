@@ -165,8 +165,16 @@ if (language === 'elixir' && ['1', '2'].includes(maxFailures)) {
   await writeFile(spec, source.replace(/\bend unit\s*$/u, '') +
     ['a second law', 'a third law'].map(replayLaw).join('') + '\nend unit\n');
   await call('generate');
-  const complete = JSON.parse((await call('test', ['--json'])).stdout);
-  assert.ok(complete.every(result => result.ok && result.ran.length === 3));
+  // These are three names for the same checked property. The semantic cache
+  // retains their established result; force the native batch whose interruption
+  // and per-law completion reporting this part of the fixture exercises.
+  const reused = JSON.parse((await call('test', ['--json'])).stdout);
+  assert.ok(reused.every(result => result.ok && result.ran.length === 0), JSON.stringify(reused));
+  const complete = JSON.parse((await call('test', ['--fresh', '--json', '--report', 'junit=complete.xml'])).stdout);
+  assert.ok(complete.every(result => result.ok && result.ran.length === 3), JSON.stringify(complete));
+  const completeReport = await readFile(path.join(base, 'complete.xml'), 'utf8');
+  assert.equal([...completeReport.matchAll(/<testcase\b/g)].length, projects.length * 3,
+    'The fresh native batch must actually complete all three laws in each project');
   const selected = complete[0].ran;
   await new Promise(resolve => setTimeout(resolve, 1100));
   await writeFile(adapters[0], 'defmodule Example.Replay do\n  def observe(value), do: value + 1\nend\n');
