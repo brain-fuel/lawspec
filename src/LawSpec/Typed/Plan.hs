@@ -27,7 +27,7 @@ import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
 import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Scalar (Scalar(..))
-import LawSpec.Digest (digestHex, digestString)
+import qualified LawSpec.Dependencies as Identity
 
 -- | The collections unit's operations a target implements natively.
 data Intrinsic
@@ -59,8 +59,8 @@ data TypedPlan = TypedPlan
 
 -- | A generated name's suffix from an identity, so a typed function or a
 -- handler's start keeps its name however the rest of the program changes.
-stableSuffix :: Id -> String
-stableSuffix identity = take 8 (digestHex (digestString (idText identity)))
+stableSuffix :: Identity.Graph -> Id -> String
+stableSuffix graph identity = take 12 (Identity.semanticKey graph "generated-type-suffix" (Constructor (idText identity) []))
 
 -- | The first of a list the caller knows is not empty (a product's one
 -- constructor, an infinite list of candidates).

@@ -11,18 +11,18 @@ import Control.Monad.State.Strict
 import Data.Aeson (ToJSON(..), Value, object, (.=))
 import qualified Data.Map.Strict as M
 import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
-import Data.List (intercalate, isInfixOf, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf, findIndex)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Binary as Binary
 import LawSpec.Common (Diagnostic, InputDomain(..), Location, Quantification(..))
 import LawSpec.Core
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
-import LawSpec.Digest (digest, digestHex, digestString)
+import LawSpec.Digest (digestHex, digestString)
+import LawSpec.Blake3 (blake3, hexOf)
+import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey)
 import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
 import LawSpec.Regex (Regex(..), parseRegex)
 import Numeric (showHex)
@@ -111,12 +111,12 @@ data CounterexampleQuery = CounterexampleQuery
   { counterexampleInputs :: [(String, Quantifier)], counterexampleScript :: String
   } deriving (Eq, Show)
 
--- | Each encoding is frozen once released. A task that lawspec-smtlib-v1
--- supports keeps its script and fingerprint byte for byte, so an existing
--- receipt stays current with no re-run; test/fixtures/smt-v1 holds the
--- frozen corpus that checks it. A task needing anything v1 lacks is
--- lawspec-smtlib-v2: the encoder calls `requires SmtLibV2` where it uses a
--- new feature. ref:DEC-smtlib-encoding-versions
+-- | An encoding's meaning is fixed once released: a task names the encoding
+-- it needs, and its receipt is bound to that name and the law's semantic
+-- hash (lawFingerprint), so a change to what an encoding means needs a new
+-- name. A task needing anything v1 lacks is lawspec-smtlib-v2: the encoder
+-- calls `requires SmtLibV2` where it uses a new feature.
+-- ref:DEC-smt-semantic-receipts
 data Encoding = SmtLibV1 | SmtLibV2 deriving (Eq, Ord, Show, Enum, Bounded)
 
 encodingName :: Encoding -> String
@@ -127,7 +127,7 @@ instance ToJSON ProofTask where
   toJSON task = object $
     ["encoding" .= encodingName (taskEncoding task), "owner" .= idText (taskOwner task),
      "declaration" .= idText (taskLaw task), "at" .= taskLocation task,
-     "programFingerprint" .= taskProgram task, "machineBits" .= taskBits task] ++
+     "lawFingerprint" .= taskProgram task, "machineBits" .= taskBits task] ++
     case taskQuery task of
       Left reason -> ["status" .= ("unsupported"::String), "reason" .= reason]
       Right script -> ["status" .= ("ready"::String), "script" .= script,
@@ -185,18 +185,35 @@ proofTasks = proofTasksWith M.empty
 proofTasksWith :: M.Map Id LawProof -> Program -> Either [Diagnostic] [ProofTask]
 proofTasksWith settings program = do
   validateProgram program
-  let fingerprint = digestHex (digest (BL.toStrict (Binary.encode program)))
+  let graph = dependencyGraphWithBits (programMachineBits program) (programDataDeclarations program) (programUnits program)
       lawsById = M.fromList [(propertyId l, l) | u <- programUnits program, l <- unitProperties u]
+      -- A receipt is bound to what the law does: its semantic hash (which
+      -- covers everything it reaches), its encoding, the machine width and
+      -- how it is proved, never to the program's bytes. Renaming a local,
+      -- reformatting or editing another law keeps it current.
+      -- ref:DEC-smt-semantic-receipts
+      lawFingerprint encoding law proof = hexOf (blake3 (T.encodeUtf8 (T.pack (concatMap frame $
+        ["lawspec.receipt.v2", encodingName encoding, show (programMachineBits program),
+         show (proofUnfolding proof), inductionIdentity law (proofInduction proof), semanticKey graph "" law] ++
+        [ semanticKey graph "lemma" lemma | InductionOn _ lemmas <- [proofInduction proof]
+                                         , Just lemma <- map (`M.lookup` lawsById) lemmas ]))))
+      inductionIdentity law mode = case mode of
+        DefaultInduction -> "default"
+        NoInduction -> "none"
+        InductionOn name _ -> "input:" ++ show (findIndex ((== name) . binderName . quantifiedBinder)
+          (fst (outerQuantifiers law)))
+      frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
   pure [ProofTask (unitId owner) (propertyId law) (propertyLocation law)
-          fingerprint (programMachineBits program) (scriptOf <$> task)
+          (lawFingerprint encoding law proof) (programMachineBits program) (scriptOf <$> task)
           -- A refused task names v1, the encoding that refused it.
-          (either (const SmtLibV1) encodingOf task)
+          encoding
           (either Left (const (counterexampleQuery program law)) task)
           (either (const Nothing) recursionOf task)
           (either (const Nothing) alternativeOf task)
           (either (const Nothing) (induction lawsById proof law . recursionOf) task)
        | owner <- programUnits program, law <- unitProperties owner
        , let proof = M.findWithDefault defaultLawProof (propertyId law) settings
+             encoding = either (const SmtLibV1) encodingOf task
              task = query program (proofUnfolding proof) law]
   where
     induction lawsById proof law recursion = case proofInduction proof of

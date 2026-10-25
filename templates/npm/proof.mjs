@@ -1,19 +1,19 @@
 // Host execution of compiler-produced tasks. The browser/WASM compiler stays
 // pure; this Node host invokes Z3's SMT-LIB interface without a shell.
 import {spawn} from 'node:child_process';
-import {createHash} from 'node:crypto';
-import {access,readFile,realpath} from 'node:fs/promises';
+import {createHash,randomUUID} from 'node:crypto';
+import {access,mkdir,readFile,realpath,rename,rm,writeFile} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import path from 'node:path';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const frame=value=>Buffer.byteLength(value,'utf8')+':'+value;
 const fingerprint=values=>hash(values.map(frame).join(''));
-// v1 is frozen byte for byte; tasks that need later features are v2.
+// A task names its encoding; tasks that need later features are v2.
 const encodings=['lawspec-smtlib-v1','lawspec-smtlib-v2'];
 
 export function proofTaskFingerprint(task) {
-  return fingerprint([task.encoding,task.programFingerprint,String(task.machineBits),
+  return fingerprint([task.encoding,task.lawFingerprint,String(task.machineBits),
     task.owner,task.declaration,task.script]);
 }
 
@@ -102,9 +102,105 @@ async function prover(config) {
 
 function validTask(task) {
   return encodings.includes(task.encoding)&&[32,64].includes(task.machineBits)&&
-    ['owner','declaration','programFingerprint','script','taskFingerprint'].every(key=>typeof task[key]==='string')&&
-    /^[0-9a-f]{64}$/.test(task.programFingerprint)&&
+    ['owner','declaration','lawFingerprint','script','taskFingerprint'].every(key=>typeof task[key]==='string')&&
+    /^[0-9a-f]{64}$/.test(task.lawFingerprint)&&
     proofTaskFingerprint(task)===task.taskFingerprint;
+}
+
+// A semantic receipt may be reused after the compiler has admitted and
+// planned the current source again. Its exact original task/run binding is
+// retained; reuse is never presented as another solver execution. The local
+// cache has the same trust boundary as the compiler's other persisted memos.
+// Only completed unsat laws are reused. Counterexamples must be replayed by
+// the current evaluator, and unknown/unsupported/incomplete work is retried.
+async function receiptCache(request,selected) {
+  if(typeof request.cacheDirectory!=='string'||!request.cacheDirectory||selected.error)return null;
+  try {
+    const build=await readFile(new URL('./build.json',import.meta.url));
+    const host=await readFile(new URL('./proof.mjs',import.meta.url));
+    return {folder:path.join(request.cacheDirectory,'solver-goals-v1'),
+      identity:fingerprint(['lawspec.solver-cache.v1',hash(build),hash(host),selected.fingerprint])};
+  } catch {return null;}
+}
+
+async function cachedSolve(task,selected,config,cache) {
+  if(!cache||task.status!=='ready'||!validTask(task))return solve(task,selected,config);
+  const key=fingerprint([cache.identity,task.encoding,task.lawFingerprint,String(task.machineBits)]);
+  const filename=path.join(cache.folder,key+'.json');
+  try {
+    const saved=JSON.parse(await readFile(filename,'utf8'));
+    const receipt=saved.receipt;
+    const complete=saved.version===1&&saved.key===key&&validTask(saved.task)&&
+      saved.task.lawFingerprint===task.lawFingerprint&&saved.task.encoding===task.encoding&&
+      saved.task.machineBits===task.machineBits&&receipt?.status==='proved'&&receipt.outcome==='unsat'&&
+      receipt.exitCode===0&&receipt.lawFingerprint===task.lawFingerprint&&
+      /^[0-9a-f]{64}$/.test(receipt.runFingerprint??'')&&
+      receipt.prover?.fingerprint===selected.fingerprint&&
+      saved.digest===hash(JSON.stringify([saved.task,receipt]));
+    if(complete&&hash(await readFile(selected.binary))===selected.binaryFingerprint)
+      return {...receipt,owner:task.owner,declaration:task.declaration,at:task.at,
+        currentTaskFingerprint:task.taskFingerprint,
+        ...(receipt.induction&&task.induction?{currentInduction:{on:task.induction.on,using:task.induction.using}}:{}),
+        reused:{key,owner:saved.task.owner,declaration:saved.task.declaration,
+          taskFingerprint:receipt.taskFingerprint,runFingerprint:receipt.runFingerprint},
+        reason:receipt.reason+'; reused a completed semantic proof receipt; no new solver task ran'};
+  } catch {}
+  const receipt=await solve(task,selected,config);
+  if(receipt.status==='proved'&&receipt.outcome==='unsat'&&receipt.exitCode===0) {
+    const temporary=filename+'.'+randomUUID()+'.tmp';
+    try {
+      await mkdir(cache.folder,{recursive:true});
+      await writeFile(temporary,JSON.stringify({version:1,key,task,receipt,
+        digest:hash(JSON.stringify([task,receipt]))})+'\n',{mode:0o600});
+      await rename(temporary,filename);
+    } catch {} finally {await rm(temporary,{force:true}).catch(()=>{});}
+  }
+  return receipt;
+}
+
+// Law-set queries have a stable logical-goal identity beside their exact
+// script fingerprint. Reused SAT values are passed unchanged, with the
+// original ordered constant names, to the compiler for positional decoding
+// and full validation against the current binders/claim. The host never
+// rewrites solver/model text. Only compiler-confirmed outcomes are saved.
+function queryFingerprint(row,task) {
+  return row.kind==='model'?hash(row.declaration+'\0'+task.kind+'\0'+task.script):fingerprint([row.declaration,row.stage,task.script]);
+}
+async function analysisQuery(cache,row,task,selected,executeQuery,fresh=false) {
+  const eligible=cache&&/^[0-9a-f]{64}$/.test(task.semanticFingerprint??'')&&
+    task.fingerprint===queryFingerprint(row,task);
+  const key=eligible?fingerprint([cache.identity,row.kind==='model'?'model':'analysis',row.kind==='model'?'':row.stage,task.semanticFingerprint]):null;
+  const filename=eligible?path.join(cache.folder,key+'.json'):null;
+  if(eligible&&!fresh)try {
+    const saved=JSON.parse(await readFile(filename,'utf8'));
+    const record=saved.record;
+    if(saved.version===1&&saved.key===key&&saved.digest===hash(JSON.stringify(record))&&
+        record?.semanticFingerprint===task.semanticFingerprint&&record.solverFingerprint===selected.fingerprint&&
+        ['sat','unsat'].includes(record.outcome)&&record.completed===true&&record.run?.exitCode===0&&
+        record.taskFingerprint===queryFingerprint(record,{kind:record.taskKind,script:record.script})&&
+        hash(await readFile(selected.binary))===selected.binaryFingerprint)
+      return {...record,row,cacheFile:filename,
+        reused:{key,owner:record.owner,declaration:record.declaration,
+          taskFingerprint:record.taskFingerprint,runFingerprint:record.runFingerprint},
+        rerun:()=>analysisQuery(cache,row,task,selected,executeQuery,true)};
+  } catch {}
+  const done=await executeQuery();
+  return {...done,row,inputs:task.inputs,
+    ...(eligible?{pendingCache:{filename,key,record:{kind:row.kind,taskKind:task.kind,owner:row.owner,declaration:row.declaration,stage:row.stage,
+      taskFingerprint:task.fingerprint,semanticFingerprint:task.semanticFingerprint,script:task.script,
+      solverFingerprint:selected.fingerprint,inputs:task.inputs,outcome:done.outcome,values:done.values,invariant:done.invariant,
+      run:done.run,runFingerprint:done.runFingerprint,completed:true}}}:{})};
+}
+
+async function saveQuery(done) {
+  if(!done.pendingCache||!['sat','unsat'].includes(done.outcome)||done.run?.exitCode!==0)return;
+  const {filename,key,record}=done.pendingCache;
+  const temporary=filename+'.'+randomUUID()+'.tmp';
+  try {
+    await mkdir(path.dirname(filename),{recursive:true});
+    await writeFile(temporary,JSON.stringify({version:1,key,record,digest:hash(JSON.stringify(record))})+'\n',{mode:0o600});
+    await rename(temporary,filename);
+  } catch {} finally {await rm(temporary,{force:true}).catch(()=>{});}
 }
 
 // Law-set and model tasks need the same process and executable checks as
@@ -183,7 +279,7 @@ async function solve(task,selected,config) {
 
 async function attempt(task,script,taskFingerprint,selected,config,names=null) {
   const common={owner:task.owner,declaration:task.declaration,at:task.at,
-    programFingerprint:task.programFingerprint,taskFingerprint:task.taskFingerprint,
+    lawFingerprint:task.lawFingerprint,taskFingerprint:task.taskFingerprint,
     encoding:task.encoding,machineBits:task.machineBits,configuration:config};
   if(task.status==='unsupported')return {...common,status:'unsupported',outcome:'unsupported',reason:task.reason};
   if(task.status!=='ready'||!validTask(task))
@@ -231,7 +327,7 @@ async function attempt(task,script,taskFingerprint,selected,config,names=null) {
 async function counterexampleValues(task,selected,config) {
   const query=task.counterexample;
   if(!query||typeof query.script!=='string'||!Array.isArray(query.inputs))return null;
-  if(fingerprint(['lawspec-smtlib-v2',task.programFingerprint,String(task.machineBits),task.owner,task.declaration,
+  if(fingerprint(['lawspec-smtlib-v2',task.lawFingerprint,String(task.machineBits),task.owner,task.declaration,
     query.script])!==query.fingerprint)return null;
   const names=query.inputs.map(input=>input.name);
   // A law with no inputs needs no search: the evaluator decides it.
@@ -266,7 +362,8 @@ export async function proveWithZ3(compiler,request,options={}) {
     catch(error){selected={error:error.message,outcome:error.code==='ENOENT'?'unavailable':error.outcome??'failed'};}
   }
   const solverEvidence=[];
-  for(const task of tasks)solverEvidence.push(await solve(task,selected,config));
+  const cache=await receiptCache(request,selected);
+  for(const task of tasks)solverEvidence.push(await cachedSolve(task,selected,config,cache));
   const diagnostics=[...(result.diagnostics??[])];
   // Values to check as each unproved law's counterexample: the
   // counterexample query's (run whenever a law's task was satisfiable, and
@@ -323,7 +420,7 @@ export async function proveWithZ3(compiler,request,options={}) {
   while(changed) {
     changed=false;
     solverEvidence.forEach((item,index)=>{
-      const cited=item.induction?.using??[];
+      const cited=(item.currentInduction??item.induction)?.using??[];
       if(item.status!=='proved'||!cited.length)return;
       const open=cited.filter(law=>!['proved','exhaustively-checked'].includes(current.get(law)));
       if(!open.length)return;
@@ -350,7 +447,8 @@ export async function proveWithZ3(compiler,request,options={}) {
   // model with its reference evaluator before a check is refuted.
   let settled=evidence,found=diagnostics;
   if(analysis.length) {
-    const answers=[],ran=new Map();
+    let answers=[];
+    const ran=new Map();
     for(const row of analysis) {
       if(row.status!=='ready') {
         solverEvidence.push({owner:row.owner,declaration:row.declaration,stage:row.stage,kind:'analysis',
@@ -359,25 +457,47 @@ export async function proveWithZ3(compiler,request,options={}) {
       }
       for(const task of row.tasks) {
         if(selected.error) {ran.set(task.fingerprint,{row,outcome:selected.outcome,error:selected.error});continue;}
-        const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
-          `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+task.script+'(check-sat)\n';
-        const run=await execute(selected.binary,selected.args,input,config,true,
-          token=>token==='sat'&&task.inputs.length?`(get-value (${task.inputs.join(' ')}))\n(exit)\n`:'(exit)\n');
-        const outcome=await verifiedOutcome(run,selected);
-        const values=outcome==='sat'&&task.inputs.length?run.stdout.slice(run.stdout.indexOf('\n')+1).trim():'';
-        ran.set(task.fingerprint,{row,outcome,run,runFingerprint:fingerprint([task.fingerprint,selected.fingerprint,run.input])});
-        answers.push({fingerprint:task.fingerprint,outcome,values});
+        const executeQuery=async()=>{
+          const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
+            `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+task.script+'(check-sat)\n';
+          const run=await execute(selected.binary,selected.args,input,config,true,
+            token=>token==='sat'&&task.inputs.length?`(get-value (${task.inputs.join(' ')}))\n(exit)\n`:'(exit)\n');
+          const outcome=await verifiedOutcome(run,selected);
+          const values=outcome==='sat'&&task.inputs.length?run.stdout.slice(run.stdout.indexOf('\n')+1).trim():'';
+          return {outcome,run,values,runFingerprint:fingerprint([task.fingerprint,selected.fingerprint,run.input])};
+        };
+        const done=await analysisQuery(cache,row,task,selected,executeQuery);
+        ran.set(task.fingerprint,done);
+        answers.push({fingerprint:task.fingerprint,outcome:done.outcome,values:done.values,inputs:done.inputs});
       }
     }
-    const checked=answers.length?await compiler.proofTasks({...request,analysisResults:answers}):{};
+    let checked=answers.length?await compiler.proofTasks({...request,analysisResults:answers}):{};
+    // A stored SAT model can stop decoding after a public constructor rename.
+    // Revalidation fails closed; retry that query once with the current names.
+    let retried=false;
+    for(const verdict of checked.analysisChecks??[]) {
+      const done=ran.get(verdict.fingerprint);
+      if(verdict.status==='incomplete'&&done?.reused&&done.rerun) {
+        await rm(done.cacheFile,{force:true}).catch(()=>{});
+        ran.set(verdict.fingerprint,await done.rerun());retried=true;
+      }
+    }
+    if(retried) {
+      answers=answers.map(answer=>{const done=ran.get(answer.fingerprint);return {...answer,
+        outcome:done.outcome,values:done.values,inputs:done.inputs};});
+      checked=await compiler.proofTasks({...request,analysisResults:answers});
+    }
     const rows=new Map((checked.analysisEvidence??[]).map(row=>[row.declaration+'\u0000'+row.stage,row]));
     settled=evidence.map(row=>rows.get(row.declaration+'\u0000'+row.stage)??row);
     found=[...diagnostics,...(checked.diagnostics??[]).filter(row=>row.code==='refuted')];
     for(const verdict of checked.analysisChecks??[]) {
       const done=ran.get(verdict.fingerprint)??{};
+      if(['proved','refuted','exempted'].includes(verdict.status))await saveQuery(done);
       solverEvidence.push({owner:verdict.owner,declaration:verdict.declaration,stage:verdict.stage,kind:'analysis',
-        encoding:'lawspec-smtlib-v2',taskFingerprint:verdict.fingerprint,status:verdict.status,
-        outcome:done.outcome??'failed',reason:verdict.reason,check:verdict.check,configuration:config,
+        encoding:'lawspec-smtlib-v2',taskFingerprint:done.reused?.taskFingerprint??verdict.fingerprint,status:verdict.status,
+        ...(done.reused?{currentTaskFingerprint:verdict.fingerprint,reused:done.reused}:{}),
+        outcome:done.outcome??'failed',reason:verdict.reason+(done.reused?'; reused a completed query; model revalidated by the current evaluator':''),
+        check:verdict.check,configuration:config,
         ...(done.run?{prover:{name:'z3',version:selected.version,binary:selected.binary,binaryFingerprint:selected.binaryFingerprint,
           fingerprint:selected.fingerprint,arguments:selected.args},runFingerprint:done.runFingerprint,
           elapsedMs:done.run.elapsedMs,exitCode:done.run.exitCode,stdout:done.run.stdout,stderr:done.run.stderr}:{})});
@@ -405,6 +525,7 @@ export async function proveWithZ3(compiler,request,options={}) {
       for(const law of pending) for(const task of law.tasks) {
         if(answered.has(task.fingerprint))continue;
         fresh++;
+        const executeQuery=async()=>{
         const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
           `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+task.script+'(check-sat)\n';
         const run=await execute(selected.binary,selected.args,input,config,true,token=>token!=='sat'?'(exit)\n':
@@ -416,13 +537,26 @@ export async function proveWithZ3(compiler,request,options={}) {
           const at=body.indexOf('(define-fun Inv ');
           if(at>=0) {let depth=0;for(let i=at;i<body.length;i++){if(body[i]==='(')depth++;if(body[i]===')'){depth--;if(depth===0){invariant=body.slice(at,i+1);break;}}}}
         }
-        const answer={fingerprint:task.fingerprint,outcome,values:task.kind==='spacer'?'':body.trim(),invariant};
+
+        return {run,outcome,values:task.kind==='spacer'?'':body.trim(),invariant,
+          runFingerprint:fingerprint([task.fingerprint,selected.fingerprint,run.input])};
+        };
+        const row={kind:'model',owner:law.owner,declaration:law.declaration,stage:task.kind};
+        const done=await analysisQuery(cache,row,task,selected,executeQuery);
+        const answer={fingerprint:task.fingerprint,outcome:done.outcome,values:done.values,invariant:done.invariant??'',inputs:done.inputs??task.inputs};
         answered.set(task.fingerprint,answer);modelAnswers.push(answer);
-        solverEvidence.push({kind:'model',owner:law.owner,declaration:law.declaration,task:task.kind,taskFingerprint:task.fingerprint,
-          encoding:'lawspec-smtlib-v2',status:outcome==='unsat'?'proved':'incomplete',outcome,reason:task.kind+': '+outcome,
+        // A memoized query is still only an input to the current compiler's
+        // induction/re-check/replay settlement below. It cannot settle a model.
+        await saveQuery(done);
+        const run=done.run,outcome=done.outcome;
+        solverEvidence.push({kind:'model',owner:law.owner,declaration:law.declaration,task:task.kind,
+          taskFingerprint:done.reused?.taskFingerprint??task.fingerprint,
+          ...(done.reused?{currentTaskFingerprint:task.fingerprint,reused:done.reused}:{}),
+          encoding:'lawspec-smtlib-v2',status:outcome==='unsat'?'proved':'incomplete',outcome,reason:task.kind+': '+outcome+
+            (done.reused?'; reused original solver query; current compiler rechecks the model evidence':''),
           prover:{name:'z3',version:selected.version,binary:selected.binary,binaryFingerprint:selected.binaryFingerprint,
             fingerprint:selected.fingerprint,arguments:selected.args},
-          runFingerprint:fingerprint([task.fingerprint,selected.fingerprint,run.input]),elapsedMs:run.elapsedMs,
+          runFingerprint:done.runFingerprint,elapsedMs:run.elapsedMs,
           exitCode:run.exitCode,signal:run.signal,stdout:run.stdout,stderr:run.stderr,configuration:config});
       }
       if(!fresh)break;

@@ -244,18 +244,18 @@ declarations = joinWith (softbreak <> softbreak)
        ("proofCounterexamples?", text "ProofCounterexample[]"),
        ("analysisResults?", text "AnalysisResult[]"), ("projectVersion?", text "string"), ("now?", text "string"),
        ("modelResults?", text "ModelResult[]")]
-  , interface "ModelResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string"), ("invariant", "string")])
+  , interface "ModelResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string"), ("invariant", "string"), ("inputs?", "string[]")])
   , interface "ModelTaskRow" (fields [("owner", "string"), ("declaration", "string"), ("tasks", "ModelTask[]")])
-  , interface "ModelTask" (fields [("fingerprint", "string"), ("kind", "string"), ("script", "string"), ("inputs", "string[]")])
+  , interface "ModelTask" (fields [("fingerprint", "string"), ("semanticFingerprint", "string"), ("kind", "string"), ("script", "string"), ("inputs", "string[]")])
   , interface "Exemption"
       (fields [("reason", "string"), ("until", "string | null"), ("expired", "boolean"), ("law", "string | null")])
-  , interface "AnalysisResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string")])
+  , interface "AnalysisResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string"), ("inputs?", "string[]")])
   , alias "AnalysisStage" (map quoted ["completeness", "overlap", "conflict", "vacuity"])
   , alias "AnalysisTaskRow"
       [ record (fields (analysisRow ++ [("status", "'ready'"), ("tasks", "AnalysisTask[]")]))
       , record (fields (analysisRow ++ [("status", "'unsupported'"), ("reason", "string")])) ]
   , interface "AnalysisTask"
-      (fields [("fingerprint", "string"), ("encoding", "'lawspec-smtlib-v2'"), ("script", "string"), ("inputs", "string[]")])
+      (fields [("fingerprint", "string"), ("semanticFingerprint", "string"), ("encoding", "'lawspec-smtlib-v2'"), ("script", "string"), ("inputs", "string[]")])
   , interface "AnalysisCheck"
       (fields (analysisRow ++ [("fingerprint", "string"), ("status", "AnalysisCheckStatus"), ("reason", "string"), ("check", "AnalysisCheckStatus")]))
   , alias "AnalysisCheckStatus" (map quoted ["proved", "refuted", "exempted", "incomplete"])
@@ -273,13 +273,13 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
       [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
-          ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
+          ("at","Location"),("lawFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string"),
           ("counterexample?","CounterexampleQuery"),
           ("counterexampleUnsupported?","string"), ("recursion?", "Recursion"),
           ("alternative?", "AlternativeTask"), ("induction?", "InductionPlan")]),
        record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
-          ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
+          ("at","Location"),("lawFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
   , interface "AlternativeTask"
       (fields [("recursion", "Recursion"), ("script", "string"), ("taskFingerprint", "string")])
@@ -295,7 +295,7 @@ declarations = joinWith (softbreak <> softbreak)
   , alias "ProofCounterexample" [record (fields [("owner","string"),("declaration","string"),
       ("taskFingerprint","string"),("values","string")])]
   , alias "CounterexampleQuery" [record (fields [("encoding","'lawspec-smtlib-v2'"),("script","string"),
-      ("fingerprint","string"),("inputs","{name: string; binder: string}[]")])]
+      ("fingerprint","string"),("semanticFingerprint","string"),("inputs","{name: string; binder: string}[]")])]
   , alias "CounterexampleCheck" [record (fields [("owner?","string"),("declaration?","string"),
       ("taskFingerprint?","string"),("status","'refuted' | 'model-not-confirmed' | 'incomplete'"),
       ("reason","string"),("inputs?","{name: string; value: string}[]")])]

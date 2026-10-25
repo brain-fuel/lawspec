@@ -11,9 +11,9 @@ with_nodes(Body) ->
         {ok, B} = lawspec_beam_node:start(lawspec_beam_memory_network:insecure_transport_for_tests(Net, <<"b">>)),
         try Body(A, B) after lawspec_beam_node:stop(B), lawspec_beam_node:stop(A) end
     end).
-rejected(Node, <<"sha3-256:", Digest:64/binary>>) ->
+rejected(Node, <<"blake3-semantic-1:", Digest:64/binary>>) ->
     [true] = lists:usort([lists:member(C, "0123456789abcdef") || C <- binary_to_list(Digest)]),
-    Other = <<"sha3-256:", (binary:copy(<<"z">>, 64))/binary>>,
+    Other = <<"blake3-semantic-1:", (binary:copy(<<"z">>, 64))/binary>>,
     Selector = lawspec_beam_values:encode([<<"text">>], Other, #{}),
     {3, _} = lawspec_beam_node:request(Node, <<"mem://b/definitions">>, <<"eval">>, <<Selector/binary, 14>>, 1000),
     true.

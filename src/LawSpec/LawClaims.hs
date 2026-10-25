@@ -164,7 +164,8 @@ analysisTaskViews program claims rows =
   | (row, tasks) <- Tasks.analysisTasks program claims rows ]
   where
     taskView t = object
-      [ "fingerprint" .= Tasks.taskFingerprint t, "encoding" .= encodingName SmtLibV2
+      [ "fingerprint" .= Tasks.taskFingerprint t, "semanticFingerprint" .= Tasks.taskSemanticFingerprint t,
+        "encoding" .= encodingName SmtLibV2
       , "script" .= Tasks.taskScript t, "inputs" .= Tasks.taskNames t ]
 
 identity :: A.Row -> [(Data.Aeson.Key.Key, Value)]

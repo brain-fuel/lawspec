@@ -34,7 +34,7 @@ actual_actor_handles_each_faulty_call_once_test_() ->
 
 definition_content_hash_is_the_wire_selector_test_() -> {timeout, 60, fun() ->
     with_nodes(#{record => true, duplicate => 1}, fun(Net, A, B) ->
-        Digest = <<"sha3-256:", (binary:copy(<<"a">>, 64))/binary>>,
+        Digest = <<"blake3-semantic-1:", (binary:copy(<<"a">>, 64))/binary>>,
         Count = atomics:new(1, []),
         Table = #{Digest => entry(fun([N]) -> atomics:add(Count, 1, 1), N + 1000 end)},
         Address = lawspec_beam_remote:serve(B, <<"definitions">>, <<"eval">>, Table),

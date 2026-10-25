@@ -3,7 +3,7 @@
 -- Every target writes one test file per unit, and names a law's tests after
 -- its label (LawSpec.TestNames), or, in JavaScript and TypeScript, by the
 -- label itself. The manifest gives each law its tests' name, its position,
--- its unit's test file, the law's dependency key (the plan key of
+-- its unit's test file, the law's result key (its semantic hash, from
 -- LawSpec.Dependencies), and its harness: tags, and whether it is skipped or
 -- known to fail. A runner can tell which laws an edit affects, select their
 -- tests by name and by tag, and knows which tests not to expect. Selected
@@ -18,7 +18,7 @@ import Data.List (intercalate, stripPrefix, isSuffixOf)
 import qualified Data.Set as S
 import LawSpec.Core
 import qualified LawSpec.Core.Evidence as Evidence
-import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences, unitReferences)
+import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey, adapterKey)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
@@ -64,10 +64,8 @@ testManifestWithModelChecks modelsSelected "prolog" testDir program =
   [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithModelChecks modelsSelected "python" testDir program]
 testManifestWithModelChecks modelsSelected target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
-      (relocated (unitTestPath target unit)) (keyOf graph (show (programMachineBits program, p)) (lawReferences graph p))
-      (any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
-        -- A native production handler is native code too.
-        any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)])
+      (relocated (unitTestPath target unit)) (lawKey u p)
+      (callsAdapters p)
       testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
       (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing []
   | u <- programUnits program
@@ -77,9 +75,7 @@ testManifestWithModelChecks modelsSelected target testDir program =
   , (index, p, testName) <- zip3 [0 ..] (unitProperties u) names ] ++
   [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index
       (relocated (unitTestPath target unit))
-      (keyOf graph (show (programMachineBits program, ModelChecks.checkAction check,
-        programDataDeclarations program, concatMap unitSessions (programUnits program),
-        unitMailboxes u, unitSupervisors u)) (unitReferences graph u))
+      (modelKey u check)
       (ModelChecks.checkAction check /= ModelChecks.Supervision)
       (ModelChecks.checkName check) [] Nothing Nothing
       (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing (obligations u check)
@@ -90,9 +86,7 @@ testManifestWithModelChecks modelsSelected target testDir program =
   -- file of their own, named after the check (PascalCase in C#).
   [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index
       (relocated (dotnetModelsPath target unit))
-      (keyOf graph (show (programMachineBits program, ModelChecks.checkAction check,
-        programDataDeclarations program, concatMap unitSessions (programUnits program),
-        unitMailboxes u, unitSupervisors u)) (unitReferences graph u))
+      (modelKey u check)
       (ModelChecks.checkAction check /= ModelChecks.Supervision)
       (if target == "csharp" then pascalCase (ModelChecks.checkName check) else ModelChecks.checkName check) [] Nothing Nothing
       (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing (obligations u check)
@@ -102,9 +96,7 @@ testManifestWithModelChecks modelsSelected target testDir program =
   , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ] ++
   [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index
       (relocated (NativeModels.checkFile native))
-      (keyOf graph (show (programMachineBits program,ModelChecks.checkAction check,
-        programDataDeclarations program,concatMap unitSessions (programUnits program),
-        unitMailboxes u,unitSupervisors u)) (unitReferences graph u))
+      (modelKey u check)
       (ModelChecks.checkAction check/=ModelChecks.Supervision)
       (NativeModels.checkTestName native) [] Nothing Nothing
       (maybe False harnessParallel (unitHarnessSettings u)) (Just "model") (NativeModels.checkScope native) (obligations u check)
@@ -112,9 +104,36 @@ testManifestWithModelChecks modelsSelected target testDir program =
   , (index,native)<-zip [length (unitProperties u)..] (NativeModels.nativeChecks target (unitTestPath target unit) u)
   , let check=NativeModels.checkEvidence native ]
   where
+    -- A test's result depends on what the law does, never on how it is
+    -- written: its key is the law's semantic hash, the machine width and the
+    -- unit's harness settings, not the generated file. A law that runs
+    -- native code keeps its public interface names, not checked locals.
+    -- ref:DEC-content-identity
+    lawKey u p = if callsAdapters p
+      then adapterKey graph (show (programMachineBits program)) (p, unitHarnessSettings u)
+      else semanticKey graph (show (programMachineBits program)) (p, unitHarnessSettings u)
+    callsAdapters p = any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
+        -- A native production handler is native code too.
+        any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
+    -- Model, scenario and supervision checks run the unit's machines against
+    -- native code.
+    modelKey u check = adapterKey graph (show (programMachineBits program, actionKind (ModelChecks.checkAction check)))
+      (selectedModels (ModelChecks.checkAction check),
+        concatMap unitSessions (programUnits program),
+        (unitMailboxes u, unitSupervisors u), unitHarnessSettings u)
+    selectedModels action = case action of
+      ModelChecks.Sequential _ machine -> [machine]
+      ModelChecks.Parallel _ machine -> [machine]
+      ModelChecks.Scenario _ machine _ -> [machine]
+      ModelChecks.Supervision -> []
+    actionKind action = case action of
+      ModelChecks.Sequential _ _ -> "sequential"
+      ModelChecks.Parallel _ _ -> "parallel"
+      ModelChecks.Scenario _ _ program -> "scenario:" ++ show program
+      ModelChecks.Supervision -> "supervision"
     obligations unit check=[(Evidence.obligationDeclaration item,Evidence.obligationStage item) |
       item<-ModelChecks.checkObligations unit check]
-    graph = dependencyGraph (programDataDeclarations program) (programUnits program)
+    graph = dependencyGraphWithBits (programMachineBits program) (programDataDeclarations program) (programUnits program)
     native h = case h of
       ProductionHandler -> True
       RecordingHandler inner -> native inner

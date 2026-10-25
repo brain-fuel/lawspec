@@ -14,7 +14,7 @@ import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.m
 import { collectScalaCoverage } from "../scala-coverage.mjs";
 import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { benchmarkInvocations, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
+import { benchmarkInvocations, presentationInvocations, presentationDigest, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, previousResult, projectDigest, recordedDigest, selectByTags, mergeJunit,
   harnessStatistics, coverageTools, junitFromTests, testsToRun } from "../test-command.mjs";
 import {
   readOptional,
@@ -472,15 +472,24 @@ async function runTests(compiler, input, selected, roots, config) {
     const generated = new Set(planned.files.filter((f) => f.ownership === "generated").map((f) => f.path));
     const keys = lawKeys({
       build, target, machineBits: input.machineBits, minify: options.minify === true,
-      tests: planned.tests, files: planned.files,
+      tests: planned.tests,
       // Recorded values are spec data: a changed recording runs its laws again.
-      environment: await environmentDigest(root, report_) + (await recordedDigest(recordedFolder)),
-      project: await projectDigest(root, generated),
+      environment: await environmentDigest(root, report_,target.language) + (await recordedDigest(recordedFolder)),
+      project: await projectDigest(root, generated,target.language),
       attested,
     });
     const identity = projectKey(root);
     const resultsFile = path.join(configRoot, ".lawspec", "results", `${target.language}-${identity}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
+    const presentation=presentationDigest(planned.files,await environmentDigest(root,report_,target.language));
+    if(previous.presentation!==presentation){
+      const checks=presentationInvocations(target,planned.files,{offline});
+      if(!checks.length)throw new Error(`${target.language}: no native source validator is available`);
+      for(const check of checks){
+        const result=await spawned(check.command,check.args,root,{...process.env,...check.environment});
+        if(!result.ok)throw new Error(`${target.language}: current generated source failed native validation`);
+      }
+    }
     const attempts = {...(previous.attempts ?? {})};
     const {directory: failures, file: databaseFile, database} = await failureDatabase(configRoot, target.language, root);
     // Recording again runs every law, so each records what it sees now.
@@ -598,7 +607,9 @@ async function runTests(compiler, input, selected, roots, config) {
       if (!ok) { failed = true; break; }
     }
     const statistics = await harnessStatistics(stats);
-    const laws = Object.fromEntries(planned.tests.filter((entry) => previous.laws[entry.law]).map((entry) => [entry.law, previous.laws[entry.law]]));
+    // A renamed law keeps its result: it is found by its key.
+    const kept = (entry) => previous.laws[entry.law] ?? previousResult(previous.laws, entry.law, keys.get(entry.law));
+    const laws = Object.fromEntries(planned.tests.filter(kept).map((entry) => [entry.law, kept(entry)]));
     for (const entry of passed) {
       const label = entry.label;
       const observed = statistics.filter((s) => s.law === label);
@@ -630,7 +641,7 @@ async function runTests(compiler, input, selected, roots, config) {
     const attestations = Object.fromEntries(Object.entries({ ...(previous.attestations ?? {}),
       ...(attestation ? { [attestation.run.id]: attestation } : {}) })
       .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id)));
-    await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,
+    await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,presentation,
       ...(Object.keys(attestations).length ? { attestations } : {}) }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
     const unmet = statistics.flatMap((s) => (s.cover ?? []).filter((c) => !c.met).map((c) => `${s.law}: cover ${c.required}% "${c.label}" (${c.observed}%)`));

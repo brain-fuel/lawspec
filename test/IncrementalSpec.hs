@@ -1,15 +1,22 @@
 -- | Incremental compilation and its cache keys.
 module IncrementalSpec (test_incrementalCompilationGivesTheSameResultAsAFreshOne) where
 
-import Data.Aeson (Value, decode, encode, object, (.=))
+import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
 import Data.List (find, isInfixOf, isPrefixOf)
+import qualified Data.Aeson.KeyMap as KeyMap
+import qualified LawSpec.Code.Doc as Doc
+import qualified Data.Binary as Binary
+import qualified Control.Monad.State.Strict as State
 import Data.Version (showVersion)
 import Paths_lawspec (version)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Api (dispatch)
-import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
+import LawSpec.Dependencies (dependencyGraph, fullKey)
+import LawSpec.SurfaceContext (contextFor)
+import LawSpec.SourceContext (emptyContext)
+import qualified LawSpec.Model as Surface
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
@@ -18,7 +25,7 @@ import LawSpec.Core.Evidence (Obligation(..))
 import qualified Data.ByteString.Lazy.Char8 as BC
 import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory, createDirectoryIfMissing, copyFile)
 import System.FilePath ((</>))
-import LawSpec.Memo (newPersistentTable, memoized, withCacheDirectory)
+import LawSpec.Memo (newPersistentTable, memoized, memoizedState, withCacheDirectory)
 import LawSpec.Discharge (dischargeEvidence)
 
 -- | Two programs that differ only in one law of their second unit. The compiler
@@ -93,6 +100,62 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
           reasons = [obligationReason o | o <- evidence, obligationStage o == "law"]
       planned `shouldSatisfy` (not . null)
       reasons `shouldSatisfy` all (\r -> any (\n -> (show n ++ " boundary case") `isInfixOf` r) planned)
+  describe "surface memo contexts" $ do
+    let declarations = C.programDataDeclarations (compiled (unlines
+          ["unit incremental.context", wrapper "Score" "0", wrapper "Wide" "1234", "end unit"]))
+        selected value bindings = let (_, ds, _) = contextFor bindings declarations emptyContext value
+                                  in map C.dataName ds
+    it "leaves unrelated nominal types and signatures out of a law's presentation memo" $ do
+      let (bindings, _, _) = contextFor [("unused", Surface.Named "Wide")] declarations emptyContext (Surface.Named "Score")
+      bindings `shouldBe` []
+      selected (Surface.Named "Score") [] `shouldContain` ["Score"]
+      selected (Surface.Named "Score") [] `shouldSatisfy` (not . elem "Wide")
+    it "closes called signatures through their nominal argument and result types" $ do
+      selected (Surface.Var "convert")
+        [("convert", Surface.Arrow (Surface.Named "Score") (Surface.Named "Wide"))]
+        `shouldContain` ["Score", "Wide"]
+    it "finds nominal owners mentioned by constructor literals and dependent annotations" $ do
+      selected (Surface.ConstructLit "Score" [Surface.Number 1]) [] `shouldContain` ["Score"]
+      selected (Surface.Annotate (Surface.Var "input") (Surface.Named "Wide")) [] `shouldContain` ["Wide"]
+  describe "structured emission chunks" $ do
+    it "round-trips layout decisions without reading generated source" $ do
+      let document = Doc.group (Doc.text "function" <> Doc.nest 2 (Doc.softline <> Doc.parens (Doc.text "argument")))
+          restored = Binary.decode (Binary.encode document)
+      restored `shouldBe` document
+      mapM_ (\layout -> Doc.render layout restored `shouldBe` Doc.render layout document)
+        [Doc.Pretty 80, Doc.Pretty 8, Doc.Compact]
+    it "replays helper state with a cached document and separates incoming states" $ do
+      table <- newPersistentTable "structured-transition-probe" 256 (length . show)
+      let action :: State.StateT [String] (Either String) Doc.Doc
+          action = do
+            before <- State.get
+            State.put (before ++ ["conversion"])
+            pure (Doc.text "call conversion")
+          run state computation = State.runStateT (memoizedState table "same-node" computation) state
+      run ["initial"] action `shouldBe` Right (Doc.text "call conversion", ["initial", "conversion"])
+      run ["initial"] (error "re-lowered a cached structured chunk")
+        `shouldBe` Right (Doc.text "call conversion", ["initial", "conversion"])
+      run ["different"] action `shouldBe` Right (Doc.text "call conversion", ["different", "conversion"])
+    it "reuses an unchanged Rust function document after an unrelated body edit" $ do
+      root <- (</> "lawspec-rust-definition-memo-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      let run body = decode (dispatch (encode (object
+            ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+             "method" .= ("planGeneration" :: String), "target" .= ("rust" :: String), "cacheDirectory" .= root,
+             "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
+               ["unit incremental.nativeChunks",
+                "function unrelated (value :: Integer) -> Integer is value + " ++ body ++ " end function",
+                "function unchanged (value :: Integer) -> Integer is value + value end function", "end unit"]]]]))) :: Maybe Value
+          good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+          good _ = False
+      run "1" `shouldSatisfy` good
+      [versioned] <- listDirectory root
+      first <- listDirectory (root </> versioned </> "typed-rust-function")
+      length first `shouldBe` 2
+      run "(if value >= 0 then 2 else -2 end if)" `shouldSatisfy` good
+      second <- listDirectory (root </> versioned </> "typed-rust-function")
+      length second `shouldBe` 3
+      removePathForcibly root
   describe "the on-disk cache" $ do
     it "reads an entry another process stored, and recomputes one it cannot read" $ do
       root <- (</> "lawspec-memo-test") <$> getTemporaryDirectory
@@ -142,7 +205,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             , "law \"|doubles| is definition : for all (x :: Integer) => double x = x * 2 end for all end definition end law\n"
             , "law \"|triples| is definition : for all (x :: Integer) => triple x = x * 3 end for all end definition end law\n" , "end unit"]
           graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
-      in [ (C.propertyName p, keyOf graph (show p) (lawReferences graph p))
+      in [ (C.propertyName p, fullKey graph "" p)
          | u <- C.programUnits program, p <- C.unitProperties u ]
     wrapper name bound = "wrapper " ++ name ++ " is Int32 where value > " ++ bound ++ " end wrapper"
     planOf law declarations = do

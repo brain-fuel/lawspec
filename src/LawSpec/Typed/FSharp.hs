@@ -21,6 +21,7 @@ import Data.List (intercalate)
 import qualified Data.Map.Strict as M
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
+import qualified LawSpec.Dependencies as Identity
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.AbilityNames as N
@@ -62,6 +63,7 @@ data Env = Env
   , envConstructors :: M.Map Id (DataDeclaration, DataConstructor)
   , envFunctions :: M.Map Int String
   , envUnits :: [Unit]
+  , envIdentity :: Identity.Graph
   }
 
 -- | The names taken in the module (functions, literals) and in the function
@@ -114,7 +116,7 @@ emitFSharpTyped bits bound allDeclarations units = do
       functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
   names <- dataNames allDeclarations
   let env = Env plan bits names (M.fromList [(idText (dataId d), d) | d <- datas])
-        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units
+        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units (Identity.dependencyGraphWithBits bits allDeclarations units)
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       started = [ (h, ty, start) | h <- typedHandlers, Just (ty, start) <- [handlerState h] ]
       (startNames, startScope) = claimAll moduleScope [ "start" ++ pascal (handlerName h) | (h, _, _) <- started ]
@@ -128,7 +130,7 @@ emitFSharpTyped bits bound allDeclarations units = do
       pure (["/// A typed handler's start state.", "[<CompiledName(\"" ++ compiledName name ++ "\")>]"] ++
         L.function 0 ("let " ++ name) ["(schema: Schema.Schema)", "(symbols: Scalar.SymbolContext)"] (Just t) (Block statements result))
     pure (fs ++ ss)
-  let aliases = [[Data.fsharpTypeAbbreviation allDeclarations d (constructorAlias d) ("LawSpec.Data." ++ dataNameOf env d)] |
+  let aliases = [[Data.fsharpTypeAbbreviation allDeclarations d (constructorAlias env d) ("LawSpec.Data." ++ dataNameOf env d)] |
         d<-datas,needsConstructorAlias env d]
       literals = [ L.binding 0 ("let private " ++ name) definition | (name, definition) <- M.elems (stLiterals st) ] ++
         [ L.function 0 ("let private " ++ name) ["(c: int)"] (Just ordering)
@@ -521,11 +523,11 @@ needsConstructorAlias :: Env -> DataDeclaration -> Bool
 needsConstructorAlias env d = not (isRecord d) &&
   any ((== dataNameOf env d) . pascal . constructorName) (dataConstructors d)
 
-constructorAlias :: DataDeclaration -> String
-constructorAlias d = "LawSpecPattern_" ++ stableSuffix (dataId d)
+constructorAlias :: Env -> DataDeclaration -> String
+constructorAlias env d = "LawSpecPattern_" ++ dataNameOf env d ++ "_" ++ stableSuffix (envIdentity env) (dataId d)
 
 constructorTypeRef :: Env -> DataDeclaration -> String
-constructorTypeRef env d = if needsConstructorAlias env d then constructorAlias d else "LawSpec.Data." ++ dataNameOf env d
+constructorTypeRef env d = if needsConstructorAlias env d then constructorAlias env d else "LawSpec.Data." ++ dataNameOf env d
 
 -- | A record: one constructor with fields (as LawSpec.DotNet.Data makes it).
 isRecord :: DataDeclaration -> Bool

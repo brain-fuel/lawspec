@@ -5,7 +5,7 @@ import path from 'node:path';
 import {doctor} from './doctor.mjs';
 import {planWrites} from './files.mjs';
 import {projectKey} from './failure-database.mjs';
-import {lawKeys,environmentDigest,recordedDigest,projectDigest,invocations} from './test-command.mjs';
+import {lawKeys,presentationDigest,environmentDigest,recordedDigest,projectDigest,invocations} from './test-command.mjs';
 
 // Native execution observations are scoped to actual completed test slots.
 // They never establish a universal model proof or a witness-search completeness claim.
@@ -67,11 +67,11 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
     const record=JSON.parse(await readFile(file,'utf8').catch(error=>{
       if(error.code==='ENOENT')return '{}';throw error;
     }));
-    return {target,root,attempts:record.attempts??{},runs:record.laws??{},attestations:record.attestations??{}};
+    return {target,root,attempts:record.attempts??{},runs:record.laws??{},presentation:record.presentation,attestations:record.attestations??{}};
   }));
   if(!records.some(record=>Object.keys(record.attempts).length))return [];
   const observations=[];
-  for(const {target,root,attempts,runs,attestations}of records){
+  for(const {target,root,attempts,runs,presentation,attestations}of records){
     const plans=new Map(),contexts=new Map();
     // An attempt is keyed by the wiring of the attestation it ran under: the
     // one named now, or else the one lawspec test stored for its run.
@@ -108,10 +108,15 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
           const report=await doctor(target,root,generated.files);
           if(!report.ok)result={reason:'The current native environment could not be checked: '+report.message};
           else {
+            const environment=await environmentDigest(root,report,target.language);
+            if(presentation!==presentationDigest(generated.files,environment)){
+              result={reason:'Current generated presentation has not passed native validation; run lawspec test'};
+              contexts.set(key,result);return result;
+            }
             const owned=new Set(generated.files.filter(file=>file.ownership==='generated').map(file=>file.path));
             const keys=lawKeys({build,target,machineBits:input.machineBits,minify,tests:generated.tests,files:generated.files,
-              environment:await environmentDigest(root,report)+await recordedDigest(path.join(configRoot,'recorded')),
-              project:await projectDigest(root,owned),attested:attestedKeys(generated)});
+              environment:environment+await recordedDigest(path.join(configRoot,'recorded')),
+              project:await projectDigest(root,owned,target.language),attested:attestedKeys(generated)});
             result={generated,keys};
           }
         }
@@ -119,7 +124,19 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
       contexts.set(key,result);return result;
     }
     for(const [id,baseline]of expected){
-      const attempt=attempts[id];
+      let attempt=attempts[id],reuse;
+      if(!attempt)for(const original of Object.values(attempts)){
+        // Only a single ordinary-law observation can be re-associated here.
+        // Combined model methods keep their exact group identities.
+        if(original.outcome!=='passed'||original.check?.nativeGroup?.length!==1||
+          !isDeepStrictEqual(original.check.obligations,[{declaration:original.check.id,stage:'law'}])||
+          !isDeepStrictEqual(obligationTargets(baseline),[{declaration:id,stage:'law'}]))continue;
+        let candidate=await context(original.profile?.minify??false,wiredBy(original));
+        if(candidate.reason&&candidate.stale)candidate=await context(!original.profile?.minify,wiredBy(original));
+        if(!candidate.reason&&candidate.keys.get(id)===original.key&&baseline.key===original.planKey){
+          attempt=original;reuse={check:original.check.id,key:original.key,at:original.at};break;
+        }
+      }
       const row={target:target.language,root,check:{id,obligations:obligationTargets(baseline)},
         outcome:attempt?.outcome??'not-run',coverage:baseline.coverage,attempt};
       if(!attempt){observations.push({...row,freshness:'not-run',reason:'No completed native observation was recorded'});continue;}
@@ -128,29 +145,34 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
         typeof profile.minify!=='boolean'){
         observations.push({...row,freshness:'stale',reason:'Compiler, target or machine profile differs'});continue;
       }
-      const current=await context(profile.minify,wiredBy(attempt));
+      let current=await context(profile.minify,wiredBy(attempt));
+      // Layout belongs to the artifact, not to the meaning of its old run.
+      // Accept the other canonical layout only when it exactly matches disk.
+      if(current.reason&&current.stale)current=await context(!profile.minify,wiredBy(attempt));
       if(current.reason){observations.push({...row,freshness:current.stale?'stale':'unavailable',reason:current.reason});continue;}
       const entry=current.generated.tests.find(entry=>entry.law===id);
       if(!entry||attempt.key!==current.keys.get(id)||attempt.planKey!==entry.key||
-        !isDeepStrictEqual(attempt.check?.obligations,obligationTargets(entry))||
+        (!reuse&&!isDeepStrictEqual(attempt.check?.obligations,obligationTargets(entry)))||
         !isDeepStrictEqual(attempt.coverage,entry.coverage)){
         observations.push({...row,freshness:'stale',reason:'Specification, selection, bindings, native source or toolchain inputs differ'});continue;
       }
-      const invocation=invocations(target,[entry],{root}).find(run=>run.laws?.includes(entry));
+      const observedEntry=reuse?{...entry,...attempt.check,law:attempt.check.id,key:attempt.planKey}:entry;
+      const invocation=invocations(target,[observedEntry],{root}).find(run=>run.laws?.includes(observedEntry));
+      const observedKeys=reuse?new Map([[observedEntry.law,attempt.key]]):current.keys;
       const validSeed=(typeof attempt.seed==='number'&&Number.isSafeInteger(attempt.seed)&&attempt.seed>=0)||
         (typeof attempt.seed==='string'&&/^[0-9]+$/.test(attempt.seed));
       const recomputed=validSeed&&Number.isFinite(Date.parse(attempt.at))&&invocation&&Array.isArray(attempt.tests)&&recordNativeAttempts(invocation,attempt.tests,
-        {keys:current.keys,seed:attempt.seed,ok:attempt.invocation?.ok===true,profile,at:attempt.at,
-          allEntries:current.generated.tests})[id];
+        {keys:observedKeys,seed:attempt.seed,ok:attempt.invocation?.ok===true,profile,at:attempt.at,
+          allEntries:reuse?[observedEntry]:current.generated.tests})[observedEntry.law];
       if(!recomputed||recomputed.outcome!==attempt.outcome||
         !isDeepStrictEqual(recomputed.check.nativeGroup,attempt.check?.nativeGroup)){
         observations.push({...row,freshness:'unavailable',reason:'The stored observation does not establish the current native completion'});continue;
       }
       const run=runs[id];
-      observations.push({...row,freshness:'matching-inputs',
+      observations.push({...row,freshness:'matching-inputs',...(reuse?{reused:reuse}:{}),
         ...(attempt.outcome==='passed'&&run?.key===attempt.key&&(run.flaky||run.adequacy)?
           {harness:{...(run.flaky?{flaky:true}:{}),...(run.adequacy?{adequacy:run.adequacy}:{})}}:{}),
-        reason:attempt.outcome==='passed'?'Recorded native completion matches the current inputs':'Recorded native attempt matches the current inputs'});
+        reason:reuse?'Original native completion reused for the current semantic law; no fresh invocation is claimed':attempt.outcome==='passed'?'Recorded native completion matches the current inputs':'Recorded native attempt matches the current inputs'});
     }
     for(const [id,attempt]of Object.entries(attempts))if(!expected.has(id)&&Array.isArray(attempt.check?.obligations))
       observations.push({target:target.language,root,check:attempt.check,attempt,outcome:attempt.outcome,

@@ -151,7 +151,7 @@ test('formatting retains long scenario arguments and typed behavior through nest
         // Source links name the line a unit is written on, which formatting
         // may move; the rest of each file must be unchanged.
         const unlinked=content=>content.replace(/(canonical-scenario-format-boundaries\.lawspec):\d+/g,'$1:<line>');
-        const identities=file=>({...file,content:unlinked(remote?file.content.replace(/sha3-256:[0-9a-f]{64}/g,'<remote dependency hash>'):file.content)});
+        const identities=file=>({...file,content:unlinked(remote?file.content.replace(/blake3-semantic-1:[0-9a-f]{64}/g,'<remote dependency hash>'):file.content)});
         assert.deepEqual(identities(after),identities(before),target+': '+before.path);
       }
       assert.deepEqual(rewritten.tests,[]);assert.deepEqual(original.tests,[]);

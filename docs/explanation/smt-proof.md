@@ -277,10 +277,15 @@ already too late. Observation times must be nondecreasing.
 
 ## Encodings and receipts
 
-Every task names its encoding. `lawspec-smtlib-v1` is frozen: a task it
-supports keeps its script and fingerprint byte for byte. A receipt recorded
-for such a task stays current, so nothing needs to run again. A test checks
-this against a frozen corpus of tasks in `test/fixtures/smt-v1`.
+Every task names its encoding. Its `lawFingerprint` binds the receipt to
+what the law does: the encoding, the machine width, how the law is proved and
+the law's semantic hash, which covers everything it reaches
+(see [Content identity](content-identity.md)). Renaming a local, reformatting,
+editing a description or editing a law the law does not reach keeps the
+fingerprint, so the receipt stays current. A behaviour edit changes it.
+The `taskFingerprint` still binds the exact script, so the host can check a
+task. A test checks the fingerprints against the corpus in
+`test/fixtures/smt-corpus`. ref:DEC-smt-semantic-receipts
 
 A task that needs a feature v1 lacks, such as data types or text, is
 `lawspec-smtlib-v2`. The counterexample query beside a v1 task is v2 too; the
@@ -292,3 +297,18 @@ The mandatory definition audit reduces variable aliases by capture-avoiding
 substitution, following [Lean's zeta reduction of local definitions](https://lean-lang.org/doc/reference/latest/The--grind--tactic/Local-Definitions/).
 Both source and Core lowering share that reduction. Other strict bindings retain
 their evaluated prefix so an unused partial computation still fails validation.
+
+### Reusing a completed law proof
+
+With a configured compiler cache, the Node host may reuse a completed `unsat`
+law receipt after current mandatory admission and proof-task validation. Its
+key includes the law fingerprint, compiler build metadata, host implementation
+and the actual solver executable, version and configuration. The original
+exact task and run fingerprints remain unchanged; `reused` records provenance
+and `currentTaskFingerprint` identifies the current task. This is reuse of an
+earlier execution, not a new solver run. `--no-cache` forces execution again.
+
+The cache is a trusted local compiler memo. Satisfiable/refuted, unsupported,
+unknown and incomplete law results are retried; counterexamples are replayed
+by the current evaluator. The separate law-set and temporal/model solver
+workflows still execute and are not covered by this law-receipt cache.

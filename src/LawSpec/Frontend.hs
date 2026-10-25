@@ -4,6 +4,7 @@ module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborate
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
 import qualified LawSpec.SourceContext as Source
+import LawSpec.SurfaceContext (contextFor)
 import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.EqSet as EqSet
@@ -152,10 +153,13 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
         let contractRecords = concatMap snd contracts
             dataDeclarations = appendRecords knownDefinitions contractRecords
             cs = map fst contracts
-        -- A law's Core depends on it, its unit's signatures and the data types.
-        let dataDigest = digestHex (digestString (show (dataDeclarations,sourceTypes)))
+        -- A presentation-bearing surface memo keeps names and spans but
+        -- closes only through the signatures and nominal types this law
+        -- mentions. Mandatory unit admission still ran above.
+        let context = contextFor (S.functions u) dataDeclarations sourceTypes
             elaborated p = memoized elaborationTable
-              (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, S.resourceDeclarations u,
+              (digestHex (digestString (show (bits, context p,
+                S.unitName u, S.resourceDeclarations u,
                 M.findWithDefault noCapabilities (sourcePropertyId (S.unitName u) (S.name p)) scopes, formalCount p, p))))
               (property sourceTypes dataDeclarations u p)
             owned = filter ((== S.unitName u) . S.owner) properties

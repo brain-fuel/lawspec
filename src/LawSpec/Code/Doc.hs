@@ -10,6 +10,8 @@ module LawSpec.Code.Doc
   ) where
 
 import Data.List (intersperse, sort)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import Data.Char (ord)
 import qualified Data.IntMap.Strict as IM
 import LawSpec.DisplayWidthData (displayWidthRanges)
@@ -47,12 +49,16 @@ data Doc
   | FullWidth Doc
   | FitsIndentedTwice Int Doc Doc
   | StopHere
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance Binary Doc
 
 -- | How rustfmt chooses between a right-hand side on the same line and on
 -- the next: for a let's value, and for a match arm's body (which stays on
 -- the arm's line when it can be extended there).
-data Preference = NextLineValue Bool Int | ArmBody Bool | ChainLast (Maybe Int) deriving (Eq, Show)
+data Preference = NextLineValue Bool Int | ArmBody Bool | ChainLast (Maybe Int) deriving (Eq, Show, Generic)
+
+instance Binary Preference
 
 -- | Compact removes optional layout only. Mandatory newlines and nesting remain
 -- meaningful for Python, Haskell, Go, line comments, and preprocessor directives.

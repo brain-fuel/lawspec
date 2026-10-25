@@ -17,6 +17,8 @@ reading, not instructions.
   reports how it was checked.
 - [Reviewing business policies](business-examples.md): refund priority,
   contradictory requirements and stateful order histories.
+- [Content identity](content-identity.md): the semantic and presentation
+  hashes, and what each one keys.
 - [Abilities and the harness](abilities.md): dependencies as abilities, and
   why a law holds for every lawful handler.
 - [Generation and shrinking](generation-and-shrinking.md): how tests find

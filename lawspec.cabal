@@ -377,29 +377,29 @@ extra-source-files:
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
-    test/fixtures/smt-v1/authorization-snapshots.lawspec
-    test/fixtures/smt-v1/banner-filenames.lawspec
-    test/fixtures/smt-v1/bit-codec.lawspec
-    test/fixtures/smt-v1/bounded-witness-search.lawspec
-    test/fixtures/smt-v1/canonical-smt-arithmetic.lawspec
-    test/fixtures/smt-v1/chapter-06.lawspec
-    test/fixtures/smt-v1/conflicting-requirements.lawspec
-    test/fixtures/smt-v1/constructive-witnesses.lawspec
-    test/fixtures/smt-v1/documentary-review.lawspec
-    test/fixtures/smt-v1/empty-domains.lawspec
-    test/fixtures/smt-v1/finite-integer-domains.lawspec
-    test/fixtures/smt-v1/law-metadata.lawspec
-    test/fixtures/smt-v1/native-payments.lawspec
-    test/fixtures/smt-v1/order-workflow.lawspec
-    test/fixtures/smt-v1/parcel-measurements.lawspec
-    test/fixtures/smt-v1/picture-records.lawspec
-    test/fixtures/smt-v1/picture-tuples.lawspec
-    test/fixtures/smt-v1/record-payloads.lawspec
-    test/fixtures/smt-v1/recursive-records.lawspec
-    test/fixtures/smt-v1/refund-policy.lawspec
-    test/fixtures/smt-v1/smt-laws.lawspec
-    test/fixtures/smt-v1/structural-records.lawspec
-    test/fixtures/smt-v1/corpus.jsonl
+    test/fixtures/blake3sum.json
+    test/fixtures/smt-corpus/authorization-snapshots.lawspec
+    test/fixtures/smt-corpus/banner-filenames.lawspec
+    test/fixtures/smt-corpus/bit-codec.lawspec
+    test/fixtures/smt-corpus/bounded-witness-search.lawspec
+    test/fixtures/smt-corpus/canonical-smt-arithmetic.lawspec
+    test/fixtures/smt-corpus/chapter-06.lawspec
+    test/fixtures/smt-corpus/conflicting-requirements.lawspec
+    test/fixtures/smt-corpus/constructive-witnesses.lawspec
+    test/fixtures/smt-corpus/documentary-review.lawspec
+    test/fixtures/smt-corpus/empty-domains.lawspec
+    test/fixtures/smt-corpus/finite-integer-domains.lawspec
+    test/fixtures/smt-corpus/law-metadata.lawspec
+    test/fixtures/smt-corpus/native-payments.lawspec
+    test/fixtures/smt-corpus/order-workflow.lawspec
+    test/fixtures/smt-corpus/parcel-measurements.lawspec
+    test/fixtures/smt-corpus/picture-records.lawspec
+    test/fixtures/smt-corpus/picture-tuples.lawspec
+    test/fixtures/smt-corpus/record-payloads.lawspec
+    test/fixtures/smt-corpus/recursive-records.lawspec
+    test/fixtures/smt-corpus/refund-policy.lawspec
+    test/fixtures/smt-corpus/smt-laws.lawspec
+    test/fixtures/smt-corpus/structural-records.lawspec
     test/fixtures/recorded-values.json
     test/fixtures/recorded-web.mjs
     test/fixtures/recorded_python.py
@@ -615,6 +615,7 @@ library
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
+      LawSpec.Core.Identity
       LawSpec.Core.LawAnalysis
       LawSpec.Core.LawTasks
       LawSpec.Core.Machine
@@ -807,6 +808,7 @@ library
       LawSpec.SourceTokens
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
+      LawSpec.SurfaceContext
       LawSpec.Swift.Abilities
       LawSpec.Swift.Actors
       LawSpec.Swift.Code
@@ -1034,6 +1036,7 @@ test-suite lawspec-test
       GenericDefinitionSpec
       GroovyBridgeSpec
       HarnessSpec
+      IdentitySpec
       ImportSpec
       IncrementalSpec
       IndexedSpec
@@ -1069,8 +1072,8 @@ test-suite lawspec-test
       SelectionAdmissionSpec
       SessionsPythonSpec
       SmtDataSpec
-      SmtFrozenSpec
       SmtNumericSpec
+      SmtReceiptSpec
       SmtRecursionSpec
       SmtSpec
       SmtTextSpec

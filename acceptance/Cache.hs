@@ -1,11 +1,16 @@
--- | Content-addressed acceptance results. A run's key hashes everything the
--- native test tool reads: the generated project, the suite's adapters, stubs
--- and mutants, the harness itself, and the toolchain's versions, dependency
--- locks and environment. A compiler change that leaves a target's output
--- unchanged therefore reuses that target's result instead of rerunning its
--- tests (an early cutoff). LAWSPEC_CACHE=0 disables the cache, and
--- LAWSPEC_CACHE=refresh runs everything but still records passes.
-module Cache (Key, Mode(..), cacheMode, runKey, lookupResult, storeResult) where
+-- | Content-addressed acceptance results. A run has two keys. The bytes key
+-- hashes everything the native test tool reads: the generated project, the
+-- suite's adapters, stubs and mutants, the harness itself, and the
+-- toolchain's versions, dependency locks and environment. A compiler change
+-- that leaves a target's output unchanged therefore reuses that target's
+-- result instead of rerunning its tests (an early cutoff, as Salsa and
+-- rustc's red-green algorithm do). The meaning key replaces the generated
+-- project with the semantic hashes of its laws and declarations and the
+-- compiler build, so a reformat, a rename or a doc edit in a suite's spec
+-- reuses the result too (ref:DEC-content-identity). A pass is recorded
+-- under both. LAWSPEC_CACHE=0 disables the cache, and LAWSPEC_CACHE=refresh
+-- runs everything but still records passes.
+module Cache (Key, Mode(..), cacheMode, runKey, meaningKey, lookupResult, storeResult) where
 
 import Control.Monad (filterM, forM)
 import qualified Crypto.Hash.SHA256 as SHA
@@ -37,7 +42,10 @@ cacheMode = lookupEnv "LAWSPEC_CACHE" >>= \case
 -- | The labels name the run (suite, target, profile, mode); the contents are the
 -- project files as written; the paths are further files the run reads.
 runKey :: String -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
-runKey target labels contents paths = do
+runKey target = runKeyWith target environmentNames
+
+runKeyWith :: String -> [String] -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
+runKeyWith target environmentNames labels contents paths = do
   existing <- filterM doesFileExist paths
   files <- forM (sort existing) $ \path -> (,) path <$> B.readFile path
   tools <- toolFingerprint target
@@ -47,10 +55,19 @@ runKey target labels contents paths = do
         concat [[utf8 path, bytes] | (path, bytes) <- files]
       digest = SHA.finalize (SHA.updates SHA.init (concatMap framed pieces))
   pure (Key (concatMap (printf "%02x") (B.unpack digest)))
-  where
-    utf8 = T.encodeUtf8 . T.pack
-    -- Length-prefixed, so no two different inputs share a byte stream.
-    framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
+
+-- | The meaning key: as runKey, with the compiler build and the semantic
+-- hashes of what the project was generated from in place of its files.
+meaningKey :: String -> [String] -> String -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
+meaningKey target labels build semantic contents paths =
+  runKeyWith target (filter (/= "LAWSPEC_MINIFY") environmentNames) ("lawspec-acceptance-meaning-3" : build : labels ++ semantic) contents paths
+
+utf8 :: String -> B.ByteString
+utf8 = T.encodeUtf8 . T.pack
+
+-- Length-prefixed, so no two different inputs share a byte stream.
+framed :: B.ByteString -> [B.ByteString]
+framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
 
 -- | Environment that changes what a native test run does.
 environmentNames :: [String]

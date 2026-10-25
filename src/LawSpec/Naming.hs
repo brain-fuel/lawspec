@@ -9,6 +9,8 @@ module LawSpec.Naming
   , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, typeWords
   ) where
 
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import Data.Char (isAlphaNum, isAscii, isDigit, isHexDigit, isLower, isUpper, toLower, toUpper)
 import qualified LawSpec.Core as C
 import Data.List (intercalate, isPrefixOf, stripPrefix, dropWhileEnd)
@@ -104,7 +106,9 @@ nativeIdentifier target kind source = escapeKeyword target (leading (cased (casi
     leading name = name
 
 -- | Names already taken in a scope, compared as the target compares them.
-newtype Scope = Scope (S.Set String)
+newtype Scope = Scope (S.Set String) deriving (Eq, Show, Generic)
+
+instance Binary Scope
 
 emptyScope :: Scope
 emptyScope = Scope S.empty

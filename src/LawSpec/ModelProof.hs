@@ -10,8 +10,9 @@ module LawSpec.ModelProof
 
 import Control.Monad (forM, unless, when)
 import Data.Char (isSpace)
-import Data.List (intercalate, isPrefixOf, isInfixOf)
+import Data.List (intercalate, isPrefixOf, isInfixOf, nub)
 import qualified Data.Map.Strict as M
+import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey)
 import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Core.Counterexample (SExpression(..), readValues, valueOf)
@@ -31,11 +32,11 @@ import LawSpec.Core.ModelCheck (System(..))
 -- values a model gives.
 data ModelTask = ModelTask
   { taskOwner :: C.Id, taskLaw :: C.Id, taskKind :: String, taskScript :: String
-  , taskInputs :: [String], taskFingerprint :: String }
+  , taskInputs :: [String], taskFingerprint :: String, taskSemanticFingerprint :: String }
 
 -- | Z3's answer to a task: its outcome, its get-value answer, and, for
 -- Spacer, the invariant it proposed (a define-fun of Inv).
-data Answer = Answer { answerOutcome :: String, answerValues :: String, answerInvariant :: String }
+data Answer = Answer { answerOutcome :: String, answerValues :: String, answerInvariant :: String, answerInputs :: Maybe [String] }
 
 -- | The depth of the bounded run search.
 depth :: Int
@@ -115,8 +116,17 @@ modelTasks units program open answers =
   [ (owner, law, tasks owner law shape steps)
   | (owner, law, _, shape, steps) <- invariantClaims units program, law `elem` open ]
   where
+    graph = dependencyGraphWithBits (C.programMachineBits program) (C.programDataDeclarations program) (C.programUnits program)
     tasks owner law shape steps =
-      let task kind (script, inputs) = ModelTask owner law kind script inputs (digestHex (digestString (C.idText law ++ "\0" ++ kind ++ "\0" ++ script)))
+      let shapeIdentity = (shapeState shape, shapeStart shape,
+            [(arguments, guard', next) | (_,arguments,guard',next) <- steps], shapeClaim shape)
+          ordinal kind = case lookup kind (zip ("induction: the start" : ["induction: " ++ name | (name,_,_,_) <- steps]) [0 :: Int ..]) of
+            Just index -> "induction:" ++ show index
+            Nothing -> kind
+          task kind (script, inputs) = ModelTask owner law kind script inputs
+            (digestHex (digestString (C.idText law ++ "\0" ++ kind ++ "\0" ++ script)))
+            (semanticKey graph (show ("lawspec.model-goal.v1", C.programMachineBits program, ordinal kind,
+              [answerInvariant a | "invariant: " `isPrefixOf` kind, (_,a) <- answers, not (null (answerInvariant a))])) shapeIdentity)
           state = shapeState shape
           bool = C.Constructor "Bool" []
           origin = C.GeneratedFrom (C.Id "model-proof")
@@ -234,10 +244,13 @@ replay units program _ law task answer = Just $ do
     c : _ -> Right c
     [] -> Left "the law has no invariant"
   pairs <- readValues (answerValues answer)
+  let original = maybe (taskInputs task) id (answerInputs answer)
+  unless (length original == length (taskInputs task) && length (nub original) == length original)
+    (Left "the original model constants do not match the current task")
   system <- systemOf program machine
   ctx <- A.context program
   let types = catalog program
-      names = taskInputs task
+      names = original
       startCount = length (fst (shapeStart shape))
       valueAt i ty = case drop i names of
         n : _ | Just v <- lookup n pairs -> valueOf types ty v

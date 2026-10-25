@@ -23,7 +23,7 @@ import LawSpec.CorePersist ()
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Data.Binary (Binary)
-import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
+import LawSpec.Dependencies (dependencyGraphWithBits, lawReferences, closure, fullKey, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (evaluate)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -149,18 +149,19 @@ modelTestUnits plan=map (modelTestUnit plan . plannedUnit) (plannedUnits plan)
 
 -- | How each law of a program is planned, by the generated tests and by
 -- evidence discharge alike. A law is planned from what it reaches: the types
--- and definitions in its dependency closure. Its key is its content and the
--- Merkle digests of what it references, so an edit replans exactly the laws
--- that can reach it, and reverting an edit finds the earlier plans again.
+-- and definitions in its dependency closure. A plan shows names, so its key
+-- is the law's semantic and presentation hashes (LawSpec.Dependencies):
+-- an edit replans exactly the laws that can reach it, and reverting an edit
+-- finds the earlier plans again.
 lawPlanner :: Program -> Either [Diagnostic] (Property -> Either String PlannedProperty)
 lawPlanner program@Program{..} = do
   invoke <- prepareDefinitions program
   _ <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
-  let graph = dependencyGraph programDataDeclarations programUnits
+  let graph = dependencyGraphWithBits programMachineBits programDataDeclarations programUnits
   pure $ \p ->
     let refs = lawReferences graph p
         reached = closure graph refs
-    in memoized planTable (keyOf graph (show (programMachineBits, p)) refs) $ do
+    in memoized planTable (fullKey graph (show programMachineBits) p) $ do
       registry <- makeRegistry (reachableData graph reached)
       planProperty registry programMachineBits invoke (reachableDefinitions graph reached) p
 

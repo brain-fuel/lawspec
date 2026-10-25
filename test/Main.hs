@@ -86,6 +86,7 @@ import qualified BoundsSpec
 import qualified ECMAScriptSpec
 import qualified ConditionalSpec
 import qualified IncrementalSpec
+import qualified IdentitySpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
 import qualified SessionsPythonSpec
@@ -98,7 +99,7 @@ import qualified DotNetSpec
 import qualified LanguageGapsSpec
 import qualified MatcherAdmissionSpec
 import qualified OperationResultSpec
-import qualified SmtFrozenSpec
+import qualified SmtReceiptSpec
 import qualified CounterexampleSpec
 import qualified SmtDataSpec
 import qualified SmtRecursionSpec
@@ -195,7 +196,7 @@ main = hspec $ do
   LanguageGapsSpec.test_languageGapsClose
   MatcherAdmissionSpec.test_matcherFactsAreKeptInAdmission
   OperationResultSpec.test_operationResultsAreCheckedWhereTheyAreUsed
-  SmtFrozenSpec.test_smtV1IsFrozen
+  SmtReceiptSpec.test_receiptsFollowBehaviourNotSpelling
   CounterexampleSpec.test_counterexamplesAreConfirmedByTheEvaluator
   SmtDataSpec.test_smtDataTasks
   SmtRecursionSpec.test_smtRecursion
@@ -212,6 +213,7 @@ main = hspec $ do
   ECMAScriptSpec.test_javascriptIsLaidOutAsPrettierLaysItOut
   ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
   IncrementalSpec.test_incrementalCompilationGivesTheSameResultAsAFreshOne
+  IdentitySpec.test_semanticIdentityIsBehaviourAndPresentationIsTheRest
   TestManifestSpec.test_testManifestNamesEveryLawsTestOnEachTarget
   RailwaySpec.test_railwayCombinatorsComposeResultsAsDocumented
   SessionsPythonSpec.test_pythonSessionEndsFollowTheirProtocol

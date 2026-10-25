@@ -124,11 +124,13 @@ timeouts. HTTP uses one `POST /lawspec` per connection and responds with
   that already talks across the network **moves** to the new node; a local
   end stays put and the sending node relays its conversation (see
   [moving a channel end](#moving-a-channel-end)).
-- **Checked definitions** are evaluated **by content hash**: the SHA3-256
-  hash (FIPS 202) of the definition and everything it uses, written with
-  its algorithm, as `sha3-256:` then 64 hexadecimal digits. Two nodes agree
-  on a hash exactly when they hold the same definition, so a node never runs
-  a different version of the code by mistake.
+- **Checked definitions** are evaluated **by content hash**: the semantic
+  hash of the definition and everything it uses (see
+  [Content identity](../../explanation/content-identity.md)), written with
+  its algorithm and encoding, as `blake3-semantic-1:` then 64 hexadecimal
+  digits. Two nodes agree on a hash exactly when they hold definitions that
+  behave the same, so a node never runs a different version of the code by
+  mistake, and renaming or reformatting a definition does not change it.
 - **Mailboxes.** A send to a mailbox on another node waits until the
   mailbox has the message. A lost send is sent again, and the mailbox takes
   it once.

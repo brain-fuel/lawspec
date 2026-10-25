@@ -1,8 +1,8 @@
 -- | Remote evaluation. Every checked definition whose types have wire
 -- descriptors can be evaluated by another node, by its content hash: the
--- Merkle digest of the definition and everything it reaches (see
+-- semantic hash of the definition and everything it reaches (see
 -- LawSpec.Dependencies), so two nodes agree on a hash exactly when they hold
--- the same definition. Each target generates a small module, lawspec_remote,
+-- definitions that behave the same, whatever they are called. Each target generates a small module, lawspec_remote,
 -- mapping each hash to its definition and descriptors, with serve(node) and
 -- evaluate(node, address, name, args...).
 module LawSpec.Remote (Remote(..), remoteManifest, remoteArtifacts) where
@@ -37,10 +37,11 @@ data Remote = Remote
   , remoteResult :: String
   }
 
--- | A content hash names its algorithm, so nodes never compare hashes of two
--- kinds: sha3-256: then the SHA3-256 Merkle hash in hexadecimal.
+-- | A content hash names its algorithm and encoding, so nodes never compare
+-- hashes of two kinds: blake3-semantic-1: then the definition's semantic
+-- hash in hexadecimal. ref:DEC-remote-semantic-identity
 contentName :: String -> String
-contentName h = "sha3-256:" ++ h
+contentName h = "blake3-semantic-1:" ++ h
 
 -- | The data types the descriptors use, and each definition that can be
 -- evaluated remotely. Orchestrations (which call adapters) and definitions
@@ -49,7 +50,7 @@ remoteManifest :: Plan -> ([String], [Remote])
 remoteManifest plan = (map snd (reverse table), reverse remotes)
   where
     units = map plannedUnit (plannedUnits plan)
-    graph = D.dependencyGraph (planDataDeclarations plan) units
+    graph = D.dependencyGraphWithBits bits (planDataDeclarations plan) units
     bits = planMachineBits plan
     datas = planDataDeclarations plan
     (table, remotes) = foldl add ([], []) [d | u <- units, d <- C.unitDefinitions u, not (C.definitionOrchestrates d)]

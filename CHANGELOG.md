@@ -18,8 +18,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each case separately, with fresh values and a fresh context for every run.
   In the handler-bindings suite, the JavaScript test file shrinks from 1,096,011
   lines to 2,771 and Python from 1,127,192 to 3,026. Both still execute all 8,012
-  cases and reject the two adapter mutations. Other target emitters and scoped
-  quantifier lowering are still being converted.
+  cases and reject the two adapter mutations. Other target emitters and partial
+  search schedules are still being converted.
+- **Content identity.** Every type, declaration, handler, ability and law
+  has a semantic hash of what it does and a presentation hash of its names,
+  docs and spans ([Content identity](docs/explanation/content-identity.md)).
+  Binders are positions, references are hashes, and recursive groups are
+  hashed as one, as in Rune and Unison. Renaming a local or a definition,
+  reformatting, moving code, editing a description or editing an unrelated
+  definition no longer invalidates plans, emitted units, test results,
+  acceptance results or proof receipts.
+- `lawspec test` keys a law's result on its semantic hash, the compiler
+  build, the target, toolchain, recorded values and adapters, never on the
+  generated file's bytes. A renamed law keeps its result.
+- **Breaking: proof tasks.** `programFingerprint` is replaced by a per-law
+  `lawFingerprint` over the law's semantic hash, encoding, machine width and
+  proof settings. Receipts recorded before 0.30.0 must be recomputed once.
+  The lawspec-smtlib-v1 byte freeze is replaced by an invariance test.
+- **Breaking: remote content hashes** are `blake3-semantic-1:` then the
+  semantic hash, in place of `sha3-256:`. Nodes on 0.29 and 0.30 do not
+  evaluate each other's definitions.
+- Acceptance records each pass under the generated project's bytes and
+  under the semantic hashes of its spec, so a spec edit that keeps behaviour
+  reuses the result.
+- BLAKE3 follows goforge's blake3sum design: unboxed words, an unrolled
+  compression function and a batch `hashMany`. It is 9.2 times faster on
+  20,000 48-byte inputs (97.5 ms to 10.6 ms) and 22 times faster on 4 MiB
+  (432 ms to 19 ms), and agrees with the official vectors and blake3sum.
+
 - **Breaking: generated Python names.** Generated Python is written to be
   read. Locals keep their source names, checked definitions are named after
   the definition (`_definitions.fee_model`, `lawspec_typed.settings`, with

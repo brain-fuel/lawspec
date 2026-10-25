@@ -10,6 +10,10 @@ export interface Z3Options {
 }
 /** How a solver run went: shared by law and law-set evidence. */
 interface SolverRun {
+  /** Current task binding when a semantic result reuses an earlier execution. */
+  currentTaskFingerprint?: string;
+  /** Provenance of the completed execution reused; no fresh solver run occurred. */
+  reused?: {key:string; owner:string; declaration:string; taskFingerprint:string; runFingerprint:string};
   outcome: 'unsat' | 'sat' | 'unknown' | 'timeout' | 'resource-limit' | 'out-of-memory' | 'unavailable' | 'failed' | 'unsupported';
   reason: string;
   stdout?: string;
@@ -29,8 +33,10 @@ export interface LawSolverEvidence extends SolverRun {
   at: Location;
   encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
   machineBits: 32 | 64;
-  programFingerprint: string;
+  lawFingerprint: string;
   taskFingerprint?: string;
+  /** Current names for the same semantic induction plan; original cases remain in induction. */
+  currentInduction?: {on:string; using:string[]};
   status: 'proved' | 'refuted' | 'incomplete' | 'unsupported';
   model?: string;
   modelValidated?: boolean;
@@ -75,5 +81,5 @@ export interface ModelSolverEvidence extends SolverRun {
   counterexample?: undefined;
 }
 export type SolverEvidence = LawSolverEvidence | AnalysisSolverEvidence | ModelSolverEvidence;
-export function proofTaskFingerprint(task: {encoding:string;programFingerprint:string;machineBits:number;owner:string;declaration:string;script:string}):string;
+export function proofTaskFingerprint(task: {encoding:string;lawFingerprint:string;machineBits:number;owner:string;declaration:string;script:string}):string;
 export function proveWithZ3(compiler:Compiler,request:CheckRequest,options?:Z3Options):Promise<Result & {solverEvidence:SolverEvidence[]}>;
