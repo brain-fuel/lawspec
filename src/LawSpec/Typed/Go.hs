@@ -13,7 +13,7 @@ import Control.Monad.State.Strict
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as Context
 import LawSpec.GoOperation (GoOperationPlan, operationDoc)
@@ -368,11 +368,11 @@ helperKinds :: [String]
 helperKinds = ["eq","cmp","to","from","tonative","fromnative"]
 
 functionTable :: Table (Either String (D.Doc,St))
-functionTable = unsafePerformIO (newPersistentTable "typed-go-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-go-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 dataTable :: Table (Either String D.Doc)
-dataTable = unsafePerformIO (newPersistentTable "typed-go-data" (4 * 1024 * 1024) (length . show))
+dataTable = unsafePerformIO (newPersistentTableByShow "typed-go-data" (4 * 1024 * 1024))
 {-# NOINLINE dataTable #-}
 
 nativeContext :: Env -> [Type] -> ([(String,Maybe String)],[(Id,Maybe String)])
@@ -974,7 +974,7 @@ helpers env = go S.empty
         pure (docs ++ rest)
 
 helperTable :: Table (Either String (D.Doc,St))
-helperTable = unsafePerformIO (newPersistentTable "typed-go-helper" (4 * 1024 * 1024) (length . show))
+helperTable = unsafePerformIO (newPersistentTableByShow "typed-go-helper" (4 * 1024 * 1024))
 {-# NOINLINE helperTable #-}
 
 memoHelper :: Env -> String -> Int -> Type -> M D.Doc

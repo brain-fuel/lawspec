@@ -198,7 +198,7 @@ test_lawSetsAreCheckedTogether = describe "law sets" $ do
       diagnostics (check [] (orders (block ["without overlap", "overlap allowed because \"x\""])))
         `shouldSatisfy` any (\(_, m) -> "claims without overlap and allows overlap" `isInfixOf` m)
       diagnostics (check [] (orders (block ["vacuity allowed for \"|unknown| because \"x\""])))
-        `shouldSatisfy` any (\(_, m) -> "no law \"|unknown|" `isInfixOf` m)
+        `shouldSatisfy` any (\(_, m) -> "no law |unknown|" `isInfixOf` m)
     it "keeps its layout when formatted" $ do
       let source = orders (block ["complete over state != Cancelled", "without conflict"])
           Source _ formatted = formatSource (Source "orders.lawspec" source)

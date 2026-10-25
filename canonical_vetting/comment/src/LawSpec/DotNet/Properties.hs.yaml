@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properti
 decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/emitTests:
   digest: sha256:9a334b4254cc2064
   verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/finiteCoverExpression:
+  digest: sha256:6c85c72828a9cdd1
+  verdict: pending
 decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/generatedLocals:
   digest: sha256:bf162ad2ec36effd
   verdict: pending
@@ -18,4 +21,7 @@ decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properti
   verdict: pending
 decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/sourceLinkOf:
   digest: sha256:c55342f5d49d5502
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Properties.hs/module/LawSpec.DotNet.Properties/function/tCover:
+  digest: sha256:532abb7639012bfa
   verdict: pending

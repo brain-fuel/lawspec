@@ -15,7 +15,7 @@ import Control.Monad.State.Strict
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as Context
 import Data.Char (isAlphaNum, isUpper, toLower, ord)
@@ -295,7 +295,7 @@ helperKinds :: [String]
 helperKinds = ["eq", "cmp", "to", "from", "nin", "nout", "tonative", "fromnative"]
 
 functionTable :: Table (Either String (D.Doc, St))
-functionTable = unsafePerformIO (newPersistentTable "typed-python-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-python-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 memoFunction :: Env -> Int -> Definition -> M D.Doc
@@ -723,7 +723,7 @@ helpers env = go S.empty
         pure (docs ++ rest)
 
 helperTable :: Table (Either String (D.Doc,St))
-helperTable = unsafePerformIO (newPersistentTable "typed-python-helper" (4 * 1024 * 1024) (length . show))
+helperTable = unsafePerformIO (newPersistentTableByShow "typed-python-helper" (4 * 1024 * 1024))
 {-# NOINLINE helperTable #-}
 
 memoHelper :: Env -> String -> Type -> M D.Doc

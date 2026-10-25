@@ -10,6 +10,9 @@ decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/data/St
 decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/classNames:
   digest: sha256:1a39ff1c386c1928
   verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/commented:
+  digest: sha256:12458b75f8995148
+  verdict: pending
 decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/emit:
   digest: sha256:a9dec334b58a22fe
   verdict: pending

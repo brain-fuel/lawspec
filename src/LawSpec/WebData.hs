@@ -2,7 +2,7 @@
 module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeOf, webDataTypeOfWith, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema, testStrategies, printWith) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import Control.Monad (unless, forM)
@@ -25,7 +25,7 @@ import LawSpec.WebModule (linkComment)
 import LawSpec.SourceLink (sourceLink)
 
 nativeDocumentTable :: Table (Either String [E.Stmt])
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-web-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-web-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 -- | Target imports and a known TypeScript signature slot are substituted. Runtime

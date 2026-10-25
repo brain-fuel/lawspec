@@ -17,6 +17,8 @@ import qualified LawSpec.Backend as Presentation
 import LawSpec.Common
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Finite
+import qualified LawSpec.Testing.Literals as Literals
+import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.NativeBinding as NB
 import qualified LawSpec.NativeRequest as NR
 import qualified LawSpec.RustNativeGenerators as NG
@@ -29,7 +31,7 @@ import qualified LawSpec.Code.Doc as Doc
 import Data.Char (isAlphaNum, isAscii, isUpper, toLower)
 import Data.List (intercalate, find, nub, sortOn, stripPrefix, tails)
 import Data.Maybe (mapMaybe)
-import LawSpec.Naming (NameKind(..), nativeIdentifier, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword)
+import LawSpec.Naming (NameKind(..), nativeIdentifier, claim, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword)
 import LawSpec.SourceLink (sourceLink, locationLink, exampleLocation, labelled, generatedHeader, unitSourceFile)
 import LawSpec.RustExpr (mentions, unusedAs)
 import qualified LawSpec.RustLayout as RL
@@ -390,8 +392,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           parensDoc d = Doc.text "(" <> d <> Doc.text ")"
           -- A harness strategy: a seed from proptest, and the strategy's
           -- draws from it; the value must satisfy the input's refinements.
-          harnessStrategy prior input name strategy d = do
-            drawDoc' <- drawExpr prior strategy d
+          harnessStrategy requirement available prior input name strategy d = do
+            drawDoc' <- sharedDrawExpr requirement available prior strategy d
             predicates <- mapM (render (prior ++ [(binderId (quantifiedBinder input), name)])) (quantifiedPredicates input)
             pure (block (statements
               ([Doc.text "let context = ctx.clone();",
@@ -406,6 +408,61 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                        (Doc.text "return Err(lawspec_harness::outside(" <> string strategy <> Doc.text ", " <> string (binderName (quantifiedBinder input)) <> Doc.text ", &value));")])
                    | t <- predicates] ++
                    [Doc.text "Ok(value)"])) <> Doc.text ")())).boxed()"])))
+          -- Functions share draw code, not samples or generator state.
+          -- Context, RNG and the exact lexical captures are passed on every
+          -- invocation, preserving the imperative draw/choice sequence.
+          sharedDrawExpr requirement available prior strategy draw = do
+            graph <- Draws.planDraw requirement available draw
+            let nodes = Draws.drawNodes graph
+                helperNames = ["strategy_draw_" ++ show (Draws.drawNumber node) | node <- nodes]
+                helpers = zip (map Draws.drawNumber nodes) helperNames
+                reserved = [(Id ("helper::" ++ show i), name) | (i,name) <- zip [0 :: Int ..] ("ctx" : "draws" : helperNames)]
+                parameters node = Expression.sourceLocals reserved (Draws.drawCaptures node)
+                lookupName names identity = maybe (Left ("unbound Rust draw capture: " ++ idText identity)) Right (lookup identity names)
+                invoke names rng edge = do
+                  helper <- maybe (Left "missing Rust draw helper") Right (lookup (Draws.drawCallee edge) helpers)
+                  captured <- mapM (lookupName names) (Draws.drawArguments edge)
+                  pure (RL.try' (RL.call helper (RL.atom "ctx" : rng : [RL.prefix "&" (RL.atom name) | name <- captured])))
+                boundName names binder = fst (claim (scopeWith (Expression.reservedLocals ++ map snd names ++ ["ctx", "draws"] ++ helperNames))
+                  ("drawn_" ++ unraw (Expression.sourceLocal names binder)))
+                nodeBody names node = case Draws.drawStep node of
+                  Draws.AnyDraw ty aim -> RL.Laid <$> drawExpr names strategy (DrawAny ty aim)
+                  Draws.OneOfDraw ty values -> RL.Laid <$> drawExpr names strategy (DrawOneOf ty values)
+                  Draws.FrequencyDraw branches -> do
+                    values <- mapM (invoke names (RL.atom "draws") . snd) branches
+                    let weighted = zip (scanl1 (+) (map fst branches)) values
+                        choice [(_, value)] = value
+                        choice ((limit, value) : rest) = RL.If (RL.infixOp "<" (RL.atom "pick") (RL.atom (show limit)))
+                          value (Just (choice rest))
+                        choice [] = RL.atom "unreachable!()"
+                    pure (RL.Block [RL.Let "pick" (RL.call "draws.choose" [RL.atom (show (sum (map fst branches)))])]
+                      (Just (choice weighted)))
+                  Draws.FilterDraw child binder predicate limit -> do
+                    inner <- invoke names (RL.atom "draws") child
+                    let drawn = boundName names binder
+                    condition <- renderL (names ++ [(binderId binder,drawn)]) predicate
+                    let loop = Doc.text ("for _ in 0..=" ++ show limit ++ " ") <> RL.block
+                          [RL.Let drawn inner, RL.Do (RL.If (RL.try' (RL.method condition "boolean" []))
+                            (RL.Block [RL.Semi (RL.infixOp "=" (RL.atom "found") (RL.call "Some" [RL.atom drawn])),
+                              RL.Item (Doc.text "break;")] Nothing) Nothing)] Nothing
+                    pure (RL.Block [RL.Let "mut found" (RL.atom "None"),RL.Item loop]
+                      (Just (RL.try' (RL.method (RL.atom "found") "ok_or_else"
+                        [RL.closure "||" (RL.call "lawspec_harness::discarded" [RL.atom (q strategy),RL.atom (show limit)])]))))
+                  Draws.BindDraw binder from rest -> do
+                    start <- invoke names (RL.atom "draws") from
+                    let drawn = boundName names binder
+                    following <- invoke (names ++ [(binderId binder,drawn)]) (RL.atom "draws") rest
+                    pure (RL.Block [RL.Let drawn start] (Just following))
+            functions <- forM nodes $ \node -> do
+              let names = parameters node
+                  scope = zip (map binderId (Draws.drawCaptures node)) names
+              expression <- nodeBody scope node
+              let signature = ["ctx: &mut ls::Context", "draws: &mut lawspec_harness::Draws"] ++
+                    [name ++ ": &ls::Value" | name <- names]
+              pure (RL.Item (RL.function ("fn " ++ helperNames !! Draws.drawNumber node) signature "ls::Result<ls::Value>"
+                (RL.expr (RL.call "Ok" [expression]))))
+            root <- invoke prior (RL.prefix "&mut " (RL.atom "draws")) (Draws.drawRoot graph)
+            pure (RL.expr (RL.letIn functions root))
           drawExpr names strategy d = case d of
             -- A refined strategy's any draws inside its refinement's range.
             DrawAny ty (Just aim)
@@ -604,6 +661,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             opened rest = opening rest ++ rest
             parameters used = Doc.text (if mentions "ctx" used then "ctx: &mut ls::Context" else "_ctx: &mut ls::Context") :
               [Doc.text (unusedAs n used ++ ": ls::Value") | (_,n) <- names]
+        cover <- caseCover pp
+        literals <- rustLiteralPlan (Literals.coverLiterals cover ++ concatMap generatorBoundaries (generatorRequirements pp))
         -- A law's resources: each case acquires them, then runs, then
         -- releases them, the last first, even when the case fails or panics.
         let bracket inner [] = pure (statements (lateInstalls unit p (map snd resourceNames) ++ inner))
@@ -656,7 +715,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             value <- renderL names e
             pure (RL.Macro "" "(" ")" [RL.atom (q (binaryName op)), value])
           hints <- mapM (render names) (generatorHints requirement)
-          seeds <- mapM valueLiteral (generatorBoundaries requirement)
+          seeds <- mapM (rustLiteralValue literals) (generatorBoundaries requirement)
           let inputType = binderType (quantifiedBinder input)
               checked = hasFieldContracts && (hasNativeGenerators || usesData inputType)
               required expression = case expressionNode expression of
@@ -699,7 +758,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           -- A harness strategy draws this input from a seed proptest chooses.
           harnessDraw <- case [(n', d) | (bi, n', d) <- harnessDraws (propertyHarness p), bi == binderId (quantifiedBinder input)] of
             [] -> pure Nothing
-            (strategy, d) : _ -> Just <$> harnessStrategy (take i names) input (snd (names !! i)) strategy d
+            (strategy, d) : _ -> Just <$> harnessStrategy requirement (map quantifiedBinder (take i (propertyInputs p))) (take i names) input (snd (names !! i)) strategy d
           let construct = case harnessDraw of
                 Just doc -> Doc.text "Ok::<_, String>(Some(" <> doc <> Doc.text "))"
                 Nothing | null bounds || customInput inputType -> Doc.text "Ok::<_, String>(Some(" <> baseStrategy <> Doc.text "))"
@@ -792,8 +851,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                     Doc.nest 4 (Doc.softbreak <> invoke ".run" [Doc.text "&strategy",Doc.text "check"] <>
                       Doc.softbreak <> Doc.text ".map_err(|e| format!(\"{e}\"))?"))
                 ]
-        cover <- caseCover pp
-        finiteCover <- rustFiniteCover cover
+        finiteCover <- rustLiteralCover literals cover
         observations <- observationsDoc names p
         -- LawSpec's own search (LawSpec.Search): the failure database's
         -- inputs are replayed before the law's generated cases, a failing
@@ -879,7 +937,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               _ -> [ maybe mempty (\e -> Doc.lineComment 96 "// " (labelled ("example " ++ displayLabel (exampleName e)) (sourceLinkOf e))) example <>
                      Doc.text "#[test]" <> Doc.hardline <> function name' [] "ls::Result<()>" (harnessed (index * 1000 + k) name' (name' == "property") d)
                    | (k, (name', example, d)) <- zip [0..] caseTests ]
-            items = [Doc.text "use super::*;"] ++
+            items = [Doc.text "use super::*;"] ++ rustLiteralDocuments literals ++
               [function "check_body"
                  (Doc.text (unusedAs "ctx" assertionBody ++ ": &mut ls::Context") :
                   [Doc.text (unusedAs n assertionBody ++ ": ls::Value") | (_, n) <- withResources])
@@ -992,22 +1050,68 @@ function name args result body = Doc.text ("fn " ++ name) <>
 -- | A cover contains literal factories and inclusive mathematical ranges;
 -- each attempted case materializes its own values and handler context.
 -- ref:DEC-planned-generation
-rustFiniteCover :: Finite.FiniteCover -> Either String RL.Expr
-rustFiniteCover (Finite.Complete count) = pure (RL.call "ls::FiniteCover::Copies" [RL.atom (show count)])
-rustFiniteCover (Finite.Alternatives branches) = do
-  entries <- forM branches $ \(domain, suffix) -> do
-    domainExpr <- case domain of
-      Finite.Values values -> do
-        literals <- mapM valueExpr values
-        let factory literal = RL.closure (if mentions "ctx" (RL.expr literal) then "|ctx|" else "|_ctx|")
-              (RL.call "Ok" [literal])
-        pure (RL.call "ls::FiniteDomain::Values" [RL.vecOf (map factory literals)])
-      Finite.IntegerInterval _ first last' -> pure (RL.call "ls::FiniteDomain::Integers"
-        [endpoint first, endpoint last'])
-    suffixExpr <- rustFiniteCover suffix
-    pure (RL.Macro "" "(" ")" [domainExpr, suffixExpr])
-  pure (RL.call "ls::FiniteCover::Branches" [RL.vecOf entries])
-  where endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "unwrap" []
+data RustLiteralPlan = RustLiteralPlan
+  { rustLiteralDocuments :: [Doc.Doc]
+  , rustLiteralValue :: V.Value -> Either String Doc.Doc
+  , rustLiteralCover :: Finite.FiniteCover -> Either String RL.Expr
+  }
+
+-- Finite covers and sampled boundary seeds share one law-local plan. Factories
+-- remain functions over the context of the case which invokes them.
+rustLiteralPlan :: [V.Value] -> Either String RustLiteralPlan
+rustLiteralPlan values = do
+  plan <- Literals.planLiterals values
+  shapeHelpers <- forM (Literals.literalShapes plan) $ \(index, shape) -> do
+    body <- shapeBody shape
+    let fields = case shape of Literals.PresenceShape _ False -> "_fields"; _ -> "fields"
+    pure (RL.function ("fn " ++ shapeName index) [fields ++ ": Vec<ls::Value>"] "ls::Result<ls::Value>" (RL.expr body))
+  factories <- forM (Literals.literalFactories plan) $ \(index, term) -> do
+    body <- termExpr term
+    let ctx = if usesContext term then "ctx" else "_ctx"
+    pure (RL.function ("fn " ++ factoryName index) [ctx ++ ": &mut ls::Context"] "ls::Result<ls::Value>"
+      (RL.expr (RL.call "Ok" [body])))
+  let value literal = Literals.literalReference plan literal >>= fmap RL.expr . termExpr
+  pure (RustLiteralPlan (shapeHelpers ++ factories) value (cover plan))
+  where
+    shapeName index = "literal_shape_" ++ show index
+    factoryName index = "literal_" ++ show index
+    termExpr = Literals.foldLiteral Expression.scalarExpr
+      (\index fields -> pure (RL.try' (RL.call (shapeName index) [RL.vecOf fields])))
+      (\index -> pure (RL.try' (RL.call (factoryName index) [RL.atom "ctx"])))
+    shapeBody shape = case shape of
+      Literals.ConstructorShape _ tag
+        | builtinConstructor tag -> pure (RL.call "ls::construct" [RL.atom (q (idText tag)), RL.atom "fields"])
+        | otherwise -> pure (RL.call "Ok" [RL.call "ls::construct_data" [RL.atom (q (idText tag)), RL.atom "fields"]])
+      Literals.ListShape _ -> pure (RL.call "Ok" [RL.call "ls::Value::List" [RL.atom "fields"]])
+      Literals.PresenceShape (Constructor name [TypeArgument _]) present ->
+        let payload = RL.try' (RL.method (RL.method (RL.method (RL.atom "fields") "into_iter" []) "next" [])
+              "ok_or" [RL.atom (q "invalid planned presence payload")])
+            optional = if present then RL.call "Some" [RL.call "Box::new" [payload]] else RL.atom "None"
+        in pure (RL.call "Ok" [RL.call ("ls::Value::" ++ name) [optional]])
+      _ -> Left "invalid planned presence type for Rust"
+    usesContext (Literals.ScalarLiteral scalar) = scalarContext scalar
+    usesContext (Literals.ApplyLiteral _ fields) = any usesContext fields
+    usesContext Literals.SharedLiteral {} = True
+    scalarContext SSymbol {} = True
+    scalarContext (SPresent _ payload) = maybe False scalarContext payload
+    scalarContext (SComplex _ real imaginary) = scalarContext real || scalarContext imaginary
+    scalarContext _ = False
+    cover _ (Finite.Complete count) = pure (RL.call "ls::FiniteCover::Copies" [RL.atom (show count)])
+    cover plan (Finite.Alternatives branches) = do
+      entries <- forM branches $ \(domain, suffix) -> do
+        domainExpr <- case domain of
+          Finite.Values values -> do
+            literals <- forM values $ \value -> do
+              term <- Literals.literalReference plan value
+              expression <- termExpr term
+              pure (RL.closure (if usesContext term then "|ctx|" else "|_ctx|") (RL.call "Ok" [expression]))
+            pure (RL.call "ls::FiniteDomain::Values" [RL.vecOf literals])
+          Finite.IntegerInterval _ first last' -> pure (RL.call "ls::FiniteDomain::Integers"
+            [endpoint first, endpoint last'])
+        suffixExpr <- cover plan suffix
+        pure (RL.Macro "" "(" ")" [domainExpr, suffixExpr])
+      pure (RL.call "ls::FiniteCover::Branches" [RL.vecOf entries])
+    endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "unwrap" []
 
 valueLiteral :: V.Value -> Either String Doc.Doc
 valueLiteral value = RL.expr <$> valueExpr value

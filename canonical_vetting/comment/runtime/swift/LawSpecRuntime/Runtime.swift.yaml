@@ -91,6 +91,9 @@ decision/swift/runtime/swift/LawSpecRuntime/Runtime.swift/enum/Runtime/func/reco
 decision/swift/runtime/swift/LawSpecRuntime/Runtime.swift/enum/Runtime/func/require:
   digest: sha256:86b1e607635edd25
   verdict: pending
+decision/swift/runtime/swift/LawSpecRuntime/Runtime.swift/enum/Runtime/func/searchElements:
+  digest: sha256:aeedf9c2e664a63e
+  verdict: pending
 decision/swift/runtime/swift/LawSpecRuntime/Runtime.swift/enum/Runtime/func/truth:
   digest: sha256:02681640b5891808
   verdict: pending

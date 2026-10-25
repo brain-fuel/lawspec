@@ -58,12 +58,24 @@ decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nati
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeDirect:
   digest: sha256:5f13dc8c6e3d0f75
   verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeTypeDoc:
+  digest: sha256:fca41617ab0f6017
+  verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/nativeVariant:
   digest: sha256:4f3b91bd3edd5094
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaApplied:
+  digest: sha256:6b7b68437885969d
   verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaHelper:
   digest: sha256:83da55c5cc69342c
   verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/scalaLambdaCall:
+  digest: sha256:cbec96b85f12673d
+  verdict: pending
 decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/unqualify:
   digest: sha256:fe46b9834d9b25ef
+  verdict: pending
+decision/haskell/src/LawSpec/Typed/Jvm.hs/module/LawSpec.Typed.Jvm/function/witnessCall:
+  digest: sha256:22dc18f3ade1c518
   verdict: pending

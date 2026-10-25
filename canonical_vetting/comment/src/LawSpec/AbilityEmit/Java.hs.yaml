@@ -1,3 +1,6 @@
 decision/haskell/src/LawSpec/AbilityEmit/Java.hs/module/LawSpec.AbilityEmit.Java/function/implementing:
   digest: sha256:a8fe4b28beecc923
   verdict: pending
+decision/haskell/src/LawSpec/AbilityEmit/Java.hs/module/LawSpec.AbilityEmit.Java/function/productionProduct:
+  digest: sha256:f327177d908fa453
+  verdict: pending

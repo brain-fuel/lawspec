@@ -4,17 +4,41 @@ decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies:
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/data/Graph:
   digest: sha256:4a11c4a49dc98a54
   verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/data/Identity:
+  digest: sha256:6cf04502ff5a6d9d
+  verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/data/Ref:
   digest: sha256:adb3fb604d9c8892
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/adapterKey:
+  digest: sha256:ac2e45fbcb09643c
   verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/closure:
   digest: sha256:a1d986b1b4c5deb8
   verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/contentHash:
+  digest: sha256:dad4bc74db7df435
+  verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/dependencyGraph:
   digest: sha256:a485a458d1e0f011
   verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/dependencyGraphWithBits:
+  digest: sha256:bb018bfbb18a632e
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/fullKey:
+  digest: sha256:ea1e4a5928af437f
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/identityOf:
+  digest: sha256:9bd342f1ed034896
+  verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/lawReferences:
   digest: sha256:017966b6a501e7cb
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/namedKey:
+  digest: sha256:08a2c6f1c8df2e9f
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/nodeIdentity:
+  digest: sha256:83040533fcaeddd6
   verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/reachableData:
   digest: sha256:1d71619519e83e82
@@ -24,6 +48,15 @@ decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/functio
   verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/references:
   digest: sha256:4c917b3d5a6c4228
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/referencesOf:
+  digest: sha256:223cc2a0ad226617
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/resolverOver:
+  digest: sha256:797acee88b2c2b05
+  verdict: pending
+decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/semanticKey:
+  digest: sha256:d08815b38e6225b1
   verdict: pending
 decision/haskell/src/LawSpec/Dependencies.hs/module/LawSpec.Dependencies/function/unitReferences:
   digest: sha256:ce96f84dbc6aa37a

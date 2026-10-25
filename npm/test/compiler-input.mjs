@@ -13,7 +13,7 @@ export function generateInput(compiler, input) {
 // Display comparisons may ignore the phrase delimiters while identity and
 // source-syntax tests continue to assert the complete resolved spelling.
 export function nameText(name) {
-  return name.replace(/"\|((?:\\[|\\]|[^|\\])*)\|/gu,
+  return name.replace(/\|((?:\\[|\\]|[^|\\])*)\|/gu,
     (_, body) => body.replace(/\\([|\\])/gu, '$1'));
 }
 

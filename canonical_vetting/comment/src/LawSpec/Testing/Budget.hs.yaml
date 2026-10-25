@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Testing/Budget.hs/module/LawSpec.Testing.Budget:
+  digest: sha256:9d8f6dcfeade7cc8
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Budget.hs/module/LawSpec.Testing.Budget/function/dataBudget:
+  digest: sha256:ce8e8fd3ea80613c
+  verdict: pending

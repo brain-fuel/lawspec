@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code:
   digest: sha256:7117d2d89a1167b6
   verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Codec:
+  digest: sha256:804a2c49c80d22eb
+  verdict: pending
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Expr/constructor/BigLit:
   digest: sha256:7ef43e5fbf6f3262
   verdict: pending
@@ -37,6 +40,9 @@ decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Sink:
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Stmt:
   digest: sha256:b908b2b875636e7a
   verdict: pending
+decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/data/Ty:
+  digest: sha256:c317316a4a234903
+  verdict: pending
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/applied:
   digest: sha256:3a111fbb938d77b7
   verdict: pending
@@ -64,14 +70,8 @@ decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/ca
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/callee:
   digest: sha256:a58802eb19c340c7
   verdict: pending
-decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/closure:
-  digest: sha256:3e3f47a164eaec06
-  verdict: pending
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/closureDoc:
   digest: sha256:c948baa08869846a
-  verdict: pending
-decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/closureHeader:
-  digest: sha256:2791e816d390a62e
   verdict: pending
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/codecCall:
   digest: sha256:8782420ddae3895d
@@ -177,9 +177,6 @@ decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/ty
   verdict: pending
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/function/voidFunctions:
   digest: sha256:9cafdc72a590be37
-  verdict: pending
-decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/newtype/Ty:
-  digest: sha256:c317316a4a234903
   verdict: pending
 decision/haskell/src/LawSpec/Swift/Code.hs/module/LawSpec.Swift.Code/type/Fresh:
   digest: sha256:95444fbb0c78b3ea

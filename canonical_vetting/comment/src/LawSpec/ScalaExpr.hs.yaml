@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr:
 decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/array:
   digest: sha256:188c1e59e04204e5
   verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/bindValue:
+  digest: sha256:4fd21a46f5a4ac26
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/call:
   digest: sha256:f681b3ebb85835d6
   verdict: pending

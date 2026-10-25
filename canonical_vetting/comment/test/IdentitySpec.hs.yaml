@@ -1,0 +1,9 @@
+decision/haskell/test/IdentitySpec.hs/module/IdentitySpec:
+  digest: sha256:ba88165dc99a69db
+  verdict: pending
+decision/haskell/test/IdentitySpec.hs/module/IdentitySpec/function/identities:
+  digest: sha256:9f47db9796f1ec16
+  verdict: pending
+decision/haskell/test/IdentitySpec.hs/module/IdentitySpec/function/test_semanticIdentityIsBehaviourAndPresentationIsTheRest:
+  digest: sha256:a1d67e0b55860dc4
+  verdict: pending

@@ -997,6 +997,9 @@ decision/rust/runtime/lawspec_runtime.rs/type/ClockAbilityReader:
 decision/rust/runtime/lawspec_runtime.rs/type/FieldPredicate:
   digest: sha256:d98577fe03b4728b
   verdict: pending
+decision/rust/runtime/lawspec_runtime.rs/type/FiniteFactory:
+  digest: sha256:ee57ef4f1d5891fd
+  verdict: pending
 decision/rust/runtime/lawspec_runtime.rs/type/MappedFailure:
   digest: sha256:584607a8d4d3ea5b
   verdict: pending

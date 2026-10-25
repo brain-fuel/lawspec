@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmMet
 decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmReserved:
   digest: sha256:ab5b306662758592
   verdict: pending
+decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmScopedNames:
+  digest: sha256:4ac0c4a0041bf014
+  verdict: pending
 decision/haskell/src/LawSpec/JvmNames.hs/module/LawSpec.JvmNames/function/jvmString:
   digest: sha256:353b789667b84a4d
   verdict: pending

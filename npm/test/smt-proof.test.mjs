@@ -234,7 +234,7 @@ test('induction: each case has its own receipt, and a law rests on the laws it c
     ['reverse twice',['prove by induction on xs','  using "|reverse of append|']]])),{binary:z3});
   const twice=resting.solverEvidence.find(e=>e.declaration==='smt::law::|reverse twice|');
   assert.equal(twice.status,'incomplete');
-  assert.match(twice.reason,/it cites "\|reverse of append\|, which is incomplete/);
+  assert.match(twice.reason,/it cites \|reverse of append\|, which is incomplete/);
 });
 
 test('an induction case whose model the law survives says the hypothesis is too weak',async()=>{

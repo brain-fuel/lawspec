@@ -64,6 +64,9 @@ decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime
 decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/require:
   digest: sha256:86b1e607635edd25
   verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/searchElements:
+  digest: sha256:f3458724e2a31ff2
+  verdict: pending
 decision/fsharp/runtime/dotnet/LawSpec.Runtime/Runtime.fs/module/LawSpec.Runtime.Runtime/function/truth:
   digest: sha256:9b3dda56debe1039
   verdict: pending

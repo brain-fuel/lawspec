@@ -13,8 +13,8 @@ decision/swift/runtime/swift/LawSpecTesting/Harness.swift/enum/Harness/func/benc
 decision/swift/runtime/swift/LawSpecTesting/Harness.swift/enum/Harness/func/higher:
   digest: sha256:090b57b01b7b3141
   verdict: pending
-decision/swift/runtime/swift/LawSpecTesting/Harness.swift/enum/Harness/func/knownFailing:
-  digest: sha256:809019cc7274d229
+decision/swift/runtime/swift/LawSpecTesting/Harness.swift/enum/Harness/func/knownDiscrepancy:
+  digest: sha256:06f6804e041cb33b
   verdict: pending
 decision/swift/runtime/swift/LawSpecTesting/Harness.swift/enum/Harness/func/markHarnessFailure:
   digest: sha256:bb4a8c8b9748134b

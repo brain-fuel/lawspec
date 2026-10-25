@@ -1,0 +1,24 @@
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite:
+  digest: sha256:d643533e48e0ca90
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/class/Domain:
+  digest: sha256:d265cdd978caeb25
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/function/at:
+  digest: sha256:52fbc5f73cca78a6
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/function/check:
+  digest: sha256:b765f50d8178c375
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/function/checkAll:
+  digest: sha256:7da442d69c5c1a04
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/function/count:
+  digest: sha256:ad02822729725351
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/function/rows:
+  digest: sha256:7531391c820cd6a1
+  verdict: pending
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Finite.fs/module/LawSpec.Testing.Finite/union/Cover:
+  digest: sha256:ac05a3fb94f88487
+  verdict: pending

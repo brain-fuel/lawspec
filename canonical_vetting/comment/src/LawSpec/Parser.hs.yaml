@@ -40,6 +40,9 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/isExport:
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/lawClaimsP:
   digest: sha256:8f78e3b57770bf9d
   verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/lawLabel:
+  digest: sha256:a9e81226196357c3
+  verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/literalHeaders:
   digest: sha256:51f1004b58562466
   verdict: pending

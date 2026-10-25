@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeSc
 decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/dataBudget:
   digest: sha256:860197bf2c91bcdc
   verdict: pending
+decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/goCompanionArtifacts:
+  digest: sha256:fbdc78413e4afa14
+  verdict: pending
 decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/nativeScalarEmit:
   digest: sha256:c6690ebb4062e157
   verdict: pending
@@ -21,4 +24,7 @@ decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeSc
   verdict: pending
 decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/nativeScalarEmitWithNativeGenerators:
   digest: sha256:c3b4a21985368ab2
+  verdict: pending
+decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/nativeScalarUnitProductWithAdapterBindings:
+  digest: sha256:71cb22bd228563ff
   verdict: pending

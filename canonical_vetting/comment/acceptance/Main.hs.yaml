@@ -31,6 +31,9 @@ decision/haskell/acceptance/Main.hs/module/Main/function/plan:
 decision/haskell/acceptance/Main.hs/module/Main/function/runSuite:
   digest: sha256:76c5d9d31d241584
   verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/semanticIdentities:
+  digest: sha256:46c7cfd93df6d626
+  verdict: pending
 decision/haskell/acceptance/Main.hs/module/Main/function/suiteStubs:
   digest: sha256:8b374a68b8a9c0b1
   verdict: pending

@@ -11,6 +11,7 @@ license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
+    dev/ci-cache-test/Main.hs
     vendor/unicode/LICENSE.txt
     vendor/unicode/NORMALIZATION-LICENSES.txt
     vendor/unicode/17.0.0/CaseFolding.txt
@@ -685,6 +686,7 @@ library
       LawSpec.Core.Identity
       LawSpec.Core.LawAnalysis
       LawSpec.Core.LawTasks
+      LawSpec.Core.ListLiteral
       LawSpec.Core.Machine
       LawSpec.Core.ModelCheck
       LawSpec.Core.Payload
@@ -1026,6 +1028,7 @@ executable lawspec-dev
       Bench
       Canon
       Ci
+      Ci.Cache
       Docs
       Gen.Api
       Gen.BoundedGenerators

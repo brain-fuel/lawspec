@@ -127,6 +127,9 @@ renderExpressionWith declarations Context{..} = render
     inSchema name ty rest = do
       ref <- contextReference ty
       pure (H.call ("Schema." ++ name) ([contextScope, contextSchema, ref, contextWidth] ++ rest))
+    shortCircuitTerms wanted term = case expressionNode term of
+      ShortCircuit op left right | op == wanted -> shortCircuitTerms wanted left ++ shortCircuitTerms wanted right
+      _ -> [term]
     truth x = H.call "LS.truth" [x]
     lam binder body = H.lambda [contextLocal (binderId binder)] body
     render term
@@ -185,9 +188,11 @@ renderExpressionWith declarations Context{..} = render
         no <- render b
         pure (H.If (truth condition) yes no)
       ShortCircuit op a b -> do
-        left <- render a
-        right <- render b
-        pure (H.call "SBool" [H.operator (if op == And then "P.&&" else "P.||") [truth left, truth right]])
+        -- Intermediate Bool boxes are redundant. One lazy operator chain
+        -- keeps the same ordered, short-circuiting observations, including
+        -- effectful temporal leaves, without quadratic indentation.
+        values <- mapM render (shortCircuitTerms op a ++ shortCircuitTerms op b)
+        pure (H.call "SBool" [H.operator (if op == And then "P.&&" else "P.||") (map truth values)])
       Unary Not value -> do
         argument <- render value
         pure (H.call "SBool" [H.call "P.not" [truth argument]])

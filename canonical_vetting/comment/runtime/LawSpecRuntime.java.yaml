@@ -376,6 +376,12 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/interface/Entity:
   digest: sha256:fdddd061bfaf64fb
   verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/interface/FiniteCover:
+  digest: sha256:5a6041ce44f7157d
+  verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/interface/FiniteValue:
+  digest: sha256:6f0ac29a5acbb524
+  verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/interface/ModelCallback:
   digest: sha256:d2b529ef11431408
   verdict: pending
@@ -499,6 +505,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/executeParallel:
   digest: sha256:615dc78b792962d7
   verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/finiteCases:
+  digest: sha256:5d753dd393f57fff
+  verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/freePort:
   digest: sha256:4ee6d46bb90e3bd6
   verdict: pending
@@ -616,6 +625,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/secureToken:
   digest: sha256:f39940afb23680a0
   verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/selectedFiniteCases:
+  digest: sha256:1c550f01f8419ffc
+  verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/method/share#2:
   digest: sha256:eaa91af427d8aeb2
   verdict: pending
@@ -690,6 +702,9 @@ decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecR
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/record/Exit:
   digest: sha256:570771868339a48b
+  verdict: pending
+decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/record/FiniteCase:
+  digest: sha256:5d245afeee17cbc5
   verdict: pending
 decision/java/runtime/LawSpecRuntime.java/package/lawspec.runtime/class/LawSpecRuntime/record/Gate:
   digest: sha256:2868fff4ec00197a

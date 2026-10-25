@@ -7,8 +7,8 @@ decision/rust/runtime/lawspec_harness.rs/function/benchmark:
 decision/rust/runtime/lawspec_harness.rs/function/drawn:
   digest: sha256:883bf7628dc8a940
   verdict: pending
-decision/rust/runtime/lawspec_harness.rs/function/known_failing:
-  digest: sha256:3c859a568d96dc4c
+decision/rust/runtime/lawspec_harness.rs/function/known_discrepancy:
+  digest: sha256:06f6804e041cb33b
   verdict: pending
 decision/rust/runtime/lawspec_harness.rs/function/observe:
   digest: sha256:56c40a4e904733e9

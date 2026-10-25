@@ -154,14 +154,26 @@ registry/antlr4-parser-rules:
 registry/bauer-leucker-schallhart-ltl3:
   digest: sha256:6e5b6ee9f4ae44a6
   verdict: pending
+registry/bazel-remote-caching:
+  digest: sha256:a2cfac4042abb2fb
+  verdict: pending
 registry/black-code-style:
   digest: sha256:eee62ed37eb8e111
+  verdict: pending
+registry/blake3-spec:
+  digest: sha256:709796dddbfee677
+  verdict: pending
+registry/blake3sum:
+  digest: sha256:3680529658652bee
   verdict: pending
 registry/caires-pfenning-session-types:
   digest: sha256:3d79558d2ffc5cd3
   verdict: pending
 registry/canon:
   digest: sha256:694468ae38846594
+  verdict: pending
+registry/cbor-shared-values:
+  digest: sha256:03e8e7e0aeff9dfd
   verdict: pending
 registry/clojure-spec:
   digest: sha256:2bbe31147f516f00
@@ -174,6 +186,9 @@ registry/cty-value-construction:
   verdict: pending
 registry/decimal-arithmetic:
   digest: sha256:c03a64a0bf8a7bcb
+  verdict: pending
+registry/dhall-semantic-hash:
+  digest: sha256:636149585ca9f8c2
   verdict: pending
 registry/diataxis:
   digest: sha256:da6d545b5d1d42a6
@@ -241,6 +256,9 @@ registry/hypothesis-custom-strategies:
 registry/idris-ffi:
   digest: sha256:ecf0976b87f1d6df
   verdict: pending
+registry/idris-list-quantifiers:
+  digest: sha256:6d5d666dd686cc4d
+  verdict: pending
 registry/ieee-754:
   digest: sha256:02ee78dd6f7ca574
   verdict: pending
@@ -271,6 +289,12 @@ registry/lawspec-roadmap:
 registry/lean-ffi:
   digest: sha256:89b42cd1f520c80e
   verdict: pending
+registry/lean-lake:
+  digest: sha256:691b6d970240674b
+  verdict: pending
+registry/lean-list-quantifiers:
+  digest: sha256:ca6f6df9b5915bb3
+  verdict: pending
 registry/lichtenstein-pnueli-fairness:
   digest: sha256:0149b64a37b403cc
   verdict: pending
@@ -279,6 +303,9 @@ registry/malli:
   verdict: pending
 registry/megaparsec-error-recovery:
   digest: sha256:ccfe92cf53cbbb30
+  verdict: pending
+registry/nix-content-addressed:
+  digest: sha256:b716ba323b5adb7a
   verdict: pending
 registry/opentofu-fmt:
   digest: sha256:9f06f6da079e4c36
@@ -358,11 +385,23 @@ registry/rices-tax:
 registry/rocq-extraction:
   digest: sha256:7bfe69a47991e0bc
   verdict: pending
+registry/rocq-list-quantifiers:
+  digest: sha256:4d84490f0de620bb
+  verdict: pending
 registry/ruff-formatter:
   digest: sha256:00801f285b8b8469
   verdict: pending
+registry/rune-content-hashing:
+  digest: sha256:4be64bb0843cc228
+  verdict: pending
+registry/rustc-red-green:
+  digest: sha256:a635eac40b7cfb87
+  verdict: pending
 registry/rustfmt:
   digest: sha256:df790a46c3b95342
+  verdict: pending
+registry/salsa:
+  digest: sha256:519255d8fbf57ade
   verdict: pending
 registry/scala-cli:
   digest: sha256:8ac3d52b87ccacd7
@@ -381,6 +420,9 @@ registry/semver-2:
   verdict: pending
 registry/smt-lib:
   digest: sha256:e5cb47b0f0193e13
+  verdict: pending
+registry/spark-quantifier-execution-proof:
+  digest: sha256:0c146b96e28172e5
   verdict: pending
 registry/spark-subprogram-contracts:
   digest: sha256:f25833edab0c9714
@@ -454,6 +496,12 @@ registry/unicode-transforms:
 registry/unicode-utf32:
   digest: sha256:efcc6835221e017e
   verdict: pending
+registry/unison-cycle-implementation:
+  digest: sha256:1ce845880bfc5e05
+  verdict: pending
+registry/unison-hashing:
+  digest: sha256:c2fdf1dbe4dec9fb
+  verdict: pending
 registry/wadler-propositions-as-sessions:
   digest: sha256:47316299ab183df2
   verdict: pending
@@ -462,6 +510,9 @@ registry/why3:
   verdict: pending
 registry/why3-execution:
   digest: sha256:b9227df37ad6c6a4
+  verdict: pending
+registry/why3-list-quantifiers:
+  digest: sha256:3ed34da76db1ec12
   verdict: pending
 registry/wilshaw-hutton-flow-typing:
   digest: sha256:a375ab116fedf86d

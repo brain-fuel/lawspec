@@ -13,7 +13,7 @@ import qualified LawSpec.BeamGenerators as Generators
 import LawSpec.Testing (GeneratorRequirement(..), domainHints)
 import LawSpec.CorePersist ()
 import qualified LawSpec.Dependencies as Identity
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.Set as Set
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
@@ -26,7 +26,7 @@ import Data.List (nub)
 import LawSpec.Naming (uniqueNames)
 
 dataTable :: Table (Either String D.Doc)
-dataTable = unsafePerformIO (newPersistentTable "beam-public-data" (4 * 1024 * 1024) (length . show))
+dataTable = unsafePerformIO (newPersistentTableByShow "beam-public-data" (4 * 1024 * 1024))
 {-# NOINLINE dataTable #-}
 
 emitData :: String -> D.Layout -> Int -> [C.DataDeclaration] -> Either String Artifact

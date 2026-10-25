@@ -15,6 +15,8 @@ import LawSpec.SourceLink (unitSourceFile, labelled, locationLink, exampleLocati
 import LawSpec.Common
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Literals as Literals
+import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.WebData as WebData
@@ -40,6 +42,7 @@ import LawSpec.WebModule (Support(..), webModule, headerComment, linkComment, co
 webTests :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 webTests nativeGenerators minify declarations definitions bits target u allLaws = do
   lawGroups <- mapM lawTests (zip [0 :: Int ..] laws)
+  literalHelpers <- literalFunctions
   modelGroups <- mapM modelTest (C.unitMachines u)
   wrappers <- mapM contractWrapper (contracts u)
   stubGroups <- either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right (sequence (map stubFunction adapterFunctions ++ map productionStub (ownAbilities u)))
@@ -70,7 +73,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
                                  , E.ExprStmt (E.call "registerClock" []) ] else [])
       testSource = printWebModule outputLayout ts (webModule ts
         ([E.Comment ["// @ts-nocheck"] | ts] ++ [headerComment (unitSourceFile u)])
-        testImports testSupport (clock : wrappers ++ groups))
+        testImports testSupport (clock : literalHelpers ++ wrappers ++ groups))
       stubSource = printWebModule outputLayout ts (webModule ts [E.Comment ["// User-owned LawSpec adapter."]] stubImports [] stubGroups)
   pure [Artifact stubPath stubSource "user" "source", Artifact testPath testSource "generated" "test"]
   where
@@ -543,10 +546,15 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     harnessProperty label e body = do
       let harness = C.propertyHarness (original e)
           strategyOf input = [(n, d) | (i, n, d) <- C.harnessDraws harness, i == C.binderId (C.quantifiedBinder input)]
-      arbitraries <- mapM (\plan -> case strategyOf (domainInput plan) of
-        (strategy, draw) : _ -> webArbitrary e plan draw >>= \a -> pure (Just strategy, a)
-        [] -> (\a -> (Nothing, a)) <$> contextStrategy e plan) (generationPlan e)
-      let checks = concat
+      planned <- mapM (\(index,plan) -> case strategyOf (domainInput plan) of
+        (strategy, draw) : _ -> do
+          (helpers,arbitrary) <- sharedArbitrary e index plan draw
+          pure ((Just strategy,arbitrary),helpers)
+        [] -> (\a -> ((Nothing, a),[])) <$> contextStrategy e plan)
+        (zip [0 :: Int ..] (generationPlan e))
+      let arbitraries = map fst planned
+          helpers = concatMap snd planned
+          checks = concat
             [ case strategy of
                 Just name' -> [E.ExprStmt (E.call "_harness.checkDrawn" [E.Str name', E.Str (inputName input),
                   lambda [E.param (inputId input)] (conjunction (map render (inputRefinements input))), E.Ident (inputId input)])
@@ -555,30 +563,38 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
             | ((strategy, _), plan) <- zip arbitraries (generationPlan e), let input = domainInput plan ]
           generated = [E.Call (lambda [E.param "symbols"] a) [] [E.Ident "_generation"] False | (_, a) <- arbitraries]
       pure (testCall (label ++ " property")
-        [ E.constDecl "_generation" (E.new' "Map" [])
+        (helpers ++ [ E.constDecl "_generation" (E.new' "Map" [])
         , E.ExprStmt (awaitIf (E.call "fc.assert"
             [ E.call (if asyncMode then "fc.asyncProperty" else "fc.property")
                 (generated ++ [callback (map (E.param . inputId) (inputs e)) ([freshSymbols] ++ installs e ++ checks ++ body)])
-            , runtime "seeded" [object [("numRuns", E.num (toInteger (cases (generation e))))]] ])) ])
-    -- A strategy as one fast-check arbitrary.
-    webArbitrary e plan draw = case draw of
-      C.DrawAny ty (Just aim)
-        | Just range <- inputRange bits aim -> pure (generatorWithin (Just range) ty)
-      C.DrawAny ty _
-        | ty == inputType (domainInput plan) -> contextStrategy e plan
-        | otherwise -> pure (generatorOf ty)
-      C.DrawOneOf _ values -> pure (E.method (E.call "fc.integer" [object [("min", E.num 0), ("max", E.num (toInteger (length values - 1)))]]) "map"
-        [lambda [E.param "_choice"] (E.Call (E.index (E.Array [lambda [] (render v) | v <- values]) (E.Ident "_choice")) [] [] False)])
-      C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, d) -> (\a -> object [("arbitrary", a), ("weight", E.num (toInteger w))]) <$> webArbitrary e plan d) alternatives
-        pure (E.call "fc.oneof" options)
-      C.DrawSuchThat inner binder predicate _ -> do
-        a <- webArbitrary e plan inner
-        pure (E.method a "filter" [lambda [E.param (localName (C.binderId binder))] (render predicate)])
-      C.DrawBind binder from rest -> do
-        fromA <- webArbitrary e plan from
-        restA <- webArbitrary e plan rest
-        pure (E.method fromA "chain" [lambda [E.param (localName (C.binderId binder))] restA])
+            , runtime "seeded" [object [("numRuns", E.num (toInteger (cases (generation e))))]] ])) ]))
+    -- Shared code builds a fresh arbitrary in the current symbol context.
+    -- Dependent children remain inside chain/filter callbacks.
+    sharedArbitrary e index requirement draw = do
+      graph <- literalChecked (Draws.planDraw requirement
+        (map generatorBinder (take index (generationPlan e))) draw)
+      let helperName number = "_draw_" ++ inputId (domainInput requirement) ++ "_" ++ show index ++ "_" ++ show number
+          call node = E.call (helperName (Draws.drawCallee node))
+            (E.Ident "symbols" : map (E.Ident . localName) (Draws.drawArguments node))
+          helper node = do
+            body <- case Draws.drawStep node of
+              Draws.AnyDraw ty (Just aim) | Just range <- inputRange bits aim -> pure (generatorWithin (Just range) ty)
+              Draws.AnyDraw ty _ | ty == inputType (domainInput requirement) -> contextStrategy e requirement
+              Draws.AnyDraw ty _ -> pure (generatorOf ty)
+              Draws.OneOfDraw _ values -> pure (E.method
+                (E.call "fc.integer" [object [("min",E.num 0),("max",E.num (toInteger (length values - 1)))]]) "map"
+                [lambda [E.param "_choice"] (E.Call
+                  (E.index (E.Array [lambda [] (render value) | value <- values]) (E.Ident "_choice")) [] [] False)])
+              Draws.FrequencyDraw alternatives -> pure (E.call "fc.oneof"
+                [object [("arbitrary",call child),("weight",E.num weight)] | (weight,child) <- alternatives])
+              Draws.FilterDraw child binder predicate _ -> pure (E.method (call child) "filter"
+                [lambda [E.param (localName (C.binderId binder))] (render predicate)])
+              Draws.BindDraw binder from rest -> pure (E.method (call from) "chain"
+                [lambda [E.param (localName (C.binderId binder))] (call rest)])
+            pure (E.FunctionDecl False False (helperName (Draws.drawNumber node)) []
+              (map E.param ("symbols" : map (localName . C.binderId) (Draws.drawCaptures node))) Nothing [E.ret body])
+      helpers <- mapM helper (Draws.drawNodes graph)
+      pure (helpers,call (Draws.drawRoot graph))
     -- A benchmark: measured, never asserted.
     benchmarkTest (n, body) =
       [E.ExprStmt (E.call "test" [E.Str ("benchmark " ++ n), E.asyncArrowBlock []
@@ -645,24 +661,43 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
               pure (E.Array (E.num 1 : endpoints))
           rest <- caseCoverExpression suffix
           pure (E.Array [values, rest])
-    valueLit (V.ScalarValue value) = Right (case X.scalarLiteral value of
+    scalarValueLit value = case X.scalarLiteral value of
       Just native' | plainScalar value -> native'
-      _ -> runtime "literal" [X.literalValue (toJSON value), E.Ident "symbols"])
-    valueLit value@(V.DataValue (C.Constructor "List" _) _ _) = do
-      items <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (V.listItems value)
-      E.Array <$> mapM valueLit items
-    valueLit (V.PresenceValue (C.Constructor wrapper _) payload) = do
-      field <- traverse valueLit payload
-      pure (E.new' "ls.Presence" (E.Str wrapper : case field of
-        Nothing -> [E.BoolLit False]
-        Just value -> [E.BoolLit True, value]))
-    valueLit (V.DataValue ty tag fields) | usesData ty = do
-      values <- mapM valueLit fields
-      pure (schema "construct" [referenceOf ty,E.Str (C.idText tag),E.Array values,width])
-    valueLit (V.DataValue (C.Constructor n _) tag fields) | n `elem` ["Maybe","Either"] = do
-      values <- mapM valueLit fields
-      pure (runtime "construct" [E.Str (C.idText tag),E.Array values])
-    valueLit _ = Left [Diagnostic "target" ("structural literal is not implemented for " ++ target) Nothing]
+      _ -> runtime "literal" [X.literalValue (toJSON value), E.Ident "symbols"]
+    literalChecked = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
+    literalPlan = literalChecked $ do
+      covers <- mapM caseCover laws
+      Literals.planLiterals (concatMap Literals.coverLiterals covers ++
+        [value | law <- laws, requirement <- generationPlan law, value <- generatorBoundaries requirement])
+    shapeName index = "_literalShape" ++ show index
+    factoryName index = "_literalValue" ++ show index
+    literalTerm = Literals.foldLiteral (pure . scalarValueLit)
+      (\index fields -> pure (E.call (shapeName index) [E.Ident "symbols", E.Array fields]))
+      (\index -> pure (E.call (factoryName index) [E.Ident "symbols"]))
+    valueLit (V.ScalarValue value) = pure (scalarValueLit value)
+    valueLit value = do
+      plan <- literalPlan
+      literalChecked (Literals.literalReference plan value) >>= literalTerm
+    literalFunctions = do
+      plan <- literalPlan
+      shapes <- mapM (\(index,shape) -> do
+        body <- literalShape shape
+        pure [E.FunctionDecl False False (shapeName index) []
+          (map E.param ["symbols", "fields"]) Nothing [E.ret body]]) (Literals.literalShapes plan)
+      factories <- mapM (\(index,term) -> do
+        body <- literalTerm term
+        pure [E.FunctionDecl False False (factoryName index) []
+          [E.param "symbols"] Nothing [E.ret body]]) (Literals.literalFactories plan)
+      pure (shapes ++ factories)
+    literalShape (Literals.ListShape _) = pure (E.Ident "fields")
+    literalShape (Literals.PresenceShape (C.Constructor wrapper _) present) = pure
+      (E.new' "ls.Presence" (E.Str wrapper : E.BoolLit present :
+        [E.index (E.Ident "fields") (E.num 0) | present]))
+    literalShape (Literals.ConstructorShape ty tag) | usesData ty = pure
+      (schema "construct" [referenceOf ty,E.Str (C.idText tag),E.Ident "fields",width])
+    literalShape (Literals.ConstructorShape (C.Constructor name _) tag) | name `elem` ["Maybe","Either"] = pure
+      (runtime "construct" [E.Str (C.idText tag),E.Ident "fields"])
+    literalShape _ = Left [Diagnostic "target" ("structural literal is not implemented for " ++ target) Nothing]
     -- A boundary's scalar is its type's own, so its native value needs no
     -- conversion.
     plainScalar value = case value of

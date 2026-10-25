@@ -120,7 +120,10 @@ end unit
 `}]};
   const checked=await compiler.check(input);
   assert.deepEqual(checked.diagnostics,[]);
-  const instance=checked.units.find(unit=>unit.id==='collision').declarations.find(declaration=>declaration.name.endsWith('_'));
+  const declarations=checked.units.find(unit=>unit.id==='collision').declarations;
+  assert.equal(declarations.length,2);
+  assert.equal(new Set(declarations.map(declaration=>declaration.id)).size,2);
+  const instance=declarations.find(declaration=>declaration.source?.name==='sameValue');
   assert.ok(instance);
   for(const target of targets) {
     const rejected=await compiler.planGeneration({...input,target});

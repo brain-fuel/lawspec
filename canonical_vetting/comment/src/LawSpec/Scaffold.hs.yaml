@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold:
 decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/data/Json:
   digest: sha256:b266b2f993888de5
   verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/data/PresentationCheck:
+  digest: sha256:7f25160af1a480b3
+  verdict: pending
 decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/dotnetScaffold:
   digest: sha256:c6b422c04ce10759
   verdict: pending

@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity:
+  digest: sha256:7f6854a75d0dea97
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/class/Collect:
+  digest: sha256:1e70382233991250
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/class/Encode:
+  digest: sha256:fd88e78264669e93
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/data/Encoded:
+  digest: sha256:ccaf98e1a90b41b1
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/data/Reference:
+  digest: sha256:6da70f9b79426310
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/data/Resolver:
+  digest: sha256:46f671e37d57e336
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/aside:
+  digest: sha256:57593521ccbceca0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/encode:
+  digest: sha256:4cbb590ff9820554
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/encodeAdapter:
+  digest: sha256:167f387ab0719372
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/presentationFields:
+  digest: sha256:37ac66f7705c2073
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/references:
+  digest: sha256:a196806ad5491764
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/semanticVersion:
+  digest: sha256:30b8f76d0c66ab86
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/typeBinderFields:
+  digest: sha256:1b6435d09a613671
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/function/typeVariable:
+  digest: sha256:bb07653c8a060af3
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Identity.hs/module/LawSpec.Core.Identity/instance/Encode-Property:
+  digest: sha256:07123cff3442d88f
+  verdict: pending

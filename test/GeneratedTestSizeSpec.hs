@@ -20,7 +20,12 @@ test_generatedTestsStayProportionalToTheirSpecification = describe "compact gene
   forM_ [(["examples/specs/handler_bindings.lawspec"], programTargets),
          (["test/fixtures/canonical-smt-arithmetic.lawspec"], programTargets),
          (["examples/specs/total_functions.lawspec", "examples/specs/refined_definitions.lawspec",
-           "examples/specs/data_types.lawspec"], ["kotlin"])] $ \(files, targets) ->
+           "examples/specs/data_types.lawspec"], ["kotlin"]),
+         (["examples/specs/builtins.lawspec"], ["haskell"]),
+         (["examples/rc1/bounded-witness-search.lawspec"], programTargets),
+         (["test/fixtures/canonical-set-domains.lawspec"], programTargets),
+         (["test/fixtures/canonical-set-domains.lawspec", "test/fixtures/canonical-set-generation.lawspec"], programTargets),
+         (["examples/specs/indexed_families.lawspec", "examples/specs/indexed_arithmetic.lawspec"], programTargets)] $ \(files, targets) ->
     forM_ targets $ \target -> it (target ++ " keeps " ++ unwords files ++ " within its source-size budget") $ do
       sources <- mapM (\file -> Source file <$> readFile file) files
       let request = object ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),

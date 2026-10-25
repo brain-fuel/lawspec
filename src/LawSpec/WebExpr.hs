@@ -9,6 +9,7 @@ module LawSpec.WebExpr
   ) where
 
 import LawSpec.Core
+import LawSpec.Core.ListLiteral (constantListElements)
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.WebTypes as Native
 import qualified LawSpec.Code.ECMAScript as E
@@ -143,6 +144,7 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
                 (if ts then Just (E.TArray (E.TKeyword "unknown")) else Nothing) Nothing False
           pure (E.Await (E.Call (E.Arrow True [pattern] Nothing (E.ExpressionBody inner)) []
             [E.Await (runtime "concurrently" [E.Array [E.asyncArrow [] step | step <- steps]])] False))
+    render term | Just values <- constantListElements term = E.Array <$> mapM render values
     render term = case expressionNode term of
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"

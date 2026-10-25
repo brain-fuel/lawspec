@@ -16,7 +16,7 @@
 -- for a native compiler, its executable's size and modification time: a
 -- compiler rebuilt from changed sources (a checkout run in place) never
 -- reads what another build wrote, so generation depends only on the program.
-module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, memoizedState, withCacheDirectory, withoutMemoization, buildIdentity) where
+module LawSpec.Memo (Table, newTable, newPersistentTable, newTableByShow, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withoutMemoization, buildIdentity) where
 
 import qualified Control.Monad.Trans.State.Strict as Transition
 import LawSpec.Blake3 (blake3, hexOf)
@@ -77,6 +77,27 @@ buildIdentity = unsafePerformIO $ do
     pure ("-" ++ take 16 (digestHex (digestString (path ++ " " ++ show size ++ " " ++ show modified))))) :: IO (Either SomeException String)
   pure (either (const "") id found)
 {-# NOINLINE buildIdentity #-}
+
+-- | A logical structural weight, bounded before expanding an entire value.
+-- Layout documents may share alternative subdocuments: an unbounded Show (or
+-- Binary) traversal can be exponential while the selected output stays small.
+-- This observes at most budget+1 structural characters, identically on native
+-- and WASM; runtime pointer sharing never affects an identity or cache value.
+boundedShowWeight :: Show a => Int -> a -> Int
+boundedShowWeight budget value = count 0 (show value)
+  where
+    limit = max 0 (min (maxBound - 1) budget)
+    count size [] = size
+    count size (_ : rest)
+      | size >= limit = limit + 1
+      | otherwise = count (size + 1) rest
+
+-- | Preserve ordinary cache weights, without traversing oversized structures.
+newTableByShow :: Show a => Int -> IO (Table a)
+newTableByShow budget = newTable budget (boundedShowWeight budget)
+
+newPersistentTableByShow :: (Binary a, Show a) => String -> Int -> IO (Table a)
+newPersistentTableByShow name budget = newPersistentTable name budget (boundedShowWeight budget)
 
 cacheDirectory :: IORef (Maybe FilePath)
 cacheDirectory = unsafePerformIO (newIORef Nothing)
@@ -145,17 +166,20 @@ memoizedIO (Table budget weigh persistence ref) key value = do
             _ -> Nothing
       stored <- maybe (pure Nothing) readStored file
       computed <- maybe (evaluate value) pure stored
-      case (stored, file, persistence) of
-        (Nothing, Just location, Just (Persistence _ encodeValue _)) -> writeStored location (encodeValue computed)
-        _ -> pure ()
-      let weight = max 1 (weigh computed)
-      atomicModifyIORef' ref $ \s ->
-        if M.member k (entries s) then (s, ()) else
-          (evict (s { entries = M.insert k (Entry computed weight (clock s)) (entries s)
-                    , order = M.insert (clock s) k (order s)
-                    , total = total s + weight
-                    , clock = clock s + 1 }), ())
-      pure computed
+      -- Admission precedes serialization. Expanding a shared layout DAG
+      -- just to persist an entry we cannot keep defeats the table's bound.
+      weight <- evaluate (max 1 (weigh computed))
+      if weight > budget then pure computed else do
+        case (stored, file, persistence) of
+          (Nothing, Just location, Just (Persistence _ encodeValue _)) -> writeStored location (encodeValue computed)
+          _ -> pure ()
+        atomicModifyIORef' ref $ \s ->
+          if M.member k (entries s) then (s, ()) else
+            (evict (s { entries = M.insert k (Entry computed weight (clock s)) (entries s)
+                      , order = M.insert (clock s) k (order s)
+                      , total = total s + weight
+                      , clock = clock s + 1 }), ())
+        pure computed
   where
     readStored (folder, name) = case persistence of
       Just (Persistence _ _ decodeValue) -> do
@@ -170,8 +194,8 @@ memoizedIO (Table budget weigh persistence ref) key value = do
         BL.writeFile (folder </> (name ++ ".tmp")) bytes
         renameFile (folder </> (name ++ ".tmp")) (folder </> name)) :: IO (Either SomeException ())
       pure ()
-    -- Drop the least recently used entries until the budget holds, keeping
-    -- at least the newest.
+    -- Drop the least recently used entries until the budget holds.
+    -- Each admitted entry individually fits the budget.
     evict s
       | total s <= budget || M.size (entries s) <= 1 = s
       | otherwise = case M.minViewWithKey (order s) of

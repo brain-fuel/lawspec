@@ -706,6 +706,10 @@ lean-list-quantifiers:
   kind: article
   title: "Lean 4 implementation: List.all and List.any"
   locator: https://github.com/leanprover/lean4/blob/master/src/Init/Data/List/Basic.lean
+lean-preprocessing-operational-behavior:
+  kind: article
+  title: "Lean 4 reference: preprocessing function definitions and operational behavior"
+  locator: https://lean-lang.org/doc/reference/latest/Definitions/Recursive-Definitions/#preprocessing-function-definitions
 idris-list-quantifiers:
   kind: article
   title: "Idris 2 implementation: total Foldable Boolean quantifiers"

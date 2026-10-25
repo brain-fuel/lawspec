@@ -181,6 +181,9 @@ decision/go/runtime/lawspec_runtime.go/function/lsErrorAs:
 decision/go/runtime/lawspec_runtime.go/function/lsEvaluate:
   digest: sha256:7f48308e2e5f8c4a
   verdict: pending
+decision/go/runtime/lawspec_runtime.go/function/lsFiniteCases:
+  digest: sha256:d6a4c51c4ce4f9e5
+  verdict: pending
 decision/go/runtime/lawspec_runtime.go/function/lsFlipSteps:
   digest: sha256:875ed305e7726c77
   verdict: pending
@@ -861,6 +864,9 @@ decision/go/runtime/lawspec_runtime.go/type/lawSpecTimedOut:
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lawSpecValues:
   digest: sha256:3b94fc3dd35e2872
+  verdict: pending
+decision/go/runtime/lawspec_runtime.go/type/lsFiniteValue:
+  digest: sha256:2c7c9323636819d2
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/type/lsRegexItem:
   digest: sha256:2cd7a79f88c2f125

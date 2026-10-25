@@ -7,6 +7,9 @@ decision/clojure/runtime/clojure/test/lawspec/test.clj/function/cases:
 decision/clojure/runtime/clojure/test/lawspec/test.clj/function/holds:
   digest: sha256:d301a02bb5cf94b2
   verdict: pending
+decision/clojure/runtime/clojure/test/lawspec/test.clj/function/register-cases:
+  digest: sha256:94fbd15094dd3d2b
+  verdict: pending
 decision/clojure/runtime/clojure/test/lawspec/test.clj/function/run:
   digest: sha256:c47afffc8ed505b1
   verdict: pending

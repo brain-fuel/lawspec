@@ -30,12 +30,17 @@
 -- command and environment, and the versions of its tools. Acceptance suites
 -- key their own runs on the generated project (acceptance/Cache.hs), so a
 -- compiler change that leaves a target's output unchanged skips its tests.
+-- Parity binds the native and WASM executables, SDK, effective environment
+-- and checked sources. Source/artifact correspondence is checked separately
+-- by integrity and generation validation (ref:DEC-content-identity). Package
+-- smoke remains uncached: its fresh npm/Cargo dependency resolution is not a
+-- frozen execution context.
 -- Records live in .artifacts/cache; --fresh runs everything, as releases do.
 module Ci (ci) where
 
 import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, withMVar)
-import Control.Exception (AsyncException(..), SomeException, evaluate, handle, mask, onException, throwIO, try)
+import Control.Exception (AsyncException(..), IOException, SomeException, evaluate, handle, mask, onException, throwIO, try)
 import Control.Monad (filterM, forM, forM_, forever, unless, void, when)
 import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.ByteString as B
@@ -47,7 +52,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import GHC.Conc (getNumProcessors)
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory)
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitFailure, exitWith)
 import System.FilePath ((</>))
@@ -59,6 +64,7 @@ import System.Process (CreateProcess(..), StdStream(..), createProcess, getPid, 
 import Text.Printf (printf)
 import qualified LawSpec.Targets as Targets
 import Scheduler
+import Ci.Cache (CacheResult(..), cachedCheck)
 
 data Options = Options
   { targets :: [String], coreOnly :: Bool, failFast :: Bool, fresh :: Bool
@@ -157,6 +163,7 @@ stepGroups options editor =
 -- Order: a target's steps follow its bootstrap, which creates
 -- .integration/<target>, and the BEAM framework steps that may bootstrap it
 -- too; acceptance suites follow build-acceptance; npm-tests follows the
+-- JavaScript/Python bootstraps (native cache and finite-loop controls) and
 -- TypeScript bootstrap (it type-checks with that tsc when present), and
 -- beam-runtime the Python one (it runs that interpreter). Haskell, Java and
 -- Clojure suites also follow the target's crypto suite, which runs alone
@@ -207,7 +214,8 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     task s@(Step name env command) = Task name (filter present (follows name command (M.lookup name targetOf)))
       (claims name env command (M.lookup name targetOf)) s
     follows name command target = case target of
-      Nothing -> ["typescript-bootstrap" | name == "npm-tests"] ++ ["python-bootstrap" | name == "beam-runtime"]
+      Nothing -> [bootstrap | name == "npm-tests", bootstrap <- ["typescript-bootstrap","javascript-bootstrap","python-bootstrap"]]
+        ++ ["python-bootstrap" | name == "beam-runtime"]
         ++ ["editor-install" | name `elem` ["editor-grammar","npm-tests"]]
         ++ ["docs" | name == "rejection-examples"]
       Just t
@@ -224,7 +232,8 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
       [Shared "stack-work" | name `notElem` stackBuilders,
         take 1 command == ["stack"] || name `elem` ["rejection-examples", "parity"]] ++
-      [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"]] ++
+      [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability", "npm-tests"]] ++
+      [Shared "env:javascript" | name == "npm-tests"] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
       [Exclusive "env:artifacts" | name == "artifact-bootstrap"] ++
       -- The wrapper may repair its pinned environment after a failed bootstrap.
@@ -348,6 +357,7 @@ coreSteps =
   , step "boundaries" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "boundaries"]
   , step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"]
   , step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"]
+  , step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"]
   , step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"]
   , step "compiler-tests" ["stack", "--no-terminal", "test"]
   , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
@@ -367,9 +377,12 @@ stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
   "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers) [["stack", "--version"]])
   "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/", "templates/editors/vscode/syntaxes/",
-    "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json"] [] [["node", "--version"]])
-  "parity" -> Just (Inputs [] unread [["node", "--version"]])
-  "package-smoke" -> Just (Inputs [] unread [["node", "--version"], ["npm", "--version"]])
+    "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json", "tools/ci-artifact-key.mjs"] [] [["node", "--version"]])
+  "parity" -> Just (Inputs ["tools/parity.mjs", "tools/ci-artifact-key.mjs", "examples/specs/", "examples/packages/",
+    "test/fixtures/artifact-configuration.lawspec", "test/fixtures/artifact-antlr-inputs.lawspec",
+    "test/fixtures/artifact-antlr-indexed-input.lawspec", "npm/starter-rc1.lawspec"] []
+    [["node", "tools/ci-artifact-key.mjs", "parity"]])
+  "package-smoke" -> Nothing
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rejection-examples" -> Just (Inputs ["dev/Docs.hs", "src/", "package.yaml", "templates/site/", "templates/tools/rejection-examples.mjs",
     "tools/rejection-examples.mjs", "test/fixtures/canonical-rejection-"] [] [["node", "--version"], ["stack", "--version"]])
@@ -432,36 +445,39 @@ runCached console children freshRun repository current@(Step name env command) =
     Nothing -> runStep console children (if freshRun then refreshed else current)
     Just inputs -> do
       key <- stepKey repository current inputs
-      let recorded = cacheStore </> key
-      hit <- if freshRun then pure False else doesFileExist recorded
-      if hit
-        then do
-          copyFile recorded (logs </> map safeName name ++ ".log")
-          say console (printf "%-40s %s" name ("cached" :: String))
-          pure True
-        else do
-          ok <- runStep console children current
-          when ok $ do
-            createDirectoryIfMissing True cacheStore
-            copyFile (logs </> map safeName name ++ ".log") recorded
-          pure ok
+      case key of
+        Nothing -> runStep console children current
+        Just digest -> do
+          result <- cachedCheck freshRun (cacheStore </> digest)
+            (logs </> map safeName name ++ ".log") (runStep console children current)
+          case result of
+            CacheHit -> say console (printf "%-40s %s" name ("cached" :: String)) >> pure True
+            Checked passed -> pure passed
   where refreshed = Step name (("LAWSPEC_CACHE", "refresh") : env) command
 
-stepKey :: [FilePath] -> Step -> Inputs -> IO String
+stepKey :: [FilePath] -> Step -> Inputs -> IO (Maybe String)
 stepKey repository (Step name env command) (Inputs keep drop' probes) = do
   let selected = [ f | f <- repository
                  , null keep || any (`isPrefixOf` f) keep
                  , not (any (`isPrefixOf` f) drop') ]
   contents <- forM selected $ \path -> (,) path <$> B.readFile path
-  tools <- forM probes $ \probe -> case probe of
+  inherited <- getEnvironment
+  let effective = env ++ [(key, value) | (key, value) <- inherited, key `notElem` map fst env]
+  observations <- forM probes $ \probe -> case probe of
     program : arguments -> do
-      (_, out, err) <- readCreateProcessWithExitCode (proc program arguments) ""
-      pure (unwords probe ++ "\n" ++ out ++ err)
-    [] -> pure ""
-  let pieces = map BC.pack ("lawspec-ci-cache-1" : name : unwords command : show env : tools) ++
-        concat [[BC.pack path, bytes] | (path, bytes) <- contents]
-      framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
-  pure (concatMap (printf "%02x") (B.unpack (SHA.finalize (SHA.updates SHA.init (concatMap framed pieces)))))
+      result <- try (readCreateProcessWithExitCode ((proc program arguments){env = Just effective}) "") :: IO (Either IOException (ExitCode, String, String))
+      pure $ case result of
+        Right (ExitSuccess, out, err) -> Just (unwords probe ++ "\n" ++ out ++ err)
+        _ -> Nothing
+    [] -> pure (Just "")
+  -- A missing or failed identity probe cannot certify a cached result. Run
+  -- the actual check and leave it uncached rather than hash an error message.
+  pure $ do
+    tools <- sequence observations
+    let pieces = map BC.pack ("lawspec-ci-cache-1" : name : unwords command : show env : tools) ++
+          concat [[BC.pack path, bytes] | (path, bytes) <- contents]
+        framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
+    pure (concatMap (printf "%02x") (B.unpack (SHA.finalize (SHA.updates SHA.init (concatMap framed pieces)))))
 
 -- | The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.

@@ -11,6 +11,8 @@ import LawSpec.SourceLink (generatedHeader, unitSourceFile, labelled, locationLi
 import LawSpec.Common
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Literals as Literals
+import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.PythonData as PythonData
@@ -63,6 +65,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
   | otherwise = do
   unless (target == "python") (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   lawTexts <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
+  literalHelpers <- literalFunctions
   modelTexts <- concat <$> mapM modelTest (C.unitMachines u)
   -- A unit with supervisors also checks the runtime's supervision.
   let supervision
@@ -81,7 +84,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       parallel = maybe False C.harnessParallel (C.unitHarnessSettings u)
       tests = lawTexts ++ modelTexts ++ supervision ++ benchmarks ++ shuffled
   wrappers <- concat <$> mapM contractWrapper (contracts u)
-  let rest = testHelpers ++ wrappers ++ tests
+  let rest = testHelpers ++ literalHelpers ++ wrappers ++ tests
       -- The machine profile's width is named once (DEC-native-string-literals).
       usedNames = identifiers (dataHelpers ++ rest)
       constants = ["# The machine profile's integer width.\nMACHINE_BITS = " ++ show bits | "MACHINE_BITS" `elem` usedNames] ++
@@ -589,40 +592,54 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     harnessProperty prefix e body = do
       let harness = C.propertyHarness (original e)
           strategyOf input = [(n, d) | (i, n, d) <- C.harnessDraws harness, i == C.binderId (C.quantifiedBinder input)]
-      draws <- mapM (\plan -> do
+      draws <- mapM (\(index,plan) -> do
         let input = domainInput plan
             predicate = conjunction (map render (inputRefinements input))
         case strategyOf input of
           (strategy, draw) : _ -> do
-            value <- drawDoc e plan strategy draw
-            pure [assign (inputId input) (invoke "_harness.check_drawn"
-              [quoted strategy, quoted (inputName input), lambda [text (inputId input)] predicate, value])]
+            (helpers,value) <- sharedDraw e index plan strategy draw
+            pure (helpers,[assign (inputId input) (invoke "_harness.check_drawn"
+              [quoted strategy, quoted (inputName input), lambda [text (inputId input)] predicate, value])])
           [] -> do
             strategy <- contextStrategy e plan
-            pure ([assign (inputId input) (method (text "_draw") "draw" [strategy])] ++
-              [statement (invoke "assume" [predicate]) | not (null (inputRefinements input))])) (generationPlan e)
+            pure ([],[assign (inputId input) (method (text "_draw") "draw" [strategy])] ++
+              [statement (invoke "assume" [predicate]) | not (null (inputRefinements input))]))
+        (zip [0 :: Int ..] (generationPlan e))
+      let helpers = concatMap fst draws
+          assignments = concatMap snd draws
+          separated = case assignments of
+            first : rest | not (null helpers) -> (Doc.hardline <> first) : rest
+            _ -> assignments
       pure (pythonProperty prefix
         [pythonSettings (cases (generation e)), invoke "given" [invoke "st.data" []]] ["_draw"]
-        (statements (fresh e : concat draws ++ [body])))
-    -- A strategy's draw, as a Python expression.
-    drawDoc e plan strategy draw = case draw of
-      C.DrawAny ty (Just aim)
-        | Just range <- inputRange bits aim -> pure (method (text "_draw") "draw" [Generator.generatorDocWithin bits usesData referenceDoc (Just range) ty])
-      C.DrawAny ty _
-        | ty == inputType (domainInput plan) -> (\s -> method (text "_draw") "draw" [s]) <$> contextStrategy e plan
-        | otherwise -> pure (method (text "_draw") "draw" [generatorDoc ty])
-      C.DrawOneOf _ values -> pure (invoke "_harness.draw_one_of" [text "_draw", array [lambda [] (render v) | v <- values]])
-      C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, d) -> (\doc -> array [text (show w), lambda [] doc]) <$> drawDoc e plan strategy d) alternatives
-        pure (invoke "_harness.draw_frequency" [text "_draw", array options])
-      C.DrawSuchThat inner binder predicate limit -> do
-        doc <- drawDoc e plan strategy inner
-        pure (invoke "_harness.draw_such_that" [lambda [] doc, lambda [text (localName (C.binderId binder))] (render predicate),
-          text (show limit), quoted strategy])
-      C.DrawBind binder from rest -> do
-        fromDoc <- drawDoc e plan strategy from
-        restDoc <- drawDoc e plan strategy rest
-        pure (parenthesized (lambda [text (localName (C.binderId binder))] restDoc) <> Doc.delimitTrailing 4 "(" ")" [fromDoc])
+        (statements (fresh e : map (Doc.hardline <>) helpers ++ separated ++ [body])))
+    sharedDraw e index requirement strategy draw = do
+      graph <- literalChecked (Draws.planDraw requirement
+        (map generatorBinder (take index (generationPlan e))) draw)
+      let helperName number = "_draw_" ++ inputId (domainInput requirement) ++ "_" ++ show index ++ "_" ++ show number
+          call node = invoke (helperName (Draws.drawCallee node))
+            (map (text . localName) (Draws.drawArguments node))
+          helper node = do
+            body <- case Draws.drawStep node of
+              Draws.AnyDraw ty (Just aim) | Just range <- inputRange bits aim -> pure
+                (method (text "_draw") "draw" [Generator.generatorDocWithin bits usesData referenceDoc (Just range) ty])
+              Draws.AnyDraw ty _ | ty == inputType (domainInput requirement) ->
+                (\source -> method (text "_draw") "draw" [source]) <$> contextStrategy e requirement
+              Draws.AnyDraw ty _ -> pure (method (text "_draw") "draw" [generatorDoc ty])
+              Draws.OneOfDraw _ values -> pure (invoke "_harness.draw_one_of"
+                [text "_draw",array [lambda [] (render value) | value <- values]])
+              Draws.FrequencyDraw alternatives -> pure (invoke "_harness.draw_frequency"
+                [text "_draw", array [array [text (show weight),lambda [] (call child)] | (weight,child) <- alternatives]])
+              Draws.FilterDraw child binder predicate limit -> pure (invoke "_harness.draw_such_that"
+                [lambda [] (call child),lambda [text (localName (C.binderId binder))] (render predicate),
+                 text (show limit),quoted strategy])
+              Draws.BindDraw binder from rest -> pure
+                (parenthesized (lambda [text (localName (C.binderId binder))] (call rest)) <>
+                  Doc.delimitTrailing 4 "(" ")" [call from])
+            pure (function (helperName (Draws.drawNumber node))
+              (map (localName . C.binderId) (Draws.drawCaptures node)) (text "return " <> body))
+      helpers <- mapM helper (Draws.drawNodes graph)
+      pure (helpers,call (Draws.drawRoot graph))
     -- A benchmark: measured, never asserted.
     benchmarkTest (n, body) = function ("test_benchmark__" ++ intercalate "_" (lawWords n)) []
       (statements [freshSymbols, statement (invoke "_harness.benchmark" [message n, lambda [] (render body)])])
@@ -687,23 +704,40 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
               pure (array (text "1" : endpoints))
           rest <- caseCoverExpression suffix
           pure (array [values, rest])
-    valueLit (V.ScalarValue value) = Right (PythonExpr.scalarLiteral value)
-    valueLit value@(V.DataValue (C.Constructor "List" _) _ _) = do
-      items <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (V.listItems value)
-      array <$> mapM valueLit items
-    valueLit (V.PresenceValue (C.Constructor wrapper _) payload) = do
-      field <- traverse valueLit payload
-      pure (invoke "ls.Presence"
-        (quoted wrapper : case field of
-          Nothing -> [text "False"]
-          Just value -> [text "True",value]))
-    valueLit (V.DataValue ty tag fields) | usesData ty = do
-      values <- mapM valueLit fields
-      pure (schema "construct" [referenceDoc ty,quoted (C.idText tag),array values,width])
-    valueLit (V.DataValue (C.Constructor name _) tag fields) | name `elem` ["Maybe","Either"] = do
-      values <- mapM valueLit fields
-      pure (runtime "construct" [quoted (C.idText tag),array values])
-    valueLit _ = Left [Diagnostic "target" ("structural literal is not implemented for " ++ target) Nothing]
+    literalChecked = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
+    literalPlan = literalChecked $ do
+      covers <- mapM caseCover ls
+      Literals.planLiterals (concatMap Literals.coverLiterals covers ++
+        [value | law <- ls, requirement <- generationPlan law, value <- generatorBoundaries requirement])
+    shapeName index = "_literal_shape_" ++ show index
+    factoryName index = "_literal_value_" ++ show index
+    literalTerm = Literals.foldLiteral (pure . PythonExpr.scalarLiteral)
+      (\index fields -> pure (invoke (shapeName index) [text "symbols", array fields]))
+      (\index -> pure (invoke (factoryName index) [text "symbols"]))
+    valueLit (V.ScalarValue value) = pure (PythonExpr.scalarLiteral value)
+    valueLit value = do
+      plan <- literalPlan
+      literalChecked (Literals.literalReference plan value) >>= literalTerm
+    literalFunctions = do
+      plan <- literalPlan
+      shapes <- mapM (\(index,shape) -> do
+        body <- literalShape shape
+        pure (renderDocument (function (shapeName index) ["symbols", "fields"]
+          (text "return " <> body)))) (Literals.literalShapes plan)
+      factories <- mapM (\(index,term) -> do
+        body <- literalTerm term
+        pure (renderDocument (function (factoryName index) ["symbols"]
+          (text "return " <> body)))) (Literals.literalFactories plan)
+      pure (concat (shapes ++ factories))
+    literalShape (Literals.ListShape _) = pure (text "fields")
+    literalShape (Literals.PresenceShape (C.Constructor wrapper _) present) = pure
+      (invoke "ls.Presence" (quoted wrapper : text (if present then "True" else "False") :
+        [text "fields[0]" | present]))
+    literalShape (Literals.ConstructorShape ty tag) | usesData ty = pure
+      (schema "construct" [referenceDoc ty,quoted (C.idText tag),text "fields",width])
+    literalShape (Literals.ConstructorShape (C.Constructor name _) tag) | name `elem` ["Maybe","Either"] = pure
+      (runtime "construct" [quoted (C.idText tag),text "fields"])
+    literalShape _ = Left [Diagnostic "target" ("structural literal is not implemented for " ++ target) Nothing]
     containsStructural ty | usesData ty = True
     containsStructural (C.Constructor name args) = name `elem` ["List","Maybe","Either"] ||
       any (\arg -> case arg of C.TypeArgument inner -> containsStructural inner; _ -> False) args

@@ -13,8 +13,8 @@ decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecH
 decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/frequency:
   digest: sha256:559acb3d7cc6fbf6
   verdict: pending
-decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/knownFailing:
-  digest: sha256:b24ece9efb3b9e45
+decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/knownDiscrepancy:
+  digest: sha256:cf47233fa6d502b8
   verdict: pending
 decision/java/runtime/LawSpecHarness.java/package/lawspec.testing/class/LawSpecHarness/method/orderSeed:
   digest: sha256:e7e610411aa2fa81

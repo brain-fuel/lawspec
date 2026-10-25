@@ -82,6 +82,9 @@ decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/joinWi
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/lambdaBody:
   digest: sha256:e378293b871d9ca7
   verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/layoutChoice:
+  digest: sha256:df9f5feef6f0927a
+  verdict: pending
 decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/lineComment:
   digest: sha256:d07d96696db5a52c
   verdict: pending

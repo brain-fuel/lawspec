@@ -1,0 +1,6 @@
+decision/haskell/test/SmtReceiptSpec.hs/module/SmtReceiptSpec:
+  digest: sha256:1634c19c22b79713
+  verdict: pending
+decision/haskell/test/SmtReceiptSpec.hs/module/SmtReceiptSpec/function/fingerprints:
+  digest: sha256:98a2e494af2f4c51
+  verdict: pending

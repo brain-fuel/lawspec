@@ -2,7 +2,7 @@
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goFieldName, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (flatDataCandidatesWith, productConstructors, isProduct)
@@ -32,11 +32,11 @@ import qualified Data.Text.Lazy.Encoding as T
 import qualified LawSpec.Code.Doc as D
 
 nativeDocumentTable :: Table (Either String D.Doc)
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-go-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-go-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 codecDocumentTable :: Table (Either String D.Doc)
-codecDocumentTable = unsafePerformIO (newPersistentTable "public-go-codec" (8 * 1024 * 1024) (length . show))
+codecDocumentTable = unsafePerformIO (newPersistentTableByShow "public-go-codec" (8 * 1024 * 1024))
 {-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id, String)]

@@ -1,6 +1,42 @@
 decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3:
   digest: sha256:af4cc2471a1f6512
   verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/data/CV:
+  digest: sha256:238d88cb86f8b1cb
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/data/Node:
+  digest: sha256:229b8fc27151704e
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/data/W16:
+  digest: sha256:d12f510f154ae62a
+  verdict: pending
 decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/blake3:
   digest: sha256:1cef61bd783ff983
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/block:
+  digest: sha256:50ccd5511d25f028
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/chunkNode:
+  digest: sha256:8df51becf81be7b6
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/compress:
+  digest: sha256:fb268fa7ecb25f18
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/g:
+  digest: sha256:ffbaf44912371280
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/hashMany:
+  digest: sha256:a4b44923921c8052
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/hexOf:
+  digest: sha256:0540e0fb02576418
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/permute:
+  digest: sha256:fc2d1e850f840c8e
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/rootNode:
+  digest: sha256:71ebe6bb48297470
+  verdict: pending
+decision/haskell/src/LawSpec/Blake3.hs/module/LawSpec.Blake3/function/roundW:
+  digest: sha256:558a66553f0aec42
   verdict: pending

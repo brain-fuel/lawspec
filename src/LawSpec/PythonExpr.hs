@@ -2,6 +2,7 @@
 module LawSpec.PythonExpr (renderExpression, renderExpressionBody, renderExpressionWithContext, renderExpressionWithContextAt, literalValue, call, array, quoted, typeKey, suite, lambdaExpression, appliedLambda, scalarLiteral, optionalParentheses, bytesLiteral, pythonReserved, handlerSchemaCall, tuple) where
 
 import LawSpec.Core
+import LawSpec.Core.ListLiteral (constantListElements)
 import LawSpec.Scalar (Scalar(..))
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.PythonTypes as Native
@@ -196,6 +197,7 @@ renderExpressionWithContextAt atBody declarations width reference key outerLocal
           inner <- renderBody body
           pure (appliedLambda (lambdaExpression (map (D.text . local . binderId) binders) inner)
             [D.text "*" <> runtime "concurrently" [array (map (lambdaExpression []) steps)]])
+    render term | Just values <- constantListElements term = array <$> mapM render values
     render term = case expressionNode term of
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"

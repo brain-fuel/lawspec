@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/JvmCases.hs/module/LawSpec.JvmCases:
+  digest: sha256:c2f019bd1e649c40
+  verdict: pending
+decision/haskell/src/LawSpec/JvmCases.hs/module/LawSpec.JvmCases/function/coverBindings:
+  digest: sha256:a87d38de98b18b7f
+  verdict: pending

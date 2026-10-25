@@ -14,7 +14,7 @@ import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
 import LawSpec.CorePersist ()
 import qualified LawSpec.Dependencies as Identity
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
@@ -222,7 +222,7 @@ dataCase :: String -> Int -> D.Doc
 dataCase tag count = D.text "case " <> callDoc ".data" [D.text tag, D.text "let f"] <> D.text (" where f.count == " ++ show count ++ ":")
 
 dataTable :: Table (Either String D.Doc)
-dataTable = unsafePerformIO (newPersistentTable "swift-data" (4 * 1024 * 1024) (length . show))
+dataTable = unsafePerformIO (newPersistentTableByShow "swift-data" (4 * 1024 * 1024))
 {-# NOINLINE dataTable #-}
 
 -- | The data types file and the codecs file.

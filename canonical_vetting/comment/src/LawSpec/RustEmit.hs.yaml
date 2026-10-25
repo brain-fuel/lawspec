@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/outerl
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustDelimited:
   digest: sha256:c8571767c7a4819a
   verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustFiniteCover:
+  digest: sha256:f27a85eab5e4caa7
+  verdict: pending
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustType:
   digest: sha256:c1a374794b279823
   verdict: pending

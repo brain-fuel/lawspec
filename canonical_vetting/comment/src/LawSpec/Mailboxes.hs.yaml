@@ -19,6 +19,9 @@ decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/mail
 decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/mailboxClassName:
   digest: sha256:5cd361c55d7ad748
   verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/mailboxScalar:
+  digest: sha256:7ff7fb463f9edb0b
+  verdict: pending
 decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/pyLine:
   digest: sha256:073caf7a1877d478
   verdict: pending

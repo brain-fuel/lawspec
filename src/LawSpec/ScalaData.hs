@@ -5,7 +5,7 @@
 module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecReceiverWithContext, scalaCodecReceiverIn, scalaNativeCodecReceiverIn, scalaCodecDocWithContext, scalaCodecDocIn, scalaNativeCodecDocIn, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified, rootQualifiedDoc, applied, namesFor) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
@@ -33,11 +33,11 @@ import qualified Data.Map.Strict as M
 import LawSpec.RecordNames (recordDisplayNames)
 
 nativeDocumentTable :: Table (Either String D.Doc)
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-scala-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-scala-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 codecDocumentTable :: Table (Either String D.Doc)
-codecDocumentTable = unsafePerformIO (newPersistentTable "public-scala-codec" (8 * 1024 * 1024) (length . show))
+codecDocumentTable = unsafePerformIO (newPersistentTableByShow "public-scala-codec" (8 * 1024 * 1024))
 {-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id, String)]
