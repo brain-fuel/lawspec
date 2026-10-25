@@ -476,7 +476,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
   if (language === "fsharp" || language === "csharp") {
     const report = "lawspec-junit.xml";
     const results = path.resolve(scratch, "dotnet-results");
-    const kinds = "example \\d+: .*|boundary|statistics|property|search|replay|skipped|known failing";
+    const kinds = "example \\d+: .*|boundary(?: \\d+(?: — .*)?(?:\\(caseIndex: \\d+\\))?)?|statistics|property|search|replay|skipped|known failing";
     const pattern = (e) => new RegExp(`^${regex(e.label)}( (${kinds}))?$`);
     const measured = coverage ? path.resolve(coverage, "dotnet.cobertura.xml") : null;
     return [{ laws: entries, command: "dotnet",

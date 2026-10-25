@@ -33,7 +33,7 @@ import LawSpec.PythonTypes (namesFor, pythonHashable, pythonTypeReferenceDoc, py
 import LawSpec.Time (isDurationType)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Naming as N
-import LawSpec.Naming (claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, NameKind(..), readableDefinitionName, typeWords, reservedFor)
+import LawSpec.Naming (claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, NameKind(..), readableDefinitionName, typeWords, reservedFor, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink)
 import LawSpec.Code.Literal (literalFor)
 import qualified LawSpec.PythonExpr as E
@@ -336,7 +336,7 @@ functionDoc env c d = do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l), b) <- zip params (definitionArguments d)]
       pure [D.text "return " <> x]
     Nothing -> cstmt env selfCall scope Return (definitionBody d)
-  pure (D.lineComment 88 "# " (labelled (declarationName declaration) (sourceLink (declarationOrigin declaration))) <>
+  pure (D.lineComment 88 "# " (labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration))) <>
     blockD (D.text ("def " ++ name) <> D.delimitTrailing 4 "(" ")" (map D.text (["symbols" | contextual] ++ map snd params)))
       (if looping then [block "while True" body] else body))
 

@@ -20,7 +20,7 @@ import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.Code.Haskell (Stmt(Bind, Run), call, var, string, integer, lambda, operator)
-import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink, generatedHeader, unitSourceFile)
 import LawSpec.TargetNames (targetKeywords)
 import Data.Char (isAlphaNum, toUpper)
@@ -105,7 +105,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
     codecOf = Native.haskellCodecDocWithContext justSymbols declarations "schema" "machineBits"
     -- The one-line comment linking a function to its source.
     linked label origin = H.comment [labelled label (sourceLink origin)]
-    definitionLink d = linked (declarationName (definitionDeclaration d)) (declarationOrigin (definitionDeclaration d))
+    definitionLink d = linked (sourceDefinitionName (declarationName (definitionDeclaration d))) (declarationOrigin (definitionDeclaration d))
     -- A definition's argument names, from the source.
     argumentNames d = fst (claimAll (scopeWith (moduleNames ++ map snd handlerNames ++ map (unqualified . snd) names))
       [H.localName (binderName b) | b <- definitionArguments d])

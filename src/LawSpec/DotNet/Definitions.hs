@@ -9,7 +9,8 @@ module LawSpec.DotNet.Definitions
   ) where
 
 import qualified LawSpec.Core as C
-import LawSpec.SourceLink (generatedHeader, unitSourceFile)
+import LawSpec.SourceLink (generatedHeader, unitSourceFile, labelled, sourceLink)
+import LawSpec.Naming (sourceDefinitionName)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
@@ -28,6 +29,15 @@ import LawSpec.NativeBinding (NativeRef(..), ResolvedTypeBinding, usesNativeLayo
 import LawSpec.NativeRequest (NativeCall(..))
 import Control.Monad (forM)
 import Data.List (intercalate)
+
+-- | A definition's displayed name and source link belong to its source,
+-- including when the checked body is a monomorphic specialization.
+definitionLabel :: C.Declaration -> String
+definitionLabel d = labelled (sourceDefinitionName (C.declarationName d)) (sourceLink (C.declarationOrigin d))
+
+-- | A source label in an XML documentation summary is text, never markup.
+xmlComment :: String -> String
+xmlComment = concatMap (\c -> case c of '&' -> "&amp;"; '<' -> "&lt;"; '>' -> "&gt;"; _ -> [c])
 
 -- | The adapters bound in lawspec.json to application code, by declaration.
 type Calls = [(C.Id, NativeCall)]
@@ -202,10 +212,10 @@ emitEntriesWithLayouts bindings lang layout bits calls typedCall declarations un
           wrapped = call "Runtime" "contextual" [Str (C.idText identity), Lambda [] tValue inner]
           name = functionName lang declaration
           params = [("schema", tSchema), ("symbols", tSymbols)] ++ [(a, tValue) | a <- arguments]
-          comment = "/// " ++ C.idText identity
+          comment = "/// " ++ definitionLabel declaration
       pure $ case lang of
         FSharp -> D.text comment <> D.hardline <> linesDoc 0 (functionLines FSharp 0 ("let " ++ name) params tValue wrapped)
-        CSharp -> D.text ("/// <summary>" ++ C.idText identity ++ "</summary>") <> D.hardline <>
+        CSharp -> D.text ("/// <summary>" ++ xmlComment (definitionLabel declaration) ++ "</summary>") <> D.hardline <>
           linesDoc 4 (functionLines CSharp 4 ("public static Value " ++ name) params tValue wrapped)
     -- A codec built by an expression is applied through Codec.toNative and
     -- Codec.fromNative in F#, as Fantomas lays out an application.
@@ -271,7 +281,7 @@ emitApi FSharp layout bits declarations units = do
             | C.declarationAsync d = L.Method "System.Threading.Tasks.Task.Run<_>" [L.Method "System.Func<_>" [L.Fun "()" body]]
             | otherwise = body
           setup = [L.LetS "let schema" (L.A "LawSpec.Generated.Program.schema"), L.LetS "let symbols" (L.A "Scalar.SymbolContext()")]
-      pure (D.text ("/// " ++ C.idText (C.declarationId d)) <> D.hardline <>
+      pure (D.text ("/// " ++ definitionLabel d) <> D.hardline <>
         L.linesDoc 0 (L.function 0 ("let " ++ functionName FSharp d) (if null params then ["()"] else ["(" ++ n ++ ": " ++ t ++ ")" | (n, t) <- params]) (Just r)
           (L.Block setup scoped)))
     let moduleName = apiModule (C.unitId u)
@@ -321,7 +331,7 @@ emitApi CSharp layout bits declarations units = do
             | C.declarationAsync d && isVoid = ["return Task.Run(() =>", "{"] ++ map ("    " ++) (setup ++ statements) ++ ["});"]
             | C.declarationAsync d = ["return Task.Run(() =>", "{"] ++ map ("    " ++) (setup ++ statements) ++ ["});"]
             | otherwise = setup ++ statements
-      pure (D.text ("/// <summary>" ++ C.idText (C.declarationId d) ++ "</summary>") <> D.hardline <>
+      pure (D.text ("/// <summary>" ++ xmlComment (definitionLabel d) ++ "</summary>") <> D.hardline <>
         D.text ("public static " ++ r ++ " " ++ functionName CSharp d ++ "(" ++ intercalate ", " [t ++ " " ++ n | (n, t) <- params] ++ ")") <> D.hardline <>
         D.block 4 (D.joinWith D.hardline (map D.text bodyLines)))
     -- One flat class per unit, so a unit and a unit inside it never make a

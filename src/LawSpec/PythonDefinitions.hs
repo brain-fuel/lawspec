@@ -16,7 +16,7 @@ import LawSpec.AbilityNames (specName, interfaceName)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
 import LawSpec.Typed.Plan (TypedPlan(..))
-import LawSpec.Naming (escapeKeyword, claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.Naming (escapeKeyword, claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink)
 import qualified Data.Map.Strict as M
 
@@ -81,7 +81,7 @@ emitPythonDefinitions layout bits declarations units = do
       [localIdentifier "python" (binderName b) | b <- definitionArguments d])
     -- Each function's comment links it to its definition.
     linkComment d = let declaration = definitionDeclaration d
-      in D.lineComment 88 "# " (labelled (declarationName declaration) (sourceLink (declarationOrigin declaration)))
+      in D.lineComment 88 "# " (labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration)))
     callees = definitionCalls declarations units
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
     adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,

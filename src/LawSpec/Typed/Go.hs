@@ -33,7 +33,7 @@ import qualified LawSpec.GoData as GoData
 import LawSpec.DataNames (isProduct)
 import LawSpec.Time (isDurationType)
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords)
+import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, sourceDefinitionName)
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.SourceLink (goGeneratedMarker, labelled, sourceLink)
@@ -426,7 +426,7 @@ functionDoc env c d = do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l, _), b) <- zip params (definitionArguments d)]
       pure [D.text "return " <> x]
     Nothing -> cstmt env selfCall scope Return (definitionBody d)
-  pure (D.text ("// " ++ labelled (name ++ " is " ++ idText (declarationId declaration)) (sourceLink (declarationOrigin declaration)) ++ ".") <> D.hardline <>
+  pure (D.text ("// " ++ labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration)) ++ ".") <> D.hardline <>
     D.text ("func " ++ name ++ "(" ++ intercalate ", " (["symbols map[string]*LawSpecSymbol" | contextual] ++ [l ++ " " ++ t | (_, l, t) <- params]) ++ ") " ++ resultType ++ " ") <> D.block 8
       (if looping then D.text "for " <> D.block 8 (D.joinWith D.hardline body) else D.joinWith D.hardline body))
 

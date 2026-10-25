@@ -39,7 +39,7 @@ import qualified LawSpec.Typed.EmissionContext as Context
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamNames as Names
-import LawSpec.Naming (uniqueNames, readableDefinitionName, typeWords, nameWords)
+import LawSpec.Naming (uniqueNames, readableDefinitionName, typeWords, nameWords, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink, generatedHeader)
 import LawSpec.Backend (prettyType)
 
@@ -298,7 +298,7 @@ functionDoc env c d = do
   let intrinsic = M.member (declarationId declaration) (typedIntrinsics (envPlan env))
       shown (i, l) = if intrinsic || i `elem` free then l else "_" ++ l
       context n = if n `S.member` used then n else "_" ++ n
-  pure (D.text ("%% " ++ labelled (declarationName declaration) (sourceLink (declarationOrigin declaration))) <> D.hardline <>
+  pure (D.text ("%% " ++ labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration))) <> D.hardline <>
     functionHead name ([context "Schema" | contextual] ++ [context "Symbols" | contextual] ++ map shown params) body)
 
 -- | Expressions in sequence whose last is the value.

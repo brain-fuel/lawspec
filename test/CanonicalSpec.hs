@@ -59,6 +59,33 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     mapM_ (\target -> labels target `shouldContain` ["example.canonical::|same.value|"]) programTargets
     plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program)
     mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
+  it "links generated definition comments to source names rather than specializations" $ do
+    program <- either (fail . show) pure $ core $ unlines
+      [ "function same (value :: a) -> a is value end function"
+      , "law sameResult is definition: for all (value :: Bool) => same value = value end for all end definition end law" ]
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Exhaustive]) program)
+    mapM_ (\target -> do
+      artifacts <- either (fail . ((target ++ ": ") ++) . show) pure (emitPlan target plan)
+      let comment line = any (`isPrefixOf` dropWhile (== ' ') line) ["//","#","--","%%","* "]
+          comments = filter comment (concatMap (lines . LawSpec.Model.artifactContent) artifacts)
+      filter (isInfixOf "lawspec_same_") comments `shouldBe` []
+      any (isInfixOf "same") comments `shouldBe` True)
+      ["python","javascript","typescript","haskell","erlang","elixir","gleam","go","rust","fsharp","csharp"]
+  it "emits individually selectable compact .NET boundaries with one shared checker" $ do
+    program <- either (fail . show) pure $ core $ unlines
+      [ "function same (value :: Int8) -> Int8 is value end function"
+      , "law sameResult is definition: for all (value :: Int8) => same value = value end for all end definition end law" ]
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Exhaustive]) program)
+    mapM_ (\target -> do
+      artifacts <- either (fail . show) pure (emitPlan target plan)
+      let emitted = concat [LawSpec.Model.artifactContent artifact | artifact <- artifacts,
+            "tests/LawSpec/" `isPrefixOf` LawSpec.Model.artifactPath artifact]
+      lines emitted `shouldSatisfy` ((< 300) . length)
+      emitted `shouldSatisfy` isInfixOf "Theory"
+      emitted `shouldSatisfy` isInfixOf "MemberData"
+      emitted `shouldSatisfy` isInfixOf (if target == "fsharp" then "Finite.range" else "Finite.Range")
+      emitted `shouldSatisfy` (not . isInfixOf "Property.boundaries")
+      emitted `shouldSatisfy` (not . isInfixOf "Property.Boundaries")) ["fsharp","csharp"]
   it "preserves Java literal text resembling the generated runtime package" $ do
     program <- either (fail . show) pure $ core $ unlines
       [ "function matches (value :: Text) -> Float64 is"

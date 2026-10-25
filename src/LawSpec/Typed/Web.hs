@@ -35,7 +35,7 @@ import LawSpec.WebTypes (namesFor, webByValue, webTypeReference)
 import LawSpec.Time (isDurationType)
 import qualified LawSpec.Code.ECMAScript as E
 import qualified LawSpec.Naming as N
-import LawSpec.Naming (claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, NameKind(..), readableDefinitionName, typeWords, reservedFor, nameWords)
+import LawSpec.Naming (claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, NameKind(..), readableDefinitionName, typeWords, reservedFor, nameWords, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink)
 import LawSpec.WebModule (commentLines)
 
@@ -410,7 +410,7 @@ functionDoc env c d = do
       x <- intrinsicCall env intrinsic [(E.Ident l, binderType b) | ((_, l, _), b) <- zip params (definitionArguments d)]
       pure [E.ret x]
     Nothing -> cstmt env selfCall scope Return (definitionBody d)
-  pure [ E.Comment (commentLines (labelled (declarationName declaration) (sourceLink (declarationOrigin declaration))))
+  pure [ E.Comment (commentLines (labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration))))
        , function env name ([annotated env "symbols" anyT | contextual] ++ [annotated env l t | (_, l, t) <- params]) resultType
            (if looping then [E.For Nothing Nothing Nothing body] else body) ]
 

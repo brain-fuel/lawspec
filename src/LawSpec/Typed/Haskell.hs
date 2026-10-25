@@ -37,7 +37,7 @@ import LawSpec.AbilityNames (interfaceName, fieldName)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.Code.Haskell (Stmt(Bind, Run), call, var, string, integer, lambda, operator)
-import LawSpec.Naming (Scope, claim, claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName, nameWords)
+import LawSpec.Naming (Scope, claim, claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName, nameWords, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink, generatedHeader, unitSourceFile)
 import LawSpec.TargetNames (targetKeywords)
 
@@ -438,7 +438,7 @@ functionDoc env c d = do
       pure [returned x]
     Nothing -> cstmt env scope (definitionBody d)
   pure (D.joinWith D.hardline
-    [ H.comment [labelled (declarationName declaration) (sourceLink (declarationOrigin declaration))]
+    [ H.comment [labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration))]
     , H.signature name (["LS.SymbolContext" | contextual] ++ types ++ ["P.IO " ++ resultType])
     , H.declaration (unwords (name : ["symbols" | contextual] ++ ["!" ++ l | (_, l) <- params])) (H.Do body) ])
 
