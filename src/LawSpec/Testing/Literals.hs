@@ -4,7 +4,7 @@
 -- ref:DEC-planned-generation ref:DEC-readable-output-default
 module LawSpec.Testing.Literals
   ( LiteralShape(..), LiteralTerm(..), LiteralPlan(..)
-  , planLiterals, literalReference, foldLiteral, coverLiterals
+  , planLiterals, planRootLiterals, literalReference, foldLiteral, coverLiterals
   ) where
 
 import Control.Monad.State.Strict
@@ -47,9 +47,19 @@ data Builder = Builder
 -- | Repeated structural subvalues become context-taking functions. Primitive
 -- data remains inline; no finite domain, root or repeated observation is removed.
 planLiterals :: [Value] -> Either String LiteralPlan
-planLiterals values = do
+planLiterals = planLiteralsUsing False
+
+-- | Lift each structural root into a context-taking factory too. Deeply
+-- indented case tables can then name their values without copying bodies.
+-- Primitive roots and the ordinary subvalue-sharing policy stay unchanged.
+planRootLiterals :: [Value] -> Either String LiteralPlan
+planRootLiterals = planLiteralsUsing True
+
+planLiteralsUsing :: Bool -> [Value] -> Either String LiteralPlan
+planLiteralsUsing liftRoots values = do
   counts <- execStateT (mapM_ count values) M.empty
-  (_, state) <- runStateT (mapM_ (build counts) values) (Builder M.empty [] [] M.empty)
+  let requested = if liftRoots then foldr (M.adjust (max 2)) counts values else counts
+  (_, state) <- runStateT (mapM_ (build requested) values) (Builder M.empty [] [] M.empty)
   pure (LiteralPlan (reverse (shapeOrder state)) (reverse (factories state)) (references state))
   where
     count :: Value -> StateT (M.Map Value Int) (Either String) ()
