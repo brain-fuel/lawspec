@@ -30,12 +30,16 @@
 -- command and environment, and the versions of its tools. Acceptance suites
 -- key their own runs on the generated project (acceptance/Cache.hs), so a
 -- compiler change that leaves a target's output unchanged skips its tests.
+-- Package smoke binds the exact npm archive and its SDK/Node/Rust execution
+-- context; parity binds the native and WASM executables, SDK and checked
+-- sources. Their source/artifact correspondence is checked independently by
+-- integrity and generated-file validation (ref:DEC-content-identity).
 -- Records live in .artifacts/cache; --fresh runs everything, as releases do.
 module Ci (ci) where
 
 import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, withMVar)
-import Control.Exception (AsyncException(..), SomeException, evaluate, handle, mask, onException, throwIO, try)
+import Control.Exception (AsyncException(..), IOException, SomeException, evaluate, handle, mask, onException, throwIO, try)
 import Control.Monad (filterM, forM, forM_, forever, unless, void, when)
 import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.ByteString as B
@@ -367,9 +371,13 @@ stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
   "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers) [["stack", "--version"]])
   "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/", "templates/editors/vscode/syntaxes/",
-    "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json"] [] [["node", "--version"]])
-  "parity" -> Just (Inputs [] unread [["node", "--version"]])
-  "package-smoke" -> Just (Inputs [] unread [["node", "--version"], ["npm", "--version"]])
+    "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json", "tools/ci-artifact-key.mjs"] [] [["node", "--version"]])
+  "parity" -> Just (Inputs ["tools/parity.mjs", "tools/ci-artifact-key.mjs", "examples/specs/", "examples/packages/",
+    "test/fixtures/artifact-configuration.lawspec", "test/fixtures/artifact-antlr-inputs.lawspec",
+    "test/fixtures/artifact-antlr-indexed-input.lawspec", "npm/starter-rc1.lawspec"] []
+    [["node", "tools/ci-artifact-key.mjs", "parity"]])
+  "package-smoke" -> Just (Inputs ["tools/package-smoke.mjs", "tools/ci-artifact-key.mjs"] []
+    [["node", "tools/ci-artifact-key.mjs", "package-smoke"]])
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rejection-examples" -> Just (Inputs ["dev/Docs.hs", "src/", "package.yaml", "templates/site/", "templates/tools/rejection-examples.mjs",
     "tools/rejection-examples.mjs", "test/fixtures/canonical-rejection-"] [] [["node", "--version"], ["stack", "--version"]])
@@ -432,36 +440,45 @@ runCached console children freshRun repository current@(Step name env command) =
     Nothing -> runStep console children (if freshRun then refreshed else current)
     Just inputs -> do
       key <- stepKey repository current inputs
-      let recorded = cacheStore </> key
-      hit <- if freshRun then pure False else doesFileExist recorded
-      if hit
-        then do
-          copyFile recorded (logs </> map safeName name ++ ".log")
-          say console (printf "%-40s %s" name ("cached" :: String))
-          pure True
-        else do
-          ok <- runStep console children current
-          when ok $ do
-            createDirectoryIfMissing True cacheStore
-            copyFile (logs </> map safeName name ++ ".log") recorded
-          pure ok
+      case key of
+        Nothing -> runStep console children current
+        Just digest -> do
+          let recorded = cacheStore </> digest
+          hit <- if freshRun then pure False else doesFileExist recorded
+          if hit
+            then do
+              copyFile recorded (logs </> map safeName name ++ ".log")
+              say console (printf "%-40s %s" name ("cached" :: String))
+              pure True
+            else do
+              ok <- runStep console children current
+              when ok $ do
+                createDirectoryIfMissing True cacheStore
+                copyFile (logs </> map safeName name ++ ".log") recorded
+              pure ok
   where refreshed = Step name (("LAWSPEC_CACHE", "refresh") : env) command
 
-stepKey :: [FilePath] -> Step -> Inputs -> IO String
+stepKey :: [FilePath] -> Step -> Inputs -> IO (Maybe String)
 stepKey repository (Step name env command) (Inputs keep drop' probes) = do
   let selected = [ f | f <- repository
                  , null keep || any (`isPrefixOf` f) keep
                  , not (any (`isPrefixOf` f) drop') ]
   contents <- forM selected $ \path -> (,) path <$> B.readFile path
-  tools <- forM probes $ \probe -> case probe of
+  observations <- forM probes $ \probe -> case probe of
     program : arguments -> do
-      (_, out, err) <- readCreateProcessWithExitCode (proc program arguments) ""
-      pure (unwords probe ++ "\n" ++ out ++ err)
-    [] -> pure ""
-  let pieces = map BC.pack ("lawspec-ci-cache-1" : name : unwords command : show env : tools) ++
-        concat [[BC.pack path, bytes] | (path, bytes) <- contents]
-      framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
-  pure (concatMap (printf "%02x") (B.unpack (SHA.finalize (SHA.updates SHA.init (concatMap framed pieces)))))
+      result <- try (readCreateProcessWithExitCode (proc program arguments) "") :: IO (Either IOException (ExitCode, String, String))
+      pure $ case result of
+        Right (ExitSuccess, out, err) -> Just (unwords probe ++ "\n" ++ out ++ err)
+        _ -> Nothing
+    [] -> pure (Just "")
+  -- A missing or failed identity probe cannot certify a cached result. Run
+  -- the actual check and leave it uncached rather than hash an error message.
+  pure $ do
+    tools <- sequence observations
+    let pieces = map BC.pack ("lawspec-ci-cache-1" : name : unwords command : show env : tools) ++
+          concat [[BC.pack path, bytes] | (path, bytes) <- contents]
+        framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
+    pure (concatMap (printf "%02x") (B.unpack (SHA.finalize (SHA.updates SHA.init (concatMap framed pieces)))))
 
 -- | The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.
