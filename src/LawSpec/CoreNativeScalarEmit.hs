@@ -1207,6 +1207,10 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       , JavaProperties.awaitResult = awaitFor
       , JavaProperties.adapterWrappers = [doc | (_, (_, doc)) <- javaAdapterWrappers] ++ [doc | (_, (_, doc)) <- javaAttemptWrappers]
       , JavaProperties.expression = javaRender
+      , JavaProperties.scopedExpression = \aliases term -> java
+          (JavaExpr.renderExpressionWithContext dataDeclarations javaBits (JavaExpr.referenceIn "LawSpecSchema.Named")
+            (pure . JavaExpr.quoted . JavaExpr.javaDataKey)
+            (\identity -> maybe (localName identity) id (lookup identity aliases)) javaExternal term)
       , JavaProperties.literal = javaValueLiteral
       , JavaProperties.checked = javaChecked
       , JavaProperties.structural = containsStructural

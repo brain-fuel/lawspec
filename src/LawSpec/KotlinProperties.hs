@@ -14,6 +14,10 @@ import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
+import qualified LawSpec.Testing.Draws as Draws
+import qualified Data.Set as S
+import qualified Data.Map.Strict as M
+import LawSpec.JvmNames (jvmClaimAll)
 import qualified LawSpec.JvmCases as Finite
 import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Core.Value as V
@@ -251,7 +255,7 @@ emitTests Config{..} unit laws = do
       draws <- mapM (\plan -> do
         let inp = domainInput plan
         case strategyOf inp of
-          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> drawDoc inp strategy (inputId inp) d
+          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> sharedDraw e plan inp strategy (inputId inp) d
           [] -> pure [bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp)))]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
@@ -270,6 +274,32 @@ emitTests Config{..} unit laws = do
     -- A draw is the definitions it needs, each a named function drawing one
     -- sub-draw, followed by its value: draws stay flat rather than nesting a
     -- supplier per step.
+    sharedDraw expanded requirement inp strategy name draw = do
+      let available = map C.quantifiedBinder (inputs expanded) ++ map C.resourceBinder (C.propertyResources (original expanded))
+      graph <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (Draws.planDraw requirement available draw)
+      let nodes = Draws.drawNodes graph
+          bound step = case step of Draws.FilterDraw _ b _ _ -> [b]; Draws.BindDraw b _ _ -> [b]; _ -> []
+          taken = S.fromList ("random" : "symbols" : map (localName . C.binderId)
+            (available ++ concatMap Draws.drawCaptures nodes ++ concatMap (bound . Draws.drawStep) nodes))
+          names = fst (jvmClaimAll taken [name ++ "Draw" ++ show (Draws.drawNumber node) | node <- nodes])
+          table = M.fromList (zip (map Draws.drawNumber nodes) names)
+          invoke child = call (table M.! Draws.drawCallee child) (map (text . localName) (Draws.drawArguments child))
+          nodeDoc node = do
+            body <- case Draws.drawStep node of
+              Draws.AnyDraw ty aim -> snd <$> drawDoc inp strategy name (C.DrawAny ty aim)
+              Draws.OneOfDraw ty values -> snd <$> drawDoc inp strategy name (C.DrawOneOf ty values)
+              Draws.FrequencyDraw alternatives -> pure (DrawValue (call "LawSpecDraws.frequency" (text "random" :
+                [text (show weight ++ " to ") <> L.lambda [] [invoke child] | (weight,child) <- alternatives])))
+              Draws.FilterDraw child binder predicate limit -> pure (DrawValue
+                (L.trailingCall "LawSpecDraws.suchThat" [L.lambda [] [invoke child],number limit,quoted strategy]
+                  [localName (C.binderId binder)] [truth (expr predicate)]))
+              Draws.BindDraw binder from more -> pure (DrawSteps [bind (localName (C.binderId binder)) (invoke from)] (invoke more))
+            let function = table M.! Draws.drawNumber node
+                parameters = [text (localName (C.binderId binder) ++ ": LawSpecRuntime.Value") | binder <- Draws.drawCaptures node]
+                statements' = case body of DrawValue value -> [text "return " <> value]; DrawSteps steps value -> steps ++ [text "return " <> value]
+            pure (L.call ("fun " ++ function) parameters <> text ": LawSpecRuntime.Value " <> L.block statements')
+      helpers <- mapM nodeDoc nodes
+      pure (helpers,DrawValue (invoke (Draws.drawRoot graph)))
     drawDoc inp strategy name d = case d of
       C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))))
       C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecDraws.oneOf" (text "random" : [L.lambda [] [expr v] | v <- values])))
