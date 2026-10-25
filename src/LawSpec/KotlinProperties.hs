@@ -15,6 +15,7 @@ import LawSpec.Common
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
 import qualified LawSpec.JvmCases as Finite
+import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinExpr as E
@@ -374,7 +375,26 @@ emitTests Config{..} unit laws = do
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
           [lawAssertion (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
       cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
-      (coverDeclarations, coverData) <- Finite.coverBindings finiteCall (L.lambda ["symbols"] . pure) literal
+      -- A finite table stores each constructor's fields, not another copy of
+      -- its schema/codec scaffolding. Helpers still construct and validate a
+      -- fresh value in the current case's symbol context.
+      let shapes = nub (coverShapes cover)
+          constructors = zip shapes [base' ++ "Value" ++ show i | i <- [1 :: Int ..]]
+          valueLiteral value = case value of
+            V.DataValue ty tag fields | Just helper <- lookup (ty, tag) constructors -> do
+              values <- mapM valueLiteral fields
+              pure (call helper [text "symbols", call "listOf" values])
+            V.PresenceValue ty payload -> do
+              value <- traverse valueLiteral payload
+              pure (runtime "present" [quoted (typeKey ty), maybe (text "null") id value])
+            _ -> literal value
+          constructorDocs = [braced (call ("private fun " ++ helper)
+              [text "symbols: MutableMap<String, Any>", text "fields: List<LawSpecRuntime.Value>"] <>
+                text ": LawSpecRuntime.Value")
+              [text "return " <> call "LawSpecKotlinCodecs.construct"
+                [text "SCHEMA", reference ty, quoted (C.idText tag), text "fields", text "MACHINE_BITS", text "symbols"]]
+            | ((ty, tag), helper) <- constructors]
+      (coverDeclarations, coverData) <- Finite.coverBindings finiteCall (L.lambda ["symbols"] . pure) valueLiteral
         (\n value -> text "private " <> L.bind n value) (base' ++ "Cases") cover
       let helper = base' ++ "Boundary"
           coverCases = runtime "finiteCases" [coverData]
@@ -383,7 +403,7 @@ emitTests Config{..} unit laws = do
           context = D.group (quoted (shown ++ " boundary ") <> D.nest 4
             (mconcat [text " +" <> D.softline <> value | value <-
               text "finiteCase.index()" : [quoted (" — " ++ link) | Just link <- [lawLink e]]]))
-          sharedDocs = [declaration | C.harnessSkip h == Nothing, declaration <- coverDeclarations] ++ [braced (call ("private suspend fun " ++ helper)
+          sharedDocs = [declaration | C.harnessSkip h == Nothing, declaration <- constructorDocs ++ coverDeclarations] ++ [braced (call ("private suspend fun " ++ helper)
               [text "finiteCase: LawSpecRuntime.FiniteCase"])
             (withSymbols (bind "values" (call "finiteCase.values" [text "symbols"]) : handlerInstalls e ++
               [bind (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i,inp) <- zip [0::Int ..] (inputs e)] ++
@@ -455,6 +475,13 @@ emitTests Config{..} unit laws = do
                 [text ("chunk" ++ show i ++ "()") | i <- [1..length (chunks tests)]]
             | otherwise = tests
       pure (sharedDocs, mconcat (map (D.lineComment 96 "// ") (lawCommentLines e)) <> separate (searchBefore ++ registered ++ searchAfter))
+    coverShapes (Cover.Complete _) = []
+    coverShapes (Cover.Alternatives branches) = concat
+      [concatMap valueShapes (case domain of Cover.Values values -> values; Cover.IntegerInterval {} -> []) ++ coverShapes suffix
+      | (domain, suffix) <- branches]
+    valueShapes (V.DataValue ty tag fields) = (ty, tag) : concatMap valueShapes fields
+    valueShapes (V.PresenceValue _ payload) = maybe [] valueShapes payload
+    valueShapes _ = []
     finiteCall "LawSpecRuntime.finiteValues" [factory] =
       D.group (text "LawSpecRuntime.finiteValues(" <> factory <> text ")")
     finiteCall name arguments = call name arguments

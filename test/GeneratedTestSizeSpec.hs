@@ -16,20 +16,23 @@ import Test.Hspec
 
 test_generatedTestsStayProportionalToTheirSpecification :: Spec
 test_generatedTestsStayProportionalToTheirSpecification = describe "compact generated test budgets" $ do
-  forM_ ["examples/specs/handler_bindings.lawspec", "test/fixtures/canonical-smt-arithmetic.lawspec"] $ \file ->
-    forM_ programTargets $ \target -> it (target ++ " keeps " ++ file ++ " within its source-size budget") $ do
-      source <- readFile file
+  forM_ [(["examples/specs/handler_bindings.lawspec"], programTargets),
+         (["test/fixtures/canonical-smt-arithmetic.lawspec"], programTargets),
+         (["examples/specs/total_functions.lawspec", "examples/specs/refined_definitions.lawspec",
+           "examples/specs/data_types.lawspec"], ["kotlin"])] $ \(files, targets) ->
+    forM_ targets $ \target -> it (target ++ " keeps " ++ unwords files ++ " within its source-size budget") $ do
+      sources <- mapM (\file -> Source file <$> readFile file) files
       let request = object ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
             "method" .= ("planGeneration" :: String), "target" .= target,
             "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
-            "sources" .= [object ["path" .= file, "content" .= source]]]
+            "sources" .= [object ["path" .= path source, "content" .= content source] | source <- sources]]
       case decode (dispatch (encode request)) of
         Just (Object result) -> do
           K.lookup "diagnostics" result `shouldBe` Just (Array V.empty)
           let list name = case K.lookup name result of Just (Array values) -> V.toList values; _ -> []
               artifacts = [Artifact (field "path" value) (field "content" value)
                 (field "ownership" value) (field "placement" value) | Object value <- list "files"]
-              budget = testSizeBudget [Source file source] (length (list "tests"))
+              budget = testSizeBudget sources (length (list "tests"))
           artifacts `shouldSatisfy` (not . null)
           mapM_ (\artifact -> checkTestSize budget artifact `shouldBe` Right ()) artifacts
         other -> expectationFailure (show (other :: Maybe Value))
