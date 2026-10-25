@@ -30,10 +30,11 @@
 -- command and environment, and the versions of its tools. Acceptance suites
 -- key their own runs on the generated project (acceptance/Cache.hs), so a
 -- compiler change that leaves a target's output unchanged skips its tests.
--- Package smoke binds the exact npm archive and its SDK/Node/Rust execution
--- context; parity binds the native and WASM executables, SDK and checked
--- sources. Their source/artifact correspondence is checked independently by
--- integrity and generated-file validation (ref:DEC-content-identity).
+-- Parity binds the native and WASM executables, SDK, effective environment
+-- and checked sources. Source/artifact correspondence is checked separately
+-- by integrity and generation validation (ref:DEC-content-identity). Package
+-- smoke remains uncached: its fresh npm/Cargo dependency resolution is not a
+-- frozen execution context.
 -- Records live in .artifacts/cache; --fresh runs everything, as releases do.
 module Ci (ci) where
 
@@ -51,7 +52,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import GHC.Conc (getNumProcessors)
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory)
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitFailure, exitWith)
 import System.FilePath ((</>))
@@ -63,6 +64,7 @@ import System.Process (CreateProcess(..), StdStream(..), createProcess, getPid, 
 import Text.Printf (printf)
 import qualified LawSpec.Targets as Targets
 import Scheduler
+import Ci.Cache (CacheResult(..), cachedCheck)
 
 data Options = Options
   { targets :: [String], coreOnly :: Bool, failFast :: Bool, fresh :: Bool
@@ -352,6 +354,7 @@ coreSteps =
   , step "boundaries" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "boundaries"]
   , step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"]
   , step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"]
+  , step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"]
   , step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"]
   , step "compiler-tests" ["stack", "--no-terminal", "test"]
   , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
@@ -376,8 +379,7 @@ stepInputs name = case name of
     "test/fixtures/artifact-configuration.lawspec", "test/fixtures/artifact-antlr-inputs.lawspec",
     "test/fixtures/artifact-antlr-indexed-input.lawspec", "npm/starter-rc1.lawspec"] []
     [["node", "tools/ci-artifact-key.mjs", "parity"]])
-  "package-smoke" -> Just (Inputs ["tools/package-smoke.mjs", "tools/ci-artifact-key.mjs"] []
-    [["node", "tools/ci-artifact-key.mjs", "package-smoke"]])
+  "package-smoke" -> Nothing
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rejection-examples" -> Just (Inputs ["dev/Docs.hs", "src/", "package.yaml", "templates/site/", "templates/tools/rejection-examples.mjs",
     "tools/rejection-examples.mjs", "test/fixtures/canonical-rejection-"] [] [["node", "--version"], ["stack", "--version"]])
@@ -443,19 +445,11 @@ runCached console children freshRun repository current@(Step name env command) =
       case key of
         Nothing -> runStep console children current
         Just digest -> do
-          let recorded = cacheStore </> digest
-          hit <- if freshRun then pure False else doesFileExist recorded
-          if hit
-            then do
-              copyFile recorded (logs </> map safeName name ++ ".log")
-              say console (printf "%-40s %s" name ("cached" :: String))
-              pure True
-            else do
-              ok <- runStep console children current
-              when ok $ do
-                createDirectoryIfMissing True cacheStore
-                copyFile (logs </> map safeName name ++ ".log") recorded
-              pure ok
+          result <- cachedCheck freshRun (cacheStore </> digest)
+            (logs </> map safeName name ++ ".log") (runStep console children current)
+          case result of
+            CacheHit -> say console (printf "%-40s %s" name ("cached" :: String)) >> pure True
+            Checked passed -> pure passed
   where refreshed = Step name (("LAWSPEC_CACHE", "refresh") : env) command
 
 stepKey :: [FilePath] -> Step -> Inputs -> IO (Maybe String)
