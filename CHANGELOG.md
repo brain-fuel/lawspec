@@ -12,51 +12,52 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Complete and bounded scoped searches share one typed candidate body and enumerate
   their domain at runtime. Their ordered, three-outcome execution preserves
-  short-circuiting and incomplete results. Source comments retain the original
+  short-circuiting and incomplete results. Finite quantifier and witness proof
+  lowering likewise keeps candidate data and one scoped predicate instead of
+  copying the predicate per candidate. Source comments retain the original
   checked proposition, independently of its execution plan.
-
-- Finite test plans store ordered shared prefixes and inclusive integer ranges.
-  JavaScript, TypeScript, Python, Go, Haskell, Rust and the BEAM targets enumerate that data at runtime and register
-  each case separately, with fresh values and a fresh context for every run.
+- All 18 executable targets use compact finite test plans: ordered shared
+  prefixes, value lists and inclusive integer ranges, with one shared check
+  body per law. Cases retain stable indices, fresh attempt values, selection
+  and failure context. Native runners register cases individually where their
+  APIs support it; Rust uses runtime row loops with indexed failure reports.
   In the handler-bindings suite, the JavaScript test file shrinks from 1,096,011
-  lines to 2,771 and Python from 1,127,192 to 3,026. Both still execute all 8,012
-  cases and reject the two adapter mutations. Go shrinks from 309,600 lines to
-  1,030, preserving 8,004 finite rows plus four property checks and four replay
-  checks. Its native runner can execute one selected row, and a container with
-  no executed child no longer supplies execution evidence. Haskell shrinks from
-  92,352 lines to 2,235, keeps all 8,012 named native tests, and checks a selected
-  row independently. Its timeout, repeat and retry settings still apply to each
-  row, and the harness suite rejects all seven mutations. Rust shrinks from
-  42,006 lines to 1,905 with a shared assertion and runtime row loops; its
-  failures include the row number and values. A mutation at the last admitted
-  integer endpoint checks that the loop visits its final row. Erlang shrinks from
-  146,139 lines to 1,869 and Elixir’s shared case module from 105,940 to 1,630.
-  Gleam’s shared module shrinks from 234,152 to 1,794, and its native wrapper
-  from 47,608 lines to 46. Each BEAM frontend still reports 8,008 native cases;
-  direct case lookup avoids rebuilding that list on every ExUnit invocation.
-  Other target emitters
-  and proof-term lowering are still being converted.
+  lines to 2,355 and Python from 1,127,192 to 2,535, preserving all 8,012 cases
+  and rejecting both adapter mutations. Haskell shrinks from 92,352 to 2,235
+  lines and Rust from 42,006 to 1,905. Generated test size is checked against
+  source-relative byte and line limits, including compact layouts.
+- Prolog registers individual PLUnit cases from the Python host's collected
+  case metadata. Exact selection executes only the selected provider case;
+  unknown, duplicate and incomplete results cannot supply completed evidence.
+  Ordered Swift tests report individual starts and completions under a fresh
+  run identity, checked against the native Swift Testing aggregate result.
 - **Content identity.** Every type, declaration, handler, ability and law
-  has a semantic hash of what it does and a presentation hash of its names,
-  docs and spans ([Content identity](docs/explanation/content-identity.md)).
-  Binders are positions, references are hashes, and recursive groups are
-  hashed as one, as in Rune and Unison. Renaming a local or a definition,
-  reformatting, moving code, editing a description or editing an unrelated
-  definition no longer invalidates plans, emitted units, test results,
-  acceptance results or proof receipts.
-- `lawspec test` keys a law's result on its semantic hash, the compiler
-  build, the target, toolchain, recorded values and adapters, never on the
-  generated file's bytes. A renamed law keeps its result.
-- **Breaking: proof tasks.** `programFingerprint` is replaced by a per-law
-  `lawFingerprint` over the law's semantic hash, encoding, machine width and
-  proof settings. Receipts recorded before 0.30.0 must be recomputed once.
-  The lawspec-smtlib-v1 byte freeze is replaced by an invariance test.
-- **Breaking: remote content hashes** are `blake3-semantic-1:` then the
-  semantic hash, in place of `sha3-256:`. Nodes on 0.29 and 0.30 do not
-  evaluate each other's definitions.
-- Acceptance records each pass under the generated project's bytes and
-  under the semantic hashes of its spec, so a spec edit that keeps behaviour
-  reuses the result.
+  has a semantic hash of its checked structure and a presentation hash of its
+  names, docs and spans ([Content identity](docs/explanation/content-identity.md)).
+  Binders are positions, references are hashes, and mutually recursive groups
+  are hashed together. Identity is structural: equivalent calculations can
+  still have different hashes. Presentation-bearing plans and emitted chunks
+  retain both hashes; pure execution and proof results can survive renames,
+  line moves and doc edits when their other inputs remain unchanged.
+- `lawspec test` keys results on semantic identity, compiler build, target,
+  toolchain, adapters and execution settings, rather than generated file
+  bytes. Native interfaces and recorded comparisons also retain the public
+  names they can observe. A constructor rename that changes portable ordering
+  changes semantic identity. Changed presentation is validated before execution
+  reuse; mandatory definition validation remains independent of optional proofs.
+- **Breaking in 0.31: proof tasks.** `programFingerprint` is replaced by a
+  per-law `lawFingerprint` over semantic dependencies, encoding, machine width
+  and proof settings. Receipts from public 0.30.0 and earlier must be recomputed.
+  The lawspec-smtlib-v1 byte freeze is replaced by semantic invariance checks;
+  this does not add a new proof backend or a kernel-checked certificate.
+- **Breaking in 0.31: remote content hashes** are `blake3-semantic-1:` then
+  the semantic hash, replacing `sha3-256:`. A 0.31 node cannot exchange remote
+  definition identities with a 0.30 or earlier node. There is no pre-1.0
+  identity migration.
+- Acceptance records exact generated-byte hits separately from semantic
+  execution hits. Reuse still requires matching compiler, toolchain, adapters,
+  mutants and execution context; changed presentation is formatted and
+  compiled/parsed before an earlier execution result is reused.
 - BLAKE3 follows goforge's blake3sum design: unboxed words, an unrolled
   compression function and a batch `hashMany`. It is 9.2 times faster on
   20,000 48-byte inputs (97.5 ms to 10.6 ms) and 22 times faster on 4 MiB
@@ -82,8 +83,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Generated Python is laid out as `ruff format` (0.17.2, default settings)
   lays it out, at 88 columns rather than PEP 8's 79, and the Python runtimes
   are formatted the same way. Acceptance runs `ruff format --check` on every
-  generated Python project (the formatted step). The other targets follow
-  with their language families.
+  generated Python project (the formatted step).
 - **Breaking: generated JavaScript and TypeScript names.** Locals keep their
   source names; checked definitions are named after the definition
   (`_definitions.feeModel` instead of `_definitions.evaluate0`), typed
@@ -251,12 +251,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   difference (the formatted step).
 
 - **Breaking: generated Rust names and tests.** Each Rust law is a module
-  of tests named after it, with one `#[test]` per example, per boundary case
-  and for its generated cases (`law_normalizers_agree::property`,
-  `law_normalizers_agree::spaces_become_hyphens_punctuation_is_preserved`,
-  `law_normalizers_agree::boundary_1`); `lawspec test` selects a law's tests
-  by its module. Inputs and binders keep their source names; checked
-  definitions, typed functions and operation bridges are named after what
+  named after it. Examples remain native `#[test]` functions, such as
+  `law_normalizers_agree::spaces_become_hyphens_punctuation_is_preserved`.
+  Boundary and exhaustive tests walk a compact cover at runtime, with stable
+  row indices and values in failures; generated cases use the `property` test.
+  `lawspec test` selects a law's tests by its module. Inputs and binders keep
+  their source names; checked definitions, typed functions and operation
+  bridges are named after what
   they implement in snake case (`fee_model`, `count_list_int32`,
   `perform_store_text_save`) instead of `evaluate_<n>` and digest suffixes;
   anonymous records are named from where they are used (`DeclinedDetails`);
@@ -320,6 +321,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   documented escape of a Java keyword, is not a name Checkstyle's Google
   rules accept.
 
+- Swift codecs, Java actor/mailbox/session layout, Groovy stubs and the
+  Clojure bridge consume structured documents and interface metadata instead
+  of re-reading generated source. Definition source links use source names,
+  and labelled-law display names no longer carry an internal quote marker.
+- Scala calls constructors with no non-`Unit` arguments directly from Scala,
+  avoiding the unnecessary Java-to-provider-Scala edge in the asynchronous
+  binding fixture. Constructors with values retain the Java bridge where raw
+  generic casts are needed. Scala build failures capture commands, Bloop
+  configuration and class inventories before cleanup; this is not a general
+  Bloop race fix.
+- Replace project and package JSON manifests with `lawspec.edn`. The component
+  and published contract identities are explicit; obsolete JSON is rejected.
+- Native runtimes, editor discovery, examples and test tooling use the same
+  manifest. Optional verification still leaves definition validation mandatory.
+
 ### Added
 
 - Shared foundations for readable output on every target: a naming service,
@@ -346,16 +362,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   agree byte for byte.
 - The dev view brackets terms only where LawSpec's precedence needs them, for
   example `a > 0 and b implies f a = X`.
-
-### Changed
-
-- Replace project and package JSON manifests with `lawspec.edn`. The component
-  and published contract identities are explicit; obsolete JSON is rejected.
-- Native runtimes, editor discovery, examples and test tooling use the same
-  manifest. Optional verification still leaves definition validation mandatory.
-
-### Added
-
 - Local, Git-tag/revision and SHA-256 HTTPS archive contract dependencies,
   `lawspec.lock.edn`, fetch/update and locked/offline execution.
 - Deterministic contract archives and the checked `lawspec/component` SDK and
