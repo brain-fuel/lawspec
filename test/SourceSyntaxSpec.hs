@@ -143,7 +143,7 @@ test_sourceSyntax = describe "checked source syntax" $ do
     let result = inventory [templates]
         nodes = nodesOf result
     names "declaration.definition" nodes `shouldBe` ["identity"]
-    names "declaration.law" nodes `shouldBe` ["\"|same|"]
+    names "declaration.law" nodes `shouldBe` ["|same|"]
     names "capability" nodes `shouldBe` ["Eq"]
     [syntaxUses node | node <- nodes,syntaxKind node == "declaration.definition"] `shouldBe` [Just []]
     length [() | node <- nodes,syntaxKind node == "quantifier.forall"] `shouldBe` 1

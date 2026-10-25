@@ -73,7 +73,7 @@ test_lawPrimitivesCheckWhatTheyReadAs = describe "law primitives" $ do
             , "type Order is one of | Pending  of type Int32 | Shipped of type record{ id :: Int32 carrier :: Text} end type\n"
             , closed "pattern" "(Shipped record{id = 1, carrier = \"post\"} matches Shipped record{carrier = \"post\"} && !(Pending 1 matches Shipped _)) = true" ]
       statuses <- either (fail . show) pure (evidence laws)
-      map fst statuses `shouldBe` map (\name -> "\"|" ++ name ++ "|") ["same items", "not the same items", "contains", "contains all of", "text", "within", "regex", "pattern"]
+      map fst statuses `shouldBe` map (\name -> "|" ++ name ++ "|") ["same items", "not the same items", "contains", "contains all of", "text", "within", "regex", "pattern"]
       map snd statuses `shouldSatisfy` all (`elem` [Proved, ExhaustivelyChecked])
     it "refute a false law" $
       evidence (closed "wrong" "([1, 2] has same items as [2, 2]) = true") `shouldSatisfy` failsWith "is false"
@@ -105,16 +105,16 @@ test_lawPrimitivesCheckWhatTheyReadAs = describe "law primitives" $ do
     let law tables = "add :: Int32 -> Int32 -> Int32\nlaw \"|adds| is definition: for all (a :: Int32) (b :: Int32) => add a b = add b a end for all end definition\n" ++ tables ++ "end law\n"
     it "make one example per row" $
       examples (law "expect add a b = sum\nin table (a, b, sum):\n row 1, 2, 3\n row 2, 2, 4\nend table\n")
-        `shouldBe` Right [("\"|adds|", ["row 1: 1, 2, 3", "row 2: 2, 2, 4"])]
+        `shouldBe` Right [("|adds|", ["row 1: 1, 2, 3", "row 2: 2, 2, 4"])]
     it "name rows by table when a law has several" $
       examples (law "expect add a b = 3\nin table (a, b): row 1, 2 end table\nexpect add a b = 7\nin table (b, a): row 3, 4 end table\n")
-        `shouldBe` Right [("\"|adds|", ["table 1, row 1: 1, 2", "table 2, row 1: 3, 4"])]
+        `shouldBe` Right [("|adds|", ["table 1, row 1: 1, 2", "table 2, row 1: 3, 4"])]
     it "reject a row with the wrong number of values" $
       program (law "expect add a b = sum\nin table (a, b, sum):\n row 1, 2\nend table\n") `shouldSatisfy` failsWith "has 2 values"
     it "make examples of fenced examples in a description" $
       examples ("add :: Int32 -> Int32 -> Int32\nlaw \"|adds| is definition: for all (a :: Int32) (b :: Int32) => add a b = add b a end for all end definition\n" ++
         "description : \"Adding.\n```example\na = 1\nb = 2\nexpect add a b = 3\n```\n```example `zero`\na = 0\nb = 0\n```\" end description\nend law\n")
-        `shouldBe` Right [("\"|adds|", ["description example 1", "description: zero"])]
+        `shouldBe` Right [("|adds|", ["description example 1", "description: zero"])]
   describe "recorded values" $ do
     mapM_ (\(target, call) -> mapM_ (\compact ->
       it (target ++ " records nested fields with a schema" ++ if compact then " (compact)" else "") $ do

@@ -466,6 +466,7 @@ operatorStrength operator
 words' :: Text -> Text
 words' name
   | Just inner <- T.stripPrefix "\"|" name >>= T.stripSuffix "|" = unescapePhrase inner
+  | Just inner <- T.stripPrefix "|" name >>= T.stripSuffix "|" = unescapePhrase inner
   | otherwise = T.toLower (splitCase (T.replace "_" " " name))
   where
     splitCase t = T.pack (go (T.unpack t))
@@ -1194,6 +1195,7 @@ splitLines = T.splitOn "\n"
 
 exampleName :: Text -> Text
 exampleName name
+  | "|" `T.isPrefixOf` name && "|" `T.isSuffixOf` name = "\"" <> name
   | "\"|" `T.isPrefixOf` name && "|" `T.isSuffixOf` name = name
   | otherwise = "\"|" <> T.replace "|" "\\|" (T.replace "\\" "\\\\" name) <> "|"
 
@@ -1221,8 +1223,9 @@ referenceText r
             Nothing -> False
           -- Built-in laws retain legacy source names internally; present
           -- their canonical phrase spelling as authored names are presented.
-          name = if "\"|" `T.isPrefixOf` raw || identifier then raw
-                 else "\"|" <> T.concatMap (\c -> if c `elem` ("\\|" :: String) then T.pack ['\\', c] else T.singleton c) raw <> "|"
+          name | "|" `T.isPrefixOf` raw && "|" `T.isSuffixOf` raw = "\"" <> raw
+               | "\"|" `T.isPrefixOf` raw || identifier = raw
+               | otherwise = "\"|" <> T.concatMap (\c -> if c `elem` ("\\|" :: String) then T.pack ['\\', c] else T.singleton c) raw <> "|"
       in "ref " <> kind r <> " " <> str "unit" (field "target" r) <> "." <> name <> section
 
 -- | Native conformance a host observed and passed in; reporting only.

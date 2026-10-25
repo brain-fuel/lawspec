@@ -94,7 +94,7 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
           , "    retry flaky 2\nend for law" ]
     case compiled source of
       Left ds -> expectationFailure (show ds)
-      Right program -> case lawHarness "\"|discount is small|" program of
+      Right program -> case lawHarness "|discount is small|" program of
         Nothing -> expectationFailure "no law"
         Just h -> do
           C.harnessTags h `shouldBe` ["pricing"]
@@ -131,7 +131,7 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
            Source "shop_testing.lawspec" (harness ["  parallel", "  share Scratch per unit"])]
     concurrentShop `shouldSatisfy` isRight
   it "shares a resource at run time: each law that takes it gets its scope's key, and its reset" $ do
-    let resourcesOf program = [C.propertyResources p | u <- C.programUnits program, p <- C.unitProperties u, C.propertyName p == "\"|scratch is open|"]
+    let resourcesOf program = [C.propertyResources p | u <- C.programUnits program, p <- C.unitProperties u, C.propertyName p == "|scratch is open|"]
     case compiled (harness ["  share Scratch per unit"]) of
       Left ds -> expectationFailure (show ds)
       Right program -> do
@@ -146,13 +146,13 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
   it "lets a strategy's type be an inline refinement, kept like such that" $
     case compiled (harness ["  strategy small :: (o :: Order where itemsOf o <= 3) is any end strategy", "  for law \"|discount is small|", "    use small for order\nend for law"]) of
       Left ds -> expectationFailure (show ds)
-      Right program -> case lawHarness "\"|discount is small|" program of
+      Right program -> case lawHarness "|discount is small|" program of
         Just h | [(_, "small", C.DrawSuchThat _ _ _ 100)] <- C.harnessDraws h -> pure ()
         other -> expectationFailure (show other)
   it "aims a refined strategy's any at its refinement, as a law input's generator aims" $
     case compiled (harness ["  strategy digits :: (n :: Int32 where n >= 1 && n <= 9) is any end strategy", "  for law \"|reflexive|", "    use digits for x\nend for law"]) of
       Left ds -> expectationFailure (show ds)
-      Right program -> case lawHarness "\"|reflexive|" program of
+      Right program -> case lawHarness "|reflexive|" program of
         Just h | [(_, "digits", C.DrawSuchThat (C.DrawAny _ (Just aim)) _ _ 100)] <- C.harnessDraws h ->
           inputRange 64 aim `shouldBe` Just (1, 9)
         other -> expectationFailure (show other)
@@ -163,7 +163,7 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
       , "  strategy mixed :: Int32 is frequency 3 alias, 1 (one of 20) end strategy"
       , "  for law \"|reflexive|", "    use mixed for x\nend for law"]) of
       Left ds -> expectationFailure (show ds)
-      Right program -> case lawHarness "\"|reflexive|" program of
+      Right program -> case lawHarness "|reflexive|" program of
         Just h | [(_, "mixed", C.DrawFrequency [(3,C.DrawSuchThat (C.DrawAny _ (Just aim)) _ _ 100),(1,C.DrawOneOf _ _)])] <- C.harnessDraws h ->
           inputRange 64 aim `shouldBe` Just (1, 9)
         other -> expectationFailure (show other)
@@ -219,8 +219,8 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
       Right program -> do
         let descriptorsOf name = [lawDescriptors 64 (C.programDataDeclarations program) p | u <- C.programUnits program, p <- C.unitProperties u, C.propertyName p == name]
         -- An integer narrowed to its refinement's bounds; a data type with its table.
-        descriptorsOf "\"|booking succeeds| [fakeLedger]" `shouldBe` [Just ["(int Int32 1 2147483647)"]]
-        case descriptorsOf "\"|discount is small|" of
+        descriptorsOf "|booking succeeds| [fakeLedger]" `shouldBe` [Just ["(int Int32 1 2147483647)"]]
+        case descriptorsOf "|discount is small|" of
           [Just [d]] -> d `shouldSatisfy` ("(data example.shop::type::Order" `isInfixOf`)
           other -> expectationFailure (show other)
   it "resolves a unit's import aliases in harness expressions" $ do
@@ -241,7 +241,7 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
           , "end unit" ]
     case compileCore 64 defaultGeneration [Source "money.lawspec" money, Source "orders.lawspec" orders] of
       Left ds -> expectationFailure (show ds)
-      Right program -> fmap (map snd . C.harnessClassify) (lawHarness "\"|doubling is monotone|" program) `shouldBe` Just ["big"]
+      Right program -> fmap (map snd . C.harnessClassify) (lawHarness "|doubling is monotone|" program) `shouldBe` Just ["big"]
   it "lists benchmarks and parallel units in the manifest" $
     case compiled (harness ["  parallel", "  benchmark `a booking` is book 1 end benchmark"]) of
       Left ds -> expectationFailure (show ds)
@@ -253,14 +253,14 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
     case compiled (harness ["  test with fakeLedger"]) >>= dischargeEvidence of
       Left ds -> expectationFailure (show ds)
       Right evidence -> do
-        statusOf "\"|booking succeeds| [native]" evidence `shouldBe` [Skipped]
-        statusOf "\"|booking succeeds| [fakeLedger]" evidence `shouldSatisfy` all (/= Skipped)
+        statusOf "|booking succeeds| [native]" evidence `shouldBe` [Skipped]
+        statusOf "|booking succeeds| [fakeLedger]" evidence `shouldSatisfy` all (/= Skipped)
   it "reports skipped and known-failing laws in evidence" $
     case compiled (harness ["  for law \"|discount is small|", "    known failing \"rounding\"", "  end for law\nfor law \"|booking succeeds|", "    skip \"offline\"\nend for law"]) >>= dischargeEvidence of
       Left ds -> expectationFailure (show ds)
       Right evidence -> do
-        statusOf "\"|discount is small|" evidence `shouldBe` [KnownFailing]
-        nub (statusOf "\"|booking succeeds|" evidence) `shouldBe` [Skipped]
+        statusOf "|discount is small|" evidence `shouldBe` [KnownFailing]
+        nub (statusOf "|booking succeeds|" evidence) `shouldBe` [Skipped]
   it "rejects known failing on a law the compiler proves" $
     (compiled (harness ["  for law \"|reflexive|", "    known failing \"never\"\nend for law"]) >>= dischargeEvidence)
       `shouldSatisfy` failsWith "cannot mark it known failing"
@@ -273,8 +273,8 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
       Left ds -> expectationFailure (show ds)
       Right program -> do
         let entries = testManifest "python" Nothing program
-        [entryTags e | e <- entries, entryLabel e == "example.shop::\"|reflexive|"] `shouldBe` [["fast", "unit"]]
-        [entryName e | e <- entries, entryLabel e == "example.shop::\"|reflexive|"] `shouldBe` ["test_reflexive"]
+        [entryTags e | e <- entries, entryLabel e == "example.shop::|reflexive|"] `shouldBe` [["fast", "unit"]]
+        [entryName e | e <- entries, entryLabel e == "example.shop::|reflexive|"] `shouldBe` ["test_reflexive"]
 
 replaceOnce :: String -> String -> String -> String
 replaceOnce needle replacement haystack = case haystack of

@@ -155,7 +155,7 @@ refund :: [Pair] -> Value
 refund fields = request (["sources" .= [object ["path" .= s "refund.lawspec", "content" .= refundSource]]] ++ fields)
 
 lawSelector :: Text
-lawSelector = "example.refunds::\"|an eligible flagged refund requires review|"
+lawSelector = "example.refunds::|an eligible flagged refund requires review|"
 
 test_explanationsWordOneTypedLawInEachRegister :: Spec
 test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref:DEC-explain-registers)" $ do
@@ -180,8 +180,8 @@ test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref
     it "keeps LawSpec notation, types, identity and source in the dev register" $ do
       let shown = str (get "text" (refund ["law" .= lawSelector, "view" .= s "dev"]))
       T.lines shown `shouldBe`
-        [ "example.refunds::law::\"|an eligible flagged refund requires review|"
-        , "\"|an eligible flagged refund requires review|"
+        [ "example.refunds::law::|an eligible flagged refund requires review|"
+        , "|an eligible flagged refund requires review|"
         , "Inputs: request of type RefundRequest"
         , "request.requestedAmount > 0 and request.requestedAmount <= request.capturedAmount and request.flagged implies refund request = ReviewRequired"
         , "Source: refund.lawspec:25:1"
@@ -205,7 +205,7 @@ test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref
       message (refund ["view" .= s "other"]) `shouldBe` ["unknown explain view \"other\"; choose --view eng|math|dev"]
       message (refund ["law" .= s "example.refunds::missing"]) `shouldBe` ["No matching law"]
     it "presents host-completed native evidence in dev only, without changing any obligation" $ do
-      let row = object ["declaration" .= s "example.refunds::law::\"|an eligible flagged refund requires review|", "stage" .= s "law"
+      let row = object ["declaration" .= s "example.refunds::law::|an eligible flagged refund requires review|", "stage" .= s "law"
                        , "status" .= s "property-tested", "reason" .= s "recorded"
                        , "nativeEvidence" .= object ["status" .= s "passed", "searchCompleteness" .= s "not-established", "observations" .= ([] :: [Value])]]
           dev = refund ["law" .= lawSelector, "view" .= s "dev", "evidence" .= [row]]

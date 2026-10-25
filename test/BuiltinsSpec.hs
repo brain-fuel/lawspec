@@ -124,7 +124,7 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
     it "checks the virtual clock against Clock's laws at compile time" $ do
       let Right compiled = program (source ["import lawspec.time (Instant)", "stamp :: Int32 -> Instant uses Clock"])
           Right evidence = dischargeEvidence compiled
-      [obligationStatus o | o <- evidence, "\"|time does not go back| [virtualClock]" `isInfixOf` C.idText (obligationDeclaration o)]
+      [obligationStatus o | o <- evidence, "|time does not go back| [virtualClock]" `isInfixOf` C.idText (obligationDeclaration o)]
         `shouldBe` [ExhaustivelyChecked]
 
   describe "default handlers" $ do

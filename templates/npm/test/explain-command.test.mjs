@@ -11,7 +11,7 @@ import {createCompiler} from '../api.mjs';
 // view, and clear errors for removed views. The CLI and the API agree.
 const cli = fileURLToPath(new URL('../bin/lawspec.mjs', import.meta.url));
 const content = await readFile(new URL('../examples/rc1/refund-policy.lawspec', import.meta.url), 'utf8');
-const law = 'example.refunds::"|an eligible flagged refund requires review|';
+const law = 'example.refunds::|an eligible flagged refund requires review|';
 
 async function project() {
   const directory = await mkdtemp(path.join(tmpdir(), 'lawspec-explain-'));

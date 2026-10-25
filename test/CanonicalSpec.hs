@@ -26,6 +26,8 @@ import qualified LawSpec.Core.Verification as V
 import LawSpec.SourceText
 import LawSpec.Api (dispatch)
 import LawSpec.CoreEmit (emitPlan, targets)
+import qualified LawSpec.TestManifest as Manifest
+import LawSpec.Targets (programTargets)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import qualified LawSpec.NativeRequest as NB
 import LawSpec.Blake3 (blake3Hex, hashMany, hexOf)
@@ -39,6 +41,24 @@ core body = compileCoreCanonical 64 defaultGeneration [source body]
 -- ref:DEC-readable-notation
 test_canonicalAuthoringPreservesIntrinsicGuarantees :: Spec
 test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical authoring" $ do
+  it "keeps labelled laws and examples free of syntax markers without changing phrase functions" $ do
+    let body = unlines
+          [ "function \"|same.value| (value :: Bool) -> Bool is value end function"
+          , "law \"|same.value| is"
+          , "  definition: for all (value :: Bool) => \"|same.value| value = value end for all end definition"
+          , "  example \"|quoted \"label\"|: value = true expect \"|same.value| value = true end example"
+          , "end law" ]
+    program <- either (fail . show) pure (core body)
+    let properties = concatMap C.unitProperties (C.programUnits program)
+        definitions = concatMap C.unitDefinitions (C.programUnits program)
+    map C.propertyName properties `shouldBe` ["|same.value|"]
+    map (C.idText . C.propertyId) properties `shouldBe` ["example.canonical::law::|same.value|"]
+    map C.exampleName (concatMap C.propertyExamples properties) `shouldBe` ["|quoted \"label\"|"]
+    map (C.declarationName . C.definitionDeclaration) definitions `shouldContain` ["\"|same.value|"]
+    let labels target = map Manifest.entryLabel (Manifest.testManifest target Nothing program)
+    mapM_ (\target -> labels target `shouldContain` ["example.canonical::|same.value|"]) programTargets
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program)
+    mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "preserves Java literal text resembling the generated runtime package" $ do
     program <- either (fail . show) pure $ core $ unlines
       [ "function matches (value :: Text) -> Float64 is"
@@ -262,7 +282,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         let targets = [t | u <- C.programUnits program,p <- C.unitProperties u,
               LawSpec.Model.LawReference t _ <- C.propertyReferences p]
         map LawSpec.Model.documentaryId targets `shouldMatchList`
-          ["records.first::law::first","records.second::law::\"|second.with.dots|"]
+          ["records.first::law::first","records.second::law::|second.with.dots|"]
         map (LawSpec.Model.file . LawSpec.Model.spanStart . LawSpec.Model.documentarySpan) targets
           `shouldMatchList` ["first.lawspec","second.lawspec"]
   it "resolves documentary function links through aliases and facades to original declarations" $ do

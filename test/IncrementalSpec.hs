@@ -85,8 +85,8 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     it "changes a law's key exactly when something it reaches changes" $ do
       let before = keys "x * 3"
           after = keys "x + x + x"
-      lookup "\"|doubles|" after `shouldBe` lookup "\"|doubles|" before
-      lookup "\"|triples|" after `shouldNotBe` lookup "\"|triples|" before
+      lookup "|doubles|" after `shouldBe` lookup "|doubles|" before
+      lookup "|triples|" after `shouldNotBe` lookup "|triples|" before
     it "plans a law from the types it reaches" $ do
       let alone = planOf "\"|score|" [wrapper "Score" "0"]
           beside = planOf "\"|score|" [wrapper "Score" "0", wrapper "Wide" "1234"]

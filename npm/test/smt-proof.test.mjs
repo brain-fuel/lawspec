@@ -217,21 +217,21 @@ test('induction: each case has its own receipt, and a law rests on the laws it c
     ['reverse of append',['prove by induction on xs','  using "|append nil|, "|append associates|']],
     ['reverse twice',['prove by induction on xs','  using "|reverse of append|']]])),{binary:z3});
   assert.deepEqual(proved.diagnostics,[]);
-  const of=name=>proved.solverEvidence.find(e=>e.declaration==='smt::law::"|'+name+'|');
+  const of=name=>proved.solverEvidence.find(e=>e.declaration==='smt::law::|'+name+'|');
   for(const name of ['append adds lengths','append nil','append associates','reverse of append','reverse twice'])
     assert.equal(of(name).status,'proved',name+': '+of(name).reason);
   const lengths=of('append adds lengths');
   assert.deepEqual(lengths.induction.cases.map(c=>[c.case,c.outcome]),[['xs = Nil','unsat'],['xs = Cons','unsat']]);
   for(const c of lengths.induction.cases)assert.match(c.runFingerprint,/^[0-9a-f]{64}$/);
   assert.match(lengths.reason,/by induction on xs/);
-  assert.deepEqual(of('reverse twice').induction.using,['smt::law::"|reverse of append|']);
-  assert.equal(proved.evidence.find(r=>r.declaration==='smt::law::"|reverse twice|').status,'proved');
+  assert.deepEqual(of('reverse twice').induction.using,['smt::law::|reverse of append|']);
+  assert.equal(proved.evidence.find(r=>r.declaration==='smt::law::|reverse twice|').status,'proved');
   // Without its own induction, the cited law is not proved, and neither is
   // the law that cites it.
   const resting=await proveWithZ3(compiler,request(lists+harness([
     ['reverse of append',['prove without induction']],
     ['reverse twice',['prove by induction on xs','  using "|reverse of append|']]])),{binary:z3});
-  const twice=resting.solverEvidence.find(e=>e.declaration==='smt::law::"|reverse twice|');
+  const twice=resting.solverEvidence.find(e=>e.declaration==='smt::law::|reverse twice|');
   assert.equal(twice.status,'incomplete');
   assert.match(twice.reason,/it cites "\|reverse of append\|, which is incomplete/);
 });
@@ -295,7 +295,7 @@ test('imported model answers cannot prove a law without executing a solver',asyn
   const forged=(planned.modelTasks??[]).flatMap(law=>law.tasks.map(task=>({fingerprint:task.fingerprint,outcome:'unsat'})));
   assert.ok(forged.length>0);
   const result=await proveWithZ3(compiler,{...input,modelResults:forged},{binary:'/missing/z3'});
-  const row=result.evidence.find(r=>r.stage==='law'&&r.declaration==='portfolio.counters::law::"|counts never go negative|');
+  const row=result.evidence.find(r=>r.stage==='law'&&r.declaration==='portfolio.counters::law::|counts never go negative|');
   assert.equal(row.status,'incomplete');
   assert.ok(result.solverEvidence.some(e=>e.kind==='model'&&e.outcome==='unavailable'));
   assert.ok(result.solverEvidence.every(e=>e.status!=='proved'));
@@ -306,7 +306,7 @@ test('unbounded models: induction, a re-checked Spacer invariant, and a replayed
   const content=await readFile(new URL('../../test/fixtures/model-counters.lawspec',import.meta.url),'utf8');
   const result=await proveWithZ3(compiler,{schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['proof','exhaustive']},
     sources:[{path:'counters.lawspec',content}]},{binary:z3,timeoutMs:20000});
-  const row=name=>result.evidence.find(r=>r.stage==='law'&&r.declaration==='portfolio.counters::law::"|'+name+'|');
+  const row=name=>result.evidence.find(r=>r.stage==='law'&&r.declaration==='portfolio.counters::law::|'+name+'|');
   assert.equal(row('counts never go negative').status,'proved');
   assert.match(row('counts never go negative').reason,/by induction/);
   assert.equal(row('a loose count never goes negative').status,'refuted');
