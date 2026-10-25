@@ -576,7 +576,128 @@ test("selects Swift laws with test id filters and reads them back by suite and f
   const coverage = invocations({ language: "swift" }, [law(1, "tests/LawSpec/ExampleUnit.swift")], { coverage: "c" });
   assert.ok(coverage[0].args.includes("--enable-code-coverage"));
   const bench = benchmarkInvocations({ language: "swift" }, [{ unit: "example.unit", benchmark: "a booking", file: "tests/LawSpec/ExampleUnit.swift", name: "benchmarkABooking" }]);
-  assert.deepEqual(bench[0].args, ["test", "--filter", "/benchmarkABooking\\("]);
+  assert.deepEqual(bench[0].args, ["test", "--filter", "/benchmarkABooking\\(", "--filter", "ExampleUnit/ordered\\("]);
+  assert.deepEqual(JSON.parse(bench[0].env.LAWSPEC_SWIFT_LAWS), [{unit:"example.unit",name:"benchmarkABooking"}]);
+  assert.equal(bench[0].env.LAWSPEC_SWIFT_REPORT, "");
+  assert.deepEqual(run.env, {LAWSPEC_SWIFT_LAWS:"[]",LAWSPEC_SWIFT_REPORT:"",LAWSPEC_SWIFT_RUN:""});
+});
+
+// These are protocol fixtures rather than generated source: Swift's runtime
+// produces them and its framework independently seals their aggregate in XML.
+async function swiftReport(entries, change = () => {}, xmlChange = (xml) => xml) {
+  const scratch = await mkdtemp(path.join(os.tmpdir(), "lawspec-swift-events-"));
+  try {
+    const [run] = invocations({language:"swift"}, entries, {scratch});
+    const rows = [], units = new Map();
+    for (const entry of entries.filter((entry) => entry.scope === "ordered")) {
+      const cases = Array.from({length:entry.knownFailing ? 1 : entry.coverage?.cases ?? 1}, (_,index) =>
+        ({law:entry.name,name:entry.name+"_boundary",id:entry.name+"#"+index}));
+      units.set(entry.unit,[...(units.get(entry.unit)??[]),...cases]);
+    }
+    for (const [unit,cases] of units) {
+      rows.push({event:"plan",unit,cases});
+      for (const item of cases) {
+        rows.push({event:"case-start",unit,...item});
+        rows.push({event:"case-end",unit,...item,status:"passed",time:0.01});
+      }
+    }
+    for (const row of rows) Object.assign(row,{version:1,run:run.report.run});
+    change(rows,run);
+    const suites = [...new Set(entries.filter((entry) => entry.scope === "ordered")
+      .map((entry) => path.posix.basename(entry.file,".swift")))];
+    const xml = '<testsuites><testsuite>'+suites.map((suite) =>
+      `<testcase classname="AppTests.${suite}" name="ordered(_:)" time="0.1"/>`).join("")+
+      entries.filter((entry) => entry.scope !== "ordered").map((entry) =>
+        `<testcase classname="AppTests.${path.posix.basename(entry.file,".swift")}" name="${entry.name}()"/>`).join("")+
+      '</testsuite></testsuites>';
+    await writeFile(run.report.file,rows.map((row) => JSON.stringify(row)).join("\n"));
+    const changed = xmlChange(xml);
+    if (changed !== null) await writeFile(run.report.files[0],changed);
+    return {run,tests:await executedTests(run.report,"",scratch,0)};
+  } finally { await rm(scratch,{recursive:true,force:true}); }
+}
+const orderedSwift = (index, cases = 3) => ({...law(index,"tests/LawSpec/ExampleUnit.swift",undefined,"swift"),
+  scope:"ordered",coverage:{kind:"finite-inputs",cases,scopedQuantifiers:false}});
+
+test("Swift ordered groups select whole laws and attribute individually completed cases", async () => {
+  const first = orderedSwift(1), second = orderedSwift(10,2);
+  const ordinary = {...law(2,"tests/LawSpec/OtherUnit.swift",undefined,"swift"),obligations:[{stage:"model"}]};
+  const {run,tests} = await swiftReport([first,second,ordinary],(rows) => rows.push({...rows[0]}));
+  assert.equal(run.report.kind,"swift-events");
+  assert.deepEqual(run.args.slice(0,5),["test","--filter","ExampleUnit/ordered\\(","--filter","OtherUnit/lawLaw2(_[A-Za-z0-9]+)?\\("]);
+  assert.deepEqual(JSON.parse(run.env.LAWSPEC_SWIFT_LAWS),[first,second].map(({unit,name}) => ({unit,name})));
+  assert.equal(run.env.LAWSPEC_SWIFT_RUN,run.report.run);
+  assert.equal(run.env.LAWSPEC_SWIFT_REPORT,run.report.file);
+  assert.ok(path.isAbsolute(run.report.file));
+  assert.ok(run.report.files[0].includes(run.report.run));
+  assert.equal(tests.length,6);
+  assert.deepEqual(tests.filter((test) => test.identity).map((test) => test.name),
+    ["lawLaw1#0","lawLaw1#1","lawLaw1#2","lawLaw10#0","lawLaw10#1"]);
+  assert.deepEqual(tests.flatMap(run.ran),[ordinary,first,first,first,second,second]);
+  assert.deepEqual(run.matches({unit:first.unit,nativeName:first.name,status:"failed"}),[first]);
+  assert.deepEqual(run.ran({unit:first.unit,nativeName:first.name,status:"failed"}),[]);
+  assert.match(junitFromTests(tests),/name="lawLaw1#2"/);
+  const [next] = invocations({language:"swift"},[first]);
+  assert.notEqual(run.report.run,next.report.run);
+});
+
+test("Swift ordered reports reject malformed, stale, partial or unplanned execution", async () => {
+  const entry = orderedSwift(1);
+  const mutations = [
+    (rows) => rows.splice(0),
+    (rows) => {rows[0].version=2;},
+    (rows) => {rows[1].run="stale";},
+    (rows) => rows.pop(),
+    (rows) => rows.splice(1,1),
+    (rows) => {rows[0].cases=[];},
+    (rows) => {rows[0].cases[0].law="unknown";},
+    (rows) => {rows[0].cases[1].id=rows[0].cases[0].id;},
+    (rows) => {rows[1].id="unknown";},
+    (rows) => {rows[1].law="unknown";},
+    (rows) => {rows[1].name="wrong name";},
+    (rows) => rows.push({...rows[1]}),
+    (rows) => rows.push({...rows[2]}),
+    (rows) => {rows[2].status="skipped";},
+    (rows) => {rows[2].time=-1;},
+    (rows) => {rows[2].time="0.1";},
+    (rows) => {delete rows[2].time;},
+    (rows) => {rows[2].failure=5;},
+    (rows) => {rows[2].event="unknown";},
+    (rows) => rows.push({...rows[0],cases:rows[0].cases.slice(1)}),
+    (rows) => {rows[0].cases.pop();rows.splice(-2);},
+    (rows) => {rows[0].unit="other";},
+  ];
+  for (const [index,change] of mutations.entries()) {
+    const {tests}=await swiftReport([entry],change);
+    assert.deepEqual(tests,[],`invalid lifecycle ${index} credited a case`);
+  }
+  for (const xmlChange of [() => null,() => "",(xml) => xml.replaceAll("ExampleUnit","WrongSuite"),
+    (xml) => xml.replace("ordered(_:)","other(_:)")]) {
+    const {run,tests} = await swiftReport([entry],undefined,xmlChange);
+    assert.deepEqual(tests.flatMap(run.ran),[]);
+  }
+});
+
+test("Swift concrete failures and framework failures cannot become positive law evidence", async () => {
+  const first = orderedSwift(1), second = orderedSwift(10,1);
+  const failedXml = (xml) => xml.replace('time="0.1"/>','time="0.1"><failure message="native failure"/></testcase>');
+  const markFailure = (rows) => {rows[2].status="failed";rows[2].failure="case failure";};
+  assert.deepEqual((await swiftReport([first],markFailure)).tests,[]);
+  const failed = await swiftReport([first,second],markFailure,failedXml);
+  assert.equal(failed.tests[0].status,"failed");
+  assert.equal(failed.tests[0].failure,"case failure");
+  assert.equal(failed.tests[1].status,"passed");
+  const outside = await swiftReport([first],undefined,failedXml);
+  assert.ok(outside.tests.every((test) => test.status === "incomplete"));
+  assert.deepEqual(outside.tests.flatMap(outside.run.ran),[]);
+  assert.match(junitFromTests(outside.tests),/lawspec.status/);
+  const ordinary = law(2,"tests/LawSpec/OtherUnit.swift",undefined,"swift");
+  const mixed = await swiftReport([first,ordinary],(rows) => rows.pop());
+  assert.deepEqual(mixed.tests.flatMap(mixed.run.ran),[ordinary]);
+  const known = {...orderedSwift(1,100),knownFailing:"tracked failure"};
+  assert.equal((await swiftReport([known])).tests.length,1);
+  const sampled = {...orderedSwift(1),coverage:{kind:"sampled",scopedQuantifiers:true}};
+  assert.equal((await swiftReport([sampled])).tests.length,1);
 });
 
 test("selects .NET laws with xUnit query filters and reads them back by display name", async () => {

@@ -251,7 +251,11 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
   // Swift Testing selects tests by a regular expression over their ids
   // (Module.Suite/function()), one --filter per benchmark, OR'd.
   if (language === "swift")
-    return [{ command: target.swift || "swift", args: ["test", ...entries.flatMap((e) => ["--filter", `/${regex(e.name)}\\(`])] }];
+    return [{ command: target.swift || "swift", args: ["test", ...entries.flatMap((e) => [
+      "--filter", `/${regex(e.name)}\\(`,
+      "--filter", `${regex(path.posix.basename(e.file, ".swift"))}/ordered\\(`])],
+      env: { LAWSPEC_SWIFT_LAWS: JSON.stringify(entries.map(({unit,name}) => ({unit,name}))),
+        LAWSPEC_SWIFT_REPORT: "", LAWSPEC_SWIFT_RUN: "" } }];
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
     // hspec matches by substring, and a benchmark's name has spaces, so each
@@ -483,19 +487,31 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
       report: { kind: "junit", files: [path.join(results, report)] },
       ran: (test) => entries.filter((e) => pattern(e).test(test.name)) }];
   }
-  // Swift Testing selects tests by a regular expression over their ids
-  // (Module.Suite/function()), and writes its xUnit report next to the path
-  // given, with -swift-testing added. A law's tests are its unit's suite
-  // (named after the test file) and its name, then a kind (lawName_property).
+  // Ordered Swift groups expose their parameterized aggregate in JUnit;
+  // the native lifecycle report identifies each completed invocation inside it.
   if (language === "swift") {
     const results = path.resolve(scratch);
     const suite = (e) => path.posix.basename(e.file, ".swift");
-    const test = (e) => `${regex(suite(e))}/${regex(e.name)}(_[A-Za-z0-9]+)?\\(`;
+    const ordered = entries.filter((e) => e.scope === "ordered");
+    const token = randomUUID();
+    const output = ordered.length ? `swift-lawspec-${token}` : "swift-lawspec";
+    const files = [path.join(results, `${output}-swift-testing.xml`)];
+    const events = path.join(results, `${output}.jsonl`);
+    const test = (e) => e.scope === "ordered" ? `${regex(suite(e))}/ordered\\(` :
+      `${regex(suite(e))}/${regex(e.name)}(_[A-Za-z0-9]+)?\\(`;
     return [{ laws: entries, command: target.swift || "swift",
-      args: ["test", ...(coverage ? ["--enable-code-coverage"] : []), ...entries.flatMap((e) => ["--filter", test(e)]),
-        "--xunit-output", path.join(results, "swift-lawspec.xml")],
-      report: { kind: "junit", files: [path.join(results, "swift-lawspec-swift-testing.xml")] },
-      ran: (result) => entries.filter((e) => result.classname?.split(".").pop() === suite(e) &&
+      args: ["test", ...(coverage ? ["--enable-code-coverage"] : []),
+        ...[...new Set(entries.map(test))].flatMap((selector) => ["--filter", selector]),
+        "--xunit-output", path.join(results, `${output}.xml`)],
+      env: { LAWSPEC_SWIFT_LAWS: JSON.stringify(ordered.map(({unit,name}) => ({unit,name}))),
+        LAWSPEC_SWIFT_REPORT: ordered.length ? events : "", LAWSPEC_SWIFT_RUN: ordered.length ? token : "" },
+      report: ordered.length ? { kind: "swift-events", files, file: events, run: token,
+        groups: ordered.map((e) => ({unit:e.unit,law:e.name,suite:suite(e),
+          minimum:typeof e.knownFailing === "string" ? 1 : Math.max(1,e.coverage?.cases ?? 1)})) } :
+        { kind: "junit", files },
+      ran: (result) => entries.filter((e) => e.scope === "ordered" ?
+        result.unit === e.unit && result.nativeName === e.name :
+        result.classname?.split(".").pop() === suite(e) &&
         new RegExp(`^${regex(e.name)}(_[A-Za-z0-9]+)?(\\(|$)`).test(result.name)) }];
   }
   if (language === "haskell") {
@@ -623,6 +639,7 @@ export async function harnessStatistics(directory) {
 // The tests a run executed, as {name, classname}, from the runner's report or
 // output. Skipped tests are not counted.
 export async function executedTests(report, output, root, since) {
+  if (report?.kind === "swift-events") return swiftExecutedTests(report, output, root, since);
   if(report?.kind==='node-events') {
     const raw=await readFile(path.resolve(root,report.file),'utf8').catch(()=>'');
     let rows;
@@ -708,6 +725,78 @@ export async function executedTests(report, output, root, since) {
     return tests;
   }
   return [];
+}
+
+// Swift's XML seals the native aggregate; runtime events refine that completed
+// aggregate into individually attributable cases. Neither channel suffices alone.
+async function swiftExecutedTests(report, output, root, since) {
+  const native = await executedTests({kind:"junit",files:report.files}, output, root, since);
+  const ordinary = native.filter((test) => test.name !== "ordered(_:)");
+  const raw = await readFile(path.resolve(root,report.file), "utf8").catch(() => "");
+  let rows;
+  try { rows = raw.trim().split("\n").map((line) => JSON.parse(line)); } catch { return ordinary; }
+  if (!rows.length || rows.some((row) => !row || row.version !== 1 || row.run !== report.run)) return ordinary;
+  const key = (unit,name) => JSON.stringify([unit,name]);
+  const expected = new Map(report.groups.map((group) => [key(group.unit,group.law),group]));
+  const plans = new Map(), cases = new Map(), starts = new Set(), ends = new Map();
+  for (const row of rows) {
+    if (typeof row.unit !== "string") return ordinary;
+    if (row.event === "plan") {
+      if (!Array.isArray(row.cases) || !row.cases.length) return ordinary;
+      const previous = plans.get(row.unit);
+      if (previous !== undefined) {
+        if (JSON.stringify(previous) !== JSON.stringify(row.cases)) return ordinary;
+        continue;
+      }
+      plans.set(row.unit,row.cases);
+      for (const item of row.cases) {
+        if (!item || typeof item.id !== "string" || !item.id || typeof item.name !== "string" || !item.name ||
+          typeof item.law !== "string" || !expected.has(key(row.unit,item.law))) return ordinary;
+        const id = key(row.unit,item.id);
+        if (cases.has(id)) return ordinary;
+        cases.set(id,{...item,unit:row.unit});
+      }
+    } else if (row.event === "case-start" || row.event === "case-end") {
+      const id = key(row.unit,row.id), item = cases.get(id);
+      if (!item || item.name !== row.name || item.law !== row.law) return ordinary;
+      if (row.event === "case-start") {
+        if (starts.has(id)) return ordinary;
+        starts.add(id);
+      } else {
+        if (!starts.has(id) || ends.has(id) || !["passed","failed"].includes(row.status) ||
+          !Number.isFinite(row.time) || row.time < 0 ||
+          (row.failure !== undefined && typeof row.failure !== "string")) return ordinary;
+        ends.set(id,row);
+      }
+    } else return ordinary;
+  }
+  if (cases.size !== starts.size || cases.size !== ends.size) return ordinary;
+  const completed = [];
+  for (const group of expected.values()) {
+    const members = [...cases.values()].filter((item) => item.unit === group.unit && item.law === group.law);
+    if (members.length < group.minimum) return ordinary;
+    const aggregates = native.filter((test) => test.name === "ordered(_:)" &&
+      test.classname.split(".").pop() === group.suite);
+    if (aggregates.length !== 1 || !["passed","failed"].includes(aggregates[0].status)) return ordinary;
+    const aggregate = aggregates[0];
+    // A framework failure outside the invocation body cannot credit that body's
+    // earlier successes. Preserve them as incomplete observations instead.
+    const suiteFailed = [...cases.values()].some((item) => {
+      const expectedGroup = expected.get(key(item.unit,item.law));
+      return expectedGroup.suite === group.suite && ends.get(key(item.unit,item.id)).status === "failed";
+    });
+    if (aggregate.status === "passed" && suiteFailed) return ordinary;
+    for (const item of members) {
+      const result = ends.get(key(item.unit,item.id));
+      const incomplete = aggregate.status === "failed" && !suiteFailed;
+      completed.push({name:item.id,classname:aggregate.classname,identity:`${item.unit}::${item.law}`,
+        unit:item.unit,nativeName:item.law,
+        status:incomplete ? "incomplete" : result.status,time:result.time,
+        ...(incomplete ? {failure:aggregate.failure ?? "Swift aggregate failed outside its invocation bodies"} :
+          result.failure === undefined ? {} : {failure:result.failure})});
+    }
+  }
+  return [...ordinary,...completed];
 }
 
 // JUnit XML for a runner that writes none, from the tests it printed.
