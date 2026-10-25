@@ -163,6 +163,7 @@ stepGroups options editor =
 -- Order: a target's steps follow its bootstrap, which creates
 -- .integration/<target>, and the BEAM framework steps that may bootstrap it
 -- too; acceptance suites follow build-acceptance; npm-tests follows the
+-- JavaScript/Python bootstraps (native cache and finite-loop controls) and
 -- TypeScript bootstrap (it type-checks with that tsc when present), and
 -- beam-runtime the Python one (it runs that interpreter). Haskell, Java and
 -- Clojure suites also follow the target's crypto suite, which runs alone
@@ -213,7 +214,8 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     task s@(Step name env command) = Task name (filter present (follows name command (M.lookup name targetOf)))
       (claims name env command (M.lookup name targetOf)) s
     follows name command target = case target of
-      Nothing -> ["typescript-bootstrap" | name == "npm-tests"] ++ ["python-bootstrap" | name == "beam-runtime"]
+      Nothing -> [bootstrap | name == "npm-tests", bootstrap <- ["typescript-bootstrap","javascript-bootstrap","python-bootstrap"]]
+        ++ ["python-bootstrap" | name == "beam-runtime"]
         ++ ["editor-install" | name `elem` ["editor-grammar","npm-tests"]]
         ++ ["docs" | name == "rejection-examples"]
       Just t
@@ -230,7 +232,8 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
       [Shared "stack-work" | name `notElem` stackBuilders,
         take 1 command == ["stack"] || name `elem` ["rejection-examples", "parity"]] ++
-      [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"]] ++
+      [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability", "npm-tests"]] ++
+      [Shared "env:javascript" | name == "npm-tests"] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
       [Exclusive "env:artifacts" | name == "artifact-bootstrap"] ++
       -- The wrapper may repair its pinned environment after a failed bootstrap.
