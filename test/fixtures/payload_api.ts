@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, CheckRequest, ObligationEvidence, NativeFieldBinding} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, CheckRequest, ObligationEvidence, NativeFieldBinding, ModelAnswerCheck} from '../../npm/index.js';
 
 export function authoredNames(unit: Unit): string[] {
   return unit.declarations.flatMap(declaration => {
@@ -35,6 +35,7 @@ export function children(node: ExprNode): Expr[] {
     case 'match':
       return [node.value, ...node.cases.map(branch => branch.body)];
     case 'allElements':
+    case 'searchElements':
       return [node.value, node.predicate];
     case 'allPayloads':
       return [node.value, ...node.predicates.map(callback => callback.predicate)];
@@ -59,6 +60,7 @@ export function nodeFixtures(value: Expr, callback: PayloadPredicate): ExprNode[
   children(payload);
   children(element);
   const remainingNodes: ExprNode[] = [
+    {kind: 'searchElements', universal: true, value, binder: callback.binder, predicate: callback.predicate},
     {kind: 'field', constructor: 'Record', index: 0, value},
     {kind: 'update', constructor: 'Record', index: 0, value, field: value},
     {kind: 'if', condition: value, then: value, else: value},
@@ -156,4 +158,21 @@ export function nativeObservationScopes(result: Result): string[] {
     const finiteCases: number | undefined = row.coverage?.cases;
     return `${item.declaration}:${row.target}:${row.freshness}:${row.outcome}:${seed}:${finiteCases}`;
   }));
+}
+
+// Model SAT answers are accepted only after current evaluator replay. These
+// structural checks also let the host retry an obsolete cached model.
+export function checkedModelAnswers(result: Result): {fingerprint: string; confirmed: boolean; reason: string}[] {
+  return (result.modelChecks ?? []).map((check: ModelAnswerCheck) => {
+    switch (check.status) {
+      case 'confirmed':
+        return {fingerprint: check.fingerprint, confirmed: true, reason: check.reason};
+      case 'model-not-confirmed':
+        return {fingerprint: check.fingerprint, confirmed: false, reason: check.reason};
+      default: {
+        const impossible: never = check.status;
+        throw new Error(`Unrecognized model answer check: ${impossible}`);
+      }
+    }
+  });
 }

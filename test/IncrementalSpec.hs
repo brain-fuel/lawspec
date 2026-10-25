@@ -60,6 +60,7 @@ cachedPublicDocuments target kind directory = do
   pure [map toLower (case target of
     "javascript" -> ECMAScript.printModule ECMAScript.JavaScript (documentPrefix value)
     "typescript" -> ECMAScript.printModule ECMAScript.TypeScript (documentPrefix value)
+    "fsharp" -> documentPrefix value
     "python" -> Doc.render (Doc.Pretty 100) (Doc.joinWith Doc.hardline (documentPrefix value))
     "haskell" | kind == "data" -> Doc.render (Doc.Pretty 100) (Doc.joinWith Doc.hardline (documentPrefix value))
     _ -> Doc.render (Doc.Pretty 100) (documentPrefix value)) | value <- bytes]
@@ -322,8 +323,8 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         cachedHelperDocuments target directory >>= (`shouldMatchList` second)
         removePathForcibly root
   describe "public declaration chunks" $ do
-    forM_ ([(target,kind) | target <- ["java","kotlin","scala","go","haskell"], kind <- ["data","codec"]] ++
-      [(target,"data") | target <- ["python","javascript","typescript"]]) $ \(target,kind) ->
+    forM_ ([(target,kind) | target <- ["java","kotlin","scala","go","haskell","fsharp"], kind <- ["data","codec"]] ++
+      [(target,"data") | target <- ["python","javascript","typescript","rust"]]) $ \(target,kind) ->
       it ("reuses independent public " ++ target ++ " " ++ kind ++ " documents") $ do
         root <- (</> ("lawspec-public-" ++ target ++ "-" ++ kind ++ "-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -349,6 +350,28 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         cold <- evaluate (decode (withoutMemoization dispatch (input "Int32")) :: Maybe Value)
         run "Int32" `shouldBe` cold
         removePathForcibly root
+  describe "public F# codec namespaces" $ do
+    it "reserves user type names before allocating recursive codec pattern aliases" $ do
+      root <- (</> "lawspec-fsharp-codec-namespace-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      let input extra = encode (object
+            ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+             "method" .= ("planGeneration" :: String), "target" .= ("fsharp" :: String), "cacheDirectory" .= root,
+             "sources" .= [object ["path" .= ("aliases.lawspec" :: String), "content" .= unlines
+               ["unit incremental.codecNamespace", "type Choice (a :: Type) is one of NoChoice | Selected of type a end type",
+                "nativeSelected :: Choice Integer -> Bool",extra,"end unit"]]]])
+          good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+          good _ = False
+          run = decode . dispatch . input
+          added = "type CodecPatternChoice is a record { marker :: Unit } end type"
+      run "" `shouldSatisfy` good
+      run added `shouldSatisfy` good
+      cold <- evaluate (decode (withoutMemoization dispatch (input added)) :: Maybe Value)
+      run added `shouldBe` cold
+      [versioned] <- listDirectory root
+      documents <- cachedPublicDocuments "fsharp" "codec" (root </> versioned </> "public-fsharp-codec")
+      length (filter (isInfixOf "compiledname(\"choice\")") documents) `shouldBe` 2
+      removePathForcibly root
   describe "unit emission dependencies" $ do
     forM_ ["python","javascript","typescript","java","kotlin","scala","go","haskell"] $ \target ->
       it ("reuses independent " ++ target ++ " unit products after a type or unused body changes") $ do

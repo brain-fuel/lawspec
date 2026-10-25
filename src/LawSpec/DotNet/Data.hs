@@ -7,12 +7,19 @@ module LawSpec.DotNet.Data
   ( Names, nativeType, codec, typeParameter, emitData, emitSchema, schemaModule, dataDeclarationsOf, fsharpTypeAbbreviation
   ) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import LawSpec.CorePersist ()
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
-import LawSpec.Digest (digestHex,digestString)
+import qualified Data.Map.Strict as M
 import LawSpec.Scalar (Scalar(..), primitive, primitives, primitiveName, family, Family(..))
 import LawSpec.Testing (GeneratorRequirement(..), domainHints)
 import LawSpec.Regex (parseRegex, regexSamples)
@@ -26,6 +33,35 @@ import qualified LawSpec.BeamGenerators as BeamGenerators
 import LawSpec.NativeBinding (NativeRef(..), ConstructorStyle(..), ResolvedTypeBinding(..), ResolvedConstructorBinding(..), foldNativeLayoutM)
 import Control.Monad (forM)
 import Data.List (intercalate, nub, sortOn)
+
+-- A recursive group's keyword is an assembly choice, retained separately
+-- from its checked signature and expression tree. No emitted text is parsed
+-- to insert "let rec" or "and", and no function closure is a cache value.
+data CodecFunction = CodecFunction
+  { codecAttribute :: String
+  , codecBinding :: String
+  , codecParameters :: [String]
+  , codecResult :: String
+  , codecBody :: F
+  } deriving (Show, Generic)
+
+instance Binary CodecFunction
+
+renderCodecFunction :: String -> CodecFunction -> [String]
+renderCodecFunction keyword function = L.function 0 (keyword ++ " " ++ codecBinding function)
+  (codecParameters function) (Just (codecResult function)) (codecBody function)
+
+nativeDocumentTable :: Table (Either String (String,String,[String]))
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-fsharp-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
+
+codecDocumentTable :: Table (Either String CodecFunction)
+codecDocumentTable = unsafePerformIO (newPersistentTable "public-fsharp-codec" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE codecDocumentTable #-}
+
+auxiliaryDocumentTable :: Table (Either String [String])
+auxiliaryDocumentTable = unsafePerformIO (newPersistentTable "public-fsharp-alias" (2 * 1024 * 1024) (length . show))
+{-# NOINLINE auxiliaryDocumentTable #-}
 
 -- | Each data declaration's native name.
 type Names = [(C.Id, String)]
@@ -268,35 +304,59 @@ emitData FSharp layout bits bound declarations
   | otherwise = do
       names <- dataNames declarations
       ss <- shapes FSharp names [d | d <- declarations, C.dataId d `notElem` boundIds]
-      types <- mapM (fsharpType names) ss
-      codecs <- mapM (fsharpCodec names) ss
-      boundCodecs <- mapM (boundCodec names) [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))]
+      let graph = Identity.dependencyGraphWithBits bits declarations []
+          aliasTypes = [(C.Constructor (C.idText (C.dataId (shapeDeclaration shape))) [],shapeName shape) |
+            shape <- ss,needsCodecAlias shape]
+          aliasesByType = EmissionContext.helperAllocation graph (map snd names)
+            (\_ ty -> "CodecPattern" ++ maybe "Value" id (lookup ty aliasTypes)) ["pattern"] (map fst aliasTypes)
+          aliasOf shape = case M.lookup ("pattern",show (C.Constructor (C.idText (C.dataId (shapeDeclaration shape))) [])) aliasesByType of
+            Just name -> name
+            Nothing -> error "unplanned F# codec alias"
+          context shape = show (bits,needsQualification shape,
+            comparedParameters declarations (C.dataId (shapeDeclaration shape))) ++
+            EmissionContext.declarationContext graph declarations names (shapeDeclaration shape)
+          cacheType shape = memoized nativeDocumentTable
+            (Identity.fullKey graph ("public-fsharp-data:" ++ context shape) (shapeDeclaration shape))
+            (fsharpType names shape)
+          cacheCodec shape = memoized codecDocumentTable
+            (Identity.fullKey graph ("public-fsharp-codec:" ++ context shape ++ show (if needsCodecAlias shape then Just (aliasOf shape) else Nothing)) (shapeDeclaration shape))
+            (fsharpCodec names aliasOf shape)
+          cacheAuxiliary kind declaration = memoized auxiliaryDocumentTable
+            (Identity.fullKey graph ("public-fsharp-auxiliary:" ++ kind ++ show (bits,boundOf declaration) ++
+              EmissionContext.declarationContext graph declarations names declaration) declaration)
+          cacheBound binding = memoized codecDocumentTable
+            (Identity.fullKey graph ("public-fsharp-bound:" ++ show (bits,binding) ++
+              EmissionContext.declarationContext graph declarations names (resolvedDeclaration binding)) (resolvedDeclaration binding))
+            (boundCodec names binding)
+      types <- mapM cacheType ss
+      codecs <- mapM cacheCodec ss
+      boundCodecs <- mapM cacheBound [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))]
       let handles = [d | d <- declarations, C.dataHandle d]
-      handleTypes <- forM handles $ \d -> do
+      handleTypes <- forM handles $ \d -> cacheAuxiliary "handle" d $ do
         name <- maybe (Left "unnamed handle") Right (lookup (C.dataId d) names)
         pure ["/// A handle: a native object whose identity LawSpec keeps.",
           "type " ++ name ++ typeParams d ++ " = " ++ maybe "obj" boundHandleType (boundOf d)]
-      handleCodecs <- forM handles $ \d -> do
+      handleCodecs <- forM handles $ \d -> cacheAuxiliary "handle-codec" d $ do
         name <- maybe (Left "unnamed handle") Right (lookup (C.dataId d) names)
         let ps = [("t" ++ show i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
             native = maybe "obj" (const (name ++ typeParams d)) (boundOf d)
         pure (("[<CompiledName(\"" ++ name ++ "\")>]") : L.function 0 ("let " ++ escapeFSharp (camel name) ++ typeParams d)
           (if null ps then ["()"] else ["(_" ++ p ++ ": Codec<'T" ++ drop 1 p ++ ">)" | p <- ps]) (Just ("Codec<" ++ native ++ ">"))
           (A ("Codec.handle<" ++ native ++ "> " ++ stringLiteral FSharp (C.idText (C.dataId d)))))
-      aliases <- forM [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))] $ \b -> do
+      aliases <- forM [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))] $ \b -> cacheAuxiliary "alias" (resolvedDeclaration b) $ do
         let d = resolvedDeclaration b
         name <- maybe (Left "unnamed data") Right (lookup (C.dataId d) names)
-        pure ["/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound in lawspec.json.",
+        pure ["/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound by the project configuration.",
           "type " ++ name ++ typeParams d ++ " = " ++ refText (resolvedNativeType b) ++ typeParams d]
       -- A recursive group names its own members unqualified.
       let typesText = unqualify "LawSpec.Data." $ unlines (["// Generated by LawSpec. Do not edit.", "namespace LawSpec.Data", "", "open LawSpec.Runtime", ""] ++
             L.separatedBy [""] (handleTypes ++ aliases ++ zipWith (\i (doc, attrs, t) -> doc :
               (if i == (0 :: Int) then [attrs, "type " ++ head t] else ["and " ++ attrs ++ " " ++ head t]) ++ tail t) [0 ..] types))
-          codecAliases = [[fsharpTypeAbbreviation declarations (shapeDeclaration s) (codecAlias s) (shapeName s)] | s <- ss, needsCodecAlias s]
+          codecAliases = [[fsharpTypeAbbreviation declarations (shapeDeclaration s) (aliasOf s) (shapeName s)] | s <- ss, needsCodecAlias s]
           codecsText = unlines (["// Generated by LawSpec. Do not edit.", "/// Conversions between portable values and the native data types.",
             "module LawSpec.Data.Codecs", "", "open LawSpec.Runtime", "open LawSpec.Data", ""] ++
-            L.separatedBy [""] (codecAliases ++ handleCodecs ++ zipWith (\i (attribute, c) -> if i == (0 :: Int) then attribute : c "let rec"
-              else c ("and " ++ attribute)) [0 ..] (codecs ++ boundCodecs)))
+            L.separatedBy [""] (codecAliases ++ handleCodecs ++ zipWith (\i function -> if i == (0 :: Int) then codecAttribute function : renderCodecFunction "let rec" function
+              else renderCodecFunction ("and " ++ codecAttribute function) function) [0 ..] (codecs ++ boundCodecs)))
       pure [ Artifact "src/LawSpec/Data.fs" typesText "generated" "source"
            , Artifact "src/LawSpec/DataCodecs.fs" codecsText "generated" "source" ]
   where
@@ -423,12 +483,11 @@ emitData FSharp layout bits bound declarations
       ++ [n | (_, n) <- maybe [] id (either (const Nothing) Just (dataNames declarations))]
     casesOf d = Just [Case "" (pascal (C.constructorName c)) 0 [] 0 | c <- C.dataConstructors d]
     needsCodecAlias s = not (isRecord s) && (not (null (shapeParameters s)) || any ((== shapeName s) . caseName) (shapeCases s))
-    codecAlias s = "LawSpecCodecPattern_" ++ take 8 (digestHex (digestString (C.idText (C.dataId (shapeDeclaration s)))))
-    fsharpCodec names s = do
+    fsharpCodec names aliasOf s = do
       let params = [("t" ++ show i, p) | (i, (_, p)) <- zip [0 :: Int ..] (shapeParameters s)]
           codecParams = [(identity, "t" ++ show i) | (i, (identity, _)) <- zip [0 :: Int ..] (shapeParameters s)]
           self = shapeName s ++ (if null params then "" else "<" ++ intercalate ", " (map snd params) ++ ">")
-          prefix = if needsCodecAlias s then codecAlias s ++ "."
+          prefix = if needsCodecAlias s then aliasOf s ++ "."
             else if needsQualification s || not (isRecord s) then shapeName s ++ "." else ""
       cases <- forM (shapeCases s) $ \c -> do
         let existentials = [e | dc <- C.dataConstructors (shapeDeclaration s), C.idText (C.constructorId dc) == caseTag c, e <- C.constructorExistentials dc]
@@ -455,16 +514,18 @@ emitData FSharp layout bits bound declarations
     u = unqualify "LawSpec.Data." . unqualify "LawSpec.Data.Codecs."
     -- A codec: its CompiledName attribute, and its function after let rec or
     -- and. A type with no values has a codec that refuses every value.
-    codecFunction name generics params self nativeParameter label toCases fromCases =
-      ( "[<CompiledName(\"" ++ name ++ "\")>]"
-      , \keyword -> L.function 0 (keyword ++ " " ++ escapeFSharp (camel name) ++ generics)
-          (if null params then ["()"] else ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- params]) (Just ("Codec<" ++ u self ++ ">"))
-          (if null toCases
-            then let refuse = Fun "_" (A ("Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (name ++ " has no values")))
-                 in Record [("ToNative", refuse), ("FromNative", refuse)]
-            else Record
-              [ ("ToNative", Fun "value" (Match (A "value") (toCases ++ [("_", App "Fail.raiseWith" [A "\"InvalidNativeValue\"", A (stringLiteral FSharp label)])])))
-              , ("FromNative", Fun nativeParameter (Match (A "native") fromCases)) ]) )
+    codecFunction name generics params self nativeParameter label toCases fromCases = CodecFunction
+      ("[<CompiledName(\"" ++ name ++ "\")>]")
+      (escapeFSharp (camel name) ++ generics)
+      (if null params then ["()"] else ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n,p) <- params])
+      ("Codec<" ++ u self ++ ">")
+      (if null toCases
+        then let refuse = Fun "_" (A ("Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (name ++ " has no values")))
+             in Record [("ToNative",refuse),("FromNative",refuse)]
+        else Record
+          [("ToNative", Fun "value" (Match (A "value") (toCases ++ [("_", App "Fail.raiseWith" [A "\"InvalidNativeValue\"", A (stringLiteral FSharp label)])]))),
+           ("FromNative", Fun nativeParameter (Match (A "native") fromCases))])
+
 emitData CSharp _ _ _ declarations
   | null declarations = pure []
   | otherwise = Left "C# data types are not emitted yet"
