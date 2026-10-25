@@ -1,7 +1,7 @@
 -- | Scala generators for the scalars and structural types, downstream of
 -- checked Core, on LawSpec's shrink trees (lawspec.testing.Arb). The scalar
 -- generators are the runtime's (LawSpecScalars), so a test names them only.
-module LawSpec.ScalaTestHelpers (generatorDoc, generatorDocWithin, scalarGenerators) where
+module LawSpec.ScalaTestHelpers (generatorReceiver, generatorReceiverWithin, generatorDoc, generatorDocWithin, scalarGenerators) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
@@ -21,28 +21,36 @@ number = text . show
 -- other structural types from the schema (LawSpecScalaStrategies).
 generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) bits budget structural reference key
+generatorDoc bits budget structural reference key = L.receiverDoc . generatorReceiver bits budget structural reference key
+
+generatorReceiver :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> L.Receiver
+generatorReceiver bits budget structural reference key = generatorReceiverBounded (integerBounds bits) bits budget structural reference key
 
 -- | The generator, with a top-level integer drawn from a refinement's range.
 generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf bits budget structural reference key ty
+generatorDocWithin within bits budget structural reference key = L.receiverDoc . generatorReceiverWithin within bits budget structural reference key
+
+generatorReceiverWithin :: Maybe (Integer,Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> L.Receiver
+generatorReceiverWithin within bits budget structural reference key ty = generatorReceiverBounded boundsOf bits budget structural reference key ty
   where
     boundsOf name = case (within, ty) of
       (Just range, C.Constructor top []) | top == name -> Just range
       _ -> integerBounds bits name
 
-generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
-  -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDocBounded boundsOf bits budget structural reference key = gen
+generatorReceiverBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> L.Receiver
+generatorReceiverBounded boundsOf bits budget structural reference key = gen
   where
-    scalars name = L.call ("LawSpecScalars." ++ name)
-    gen ty | structural ty = L.call "LawSpecScalaStrategies.generator"
+    scalars name = L.callReceiver ("LawSpecScalars." ++ name)
+    gen ty | structural ty = L.callReceiver "LawSpecScalaStrategies.generator"
       [text "Schema", reference ty, text "MachineBits", number budget, scalarGenerators]
-    gen ty@(C.Constructor "List" [C.TypeArgument inner]) = scalars "list" [quoted (key ty), gen inner]
-    gen ty@(C.Constructor "Maybe" [C.TypeArgument inner]) = scalars "maybe" [quoted (key ty), gen inner]
-    gen ty@(C.Constructor "Either" [C.TypeArgument a, C.TypeArgument b]) = scalars "either" [quoted (key ty), gen a, gen b]
-    gen ty@(C.Constructor _ [C.TypeArgument inner]) = scalars "present" [quoted (key ty), gen inner]
+    gen ty@(C.Constructor "List" [C.TypeArgument inner]) = scalars "list" [quoted (key ty), L.receiverDoc (gen inner)]
+    gen ty@(C.Constructor "Maybe" [C.TypeArgument inner]) = scalars "maybe" [quoted (key ty), L.receiverDoc (gen inner)]
+    gen ty@(C.Constructor "Either" [C.TypeArgument a, C.TypeArgument b]) = scalars "either" [quoted (key ty), L.receiverDoc (gen a), L.receiverDoc (gen b)]
+    gen ty@(C.Constructor _ [C.TypeArgument inner]) = scalars "present" [quoted (key ty), L.receiverDoc (gen inner)]
     gen (C.Constructor name []) | Just (lo, hi) <- boundsOf name, Just (lo, hi) /= integerBounds bits name =
       if lo >= -2147483648 && hi <= 2147483647
       then scalars "small" [quoted name, text (show lo ++ " to " ++ show hi)]

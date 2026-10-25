@@ -135,7 +135,9 @@ emit minify bits datas units = do
       pure (kdoc 96 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
         classHeader ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>)") (intercalate ", " [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered]) <>
         D.block 4 (D.joinWith (D.hardline <> D.hardline)
-          (D.hang 4 (line "private var state: LawSpecRuntime.Value? =") initialState : methods)))
+          ((case C.handlerState h of
+              Just (_,start) -> E.bindValueWith "private var state: LawSpecRuntime.Value? =" start initialState
+              Nothing -> line "private var state: LawSpecRuntime.Value? = null") : methods)))
     -- A typed spec handler keeps its state typed (in the shared JVM typed
     -- code): each operation converts its arguments, runs the typed clause and
     -- keeps the next state, which shares all it did not change with the

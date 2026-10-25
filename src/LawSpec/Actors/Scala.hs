@@ -12,7 +12,7 @@ import Data.List (isInfixOf)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
-import LawSpec.ScalaData (scalaCodecDocIn, scalaDataType, identifier, scalaQuoted)
+import LawSpec.ScalaData (scalaCodecReceiverIn, scalaDataType, identifier, scalaQuoted)
 import qualified LawSpec.ScalaLayout as L
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..))
 import LawSpec.Actors.Jvm (Wire(..), actorWire, replyOf, adapterFunction, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital)
@@ -82,7 +82,7 @@ scalaSource datas wire a = do
     comment indentation = L.comment (80 - indentation)
     awaited d call = if C.declarationAsync d then L.call "scala.concurrent.Await.result" [call, D.text "scala.concurrent.duration.Duration.Inf"] else call
     adapterCallDoc d = L.call (adapterFunction a d)
-    codec ty = scalaCodecDocIn ("Schema", "MachineBits") (D.text "symbols") datas ty
+    codec ty = scalaCodecReceiverIn ("Schema", "MachineBits") (D.text "symbols") datas ty
     descriptor d = L.call "LawSpecRuntime.descriptor" [D.text (scalaQuoted d)]
     -- The companion's members, and the class's.
     scalaRemote own w = do

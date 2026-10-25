@@ -10,6 +10,7 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.ScalaLayout as Scala
 import qualified LawSpec.ElixirCode as Elixir
 import qualified LawSpec.Swift.Code as Swift
 import qualified LawSpec.JavaExpr as Java
@@ -167,6 +168,20 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
     rendered `shouldSatisfy` isInfixOf "| {:present, LawSpec.Data.ALongReplyType.reply(integer())})"
     D.render D.Compact (Elixir.typeDoc body) `shouldBe`
       "%__MODULE__{:read_current_reply => (integer() -> :absent | {:present, LawSpec.Data.ALongReplyType.reply(integer())})}"
+  it "keeps Scala receiver arguments structured through multiline chains" $ do
+    let literal = Scala.scalaString "commas, brackets [)] and quotes \"stay\""
+        argument = D.block 2 (D.text "val value = " <> literal <> D.hardline <> D.text "value")
+        receiver = Scala.typedReceiver "Codecs" "scalar" [D.text "List[String]"] [argument]
+        doc = Scala.chain receiver [("encode",[literal])]
+        readable = D.render (D.Pretty 80) doc
+    readable `shouldSatisfy` isInfixOf "Codecs\n  .scalar[List[String]]("
+    readable `shouldSatisfy` isInfixOf (D.render D.Compact literal)
+    D.render D.Compact doc `shouldSatisfy` isInfixOf ").encode("
+  it "retains a receiver call before a trailing filter without reading its source" $ do
+    let receiver = Scala.callReceiver "LawSpecTesting.inputs"
+          [D.block 2 (D.text "value"),D.text "another"]
+        doc = Scala.trailingChain receiver [] "filter" ["input"] [D.text "input.nonEmpty"]
+    D.render (D.Pretty 80) doc `shouldSatisfy` isInfixOf "LawSpecTesting\n  .inputs("
   it "selects compact layouts without losing Go indentation" $ do
     D.selectLayout True (D.PrettyTabs 100) `shouldBe` D.CompactTabs
     D.selectLayout True (D.Pretty 80) `shouldBe` D.Compact

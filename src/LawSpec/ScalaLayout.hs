@@ -6,13 +6,12 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, arrow, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, bindControl, bindBlock, chain, block, statements
+  ( scalaStyle, scalaString, arrow, Receiver, referenceReceiver, callReceiver, typedReceiver, chainedReceiver, trailingReceiver, receiverDoc, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, bindControl, bindBlock, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
-import LawSpec.CallText (CallTree(..), parseCall)
 
 scalaStyle :: D.Layout
 scalaStyle = D.PrettyPoints 80
@@ -125,45 +124,88 @@ bindControl name value = D.multiline (D.group
 bindBlock :: String -> D.Doc -> D.Doc
 bindBlock name value = D.text ("val " ++ name ++ " = ") <> value
 
+-- | A receiver retains its call boundaries. References are already-known
+-- logical names; invocation ownership and generic arguments come
+-- from the checked producer, never from rendered source.
+data Receiver
+  = ReceiverReference D.Doc
+  | ReceiverCall (Maybe D.Doc) D.Doc [D.Doc]
+  | ReceiverChain Receiver [(String,[D.Doc])]
+  | ReceiverBlock Receiver [String] [D.Doc]
+
+-- | An indivisible logical reference, such as a local value or namespace.
+referenceReceiver :: D.Doc -> Receiver
+referenceReceiver = ReceiverReference
+
+-- | An ordinary logical callee path supplied by the producer. Generic
+-- invocations retain their type-argument documents through typedReceiver.
+callReceiver :: String -> [D.Doc] -> Receiver
+callReceiver name arguments = case break (== '.') (reverse name) of
+  (method@(_:_),'.':owner@(_:_)) -> ReceiverCall (Just (D.text (reverse owner))) (D.text (reverse method)) arguments
+  _ -> ReceiverCall Nothing (D.text name) arguments
+
+typedReceiver :: String -> String -> [D.Doc] -> [D.Doc] -> Receiver
+typedReceiver owner method types = ReceiverCall (Just (D.text owner))
+  (D.text method <> (if null types then mempty else D.delimit 2 "[" "]" types))
+
+chainedReceiver :: Receiver -> [(String,[D.Doc])] -> Receiver
+chainedReceiver = ReceiverChain
+
+-- | A known invocation followed by its trailing lambda.
+trailingReceiver :: Receiver -> [String] -> [D.Doc] -> Receiver
+trailingReceiver = ReceiverBlock
+
+receiverDoc :: Receiver -> D.Doc
+receiverDoc receiver = chainWith receiver [] Nothing
+
 -- | receiver.a(...).b(...): a chain of two or more calls is broken before
 -- each call's dot when it does not fit, the receiver's own call included
 -- (Codecs.stackCodec(...).encode(...)), as scalafmt breaks select chains. A
 -- single call keeps its dot and breaks its arguments.
-chain :: D.Doc -> [(String, [D.Doc])] -> D.Doc
+chain :: Receiver -> [(String, [D.Doc])] -> D.Doc
 chain receiver methods = chainWith receiver methods Nothing
 
--- | receiver.a(...).name { params => body }: a chain ending in a trailing
--- lambda, broken before each dot as chain breaks.
-trailingChain :: D.Doc -> [(String, [D.Doc])] -> String -> [String] -> [D.Doc] -> D.Doc
+-- | receiver.a(...).name { params => body }.
+trailingChain :: Receiver -> [(String, [D.Doc])] -> String -> [String] -> [D.Doc] -> D.Doc
 trailingChain receiver methods name params body = chainWith receiver methods (Just (D.text ("." ++ name ++ " ") <> lambda params body))
 
--- | receiver.name(param => body): a chain ending in a call of one lambda,
--- which scalafmt keeps in the call's parentheses.
-trailingChain' :: D.Doc -> String -> String -> D.Doc -> D.Doc
+-- | A chain ending in one parenthesized lambda.
+trailingChain' :: Receiver -> String -> String -> D.Doc -> D.Doc
 trailingChain' receiver name param body = chainWith receiver []
   (Just (D.group (D.text ("." ++ name ++ "(" ++ param ++ " =>") <> D.nest 2 (D.softline <> body) <> D.softbreak <> D.text ")")))
 
-chainWith :: D.Doc -> [(String, [D.Doc])] -> Maybe D.Doc -> D.Doc
-chainWith receiver methods final
-  | calls <= 1 = receiver <> mconcat [call ("." ++ m) args | (m, args) <- methods] <> maybe mempty id final
-  | otherwise = D.group (start <> D.nest 2 (mconcat [D.softbreak <> call ("." ++ m) args | (m, args) <- methods] <>
-      maybe mempty (D.softbreak <>) final))
+chainWith :: Receiver -> [(String, [D.Doc])] -> Maybe D.Doc -> D.Doc
+chainWith receiver methods final =
+  let (root,prior) = unroll receiver
+      steps = prior ++ methods
+      calls = rootCalls root + length steps + maybe 0 (const 1) final
+      pieces separator = mconcat [separator <> call ("." ++ method) arguments | (method,arguments) <- steps] <>
+        maybe mempty (separator <>) final
+  in if calls <= 1 then rootDoc False root <> pieces mempty
+     else D.group (rootDoc True root <> D.nest 2 (pieces D.softbreak))
   where
-    flat = D.render D.Compact receiver
-    (path, applied) = break (== '(') flat
-    qualified = not (null applied) && '\n' `notElem` flat && last flat == ')' && all (\c -> c `elem` ("._[], " :: String) || c `elem` ['a'..'z'] || c `elem` ['A'..'Z'] || c `elem` ['0'..'9']) path
-    calls = length methods + (if not (null applied) then 1 else 0) + maybe 0 (const 1) final
-    -- The receiver's own method, split from its owner before any type
-    -- arguments (Codecs.scalar[T]).
-    (bare, typeArgs) = break (== '[') path
-    start = case (break (== '.') (reverse bare), parseCall flat) of
-      ((method@(_ : _), '.' : owner@(_ : _)), Just (Apply _ args)) | qualified ->
-        D.text (reverse owner) <> D.nest 2 (D.softbreak <> call ('.' : reverse method ++ typeArgs) (map rebuilt args))
-      _ -> receiver
-    rebuilt tree = case tree of
-      Atom t -> D.text t
-      Apply n args -> call n (map rebuilt args)
-      Select r m args -> chain (rebuilt r) [(m, map rebuilt args)]
+    rootCalls (ReceiverReference _) = 0
+    rootCalls (ReceiverCall {}) = 1
+    rootCalls (ReceiverBlock inner _ _) = max 1 (rootCalls inner)
+    rootCalls (ReceiverChain inner steps) = rootCalls inner + length steps
+    unroll (ReceiverChain inner steps) = let (root,prior) = unroll inner in (root,prior ++ steps)
+    unroll root = (root,[])
+    rootDoc _ (ReceiverReference doc) = doc
+    rootDoc chained (ReceiverCall owner method arguments) = case owner of
+      Nothing -> callWith method arguments
+      Just ownerDoc ->
+        let normal = callWith (ownerDoc <> D.text "." <> method) arguments
+            divided line = ownerDoc <> D.nest 2 (line <> callWith (D.text "." <> method) arguments)
+            opening = D.render D.Compact (ownerDoc <> D.text "." <> method <> D.text "(")
+        in if chained then divided D.softbreak
+           else D.bestFit [normal,D.prefixChoice opening normal (divided D.hardline)]
+    rootDoc chained (ReceiverBlock (ReceiverCall owner method []) parameters body) =
+      (case owner of
+        Nothing -> method
+        Just ownerDoc | chained -> ownerDoc <> D.nest 2 (D.softbreak <> D.text "." <> method)
+                      | otherwise -> ownerDoc <> D.text "." <> method) <> D.text " " <> lambda parameters body
+    rootDoc chained (ReceiverBlock inner parameters body) = rootDoc chained inner <> D.text " " <> lambda parameters body
+    rootDoc chained (ReceiverChain inner steps) = chainWith inner steps Nothing
 
 -- | { ... } over statements.
 block :: [D.Doc] -> D.Doc

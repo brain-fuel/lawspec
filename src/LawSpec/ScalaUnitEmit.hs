@@ -100,14 +100,16 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     -- registry and names are built once.
     scCodecDoc = ScalaExpr.codec dataDeclarations bits
     -- A codec the file names as a value is used by its name (textCodec).
-    codecOf ty = let doc = java (scCodecDoc ty) in maybe doc Doc.text (lookup (Doc.render Doc.Compact doc) [(Doc.render Doc.Compact c, n) | (n, c) <- codecValues])
+    codecOf ty
+      | ty `elem` scalarTypes = ScalaLayout.referenceReceiver (Doc.text (codecValueName ty))
+      | otherwise = java (ScalaExpr.codecReceiver dataDeclarations bits ty)
     scNativeArgument ty value = ScalaLayout.chain (codecOf ty) [("decode", [value])]
     -- The abstract Integer result is tower-polymorphic: adapters may return
     -- any of Int, Long and BigInt, and the runtime bridge discharges the
     -- logical domain.
     scNativeResult ty value | ty == Named "Integer" = ScalaExpr.call "LawSpecScalaCodecs.integer" [value, Doc.text "MachineBits"]
     scNativeResult ty value = ScalaLayout.chain (codecOf ty) [("encode", [value])]
-    scHandler ability = ScalaExpr.call ("LawSpecScala.handler[" ++ scInterface ability ++ "]") [Doc.text "symbols", ScalaExpr.quoted (C.abilityKey ability)]
+    scHandler ability = ScalaLayout.typedReceiver "LawSpecScala" "handler" [Doc.text (scInterface ability)] [Doc.text "symbols",ScalaExpr.quoted (C.abilityKey ability)]
     -- params => body, the body on its own line when it does not fit.
     arrow = ScalaLayout.arrow
     -- An ability's pieces are its owner's: the trait, the production handler
@@ -187,7 +189,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
             (Doc.text "symbols" : [scChecked ty value | (ty,value) <- typed])
           else failingAs failing
             (scNativeResult (expressionType term) (orFail failing (awaitFor (adapterName u identity) (ScalaExpr.call (qualifiedCls ++ "." ++ ScalaData.escaped (adapterName u identity))
-            (map scHandler (usesOf callee) ++ [scNativeArgument ty value | (ty,value) <- typed])))))
+            (map (ScalaLayout.receiverDoc . scHandler) (usesOf callee) ++ [scNativeArgument ty value | (ty,value) <- typed])))))
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (ScalaExpr.call "LawSpecRuntime.withHandlers" [Doc.text "symbols",
@@ -247,7 +249,9 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       , ScalaProperties.reference = java . ScalaExpr.reference
       , ScalaProperties.typeKey = key
       , ScalaProperties.generator = generatorDoc
+      , ScalaProperties.generatorReceiver = ScalaTestHelpers.generatorReceiver bits budget custom (java . ScalaExpr.reference) key
       , ScalaProperties.generatorWithin = \within -> ScalaTestHelpers.generatorDocWithin within bits budget custom (java . ScalaExpr.reference) key
+      , ScalaProperties.generatorWithinReceiver = \within -> ScalaTestHelpers.generatorReceiverWithin within bits budget custom (java . ScalaExpr.reference) key
       , ScalaProperties.nativeArgument = scNativeArgument
       , ScalaProperties.nativeResult = scNativeResult
       , ScalaProperties.handlerInstalls = installs

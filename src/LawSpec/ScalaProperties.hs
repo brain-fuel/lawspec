@@ -51,8 +51,10 @@ data Config = Config
   , reference :: Type -> D.Doc
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
+  , generatorReceiver :: Type -> L.Receiver
   -- A generator drawing a top-level integer from a refinement's range.
   , generatorWithin :: Maybe (Integer, Integer) -> Type -> D.Doc
+  , generatorWithinReceiver :: Maybe (Integer,Integer) -> Type -> L.Receiver
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers in symbols, for each case.
@@ -272,16 +274,17 @@ emitTestsWith split Config{..} unit laws = do
         let inp = domainInput plan
         case strategyOf inp of
           (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> sharedDraw e plan inp strategy (inputId inp) d
-          [] -> pure [bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp)))]) (generationPlan e)
+          [] -> pure [bind (inputId inp) (sampled (generatorWithinReceiver (inputRange machineBits inp) (inputType inp)))]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
               L.conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
             | inp <- inputs e, (strategy, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
-          base = L.trailing (text "Arb.from") ["random"]
+          baseReceiver = L.trailingReceiver (L.callReceiver "Arb.from" []) ["random"]
             ([symbols] ++ concat draws ++ [text "(" <> call "List" [text (inputId inp) | inp <- inputs e] <> text ", symbols)"])
+          base = L.receiverDoc baseReceiver
           predicates = concatMap inputRefinements defaults
           bindingsDoc = text "val (values, symbols) = inputs" : fromValues (inputs e)
-          strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
+          strategy = if null predicates then base else filtered baseReceiver (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
       pure $ testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ strategyChecks ++ handlerInstalls e ++ [check])]
     filtered generator predicate = L.trailingChain generator [] "filter" ["inputs"] predicate
@@ -293,7 +296,10 @@ emitTestsWith split Config{..} unit laws = do
     -- supplier per step.
     sharedDraw expanded requirement inp strategy name draw = do
       let available = map C.quantifiedBinder (inputs expanded) ++ map C.resourceBinder (C.propertyResources (original expanded))
-      graph <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (Draws.planDraw requirement available draw)
+          visible = map generatorBinder (takeWhile
+            ((/= C.binderId (generatorBinder requirement)) . C.binderId . generatorBinder) (generationPlan expanded)) ++
+            map C.resourceBinder (C.propertyResources (original expanded))
+      graph <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (Draws.planDraw requirement visible draw)
       let nodes = Draws.drawNodes graph
           bound step = case step of Draws.FilterDraw _ b _ _ -> [b]; Draws.BindDraw b _ _ -> [b]; _ -> []
           taken = S.fromList ("random" : "symbols" : map (localName . C.binderId)
@@ -319,7 +325,7 @@ emitTestsWith split Config{..} unit laws = do
       helpers <- mapM nodeDoc nodes
       pure (helpers,DrawValue (invoke (Draws.drawRoot graph)))
     drawDoc inp strategy name d = case d of
-      C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))))
+      C.DrawAny ty aim -> pure ([], DrawValue (sampled (maybe (generatorReceiver ty) (\range -> generatorWithinReceiver (Just range) ty) (drawRange machineBits inp ty aim))))
       C.DrawOneOf _ values -> pure ([], DrawValue (call "LawSpecDraws.oneOf" (text "random" : [supplier (expr v) | v <- values])))
       C.DrawFrequency alternatives -> do
         options <- mapM (\(k, (w, a)) -> do
@@ -542,7 +548,7 @@ emitTestsWith split Config{..} unit laws = do
                     [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
                     [scalar]
                 (owner', method', args') = strategy
-                added = L.trailingChain (text owner') [(method', args')] "map" ["drawn"]
+                added = L.trailingChain (L.referenceReceiver (text owner')) [(method', args')] "map" ["drawn"]
                   [braced (L.condition "if" (text "drawn.error != null")) [state (text "values")] <> text " else " <>
                    L.block [state (text "values :+ drawn.requireValue()")]]
             pure $ L.trailing (call "Arb.flatMap" [prior]) ["inputs"]
@@ -580,10 +586,13 @@ emitTestsWith split Config{..} unit laws = do
             [] -> gen
             hints -> call "Arb.choice" [call "Arb.element" [L.block [symbols, call "List" hints]], gen]
           -- The inputs drawn together, with fresh symbols (LawSpecTesting).
-          base = call "LawSpecTesting.inputs" [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]
+          arguments = [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]
+          base = call "LawSpecTesting.inputs" arguments
           predicates = concatMap inputRefinements (inputs e)
           bindingsDoc = text "val (values, symbols) = inputs" : fromValues (inputs e)
-          strategy = if null predicates then base else filtered base (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
+          strategy = if null predicates then base else
+            L.trailingChain (L.referenceReceiver (text "LawSpecTesting")) [("inputs",arguments)] "filter" ["inputs"]
+              (bindingsDoc ++ [L.conjunctionStatement (map (truth . expr) predicates)])
       in testFunction (fn ++ "_property: " ++ label) [L.trailingCall "LawSpecProperty.checkAll" [quoted label, number (cases (generation e)), strategy] ["inputs"]
         (bindingsDoc ++ handlerInstalls e ++ [check])]
     domain e (index,plan) = do

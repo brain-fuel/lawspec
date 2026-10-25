@@ -709,7 +709,7 @@ scalaMailbox bits datas b = do
         , comment 2 "A received value in its native type." <>
           SL.equalsBody (D.text ("private def toNative(value: Object): " ++ native))
             (D.group (D.text "if (logical)" <> D.nest 2 (D.softline <>
-               SL.call ("LawSpecScala.cast[" ++ native ++ "]") [SL.chain (D.text name) [("conversion", []), ("toNative", [D.text "value.asInstanceOf[LawSpecRuntime.Value]"])]]) <>
+               SL.call ("LawSpecScala.cast[" ++ native ++ "]") [SL.chain (SL.referenceReceiver (D.text name)) [("conversion", []), ("toNative", [D.text "value.asInstanceOf[LawSpecRuntime.Value]"])]]) <>
                D.softline <> D.text ("else LawSpecScala.cast[" ++ native ++ "](value)")))
         , comment 2 "Queues value without waiting." <>
           SL.equalsBody (D.text ("def send(value: " ++ native ++ "): Unit"))

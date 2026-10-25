@@ -51,7 +51,7 @@ emitScalaDefinitions layout bits declarations units = do
   bridge <- adapterBridge
   pure (bodies ++ native ++ bridge)
   where
-    codecOf = Native.scalaCodecDocIn (E.schemaName, E.bitsName) (D.text "symbols") declarations
+    codecOf = Native.scalaCodecReceiverIn (E.schemaName, E.bitsName) (D.text "symbols") declarations
     -- The object's schema and machine width, when its methods use them.
     members methods = [D.text "private val Schema = LawSpecDataSchema.create()" | uses "Schema" methods] ++
       [D.text ("private val MachineBits = " ++ show bits) | uses "MachineBits" methods] ++ methods
@@ -86,7 +86,7 @@ emitScalaDefinitions layout bits declarations units = do
               failure = lookup (operationName op) (abilityFailures declared)
           codecs <- mapM codecOf args
           resultCodec <- codecOf result
-          let invocation = L.chain (handlerOf (operationAbility op) interface) [(Native.escaped (operationName op),
+          let invocation = L.chain (handlerReceiver (operationAbility op) interface) [(Native.escaped (operationName op),
                 [L.chain codec [("decode", [D.text ("value" ++ show i)])] | (i, codec) <- zip [0::Int ..] codecs])]
               unwrapped = if failure == Nothing then invocation else call "LawSpecScala.orFail" [invocation]
           -- An operation that fails with E: a Left becomes the failure.
@@ -110,7 +110,7 @@ emitScalaDefinitions layout bits declarations units = do
               -- its stage's timeout and hedge when it has them.
               body
                 | declarationAsync adapter = failing owner adapter (call "LawSpecRuntime.awaitStep"
-                    [D.text "symbols", arrow "()" (L.chain (call "scala.jdk.javaapi.FutureConverters.asJava" [invocation]) [("toCompletableFuture", [])]),
+                    [D.text "symbols", arrow "()" (L.chain (L.callReceiver "scala.jdk.javaapi.FutureConverters.asJava" [invocation]) [("toCompletableFuture", [])]),
                      arrow "nativeValue" (encode (unwrap (D.text "nativeValue")))])
                 | otherwise = failing owner adapter (encode (unwrap invocation))
           pure (L.equalsBody (L.parameters (D.text ("def " ++ Jvm.kotlinAdapterBridge identity)) (parametersOf (length args)) <> D.text ": LawSpecRuntime.Value") body)
@@ -123,7 +123,8 @@ emitScalaDefinitions layout bits declarations units = do
     call = L.call
     arrow = L.arrow
     -- A handler from symbols, as its ability's interface.
-    handlerOf ability interface = call ("LawSpecScala.handler[" ++ interface ++ "]") [D.text "symbols", E.quoted (abilityKey ability)]
+    handlerReceiver ability interface = L.typedReceiver "LawSpecScala" "handler" [D.text interface] [D.text "symbols",E.quoted (abilityKey ability)]
+    handlerOf ability interface = L.receiverDoc (handlerReceiver ability interface)
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value))
     typedJvm = emitJvmTyped ScalaStyle declarations units
     -- A typed definition whose types all convert directly calls its typed
@@ -161,11 +162,11 @@ emitScalaDefinitions layout bits declarations units = do
           installs = [call "LawSpecRuntime.installHandlers" [D.text "symbols",
             call "java.util.Map.of[String, Object]" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name) <- handlers])] | not (null handlers)]
           signature = L.parameters (D.text ("def " ++ Native.escaped (declarationName declaration))) parameters <> D.text ": " <> resultType <> D.text " = "
-          input i codec = [assign ("codec" ++ show i) codec,
+          input i codec = [assign ("codec" ++ show i) (L.receiverDoc codec),
             D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ")")]
           body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
-             assign "resultCodec" resultCodec,D.text "resultCodec.decode(result)"]
+             assign "resultCodec" (L.receiverDoc resultCodec),D.text "resultCodec.decode(result)"]
           context = E.quoted (idText (declarationId declaration) ++ ": ")
           -- A Fail ability's failure passes through, to the attempt that awaits it.
           guarded = D.text "try " <> D.block 2 (D.joinWith D.hardline body) <>

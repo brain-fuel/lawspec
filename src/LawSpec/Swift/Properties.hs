@@ -399,7 +399,10 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
     sharedDraw outer requirement strategy path draw = do
       let available = map C.quantifiedBinder (C.propertyInputs (plannedProperty planned)) ++
             map C.resourceBinder (C.propertyResources (plannedProperty planned))
-      graph <- Draws.planDraw requirement available draw
+          visible = map generatorBinder (takeWhile
+            ((/= C.binderId (generatorBinder requirement)) . C.binderId . generatorBinder) (generatorRequirements planned)) ++
+            map C.resourceBinder (C.propertyResources (plannedProperty planned))
+      graph <- Draws.planDraw requirement visible draw
       let nodes = Draws.drawNodes graph
           helperNames = fst (claimAll (scopeWith (reservedLocals ++ map (outer . C.binderId) available))
             [camel strategy ++ "Draw" ++ path ++ "Node" ++ show (Draws.drawNumber node) | node <- nodes])

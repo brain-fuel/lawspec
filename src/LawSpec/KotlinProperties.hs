@@ -275,7 +275,10 @@ emitTests Config{..} unit laws = do
     -- supplier per step.
     sharedDraw expanded requirement inp strategy name draw = do
       let available = map C.quantifiedBinder (inputs expanded) ++ map C.resourceBinder (C.propertyResources (original expanded))
-      graph <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (Draws.planDraw requirement available draw)
+          visible = map generatorBinder (takeWhile
+            ((/= C.binderId (generatorBinder requirement)) . C.binderId . generatorBinder) (generationPlan expanded)) ++
+            map C.resourceBinder (C.propertyResources (original expanded))
+      graph <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (Draws.planDraw requirement visible draw)
       let nodes = Draws.drawNodes graph
           bound step = case step of Draws.FilterDraw _ b _ _ -> [b]; Draws.BindDraw b _ _ -> [b]; _ -> []
           taken = S.fromList ("random" : "symbols" : map (localName . C.binderId)
