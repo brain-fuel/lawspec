@@ -29,7 +29,7 @@ import Data.Maybe (listToMaybe, mapMaybe)
 import qualified LawSpec.BeamNames as Names
 import LawSpec.Backend (lawCommentLines)
 import qualified LawSpec.Backend as Backend
-import LawSpec.Naming (displayLabel, exampleTestSuffix, boundaryTestSuffix, uniqueNames)
+import LawSpec.Naming (displayLabel, exampleTestSuffix, boundaryTestSuffix, uniqueNames, typeWords)
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
 import LawSpec.Common (Location)
 
@@ -132,11 +132,39 @@ emit target layout bindings plan = do
       -- Share factory code across the unit, while passing each case's live
       -- symbol context to every invocation. No native value is retained.
       covers <- mapM caseCover [p | p <- properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) == Nothing]
-      literalPlan <- Literals.planLiterals (concatMap Literals.coverLiterals covers ++
+      literalPlan <- Literals.planRootLiterals (concatMap Literals.coverLiterals covers ++
         [value | p <- properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) == Nothing,
           requirement <- generatorRequirements p, value <- generatorBoundaries requirement])
       literalHelpers <- literalFunctions "finite" literalPlan
-      bodies <- concat <$> sequence [lawTests literalPlan unit n p | (n,p) <- zip names properties]
+      let descendants term = term : concatMap descendants (C.children term)
+          referenceCounts = M.fromListWith (+) [(C.expressionType term, 1 :: Int) | p <- properties,
+            C.harnessSkip (C.propertyHarness (plannedProperty p)) == Nothing, expression <- C.propertyExpressions (plannedProperty p), term <- descendants expression]
+          referenceDocs = [(ty,doc) | ty <- M.keys referenceCounts, Right doc <- [E.typeReference ty]]
+          referenceNames = uniqueNames ["type_" ++ Names.functionAtom (unwords (typeWords ty)) | (ty,_) <- referenceDocs]
+          -- Share structured descriptor data when repeated uses save source,
+          -- including the helper's definition and source-derived call name.
+          sharedReferences = [((ty,doc),n) | ((ty,doc),n) <- zip referenceDocs referenceNames,
+            let uses = M.findWithDefault 0 ty referenceCounts
+                sourceCost value = length (D.render D.Compact value),
+            uses * sourceCost doc > sourceCost (E.function n [] [doc]) + uses * sourceCost (E.call n [])]
+          referenceTable = M.fromList [(ty, E.call n []) | ((ty,_),n) <- sharedReferences]
+          referenceFor ty = maybe (E.typeReference ty) Right (M.lookup ty referenceTable)
+          referenceHelpers = [E.function n [] [doc] | ((_,doc),n) <- sharedReferences]
+          constructors = M.keys (M.fromList [((C.expressionType term, tag), ()) | p <- properties,
+            C.harnessSkip (C.propertyHarness (plannedProperty p)) == Nothing, expression <- C.propertyExpressions (plannedProperty p), term <- descendants expression,
+            C.Construct tag _ <- [C.expressionNode term]])
+          constructorNames = uniqueNames ["make_" ++ Names.functionAtom (reverse (takeWhile (/= ':') (reverse (C.idText tag)))) | (_,tag) <- constructors]
+          constructorTable = M.fromList (zip constructors constructorNames)
+          constructIn active ty tag fields = case M.lookup (ty,tag) constructorTable of
+            Just name -> pure (E.call name [E.array fields,active])
+            Nothing -> do
+              ref <- referenceFor ty
+              pure (E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText tag),E.array fields,ref,active])
+      constructorHelpers <- forM (zip constructors constructorNames) $ \((ty,tag),name) -> do
+        ref <- referenceFor ty
+        pure (E.function name [D.text "Fields",D.text "Schema"]
+          [E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText tag),D.text "Fields",ref,D.text "Schema"]])
+      bodies <- concat <$> sequence [lawTests literalPlan referenceFor constructIn unit n p | (n,p) <- zip names properties]
       let modelTests = [E.function (ModelChecks.checkName check ++ "_test_") [] [E.array
             [let test = E.tuple [E.string (ModelChecks.checkLabel check), E.lambda []
                    (E.remote (Definitions.adapterModule unit ++ "_lawspec_models") (ModelChecks.checkName check) [])]
@@ -144,7 +172,7 @@ emit target layout bindings plan = do
             | check <- models]
       measurements <- sequence [benchmarkTest unit n label body | (n,(label,body)) <- zip benchmarkNames measured]
       pure (Artifact (testSupport ++ name ++ ".erl")
-        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name (exports ++ indexedExports) (bodies ++ literalHelpers ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite ++ gleamFactories))) "generated" "test" :
+        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name (exports ++ indexedExports) (bodies ++ literalHelpers ++ referenceHelpers ++ constructorHelpers ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite ++ gleamFactories))) "generated" "test" :
         [Elixir.unitTests layout unit [(n, allowance n, described n) | n <- allNames] | target == "elixir"] ++
         [Gleam.unitTests layout unit [(n,suffixes,n `elem` skips,n `elem` benchmarkNames) | (n,suffixes) <- counts] | target == "gleam"])
     benchmarkTest unit name label expression = do
@@ -157,14 +185,14 @@ emit target layout bindings plan = do
       pure (E.function (name ++ "_test_") [] [E.array
         [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
     single h = C.harnessSkip h /= Nothing || C.harnessKnownDiscrepancy h /= Nothing
-    lawTests _literalPlan unit name planned
+    lawTests _literalPlan _referenceFor _constructIn unit name planned
       | Just reason <- C.harnessSkip (C.propertyHarness (plannedProperty planned)) =
           let law = plannedProperty planned
               label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName law
           in pure [E.linkComment (displayLabel (C.propertyName law) ++ ", skipped") (propertyLink law) <>
             E.function (name ++ "_test_") [] [E.array [E.tuple [E.string (firstDescriptionOf plan planned),
             E.tuple [E.atom "skip",E.binary label,E.binary reason]]]]]
-    lawTests literalPlan unit name planned = do
+    lawTests literalPlan referenceFor constructIn unit name planned = do
       let law = plannedProperty planned
           parameters = map (C.quantifiedBinder) (C.propertyInputs law)
           resources = C.propertyResources law
@@ -175,7 +203,8 @@ emit target layout bindings plan = do
           resourceAliases = zip (map (C.binderId . C.resourceBinder) resources) (drop (length parameters) sourceVariables)
           local identity = maybe (error ("unbound BEAM law binder: " ++ C.idText identity)) id
             (lookup identity (aliases ++ resourceAliases))
-          renderWith active = Expr.renderExpression bits active symbols local (Definitions.external units symbols)
+          renderWith active = Expr.renderExpressionWithConstruction (D.text (show bits)) referenceFor
+            (Right . E.binary . Backend.scalarTypeKey) constructIn active symbols local (Definitions.external units symbols)
           render = renderWith schema
           label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName law
           shown = displayLabel (C.propertyName law)

@@ -1,7 +1,7 @@
 -- | Core expressions become native Erlang expressions. All shared semantics
 -- go through the BEAM runtime; this module never reads source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, proposition, assertion, assertionLabelled) where
+module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, renderExpressionWithConstruction, proposition, assertion, assertionLabelled) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Core.ListLiteral (constantListElements)
@@ -21,7 +21,20 @@ renderExpression bits = renderExpressionWithContext (D.text (show bits))
 renderExpressionWithContext :: D.Doc -> (C.Type -> Either String D.Doc)
   -> (C.Type -> Either String D.Doc) -> D.Doc -> D.Doc -> (C.Id -> String)
   -> (D.Doc -> C.Expr -> [D.Doc] -> Either String D.Doc) -> C.Expr -> Either String D.Doc
-renderExpressionWithContext width reference key initialSchema symbols outer external root = renderScoped (0 :: Int) initialSchema root
+renderExpressionWithContext width reference key = renderExpressionWithConstruction width reference key construct
+  where
+    construct schema ty tag values = do
+      ref <- reference ty
+      pure (E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText tag),E.array values,ref,schema])
+
+-- | A consumer may retain checked constructor metadata in a shared helper.
+-- Every call still evaluates its fields and validates in its current schema.
+renderExpressionWithConstruction :: D.Doc -> (C.Type -> Either String D.Doc)
+  -> (C.Type -> Either String D.Doc)
+  -> (D.Doc -> C.Type -> C.Id -> [D.Doc] -> Either String D.Doc)
+  -> D.Doc -> D.Doc -> (C.Id -> String)
+  -> (D.Doc -> C.Expr -> [D.Doc] -> Either String D.Doc) -> C.Expr -> Either String D.Doc
+renderExpressionWithConstruction width reference key construct initialSchema symbols outer external root = renderScoped (0 :: Int) initialSchema root
   where
     binders = nubBy (\a b -> C.binderId a == C.binderId b) [binder | term <- terms root, binder <- case C.expressionNode term of
       C.AllElements _ b _ -> [b]
@@ -58,8 +71,7 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
           C.Local identity -> pure (D.text (local identity))
           C.Construct tag args -> do
             values <- mapM render args
-            ref <- reference (C.expressionType term)
-            pure (E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText tag),E.array values,ref,schema])
+            construct schema (C.expressionType term) tag values
           C.Match scrutinee branches -> do
             value <- render scrutinee
             cases <- mapM branch branches
