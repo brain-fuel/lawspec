@@ -736,7 +736,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             [":such_that(", ":frequency(", "lists:nth(", "lawspec_beam_generators:check_drawn",
-             "_Base", "_It", "340282366920938463463374607431768211456",
+             "fun(Base)", "fun(It)", "340282366920938463463374607431768211456",
              "examples are outside the strategy", "lawspec_beam_finite:plan_cases"]
           body `shouldSatisfy` (not . isInfixOf "<<\"neverDrawn\"/utf8>>")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
