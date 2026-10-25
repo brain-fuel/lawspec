@@ -7,6 +7,9 @@ decision/python/runtime/lawspec_prolog_tests.py/class/_ExecutionStatus:
 decision/python/runtime/lawspec_prolog_tests.py/function/_run_selected:
   digest: sha256:f10c54dbbaa3698c
   verdict: pending
-decision/python/runtime/lawspec_prolog_tests.py/function/run_case:
-  digest: sha256:612c6739c8a443a7
+decision/python/runtime/lawspec_prolog_tests.py/function/case_tests:
+  digest: sha256:d3cafc0b05d23961
+  verdict: pending
+decision/python/runtime/lawspec_prolog_tests.py/function/run_native_case:
+  digest: sha256:f04e65141a6cdc53
   verdict: pending

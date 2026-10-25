@@ -22,6 +22,9 @@ ledger/DEC-async-native-tasks:
 ledger/DEC-beam-property-libraries:
   digest: sha256:2838ceeeaf43550f
   verdict: pending
+ledger/DEC-blake3-port:
+  digest: sha256:4bb0499e582c1747
+  verdict: pending
 ledger/DEC-canon-constructor-haddock:
   digest: sha256:8c62b83ed7de1d19
   verdict: pending
@@ -48,6 +51,12 @@ ledger/DEC-clojure-property-library:
   verdict: pending
 ledger/DEC-completed-run-attestation:
   digest: sha256:a99a1f06b610fe01
+  verdict: pending
+ledger/DEC-component-edn:
+  digest: sha256:d70e421e1892ec5c
+  verdict: pending
+ledger/DEC-content-identity:
+  digest: sha256:0bc3d54d152c2f56
   verdict: pending
 ledger/DEC-csharp-over-fsharp:
   digest: sha256:87a4fa72b2aaa520
@@ -141,6 +150,9 @@ ledger/DEC-indexed-families-as-evidence:
   verdict: pending
 ledger/DEC-jvm-readable-output:
   digest: sha256:2b7541a218b812db
+  verdict: pending
+ledger/DEC-known-discrepancy:
+  digest: sha256:ae12c7e686822773
   verdict: pending
 ledger/DEC-law-set-analysis:
   digest: sha256:7b2190bf82b9eded
@@ -241,6 +253,9 @@ ledger/DEC-refuted-status:
 ledger/DEC-release-cadence:
   digest: sha256:f925fff0d09f262f
   verdict: pending
+ledger/DEC-remote-semantic-identity:
+  digest: sha256:b95c100e82f6ab41
+  verdict: pending
 ledger/DEC-rust-readable-output:
   digest: sha256:3fc90d3ec7275e8d
   verdict: pending
@@ -252,6 +267,9 @@ ledger/DEC-scala-property-library:
   verdict: pending
 ledger/DEC-sessions-by-construction:
   digest: sha256:1280ee4010f7de72
+  verdict: pending
+ledger/DEC-shared-finite-proof-bodies:
+  digest: sha256:04f6ee7b09a946c3
   verdict: pending
 ledger/DEC-shrink-within-domain:
   digest: sha256:8fa807752284e802
@@ -267,6 +285,9 @@ ledger/DEC-smt-numbers:
   verdict: pending
 ledger/DEC-smt-recursive-definitions:
   digest: sha256:85e6651d58d344b7
+  verdict: pending
+ledger/DEC-smt-semantic-receipts:
+  digest: sha256:d2dd5059b311de29
   verdict: pending
 ledger/DEC-smt-text:
   digest: sha256:1aab10434a2157ab
@@ -309,6 +330,9 @@ ledger/DEC-tests-cite-requirements:
   verdict: pending
 ledger/DEC-total-definitions:
   digest: sha256:2ae4bc08508bb6fd
+  verdict: pending
+ledger/DEC-triple-quoted-text:
+  digest: sha256:3a5bc8634b967956
   verdict: pending
 ledger/DEC-typed-core-boundary:
   digest: sha256:503c0f7403f19020

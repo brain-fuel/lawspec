@@ -49,6 +49,9 @@ decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/fieldPat
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/fieldRegexSamples:
   digest: sha256:dfda370e18987dde
   verdict: pending
+decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/finiteCases:
+  digest: sha256:f502b2be5ccda03c
+  verdict: pending
 decision/haskell/src/LawSpec/Testing.hs/module/LawSpec.Testing/function/finiteScalars:
   digest: sha256:8a68cd48227308c1
   verdict: pending

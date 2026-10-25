@@ -7,8 +7,8 @@ decision/python/runtime/lawspec_harness.py/function/benchmark:
 decision/python/runtime/lawspec_harness.py/function/check_drawn:
   digest: sha256:e2475d5598ce38e3
   verdict: pending
-decision/python/runtime/lawspec_harness.py/function/known_failing:
-  digest: sha256:a393a4adbf537aa8
+decision/python/runtime/lawspec_harness.py/function/known_discrepancy:
+  digest: sha256:3fed7f33afa4d058
   verdict: pending
 decision/python/runtime/lawspec_harness.py/function/pytest_collection_modifyitems:
   digest: sha256:1cba09168c3e5186

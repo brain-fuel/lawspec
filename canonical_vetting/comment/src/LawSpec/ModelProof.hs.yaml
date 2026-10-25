@@ -16,6 +16,9 @@ decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/de
 decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/invariantClaims:
   digest: sha256:b309249f363aabf8
   verdict: pending
+decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/modelAnswerChecks:
+  digest: sha256:2d18cd2d8c5a0c69
+  verdict: pending
 decision/haskell/src/LawSpec/ModelProof.hs/module/LawSpec.ModelProof/function/modelTasks:
   digest: sha256:355ec75f3efe77e5
   verdict: pending

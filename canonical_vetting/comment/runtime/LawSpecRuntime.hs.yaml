@@ -58,6 +58,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Fail:
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Failure:
   digest: sha256:ec639a7a512f5f49
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/FiniteCover:
+  digest: sha256:191d6d3f5b7694c3
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/data/Gate:
   digest: sha256:fe9f4ad138f078ac
   verdict: pending
@@ -597,6 +600,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/scenar
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/scenarioSends:
   digest: sha256:38f1dda0b8c6d26e
+  verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchElements:
+  digest: sha256:c86dbc619dd7b19a
   verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/searchFile:
   digest: sha256:b242cae7abaaeecd

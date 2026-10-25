@@ -73,6 +73,9 @@ decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Proposition:
 decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Quantifier:
   digest: sha256:4d337e3d24914cbc
   verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/ResourceSharingScope:
+  digest: sha256:e40f5b6549159876
+  verdict: pending
 decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Session:
   digest: sha256:995727a0e351c376
   verdict: pending

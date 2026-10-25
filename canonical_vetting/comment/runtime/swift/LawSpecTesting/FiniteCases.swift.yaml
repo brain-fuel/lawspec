@@ -1,0 +1,15 @@
+decision/swift/runtime/swift/LawSpecTesting/FiniteCases.swift/enum/FiniteCover/func/factories:
+  digest: sha256:b4344913b6bf2795
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/FiniteCases.swift/enum/InvocationGroup:
+  digest: sha256:b46bde795c7c9ea0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/FiniteCases.swift/struct/FiniteCase:
+  digest: sha256:ecebd5d4dce9d3e0
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/FiniteCases.swift/struct/FiniteCases:
+  digest: sha256:26fc9129c2b0310a
+  verdict: pending
+decision/swift/runtime/swift/LawSpecTesting/FiniteCases.swift/struct/Invocation/func/run:
+  digest: sha256:26317507f23b0063
+  verdict: pending

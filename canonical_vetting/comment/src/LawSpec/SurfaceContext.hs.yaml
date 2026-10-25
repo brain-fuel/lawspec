@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/SurfaceContext.hs/module/LawSpec.SurfaceContext:
+  digest: sha256:a7c74e69ba0dc5ee
+  verdict: pending
+decision/haskell/src/LawSpec/SurfaceContext.hs/module/LawSpec.SurfaceContext/function/contextFor:
+  digest: sha256:065e8c7d061b1d7a
+  verdict: pending
+decision/haskell/src/LawSpec/SurfaceContext.hs/module/LawSpec.SurfaceContext/function/mentionedNames:
+  digest: sha256:1cbebd8c6a1cc549
+  verdict: pending

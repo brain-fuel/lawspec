@@ -316,6 +316,9 @@ decision/python/runtime/lawspec_runtime.py/function/_execute:
 decision/python/runtime/lawspec_runtime.py/function/_execute_parallel:
   digest: sha256:49799970e9fa0b97
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/_finite_cover_rows:
+  digest: sha256:471e866d5aa33df9
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/_happened_before:
   digest: sha256:f2a93891ad3f1913
   verdict: pending
@@ -412,6 +415,9 @@ decision/python/runtime/lawspec_runtime.py/function/either_arguments:
 decision/python/runtime/lawspec_runtime.py/function/equal:
   digest: sha256:246e31c37eca582c
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/finite_cases:
+  digest: sha256:b17288b0785f95f1
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/generated:
   digest: sha256:21368334f083f74e
   verdict: pending
@@ -448,6 +454,9 @@ decision/python/runtime/lawspec_runtime.py/function/regex_matches:
 decision/python/runtime/lawspec_runtime.py/function/register_clock_ability:
   digest: sha256:f075f500756fe733
   verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/register_finite_cases:
+  digest: sha256:c38905e462da7a7a
+  verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/register_secure_network:
   digest: sha256:5c826ebf16364f69
   verdict: pending
@@ -468,6 +477,9 @@ decision/python/runtime/lawspec_runtime.py/function/run_workflow:
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/sample:
   digest: sha256:88196bab4c876723
+  verdict: pending
+decision/python/runtime/lawspec_runtime.py/function/search_elements:
+  digest: sha256:30cf1bf7c7b2bac2
   verdict: pending
 decision/python/runtime/lawspec_runtime.py/function/search_remember:
   digest: sha256:f43ac4ece096781d

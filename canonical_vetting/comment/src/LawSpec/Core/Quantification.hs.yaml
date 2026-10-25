@@ -1,9 +1,18 @@
 decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification:
   digest: sha256:d0ce61037f8b1174
   verdict: pending
+decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/candidateSelection:
+  digest: sha256:cf279345f47ee2f5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/finiteTerms:
+  digest: sha256:2f4c8c00e8a3a186
+  verdict: pending
 decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/lowerWitnessProof:
   digest: sha256:010648cc6a41e765
   verdict: pending
 decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/lowerWitnessProposition:
   digest: sha256:041829b309187450
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Quantification.hs/module/LawSpec.Core.Quantification/function/proofLoop:
+  digest: sha256:a35a64241035902c
   verdict: pending

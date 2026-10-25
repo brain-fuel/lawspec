@@ -25,6 +25,9 @@ decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitTa
 decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/escapePlan:
   digest: sha256:a62563fc8e19e7c5
   verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/javaProduct:
+  digest: sha256:fd3e723e812cef66
+  verdict: pending
 decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/nativeHandles:
   digest: sha256:ced9d9bfdb06f0de
   verdict: pending

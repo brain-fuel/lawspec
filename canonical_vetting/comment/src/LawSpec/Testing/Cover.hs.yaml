@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Testing/Cover.hs/module/LawSpec.Testing.Cover:
+  digest: sha256:384ec7685625d562
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Cover.hs/module/LawSpec.Testing.Cover/data/CaseDomain:
+  digest: sha256:91dcd9f6547f38a7
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Cover.hs/module/LawSpec.Testing.Cover/data/FiniteCover:
+  digest: sha256:3238701db88add97
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Cover.hs/module/LawSpec.Testing.Cover/function/compressCases:
+  digest: sha256:455895808225660e
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Cover.hs/module/LawSpec.Testing.Cover/function/coverCases:
+  digest: sha256:c9da18fb95b97892
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Cover.hs/module/LawSpec.Testing.Cover/function/mapCoverValues:
+  digest: sha256:2659d50741841627
+  verdict: pending

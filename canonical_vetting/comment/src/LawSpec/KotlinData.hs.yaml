@@ -34,6 +34,9 @@ decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/ko
 decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinCodecDocWithContext:
   digest: sha256:bf31fbdc6c6ac2f7
   verdict: pending
+decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinDataName:
+  digest: sha256:441948cd49844c69
+  verdict: pending
 decision/haskell/src/LawSpec/KotlinData.hs/module/LawSpec.KotlinData/function/kotlinDataType:
   digest: sha256:91f56320e676a8ea
   verdict: pending

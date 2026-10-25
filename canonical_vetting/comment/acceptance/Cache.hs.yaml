@@ -7,6 +7,9 @@ decision/haskell/acceptance/Cache.hs/module/Cache/function/environmentNames:
 decision/haskell/acceptance/Cache.hs/module/Cache/function/lookupResult:
   digest: sha256:223fb6505ea4ea83
   verdict: pending
+decision/haskell/acceptance/Cache.hs/module/Cache/function/meaningKey:
+  digest: sha256:b6f9daa6ff20aa27
+  verdict: pending
 decision/haskell/acceptance/Cache.hs/module/Cache/function/runKey:
   digest: sha256:7ff875f912c88cfc
   verdict: pending

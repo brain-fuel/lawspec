@@ -10,8 +10,8 @@ decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing
 decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/higher:
   digest: sha256:090b57b01b7b3141
   verdict: pending
-decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/knownFailing:
-  digest: sha256:809019cc7274d229
+decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/knownDiscrepancy:
+  digest: sha256:06f6804e041cb33b
   verdict: pending
 decision/fsharp/runtime/dotnet/LawSpec.Testing/Harness.fs/module/LawSpec.Testing.Harness/function/markHarnessFailure:
   digest: sha256:bb4a8c8b9748134b

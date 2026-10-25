@@ -19,6 +19,9 @@ decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definit
 decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/declarationFailure:
   digest: sha256:091b4b5ea6064d65
   verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/definitionLabel:
+  digest: sha256:0dbfe55d95cd60b5
+  verdict: pending
 decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/emitAdapters:
   digest: sha256:f310a4f925c3bf85
   verdict: pending
@@ -30,6 +33,9 @@ decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definit
   verdict: pending
 decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/nativeSignature:
   digest: sha256:5aa7c56941585c5d
+  verdict: pending
+decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/function/xmlComment:
+  digest: sha256:d22982226f4031b1
   verdict: pending
 decision/haskell/src/LawSpec/DotNet/Definitions.hs/module/LawSpec.DotNet.Definitions/type/Calls:
   digest: sha256:0338e2d0645aa697

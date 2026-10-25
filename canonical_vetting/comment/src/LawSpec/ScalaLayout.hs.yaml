@@ -7,6 +7,12 @@ decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/bind:
   digest: sha256:ff8db5ef0c93d8aa
   verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/bindBlock:
+  digest: sha256:92a7d14ca9cf981a
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/bindControl:
+  digest: sha256:553175bbb018a87a
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/block:
   digest: sha256:0fcae5910e422b48
   verdict: pending

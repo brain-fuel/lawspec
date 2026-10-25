@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/Core/ResourceScope.hs/module/LawSpec.Core.ResourceScope:
+  digest: sha256:cf827c3ef1141c77
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ResourceScope.hs/module/LawSpec.Core.ResourceScope/function/resourceSharingKey:
+  digest: sha256:e6123422f2679d2f
+  verdict: pending
+decision/haskell/src/LawSpec/Core/ResourceScope.hs/module/LawSpec.Core.ResourceScope/function/validateResourceSharing:
+  digest: sha256:76d8f799e691bed0
+  verdict: pending

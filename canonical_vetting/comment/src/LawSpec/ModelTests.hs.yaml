@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests:
   digest: sha256:b855f1376d2141fc
   verdict: pending
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/data/Callback:
+  digest: sha256:9ed58293b1a10beb
+  verdict: pending
 decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/goCallback:
   digest: sha256:0c7e2d33cf9f2e57
   verdict: pending

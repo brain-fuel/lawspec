@@ -16,8 +16,8 @@ decision/go/runtime/lawspec_harness.go/function/lsHarnessHarnessMessage:
 decision/go/runtime/lawspec_harness.go/function/lsHarnessKey:
   digest: sha256:8d8b0984f1b74adf
   verdict: pending
-decision/go/runtime/lawspec_harness.go/function/lsHarnessKnownFailing:
-  digest: sha256:cb953069e419d566
+decision/go/runtime/lawspec_harness.go/function/lsHarnessKnownDiscrepancy:
+  digest: sha256:17929a247e57c9d8
   verdict: pending
 decision/go/runtime/lawspec_harness.go/function/lsHarnessOnce:
   digest: sha256:67a9ddad6b1a634c
