@@ -233,7 +233,10 @@ fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, 
     (report, unmet)
 }
 
-fn once(law: &str, timeout: u64, test: fn() -> ls::Result<()>) -> Result<(), (String, bool)> {
+fn once<F>(law: &str, timeout: u64, test: F) -> Result<(), (String, bool)>
+where
+    F: FnOnce() -> ls::Result<()> + Send + std::panic::UnwindSafe + 'static,
+{
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let outcome = std::panic::catch_unwind(test);
@@ -269,7 +272,7 @@ fn once(law: &str, timeout: u64, test: fn() -> ls::Result<()>) -> Result<(), (St
 }
 
 /// Run one law's test under its harness settings.
-pub fn run(
+pub fn run<F>(
     law: &str,
     name: &str,
     timeout: u64,
@@ -277,8 +280,12 @@ pub fn run(
     retries: u32,
     covers: &[(u32, &str)],
     observed: bool,
-    test: fn() -> ls::Result<()>,
-) -> ls::Result<()> {
+    test: F,
+) -> ls::Result<()>
+where
+    F: Fn() -> ls::Result<()> + Send + Sync + std::panic::RefUnwindSafe + 'static,
+{
+    let test = std::sync::Arc::new(test);
     let mut attempts = 0;
     let mut flaky = false;
     let mut report = Vec::new();
@@ -290,7 +297,10 @@ pub fn run(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(law);
-            if let Err(error) = once(law, timeout, test) {
+            if let Err(error) = once(law, timeout, {
+                let test = test.clone();
+                move || test()
+            }) {
                 failure = Some(error);
                 break;
             }

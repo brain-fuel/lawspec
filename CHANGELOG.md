@@ -14,7 +14,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checked proposition, independently of its execution plan.
 
 - Finite test plans store ordered shared prefixes and inclusive integer ranges.
-  JavaScript, TypeScript, Python, Go and Haskell enumerate that data at runtime and register
+  JavaScript, TypeScript, Python, Go, Haskell and Rust enumerate that data at runtime and register
   each case separately, with fresh values and a fresh context for every run.
   In the handler-bindings suite, the JavaScript test file shrinks from 1,096,011
   lines to 2,771 and Python from 1,127,192 to 3,026. Both still execute all 8,012
@@ -24,7 +24,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no executed child no longer supplies execution evidence. Haskell shrinks from
   92,352 lines to 2,235, keeps all 8,012 named native tests, and checks a selected
   row independently. Its timeout, repeat and retry settings still apply to each
-  row, and the harness suite rejects all seven mutations. Other target emitters
+  row, and the harness suite rejects all seven mutations. Rust shrinks from
+  42,006 lines to 1,905 with a shared assertion and runtime row loops; its
+  failures include the row number and values. A mutation at the last admitted
+  integer endpoint checks that the loop visits its final row. Other target emitters
   and proof-term lowering are still being converted.
 - **Content identity.** Every type, declaration, handler, ability and law
   has a semantic hash of what it does and a presentation hash of its names,

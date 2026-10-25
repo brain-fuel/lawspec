@@ -16,6 +16,7 @@ import qualified LawSpec.Core.Schema as Schema
 import qualified LawSpec.Backend as Presentation
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Finite
 import qualified LawSpec.NativeBinding as NB
 import qualified LawSpec.NativeRequest as NR
 import qualified LawSpec.RustNativeGenerators as NG
@@ -639,7 +640,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                     , RL.closure (param nested) body
                     , RL.closure (param (RL.expr released)) (RL.call "Ok" [released]) ]))) ])
             resourced inner = bracket inner (zip (propertyResources p) resourceNames)
-        body <- proposition withResources (Left lawContext) (propertyBody p) >>= resourced . pure
+        assertionBody <- proposition withResources (Left lawContext) (propertyBody p)
+        let assertionCall = statement (invoke "check_body" (Doc.text "ctx" : [Doc.text (n ++ ".clone()") | (_, n) <- withResources]) <> Doc.text "?")
+        body <- resourced [assertionCall]
         checkedInputs <- if null planDataDeclarations then pure [] else
           forM (zip (propertyInputs p) names) $ \(input,(_,name)) -> do
             ty <- schemaType (binderType (quantifiedBinder input))
@@ -742,8 +745,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             pure (name, value)
           let exampleContext = unitName ++ "::" ++ shown ++ " example " ++ displayLabel (exampleName e)
           checks <- mapM (proposition withResources (Right exampleContext)) (exampleExpectations e)
-          lawCheck <- proposition withResources (Left lawContext) (propertyBody p)
-          checked <- resourced (checks ++ [lawCheck])
+          checked <- resourced (checks ++ [assertionCall])
           let rest = handlerInstalls unit p ++ [checked]
               -- An example's value that nothing reads is still made, as written.
               named = [binding (unusedAs n (statements (later ++ rest))) v | ((n, v), later) <- zip bindings (drop 1 (tails (map (uncurry binding) bindings)))]
@@ -790,7 +792,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                     Doc.nest 4 (Doc.softbreak <> invoke ".run" [Doc.text "&strategy",Doc.text "check"] <>
                       Doc.softbreak <> Doc.text ".map_err(|e| format!(\"{e}\"))?"))
                 ]
-        boundaryCases' <- forM (maybe (boundaryCases pp) id (finiteCases pp)) (mapM valueLiteral)
+        cover <- caseCover pp
+        finiteCover <- rustFiniteCover cover
         observations <- observationsDoc names p
         -- LawSpec's own search (LawSpec.Search): the failure database's
         -- inputs are replayed before the law's generated cases, a failing
@@ -820,21 +823,37 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             moduleName = testNames !! index
             -- A test's statements and its last expression: the law's check
             -- of a case's values, or Ok(()).
-            -- A boundary or finite case runs the law once on its values;
-            -- values that read the context are made before the call.
-            caseRun values
-              | any (mentions "ctx") values = let made = [binding "values" (Expression.vector values)]
-                  in (opening [Doc.text "ctx"] ++ made, Just (lawCall "ctx" valueArgs))
-              | otherwise = (opening [Doc.text "ctx"], Just (lawCall "ctx" values))
-            boundaryTests = [caseRun values | Nothing <- [finiteCases pp], values <- boundaryCases']
-            -- A law over finitely many cases checks them all in one test.
-            exhaustive = [(replay ++ [block (asStatements (caseRun values)) | values <- boundaryCases'], Nothing) | Just _ <- [finiteCases pp]]
+            finiteValues = RL.try' (RL.method
+              (RL.method (RL.method (RL.atom "factories") "iter" []) "map"
+                [RL.closure "|factory|" (RL.method (RL.atom "factory") "materialize" [RL.atom "ctx"])])
+              "collect::<ls::Result<Vec<_>>>" [])
+            finiteMessage = RL.Macro "format!" "(" ")"
+              [RL.atom (q "boundary {}: values={values:?}: {error}"), RL.infixOp "+" (RL.atom "case_index") (RL.atom "1")]
+            finiteFailure = RL.closure "|error|" (RL.Block [] (Just finiteMessage))
+            finiteCall = RL.method (RL.call "check" (RL.atom "ctx" : map RL.Laid valueArgs)) "map_err" [finiteFailure]
+            finiteCheck = statements (opened [RL.stmt (RL.Let "values" finiteValues), RL.expr finiteCall])
+            rowAction
+              | runSettings h && harnessKnownFailing h == Nothing = statements
+                  [binding "factories" (Doc.text "factories.to_vec()"),
+                   closureCall "lawspec_harness::run"
+                     [string (unitName ++ "::" ++ label), RL.expr (RL.prefix "&" (RL.Macro "format!" "(" ")"
+                        [RL.atom (q (moduleName ++ "::boundary{}")), RL.infixOp "+" (RL.atom "case_index") (RL.atom "1")])),
+                      Doc.text (show (maybe 0 id (harnessTimeout h))), Doc.text (show (harnessRepeat h)), Doc.text (show (harnessRetries h)),
+                      Doc.text "&[]", Doc.text "false"]
+                     (Doc.text "move || " <> block (statements [binding "factories" (Doc.text "factories.clone()"),
+                       Doc.text "ls::on_stack(move || " <> block finiteCheck <> Doc.text ")"]))]
+              | otherwise = finiteCheck
+            finiteLoop = RL.expr (RL.call "ls::finite_cases" [RL.prefix "&" finiteCover,
+              RL.closure "|case_index, factories|" (RL.Block [RL.Item rowAction] Nothing)])
+            finiteTest = ([statement (finiteLoop <> Doc.text "?")], Nothing)
+            boundaryTests = [finiteTest | Nothing <- [finiteCases pp], Finite.coverCount cover > 0]
+            exhaustive = [(replay ++ fst finiteTest, Nothing) | Just _ <- [finiteCases pp], Finite.coverCount cover > 0]
             property = [(replay ++ generated ++ climb, Nothing) | Nothing <- [finiteCases pp]]
             asStatements (stmts, final) = statements (stmts ++ [statement (final' <> Doc.text "?") | Just final' <- [final]])
             asBody (stmts, final) = statements (stmts ++ [maybe (Doc.text "Ok(())") id final])
-            taken = ["check", "valid", "observe", "score", "search_case", "property", "exhaustive", "skipped", "known_failing"]
+            taken = ["check", "check_body", "valid", "observe", "score", "search_case", "property", "exhaustive", "skipped", "known_failing"]
             exampleNames = exampleTestSuffix "rust" taken (map (exampleName . fst) examples)
-            boundaryNames = fst (claimAll (scopeWith (taken ++ exampleNames)) (map boundaryTestSuffix [0 .. length boundaryTests - 1]))
+            boundaryNames = fst (claimAll (scopeWith (taken ++ exampleNames)) ["boundaries" | not (null boundaryTests)])
             caseTests = [(escapeKeyword "rust" n, Just e, ([d], Nothing)) | (n, (e, d)) <- zip exampleNames examples] ++
               [(n, Nothing, d) | (n, d) <- zip boundaryNames boundaryTests] ++
               [("exhaustive", Nothing, d) | d <- exhaustive] ++ [("property", Nothing, d) | d <- property]
@@ -844,7 +863,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             harnessed k name' isProperty (stmts, final) =
               let turned = asBody (turn k ++ stmts, final)
                   runner = stackClosure turned
-              in if runSettings h
+              in if runSettings h && name' `notElem` ["boundaries", "exhaustive"]
                 then closureCall "lawspec_harness::run" [string (unitName ++ "::" ++ label), string (moduleName ++ "::" ++ name'), Doc.text (show (maybe 0 id (harnessTimeout h))),
                       Doc.text (show (harnessRepeat h)), Doc.text (show (harnessRetries h)),
                       if isProperty then Doc.text "&[" <> Doc.joinWith (Doc.text ", ") [Doc.text ("(" ++ show c ++ ", ") <> string l <> Doc.text ")" | Cover c l _ <- harnessCover h] <> Doc.text "]" else Doc.text "&[]",
@@ -861,7 +880,11 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                      Doc.text "#[test]" <> Doc.hardline <> function name' [] "ls::Result<()>" (harnessed (index * 1000 + k) name' (name' == "property") d)
                    | (k, (name', example, d)) <- zip [0..] caseTests ]
             items = [Doc.text "use super::*;"] ++
-              [function "check" (parameters lawBody) "ls::Result<()>" lawBody] ++
+              [function "check_body"
+                 (Doc.text (unusedAs "ctx" assertionBody ++ ": &mut ls::Context") :
+                  [Doc.text (unusedAs n assertionBody ++ ": ls::Value") | (_, n) <- withResources])
+                 "ls::Result<()>" (statements [assertionBody, Doc.text "Ok(())"]),
+               function "check" (parameters lawBody) "ls::Result<()>" lawBody] ++
               [function "valid" (parameters validBody) "ls::Result<bool>" validBody | predicated] ++
               [function "observe" (parameters observeBody) "ls::Result<()>" observeBody | observed h] ++
               searchItems ++ testsOf
@@ -965,6 +988,26 @@ conditional condition body = Doc.text "if " <> condition <> Doc.text " " <> bloc
 function :: String -> [Doc.Doc] -> String -> Doc.Doc -> Doc.Doc
 function name args result body = Doc.text ("fn " ++ name) <>
   Doc.delimitTrailing 4 "(" ")" args <> Doc.text (" -> " ++ result ++ " ") <> block body
+
+-- | A cover contains literal factories and inclusive mathematical ranges;
+-- each attempted case materializes its own values and handler context.
+-- ref:DEC-planned-generation
+rustFiniteCover :: Finite.FiniteCover -> Either String RL.Expr
+rustFiniteCover (Finite.Complete count) = pure (RL.call "ls::FiniteCover::Copies" [RL.atom (show count)])
+rustFiniteCover (Finite.Alternatives branches) = do
+  entries <- forM branches $ \(domain, suffix) -> do
+    domainExpr <- case domain of
+      Finite.Values values -> do
+        literals <- mapM valueExpr values
+        let factory literal = RL.closure (if mentions "ctx" (RL.expr literal) then "|ctx|" else "|_ctx|")
+              (RL.call "Ok" [literal])
+        pure (RL.call "ls::FiniteDomain::Values" [RL.vecOf (map factory literals)])
+      Finite.IntegerInterval _ first last' -> pure (RL.call "ls::FiniteDomain::Integers"
+        [endpoint first, endpoint last'])
+    suffixExpr <- rustFiniteCover suffix
+    pure (RL.Macro "" "(" ")" [domainExpr, suffixExpr])
+  pure (RL.call "ls::FiniteCover::Branches" [RL.vecOf entries])
+  where endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "unwrap" []
 
 valueLiteral :: V.Value -> Either String Doc.Doc
 valueLiteral value = RL.expr <$> valueExpr value

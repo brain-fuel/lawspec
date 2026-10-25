@@ -1,0 +1,9 @@
+expect: boundary 1001: values=
+@@ src/till_native.rs
+<<<<<<<
+        Cash { cents: money.cents }
+=======
+        Cash {
+            cents: money.cents + if money.cents == 1000 { 1 } else { 0 },
+        }
+>>>>>>>

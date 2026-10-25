@@ -52,6 +52,81 @@ pub fn on_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) ->
         .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }
 
+/// Compact ordered case data. Factories materialize each attempt's values in
+/// its own context; inclusive integer ranges never need an overflowing sentinel.
+/// ref:DEC-planned-generation
+pub type FiniteFactory = fn(&mut Context) -> Result<Value>;
+
+pub enum FiniteCover {
+    Copies(usize),
+    Branches(Vec<(FiniteDomain, FiniteCover)>),
+}
+
+pub enum FiniteDomain {
+    Values(Vec<FiniteFactory>),
+    Integers(BigInt, BigInt),
+}
+
+#[derive(Clone)]
+pub enum FiniteValue {
+    Literal(FiniteFactory),
+    Integer(BigInt),
+}
+
+impl FiniteValue {
+    pub fn materialize(&self, context: &mut Context) -> Result<Value> {
+        match self {
+            Self::Literal(factory) => factory(context),
+            Self::Integer(value) => Ok(Value::Integer(value.clone())),
+        }
+    }
+}
+
+pub fn finite_cases(
+    cover: &FiniteCover,
+    mut visit: impl FnMut(usize, &[FiniteValue]) -> Result<()>,
+) -> Result<()> {
+    fn walk(
+        cover: &FiniteCover,
+        prefix: &mut Vec<FiniteValue>,
+        index: &mut usize,
+        visit: &mut impl FnMut(usize, &[FiniteValue]) -> Result<()>,
+    ) -> Result<()> {
+        match cover {
+            FiniteCover::Copies(count) => {
+                for _ in 0..*count {
+                    visit(*index, prefix)?;
+                    *index = index.checked_add(1).ok_or("finite case index overflow")?;
+                }
+            }
+            FiniteCover::Branches(branches) => {
+                for (domain, suffix) in branches {
+                    match domain {
+                        FiniteDomain::Values(factories) => {
+                            for factory in factories {
+                                prefix.push(FiniteValue::Literal(*factory));
+                                walk(suffix, prefix, index, visit)?;
+                                prefix.pop();
+                            }
+                        }
+                        FiniteDomain::Integers(first, last) => {
+                            let mut value = first.clone();
+                            while value <= *last {
+                                prefix.push(FiniteValue::Integer(value.clone()));
+                                walk(suffix, prefix, index, visit)?;
+                                prefix.pop();
+                                value += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(cover, &mut Vec::new(), &mut 0, &mut visit)
+}
+
 /// A logical Integer result accepts any native integer without losing bits.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Integer(pub BigInt);
@@ -7574,6 +7649,99 @@ pub fn check_scenario(model: &Model, spec: &str) -> std::result::Result<(), Stri
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn finite_case_covers_preserve_order_correlations_and_laziness() {
+        let collect = |cover: &FiniteCover| {
+            let mut rows = Vec::new();
+            finite_cases(cover, |index, factories| {
+                let context = &mut Context::testing();
+                rows.push((
+                    index,
+                    factories
+                        .iter()
+                        .map(|factory| factory.materialize(context))
+                        .collect::<Result<Vec<_>>>()?,
+                ));
+                Ok(())
+            })
+            .unwrap();
+            rows
+        };
+        let domain = FiniteDomain::Integers(0.into(), 2.into());
+        let cover = FiniteCover::Branches(vec![(
+            domain,
+            FiniteCover::Branches(vec![(
+                FiniteDomain::Values(vec![|_| Ok(Value::Bool(false)), |_| Ok(Value::Bool(true))]),
+                FiniteCover::Copies(1),
+            )]),
+        )]);
+        let expected: Vec<_> = (0..=2)
+            .flat_map(|n| [false, true].map(move |b| vec![int(n), Value::Bool(b)]))
+            .enumerate()
+            .collect();
+        assert_eq!(collect(&cover), expected);
+        let dependent = FiniteCover::Branches(vec![
+            (
+                FiniteDomain::Integers(1.into(), 1.into()),
+                FiniteCover::Copies(2),
+            ),
+            (
+                FiniteDomain::Integers(2.into(), 2.into()),
+                FiniteCover::Copies(1),
+            ),
+        ]);
+        assert_eq!(
+            collect(&dependent),
+            vec![(0, vec![int(1)]), (1, vec![int(1)]), (2, vec![int(2)])]
+        );
+        assert!(collect(&FiniteCover::Branches(vec![])).is_empty());
+        assert_eq!(collect(&FiniteCover::Copies(1)), vec![(0, vec![])]);
+        let maximum = BigInt::from(u64::MAX);
+        assert_eq!(
+            collect(&FiniteCover::Branches(vec![(
+                FiniteDomain::Integers(&maximum - 1, maximum.clone()),
+                FiniteCover::Copies(1)
+            )])),
+            vec![
+                (0, vec![Value::Integer(&maximum - 1)]),
+                (1, vec![Value::Integer(maximum)])
+            ]
+        );
+        let huge = FiniteCover::Branches(vec![(
+            FiniteDomain::Integers(0.into(), BigInt::from(1) << 128),
+            FiniteCover::Copies(1),
+        )]);
+        let mut visited = 0;
+        let result = finite_cases(&huge, |index, _| {
+            assert_eq!(index, visited);
+            visited += 1;
+            if visited == 3 {
+                Err("stop".to_owned())
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Err("stop".to_owned()));
+        assert_eq!(visited, 3);
+    }
+
+    #[test]
+    fn finite_case_factories_materialize_fresh_contexts_and_values() {
+        let factory = FiniteValue::Literal(|context| {
+            Ok(Value::List(vec![Value::Symbol(
+                context.symbol("id", "same"),
+            )]))
+        });
+        let first = &mut Context::testing();
+        let second = &mut Context::testing();
+        let mut value = factory.materialize(first).unwrap();
+        assert_eq!(value, factory.materialize(first).unwrap());
+        assert_ne!(value, factory.materialize(second).unwrap());
+        if let Value::List(items) = &mut value {
+            items.clear();
+        }
+        assert_ne!(value, factory.materialize(first).unwrap());
+    }
     use super::*;
     #[test]
     fn nested_structural_index_guards_remain_checked() {
