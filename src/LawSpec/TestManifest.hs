@@ -12,6 +12,7 @@
 -- several checks. The manifest records their actual files and native slots.
 module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, testManifestWithNativeContext, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 import LawSpec.Targets (artifactTargets)
+import LawSpec.Naming (displayLabel)
 
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix, isSuffixOf)
@@ -70,7 +71,7 @@ testManifestWithNativeContext _ _ target _ _ | target `elem` artifactTargets = [
 testManifestWithNativeContext modelsSelected nativeBindings "prolog" testDir program =
   [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithNativeContext modelsSelected nativeBindings "python" testDir program]
 testManifestWithNativeContext modelsSelected nativeBindings target testDir program =
-  [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
+  [ TestEntry (propertyId p) unit (unit ++ "::" ++ displayLabel (propertyName p)) index
       (relocated (unitTestPath target unit)) (lawKey u p)
       (callsAdapters p)
       testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
@@ -78,7 +79,7 @@ testManifestWithNativeContext modelsSelected nativeBindings target testDir progr
       (if target == "swift" && harnessSkip (propertyHarness p) == Nothing && maybe False harnessOrderRandom (unitHarnessSettings u) then Just "ordered" else Nothing) []
   | u <- programUnits program
   , let unit = idText (unitId u)
-        names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ propertyName p | p <- unitProperties u]
+        names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ displayLabel (propertyName p) | p <- unitProperties u]
           else unitTestNames target (map propertyName (unitProperties u))
   , (index, p, testName) <- zip3 [0 ..] (unitProperties u) names ] ++
   [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index

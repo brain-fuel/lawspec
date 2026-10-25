@@ -446,8 +446,16 @@ baseName name = case break (== '"') name of
 -- | Constructors start with an uppercase letter; prelude.Int32 is a conversion.
 startsUpper :: String -> Bool
 startsUpper name = take 8 name /= "prelude." && maybe False (isUpper . fst) (uncons (baseName name))
+-- | Law labels are metadata. Value identifiers keep their phrase marker
+-- for lossless resolution; a label retains its pipes without the opening
+-- syntax quote, including when an import alias precedes the phrase.
+lawLabel :: String -> String
+lawLabel name = case break (== '\"') name of
+  (prefix, '\"' : rest@('|' : _)) -> prefix ++ rest
+  _ -> name
+
 lawNameP :: P String
-lawNameP = ident
+lawNameP = lawLabel <$> ident
 sectionStartP :: P ()
 sectionStartP = do
 
@@ -1777,7 +1785,7 @@ canonicalDefinition = do
       name <- try (do keyword "prelude"; void (char '.'); ("prelude." ++) <$> ident)
         <|> qualifiedName
       arguments <- many (notFollowedBy matcherWord *> guardBoundary *> logicBoundary *> applicationAtom)
-      pure (Invoke name arguments)
+      pure (Invoke (lawLabel name) arguments)
 
 -- The proposition parser and value parser share type-directed equality: a
 -- Boolean equality becomes the same Eq obligation when used as a law body.
@@ -1965,9 +1973,10 @@ documentaryReferencesP :: P [DocumentaryReference SourceReferenceTarget]
 documentaryReferencesP = group (concat <$> documentaryReferencesP `sepBy` symbol ",")
   <|> do
     keyword "ref"
-    make <- (LawReference <$ keyword "law") <|>
-      ((\target _ -> FunctionReference target) <$ keyword "function")
-    targets <- group (referenceTargetP `sepBy1` symbol ",") <|> ((:[]) <$> referenceTargetP)
+    isLaw <- (True <$ keyword "law") <|> (False <$ keyword "function")
+    let targetP = if isLaw then lawTarget <$> referenceTargetP else referenceTargetP
+        make = if isLaw then LawReference else \target _ -> FunctionReference target
+    targets <- group (targetP `sepBy1` symbol ",") <|> ((:[]) <$> targetP)
     selector <- optional referenceSelectorP
     let entries = [make target selector | target <- targets]
     when (selector /= Nothing && any isFunction entries) (fail "a function reference selects its definition and has no section selector")
@@ -1976,6 +1985,9 @@ documentaryReferencesP = group (concat <$> documentaryReferencesP `sepBy` symbol
   <|> ((:[]) . ExternalReference Nothing <$> str)
   where
     group = between (symbol "#S{") (symbol "}")
+    lawTarget (ParsedReferenceTarget parts range) = ParsedReferenceTarget
+      (case reverse parts of name : rest -> reverse rest ++ [lawLabel name]; [] -> []) range
+    lawTarget target = target
     isFunction FunctionReference{} = True
     isFunction _ = False
     namedExternal = do
@@ -2585,7 +2597,7 @@ importItemP = listItemP "import-item"
 listItemP :: String -> P String
 listItemP kind = sourceNode kind Just $ do
 
-  ((\n -> "`" ++ n ++ "`") <$> (keyword "law" *> itemName)) <|> itemName
+  ((\n -> "`" ++ lawLabel n ++ "`") <$> (keyword "law" *> itemName)) <|> itemName
   where
     -- The preamble is read before aliases are installed. There is no field
     -- projection ambiguity in an import/export list, so parse qualification

@@ -337,8 +337,8 @@ test('Node structured reports preserve phrase names and literal XML entities wit
   const {readFile}=await import('node:fs/promises');
   const scratch=await mkdtemp(path.join(os.tmpdir(),'lawspec-node-events-'));
   try {
-    const labels=['example.unit::"|a " & 雪|','example.unit::"|a &quot; & 雪|',
-      'example.unit::"|skipped|','example.unit::"|todo|','example.unit::"|failed|'];
+    const labels=['example.unit::|a " & 雪|','example.unit::|a &quot; & 雪|',
+      'example.unit::|skipped|','example.unit::|todo|','example.unit::|failed|'];
     const file=path.join(scratch,'native.test.mjs');
     await writeFile(file,"import {test} from 'node:test';\n"+
       `test(${JSON.stringify(labels[0])},()=>{});\n`+

@@ -27,7 +27,7 @@ portfolio :: IO (C.Program, [SMT.ProofTask])
 portfolio = readFile "test/fixtures/numeric-proofs.lawspec" >>= compiled
 
 taskNamed :: String -> [SMT.ProofTask] -> IO SMT.ProofTask
-taskNamed name tasks = case [t | t <- tasks, ("::law::\"|" ++ name ++ "|") `isInfixOf` C.idText (SMT.taskLaw t)] of
+taskNamed name tasks = case [t | t <- tasks, ("::law::|" ++ name ++ "|") `isInfixOf` C.idText (SMT.taskLaw t)] of
   t : _ -> pure t
   [] -> fail ("no task " ++ name)
 

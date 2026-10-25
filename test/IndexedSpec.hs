@@ -60,7 +60,7 @@ plansFor :: String -> Either [Diagnostic] [GeneratorRequirement]
 plansFor law = do
   plan <- compileCore 64 defaultGeneration [Source "vectors.lawspec" vectors] >>= planTesting
   pure (concat [generatorRequirements p | u <- plannedUnits plan, p <- plannedProperties u,
-                C.propertyName (plannedProperty p) == "\"|" ++ law ++ "|"])
+                C.propertyName (plannedProperty p) == "|" ++ law ++ "|"])
 
 -- | An index is evidence about a value, so it must be erased from generated
 -- data, direct generation, and be proved for every definition result rather

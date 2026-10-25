@@ -170,7 +170,7 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
         , "end ability"
         , "handler stuck for Toggle is  operation flip b is true end operation end handler"
         , "\nend unit" ]) >>= dischargeEvidence)
-        `shouldSatisfy` failsWith "\"|flipping twice is identity| [stuck] is false"
+        `shouldSatisfy` failsWith "|flipping twice is identity| [stuck] is false"
   describe "laws and handlers" $ do
     -- ref:REQ-law-primitives ref:REQ-harness-units
     let resourceOnly callback using = unlines
@@ -192,10 +192,10 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
     forM_ ["acquire", "release", "reset"] $ \callback ->
       it ("selects a handler used only by resource " ++ callback) $
         resourceHandlers (resourceOnly callback "using fakeGate") `shouldBe`
-          Right [("\"|a resource handler|", [C.SpecHandler (C.Id "example.resourceHandler::handler::fakeGate")])]
+          Right [("|a resource handler|", [C.SpecHandler (C.Id "example.resourceHandler::handler::fakeGate")])]
     it "keeps production as the default for resource-only abilities" $
       resourceHandlers (resourceOnly "acquire" "") `shouldBe`
-        Right [("\"|a resource handler|", [C.ProductionHandler])]
+        Right [("|a resource handler|", [C.ProductionHandler])]
     it "supplies the production handler to resource adapters with an ability row" $
       resourceHandlers (unlines
         [ "unit example.resourceHandler"
@@ -207,7 +207,7 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
         , "resource Ticket is acquire is open unitValue end acquire release t is close t end release end resource"
         , "law \"|a resource handler| for ticket :: Ticket is definition : true end definition end law"
         , "\nend unit" ])
-        `shouldBe` Right [("\"|a resource handler|", [C.ProductionHandler])]
+        `shouldBe` Right [("|a resource handler|", [C.ProductionHandler])]
     it "rejects a handler unused by both the assertion and its resource callbacks" $
       program (resourceOnly "none" "using fakeGate")
         `shouldSatisfy` failsWith "nothing it calls uses Gate"
@@ -228,11 +228,11 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
     it "runs a law without using under each lawful handler" $ do
       let Right compiled = program (with [checkout, "law \"|checkout works| is definition : for all (cents :: Int32) => checkout cents = true end for all end definition end law\n"])
           names = [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u]
-      names `shouldSatisfy` (\ns -> "\"|checkout works| [native]" `elem` ns && "\"|checkout works| [fakeGateway]" `elem` ns)
+      names `shouldSatisfy` (\ns -> "|checkout works| [native]" `elem` ns && "|checkout works| [fakeGateway]" `elem` ns)
     it "makes one law per ability law and handler" $ do
       let Right compiled = program gateway
           names = [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u]
-      names `shouldBe` ["Gateway: \"|a receipt is for the amount| [native]", "Gateway: \"|a receipt is for the amount| [fakeGateway]"]
+      names `shouldBe` ["Gateway: |a receipt is for the amount| [native]", "Gateway: |a receipt is for the amount| [fakeGateway]"]
     it "proves an ability law for a spec handler, and leaves the native one to the tests" $ do
       let Right obligations = program (unlines
             [ "unit example.meter"
@@ -252,7 +252,7 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
       let Right compiled = program (with [checkout,
             "law \"|once| using recording Gateway is definition : for all (cents :: Int32) => (if checkout cents then calls of capture = 1 else true end if) = true end for all end definition end law\n"])
           handlers = [(C.propertyName p, map snd (C.propertyHandlers p)) | u <- C.programUnits compiled, p <- C.unitProperties u]
-      lookup "\"|once| [recording fakeGateway]" handlers `shouldBe`
+      lookup "|once| [recording fakeGateway]" handlers `shouldBe`
         Just [C.RecordingHandler (C.SpecHandler (C.Id "example.payments::handler::fakeGateway"))]
     it "gives a stateful handler's clauses the state and Pair result state" $
       program (with [ "handler countingGateway for Gateway with state count :: List Int32 start [] is"
@@ -392,7 +392,7 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
         `shouldSatisfy` isRight
     it "refutes a false law at compile time" $
       (program (counter "law \"|three bumps| using counting is definition : (bump unitValue; bump unitValue) = 3 end definition end law\n") >>= dischargeEvidence)
-        `shouldSatisfy` failsWith "law \"|three bumps| is false"
+        `shouldSatisfy` failsWith "law |three bumps| is false"
   describe "native failures" $ do
     let source = with [ "type Problem is one of | Refused | Odd  of type Text end type\n"
                       , "charge :: Int32 -> Bool uses Gateway fails with Problem" ]

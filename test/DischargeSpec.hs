@@ -21,7 +21,7 @@ lawStatus :: String -> String -> Either String (Status, String)
 lawStatus name body = case evidenceFor body of
   Left diagnostics -> Left (concatMap message diagnostics)
   Right obligations -> case [(obligationStatus o, obligationReason o) | o <- obligations,
-      obligationStage o == "law", C.idText (obligationDeclaration o) == "d::law::\"|" ++ name ++ "|"] of
+      obligationStage o == "law", C.idText (obligationDeclaration o) == "d::law::|" ++ name ++ "|"] of
     [found] -> Right found
     _ -> Left ("no law " ++ name)
 
@@ -56,7 +56,7 @@ test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ d
       `shouldSatisfy` either (const False) (\(status, reason) -> status == ExhaustivelyChecked &&
         "the compiler evaluated all 256 inputs" `isInfixOf` reason)
     case lawStatus "positive" (inc ++ law "positive" "for all (x :: Int8) => inc x > 0 end for all") of
-      Left failure -> failure `shouldSatisfy` isInfixOf "law \"|positive| is false for x = -128"
+      Left failure -> failure `shouldSatisfy` isInfixOf "law |positive| is false for x = -128"
       Right found -> expectationFailure ("expected a refutation, got " ++ show found)
 
   it "checks finite laws over adapters in the generated tests" $ do

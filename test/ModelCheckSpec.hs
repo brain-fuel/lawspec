@@ -28,7 +28,7 @@ row :: String -> Maybe Value -> Maybe (String, String)
 row law response = case response of
   Just (Object r) | Just (Array rows) <- K.lookup "evidence" r ->
     case [ (T.unpack s, T.unpack why) | Object o <- toList rows, K.lookup "stage" o == Just (String "law")
-         , Just (String d) <- [K.lookup "declaration" o], ("::law::\"|" ++ law ++ "|") `isSuffixOf` T.unpack d
+         , Just (String d) <- [K.lookup "declaration" o], ("::law::|" ++ law ++ "|") `isSuffixOf` T.unpack d
          , Just (String s) <- [K.lookup "status" o], Just (String why) <- [K.lookup "reason" o] ] of
       found : _ -> Just found
       [] -> Nothing
@@ -184,12 +184,12 @@ test_modelChecking = describe "model checking" $ do
         field _ _ = Nothing
         tasks = [ t | Just response <- [request ([] :: [Value])], Just (Array laws) <- [field "modelTasks" response]
                     , law <- toList laws, Just (Array ts) <- [field "tasks" law], t <- toList ts
-                    , field "declaration" law == Just (String "portfolio.counters::law::\"|a loose count never goes negative|") ]
+                    , field "declaration" law == Just (String "portfolio.counters::law::|a loose count never goes negative|") ]
         answers = object ["fingerprint" .= ("unrelated" :: String), "outcome" .= ("unknown" :: String)] :
                   [object ["fingerprint" .= fingerprint, "outcome" .= ("unsat" :: String)]
                   | t <- tasks, Just fingerprint <- [field "fingerprint" t]]
         statuses = [status | Just response <- [request answers], Just (Array rows) <- [field "modelEvidence" response]
-                           , row' <- toList rows, field "declaration" row' == Just (String "portfolio.counters::law::\"|a loose count never goes negative|")
+                           , row' <- toList rows, field "declaration" row' == Just (String "portfolio.counters::law::|a loose count never goes negative|")
                            , Just status <- [field "status" row']]
     tasks `shouldBe` []
     statuses `shouldBe` [String "incomplete"]
@@ -199,7 +199,7 @@ test_modelChecking = describe "model checking" $ do
       row "counts never go negative" response `shouldSatisfy` maybe False (\(s, why) -> s == "incomplete" && "no counterexample in the first 20000 states" `isInfixOf` why)
     it "proves an invariant by induction, refutes a mutant with a replayed run, and proves a non-inductive invariant through Spacer" $ solver $ \z3 -> do
       rows <- settled z3 =<< readFile "test/fixtures/model-counters.lawspec"
-      let of_ law = [(s, why) | (d, s, why) <- rows, ("::law::\"|" ++ law ++ "|") `isSuffixOf` d]
+      let of_ law = [(s, why) | (d, s, why) <- rows, ("::law::|" ++ law ++ "|") `isSuffixOf` d]
       of_ "counts never go negative" `shouldSatisfy` any (\(s, why) -> s == "proved" && "by induction" `isInfixOf` why)
       of_ "a loose count never goes negative" `shouldBe` [("refuted", "a run breaks it: slip; Z3 found it and the evaluator replays it")]
       of_ "the first never goes negative" `shouldSatisfy` any (\(s, why) -> s == "proved" && "Spacer proposed and plain queries re-checked" `isInfixOf` why)

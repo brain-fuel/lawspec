@@ -175,30 +175,30 @@ test_smtInduction = describe "SMT induction" $ do
   let forLaw law settings = "for law " ++ law ++ "\n" ++ concatMap (\s -> "  " ++ s ++ "\n") settings ++ "end for law\n"
   it "plans one task per case of induction on an input, with the cited laws" $ do
     response <- proofTasksOf "" (forLaw "\"|reverse twice|" ["prove by induction on xs", "  using \"|reverse of append|"])
-    let plan = taskFor "\"|reverse twice|" response >>= field "induction"
+    let plan = taskFor "|reverse twice|" response >>= field "induction"
     fmap (textOf "on") plan `shouldBe` Just "xs"
-    (plan >>= field "using") `shouldBe` Just (toJSON ["smt.induction::law::\"|reverse of append|" :: String])
+    (plan >>= field "using") `shouldBe` Just (toJSON ["smt.induction::law::|reverse of append|" :: String])
     case plan >>= field "cases" of
       Just (Array cs) -> map (textOf "case") (toList cs) `shouldBe` ["xs = Nil", "xs = Cons"]
       _ -> expectationFailure "no cases"
   it "tries induction once on a single structural input by default, and not when told" $ do
     response <- proofTasksOf "" (forLaw "\"|append adds lengths|" ["prove without induction"])
-    (taskFor "\"|append nil|" response >>= field "induction" >>= field "asked") `shouldBe` Just (Bool False)
-    (taskFor "\"|append adds lengths|" response >>= field "induction") `shouldBe` Nothing
+    (taskFor "|append nil|" response >>= field "induction" >>= field "asked") `shouldBe` Just (Bool False)
+    (taskFor "|append adds lengths|" response >>= field "induction") `shouldBe` Nothing
     -- Two structural inputs: no default try.
-    (taskFor "\"|append associates|" response >>= field "induction") `shouldBe` Nothing
+    (taskFor "|append associates|" response >>= field "induction") `shouldBe` Nothing
   it "chooses the encoding and fuel the harness names" $ do
     response <- proofTasksOf "law \"|cons| is definition: for all (x :: Int32) (xs :: List Int32) => count (Cons x xs) = 1 + count xs end for all end definition end law\n"
       (concat [ forLaw "\"|cons|" ["prove by unfolding step by step up to 4 times"]
               , forLaw "\"|append nil|" ["prove by solver recursion"]
               , forLaw "\"|sum doubles|" ["prove by unfolding step by step up to 3 times, then solver recursion"] ])
-    (taskFor "\"|cons|" response >>= field "recursion") `shouldBe` Just (object ["encoding" .= ("guarded-axioms" :: String), "fuel" .= (4 :: Int)])
-    (taskFor "\"|cons|" response >>= field "alternative") `shouldBe` Nothing
-    (taskFor "\"|append nil|" response >>= field "recursion") `shouldBe` Just (object ["encoding" .= ("define-fun-rec" :: String)])
-    (taskFor "\"|sum doubles|" response >>= field "alternative" >>= field "recursion") `shouldBe` Just (object ["encoding" .= ("define-fun-rec" :: String)])
+    (taskFor "|cons|" response >>= field "recursion") `shouldBe` Just (object ["encoding" .= ("guarded-axioms" :: String), "fuel" .= (4 :: Int)])
+    (taskFor "|cons|" response >>= field "alternative") `shouldBe` Nothing
+    (taskFor "|append nil|" response >>= field "recursion") `shouldBe` Just (object ["encoding" .= ("define-fun-rec" :: String)])
+    (taskFor "|sum doubles|" response >>= field "alternative" >>= field "recursion") `shouldBe` Just (object ["encoding" .= ("define-fun-rec" :: String)])
   it "refuses a cited law outside the unit, a law citing itself, and a cycle" $ do
     diagnosticsOf <$> proofTasksOf "" (forLaw "\"|reverse twice|" ["prove by induction on xs using \"|missing|"])
-      >>= (`shouldSatisfy` any (isInfixOf "the unit has no law \"|missing|"))
+      >>= (`shouldSatisfy` any (isInfixOf "the unit has no law |missing|"))
     diagnosticsOf <$> proofTasksOf "" (forLaw "\"|reverse twice|" ["prove by induction on xs using \"|reverse twice|"])
       >>= (`shouldSatisfy` any (isInfixOf "cannot cite itself"))
     diagnosticsOf <$> proofTasksOf "" (forLaw "\"|reverse twice|" ["prove by induction on xs using \"|reverse of append|"] ++
@@ -213,12 +213,12 @@ test_smtInduction = describe "SMT induction" $ do
       , forLaw "\"|append associates|" ["prove by induction on xs"]
       , forLaw "\"|reverse of append|" ["prove by induction on xs", "  using \"|append nil|, \"|append associates|"]
       , forLaw "\"|reverse twice|" ["prove by induction on xs", "  using \"|reverse of append|"] ])
-    forM_ ["\"|append adds lengths|", "\"|append nil|", "\"|append associates|", "\"|reverse of append|", "\"|reverse twice|"] $ \law -> do
+    forM_ ["|append adds lengths|", "|append nil|", "|append associates|", "|reverse of append|", "|reverse twice|"] $ \law -> do
       task <- maybe (fail ("no task for " ++ law)) pure (taskFor law response)
       map snd <$> caseOutcomes z3 task >>= (`shouldBe` ["unsat", "unsat"])
   it "proves an integer countdown law by induction from the lower bound" $ solver $ \z3 -> do
     response <- proofTasksOf "" (forLaw "\"|sum doubles|" ["prove by induction on n"])
-    task <- maybe (fail "no task") pure (taskFor "\"|sum doubles|" response)
+    task <- maybe (fail "no task") pure (taskFor "|sum doubles|" response)
     caseOutcomes z3 task >>= (`shouldBe` [("n = 0", "unsat"), ("n > 0", "unsat")])
   it "keeps a proof setting's continued lines indented when formatted" $ do
     let source = "unit smt.induction\n\n" ++ inductionDefinitions ++ "\nharness smt.induction.proofs for smt.induction is\n" ++
@@ -227,5 +227,5 @@ test_smtInduction = describe "SMT induction" $ do
     formatted `shouldSatisfy` isInfixOf "    prove by induction on xs\n      using \"|reverse of append|\n  end for law"
   it "leaves a case open without the lemma it needs" $ solver $ \z3 -> do
     response <- proofTasksOf "" (forLaw "\"|reverse twice|" ["prove by induction on xs"])
-    task <- maybe (fail "no task") pure (taskFor "\"|reverse twice|" response)
+    task <- maybe (fail "no task") pure (taskFor "|reverse twice|" response)
     caseOutcomes z3 task >>= (`shouldSatisfy` any ((/= "unsat") . snd))

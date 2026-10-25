@@ -189,6 +189,6 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
       Left ds -> expectationFailure (show ds)
       Right c -> case C.programUnits c of
         [C.MkUnit{C.unitProperties=[p]}] -> do
-          C.idText (C.propertyId p) `shouldBe` "identities::law::\"|name%3A%3Ainput%3A%3Aoops%25|"
-          map (C.idText . C.binderId . C.quantifiedBinder) (C.propertyInputs p) `shouldBe` ["identities::law::\"|name%3A%3Ainput%3A%3Aoops%25|::input::0"]
+          C.idText (C.propertyId p) `shouldBe` "identities::law::|name%3A%3Ainput%3A%3Aoops%25|"
+          map (C.idText . C.binderId . C.quantifiedBinder) (C.propertyInputs p) `shouldBe` ["identities::law::|name%3A%3Ainput%3A%3Aoops%25|::input::0"]
         other -> expectationFailure (show other)

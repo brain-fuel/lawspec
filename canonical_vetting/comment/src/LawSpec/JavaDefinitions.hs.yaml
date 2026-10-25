@@ -25,6 +25,3 @@ decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/f
 decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/orchestratedAdapters:
   digest: sha256:c598053dc9245e46
   verdict: pending
-decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/samePackage:
-  digest: sha256:735d61224e3a35a0
-  verdict: pending

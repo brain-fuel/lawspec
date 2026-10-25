@@ -334,7 +334,7 @@ test('LSP follows documentary links to original source with UTF-16 ranges and no
   const file = '/unlikely-lawspec-test-project/references.lawspec';
   const text = 'law \"|😀 source| is\n\tref law \"|😀 source|\nend\n';
   const location = (line, column) => ({ file, line, column });
-  const target = { id: 'shop::law::\"|😀 source|', unit: 'shop', name: '\"|😀 source|',
+  const target = { id: 'shop::law::|😀 source|', unit: 'shop', name: '|😀 source|',
     span: { spanStart: location(1, 1), spanEnd: location(1, 1) },
     referenceSpan: { spanStart: location(2, 17), spanEnd: location(2, 28) } };
   const input = new PassThrough(), output = new PassThrough(), chunks = [];

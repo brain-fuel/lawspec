@@ -122,8 +122,8 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         `shouldSatisfy` isLeft
     it "runs a handler of several abilities for each, once" $ do
       let Right compiled = program (extendUnit store $ "law \"|sizes count| is definition : for all (t :: Text) (v :: Int32) => (create t; append t v; size t) = Present 1 end for all end definition end law\n")
-      names compiled `shouldSatisfy` elem "\"|sizes count| [memory]"
-      handlersOf "\"|sizes count| [memory]" compiled `shouldSatisfy` maybe False (\hs -> length (filter ("memory" `isInfixOf`) hs) == 2)
+      names compiled `shouldSatisfy` elem "|sizes count| [memory]"
+      handlersOf "|sizes count| [memory]" compiled `shouldSatisfy` maybe False (\hs -> length (filter ("memory" `isInfixOf`) hs) == 2)
     it "gives a law that runs a native made with a resource that resource" $ do
       let Right compiled = program (extendUnit store $ "law \"|sizes count| is definition : for all (t :: Text) => (create t; size t) = Present 0 end for all end definition end law\n")
           resources = [length (C.propertyResources p) | u <- C.programUnits compiled, p <- C.unitProperties u, "[native" `isInfixOf` C.propertyName p]
@@ -140,7 +140,7 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
             , "end ability"
             , "handler client for Writer is  operation write t v is prelude.isRight (prelude.attempt (append t v)) end operation end handler"
             , "handlers reference is memory, client end handlers" ])
-      names compiled `shouldSatisfy` elem "Writer: \"|a write is read| [reference]"
+      names compiled `shouldSatisfy` elem "Writer: |a write is read| [reference]"
     it "starts a handler from a computed value and writes clauses by definitions" $
       evaluated
         [ "ability Counter is"
