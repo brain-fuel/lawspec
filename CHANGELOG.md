@@ -2336,7 +2336,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...v0.29.1
