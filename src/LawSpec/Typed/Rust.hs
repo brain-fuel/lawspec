@@ -20,7 +20,7 @@ import LawSpec.Typed.Plan
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Core.Identity as CoreIdentity
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import System.IO.Unsafe (unsafePerformIO)
 import qualified LawSpec.RustExpr as E
 import LawSpec.RustLayout (Arm(..))
@@ -280,11 +280,11 @@ pairFieldsDoc env = pure (pair ++ entry)
 -- Presentation-bearing keys include the current native name context, and
 -- the checked node's exact reachable semantic and documentary dependencies.
 functionTable :: Table (Either String D.Doc)
-functionTable = unsafePerformIO (newPersistentTable "typed-rust-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-rust-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 dataTable :: Table (Either String D.Doc)
-dataTable = unsafePerformIO (newPersistentTable "typed-rust-data" (4 * 1024 * 1024) (length . show))
+dataTable = unsafePerformIO (newPersistentTableByShow "typed-rust-data" (4 * 1024 * 1024))
 {-# NOINLINE dataTable #-}
 
 -- Only names the chunk can emit are context inputs. Uncalled functions do

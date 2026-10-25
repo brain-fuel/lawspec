@@ -34,7 +34,7 @@ import LawSpec.Core.Evidence (Obligation(..))
 import qualified Data.ByteString.Lazy.Char8 as BC
 import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory, createDirectoryIfMissing, copyFile)
 import System.FilePath ((</>))
-import LawSpec.Memo (newPersistentTable, memoized, memoizedState, withCacheDirectory, withoutMemoization)
+import LawSpec.Memo (newPersistentTable, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withoutMemoization)
 import LawSpec.Discharge (dischargeEvidence)
 
 -- Read only the structured document prefix of a persisted (document,state)
@@ -97,6 +97,56 @@ response = decode . dispatch
 -- ref:DEC-incremental-compilation ref:REQ-incremental-compilation
 test_incrementalCompilationGivesTheSameResultAsAFreshOne :: Spec
 test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental compilation" $ do
+  it "bounds structural layout weights without expanding shared alternatives" $ do
+    let shared = iterate (\child -> Doc.bestFit [child,child]) (Doc.text "unused") !! 60
+        unshared 0 = Doc.text "unused"
+        unshared n = Doc.bestFit [unshared (n - 1),unshared (n - 1)]
+        document = Doc.bestFit [Doc.text "selected",shared]
+    boundedShowWeight 4096 document `shouldBe` 4097
+    boundedShowWeight 128 shared `shouldBe` boundedShowWeight 128 (unshared (60 :: Int))
+    boundedShowWeight 128 (Right (Doc.text "small") :: Either String Doc.Doc)
+      `shouldBe` length (show (Right (Doc.text "small") :: Either String Doc.Doc))
+    Doc.render (Doc.Pretty 80) document `shouldBe` "selected"
+  it "rejects an oversized cache entry before persistence and does not retain it in RAM" $ do
+    temporary <- getTemporaryDirectory
+    let root = temporary </> "lawspec-oversized-cache-admission"
+    removePathForcibly root
+    createDirectoryIfMissing True root
+    table <- newPersistentTable "bounded-entry" 4 length
+    let run cache value = BC.unpack (withCacheDirectory (Just root) (BC.pack (memoized cache "same" value)))
+    run table "first" `shouldBe` "first"
+    listDirectory root `shouldReturn` []
+    run table "other" `shouldBe` "other"
+    listDirectory root `shouldReturn` []
+    run table "ok" `shouldBe` "ok"
+    fresh <- newPersistentTable "bounded-entry" 4 length
+    run fresh (error "normal persisted entry was not reused") `shouldBe` "ok"
+    removePathForcibly root
+  it "skips persistent encoding of an oversized shared layout" $ do
+    temporary <- getTemporaryDirectory
+    let root = temporary </> "lawspec-shared-document-cache-admission"
+        shared = iterate (\child -> Doc.bestFit [child,child]) (Doc.text "unused") !! 60
+        document = Doc.bestFit [Doc.text "selected",shared]
+    removePathForcibly root
+    createDirectoryIfMissing True root
+    table <- newPersistentTableByShow "document" 256
+    let run value = BC.unpack (withCacheDirectory (Just root)
+          (BC.pack (Doc.render (Doc.Pretty 80) (memoized table "same" value))))
+    run document `shouldBe` "selected"
+    listDirectory root `shouldReturn` []
+    run (Doc.text "fresh") `shouldBe` "fresh"
+    removePathForcibly root
+  it "keeps ordinary structural-document persistence under the unchanged weight budget" $ do
+    temporary <- getTemporaryDirectory
+    let root = temporary </> "lawspec-bounded-document-cache"
+    removePathForcibly root
+    first <- newPersistentTableByShow "document" 256
+    let run cache value = BC.unpack (withCacheDirectory (Just root)
+          (BC.pack (Doc.render (Doc.Pretty 80) (memoized cache "same" value))))
+    run first (Doc.text "cached") `shouldBe` "cached"
+    second <- newPersistentTableByShow "document" 256
+    run second (error "small structured document was not persisted") `shouldBe` "cached"
+    removePathForcibly root
   it "gives each program the same result whatever was compiled before" $ do
     let (one, two) = programs "order"
         targets = ["python", "java", "haskell"]
