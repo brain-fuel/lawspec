@@ -6,11 +6,10 @@ import qualified LawSpec.Core.Schema as Schema
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import LawSpec.JvmLets (flattenStrictLets)
-import LawSpec.JvmNames (jvmString)
+import LawSpec.JvmNames (jvmString, jvmScopedNames)
 import Data.List (find)
 import Data.Char (isAlphaNum)
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
 
 -- | Strings are Java string literals (LawSpec.Code.Literal), wrapped only
 -- at spaces, so no generated literal can end early or change meaning and no
@@ -132,7 +131,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey named 
   where
     -- Java lets no local shadow another in scope, lambdas included, so a
     -- binder whose name an enclosing one holds takes the next free suffix.
-    (scopedTerm, scoped) = scopedNames named (flattenStrictLets expression)
+    (scopedTerm, scoped) = jvmScopedNames named (flattenStrictLets expression)
     local identity = M.findWithDefault (named identity) identity scoped
     runtime name = call ("LawSpecRuntime." ++ name)
     custom (Constructor name args) = any ((== Id name) . dataId) declarations ||
@@ -331,53 +330,3 @@ declare name value = case break (== '(') flat of
   where
     flat = D.render D.Compact value
     broken = D.group (D.text ("var " ++ name ++ " =") <> D.nest 4 (D.softline <> value)) <> D.text ";"
-
--- | An expression whose binders shadow no name already in scope (an
--- enclosing binder's or a free local's): such a binder gets a fresh id,
--- named with the first free 2, 3 suffix (Google Java Style's camel case
--- has no underscores). Expansion can bind one id again inside itself, so
--- renaming stops where the id is bound anew. ref:DEC-readable-generated-names
-scopedNames :: (Id -> String) -> Expr -> (Expr, M.Map Id String)
-scopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x1f') (idText i))) | i <- freshIds renamed])
-  where
-    renamed = go (S.fromList (map named (S.toList (freeLocals whole)))) whole
-    freeLocals e = case expressionNode e of
-      Local i -> S.singleton i
-      Let b v body -> freeLocals v `S.union` S.delete (binderId b) (freeLocals body)
-      AllElements v b body -> freeLocals v `S.union` S.delete (binderId b) (freeLocals body)
-      AllPayloads v ps -> S.unions (freeLocals v : [S.delete (binderId b) (freeLocals x) | (b, x) <- ps])
-      Match v cs -> S.unions (freeLocals v : [freeLocals (caseBody c) `S.difference` S.fromList (map binderId (caseBinders c)) | c <- cs])
-      _ -> S.unions (map freeLocals (children e))
-    go scope e = case expressionNode e of
-      Let b value body -> let ([b'], body0, inner) = bindAll scope [b] body
-        in e { expressionNode = Let b' (go scope value) (go inner body0) }
-      AllElements value b body -> let ([b'], body0, inner) = bindAll scope [b] body
-        in e { expressionNode = AllElements (go scope value) b' (go inner body0) }
-      AllPayloads value ps -> e { expressionNode = AllPayloads (go scope value)
-        [let ([b'], x0, inner) = bindAll scope [b] x in (b', go inner x0) | (b, x) <- ps] }
-      Match value cs -> e { expressionNode = Match (go scope value)
-        [let (bs', body0, inner) = bindAll scope (caseBinders c) (caseBody c) in c { caseBinders = bs', caseBody = go inner body0 } | c <- cs] }
-      _ -> mapChildren (go scope) e
-    bindAll scope bs body = foldl one ([], body, scope) bs
-      where
-        one (done, b0, sc) b =
-          let base = named (binderId b)
-          in if base `S.notMember` sc then (done ++ [b], b0, S.insert base sc)
-             else
-               let name = head [n | n <- [base ++ show k | k <- [2 :: Int ..]], n `S.notMember` sc]
-                   -- The chosen name rides in the id, after a separator no source id holds.
-                   fresh = Id (idText (binderId b) ++ "\x1f" ++ name)
-               in (done ++ [b { binderId = fresh }], renameFree (binderId b) fresh b0, S.insert name sc)
-    -- Uses of one id renamed, up to where the id is bound again.
-    renameFree from to e = case expressionNode e of
-      Local i | i == from -> e { expressionNode = Local to }
-      Let b v body | binderId b == from -> e { expressionNode = Let b (renameFree from to v) body }
-      AllElements v b body | binderId b == from -> e { expressionNode = AllElements (renameFree from to v) b body }
-      _ -> mapChildren (renameFree from to) e
-    freshIds e = [binderId b | b <- introduced e, '\x1f' `elem` idText (binderId b)] ++ concatMap freshIds (children e)
-    introduced e = case expressionNode e of
-      Let b _ _ -> [b]
-      AllElements _ b _ -> [b]
-      AllPayloads _ ps -> map fst ps
-      Match _ cs -> concatMap caseBinders cs
-      _ -> []

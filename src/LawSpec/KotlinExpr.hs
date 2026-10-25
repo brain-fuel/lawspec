@@ -9,6 +9,8 @@ import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinLayout as L
 import LawSpec.JvmLets (flattenLets)
+import LawSpec.JvmNames (jvmScopedNames)
+import qualified Data.Map.Strict as M
 
 -- | Strings are Kotlin literals ($ escaped), never split: ktfmt leaves a
 -- long one whole. ref:DEC-native-string-literals
@@ -98,8 +100,10 @@ renderExpression declarations bits = renderExpressionIn ("_schema", D.text (show
 -- caller's names.
 renderExpressionIn :: (String, D.Doc) -> [DataDeclaration] -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpressionIn scope@(schema, width) declarations local external = render . flattenLets
+renderExpressionIn scope@(schema, width) declarations named external expression = render scopedTerm
   where
+    (scopedTerm, scoped) = jvmScopedNames named (flattenLets expression)
+    local identity = M.findWithDefault (named identity) identity scoped
     checked' = checkedIn scope declarations
     key = quoted . Java.javaDataKey
     runtime name = call ("LawSpecRuntime." ++ name)
