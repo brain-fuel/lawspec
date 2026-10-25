@@ -39,6 +39,16 @@ core body = compileCoreCanonical 64 defaultGeneration [source body]
 -- ref:DEC-readable-notation
 test_canonicalAuthoringPreservesIntrinsicGuarantees :: Spec
 test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical authoring" $ do
+  it "preserves Java literal text resembling the generated runtime package" $ do
+    program <- either (fail . show) pure $ core $ unlines
+      [ "function matches (value :: Text) -> Float64 is"
+      , "  if value = \"lawspec.runtime.Corrupt\" then 1.0 else 0.0 end if end function"
+      , "law matched is definition: matches \"lawspec.runtime.Corrupt\" = 1.0 end definition end law" ]
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Property,V.Examples]) program)
+    artifacts <- either (fail . show) pure (emitPlan "java" plan)
+    let bodies = [LawSpec.Model.artifactContent artifact | artifact <- artifacts,
+                  "LawSpecDefinitionBodies.java" `isInfixOf` LawSpec.Model.artifactPath artifact]
+    concat bodies `shouldSatisfy` isInfixOf "lawspec.runtime.Corrupt"
   it "preserves Java text literals that resemble qualified ability names" $ do
     program <- either (fail . show) pure $ core $ unlines
       [ "law literal is definition: for all (value :: Text) =>"
