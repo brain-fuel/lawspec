@@ -113,16 +113,16 @@ emitBridges layout bits declarations units
         let values = go codecs args (map fst ps)
               where go (c : cs) (t : ts) ns
                       | isUnit t = Raw "Value.unit" : go cs ts ns
-                      | (n : rest) <- ns = Call (c ++ ".fromNative") [Var n] : go cs ts rest
+                      | (n : rest) <- ns = codecInvoke c "fromNative" [Var n] : go cs ts rest
                     go _ _ _ = []
             logical = Call "Effects.invoke" [Raw "self.originHandler", Raw "self.originSchema", Str op, ListOf tValues values]
             void = r == "Void"
-            closure = Lambda [] (Ty r) (if void then logical else Call (out ++ ".toNative") [logical])
+            closure = Lambda [] (Ty r) (if void then logical else codecInvoke out "toNative" [logical])
         runner <- case failure of
           Nothing -> pure (Pure "Embedding.run" [closure])
           Just _ -> do
             fc <- maybe (Left "missing failure") (Data.codec bits names []) (failureOf a op)
-            pure (Call "Embedding.runFailing" [Str (failingKey a op), Raw ("{ try " ++ fc ++ ".toNative($0) }"), closure])
+            pure (Call "Embedding.runFailing" [Str (failingKey a op), Code (D.text "{ " <> codecCall fc "toNative" [D.text "$0"] <> D.text " }"), closure])
         pure (method op signature (Just (if void then renderStatements (Statement runner) else renderBody (Ty r) runner)))
       clauses <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
@@ -137,13 +137,13 @@ emitBridges layout bits declarations units
           (Just e, Just ft) -> do
             fc <- Data.codec bits names [] ft
             pure (Call "Effects.ofThrown" [Str (failingKey a op),
-              Code (closureDoc ("(failure: " ++ e ++ ") throws -> Value") (callDoc ("try " ++ fc ++ ".fromNative") [D.text "failure"])),
+              Code (closureDoc ("(failure: " ++ e ++ ") throws -> Value") (codecCall fc "fromNative" [D.text "failure"])),
               Code (closureDoc ("() throws(" ++ e ++ ") -> " ++ r) (D.text "try " <> renderExpr callNative))])
           _ -> pure callNative
         let result = if r == "Void"
               then Do [Statement invoked] (Raw "Value.unit")
-              else call "Schema" "validate" [Call (out ++ ".fromNative") [invoked], ref, Var "current"]
-            body = foldr (\(i, c) rest -> Let (argumentName i) (Ty "") (Call (c ++ ".toNative") [Raw ("arguments[" ++ show i ++ "]")]) rest)
+              else call "Schema" "validate" [codecInvoke out "fromNative" [invoked], ref, Var "current"]
+            body = foldr (\(i, c) rest -> Let (argumentName i) (Ty "") (codecInvoke c "toNative" [Raw ("arguments[" ++ show i ++ "]")]) rest)
               result nativeArgs
         pure (TupleOf [Str op, Lambda [("current", tSchema), ("arguments", tValues)] tValue body])
       let classDoc = typeDeclaration ("final class " ++ className) [proto, "Effects.Origin", "@unchecked Sendable"] (
@@ -179,7 +179,7 @@ unitFactories bits declarations units unit = do
     let (_, name) = Effects.productionFunction a
         made = case C.abilityNative a of
           Just ref -> Pure (intercalate "." ref) []
-          Nothing -> Pure (unitQualified (C.unitId unit) ++ "." ++ camel (N.productionName a)) [Call (c ++ ".toNative") [Var "resource"] | Just c <- [resourceCodec]]
+          Nothing -> Pure (unitQualified (C.unitId unit) ++ "." ++ camel (N.productionName a)) [codecInvoke c "toNative" [Var "resource"] | Just c <- [resourceCodec]]
         params = ["_ schema: Schema", "_ symbols: SymbolContext"] ++ ["_ resource: Value" | Just _ <- [resourceCodec]]
     pure (D.text ("/// The production handler of " ++ N.displayName a ++ ", from the adapter.") <> D.hardline <>
       signature ("public static func " ++ name) params " throws -> Effects.Handler"

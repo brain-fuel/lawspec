@@ -12,6 +12,10 @@ module LawSpec.Swift.Data
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
+import LawSpec.CorePersist ()
+import qualified LawSpec.Dependencies as Identity
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Scalar (Scalar(..), primitive, primitives, primitiveName)
@@ -76,23 +80,23 @@ scalarType n = case n of
   _ -> "BigInt"
 
 -- | The codec between a LawSpec type and its native type, as an expression.
-codec :: Int -> Names -> [(C.Id, String)] -> C.Type -> Either String String
+codec :: Int -> Names -> [(C.Id, String)] -> C.Type -> Either String Codec
 codec bits names parameters ty = case ty of
-  C.TypeVariable identity -> Right (maybe "Codecs.portable" id (lookup identity parameters))
+  C.TypeVariable identity -> Right (CodecName (maybe "Codecs.portable" id (lookup identity parameters)))
   C.Constructor n args -> do
     cs <- mapM argument [t | C.TypeArgument t <- args]
     case (n, cs) of
-      ("List", [c]) -> pure ("Codecs.list(" ++ c ++ ")")
-      ("Maybe", [c]) -> pure ("Codecs.maybe(" ++ c ++ ")")
-      ("Either", [a, b]) -> pure ("Codecs.either(" ++ a ++ ", " ++ b ++ ")")
-      ("Nullable", [c]) -> pure ("Codecs.nullable(" ++ c ++ ")")
-      ("Optional", [c]) -> pure ("Codecs.optional(" ++ c ++ ")")
-      ("lawspec.time::type::Duration", []) -> pure "Codecs.duration"
-      ("lawspec.collections::type::Set", [c]) -> pure ("Codecs.set(" ++ c ++ ")")
-      ("lawspec.collections::type::KeyVal", [k, v]) -> pure ("Codecs.keyVal(" ++ k ++ ", " ++ v ++ ")")
-      (_, []) | Just p <- primitive n -> pure ("Codecs." ++ scalarCodec (primitiveName p))
+      ("List", [c]) -> pure (CodecFunction "Codecs.list" [c])
+      ("Maybe", [c]) -> pure (CodecFunction "Codecs.maybe" [c])
+      ("Either", [a, b]) -> pure (CodecFunction "Codecs.either" [a, b])
+      ("Nullable", [c]) -> pure (CodecFunction "Codecs.nullable" [c])
+      ("Optional", [c]) -> pure (CodecFunction "Codecs.optional" [c])
+      ("lawspec.time::type::Duration", []) -> pure (CodecName "Codecs.duration")
+      ("lawspec.collections::type::Set", [c]) -> pure (CodecFunction "Codecs.set" [c])
+      ("lawspec.collections::type::KeyVal", [k, v]) -> pure (CodecFunction "Codecs.keyVal" [k, v])
+      (_, []) | Just p <- primitive n -> pure (CodecName ("Codecs." ++ scalarCodec (primitiveName p)))
       _ -> case lookup (C.Id n) names of
-        Just name -> pure ("LawSpec.DataCodecs." ++ codecName name ++ "(" ++ intercalate ", " cs ++ ")")
+        Just name -> pure (CodecFunction ("LawSpec.DataCodecs." ++ codecName name) cs)
         Nothing -> Left ("no Swift codec for " ++ n)
   C.Arrow _ _ -> Left "function-valued data has no Swift codec"
   where
@@ -217,6 +221,10 @@ conjunction (first : rest) = D.group (first <> D.nest indentation (mconcat [D.so
 dataCase :: String -> Int -> D.Doc
 dataCase tag count = D.text "case " <> callDoc ".data" [D.text tag, D.text "let f"] <> D.text (" where f.count == " ++ show count ++ ":")
 
+dataTable :: Table (Either String D.Doc)
+dataTable = unsafePerformIO (newPersistentTable "swift-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE dataTable #-}
+
 -- | The data types file and the codecs file.
 emitData :: D.Layout -> Int -> [ResolvedTypeBinding] -> [C.DataDeclaration] -> Either String [Artifact]
 emitData layout bits bound declarations
@@ -230,8 +238,8 @@ emitData layout bits bound declarations
           -- Types that hold an application's own type compare as it does:
           -- they get no portable order of their own.
           opaque = reaching boundIds declarations
-      types <- mapM (dataType names recursive opaque) shapes
-      codecs <- mapM (dataCodec names recursive) shapes
+      types <- mapM (\d -> cached "type" names recursive opaque d (dataType names recursive opaque d)) shapes
+      codecs <- mapM (\d -> cached "codec" names recursive opaque d (dataCodec names recursive d)) shapes
       handleTypes <- forM handles $ \d -> do
         name <- named names d
         let native = maybe "AnyHandle" (refText . resolvedNativeType) (boundOf d)
@@ -252,7 +260,8 @@ emitData layout bits bound declarations
         name <- named names d
         pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound in lawspec.json.") <> D.hardline <>
           D.text ("public typealias " ++ name ++ typeParams d ++ " = " ++ refText (resolvedNativeType b) ++ typeParams d))
-      boundCodecs <- mapM (boundCodec names) [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))]
+      boundCodecs <- mapM (\b -> cached "bound-codec" names recursive opaque (resolvedDeclaration b) (boundCodec names b))
+        [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))]
       let typesDoc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime"]] <> D.hardline <>
 
             D.joinWith (D.hardline <> D.hardline) (handleTypes ++ boundTypes ++ types) <> D.hardline
@@ -266,6 +275,18 @@ emitData layout bits bound declarations
       pure [ Artifact "src/LawSpec/LawSpecData.swift" (D.render layout typesDoc) "generated" "source"
            , Artifact "src/LawSpec/LawSpecDataCodecs.swift" (D.render layout codecsDoc) "generated" "source" ]
   where
+    graph = Identity.dependencyGraphWithBits bits declarations []
+    cached :: String -> Names -> Set.Set C.Id -> Set.Set C.Id -> C.DataDeclaration
+      -> Either String D.Doc -> Either String D.Doc
+    cached kind names recursive opaque declaration = memoized dataTable key
+      where
+        reached = Identity.closure graph [Identity.TypeNode (C.dataId declaration)]
+        selected = [d | d <- declarations, Identity.TypeNode (C.dataId d) `Set.member` reached]
+        interfaces = [(C.dataId d,lookup (C.dataId d) names,
+          [(C.constructorId c,lookup (C.constructorId c) names) | c <- C.dataConstructors d],
+          C.dataId d `Set.member` recursive,C.dataId d `Set.member` opaque) | d <- selected]
+        bindings = [b | b <- bound, Identity.TypeNode (C.dataId (resolvedDeclaration b)) `Set.member` reached]
+        key = Identity.fullKey graph ("swift-data:" ++ show (bits,kind,interfaces,bindings)) declaration
     named names d = maybe (Left ("unnamed data " ++ C.idText (C.dataId d))) Right (lookup (C.dataId d) names)
     typeParams d = if null (C.dataParameters d) then "" else "<" ++ intercalate ", " [typeParameter i | (i, _) <- zip [0 ..] (C.dataParameters d)] ++ ">"
     genericClause ps = if null ps then "" else "<" ++ intercalate ", " (map fst ps) ++ ">"
@@ -453,7 +474,7 @@ emitData layout bits bound declarations
           parameters = ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p, v) <- params]
       arms <- forM (C.dataConstructors d) $ \c -> do
         fieldCodecs <- forM (C.constructorFields c) $ \b -> codec bits names (codecScope d c) (C.binderType b)
-        let witnessCodecs = replicate (witnessCount d c) "Codecs.text"
+        let witnessCodecs = replicate (witnessCount d c) (CodecName "Codecs.text")
             allCodecs = fieldCodecs ++ witnessCodecs
             labels = map (fieldName . C.binderName) (C.constructorFields c) ++ map fieldName (witnessLabels d c)
             tag = stringLiteral (C.idText (C.constructorId c))

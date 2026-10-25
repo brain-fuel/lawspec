@@ -281,7 +281,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         length second `shouldBe` length first + 1
         removePathForcibly root
     forM_ [("java","typed-jvm-helper",2),("kotlin","typed-jvm-helper",2),("scala","typed-jvm-helper",2),("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
-           ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2)] $ \(target,table,changed) ->
+           ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2),("swift","swift-data",2),("erlang","typed-beam-helper",2)] $ \(target,table,changed) ->
       it ("reuses independent " ++ target ++ " codec documents after another type changes") $ do
         root <- (</> ("lawspec-" ++ target ++ "-helper-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -339,7 +339,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         run "Maybe Unit" "2" `shouldSatisfy` good
         listDirectory directory >>= (`shouldMatchList` changedType)
         removePathForcibly root
-    forM_ ["python","javascript","typescript","java","kotlin","scala","go","haskell"] $ \target ->
+    forM_ ["python","javascript","typescript","java","kotlin","scala","go","haskell","swift","erlang","elixir","gleam"] $ \target ->
       it ("matches cold " ++ target ++ " output after name, type and contract changes") $ do
         let source fieldType increment name predicate =
               [("first.lawspec",unlines ["unit cold.first", "type Stable is a record { number :: Integer } end type",

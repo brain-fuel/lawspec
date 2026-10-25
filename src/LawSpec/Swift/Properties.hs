@@ -426,11 +426,14 @@ emitNativeGenerators layout bits declarations bound = do
   names <- dataNames declarations
   entries <- forM bound $ \(identity, factory, parameters) -> do
     if parameters > 0 then Left ("Swift binds generators of types without parameters: " ++ C.idText identity) else pure ()
-    codecText <- Data.codec bits names [] (C.Constructor (C.idText identity) [])
+    nativeCodec <- Data.codec bits names [] (C.Constructor (C.idText identity) [])
     let ref = intercalate "." factory
-    pure ("(" ++ stringLiteral (C.idText identity) ++ ", { (_: [Gen<Value>]) throws -> Gen<Value> in " ++ ref ++ "().map { try " ++ codecText ++ ".fromNative($0) } }),")
+    pure (D.text ("(" ++ stringLiteral (C.idText identity) ++ ", ") <>
+      closureDoc "(_: [Gen<Value>]) throws -> Gen<Value>"
+        (D.text (ref ++ "().map {") <> D.nest 2 (D.hardline <>
+          codecCall nativeCodec "fromNative" [D.text "$0"]) <> D.hardline <> D.text "}") <> D.text "),")
   let doc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime", "import LawSpecTesting"], ["@testable import " ++ moduleName]] <> D.hardline <>
         D.text "/// The application's generators, bound in lawspec.json, made afresh for each use." <> D.hardline <>
         D.text "var nativeGeneratorFactories: [(String, Generators.Factory)] {" <> D.nest 2 (D.hardline <> D.text "[" <> D.nest 2 (D.hardline <>
-          D.joinWith D.hardline (map D.text entries)) <> D.hardline <> D.text "]") <> D.hardline <> D.text "}" <> D.hardline
+          D.joinWith D.hardline entries) <> D.hardline <> D.text "]") <> D.hardline <> D.text "}" <> D.hardline
   pure [Artifact "tests/LawSpec/NativeGenerators.swift" (D.render layout doc) "generated" "test"]

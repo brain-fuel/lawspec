@@ -139,11 +139,11 @@ emitSessions bits datas units
             pure $ if stepSends st
               then lines' [ "/// Sends a value; the next end.", "@discardableResult" ] <> D.hardline <>
                    function "public func send" ["_ value: " ++ t] (" throws -> " ++ next)
-                     [ callDoc next [callDoc "try LawSpecRuntime.Sessions.send" [D.text "end", D.text ("try " ++ c ++ ".fromNative(value)")]] ]
+                     [ callDoc next [callDoc "try LawSpecRuntime.Sessions.send" [D.text "end", codecCall c "fromNative" [D.text "value"]]] ]
               else lines' [ "/// Receives a value; it and the next end." ] <> D.hardline <>
                    function "public func receive" [] (" throws -> (" ++ t ++ ", " ++ next ++ ")")
                      [ D.text "let (value, rest) = try LawSpecRuntime.Sessions.receiveValue(end)"
-                     , hangValue "return" (argumentsDoc [D.text ("try " ++ c ++ ".toNative(value)"), D.text (next ++ "(rest)")]) ]
+                     , hangValue "return" (argumentsDoc [codecCall c "toNative" [D.text "value"], D.text (next ++ "(rest)")]) ]
         pure (endClass cls ("step " ++ show (stepNumber st)) body)
       let done = endClass "Done" "after the last step"
             (lines' [ "/// Gives up the end.", "public func close() throws { try LawSpecRuntime.Sessions.abandon(end) }" ])

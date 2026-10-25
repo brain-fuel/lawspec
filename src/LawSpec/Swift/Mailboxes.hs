@@ -41,7 +41,7 @@ emitMailboxes bits datas units
                     (callDoc (cls ++ "Sender") [callDoc "try MailboxSender" (map D.text ["node", "address", "descriptor", "Timeouts.milliseconds(timeout)"])])
                 , lines' [ "/// The served mailbox's address."
                          , "public func address() throws -> String { try mailbox.address() }" ] ]
-            sendBody receiver = callDoc ("try " ++ receiver ++ ".send") [D.text ("try " ++ codec ++ ".fromNative(value)")]
+            sendBody receiver = callDoc ("try " ++ receiver ++ ".send") [codecCall codec "fromNative" [D.text "value"]]
             sender = case wireOf bits datas (C.mailboxType b) of
               Nothing -> []
               Just _ ->
@@ -56,17 +56,17 @@ emitMailboxes bits datas units
               , D.text "/// Queues value without waiting." <> D.hardline <>
                 signature "public func send" ["_ value: " ++ native] " throws" (sendBody "mailbox")
               , D.text "/// The next message, waiting for one; fails once closed and empty." <> D.hardline <>
-                signature "public func receive" [] (" throws -> " ++ native) (callDoc ("try " ++ codec ++ ".toNative") [D.text "try mailbox.receive()"])
+                signature "public func receive" [] (" throws -> " ++ native) (codecCall codec "toNative" [D.text "try mailbox.receive()"])
               , D.text "/// The next message within timeout, if one comes." <> D.hardline <>
                 signature "public func receiveWithin" ["_ timeout: Duration"] (" throws -> " ++ optional native)
                   (lines' [ "guard let value = try mailbox.receive(within: timeout) else { return nil }" ] <> D.hardline <>
-                   hangValue "return" (callDoc ("try " ++ codec ++ ".toNative") [D.text "value"]))
+                   hangValue "return" (codecCall codec "toNative" [D.text "value"]))
               , D.text "/// The next message within timeout; fails when none comes." <> D.hardline <>
                 signature "public func receive" ["timeout: Duration"] (" throws -> " ++ native)
                   (lines' [ "guard let value = try mailbox.receive(within: timeout) else {"
                           , "  throw Fail.with(\"Mailbox\", \"timeout\")"
                           , "}" ] <> D.hardline <>
-                   hangValue "return" (callDoc ("try " ++ codec ++ ".toNative") [D.text "value"]))
+                   hangValue "return" (codecCall codec "toNative" [D.text "value"]))
               , lines' [ "/// Refuses later sends; messages already sent can still be received."
                        , "public func close() { mailbox.close() }" ]
               , lines' [ "/// Stops the mailbox: later sends and receives fail."

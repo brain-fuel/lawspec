@@ -157,3 +157,10 @@ completion. Acceptance requires the current native Swift Testing report as well:
 these completion records attribute native execution and are not independently
 checked proof certificates. The standalone finite-cover conformance driver also
 checks a failed row and rejection of an unknown selection.
+
+Swift codec factories and method receivers are structured compiler nodes, laid
+out directly. Their calls are never recovered by parsing emitted Swift. Tail
+loop detection and unchanged-argument checks also use compiler state and Core
+identities. Public Swift data and codec documents, and BEAM conversion helpers,
+are cached independently by reachable checked types and their allocated native
+interfaces; cached helper requests are replayed into the current unit.

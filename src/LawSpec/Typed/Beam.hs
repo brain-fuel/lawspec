@@ -35,6 +35,7 @@ import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Typed.Plan
+import qualified LawSpec.Typed.EmissionContext as Context
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamNames as Names
@@ -240,13 +241,14 @@ helperKinds :: [Crossing]
 helperKinds = [FromDynamic, ToDynamic, FromNative, ToNative, Ordered]
 
 helperAllocation :: Env -> [Type] -> M.Map (Crossing, Type) String
-helperAllocation env seeds = M.fromList [(pair, chosen pair) | pair <- pairs]
+helperAllocation env seeds = M.fromList
+  [((kind,ty), allocated M.! (show kind,show ty)) | (kind,ty) <- pairs]
   where
-    pairs = [(kind, ty) | ty <- typeClosure env seeds, supportedType (envPlan env) ty, kind <- helperKinds]
-    grouped = M.fromListWith (++) [(conversionName kind ty, [pair]) | pair@(kind, ty) <- pairs]
-    chosen (kind, ty) = case M.lookup (conversionName kind ty) grouped of
-      Just [_] -> conversionName kind ty
-      _ -> conversionDigestName env kind ty
+    types = filter (supportedType (envPlan env)) (typeClosure env seeds)
+    pairs = [(kind,ty) | ty <- types,kind <- helperKinds]
+    kindOf name = head [kind | kind <- helperKinds,show kind == name]
+    allocated = Context.helperAllocation (envIdentity env) []
+      (\kind -> conversionName (kindOf kind)) (map show helperKinds) types
 
 functionTable :: Table (Either String (D.Doc, St))
 functionTable = unsafePerformIO (newPersistentTable "typed-beam-function" (8 * 1024 * 1024) (length . show))
@@ -898,9 +900,30 @@ helpers env done = do
   wanted <- gets stWanted
   let pending = [ (n, kt) | (n, kt) <- M.toList wanted, n `S.notMember` done ]
   if null pending then pure [] else do
-    docs <- forM pending $ \(n, (k, t)) -> helperDoc env n k t
+    docs <- forM pending $ \(n, (k, t)) -> memoHelper env n k t
     rest <- helpers env (S.union done (S.fromList (map fst pending)))
     pure (docs ++ rest)
+
+helperTable :: Table (Either String (D.Doc, St))
+helperTable = unsafePerformIO (newPersistentTable "typed-beam-helper" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE helperTable #-}
+
+memoHelper :: Env -> String -> Crossing -> Type -> M D.Doc
+memoHelper env name kind ty = do
+  before <- get
+  (document, requested) <- lift (memoized helperTable key
+    (runStateT (helperDoc env name kind ty) (St S.empty M.empty False S.empty)))
+  put before { stWanted = M.union (stWanted requested) (stWanted before)
+             , stOrdering = stOrdering requested || stOrdering before }
+  pure document
+  where
+    types = typeClosure env [ty]
+    nativeNames = [(dataId declaration, lookup (dataId declaration) (envNames env)) |
+      Constructor identity _ <- types,Just declaration <- [M.lookup identity (envAll env)]]
+    helperNames = [(crossing, value, allocatedHelperName env crossing value) |
+      value <- types,crossing <- helperKinds]
+    key = Identity.fullKey (envIdentity env) ("beam-helper:" ++ show
+      (envTarget env,name,kind,nativeNames,helperNames)) ty
 
 helperDoc :: Env -> String -> Crossing -> Type -> M D.Doc
 helperDoc env n k ty = do

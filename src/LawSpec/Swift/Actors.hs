@@ -134,14 +134,14 @@ emitActors bits datas units
             args <- forM (handlerArguments h) $ \p@(_, t) -> (,) (argName p) <$> Data.nativeType bits names [] t
             replyType <- traverse (Data.nativeType bits names []) (handlerReply h)
             replyCodec <- traverse (Data.codec bits names []) (handlerReply h)
-            let values = [D.text ("try " ++ c ++ ".toNative(arguments[" ++ show i ++ "])") | (i, c) <- zip [0 :: Int ..] argCodecs]
+            let values = [codecCall c "toNative" [D.text ("arguments[" ++ show i ++ "]")] | (i, c) <- zip [0 :: Int ..] argCodecs]
                 callSelf = callDoc ("try self." ++ escape (camel (handlerName h))) values
                 body = case replyCodec of
-                  Just c -> closure "arguments" (callDoc ("try " ++ c ++ ".fromNative") [callSelf])
+                  Just c -> closure "arguments" (codecCall c "fromNative" [callSelf])
                   Nothing -> closure "arguments" (callSelf <> D.hardline <> D.text "return Value.unit")
                 entry inv = argumentsDoc [D.text (stringLiteral (handlerName h)),
                   callDoc "RemoteEntry" [arrayDoc (map (D.text . stringLiteral) argWires), D.text (stringLiteral replyWire), inv]]
-                sent = arrayDoc [D.text ("try " ++ c ++ ".fromNative(" ++ n ++ ")") | (c, (n, _)) <- zip argCodecs args]
+                sent = arrayDoc [codecCall c "fromNative" [D.text n] | (c, (n, _)) <- zip argCodecs args]
                 remoteCall = callDoc "try Remote.call" [D.text "client", D.text (stringLiteral (handlerName h)), sent]
                 method = D.joinWith D.hardline (
                   [ D.text ("/// Sends " ++ handlerName h ++ " and waits for the reply.") ] ++
@@ -149,7 +149,7 @@ emitActors bits datas units
                   [ function ("public func " ++ escape (camel (handlerName h))) ["_ " ++ n ++ ": " ++ t | (n, t) <- args]
                       (" throws" ++ maybe "" (" -> " ++) replyType)
                       (case replyCodec of
-                        Just c -> callDoc ("try " ++ c ++ ".toNative") [remoteCall]
+                        Just c -> codecCall c "toNative" [remoteCall]
                         Nothing -> hangValue "_ =" remoteCall) ])
             pure (entry body, entry (D.text "nil"), method)
           let served = D.joinWith (D.hardline <> D.hardline)

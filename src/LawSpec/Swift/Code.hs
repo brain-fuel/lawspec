@@ -6,7 +6,7 @@
 -- twice in one body, so the output compiles without warnings.
 -- ref:DEC-swift-runtime-from-scratch ref:DEC-readable-output-default
 module LawSpec.Swift.Code
-  ( Ty(..), Expr(..)
+  ( Ty(..), Expr(..), Codec(..), codecInvoke
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, longStringLiteral, closureDoc, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
   , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, codecDoc, codecCall, fileHeader, blockDoc, comment
@@ -45,6 +45,7 @@ data Expr
   | Pure String [Expr]
   -- | A closure applied to arguments; it may throw.
   | Invoke Expr [Expr]
+  | Member Expr String
   | ListOf Ty [Expr]
   | TupleOf [Expr]
   | Lambda [(String, Ty)] Ty Expr
@@ -56,6 +57,19 @@ data Expr
   -- | A call whose result is Void, as a statement of its own.
   | Statement Expr
   deriving (Eq, Show)
+
+-- | Codec construction stays structural until its final layout. Identifiers
+-- carry no generated Swift expression text.
+data Codec = CodecName String | CodecFunction String [Codec] deriving (Eq, Show)
+
+codecExpr :: Codec -> Expr
+codecExpr codec = case codec of
+  CodecName name -> Var name
+  CodecFunction name arguments -> Pure name (map codecExpr arguments)
+
+codecInvoke :: Codec -> String -> [Expr] -> Expr
+codecInvoke codec method = Invoke (Member (codecExpr codec) method)
+
 
 tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tGen, tType :: Ty
 tValue = Ty "Value"
@@ -99,6 +113,7 @@ isInline e = case e of
   Call _ args -> all isInline args
   Pure _ args -> all isInline args
   Invoke f args -> all isInline (f : args)
+  Member receiver _ -> isInline receiver
   ListOf _ xs -> all isInline xs
   TupleOf xs -> all isInline xs
   _ -> True
@@ -108,6 +123,7 @@ throws :: Expr -> Bool
 throws e = case e of
   Call _ _ -> True
   Invoke _ _ -> True
+  Member receiver _ -> throws receiver
   Pure _ args -> any throws args
   ListOf _ xs -> any throws xs
   TupleOf xs -> any throws xs
@@ -141,6 +157,7 @@ mentions n e = case e of
   Call f args -> n `elem` tokens f || any (mentions n) args
   Pure f args -> n `elem` tokens f || any (mentions n) args
   Invoke f args -> any (mentions n) (f : args)
+  Member receiver _ -> mentions n receiver
   ListOf _ xs -> any (mentions n) xs
   TupleOf xs -> any (mentions n) xs
   Lambda ps _ b -> n `notElem` map fst ps && mentions n b
@@ -178,6 +195,7 @@ namesIn e = case e of
   Call f args -> S.insert (takeWhile (/= '.') f) (S.unions (map namesIn args))
   Pure f args -> S.insert (takeWhile (/= '.') f) (S.unions (map namesIn args))
   Invoke f args -> S.unions (map namesIn (f : args))
+  Member receiver _ -> namesIn receiver
   ListOf _ xs -> S.unions (map namesIn xs)
   TupleOf xs -> S.unions (map namesIn xs)
   Lambda ps _ b -> S.union (S.fromList (map fst ps)) (namesIn b)
@@ -192,13 +210,13 @@ namesIn e = case e of
 -- first, so the call's line can break inside its arguments.
 nameReceivers :: Expr -> Expr
 nameReceivers e = case e of
-  Call f args | Just (receiver, method) <- longReceiver f ->
-    Let "codec" (Ty "") (Code (codecDoc receiver)) (Call ("codec." ++ method) (map nameReceivers args))
-  Pure f args | Just (receiver, method) <- longReceiver f ->
-    Let "codec" (Ty "") (Code (codecDoc receiver)) (Pure ("codec." ++ method) (map nameReceivers args))
+  Invoke (Member receiver method) args
+    | made receiver, length (D.render D.Compact (renderExpr receiver)) > 40 ->
+        Let "codec" (Ty "") receiver (Invoke (Member (Var "codec") method) (map nameReceivers args))
   Call f args -> Call f (map nameReceivers args)
   Pure f args -> Pure f (map nameReceivers args)
   Invoke f args -> Invoke (nameReceivers f) (map nameReceivers args)
+  Member receiver method -> Member (nameReceivers receiver) method
   ListOf t xs -> ListOf t (map nameReceivers xs)
   TupleOf xs -> TupleOf (map nameReceivers xs)
   Lambda ps r b -> Lambda ps r (nameReceivers b)
@@ -208,10 +226,8 @@ nameReceivers e = case e of
   Statement x -> Statement (nameReceivers x)
   _ -> e
   where
-    longReceiver f = case break (== '.') (reverse f) of
-      (method, '.' : receiver) | ')' `elem` receiver, length receiver > 40, '(' `notElem` method ->
-        Just (reverse receiver, reverse method)
-      _ -> Nothing
+    made (Pure _ _) = True
+    made _ = False
 
 -- | Statements that compute an expression, and the inline expression left.
 -- Block constructs in argument position are bound first; when one argument
@@ -237,6 +253,9 @@ flatten ty e = case e of
     case all' of
       f' : args' -> pure (ss, Invoke f' args')
       [] -> pure (ss, e)
+  Member receiver method -> do
+    (ss, receiver') <- flatten ty receiver
+    pure (ss, Member receiver' method)
   ListOf t xs -> do
     (ss, xs') <- arguments xs
     pure (ss, ListOf t xs')
@@ -328,6 +347,7 @@ distinct e = evalState (go M.empty e) S.empty
       Call f args -> Call (callee' env f) <$> mapM (go env) args
       Pure f args -> Pure (callee' env f) <$> mapM (go env) args
       Invoke f args -> Invoke <$> go env f <*> mapM (go env) args
+      Member receiver method -> Member <$> go env receiver <*> pure method
       ListOf t xs -> ListOf t <$> mapM (go env) xs
       TupleOf xs -> TupleOf <$> mapM (go env) xs
       -- A closure's parameters are its own scope: they keep their names,
@@ -377,7 +397,11 @@ tried e d = if throws e then D.text "try " <> d else d
 body :: Ty -> Sink -> Expr -> Fresh D.Doc
 body ty sink e = do
   (ss, result) <- flatten ty e
-  docs <- statements ss result
+  let observed = case sink of
+        Discard | inert result -> Raw "()"
+        Return | ty == tVoid && inert result -> Raw "()"
+        _ -> result
+  docs <- statements ss observed
   final <- case result of
     If c t a b -> conditional t sink c a b
     _ | ty == tVoid -> case sink of
@@ -541,6 +565,9 @@ inline e = case e of
   Raw r -> pure (D.text r)
   Call f args -> applied (callee False f) args
   Pure f args -> applied (callee False f) args
+  Member receiver method -> do
+    value <- inline receiver
+    pure (value <> D.text ('.' : method))
   Invoke f args -> do
     fd <- inline f
     applied (fd <>) args
@@ -595,9 +622,6 @@ appliedWith allowTrailing args = case reverse args of
 -- member chain.
 callee :: Bool -> String -> D.Doc -> D.Doc
 callee hung f rest = case break (== '.') (reverse f) of
-  -- A method of a made codec: the codec's own calls break.
-  (member@(_ : _), '.' : receiver@(')' : _)) | '(' `notElem` member, ' ' `notElem` f ->
-    codecDoc (reverse receiver) <> D.text ('.' : reverse member) <> rest
   (member@(_ : _), '.' : receiver@(_ : _)) | '(' `notElem` f, ' ' `notElem` f ->
     -- The break is soft: a layout measured flat never holds it. A
     -- receiver that does not fit either breaks before its own last
@@ -650,33 +674,14 @@ brokenList opening closing trailing ds =
   D.text opening <> D.nest indentation (D.hardline <> D.joinWith (D.text "," <> D.hardline) ds <> (if trailing then D.text "," else mempty)) <>
   D.hardline <> D.text closing
 
--- | A codec as the emitters write it (Codecs.list(LawSpec.DataCodecs.money())):
--- its calls break inside their arguments like any other call. Codecs are
--- names applied to codecs, so that is all this reads.
-codecDoc :: String -> D.Doc
-codecDoc text = case codecTerm text of
-  Just (doc, []) -> doc
-  _ -> D.text text
-  where
-    codecTerm s = case span nameChar s of
-      ([], _) -> Nothing
-      (name, '(' : ')' : rest) -> Just (D.text (name ++ "()"), rest)
-      (name, '(' : rest) -> do
-        (args, rest') <- codecArguments rest
-        pure (callDoc name args, rest')
-      (name, rest) -> Just (D.text name, rest)
-    codecArguments s = do
-      (arg, rest) <- codecTerm s
-      case rest of
-        ',' : ' ' : more -> do
-          (args, rest') <- codecArguments more
-          pure (arg : args, rest')
-        ')' : more -> Just ([arg], more)
-        _ -> Nothing
-    nameChar c = isAscii c && (c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c `elem` ("_.`" :: String))
+-- | Structured codec factories lay out like ordinary calls.
+codecDoc :: Codec -> D.Doc
+codecDoc codec = case codec of
+  CodecName name -> D.text name
+  CodecFunction name arguments -> callDoc name (map codecDoc arguments)
 
 -- | A codec's method applied (try codec.toNative(value)).
-codecCall :: String -> String -> [D.Doc] -> D.Doc
+codecCall :: Codec -> String -> [D.Doc] -> D.Doc
 codecCall codec method args = D.text "try " <> codecDoc codec <> D.text ('.' : method) <> argumentsDoc args
 
 -- | A call of documents: its arguments on one line, or one a line.

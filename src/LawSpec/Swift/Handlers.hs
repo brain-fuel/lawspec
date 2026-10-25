@@ -87,7 +87,7 @@ emitHandlers layout bits typed declarations units = do
                 else invoke
               closure = Lambda [] resultTy body
               run = case (failure, e) of
-                (Just (key, codec), Just _) -> Call "Embedding.inlineFailing" [Str key, Raw ("{ try " ++ codec ++ ".toNative($0) }"), closure]
+                (Just (key, codec), Just _) -> Call "Embedding.inlineFailing" [Str key, Code (D.text "{ " <> codecCall codec "toNative" [D.text "$0"] <> D.text " }"), closure]
                 _ -> Pure "Embedding.inline" [closure]
           pure (D.text ("/// " ++ op ++ ".") <> D.hardline <> method op signature (locked
             (if void then renderStatements (Statement run) else renderBody resultTy run)))
@@ -125,9 +125,9 @@ emitHandlers layout bits typed declarations units = do
                     (Call ("LawSpec.AbilityBridges." ++ Effects.bridgeName a "ToNative") [Var "schema", Var "symbols", Var "made"])) | a <- answered ]) ] ++
               [ D.text "/// The handler's state in native types: a snapshot to show or keep, or one to force, reset or restore." <> D.hardline <>
                 D.text ("public var state: " ++ t) <> blockDoc (
-                  D.text "get" <> blockDoc (embedded t (Call (c ++ ".toNative") [Raw ("Effects.handlerState(self." ++ field first ++ ").1")])) <> D.hardline <>
+                  D.text "get" <> blockDoc (embedded t (codecInvoke c "toNative" [Raw ("Effects.handlerState(self." ++ field first ++ ").1")])) <> D.hardline <>
                   D.text "set" <> blockDoc (renderExpr (Pure "Embedding.run" [Lambda [] tVoid
-                    (Statement (Call "Effects.setHandlerState" [Raw ("self." ++ field first), Call (c ++ ".fromNative") [Raw "newValue"]]))])))
+                    (Statement (Call "Effects.setHandlerState" [Raw ("self." ++ field first), codecInvoke c "fromNative" [Raw "newValue"]]))])))
               | Just c <- [stateCodec], Just t <- [stateType], first : _ <- [answered] ] ++
               [ D.text ("/// " ++ op ++ ".") <> D.hardline <> method op signature
                   (callDoc ((case e of Just _ -> "try "; Nothing -> "") ++ field a ++ "." ++ Effects.operationMember op) (map (D.text . fst) ps))

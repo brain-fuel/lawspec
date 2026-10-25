@@ -135,9 +135,9 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
         Just _ | Just (function, contextual) <- typedCall identity -> do
           parameterCodecs <- mapM (Data.codec bits names []) parameterTypes
           resultCodec <- Data.codec bits names [] resultType
-          let natives = [Call (c ++ ".toNative") [Var a] | (c, a) <- zip parameterCodecs arguments]
+          let natives = [codecInvoke c "toNative" [Var a] | (c, a) <- zip parameterCodecs arguments]
               handlerContext = if contextual then [X.schemaVar, X.symbolsVar] else []
-          pure (Call (resultCodec ++ ".fromNative") [Call function (handlerContext ++ natives)])
+          pure (codecInvoke resultCodec "fromNative" [Call function (handlerContext ++ natives)])
         Just d -> render locals (C.definitionBody d) >>= Policy.wrapDefinition units X.schemaVar X.symbolsVar (map Var arguments) d
         Nothing -> adapterCall names unit declaration arguments parameterTypes resultType
       let candidates = case definition of Just _ -> verified; Nothing -> C.unitContracts unit
@@ -174,12 +174,12 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           handlerNames = ["handler" ++ show i | (i, _) <- zip [0 :: Int ..] handlers]
           valueNames = ["native" ++ show i | (i, _) <- zip [0 :: Int ..] valueNatives]
           nativeNames = handlerNames ++ valueNames
-          bindings = zip nativeNames (handlers ++ [Call (c ++ ".toNative") [Var a] | (c, a) <- valueNatives])
+          bindings = zip nativeNames (handlers ++ [codecInvoke c "toNative" [Var a] | (c, a) <- valueNatives])
           adapter = unitQualified (C.unitId unit) ++ "." ++ functionName declaration
           voidResult = nativeResult == "Void"
           resultTy = if voidResult then "Void" else nativeResult
           key = failureKey declaration
-          convert fc = Code (closureDoc ("(failure: " ++ maybe "" id failure ++ ") throws -> Value") (callDoc ("try " ++ fc ++ ".fromNative") [D.text "failure"]))
+          convert fc = Code (closureDoc ("(failure: " ++ maybe "" id failure ++ ") throws -> Value") (codecCall fc "fromNative" [D.text "failure"]))
           adapterInvocation = callDoc adapter (map D.text nativeNames)
           bound = lookup (C.declarationId declaration) calls
           refText = intercalate "." . referenceParts
@@ -202,17 +202,17 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
             (Nothing, Just e, Just fc, True) ->
               Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy)
                 (D.text ("do throws(" ++ e ++ ")") <> blockDoc (hangValue "return" (D.text "try await " <> adapterInvocation)) <>
-                 D.text " catch" <> blockDoc (callDoc "throw RaisedFailure" [D.text (stringLiteral key), callDoc ("try " ++ fc ++ ".fromNative") [D.text "error"]])))]]
+                 D.text " catch" <> blockDoc (callDoc "throw RaisedFailure" [D.text (stringLiteral key), codecCall fc "fromNative" [D.text "error"]])))]]
             (Nothing, _, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy) (D.text "await " <> adapterInvocation))]]
             _ -> Pure adapter (map Var nativeNames)
-          converted = if voidResult then Do [Statement invocation] (Raw "Value.unit") else Call (resultCodec ++ ".fromNative") [invocation]
+          converted = if voidResult then Do [Statement invocation] (Raw "Value.unit") else codecInvoke resultCodec "fromNative" [invocation]
       -- A bound function fails by throwing: its declared failure type, or
       -- an error lawspec.json maps to one of its constructors.
       mapped <- case (bound, declarationFailure declaration, failure, failureCodec) of
         (Just _, Just failureTy, Just e, Just fc) -> do
           ref <- X.typeRef failureTy
           let own = Code (callDoc "Effects.mapError" [D.text (e ++ ".self")] <> D.text " " <>
-                closureDoc ("(failure: " ++ e ++ ") throws -> Value") (callDoc ("try " ++ fc ++ ".fromNative") [D.text "failure"]))
+                closureDoc ("(failure: " ++ e ++ ") throws -> Value") (codecCall fc "fromNative" [D.text "failure"]))
               mapping (k, fb) =
                 let native = intercalate "." (C.failureNative fb)
                     caught = "caught" ++ show (k :: Int)
@@ -252,13 +252,13 @@ emitApi layout bits declarations units = do
           valueArguments = go codecs parameterTypes (map fst valueParams)
             where go (c : cs) (t : ts) ns
                     | isUnit t = Raw "Value.unit" : go cs ts ns
-                    | (n : rest) <- ns = Call (c ++ ".fromNative") [Var n] : go cs ts rest
+                    | (n : rest) <- ns = codecInvoke c "fromNative" [Var n] : go cs ts rest
                   go _ _ _ = []
           void = r == "Void"
           resultTy = Ty (if void then "Void" else r)
           scopeName = if null handlers then "schema" else "scope"
           entryCall = Call (entryOwner e ++ "." ++ entryName e) (Var scopeName : Var "symbols" : valueArguments)
-          converted = if void then entryCall else Call (out ++ ".toNative") [entryCall]
+          converted = if void then entryCall else codecInvoke out "toNative" [entryCall]
           -- The handlers given, as the logical handlers of their abilities.
           scoped = if null handlers then converted else
             Call "Effects.withScope" [Var "schema",
@@ -269,7 +269,7 @@ emitApi layout bits declarations units = do
               Lambda [("scope", tSchema)] resultTy converted]
           body = Lambda [] resultTy (Let "schema" (Ty "") (Raw "LawSpec.Program.schema")
             (Let "symbols" (Ty "") (Raw "SymbolContext()") scoped))
-          toNative fc = Raw ("{ try " ++ fc ++ ".toNative($0) }")
+          toNative fc = Code (D.text "{ " <> codecCall fc "toNative" [D.text "$0"] <> D.text " }")
           runner = case (failure, failureCodec, async) of
             (Just _, Just fc, False) -> Call "Embedding.runFailing" [Str (failureKey d), toNative fc, body]
             (Just _, Just fc, True) -> Call "await Embedding.runFailingAsync" [Str (failureKey d), toNative fc, Pure "UncheckedBox" [body]]

@@ -40,9 +40,6 @@ decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/
 decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/swiftTypedDeclarations:
   digest: sha256:3461e392c51d676c
   verdict: pending
-decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/function/unwrapped:
-  digest: sha256:f402a5c65bcc05ce
-  verdict: pending
 decision/haskell/src/LawSpec/Typed/Swift.hs/module/LawSpec.Typed.Swift/type/M:
   digest: sha256:5d562e38751003d6
   verdict: pending

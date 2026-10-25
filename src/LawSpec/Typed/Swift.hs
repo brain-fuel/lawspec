@@ -28,7 +28,7 @@ import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc, hangValue)
+import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc, hangValue, Codec, codecCall)
 import qualified LawSpec.Naming as Nm
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (generatedHeader)
@@ -75,7 +75,7 @@ data Env = Env
 
 -- | The names taken in the function being emitted, and the parameters a
 -- self tail call has reassigned in it (they become vars).
-type M = StateT (Nm.Scope, [String]) (Either String)
+type M = StateT (Nm.Scope, [String], Bool) (Either String)
 
 lift' :: Either String a -> M a
 lift' = lift
@@ -83,9 +83,9 @@ lift' = lift
 -- | A local's name: its source name, or what it holds, with _2 on a clash.
 fresh :: String -> M String
 fresh base = do
-  (scope, assigned) <- get
+  (scope, assigned, looped) <- get
   let (name, scope') = Nm.claim scope (localName base)
-  put (scope', assigned)
+  put (scope', assigned, looped)
   pure name
 
 emitSwiftTyped :: Int -> [Id] -> [DataDeclaration] -> [Unit] -> Either String SwiftTyped
@@ -106,11 +106,11 @@ emitSwiftTyped bits bound allDeclarations units = do
   names <- dataNames allDeclarations
   let env = Env plan (Identity.dependencyGraphWithBits bits allDeclarations units) bits names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units allDeclarations Nothing moduleScope
-  docs <- flip evalStateT (moduleScope, []) $ do
+  docs <- flip evalStateT (moduleScope, [], False) $ do
     fs <- mapM (\(c, d) -> lift' (memoFunction env c d)) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, ty, start) -> do
       t <- lift' (nativeType env ty)
-      modify (\(_, _) -> (moduleScope, []))
+      modify (\_ -> (moduleScope, [], False))
       body <- statements env [] (Just t) Return start
       pure (D.text "/// A typed handler's start state." <> D.hardline <>
         signature ("static func " ++ name) ["_ schema: Schema", "_ symbols: SymbolContext"] (" throws -> " ++ t) (D.joinWith D.hardline body))
@@ -173,36 +173,12 @@ receiver x = case D.render D.Compact x of
 -- | An if's opening: its brace after the condition, or on a line of its own
 -- when the condition does not fit on one, as swift-format places it.
 ifOpening :: D.Doc -> D.Doc
-ifOpening x
-  -- A condition's operation carries its own break before the brace.
-  | take 1 (reverse (D.render D.Compact x)) == " " = D.text "if " <> x <> D.text "{"
-  | otherwise = D.text ("if ") <> x <> D.text " {"
+ifOpening x = D.group (D.text "if " <> x <> D.softline <> D.text "{")
 
 -- | Two operands and an operator, broken before the operator when they do
 -- not fit, as swift-format breaks them.
 binaryDoc :: D.Doc -> String -> D.Doc -> D.Doc
 binaryDoc a op b = D.group (a <> D.nest 2 (D.softline <> D.text (op ++ " ") <> b))
-
--- | An operand of && or || as an if's whole condition, without the
--- parentheses swift-format drops around one (its operand stays whole).
-unwrapped :: D.Doc -> D.Doc
-unwrapped x = case D.render D.Compact x of
-  '(' : rest | not (null rest), last rest == ')', closesAtEnd (init rest) -> D.text (init rest)
-  _ -> x
-  where
-    -- The opening parenthesis is closed only by the last one.
-    closesAtEnd = go (0 :: Int)
-      where
-        go depth (c : cs)
-          | c == '(' = go (depth + 1) cs
-          | c == ')' = depth > 0 && go (depth - 1) cs
-          | c == '"' = go depth (skipString cs)
-          | otherwise = go depth cs
-        go depth [] = depth == 0
-        skipString ('\\' : _ : cs) = skipString cs
-        skipString ('"' : cs) = cs
-        skipString (_ : cs) = skipString cs
-        skipString [] = []
 
 type Scope = [(Id, String)]
 
@@ -223,7 +199,7 @@ memoFunction :: Env -> Int -> Definition -> Either String D.Doc
 memoFunction env classification definition = memoized functionTable
   (Identity.fullKey (envIdentity env) ("swift-function:" ++ show
     (envBits env, called, nativeNames)) definition)
-  (evalStateT (functionDoc localEnv classification definition) (localBase, []))
+  (evalStateT (functionDoc localEnv classification definition) (localBase, [], False))
   where
     callees expression = case expressionNode expression of
       ExternalCall callee arguments -> callee : concatMap callees arguments
@@ -247,7 +223,7 @@ functionDoc env c d = do
       (args, result) = functionType (declarationType declaration)
       name = envFunctions env M.! c
       contextual = isContextual (envPlan env) (declarationId declaration)
-  modify (\(_, _) -> (envBase env, []))
+  modify (\_ -> (envBase env, [], False))
   params <- forM (definitionArguments d) $ \b -> do
     local <- fresh (binderName b)
     pure (binderId b, local)
@@ -260,8 +236,8 @@ functionDoc env c d = do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l), b) <- zip params (definitionArguments d)]
       pure [hangValue "return" x]
     Nothing -> statements selfEnv params (Just resultType) Return (definitionBody d)
-  assigned <- gets snd
-  let looped = loops body
+  (_, assigned, looped) <- get
+  let
       reassigned = [l | (_, l) <- params, l `elem` assigned]
       parameters = concat [["_ schema: Schema", "_ symbols: SymbolContext"] | contextual] ++
         ["_ " ++ l ++ ": " ++ t | ((_, l), t) <- zip params types]
@@ -271,8 +247,6 @@ functionDoc env c d = do
         else body
   pure (sourceDoc (Nm.sourceDefinitionName (declarationName declaration)) (declarationOrigin declaration) <>
     signature ("static func " ++ name) parameters (" throws -> " ++ resultType) (D.joinWith D.hardline bodyDoc))
-  where
-    loops docs = any (\doc -> "continue" `elem` words (D.render D.Compact doc)) docs
 
 -- | Lines that compute an expression into a sink.
 statements :: Env -> Scope -> Maybe String -> Sink -> Expr -> M [D.Doc]
@@ -299,12 +273,16 @@ statements env scope resultType sink e = case expressionNode e of
     , M.notMember i (typedIntrinsics (envPlan env)), not (isContextual (envPlan env) i) -> do
         -- A self call in tail position: the next round of the loop.
         parts <- mapM (cexpr env scope) args
-        let changed = [(p, x) | (p, (_, x)) <- zip params parts, D.render D.Compact x /= p]
+        let unchanged parameter argument = case expressionNode argument of
+              Local identity -> lookup identity scope == Just parameter
+              _ -> False
+            changed = [(p, x) | (p, argument, (_, x)) <- zip3 params args parts,
+              not (unchanged p argument)]
             assignment = case changed of
               [] -> []
               [(p, x)] -> [hangValue (p ++ " =") x]
               _ -> [D.text ("(" ++ intercalate ", " (map fst changed) ++ ") = (") <> D.joinWith (D.text ", ") (map snd changed) <> D.text ")"]
-        modify (\(n, assigned) -> (n, map fst changed ++ assigned))
+        modify (\(n, assigned, _) -> (n, map fst changed ++ assigned, True))
         pure (concatMap fst parts ++ assignment ++ [D.text "continue"])
   _ -> do
     (s, x) <- cexprWith Top env scope e
@@ -369,9 +347,13 @@ cexprWith position env scope e = case expressionNode e of
         t <- fresh "logic"
         -- The first operand is the if's condition: computed again as one
         -- when it needs no statements, so it breaks as a condition does.
-        condition <- if null sa then snd <$> cexprWith Condition env scope a else pure (unwrapped xa)
+        (conditionPrelude, condition) <- if null sa
+          then (\(_, value) -> ([], value)) <$> cexprWith Condition env scope a
+          else do
+            name <- fresh "condition"
+            pure ([hangValue ("let " ++ name ++ " =") xa], D.text name)
         let rest = sb ++ [hangValue (t ++ " =") xb]
-        pure (sa ++ [D.text ("let " ++ t ++ ": Bool"), ifOpening condition <>
+        pure (sa ++ conditionPrelude ++ [D.text ("let " ++ t ++ ": Bool"), ifOpening condition <>
           (if op == And then block rest <> D.hardline <> D.text "} else {" <> block [D.text (t ++ " = false")]
            else block [D.text (t ++ " = true")] <> D.hardline <> D.text "} else {" <> block rest) <> D.hardline <> D.text "}"], D.text t)
   Unary Not a -> do
@@ -454,7 +436,7 @@ cexprWith position env scope e = case expressionNode e of
     c <- lift' (codecOf env (expressionType x))
     result <- lift' (nativeType env (expressionType e))
     t <- fresh "result"
-    pure (s ++ [hangValue ("let " ++ t ++ ": " ++ result ++ " =") $ callDoc "try Typed.raiseFailure" [D.text (stringLiteral (abilityKey ref)), callDoc (c ++ ".fromNative") [v]]], D.text t)
+    pure (s ++ [hangValue ("let " ++ t ++ ": " ++ result ++ " =") $ callDoc "try Typed.raiseFailure" [D.text (stringLiteral (abilityKey ref)), codecCall c "fromNative" [v]]], D.text t)
   Perform op args -> do
     parts <- mapM (cexpr env scope) args
     a <- lift' (maybe (Left ("typed Swift: unknown ability " ++ abilityKey (operationAbility op))) Right (N.abilityOf (envUnits env) (operationAbility op)))
@@ -469,7 +451,7 @@ cexprWith position env scope e = case expressionNode e of
         c <- lift' (codecOf env failureType)
         e' <- lift' (nativeType env failureType)
         r <- if isUnit' then pure "Void" else lift' (nativeType env (expressionType e))
-        pure (callDoc "try Typed.performed" [D.text (stringLiteral (abilityKey failing)), D.text ("{ try " ++ c ++ ".fromNative($0) }")] <>
+        pure (callDoc "try Typed.performed" [D.text (stringLiteral (abilityKey failing)), D.text "{ " <> codecCall c "fromNative" [D.text "$0"] <> D.text " }"] <>
           D.text (" { () throws(" ++ e' ++ ") -> " ++ r ++ " in") <> block [D.text "try " <> operationCall] <> D.hardline <> D.text "}")
       _ -> pure operationCall
     if isUnit'
@@ -482,7 +464,7 @@ cexprWith position env scope e = case expressionNode e of
       _ -> lift' (Left "typed Swift: attempt without Either")
     lines' <- statements env scope (Just bodyType) Return body
     t <- fresh "attempted"
-    pure ([hangValue ("let " ++ t ++ " =") $ callDoc "try Typed.attempt" [D.text (stringLiteral (abilityKey ref)), D.text ("{ try " ++ c ++ ".toNative($0) }")] <>
+    pure ([hangValue ("let " ++ t ++ " =") $ callDoc "try Typed.attempt" [D.text (stringLiteral (abilityKey ref)), D.text "{ " <> codecCall c "toNative" [D.text "$0"] <> D.text " }"] <>
       D.text (" { () throws -> " ++ bodyType ++ " in") <> block lines' <> D.hardline <> D.text "}"], D.text t)
   Helper Append [a, b] -> infixOp "+" a b
   Helper Slice [x, from, to] -> do
@@ -519,7 +501,7 @@ cexprWith position env scope e = case expressionNode e of
   where
     wrap = if position == Inner then paren else id
     operation a op b
-      | position == Condition = D.group (a <> D.nest 2 (D.softline <> D.text (op ++ " ") <> b) <> D.softline)
+      | position == Condition = D.group (a <> D.nest 2 (D.softline <> D.text (op ++ " ") <> b))
       | otherwise = binaryDoc a op b
     one f a = do
       (s, x) <- cexpr env scope a
@@ -639,7 +621,7 @@ orderingOf env = case M.lookup (collectionsUnit ++ "::type::Ordering") (envData 
   Just d -> pure (dataNameOf env d)
   Nothing -> lift' (Left "typed Swift: no typed Ordering")
 
-codecOf :: Env -> Type -> Either String String
+codecOf :: Env -> Type -> Either String Codec
 codecOf env = Data.codec (envBits env) (envNames env) []
 
 intrinsicCall :: Env -> Intrinsic -> [(D.Doc, Type)] -> M D.Doc
