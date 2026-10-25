@@ -7,6 +7,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Eval as E
 import qualified LawSpec.Core.Validate as V
 import LawSpec.JvmLets (flattenLets, flattenStrictLets)
+import LawSpec.JvmNames (jvmScopedNames)
 import qualified LawSpec.Core.Types as Types
 import LawSpec.Frontend
 import LawSpec.Testing (planTesting, plannedUnits, plannedProperties, finiteCases)
@@ -77,6 +78,25 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
       mapM_ (\transform -> verify transform constructor) [flattenLets, flattenStrictLets]
     it "preserves strict-operation result types when arguments are hoisted" $
       verify flattenStrictLets strictArgument
+    it "gives nested locals distinct spellings without changing their references" $ do
+      let two = term integer (C.Constant (SInteger "Integer" 2))
+          input = bind y one (bind x two (local x))
+          (output, names) = jvmScopedNames (const "field") input
+      V.validateExpression 64 M.empty M.empty output `shouldBe` Right ()
+      M.elems names `shouldBe` ["field2"]
+      E.evaluatePure 64 [] output `shouldBe` E.evaluatePure 64 [] input
+    it "keeps a finite search domain outside the renamed candidate scope" $ do
+      let code = C.scalarType "Int8"
+          candidate = binder "candidate" code
+          list = C.Constructor "List" [C.TypeArgument code]
+          literal n = term code (C.Constant (SInteger "Int8" n))
+          values = term list (C.Construct (C.Id "List::Cons") [literal 0,
+            term list (C.Construct (C.Id "List::Cons") [literal 1,
+              term list (C.Construct (C.Id "List::Nil") [])])])
+          input = bind x one (term code (C.SearchElements False values candidate (local candidate)))
+          (output, names) = jvmScopedNames (const "field") input
+      M.elems names `shouldBe` ["field2"]
+      verify (fst . jvmScopedNames (const "field")) input
   it "short circuits partial exact arithmetic" $ do
     let s = Source "core" "unit core\nlaw \"|short circuit| is definition : for all (x :: Bool) => (false && 1 / 0 == 0) = false end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [s] of

@@ -7,7 +7,7 @@
 -- spaces. ref:DEC-readable-generated-names ref:DEC-native-string-literals
 module LawSpec.JvmNames
   ( jvmReserved, jvmLocal, jvmClaim, jvmClaimAll, jvmLocalTable, jvmString, jvmStringChunks
-  , exampleTestNames, boundaryTestName, contractMethod, javadoc, jvmMethod, googleCase
+  , jvmScopedNames, exampleTestNames, boundaryTestName, contractMethod, javadoc, jvmMethod, googleCase
   ) where
 
 import Data.Char (isAlphaNum, isDigit, toLower, toUpper)
@@ -26,7 +26,7 @@ import LawSpec.TestNames (lawWords)
 -- values, and the classes it names unqualified.
 jvmReserved :: String -> [String]
 jvmReserved target = targetKeywords target ++ words
-  "symbols values inputs captured environment seed seeds iteration sizeHint caseIndex measured error \
+  "symbols values inputs captured environment seed seeds iteration sizeHint caseIndex finiteCase measured error \
   \value native recorded matched fields group results raw bytes index integer number point units unit \
   \description real imaginary coefficient exponent numerator denominator positive released unused \
   \schema bits context actual expected type tag fields config random LawSpecRuntime Value String Object \
@@ -163,3 +163,58 @@ javadoc width content
 -- they differ only in punctuation.
 jvmMethod :: String -> String -> String
 jvmMethod verb identity = verb ++ concatMap capital (words (map (\c -> if isAlphaNum c then toLower c else ' ') identity))
+
+-- | An expression whose binders shadow no name already in scope (an
+-- enclosing binder's or a free local's): such a binder gets a fresh id,
+-- named with the first free 2, 3 suffix (Google Java Style's camel case
+-- has no underscores). Expansion can bind one id again inside itself, so
+-- renaming stops where the id is bound anew. ref:DEC-readable-generated-names
+jvmScopedNames :: (C.Id -> String) -> C.Expr -> (C.Expr, M.Map C.Id String)
+jvmScopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x1f') (C.idText i))) | i <- freshIds renamed])
+  where
+    renamed = go (S.fromList (map named (S.toList (freeLocals whole)))) whole
+    freeLocals e = case C.expressionNode e of
+      C.Local i -> S.singleton i
+      C.Let b v body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
+      C.AllElements v b body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
+      C.SearchElements _ v b body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
+      C.AllPayloads v ps -> S.unions (freeLocals v : [S.delete (C.binderId b) (freeLocals x) | (b, x) <- ps])
+      C.Match v cs -> S.unions (freeLocals v : [freeLocals (C.caseBody c) `S.difference` S.fromList (map C.binderId (C.caseBinders c)) | c <- cs])
+      _ -> S.unions (map freeLocals (C.children e))
+    go scope e = case C.expressionNode e of
+      C.Let b value body -> let ([b'], body0, inner) = bindAll scope [b] body
+        in e { C.expressionNode = C.Let b' (go scope value) (go inner body0) }
+      C.AllElements value b body -> let ([b'], body0, inner) = bindAll scope [b] body
+        in e { C.expressionNode = C.AllElements (go scope value) b' (go inner body0) }
+      C.SearchElements universal value b body -> let ([b'], body0, inner) = bindAll scope [b] body
+        in e { C.expressionNode = C.SearchElements universal (go scope value) b' (go inner body0) }
+      C.AllPayloads value ps -> e { C.expressionNode = C.AllPayloads (go scope value)
+        [let ([b'], x0, inner) = bindAll scope [b] x in (b', go inner x0) | (b, x) <- ps] }
+      C.Match value cs -> e { C.expressionNode = C.Match (go scope value)
+        [let (bs', body0, inner) = bindAll scope (C.caseBinders c) (C.caseBody c) in c { C.caseBinders = bs', C.caseBody = go inner body0 } | c <- cs] }
+      _ -> C.mapChildren (go scope) e
+    bindAll scope bs body = foldl one ([], body, scope) bs
+      where
+        one (done, b0, sc) b =
+          let base = named (C.binderId b)
+          in if base `S.notMember` sc then (done ++ [b], b0, S.insert base sc)
+             else
+               let name = head [n | n <- [base ++ show k | k <- [2 :: Int ..]], n `S.notMember` sc]
+                   -- The chosen name rides in the id, after a separator no source id holds.
+                   fresh = C.Id (C.idText (C.binderId b) ++ "\x1f" ++ name)
+               in (done ++ [b { C.binderId = fresh }], renameFree (C.binderId b) fresh b0, S.insert name sc)
+    -- Uses of one id renamed, up to where the id is bound again.
+    renameFree from to e = case C.expressionNode e of
+      C.Local i | i == from -> e { C.expressionNode = C.Local to }
+      C.Let b v body | C.binderId b == from -> e { C.expressionNode = C.Let b (renameFree from to v) body }
+      C.AllElements v b body | C.binderId b == from -> e { C.expressionNode = C.AllElements (renameFree from to v) b body }
+      C.SearchElements universal v b body | C.binderId b == from -> e { C.expressionNode = C.SearchElements universal (renameFree from to v) b body }
+      _ -> C.mapChildren (renameFree from to) e
+    freshIds e = [C.binderId b | b <- introduced e, '\x1f' `elem` C.idText (C.binderId b)] ++ concatMap freshIds (C.children e)
+    introduced e = case C.expressionNode e of
+      C.Let b _ _ -> [b]
+      C.AllElements _ b _ -> [b]
+      C.SearchElements _ _ b _ -> [b]
+      C.AllPayloads _ ps -> map fst ps
+      C.Match _ cs -> concatMap C.caseBinders cs
+      _ -> []

@@ -6,8 +6,10 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Random;
 import java.util.function.BiFunction;
@@ -30,6 +32,191 @@ public final class LawSpecRuntime
 {
   private LawSpecRuntime()
   {}
+
+  /** A value is materialized in each test invocation's fresh symbol context. */
+  @FunctionalInterface
+  public interface FiniteValue
+  {
+    Value create(Map<String, Object> symbols);
+  }
+
+  /** Ordered finite-cover data. The planner establishes admission and completeness. */
+  public sealed interface FiniteCover permits FiniteEnd, FiniteChoices
+  {}
+
+  private record FiniteEnd(long repetitions) implements FiniteCover
+  {}
+
+  private record FiniteChoices(List<FiniteBranch> alternatives) implements FiniteCover
+  {}
+
+  @FunctionalInterface
+  public interface FiniteDomain
+  {
+    Iterator<FiniteValue> factories();
+  }
+
+  public record FiniteBranch(FiniteDomain domain, FiniteCover suffix)
+  {}
+
+  /** A stable, one-based case index and deferred values; no mutable values are shared. */
+  public record FiniteCase(long index, List<FiniteValue> factories)
+  {
+    public List<Value> values(Map<String, Object> symbols)
+    {
+      return factories.stream().map(factory -> factory.create(symbols)).toList();
+    }
+  }
+
+  public static FiniteCover finiteEnd(long repetitions)
+  {
+    if (repetitions < 0)
+    {
+      throw new IllegalArgumentException("negative finite-cover repetition count");
+    }
+    return new FiniteEnd(repetitions);
+  }
+
+  public static FiniteCover finiteChoices(FiniteBranch... alternatives)
+  {
+    return new FiniteChoices(List.of(alternatives));
+  }
+
+  public static FiniteBranch finiteBranch(FiniteDomain domain, FiniteCover suffix)
+  {
+    return new FiniteBranch(domain, suffix);
+  }
+
+  public static FiniteDomain finiteValues(FiniteValue... factories)
+  {
+    var stored = List.of(factories);
+    return stored::iterator;
+  }
+
+  public static FiniteDomain finiteRange(String type, String first, String last)
+  {
+    var lower = new BigInteger(first);
+    var upper = new BigInteger(last);
+    return () -> new Iterator<>()
+    {
+      private BigInteger value = lower;
+
+      @Override
+      public boolean hasNext()
+      {
+        return value.compareTo(upper) <= 0;
+      }
+
+      @Override
+      public FiniteValue next()
+      {
+        if (!hasNext())
+        {
+          throw new NoSuchElementException();
+        }
+        var current = value;
+        value = current.add(BigInteger.ONE);
+        return symbols -> integer(type, current.toString());
+      }
+    };
+  }
+
+  private static Iterator<List<FiniteValue>> finiteRows(FiniteCover cover)
+  {
+    if (cover instanceof FiniteEnd end)
+    {
+      return new Iterator<>()
+      {
+        private long remaining = end.repetitions();
+
+        @Override
+        public boolean hasNext()
+        {
+          return remaining > 0;
+        }
+
+        @Override
+        public List<FiniteValue> next()
+        {
+          if (!hasNext())
+          {
+            throw new NoSuchElementException();
+          }
+          remaining--;
+          return List.of();
+        }
+      };
+    }
+    var choices = (FiniteChoices) cover;
+    return new Iterator<>()
+    {
+      private final Iterator<FiniteBranch> alternatives = choices.alternatives().iterator();
+      private Iterator<FiniteValue> values = Collections.emptyIterator();
+      private Iterator<List<FiniteValue>> suffixes = Collections.emptyIterator();
+      private FiniteCover suffix;
+      private FiniteValue first;
+
+      @Override
+      public boolean hasNext()
+      {
+        while (!suffixes.hasNext())
+        {
+          if (values.hasNext())
+          {
+            first = values.next();
+            suffixes = finiteRows(suffix);
+          }
+          else if (alternatives.hasNext())
+          {
+            var branch = alternatives.next();
+            values = branch.domain().factories();
+            suffix = branch.suffix();
+          }
+          else
+          {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      @Override
+      public List<FiniteValue> next()
+      {
+        if (!hasNext())
+        {
+          throw new NoSuchElementException();
+        }
+        var rest = suffixes.next();
+        var row = new ArrayList<FiniteValue>(rest.size() + 1);
+        row.add(first);
+        row.addAll(rest);
+        return List.copyOf(row);
+      }
+    };
+  }
+
+  /** Walk shared suffixes lazily in the planner's order, preserving duplicate observations. */
+  public static Iterable<FiniteCase> finiteCases(FiniteCover cover)
+  {
+    return () -> new Iterator<>()
+    {
+      private final Iterator<List<FiniteValue>> rows = finiteRows(cover);
+      private long index;
+
+      @Override
+      public boolean hasNext()
+      {
+        return rows.hasNext();
+      }
+
+      @Override
+      public FiniteCase next()
+      {
+        return new FiniteCase(++index, rows.next());
+      }
+    };
+  }
 
   public record Value(String type, Object data)
   {
