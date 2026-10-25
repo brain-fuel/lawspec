@@ -61,6 +61,11 @@ test_drawHelpersPreserveCapturedScope = describe "shared strategy draw helpers" 
         req = requirement { generatorBounds = [(C.Greater,local earlier)], generatorHints = [local earlier] }
         plan = either error id (planDraw req [earlier] (C.DrawAny integer Nothing))
     map C.binderId (drawCaptures (head (drawNodes plan))) `shouldBe` [C.binderId earlier]
+  it "keeps free type parameters distinct while sharing value binders" $ do
+    let plan = planned [] (C.DrawFrequency
+          [(1,C.DrawAny (C.TypeVariable (C.Id "firstType")) Nothing),
+           (1,C.DrawAny (C.TypeVariable (C.Id "secondType")) Nothing)])
+    length [() | node <- drawNodes plan, AnyDraw _ _ <- [drawStep node]] `shouldBe` 2
   it "rejects an undeclared capture instead of inventing a native variable" $ do
     planDraw requirement [] (C.DrawOneOf integer [local (binder "missing")])
       `shouldBe` Left "strategy draw has an unbound capture: missing"

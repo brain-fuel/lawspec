@@ -10,6 +10,9 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Testing.Draws as Draws
+import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.JavaExpr as E
@@ -17,7 +20,7 @@ import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.Char (isAlphaNum, toLower, toUpper)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
 import LawSpec.TestNames (unitTestNames, lawWords)
-import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase)
+import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase, jvmClaimAll, jvmClaim)
 import LawSpec.Naming (displayLabel)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, originLocation, exampleLocation)
 
@@ -41,6 +44,7 @@ data Config = Config
   -- Native adapters convert logical arguments and failures once per signature.
   , adapterWrappers :: [D.Doc]
   , expression :: Expr -> D.Doc
+  , scopedExpression :: [(C.Id,String)] -> Expr -> D.Doc
   , literal :: V.Value -> Either [Diagnostic] D.Doc
   , checked :: Type -> D.Doc -> D.Doc
   , structural :: Type -> Bool
@@ -189,7 +193,7 @@ emitTests Config{..} unit laws = do
         adapterWrappers ++ map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
       body = separate members
       rendered = D.render D.Compact body
-      imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map", "java.util.function.Supplier",
+      imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map", "java.util.function.Function", "java.util.function.Supplier",
         "lawspec.runtime.LawSpecDataCodecs", "lawspec.runtime.LawSpecDefinitionBodies",
         "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value", "lawspec.runtime.LawSpecSchema",
         "lawspec.testing.LawSpecDataStrategies", "lawspec.testing.LawSpecHarness", Style.propertyPackage testStyle ++ ".Generator", Style.propertyPackage testStyle ++ ".PropertyChecker",
@@ -313,7 +317,7 @@ emitTests Config{..} unit laws = do
       draws <- mapM (\plan -> do
         let inp = domainInput plan
         case strategyOf inp of
-          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> drawDoc inp strategy (inputId inp) d
+          (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> sharedDraw e plan inp strategy (inputId inp) d
           [] -> pure [bind (inputId inp) (call "environment.<Value>generate" [generatorWithin (inputRange machineBits inp) (inputType inp)])]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [statement (call "LawSpecHarness.checkDrawn" [quoted strategy, quoted (inputName inp),
@@ -330,6 +334,47 @@ emitTests Config{..} unit laws = do
          ("forAll",[generator, closure "inputs" (statements ([bindingsDoc] ++ strategyChecks ++ handlerInstalls e ++ [check, returned (text "true")]))])]
     -- A choice among n: a wide draw, reduced, so the weights hold.
     chooser = lambda "count" (call "environment.generate" [call "Generator.integers" [text "0", text "java.lang.Integer.MAX_VALUE"]] <> text " % count")
+    -- Shared helpers receive captured values explicitly. Their bodies sample
+    -- only when called, including callbacks for unchosen alternatives.
+    sharedDraw expanded requirement inp strategy name draw = do
+      let available = map C.quantifiedBinder (inputs expanded) ++ map C.resourceBinder (C.propertyResources (original expanded))
+      graph <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (Draws.planDraw requirement available draw)
+      let nodes = Draws.drawNodes graph
+          bound step = case step of
+            Draws.FilterDraw _ binder predicate _ -> binder : expressionBinders predicate
+            Draws.BindDraw binder _ _ -> [binder]
+            Draws.OneOfDraw _ values -> concatMap expressionBinders values
+            _ -> []
+          taken = S.fromList ("environment" : "symbols" : map (localName . C.binderId)
+            (available ++ concatMap Draws.drawCaptures nodes ++ concatMap (bound . Draws.drawStep) nodes))
+          (names, allTaken) = jvmClaimAll taken [googleCase (name ++ "Draw" ++ show (Draws.drawNumber node)) | node <- nodes]
+          table = M.fromList (zip (map Draws.drawNumber nodes) names)
+          invoke aliases child = callDoc (table M.! Draws.drawCallee child ++ ".apply")
+            [callDoc "List.of" [text (maybe (localName identity) id (lookup identity aliases)) | identity <- Draws.drawArguments child]]
+          callDoc = call
+          nodeDoc node = do
+            let function = table M.! Draws.drawNumber node
+                captured = fst (jvmClaim allTaken (googleCase (function ++ "CapturedValues")))
+                binders = M.elems (M.fromList [(C.binderId binder,binder) | binder <- Draws.drawCaptures node ++ bound (Draws.drawStep node)])
+                aliases = zip (map C.binderId binders) (fst (jvmClaimAll (S.insert captured allTaken)
+                  [googleCase (function ++ " " ++ localName (C.binderId binder)) | binder <- binders]))
+                renamed identity = maybe (localName identity) id (lookup identity aliases)
+                captures = [bind (renamed (C.binderId binder)) (callDoc (captured ++ ".get") [number i])
+                  | (i,binder) <- zip [0::Int ..] (Draws.drawCaptures node)]
+            body <- case Draws.drawStep node of
+              Draws.AnyDraw ty aim -> snd <$> drawDoc inp strategy name (C.DrawAny ty aim)
+              Draws.OneOfDraw _ values -> pure (DrawValue (callDoc "LawSpecHarness.oneOf" [chooser,
+                callDoc "List.<Supplier<Value>>of" [lambda "()" (scopedExpression aliases value) | value <- values]]))
+              Draws.FrequencyDraw alternatives -> pure (DrawValue (callDoc "LawSpecHarness.frequency" [chooser,
+                callDoc "java.util.List.of" [callDoc "new LawSpecHarness.Weighted" [number weight,lambda "()" (invoke aliases child)] | (weight,child) <- alternatives]]))
+              Draws.FilterDraw child binder predicate limit -> pure (DrawValue (callDoc "LawSpecHarness.suchThat"
+                [lambda "()" (invoke aliases child),lambda (renamed (C.binderId binder)) (truth (scopedExpression aliases predicate)),number limit,quoted strategy]))
+              Draws.BindDraw binder from rest -> pure (DrawSteps [bind (renamed (C.binderId binder)) (invoke aliases from)] (invoke aliases rest))
+            let statements' = captures ++ case body of DrawValue value -> [returned value]; DrawSteps steps value -> steps ++ [returned value]
+            pure (D.group (text ("Function<List<Value>, Value> " ++ function ++ " =") <>
+              D.nest 4 (D.softline <> closure captured (statements statements'))) <> text ";")
+      helpers <- mapM nodeDoc nodes
+      pure (helpers,DrawValue (invoke [] (Draws.drawRoot graph)))
     -- A draw is the suppliers it needs, each naming one sub-draw and
     -- declared before its use, then its value: draws stay flat rather than
     -- nesting a lambda per step.
