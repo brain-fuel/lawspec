@@ -246,9 +246,9 @@ if (['erlang', 'elixir', 'gleam'].includes(target)) {
     [cli, 'generate', ...(minify ? ['--minify'] : [])], directory, pass);
   const bridge = path.join(directory, 'src/lawspec_native_bindings.erl');
   const bridgeContent = await readFile(bridge, 'utf8');
-  const unbound = JSON.parse(originalConfig);
+  const unbound = parseManifest(originalConfig);
   delete unbound.targets[0].nativeBindings;
-  await writeFile(configPath, JSON.stringify(unbound, null, 2) + '\n');
+  await writeFile(configPath, writeManifest(unbound));
   await writeFile(bridge, bridgeContent + '\n% application edited the generated bridge\n');
   assert.match(await generate(false), /Refusing to remove edited generated file/);
   assert.equal(await readFile(path.join(directory, '.lawspec/generated.json'), 'utf8'), manifest);
