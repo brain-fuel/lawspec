@@ -572,7 +572,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     -- Dependent children remain inside chain/filter callbacks.
     sharedArbitrary e index requirement draw = do
       graph <- literalChecked (Draws.planDraw requirement
-        (map generatorBinder (generationPlan e) ++ map C.resourceBinder (C.propertyResources (original e))) draw)
+        (map generatorBinder (take index (generationPlan e))) draw)
       let helperName number = "_draw_" ++ inputId (domainInput requirement) ++ "_" ++ show index ++ "_" ++ show number
           call node = E.call (helperName (Draws.drawCallee node))
             (E.Ident "symbols" : map (E.Ident . localName) (Draws.drawArguments node))

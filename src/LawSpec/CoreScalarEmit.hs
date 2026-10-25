@@ -615,7 +615,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         (statements (fresh e : map (Doc.hardline <>) helpers ++ separated ++ [body])))
     sharedDraw e index requirement strategy draw = do
       graph <- literalChecked (Draws.planDraw requirement
-        (map generatorBinder (generationPlan e) ++ map C.resourceBinder (C.propertyResources (original e))) draw)
+        (map generatorBinder (take index (generationPlan e))) draw)
       let helperName number = "_draw_" ++ inputId (domainInput requirement) ++ "_" ++ show index ++ "_" ++ show number
           call node = invoke (helperName (Draws.drawCallee node))
             (map (text . localName) (Draws.drawArguments node))
