@@ -9,6 +9,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..), Location(..))
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Cover
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
 import LawSpec.Backend (lawCommentLines, propertyLink)
@@ -54,22 +55,34 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
         bodies = lawBodies ++ benchmarkBodies
         suite = testName (C.unitId unit)
         helpers = [d | (d, Helper) <- bodies]
-        tests = [(n, display, link, body) | (_, Test n display link body) <- bodies]
+        tests = [(law, n, display, link, arguments, body) | (_, Test law n display link arguments body) <- bodies]
         skipped = [ testAttribute display <> D.hardline <>
                     D.text ("func " ++ n ++ "() throws") <> blockDoc (
                       callDoc "Harness.skip" [D.text (stringLiteral law), D.text (stringLiteral reason)] <> D.hardline <>
                       callDoc "try Test.cancel" [D.text (stringLiteral reason)])
                   | (_, SkipTest n display law reason) <- bodies ]
+        invocationGroups = ListOf (Ty "[LawSpecTesting.InvocationGroup]")
+          [case arguments of
+             Nothing -> pure' "LawSpecTesting.InvocationGroup" "fixed" [Str law, Str n]
+             Just cases -> pure' "LawSpecTesting.InvocationGroup" "finite" [Str law, Str n, cases]
+          | (law, n, _, _, arguments, _) <- tests]
+        orderedCases = call "LawSpecTesting.Invocation" "expand" [Str (C.idText (C.unitId unit)), invocationGroups]
+        orderedBody arguments body = case arguments of
+          Nothing -> body
+          Just _ -> Let "finiteCase" (Ty "LawSpecTesting.FiniteCase") (call "invocation" "finiteCase" []) body
         testDocs
           | random =
               [ callDoc "@Test" [D.text (stringLiteral (C.idText (C.unitId unit) ++ " in the run's random order")),
-                  D.text "arguments: " <> callDoc "Schedule.order" [D.text (stringLiteral suite), arrayDoc [D.text (stringLiteral n) | (n, _, _, _) <- tests]]] <> D.hardline <>
-                D.text "func ordered(_ name: String) async throws" <> blockDoc (
+                  D.text "arguments: try " <> callDoc "Schedule.order" [D.text (stringLiteral suite), renderExpr orderedCases]] <> D.hardline <>
+                D.text "func ordered(_ invocation: LawSpecTesting.Invocation) async throws" <> blockDoc (
                   D.text "try await LawThread.run" <> blockDoc (
-                    D.text "switch name {" <> D.hardline <>
-                    D.joinWith D.hardline [ D.text ("case " ++ stringLiteral n ++ ":") <> D.nest 2 (D.hardline <> renderStatements b) | (n, _, _, b) <- tests ] <> D.hardline <>
-                    D.text "default:" <> D.nest 2 (D.hardline <> D.text "break") <> D.hardline <> D.text "}")) ]
-          | otherwise = [ comment link <> testDoc n display b | (n, display, link, b) <- tests ]
+                    D.text ("try invocation.run(" ++ stringLiteral (C.idText (C.unitId unit)) ++ ")") <> blockDoc (
+                      D.text "switch invocation.name {" <> D.hardline <>
+                      D.joinWith D.hardline [D.text ("case " ++ stringLiteral n ++ ":") <>
+                        D.nest 2 (D.hardline <> renderStatements (orderedBody arguments body))
+                        | (_, n, _, _, arguments, body) <- tests] <> D.hardline <>
+                      D.text "default:" <> D.nest 2 (D.hardline <> D.text "throw LawSpecError(\"UnknownInvocationName\", invocation.name)") <> D.hardline <> D.text "}"))) ]
+          | otherwise = [comment link <> testDoc parallel n display arguments body | (_, n, display, link, arguments, body) <- tests]
         allTests = testDocs ++ skipped
         suiteDoc = D.text ("/// The laws of " ++ C.idText (C.unitId unit) ++ ".") <> D.hardline <>
           D.text ("@Suite(" ++ stringLiteral (C.idText (C.unitId unit)) ++ (if random then ", .serialized" else "") ++ ") struct " ++ suite) <>
@@ -83,9 +96,22 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
     units = map plannedUnit (plannedUnits plan)
     external = Effects.external units
     setup inner = Let "symbols" (Ty "") (Raw "SymbolContext()") (Let "schema" (Ty "") (Raw "LawSpec.Program.schema") inner)
-    testDoc n display b =
-      testAttribute display <> D.hardline <>
-      D.text ("func " ++ n ++ "() async throws") <> blockDoc (D.text "try await LawThread.run" <> blockDoc (renderStatements b))
+    testDoc parallel n display arguments body =
+      (case arguments of
+        Nothing -> testAttribute display
+        Just cases -> callDoc "@Test" ([D.text (stringLiteral display)] ++
+          [D.text ".serialized" | not parallel] ++ [D.text "arguments: try " <> renderExpr cases])) <> D.hardline <>
+      (let contents = D.text "try await LawThread.run" <> blockDoc (renderStatements body)
+       in case arguments of
+         Nothing -> D.text ("func " ++ n ++ "() async throws") <> blockDoc contents
+         Just _ ->
+           let opening = "func " ++ n
+               parameter = "_ finiteCase: LawSpecTesting.FiniteCase"
+               firstLine = opening ++ "(" ++ parameter ++ ")"
+           in D.prefixChoice firstLine
+                (D.group (D.text firstLine <> D.nest 2 (D.softline <> D.text "async throws") <> D.softline <> D.text "{") <>
+                  D.nest 2 (D.hardline <> contents) <> D.hardline <> D.text "}")
+                (signature opening [parameter] " async throws" contents))
     benchmarks unit = do
       let measured = maybe [] C.harnessBenchmarks (C.unitHarnessSettings unit)
           names = unitBenchmarkNames (map fst measured)
@@ -94,7 +120,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
         handled <- Effects.withHandlers units X.schemaVar X.symbolsVar [] (const body)
         let measure = call "Harness" "benchmark" [Str (C.idText (C.unitId unit)), Str benchmarkLabel,
               Lambda [] tVoid (Do [handled] (Raw "()"))]
-        pure (mempty, Test (camel n) ("benchmark " ++ benchmarkLabel) ("benchmark " ++ benchmarkLabel) (setup measure))
+        pure (mempty, Test (camel n) (camel n) ("benchmark " ++ benchmarkLabel) ("benchmark " ++ benchmarkLabel) Nothing (setup measure))
     lawTests unit name planned = do
       let law = plannedProperty planned
           parameters = map C.quantifiedBinder (C.propertyInputs law)
@@ -181,25 +207,22 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
         pure (test (name ++ "_" ++ suffix) (displayLabel (C.propertyName law) ++ " — " ++ displayLabel (C.exampleName example))
           (labelled ("example " ++ displayLabel (C.exampleName example)) exampleLink) False
           (setup (Do [inScope] (Raw "()"))))
-      let cases = maybe (boundaryCases planned) id (finiteCases planned)
-          -- One enormous array expression exhausts Swift's type checker.
-          -- Construct bounded portions with the original symbol context,
-          -- then concatenate before the unchanged, independently indexed loop.
-          caseGroups = if length cases >= 1024 && C.harnessSkip harness == Nothing then groupsOf 64 cases else []
-          valuesName = name ++ "Boundaries"
-          partName i = valuesName ++ "Part" ++ show i
-          caseValues values = ListOf (Ty "[[Value]]") [ListOf tValues (map (X.value X.symbolsVar) row) | row <- values]
-          caseHelpers = if null caseGroups then [] else
-            [function (partName i) [("symbols", tSymbols)] (Ty "[[Value]]") (caseValues values) | (i,values) <- zip [0::Int ..] caseGroups] ++
-            [signature ("private func " ++ valuesName) ["_ symbols: SymbolContext"] " throws -> [[Value]]" (D.joinWith D.hardline
-                (D.text "var cases: [[Value]] = []" :
-                  [D.text ("cases.append(contentsOf: try " ++ partName i ++ "(symbols))") | i <- [0 .. length caseGroups - 1]] ++
-                  [D.text "return cases"]))]
-          boundaryValues = if null caseGroups then caseValues cases else Call valuesName [X.symbolsVar]
-          boundary = [ test (name ++ "_boundary") (displayLabel (C.propertyName law) ++ " boundaries") lawComment False (setup
-                         (call "Property" "boundaries" [Str label, boundaryValues,
-                           Lambda [("values", tValues)] tValue (invoke (Var "values"))]))
-                     | not (null cases) ]
+      cover <- caseCover planned
+      let valuesName = name ++ "Cases"
+          caseCollection = Call valuesName []
+          caseHelpers = [D.group (D.text ("private func " ++ valuesName ++ "() throws") <>
+              D.nest 2 (D.softline <> D.text "-> LawSpecTesting.FiniteCases") <> D.softline <> D.text "{") <>
+              D.nest 2 (D.hardline <> renderBody (Ty "LawSpecTesting.FiniteCases") (Call "LawSpecTesting.FiniteCases" [coverExpression cover])) <>
+              D.hardline <> D.text "}"
+            | Cover.coverCount cover > 0 && C.harnessSkip harness == Nothing]
+          boundaryBody = setup (Statement (call "finiteCase" "check" [Str shown, X.symbolsVar,
+            Lambda [("values", tValues)] tValue (invoke (Var "values"))]))
+          boundaryDisplay = pure' "finiteCase" "context" [Str (displayLabel (C.propertyName law))]
+          boundaryAction = wrapHarnessNamed label boundaryDisplay False harness boundaryBody
+          boundaryLoop = call "LawSpecTesting.FiniteCases" "visit"
+            [caseCollection, Lambda [("finiteCase", Ty "LawSpecTesting.FiniteCase")] tVoid boundaryAction]
+          finiteTests = [Test name (name ++ "_boundary") (displayLabel (C.propertyName law) ++ " boundaries")
+            lawComment (Just caseCollection) boundaryAction | Cover.coverCount cover > 0]
       random <- case finiteCases planned of
         Just _ -> pure [test (name ++ "_statistics") (displayLabel (C.propertyName law) ++ " statistics") lawComment True (Raw "()") | observed harness]
         Nothing -> do
@@ -241,21 +264,32 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
                 (setup (call "Search" "climb" [Str label, ListOf (Ty "[String]") (map Str ds), climbed]))]
             _ -> pure []
           pure ([test (name ++ "_property") (displayLabel (C.propertyName law) ++ " property") lawComment (observed harness) (setup check)] ++ searches)
-      let ordinary = examples ++ boundary ++ random
+      let ordinaryActions = [Lambda [] tVoid (wrapHarness label display observations harness body) | (_, display, _, observations, body) <- examples] ++
+            [Lambda [] tVoid boundaryLoop | Cover.coverCount cover > 0] ++
+            [Lambda [] tVoid (wrapHarness label display observations harness body) | (_, display, _, observations, body) <- random]
           tests = case (C.harnessSkip harness, C.harnessKnownFailing harness) of
             (Just reason, _) -> [SkipTest (name ++ "_skipped") (displayLabel (C.propertyName law) ++ " skipped") label reason]
-            (_, Just reason) -> [Test (name ++ "_knownFailing") (displayLabel (C.propertyName law) ++ " known failing") lawComment
+            (_, Just reason) -> [Test name (name ++ "_knownFailing") (displayLabel (C.propertyName law) ++ " known failing") lawComment Nothing
               (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
-                ListOf (Ty "[() throws -> Void]") [Lambda [] tVoid (wrapHarness label d o harness b) | (_, d, _, o, b) <- ordinary]])]
-            _ -> [Test n d c (wrapHarness label d o harness b) | (n, d, c, o, b) <- ordinary]
+                ListOf (Ty "[() throws -> Void]") ordinaryActions])]
+            _ -> [Test name n display link Nothing (wrapHarness label display observations harness body)
+                    | (n, display, link, observations, body) <- examples] ++ finiteTests ++
+                 [Test name n display link Nothing (wrapHarness label display observations harness body)
+                    | (n, display, link, observations, body) <- random]
       let described = mconcat (map comment (lawCommentLines planned)) <> bodyDoc
       pure ((described, Helper) : [(caseDoc, Helper) | not plainCase] ++ [(doc, Helper) | doc <- caseHelpers] ++ [(mempty, t) | t <- tests])
-    groupsOf _ [] = []
-    groupsOf count values = let (group,rest) = splitAt count values in group : groupsOf count rest
+    coverExpression (Cover.Complete count) = pure' "LawSpecTesting.FiniteCover" "copies" [IntLit (toInteger count)]
+    coverExpression (Cover.Alternatives branches) = pure' "LawSpecTesting.FiniteCover" "branches"
+      [ListOf (Ty "[(LawSpecTesting.FiniteDomain, LawSpecTesting.FiniteCover)]")
+        [TupleOf [domainExpression domain, coverExpression suffix] | (domain, suffix) <- branches]]
+    domainExpression (Cover.Values values) = pure' "LawSpecTesting.FiniteDomain" "values"
+      [ListOf (Ty "[LawSpecTesting.FiniteFactory]") [Lambda [("symbols", tSymbols)] tValue (X.value (Var "symbols") value) | value <- values]]
+    domainExpression (Cover.IntegerInterval _ first last') = pure' "LawSpecTesting.FiniteDomain" "integers" [BigLit first, BigLit last']
     test n display link o body = (n, display, link, o, body)
-    wrapHarness law display observations harness body
+    wrapHarness law display = wrapHarnessNamed law (Str display)
+    wrapHarnessNamed law display observations harness body
       | not observations && not (controlled harness) = body
-      | otherwise = call "Harness" "run" [Str law, Str display,
+      | otherwise = call "Harness" "run" [Str law, display,
           ListOf (Ty "[(Int, String)]") [TupleOf [IntLit percent, Str name'] | observations, C.Cover percent name' _ <- C.harnessCover harness],
           pure' "Harness" "options" [IntLit (C.harnessRepeat harness), IntLit (C.harnessRetries harness),
             maybe (Raw "nil") IntLit (C.harnessTimeout harness), BoolLit False, BoolLit observations],
@@ -275,7 +309,7 @@ testAttribute display = callDoc "@Test" [D.text (stringLiteral display)]
 
 -- | A piece of a unit's test file: a helper function, a test, or a skipped
 -- law's test (recorded, then cancelled).
-data Piece = Helper | Test String String String Expr | SkipTest String String String String
+data Piece = Helper | Test String String String String (Maybe Expr) Expr | SkipTest String String String String
 
 observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||

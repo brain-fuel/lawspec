@@ -74,7 +74,8 @@ testManifestWithNativeContext modelsSelected nativeBindings target testDir progr
       (relocated (unitTestPath target unit)) (lawKey u p)
       (callsAdapters p)
       testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
-      (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing []
+      (maybe False harnessParallel (unitHarnessSettings u)) Nothing
+      (if target == "swift" && harnessSkip (propertyHarness p) == Nothing && maybe False harnessOrderRandom (unitHarnessSettings u) then Just "ordered" else Nothing) []
   | u <- programUnits program
   , let unit = idText (unitId u)
         names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ propertyName p | p <- unitProperties u]

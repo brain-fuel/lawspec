@@ -142,3 +142,18 @@ differently: JetCheck caps a filter at 100 attempts, Rapid at five, and
 Hedgehog uses separate test, discard and shrink limits. The details are in the
 [refinement reference](../reference/refinements.md#target-generation-limits).
 No framework promises the smallest possible counterexample.
+
+Swift finite cases are registered as parameterized Swift Testing invocations.
+The generated source stores each finite cover once, with ranges and shared
+suffixes; each invocation constructs its values in a fresh symbol context.
+The native argument encodes the zero-based ordinal, while failures display the
+one-based boundary number and concrete inputs. Oversized collections fail
+explicitly rather than truncating coverage.
+
+For a unit whose harness randomizes order, the same cover contributes individual
+invocations to its schedule. The CLI selects laws through structured invocation
+metadata. The runtime records a current-run plan and each body's start and
+completion. Acceptance requires the current native Swift Testing report as well:
+these completion records attribute native execution and are not independently
+checked proof certificates. The standalone finite-cover conformance driver also
+checks a failed row and rejection of an unknown selection.

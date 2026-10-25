@@ -269,7 +269,7 @@ functionDoc env c d = do
         then [D.text ("var " ++ l ++ " = " ++ l) | l <- reassigned] ++
              [D.text "while true {" <> block body <> D.hardline <> D.text "}"]
         else body
-  pure (sourceDoc (idText (declarationId declaration)) (declarationOrigin declaration) <>
+  pure (sourceDoc (Nm.sourceDefinitionName (declarationName declaration)) (declarationOrigin declaration) <>
     signature ("static func " ++ name) parameters (" throws -> " ++ resultType) (D.joinWith D.hardline bodyDoc))
   where
     loops docs = any (\doc -> "continue" `elem` words (D.render D.Compact doc)) docs
