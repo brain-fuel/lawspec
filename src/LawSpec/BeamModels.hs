@@ -29,7 +29,7 @@ emit target layout bits datas units = concat <$> mapM unitFiles
     callback identity = do
       d <- declaration identity
       name <- maybe (Left ("missing checked BEAM model callback " ++ C.idText identity)) Right (lookup identity entries)
-      let arguments = [D.text ("_LsArgument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType (C.declarationType d)))]
+      let arguments = [D.text ("_Argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType (C.declarationType d)))]
       pure (E.lambda [E.tuple [schema,symbols],E.array arguments]
         (E.remote "lawspec_definitions" name (schema:symbols:arguments)))
     optional = maybe (pure (E.atom "none")) callback
@@ -56,11 +56,11 @@ emit target layout bits datas units = concat <$> mapM unitFiles
         invariants <- mapM (callback . invariant) (machineInvariants machine)
         ds <- mapM declaration (nub (foldr (:) [] machine))
         factories <- Effects.factories units symbols [(a,C.ProductionHandler) | a <- nub (concatMap Effects.uses ds)]
-        let body = E.apply (D.text "_LsBody") [E.tuple [schema,symbols]]
+        let body = E.apply (D.text "_Body") [E.tuple [schema,symbols]]
             handled = if null (concatMap Effects.uses ds) then E.apply (E.lambda [schema] body) [D.text "BaseSchema"]
               else E.remote "lawspec_beam_effects" "with_scope" [D.text "BaseSchema",factories,E.lambda [schema] body]
             scoped = if hasPolicies then E.remote "lawspec_beam_workflow" "with_test_runtime" [E.lambda [] handled] else handled
-            context = E.lambda [D.text "_LsBody"] (E.sequenceDoc
+            context = E.lambda [D.text "_Body"] (E.sequenceDoc
               [symbols <> D.text " = make_ref()",
                D.text "BaseSchema = " <> E.remote "lawspec_data" "schema" [symbols],scoped])
             model = E.remote "maps" "put" [E.atom "context",context,

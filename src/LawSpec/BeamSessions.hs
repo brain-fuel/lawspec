@@ -50,7 +50,7 @@ emit target layout bits declarations units = do
   artifacts <- concat <$> forM protocols (\(unit,session) -> do
     let steps = C.sessionSteps session
         name = moduleName unit session
-        variable = D.text . ("_Ls" ++) . E.pascal
+        variable = D.text . ("_" ++) . E.pascal
         runtime = E.remote "lawspec_beam_session"
         schema = D.text "Schema"
         fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]

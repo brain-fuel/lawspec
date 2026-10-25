@@ -60,8 +60,8 @@ factories :: [C.Unit] -> D.Doc -> [(C.AbilityRef,C.HandlerRef)] -> Either String
 factories units symbols choices = E.record <$> mapM factory [(a,h) | (a,h) <- choices, not (C.isFail a)]
   where
     factory (ability,choice) = do
-      body <- construct units (D.text "_LsFactorySchema") symbols ability choice
-      pure (E.binary (C.abilityKey ability),E.lambda [D.text "_LsFactorySchema"] body)
+      body <- construct units (D.text "_FactorySchema") symbols ability choice
+      pure (E.binary (C.abilityKey ability),E.lambda [D.text "_FactorySchema"] body)
 
 toNative, fromNative :: [C.Unit] -> C.AbilityRef -> D.Doc -> D.Doc -> D.Doc -> Either String D.Doc
 toNative = nativeBridge "_to_native"
@@ -94,8 +94,8 @@ external units symbols schema expression args = case C.expressionNode expression
     pure (E.remote "lawspec_beam_effects" "with_scope" [schema,choices,body])
   C.Handle (C.CatchFailure ability) _ | [body] <- args -> do
     ref <- E.typeReference (C.expressionType expression)
-    let side tag = E.lambda [D.text "_LsFailureValue"] (E.remote "lawspec_beam_schema" "construct"
-          [E.binary tag,E.array [D.text "_LsFailureValue"],ref,schema])
+    let side tag = E.lambda [D.text "_FailureValue"] (E.remote "lawspec_beam_schema" "construct"
+          [E.binary tag,E.array [D.text "_FailureValue"],ref,schema])
     pure (E.remote "lawspec_beam_effects" "attempt" [E.binary (C.abilityKey ability),body,
       side "Either::Right",side "Either::Left"])
   C.Calls operation arguments -> pure (E.remote "lawspec_beam_effects" "count_calls"

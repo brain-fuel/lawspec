@@ -30,7 +30,7 @@ emit target layout bits declarations units = do
       native = nativeType bits names
       entries = Definitions.entries units
       resultType = unitType target
-      variable = D.text . ("_Ls" ++) . E.pascal
+      variable = D.text . ("_" ++) . E.pascal
       unitValue = E.atom (if target == "gleam" then "nil" else "ok")
       bridge direction ty value = do
         ref <- E.typeReference ty
@@ -39,9 +39,9 @@ emit target layout bits declarations units = do
         let (types, _) = C.functionType (C.declarationType declaration)
         name <- maybe (Left "missing checked BEAM actor adapter") Right (lookup (C.declarationId declaration) entries)
         values <- sequence [bridge "from_native" ty value | (ty,value) <- zip types arguments]
-        out <- finish (D.text "_LsResult")
+        out <- finish (D.text "_Result")
         let call = E.remote "lawspec_definitions" name (D.text "Schema" : D.text "Symbols" : values)
-            body = E.sequenceDoc [D.text "_LsResult = " <> call,out]
+            body = E.sequenceDoc [D.text "_Result = " <> call,out]
             needed = [(a,v) | (a,v) <- available, a `elem` Effects.uses declaration]
         scoped <- if null needed then pure (E.sequenceDoc
           [D.text "Symbols = make_ref()",D.text "Schema = " <> E.remote "lawspec_data" "schema" [D.text "Symbols"],body])
@@ -77,9 +77,9 @@ emit target layout bits declarations units = do
             Function "start_link" params startLinkType [E.remote "lawspec_beam_actors" "start_link" [spec]],
             Function "otp_child_spec" params childSpecType [childSpec],
             Function "from_process" [("process",processType)] own
-              [D.text "_LsHandle = " <> E.remote "lawspec_beam_actors" "from_process" [variable "process"],
+              [D.text "_Handle = " <> E.remote "lawspec_beam_actors" "from_process" [variable "process"],
                metadataPattern moduleName (D.text "_") <> D.text " = " <>
-                 E.remote "lawspec_beam_actors" "metadata" [D.text "_LsHandle"],D.text "_LsHandle"],
+                 E.remote "lawspec_beam_actors" "metadata" [D.text "_Handle"],D.text "_Handle"],
             Function "stop" [("handle",own)] resultType
               [E.remote "lawspec_beam_actors" "stop" [variable "handle"],unitValue],
             Function "monitor" [("handle",own),("observer",processType)] resultType
@@ -101,8 +101,8 @@ emit target layout bits declarations units = do
     start <- checked interfaces (actorStart a) values (bridge "to_native" (actorState a))
     restart <- case actorRestart a of
       Nothing -> pure start
-      Just declaration -> checked interfaces declaration [D.text "_LsState"] (bridge "to_native" (actorState a))
-    let restartArg = D.text (if actorRestart a == Nothing then "_" else "_LsState")
+      Just declaration -> checked interfaces declaration [D.text "_State"] (bridge "to_native" (actorState a))
+    let restartArg = D.text (if actorRestart a == Nothing then "_" else "_State")
         spec = E.record [(E.atom "kind",E.atom "actor"),(E.atom "start",E.lambda [] start),
           (E.atom "restart",E.lambda [restartArg] restart),
           (E.atom "context",E.remote "lawspec_beam_actors" "context" []),
@@ -113,17 +113,17 @@ emit target layout bits declarations units = do
         | (i,(_,t)) <- zip [0::Int ..] (handlerArguments h)]
       replyType <- maybe (pure resultType) native (handlerReply h)
       invoke <- checked interfaces (handlerDeclaration h)
-        (D.text "_LsState" : map (variable . fst) arguments) (\result -> case handlerReply h of
+        (D.text "_State" : map (variable . fst) arguments) (\result -> case handlerReply h of
           Nothing -> E.tuple . (unitValue :) . pure <$> bridge "to_native" (actorState a) result
           Just ty -> do
-            reply <- bridge "to_native" ty (D.text "_LsReply")
-            next <- bridge "to_native" (actorState a) (D.text "_LsNext")
-            pure (E.sequenceDoc [E.tuple [E.atom "ls_data",D.text "_",E.array [D.text "_LsReply",D.text "_LsNext"]] <>
+            reply <- bridge "to_native" ty (D.text "_Reply")
+            next <- bridge "to_native" (actorState a) (D.text "_Next")
+            pure (E.sequenceDoc [E.tuple [E.atom "ls_data",D.text "_",E.array [D.text "_Reply",D.text "_Next"]] <>
               D.text " = " <> result,E.tuple [reply,next]]))
       let name = E.nativeName target (E.snake (handlerName h))
           prefix = [metadataPattern moduleName (E.array (map snd interfaces)) <> D.text " = " <>
             E.remote "lawspec_beam_actors" "metadata" [variable "handle"]]
-          call mode = E.remote "lawspec_beam_actors" mode [variable "handle",E.lambda [D.text "_LsState"] invoke]
+          call mode = E.remote "lawspec_beam_actors" mode [variable "handle",E.lambda [D.text "_State"] invoke]
       pure [Function name (("handle",own):arguments) replyType (prefix ++ [call "call"]),
         Function (E.nativeName target ("tell_" ++ E.snake (handlerName h))) (("handle",own):arguments) resultType
           (prefix ++ [call "tell",unitValue])])
@@ -315,7 +315,7 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     public = [f | f@(Function n _ _ _) <- functions, n /= "spec"]
     lifecycle = any (\(Function n _ _ _) -> n == "start") functions
     startParameters = case [ps | Function "start" ps _ _ <- functions] of ps:_ -> ps; [] -> []
-    args ps = [D.text ("_Ls" ++ E.pascal n) | (n,_) <- ps]
+    args ps = [D.text ("_" ++ E.pascal n) | (n,_) <- ps]
     erlType (NativeType e _ _ _) = e
     exType (NativeType _ x _ _) = x
     gleamType (NativeType _ _ g _) = g

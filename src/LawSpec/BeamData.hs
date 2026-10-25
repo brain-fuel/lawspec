@@ -156,16 +156,16 @@ emitData target layout bits declarations = do
       _ -> False
     contractCode contract build = do
       let local identity = maybe (error "unbound BEAM constructor field") id
-            (lookup identity [(C.binderId b,"lists:nth(" ++ show i ++ ", _LsFields)") | (i,b) <- zip [1::Int ..] (S.contractFields contract)])
+            (lookup identity [(C.binderId b,"lists:nth(" ++ show i ++ ", _Fields)") | (i,b) <- zip [1::Int ..] (S.contractFields contract)])
           ref ty = do
             raw <- E.reference <$> S.typeReference (S.contractParameters contract) ty
-            pure (E.remote "lawspec_beam_schema" "substitute" [raw,D.text "_LsKnown"])
+            pure (E.remote "lawspec_beam_schema" "substitute" [raw,D.text "_Known"])
           key ty = E.remote "lawspec_beam_schema" "type_key" . pure <$> ref ty
           render = Expr.renderExpressionWithContext (D.text (show bits)) ref key
             (D.text "Schema") (D.text "Symbols") local
             (\_ _ _ -> Left "external call in a BEAM constructor predicate")
       body <- build render
-      pure (E.lambda (map D.text ["Schema","_LsTypes","_LsFields"])
-        (E.sequenceDoc [D.text "_LsKnown = " <> E.remote "maps" "from_list"
+      pure (E.lambda (map D.text ["Schema","_Types","_Fields"])
+        (E.sequenceDoc [D.text "_Known = " <> E.remote "maps" "from_list"
           [E.remote "lists" "zip" [E.remote "lists" "seq"
-            [D.text "0",D.text "length(_LsTypes) - 1"],D.text "_LsTypes"]],body]))
+            [D.text "0",D.text "length(_Types) - 1"],D.text "_Types"]],body]))

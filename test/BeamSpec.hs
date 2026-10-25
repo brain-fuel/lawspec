@@ -453,8 +453,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
       Right doc -> do
         let source = D.render D.Compact doc
         source `shouldSatisfy` isInfixOf "scoped(_OuterSchema,"
-        source `shouldSatisfy` isInfixOf "scoped(_LsHandledSchema0,"
-        source `shouldSatisfy` isInfixOf "read(_LsHandledSchema1)"
+        source `shouldSatisfy` isInfixOf "scoped(_HandledSchema0,"
+        source `shouldSatisfy` isInfixOf "read(_HandledSchema1)"
   -- ref:DEC-total-definitions ref:DEC-native-property-frameworks
   mapM_ (\target -> it (target ++ " emits native abilities and keeps example recordings in the case scope") $ do
     input <- readFile "acceptance/beam-handler-context/context.lawspec"
@@ -736,7 +736,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             [":such_that(", ":frequency(", "lists:nth(", "lawspec_beam_generators:check_drawn",
-             "_LsDraw", "_LsKeep", "340282366920938463463374607431768211456",
+             "_Base", "_It", "340282366920938463463374607431768211456",
              "examples are outside the strategy", "lawspec_beam_finite:plan_cases"]
           body `shouldSatisfy` (not . isInfixOf "<<\"neverDrawn\"/utf8>>")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
@@ -750,7 +750,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_harness:run", "lawspec_beam_harness:sample", "\\\"|finite observations| statistics",
+            ["lawspec_beam_harness:run", "lawspec_beam_harness:sample", "|finite observations| statistics",
              "examples do not count", "lawspec_definitions:", "above its prefix"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-never-pass-vacuously
@@ -935,7 +935,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             ["lawspec_beam_harness:run", "repeat => 3", "repeat => 2", "retries => 1", "observed => false",
-             "observed => true", "repeated example", "\\\"|repeated finite cases| boundary", "\\\"|repeated search| search"]
+             "observed => true", "repeated example", "|repeated finite cases| boundary", "|repeated search| search"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\target -> it (target ++ " includes replay runtime dependencies for an ordinary property") $ do
@@ -968,7 +968,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_search:replay", "lawspec_beam_search:guard", "example.replay::\\\"|dependent replay|", "false ->"]
+            ["lawspec_beam_search:replay", "lawspec_beam_search:guard", "example.replay::|dependent replay|", "false ->"]
           body `shouldSatisfy` (not . isInfixOf "lawspec_beam_search:climb")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
@@ -1075,7 +1075,7 @@ test_beamRunsTheLanguageGaps = describe "BEAM language gaps" $ do
   it "gives natives of an ability made with a resource the case's resource" $
     withSpec "examples/specs/composition.lawspec" "erlang" $ \artifacts -> do
       fileOf "src/example_composition.erl" artifacts `shouldSatisfy` isInfixOf "logs_handler(_Resource) ->"
-      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "_production(Schema, Symbols, _LsResource) ->"
+      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "_production(Schema, Symbols, _Resource) ->"
       concat [artifactContent a | a <- artifacts, "_lawspec_tests.erl" `isInfixOf` artifactPath a]
         `shouldSatisfy` isInfixOf "lawspec_beam_effects:install("
   it "crosses an operation's failure through native handlers both ways" $

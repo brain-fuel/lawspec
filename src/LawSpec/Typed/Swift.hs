@@ -163,13 +163,6 @@ block body = D.nest 2 (D.hardline <> D.joinWith D.hardline body)
 paren :: D.Doc -> D.Doc
 paren x = D.text "(" <> x <> D.text ")"
 
--- | A value a member is taken of: a name as it is, anything else in
--- parentheses.
-receiver :: D.Doc -> D.Doc
-receiver x = case D.render D.Compact x of
-  name@(c : _) | all (\ch -> isAlphaNum ch || ch == '_') name, not (isDigit c) -> x
-  _ -> paren x
-
 -- | An if's opening: its brace after the condition, or on a line of its own
 -- when the condition does not fit on one, as swift-format places it.
 ifOpening :: D.Doc -> D.Doc
@@ -323,6 +316,16 @@ cexprWith position env scope e = case expressionNode e of
     parts <- mapM (cexpr env scope) items
     typeText <- lift' (nativeType env (expressionType e))
     pure (concatMap fst parts, D.text typeText <> D.text "(" <> arrayDoc (map snd parts) <> D.text ")")
+  Construct tag [first,rest] | idText tag == "List::Cons" -> do
+    (beforeFirst,headValue) <- cexpr env scope first
+    (beforeRest,tailValue) <- cexpr env scope rest
+    (binding,tailReceiver) <- case expressionNode rest of
+      Local _ -> pure ([],tailValue)
+      _ -> do
+        name <- fresh "remaining"
+        pure ([hangValue ("let " ++ name ++ " =") tailValue],D.text name)
+    pure (beforeFirst ++ beforeRest ++ binding,
+      tailReceiver <> callDoc ".prepending" [headValue])
   Construct tag args -> do
     parts <- mapM (cexpr env scope) args
     x <- construct env (expressionType e) tag (map snd parts)
@@ -597,7 +600,6 @@ construct env ty tag values = do
   typeText <- lift' (nativeType env ty)
   case (idText tag, values) of
     ("List::Nil", []) -> pure (D.text (typeText ++ "()"))
-    ("List::Cons", [h, t]) -> pure (receiver t <> D.text ".prepending(" <> h <> D.text ")")
     ("Maybe::Absent", []) -> pure (D.text ("(nil as " ++ typeText ++ ")"))
     ("Maybe::Present", [x]) -> pure (paren (callDoc (typeText ++ ".some") [x]))
     ("Either::Left", [x]) -> pure (callDoc (typeText ++ ".left") [x])

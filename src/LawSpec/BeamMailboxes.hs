@@ -37,7 +37,7 @@ emit target layout bits declarations units = do
         own = NativeType (E.call "t" []) (X.call "t" []) (D.text className) []
         sender = NativeType (E.call "sender" []) (X.call "sender" []) (D.text (className ++ "Sender")) []
         result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
-        variable = D.text . ("_Ls" ++) . E.pascal
+        variable = D.text . ("_" ++) . E.pascal
         boxVar = variable "mailbox"
         schema = D.text "Schema"
         fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
@@ -114,7 +114,7 @@ render target layout unit box typeName wired functions =
         D.text "-opaque t() :: lawspec_beam_mailbox:mailbox()."] ++
        [D.text "-opaque sender() :: lawspec_beam_mailbox:sender()." | wired] ++
        concat [[E.spec n (map (erlType . snd) ps) (erlType result),
-         E.function n [D.text ("_Ls" ++ E.pascal p) | (p,_) <- ps] body] | Function n ps result body <- functions])
+         E.function n [D.text ("_" ++ E.pascal p) | (p,_) <- ps] body] | Function n ps result body <- functions])
     elixir = X.moduleDoc exModule False
       ([D.text "@opaque t :: :lawspec_beam_mailbox.mailbox()"] ++
        [D.text "@opaque sender :: :lawspec_beam_mailbox.sender()" | wired] ++

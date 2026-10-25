@@ -7,6 +7,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
+import qualified LawSpec.BeamNames as Names
 import qualified LawSpec.BeamDefinitions as Definitions
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Scalar (Scalar(..))
@@ -69,7 +70,7 @@ inputs framework schema symbols plan local planned = walk [] (generatorRequireme
       boundariesWithRegistry registry (planMachineBits plan) ty
     strategyDraw names requirement strategy path draw = case draw of
       C.DrawAny ty (Just aim) -> do
-        let name = "_LsAim" ++ path
+        let name = "_" ++ Names.variableName (C.binderName (C.quantifiedBinder aim)) ++ path
             aliases = bindName (C.quantifiedBinder aim) name names
         witnesses <- if ty == C.binderType (generatorBinder requirement)
           then pure (generatorBoundaries requirement) else witnessesFor ty
@@ -83,25 +84,25 @@ inputs framework schema symbols plan local planned = walk [] (generatorRequireme
         -- Only the selected expression is evaluated. Constructing all branch
         -- generators eagerly would execute unchosen partial expressions.
         branches <- mapM (fmap (native "exactly" . pure) . render names) values
-        pure (choose path (native "integer" [D.text "1",D.text (show (length values))]) branches)
+        pure (choose strategy path (native "integer" [D.text "1",D.text (show (length values))]) branches)
       C.DrawFrequency alternatives -> do
         branches <- sequence [strategyDraw names requirement strategy (path ++ "_f" ++ show i) d
           | (i,(_,d)) <- zip [0::Int ..] alternatives]
         let selector = native "frequency" [E.array [E.tuple [D.text (show weight),native "exactly" [D.text (show i)]]
               | (i,(weight,_)) <- zip [1::Int ..] alternatives]]
-        pure (choose path selector branches)
+        pure (choose strategy path selector branches)
       C.DrawSuchThat inner binder predicate limit -> do
         generator <- strategyDraw names requirement strategy (path ++ "_s") inner
-        let name = "_LsKeep" ++ path
+        let name = "_" ++ Names.variableName (C.binderName binder) ++ path
         condition <- render (bindName binder name names) predicate
         pure (native "such_that" [generator,E.lambda [D.text name] condition,D.text (show limit),E.binary strategy])
       C.DrawBind binder from rest -> do
         generator <- strategyDraw names requirement strategy (path ++ "_from") from
-        let name = "_LsDraw" ++ path
+        let name = "_" ++ Names.variableName (C.binderName binder) ++ path
         remaining <- strategyDraw (bindName binder name names) requirement strategy (path ++ "_rest") rest
         pure (bind generator name remaining)
-    choose path selector branches =
-      let name = "_LsChoice" ++ path
+    choose strategy path selector branches =
+      let name = "_" ++ Names.variableName strategy ++ "Choice" ++ path
       in bind selector name (E.apply (E.remote "lists" "nth"
         [D.text name,E.array (map (E.lambda []) branches)]) [])
 

@@ -83,7 +83,7 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
           C.ExternalCall _ args -> mapM render args >>= external schema term
           C.Perform _ args -> mapM render args >>= external schema term
           C.Handle (C.WithHandler _ _) body -> do
-            let innerSchema = D.text ("_LsHandledSchema" ++ show depth)
+            let innerSchema = D.text ("_HandledSchema" ++ show depth)
             inner <- renderScoped (depth + 1) innerSchema body
             external schema term [E.lambda [innerSchema] inner]
           C.Handle (C.CatchFailure _) body -> render body >>= external schema term . pure . E.lambda []
