@@ -391,7 +391,7 @@ emitTestsWith split Config{..} unit laws = do
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
           [lawAssertion (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
       cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
-      (coverDeclarations, coverData) <- Finite.coverBindings finiteCall (L.arrow "symbols") literal
+      (coverDeclarations, coverData) <- Finite.coverBindings finiteCall id literal
         (\n value -> text visibility <> L.bind n value) (base' ++ "Cases") cover
       let helper = base' ++ "Boundary"
           coverCases = runtime "finiteCases" [coverData]
@@ -465,9 +465,12 @@ emitTestsWith split Config{..} unit laws = do
       pure (sharedDocs, (comment 2 (lawCommentLines e), separate (searchBefore ++ harnessTests base' propertyLabel h kinds extraBodies (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)))
     finiteCall "LawSpecRuntime.finiteValues" [factory] =
       finiteLambdaCall "LawSpecRuntime.finiteValues" factory
+    finiteCall "LawSpecRuntime.finiteValues" values =
+      call "LawSpecRuntime.finiteValues" (map (L.arrow "symbols") values)
     finiteCall name arguments = call name arguments
     finiteBodyCall name body = D.group (text (name ++ "(() =>") <> D.nest 2 (D.softline <> body) <> D.softbreak <> text ")")
-    finiteLambdaCall name body = D.group (text (name ++ "(") <> body <> D.softbreak <> text ")")
+    finiteLambdaCall name body = D.group (text (name ++ "(symbols =>") <>
+      D.nest 2 (D.softline <> body) <> D.softbreak <> text ")")
     finiteChain receiver methods = D.group (receiver <> D.nest 2
       (mconcat [D.softbreak <> call ('.' : method) args | (method,args) <- methods]))
     groupsOf _ [] = []
