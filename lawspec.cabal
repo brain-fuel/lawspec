@@ -718,16 +718,19 @@ library
       LawSpec.Indexed
       LawSpec.IndexTerm
       LawSpec.Inference
+      LawSpec.JavaAbi
       LawSpec.JavaData
       LawSpec.JavaDefinitions
       LawSpec.JavaExpr
       LawSpec.JavaNativeBinding
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
+      LawSpec.JavaTestStyle
       LawSpec.JavaText
       LawSpec.JvmCases
       LawSpec.JvmLets
       LawSpec.JvmNames
+      LawSpec.JvmProduct
       LawSpec.KotlinData
       LawSpec.KotlinDefinitions
       LawSpec.KotlinExpr

@@ -47,6 +47,41 @@ public final class FiniteCases
     }
     require(seen == expected.size());
 
+    var previousSelection = System.getProperty("lawspec.case");
+    try
+    {
+      System.setProperty("lawspec.case", "4");
+      var selected = LawSpecRuntime.selectedFiniteCases(cover, "6").iterator();
+      var selectedRow = selected.next();
+      require(selectedRow.index() == 4);
+      require(selectedRow.values(new HashMap<>()).getLast().data().equals(BigInteger.valueOf(3)));
+      require(!selected.hasNext());
+      for (var invalid : List.of("0", "7", "invalid"))
+      {
+        System.setProperty("lawspec.case", invalid);
+        try
+        {
+          LawSpecRuntime.selectedFiniteCases(cover, "6").iterator();
+          throw new AssertionError("invalid case selection passed");
+        }
+        catch (IllegalArgumentException expectedFailure)
+        {
+          require(expectedFailure.getMessage().contains("lawspec.case"));
+        }
+      }
+    }
+    finally
+    {
+      if (previousSelection == null)
+      {
+        System.clearProperty("lawspec.case");
+      }
+      else
+      {
+        System.setProperty("lawspec.case", previousSelection);
+      }
+    }
+
     var wide = LawSpecRuntime.finiteChoices(LawSpecRuntime.finiteBranch(
         LawSpecRuntime.finiteRange("UInt64", "18446744073709551614", "18446744073709551615"),
         LawSpecRuntime.finiteEnd(1)));

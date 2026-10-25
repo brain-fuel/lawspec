@@ -3,7 +3,11 @@
 -- syntax, which lawspec-dev boundaries enforces. ref:DEC-typed-core-boundary
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
+import qualified LawSpec.JvmProduct as Product
+import qualified LawSpec.JavaAbi as Abi
+import LawSpec.JavaTestStyle (TestStyle(..))
 import LawSpec.AbilityEmit (abilityArtifacts)
+import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
@@ -68,7 +72,8 @@ import qualified LawSpec.ScalaLayout as ScalaLayout
 import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
-import Data.Binary (Binary(..))
+import Data.Binary (Binary(..), encode)
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified LawSpec.Dependencies as D
 import qualified LawSpec.NativeModelChecks as NativeModels
@@ -153,7 +158,7 @@ emitPlanWithFormatUnchecked minify target given | target `elem` DotNet.dotnetTar
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 -- Groovy runs over the Java target's files (DEC-groovy-over-java).
 emitPlanWithFormatUnchecked minify "groovy" given =
-  Groovy.groovyFromJava given =<< emitMaterializedPlanWithFormat minify "java" (escapePlan "groovy" given)
+  Groovy.groovyFromProduct given =<< javaProduct SpockCases minify NB.emptyBindingPlan (escapePlan "groovy" given)
 -- Clojure runs over them too (DEC-clojure-over-java).
 emitPlanWithFormatUnchecked minify "clojure" given =
   Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitMaterializedPlanWithFormat minify "java" (escapePlan "clojure" given)
@@ -224,6 +229,34 @@ companionArtifacts minify target plan = do
   mailboxes <- mailboxArtifacts target plan
   abilities <- abilityArtifacts minify target plan
   pure (sessions ++ actors ++ mailboxes ++ abilities ++ remoteArtifacts target (remoteCalls target plan) plan)
+
+-- | Keep checked JVM metadata beside the files through bindings and adapter
+-- canonicalization. Downstream JVM runners never inspect the emitted Java.
+javaProduct :: TestStyle -> Bool -> NB.BindingPlan -> Plan -> Either [Diagnostic] Product.JvmProduct
+javaProduct style minify bindings given = do
+  let prepared = escapePlan "java" (witnessPlan (ownedAbilityPlan given))
+      plan = wirePlan (wrappedHandlers "java" bindings (boundHandlers bindings prepared))
+  emitted <- emitPlanProduct style minify "java" plan
+  sessions <- sessionArtifacts minify "java" plan
+  actors <- actorArtifacts minify "java" plan
+  mailboxes <- mailboxArtifacts "java" plan
+  abilities <- either (Left . pure . (\message -> Diagnostic "abilities" message Nothing)) Right
+    (JavaAbilities.emitProduct minify (planMachineBits plan) (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)))
+  let companions = Product.files (sessions ++ actors ++ mailboxes ++ remoteArtifacts "java" (remoteCalls "java" plan) plan) <> abilities
+      combined = emitted <> companions
+  files <- builtinDefaults "java" plan (Product.jvmArtifacts combined)
+  bound <- if NB.hasBindings bindings
+    then either (Left . pure . (\message -> Diagnostic "native-binding" message Nothing)) Right
+      (JavaNativeBinding.emitBindingsProduct style minify bindings plan (combined { Product.jvmArtifacts = files }))
+    else pure (combined { Product.jvmArtifacts = files })
+  canonical <- if minify then javaProduct style False bindings given else pure bound
+  let references = [(artifactPath a, artifactContent a) | a <- Product.jvmArtifacts canonical, ownership a == "user"]
+  withReferences <- mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
+    case lookup (artifactPath artifact) references of
+      Nothing -> Left [Diagnostic "native-binding" "missing canonical adapter reference" Nothing]
+      Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
+        (ownership artifact) (artifactPlacement artifact) reference)) (Product.jvmArtifacts bound)
+  pure (bound { Product.jvmArtifacts = withReferences })
 
 -- Each unit with the abilities it owns (LawSpec.AbilityNames).
 ownedAbilityPlan :: Plan -> Plan
@@ -323,10 +356,13 @@ escapeBindings target b = b { NB.bindingFunctions = [(escapeDeclaration target d
                              , NB.bindingCalls = [(escapeDeclaration target d, c) | (d, c) <- NB.bindingCalls b] }
 
 emitPlanFormatted :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanFormatted _ target plan
+emitPlanFormatted minify target plan = Product.jvmArtifacts <$> emitPlanProduct JUnit minify target plan
+
+emitPlanProduct :: TestStyle -> Bool -> String -> Plan -> Either [Diagnostic] Product.JvmProduct
+emitPlanProduct javaStyle _ target plan
   | target `notElem` ["python","javascript","typescript","rust","java","kotlin","scala","go","haskell"], any (not . null . C.constructorPredicates) (concatMap C.dataConstructors (planDataDeclarations plan)) =
       Left [Diagnostic "target" "constructor field contracts require native runtime enforcement" Nothing]
-emitPlanFormatted _ target plan | target /= "rust", any containsMatch expressions =
+emitPlanProduct javaStyle _ target plan | target /= "rust", any containsMatch expressions =
   Left [Diagnostic "target" ("no match expression emitter for " ++ target) Nothing]
   where
     expressions = concat
@@ -342,7 +378,7 @@ emitPlanFormatted _ target plan | target /= "rust", any containsMatch expression
       target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] && name `elem` ["List","Maybe","Either"] ||
       target `elem` ["go"] && name == "List"
     supportedMatch _ = False
-emitPlanFormatted _ target plan | target /= "rust", any containsConstruction expressions =
+emitPlanProduct javaStyle _ target plan | target /= "rust", any containsConstruction expressions =
   Left [Diagnostic "target" ("no constructor expression emitter for " ++ target) Nothing]
   where
     expressions = concat
@@ -355,13 +391,13 @@ emitPlanFormatted _ target plan | target /= "rust", any containsConstruction exp
          C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Absent","Maybe::Present","Either::Left","Either::Right"] ||
          target `elem` ["go"] && C.idText tag `elem` ["List::Nil","List::Cons"]) || any containsConstruction fields
       _ -> any containsConstruction (C.children expression)
-emitPlanFormatted _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =
+emitPlanProduct javaStyle _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =
   Left [Diagnostic "target" ("no data declaration emitter for " ++ target) Nothing]
-emitPlanFormatted _ target plan | target /= "rust", any (not . supportedRepresentationWithData target (planDataDeclarations plan) . C.declarationType)
+emitPlanProduct javaStyle _ target plan | target /= "rust", any (not . supportedRepresentationWithData target (planDataDeclarations plan) . C.declarationType)
   [d | u <- plannedUnits plan, d <- C.unitDeclarations (plannedUnit u)] =
     Left [Diagnostic "target" ("no structural adapter emitter for " ++ target) Nothing]
-emitPlanFormatted minify "rust" plan = emitRustWithFormat minify plan
-emitPlanFormatted minify target Plan{..} = do
+emitPlanProduct _ minify "rust" plan = Product.files <$> emitRustWithFormat minify plan
+emitPlanProduct javaStyle minify target Plan{..} = do
   unless (target `elem` targets) (Left [Diagnostic "target" ("unknown target: " ++ target) Nothing])
   let units = map plannedUnit plannedUnits
       laws = concatMap plannedProperties plannedUnits
@@ -454,12 +490,12 @@ emitPlanFormatted minify target Plan{..} = do
         "typescript" -> Artifact "src/lawspec_runtime.ts" ("// @ts-nocheck\n" ++ runtimeSource "javascript") "generated" "source"
         "haskell" -> Artifact "src/LawSpecRuntime.hs" (runtimeSource "haskell") "generated" "source"
         _ -> Artifact "src/lawspec_runtime.mjs" (runtimeSource "javascript") "generated" "source"
-      files = concat emitted ++ dataFiles ++ definitionFiles ++
+      files = concatMap Product.jvmArtifacts emitted ++ dataFiles ++ definitionFiles ++
         [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" | target == "java" && not (null dataFiles)] ++
         -- Java: the scalar generators the tests draw from, for the machine's
         -- width, once per project rather than in every test.
         [Artifact "src/test/java/lawspec/testing/LawSpecScalars.java" javaScalars "generated" "test"
-          | target == "java" && any (("LawSpecScalars" `isInfixOf`) . artifactContent) (concat emitted)] ++
+          | target == "java" && any (("LawSpecScalars" `isInfixOf`) . artifactContent) (concatMap Product.jvmArtifacts emitted)] ++
         [Artifact "tests/lawspec_data_strategies.py" (runtimeSource "python-data-strategies") "generated" "test" | target == "python" && not (null dataFiles)] ++
         -- The harness plane's runtime, for programs with a harness.
         [Artifact "tests/lawspec_harness.py" (runtimeSource "python-harness") "generated" "test" | target == "python" && usesHarness] ++
@@ -508,11 +544,11 @@ emitPlanFormatted minify target Plan{..} = do
   unless (length files == length (nub (map (map toLower . artifactPath) files))) (Left [Diagnostic "collision" "units map to the same output path" Nothing])
   let generatedNames u = map (\(n,_) -> if target == "go" then cap n else n) (functions u)
   unless (all (\u -> let ns = generatedNames u in length ns == length (nub ns)) units) (Left [Diagnostic "collision" "functions map to the same target identifier" Nothing])
-  pure files
+  pure ((mconcat emitted) { Product.jvmArtifacts = files })
   where
     layout = Doc.selectLayout minify
-    javaScalars = Doc.render (layout (Doc.Pretty 100)) (JavaTestHelpers.scalarsDoc (Just "Generated by LawSpec. Do not edit.")
-      planMachineBits (JavaTestHelpers.generatorDoc planMachineBits 0 "" (const False) (const mempty) prettyType))
+    javaScalars = Doc.render (layout (Doc.Pretty 100)) (JavaTestHelpers.scalarsDocFor javaStyle (Just "Generated by LawSpec. Do not edit.")
+      planMachineBits (JavaTestHelpers.generatorDocFor javaStyle planMachineBits 0 "" (const False) (const mempty) prettyType))
     usesHarness = any ((/= Nothing) . C.unitHarnessSettings . plannedUnit) plannedUnits
     usesParallel = any (maybe False C.harnessParallel . C.unitHarnessSettings . plannedUnit) plannedUnits
     -- order random on Java: JUnit's methods in an order the run's seed
@@ -589,13 +625,13 @@ emitPlanFormatted minify target Plan{..} = do
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
           testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
-      in fmap (map unstore) $ memoized emitTable (digestHex (digestString (show (minify, target, planMachineBits,
+      in fmap unstoreProduct $ memoized emitTable (digestHex (digestString (show (javaStyle, minify, target, planMachineBits,
              D.fullKey graph "unit" testing { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
-           (fmap (map store) (emitUnitWith laws testing))
+           (fmap storeProduct (emitUnitWith laws testing))
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
-          Native.nativeScalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
-      | otherwise = Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
+          Native.nativeScalarProductWithAdapterBindings javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
+      | otherwise = Product.files <$> Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
 supportedRepresentationWithData target declarations ty = case ty of
@@ -654,8 +690,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
 
 emitPlanWithNativeNames :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithNativeNames minify "groovy" sourceDir testDir unescaped unwitnessed =
-  Groovy.groovyLayout sourceDir testDir <$> (Groovy.groovyFromJava unwitnessed =<<
-    emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "groovy" unescaped) (escapePlan "groovy" unwitnessed))
+  Groovy.groovyLayout sourceDir testDir <$> (Groovy.groovyFromProduct unwitnessed =<<
+    javaProduct SpockCases minify (escapeBindings "groovy" unescaped) (escapePlan "groovy" unwitnessed))
 emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed = do
   (java, clojure) <- Clojure.splitBindings unescaped
   Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava clojure unwitnessed =<<
@@ -834,9 +870,29 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
   pure result
 
 -- | Emitted files are held as text, weighed by their length.
-emitTable :: Table (Either [Diagnostic] [Stored])
-emitTable = unsafePerformIO (newPersistentTable "emit" 8000000 (either (const 1) (sum . map storedLength)))
+emitTable :: Table (Either [Diagnostic] StoredProduct)
+emitTable = unsafePerformIO (newPersistentTable "emit-product" 8000000 (either (const 1) productLength))
 {-# NOINLINE emitTable #-}
+
+-- Metadata and files share one cache entry, so a cache hit cannot lose the
+-- checked interface required by a JVM-backed target.
+data StoredProduct = StoredProduct [Stored] [(FilePath, Abi.Stub)] [Abi.InterfaceAbi] [Abi.CaseClass]
+
+instance Binary StoredProduct where
+  put (StoredProduct artifacts adapters interfaces cases) = put artifacts >> put adapters >> put interfaces >> put cases
+  get = StoredProduct <$> get <*> get <*> get <*> get
+
+storeProduct :: Product.JvmProduct -> StoredProduct
+storeProduct (Product.JvmProduct artifacts adapters interfaces cases) =
+  StoredProduct (map store artifacts) adapters interfaces cases
+
+unstoreProduct :: StoredProduct -> Product.JvmProduct
+unstoreProduct (StoredProduct artifacts adapters interfaces cases) =
+  Product.JvmProduct (map unstore artifacts) adapters interfaces cases
+
+productLength :: StoredProduct -> Int
+productLength (StoredProduct artifacts adapters interfaces cases) =
+  sum (map storedLength artifacts) + fromIntegral (BL.length (encode (adapters, interfaces, cases)))
 
 data Stored = Stored T.Text T.Text T.Text T.Text (Maybe T.Text)
 

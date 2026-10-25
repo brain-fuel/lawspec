@@ -1,8 +1,11 @@
 -- | The emitter for the statically typed targets, Java, Kotlin, Go, Haskell and
 -- Rust, whose tests use each language's own property framework and types.
 -- ref:DEC-native-property-frameworks
-module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
+module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, nativeScalarProductWithAdapterBindings, dataBudget) where
 import LawSpec.Bounds (inputRange)
+import qualified LawSpec.JavaAbi as Abi
+import qualified LawSpec.JvmProduct as Product
+import LawSpec.JavaTestStyle (TestStyle(..))
 import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName, unitAbility, ownAbilities, ownerName, fieldName)
 import LawSpec.Builtins (defaultedUnits)
 import qualified LawSpec.AbilityEmit.Go as GoAbilities
@@ -87,10 +90,14 @@ nativeScalarEmitWithNativeGenerators = nativeScalarEmitWithAdapterBindings []
 -- | Generated Go names share one package with the user's code, so collisions
 -- with bound adapters are refused before any file is written.
 nativeScalarEmitWithAdapterBindings :: [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+nativeScalarEmitWithAdapterBindings adapters generators minify datas definitions bits target unit laws =
+  Product.jvmArtifacts <$> nativeScalarProductWithAdapterBindings JUnit adapters generators minify datas definitions bits target unit laws
+
+nativeScalarProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
 -- Scala's units have an emitter of their own (LawSpec.ScalaUnitEmit).
-nativeScalarEmitWithAdapterBindings _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
-  emitScalaUnit (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
-nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
+nativeScalarProductWithAdapterBindings _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
+  Product.files <$> emitScalaUnit (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
+nativeScalarProductWithAdapterBindings javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()
   tests <- if go then goDocument <$> GoProperties.emitTests goProperties u ls
@@ -113,9 +120,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     else pure []
   let completeHeader = if go || kt || hs || target == "java" then "" else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
   models <- modelTestArtifacts target bits dataDeclarations definitions u
-  pure (goFiles ++ models ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go]
-    -- The harness plane's runtime, for a unit with a harness.
-    ++ [Artifact (intercalate "/" parts ++ "/lawspec_harness_test.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go-harness")) "generated" "test" | go, C.unitHarnessSettings u /= Nothing])
+  let artifacts = (goFiles ++ models ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go]
+        -- The harness plane's runtime, for a unit with a harness.
+        ++ [Artifact (intercalate "/" parts ++ "/lawspec_harness_test.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go-harness")) "generated" "test" | go, C.unitHarnessSettings u /= Nothing])
+  pure (Product.JvmProduct artifacts [(stubPath, javaStubAbi) | target == "java"] []
+    [JavaProperties.casePlan javaProperties u ls | target == "java"])
   where
     -- JVM locals keep their source names (LawSpec.JvmNames), each law's
     -- distinct within it; other targets keep the generated ones.
@@ -217,7 +226,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
            Doc.text ("public final class " ++ cls) <> Doc.hardline <>
            (if null adapterFunctions && null (ownAbilities u) then Doc.text "{" <> Doc.hardline <> Doc.text "}" else
              Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) ([javaStubFn n t | (n,t) <- adapterFunctions] ++
-               [java (JavaAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u]))) <> Doc.hardline
+               map (snd . java . JavaAbilities.productionProduct dataDeclarations u) (ownAbilities u)))) <> Doc.hardline
          | otherwise = Doc.render (Doc.selectLayout minify (KotlinLayout.kotlinStyle)) $
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            (if null pkg then mempty else Doc.text ("package " ++ pkg) <> Doc.hardline <> Doc.hardline) <>
@@ -286,10 +295,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaUses needle (_,t) =
       let (args,result) = functionType t
       in any (isInfixOf needle) (native result : map nativeArg args)
-    javaStubFn n t =
+    javaStubSignature n t =
       let (args,result) = functionType t
-          params = [Doc.text (javaInterface ability ++ " " ++ handlerParameter ability) | ability <- usesOf n] ++
-            [Doc.group (javaTypeDoc True False 8 a <> Doc.nest 4 (Doc.softline <> Doc.text ("value" ++ show i))) | (i,a) <- zip [0::Int ..] args]
+          parameterTypes = [(Doc.text (javaInterface ability), handlerParameter ability) | ability <- usesOf n] ++
+            [(javaTypeDoc True False 8 a, "value" ++ show i) | (i,a) <- zip [0::Int ..] args]
+          params = [Doc.group (ty <> Doc.nest 4 (Doc.softline <> Doc.text parameter)) | (ty,parameter) <- parameterTypes]
           asyncStub = n `elem` asyncFunctions u
           -- An asynchronous Unit adapter completes with nothing: a future of Void.
           resultText
@@ -302,16 +312,24 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           resultDoc
             | asyncStub && result == Named "Unit" = Doc.text "java.util.concurrent.CompletableFuture<Void>"
             | asyncStub = Doc.group (Doc.text "java.util.concurrent.CompletableFuture<" <>
-                Doc.nest 4 (Doc.softbreak <> javaTypeDoc True False 8 result) <> Doc.text ">")
+                Doc.nest 4 (Doc.softbreak <> javaTypeDoc False True 8 result) <> Doc.text ">")
             | otherwise = javaTypeDoc False False 8 result
           signature = Doc.group $ if length flatHeader <= 98
             then Doc.text flatHeader <> Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ")"
             else Doc.text "public static " <> resultDoc <>
               Doc.nest 4 (Doc.softline <> Doc.group (Doc.text (n ++ "(") <>
                 Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ")"))
+      in (Abi.operation resultDoc n parameterTypes (n ++ " -> " ++ prettyType result), signature)
+    javaStubFn n t =
+      let (operation, signature) = javaStubSignature n t
           body = Doc.group $ Doc.text "throw new UnsupportedOperationException(" <>
-            Doc.nest 4 (Doc.softbreak <> JavaExpr.quoted (n ++ " -> " ++ prettyType result)) <> Doc.text ");"
+            Doc.nest 4 (Doc.softbreak <> JavaExpr.quoted (Abi.opLabel operation)) <> Doc.text ");"
       in javaComment (labelled (n ++ " :: " ++ prettyType t) (declarationLink n)) <> Doc.hardline <> signature <> Doc.hardline <> Doc.block 2 body
+    javaStubAbi = Abi.Stub pkg javaStubImports cls
+      ([Abi.Function ["// " ++ labelled (n ++ " :: " ++ prettyType t) (declarationLink n)] (fst (javaStubSignature n t)) | (n,t) <- adapterFunctions] ++
+       map (fst . java . JavaAbilities.productionProduct dataDeclarations u) (ownAbilities u))
+    javaStubImports = ["import lawspec.runtime.LawSpecRuntime;" | any (javaUses "LawSpecRuntime.") adapterFunctions] ++
+      ["import lawspec.runtime.LawSpecRuntime.Value;" | any javaNeedsValue adapterFunctions]
     javaTypeDoc argument nested indentation t = case t of
       Applied "List" inner -> generic "java.util.List" [inner]
       Applied "Maybe" inner -> generic "LawSpecRuntime.Maybe" [inner]
@@ -1063,7 +1081,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.AllPayloads _ _ -> True
       _ -> any payloadExpression (C.children term)
     javaProperties = JavaProperties.Config
-      { JavaProperties.packageName = pkg
+      { JavaProperties.testFile = testPath
+      , JavaProperties.testStyle = javaStyle
+      , JavaProperties.packageName = pkg
       , JavaProperties.className = cls
       , JavaProperties.schemaNeeded = javaSchemaNeeded
       , JavaProperties.nativeGenerators = nativeGenerators
@@ -1079,7 +1099,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.reference = javaRef
       , JavaProperties.typeKey = key
       , JavaProperties.generator = javaGeneratorDoc
-      , JavaProperties.generatorWithin = \within -> JavaTestHelpers.generatorDocWithin within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
+      , JavaProperties.generatorWithin = \within -> JavaTestHelpers.generatorDocWithinFor javaStyle within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
       , JavaProperties.nativeArgument = javaNativeArgument
       , JavaProperties.nativeResult = javaNativeResult
       , JavaProperties.handlerInstalls = javaInstalls
@@ -1384,10 +1404,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       in "  " ++ quote (label ++ " property") ++ " {\n    checkAll(" ++ show (cases (generation e)) ++ ", " ++ generator ++ ") { _inputs ->\n" ++
          "    val symbols = _inputs.second\n" ++ bindings' ++ check ++ "    }\n  }\n"
     javaDataBudget = dataBudget allLaws
-    javaGeneratorDoc = JavaTestHelpers.generatorDoc bits javaDataBudget (cls ++ "LawSpecTest") custom
+    javaGeneratorDoc = JavaTestHelpers.generatorDocFor javaStyle bits javaDataBudget (cls ++ "LawSpecTest") custom
       (java . JavaExpr.reference) key
     javaGenerator = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) . javaGeneratorDoc
-    javaGeneratorWithin within = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) . JavaTestHelpers.generatorDocWithin within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
+    javaGeneratorWithin within = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) . JavaTestHelpers.generatorDocWithinFor javaStyle within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
     javaStructuralProperty fn e check =
       let bindings' = concat ["    var " ++ inputId input ++ " = _inputs.values().get(" ++ show i ++ ");\n" | (i,input) <- zip [0::Int ..] (inputs e)]
           predicates = [call "truth" [render p] | input <- inputs e, p <- inputRefinements input]

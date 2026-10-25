@@ -218,6 +218,46 @@ public final class LawSpecRuntime
     };
   }
 
+  /**
+   * The native JUnit source may select one one-based case with -Dlawspec.case=N.
+   * An invalid or absent selected row fails discovery instead of yielding an empty passing source.
+   */
+  public static Iterable<FiniteCase> selectedFiniteCases(FiniteCover cover, String count)
+  {
+    var selection = System.getProperty("lawspec.case");
+    if (selection == null || selection.isBlank())
+    {
+      return finiteCases(cover);
+    }
+    BigInteger wanted;
+    try
+    {
+      wanted = new BigInteger(selection);
+    }
+    catch (NumberFormatException error)
+    {
+      throw new IllegalArgumentException("lawspec.case must be a positive case index", error);
+    }
+    if (wanted.signum() <= 0 || wanted.compareTo(new BigInteger(count)) > 0)
+    {
+      throw new IllegalArgumentException("lawspec.case must be between 1 and " + count);
+    }
+    long index = wanted.longValueExact();
+    return () -> {
+      var rows = finiteCases(cover).iterator();
+      for (long before = 1; before < index; before++)
+      {
+        rows.next();
+      }
+      var row = rows.next();
+      if (row.index() != index)
+      {
+        throw new IllegalStateException("finite cover did not contain the selected case");
+      }
+      return List.of(row).iterator();
+    };
+  }
+
   public record Value(String type, Object data)
   {
     @Override

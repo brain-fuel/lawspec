@@ -1,11 +1,14 @@
 -- | Typed application codecs keep validation in the shared logical schema.
-module LawSpec.JavaNativeBinding (emitBindings) where
+module LawSpec.JavaNativeBinding (emitBindings, emitBindingsProduct) where
 
 import Control.Monad (forM, unless)
 import Data.List (intercalate, find, nub, isPrefixOf)
 import Data.Char (toUpper, toLower)
 import qualified LawSpec.Core as C
 import LawSpec.Common
+import qualified LawSpec.JvmProduct as Product
+import qualified LawSpec.JavaAbi as Abi
+import LawSpec.JavaTestStyle (TestStyle(..), propertyPackage)
 import LawSpec.Backend (unitName, inputs, inputType)
 import LawSpec.Testing
 import LawSpec.NativeBinding
@@ -25,7 +28,11 @@ import LawSpec.Time (isDurationType)
 -- | Bound adapters call the user's Java code directly, through generated
 -- conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
-emitBindings minify plan testing files = do
+emitBindings minify plan testing files =
+  Product.jvmArtifacts <$> emitBindingsProduct JUnit minify plan testing (Product.files files)
+
+emitBindingsProduct :: TestStyle -> Bool -> BindingPlan -> Plan -> Product.JvmProduct -> Either String Product.JvmProduct
+emitBindingsProduct javaStyle minify plan testing product = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")
   unless (null mappings || not (null (bindingFunctions plan)) || not (null (bindingCalls plan)) || not (null generators))
     (Left "native types require function or generator bindings")
@@ -155,7 +162,7 @@ emitBindings minify plan testing files = do
       pure [Artifact path (render source) "generated" "source"]
   dataFiles <- if any ((== "src/main/java/lawspec/runtime/LawSpecDataSchema.java") . artifactPath) files then pure []
     else J.emitJavaDataWithProfile bits layout declarations
-  generatorFiles <- if null generators then pure [] else do
+  generatorProduct <- if null generators then pure mempty else do
     let roots = [inputType input | unit <- plannedUnits testing, property <- plannedProperties unit, input <- inputs property]
     concrete <- if any ((>0) . generatorParameterCount) generators
       then reachableGeneratorTypes declarations representations roots else pure []
@@ -193,26 +200,32 @@ emitBindings minify plan testing files = do
         helper = Artifact "src/test/java/lawspec/testing/LawSpecNativeGenerators.java" (render
           (D.text "package lawspec.testing;" <> D.hardline <> D.hardline <>
            D.text "import lawspec.runtime.LawSpecSchema;" <> D.hardline <>
-           D.text "import org.jetbrains.jetCheck.Generator;" <> D.hardline <> D.hardline <>
+           D.text ("import " ++ propertyPackage javaStyle ++ ".Generator;") <> D.hardline <> D.hardline <>
            D.text "public final class LawSpecNativeGenerators" <> D.hardline <> D.block 2
             (D.joinWith (D.hardline <> D.hardline)
              (D.text "private LawSpecNativeGenerators() {}":registry:factoryMethods)))) "generated" "test"
-    emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
-      Scalar.nativeScalarEmitWithNativeGenerators True minify declarations
+    emitted <- either (Left . show) Right $ mconcat <$> mapM (\unit ->
+      Scalar.nativeScalarProductWithAdapterBindings javaStyle [] True minify declarations
         (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) bits "java"
         (modelTestUnit testing (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits testing, not (null (plannedProperties unit))]
-    pure (helper : [file | file <- emitted,artifactPlacement file == "test"] ++
+    pure (emitted { Product.jvmAdapters = [], Product.jvmArtifacts = helper : [file | file <- Product.jvmArtifacts emitted,artifactPlacement file == "test"] ++
       [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" |
-        not (any ((== "src/test/java/lawspec/testing/LawSpecDataStrategies.java") . artifactPath) files)])
-  let replaced = map artifactPath (bridges ++ generatorFiles)
+        not (any ((== "src/test/java/lawspec/testing/LawSpecDataStrategies.java") . artifactPath) files)] })
+  let generatorFiles = Product.jvmArtifacts generatorProduct
+      replaced = map artifactPath (bridges ++ generatorFiles)
   unless (all ((/= artifactPath support) . artifactPath) files) (Left "unit shadows native codec support")
   let runtime = [Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source" |
         not (any ((== "src/main/java/lawspec/runtime/LawSpecRuntime.java") . artifactPath) files)]
   let generated = [f | f <- files,artifactPath f `notElem` replaced] ++ dataFiles ++ runtime ++ [support] ++ bridges ++ generatorFiles
   stubs <- generatorStubs generated
-  pure (generated ++ stubs)
+  pure (product
+    { Product.jvmArtifacts = generated ++ stubs
+    , Product.jvmAdapters = [(path, abi) | (path,abi) <- Product.jvmAdapters product, path `notElem` replaced]
+    , Product.jvmCases = [cases | cases <- Product.jvmCases product, Abi.casePath cases `notElem` replaced] ++ Product.jvmCases generatorProduct
+    })
   where
+    files = Product.jvmArtifacts product
     boxed value = maybe value ("java.lang." ++) (lookup value
       [("byte","Byte"),("short","Short"),("int","Integer"),("long","Long"),
        ("float","Float"),("double","Double"),("char","Character"),("boolean","Boolean")])
@@ -309,9 +322,9 @@ emitBindings minify plan testing files = do
               result = if raw `elem` words "Byte Short Integer Long Float Double Boolean Character String Object"
                 then D.text ("java.lang." ++ raw) else native
               generic = if null parameters then mempty else D.text ("<" ++ intercalate ", " [t | (_,(t,_)) <- parameters] ++ "> ")
-              signature = D.text "public static " <> generic <> applied "org.jetbrains.jetCheck.Generator" [result] <>
+              signature = D.text "public static " <> generic <> applied (propertyPackage javaStyle ++ ".Generator") [result] <>
                 D.text " " <> call methodName
-                  [applied "org.jetbrains.jetCheck.Generator" [D.text t] <> D.text (" argument" ++ show i) |
+                  [applied (propertyPackage javaStyle ++ ".Generator") [D.text t] <> D.text (" argument" ++ show i) |
                     (i,(_,(t,_))) <- zip [0::Int ..] parameters]
           pure (signature <> D.hardline <> D.block 2 (D.text "throw " <>
             call "new java.lang.UnsupportedOperationException"
