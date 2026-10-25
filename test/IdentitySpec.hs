@@ -2,7 +2,8 @@
 module IdentitySpec (test_semanticIdentityIsBehaviourAndPresentationIsTheRest) where
 
 import qualified Data.Map.Strict as M
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
+import Data.Char (isHexDigit)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, dependencyGraphWithBits, identityOf, nodeIdentity, semanticKey)
@@ -151,6 +152,18 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
         keys text = [entryKey e | e <- testManifest "javascript" Nothing
           (either (error . show) id (compileCore 64 defaultGeneration [Source "generic.lawspec" text]))]
     keys (source "identity" "a") `shouldBe` keys (source "unchanged" "element")
+  it "uses semantic concrete-type suffixes for generic instances under a nominal type rename" $ do
+    let source name = unlines
+          ["unit identity.genericNames", "type " ++ name ++ " is a record { count :: Integer enabled :: Bool small :: Int8 } end type",
+           "function identity (value :: a) -> a is value end function",
+           "law selected is definition: for all (input :: " ++ name ++ ") => identity input = input end for all end definition end law", "end unit"]
+        suffixes text = [reverse (takeWhile isHexDigit (reverse (C.declarationName declaration))) |
+          let program = either (error . show) id (compileCore 64 defaultGeneration [Source "generic.lawspec" text]),
+          u <- C.programUnits program, d <- C.unitDefinitions u, let declaration = C.definitionDeclaration d,
+          "lawspec_identity_" `isPrefixOf` C.declarationName declaration]
+        first = suffixes (source "Before")
+    first `shouldSatisfy` (not . null)
+    suffixes (source "After") `shouldBe` first
   it "keeps model test keys when an unrelated checked definition changes" $ do
     let fixture = "test/fixtures/canonical-model-layer-selection.lawspec"
     original <- readFile fixture

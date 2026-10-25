@@ -6,11 +6,9 @@ import Control.Monad.State.Strict
 import Control.Monad (forM, forM_, unless, when, foldM, zipWithM)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
-import Data.List (sortOn, foldl')
-import Data.Char (ord)
-import Data.Bits (xor)
-import Data.Word (Word64)
-import Numeric (showHex)
+import Data.List (sortOn)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Elaboration as Elaboration
 import qualified LawSpec.SourceContext as Source
 import LawSpec.Model
 import qualified LawSpec.Core as Core
@@ -48,6 +46,14 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
   results <- mapM unit units
   pure (map fst results, concatMap snd results)
   where
+    typeGraph = Identity.dependencyGraphWithBits bits declarations []
+    typeKeys = [(Core.idText (Core.dataId d), Identity.semanticKey typeGraph "specialization-carrier" (Core.Constructor (Core.idText (Core.dataId d)) [])) | d <- declarations]
+    shapeCounts = M.fromListWith (+) [(key, 1 :: Int) | (_,key) <- typeKeys]
+    collidingTypes = Set.fromList [name | (name,key) <- typeKeys, M.findWithDefault 0 key shapeCounts > 1]
+    mentionedTypes ty = case ty of
+      Core.Constructor name arguments -> name : concat [mentionedTypes t | Core.TypeArgument t <- arguments]
+      Core.Arrow from to -> mentionedTypes from ++ mentionedTypes to
+      Core.TypeVariable _ -> []
     unit originalUnit
       | null generic && all (\d -> baseType (definitionType d) == definitionType d) definitions
       , all ((`notElem` map functionName definitions) . contractName) (contracts originalUnit)
@@ -196,7 +202,8 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
         ensure :: String -> Type -> Specialize String
         ensure name concrete = do
           unless (closed concrete) (lift (Left ("ambiguous definition instance: " ++ name ++ " :: " ++ prettyType concrete)))
-          let key = (name,show concrete)
+          fingerprint <- lift (instanceSuffix concrete)
+          let key = (name,fingerprint)
           existing <- gets (M.lookup key . instances)
           case existing of
             Just (Instance generated _ _ _) -> pure generated
@@ -219,7 +226,7 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
                   requirements = [Capability capability (replace ty) | Capability capability ty <- functionRequirements template]
               forM_ requirements $ \requirement -> unless (satisfies requirement)
                 (lift (Left ("unsatisfied specialization capability: " ++ show requirement)))
-              generated <- if name `elem` generic then allocate name concrete else pure name
+              generated <- if name `elem` generic then allocate name fingerprint else pure name
               let definition = template
                     { functionName = generated
                     , functionTemplate = case functionTemplate template of Just original -> Just original; _ -> Just name
@@ -240,13 +247,24 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
                     then Nothing else Just instantiated
               modify (\state -> state{instances=M.insert key (Instance generated definition attached False) (instances state)})
               pure generated
-        allocate :: String -> Type -> Specialize String
-        allocate name ty = do
+        instanceSuffix :: Type -> Either String String
+        instanceSuffix ty = do
+          -- Concrete carriers are checked by inference, then structurally
+          -- lowered. Source refinements remain in the template's separately
+          -- validated contract; they are not a second storage carrier.
+          (checked, nested) <- Elaboration.coreTypeWithSourceRecords sourceTypes declarations bits ty
+          let graph = Identity.dependencyGraphWithBits bits (declarations ++ nested) []
+              semantic = Identity.semanticKey graph "specialization-type" checked
+              -- Equal-shaped nominal types can expose distinct native
+              -- interfaces. Only these need presentation disambiguation.
+              publicCollision = any (`Set.member` collidingTypes) (mentionedTypes checked)
+          pure (semantic ++ [c | publicCollision, c <- take 12 (Identity.namedKey graph "specialization-public-types" checked)])
+        allocate :: String -> String -> Specialize String
+        allocate name suffix = do
           used <- gets occupied
-          let hash = foldl' (\value c -> (value `xor` fromIntegral (ord c)) * 1099511628211)
-                (14695981039346656037 :: Word64) (show ty)
-              base = "lawspec_" ++ phraseNativeName name ++ "_" ++ showHex hash ""
-              candidate = head (filter (`Set.notMember` used) [base ++ replicate count '_' | count <- [0..]])
+          let stem = phraseNativeName name
+              candidate = head (filter (`Set.notMember` used)
+                ["lawspec_" ++ stem ++ replicate count '_' ++ "_" ++ suffix | count <- [0..]])
           modify (\state -> state{occupied=Set.insert candidate (occupied state)})
           pure candidate
         drain = do

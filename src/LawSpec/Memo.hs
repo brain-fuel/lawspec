@@ -16,8 +16,10 @@
 -- for a native compiler, its executable's size and modification time: a
 -- compiler rebuilt from changed sources (a checkout run in place) never
 -- reads what another build wrote, so generation depends only on the program.
-module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, withCacheDirectory, buildIdentity) where
+module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, memoizedState, withCacheDirectory, buildIdentity) where
 
+import qualified Control.Monad.Trans.State.Strict as Transition
+import LawSpec.Blake3 (blake3, hexOf)
 import Control.Exception (SomeException, evaluate, try)
 import Data.Binary (Binary, decodeOrFail, encode)
 import qualified Data.ByteString as B
@@ -92,6 +94,17 @@ withCacheDirectory directory result = unsafePerformIO $ do
 -- | Pure callers get caching without threading state: the key names the inputs
 -- completely, so returning a recorded value cannot change any result.
 -- ref:DEC-incremental-compilation
+-- | A structured emission chunk may request helpers or literals while it is
+-- lowered. Cache the full state transition, not just its document. Its
+-- incoming serialized helper/name state is an exact presentation input;
+-- the caller also supplies the checked dependency and native-context key.
+-- There is no generated-text parsing in either direction.
+memoizedState :: Binary state => Table (Either String (value, state)) -> String
+  -> Transition.StateT state (Either String) value -> Transition.StateT state (Either String) value
+memoizedState table key action = Transition.StateT $ \before ->
+  memoized table (key ++ ":state:" ++ hexOf (blake3 (BL.toStrict (encode before))))
+    (Transition.runStateT action before)
+
 memoized :: Table a -> String -> a -> a
 memoized (Table budget weigh persistence ref) key value = unsafePerformIO $ do
   let k = T.pack key

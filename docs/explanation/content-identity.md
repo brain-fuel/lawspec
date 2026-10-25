@@ -150,3 +150,23 @@ always invalidate execution keys. Fresh requests still execute tests.
 Machine-sized primitive identities include their selected bounds. Remote
 functions involving `IntSize`, `UIntSize` or `UIntPtr` consequently differ
 between 32 and 64 bits, while fixed-width/exact functions remain portable.
+
+
+## Emission chunks
+
+Rust typed function and type documents are cached separately. A dependency's
+semantic and presentation hashes, plus current native names and bridge
+context, key each structured document. Editing an independent function adds
+one cache entry rather than re-lowering both functions. The document's Binary
+encoding preserves layout choices; no emitted source text is parsed back.
+
+Other emitter families also accumulate shared codec, literal or helper state.
+`memoizedState` memoizes their full structured state transition, including the
+exact incoming name/helper state. Their family-specific adoption remains work
+in progress; the whole-unit memo remains conservative in the meantime.
+
+Generated type suffixes use checked semantic identities. Specialization
+structurally lowers the already-checked concrete carrier rather than hashing
+its printed surface type. Distinct native nominal interfaces with equal
+semantic shapes receive deterministic presentation disambiguation. F# aliases
+also retain their readable public type name.

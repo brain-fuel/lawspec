@@ -9,7 +9,7 @@ module LawSpec.Typed.Rust (RustTyped(..), emitRustTyped) where
 import Control.Monad (forM)
 import Control.Monad.State.Strict
 import Data.Char (isAlphaNum)
-import Data.List (intercalate)
+import Data.List (intercalate, sort, nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -18,6 +18,10 @@ import LawSpec.Core
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Core.Identity as CoreIdentity
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import System.IO.Unsafe (unsafePerformIO)
 import qualified LawSpec.RustExpr as E
 import LawSpec.RustLayout (Arm(..))
 import qualified LawSpec.RustLayout as L
@@ -54,6 +58,7 @@ data Env = Env
   , envConstructors :: M.Map Id (DataDeclaration, DataConstructor)
   , envFunctions :: M.Map Int String            -- class -> function name
   , envPrefix :: String                         -- "" inside the typed module
+  , envIdentity :: Identity.Graph
   , envBridges :: M.Map Id String               -- each operation's bridge
   }
 
@@ -86,11 +91,11 @@ emitRustTyped declarations units = do
         | (_, d) <- typedRepresentatives plan ])
       functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
       env = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
-        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions ""
+        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions "" (Identity.dependencyGraph declarations units)
         (M.fromList [(i, "crate::" ++ path) | (i, path) <- performBridges units])
       outside = env { envPrefix = modulePath }
-  dataDocs <- mapM (dataDoc env) datas
-  functionDocs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+  dataDocs <- mapM (memoData env) datas
+  functionDocs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
   pairFields <- pairFieldsDoc env
   let directData = directDeclarations declarations datas
   publicDocs <- mapM (publicDoc env declarations) [d | d <- datas, idText (dataId d) `S.member` directData]
@@ -270,8 +275,56 @@ pairFieldsDoc env = pure (pair ++ entry)
         , L.function "pub fn make_entry<K: Clone, V: Clone>" ["k: &K", "v: &V"] (name ++ "<K, V>")
             (L.expr (L.call name [L.call "std::sync::Arc::new" [L.call (name ++ "Node::Entry") [L.method (L.atom "k") "clone" [], L.method (L.atom "v") "clone" []]]])) ]
 
+-- A structured document is a cache value, never reparsed generated text.
+-- Presentation-bearing keys include the current native name context, and
+-- the checked node's exact reachable semantic and documentary dependencies.
+functionTable :: Table (Either String D.Doc)
+functionTable = unsafePerformIO (newPersistentTable "typed-rust-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+dataTable :: Table (Either String D.Doc)
+dataTable = unsafePerformIO (newPersistentTable "typed-rust-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE dataTable #-}
+
+-- Only names the chunk can emit are context inputs. Uncalled functions do
+-- not reserve local names: their globals may be shadowed without ambiguity.
+calledIds :: Expr -> [Id]
+calledIds expression = case expressionNode expression of
+  ExternalCall callee arguments -> callee : concatMap calledIds arguments
+  _ -> concatMap calledIds (children expression)
+
+calledNames :: Env -> Int -> Definition -> [(String, Bool)]
+calledNames env classification definition = sort (nub
+  [(name, selected == classification) |
+    selected <- classification : [c | callee <- calledIds (definitionBody definition), Just c <- [definitionClass (envPlan env) callee]],
+    Just name <- [M.lookup selected (envFunctions env)]])
+
+nativeTypeNames :: CoreIdentity.Collect value => Env -> [Identity.Ref] -> value -> [(String, String)]
+nativeTypeNames env own value = [(idText identity, name) |
+  Identity.TypeNode identity <- S.toAscList (Identity.closure (envIdentity env)
+    (own ++ Identity.referencesOf (envIdentity env) value)),
+  Just name <- [M.lookup (idText identity) (envNames env)]]
+
+usedBridges :: Env -> Expr -> [(Id, String)]
+usedBridges env expression = case expressionNode expression of
+  Perform operation arguments -> [(operationId operation, bridge) | Just bridge <- [M.lookup (operationId operation) (envBridges env)]] ++ concatMap (usedBridges env) arguments
+  _ -> concatMap (usedBridges env) (children expression)
+
+memoFunction :: Env -> Int -> Definition -> Either String D.Doc
+memoFunction env classification definition = memoized functionTable
+  (Identity.fullKey (envIdentity env) ("rust-function:" ++ show
+    (nativeTypeNames env [] definition, calledNames env classification definition,
+     envPrefix env, usedBridges env (definitionBody definition))) definition)
+  (functionDoc env classification definition)
+
+memoData :: Env -> DataDeclaration -> Either String D.Doc
+memoData env declaration = memoized dataTable
+  (Identity.fullKey (envIdentity env) ("rust-data:" ++ show
+    (nativeTypeNames env [Identity.TypeNode (dataId declaration)] declaration)) declaration)
+  (dataDoc env declaration)
+
 functionDoc :: Env -> Int -> Definition -> Either String D.Doc
-functionDoc env c d = flip evalStateT (moduleReserved ++ M.elems (envFunctions env)) $ do
+functionDoc env c d = flip evalStateT (moduleReserved ++ map fst (calledNames env c d)) $ do
   let declaration = definitionDeclaration d
       (_, result) = functionType (declarationType declaration)
       name = envFunctions env M.! c
