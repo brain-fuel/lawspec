@@ -14,6 +14,7 @@ import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
+import qualified LawSpec.JvmCases as Finite
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinExpr as E
@@ -223,10 +224,10 @@ emitTests Config{..} unit laws = do
             call "arrayOf<LawSpecRuntime.Value>" (map expr (C.harnessLabels h))] | observed h] ++
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
       (Just reason, _) -> [D.group (quoted (fn ++ "_skipped: " ++ label) <> D.nest 4 (D.softbreak <> text ".config(enabled = false) " <> L.block [text ("// " ++ reason)]))]
       (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> L.lambda [] [harness "knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, call "listOf" [harnessBody (harnessValue (fn ++ k)) | k <- kinds]]]]
+        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, (L.operators "+" [call "listOf<lawspec.testing.LawSpecHarness.Body>" [harnessBody (harnessValue (fn ++ k)) | k <- kinds], extraBodies])]]]
       _ | runSettings h -> docs ++ [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text " " <> L.lambda [] [harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "intArrayOf" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -364,22 +365,31 @@ emitTests Config{..} unit laws = do
         (handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
           [contextualAssertion (const (quoted (linked e shown))) (assertion e)])]))) (zip exampleSuffixes (examples (original e)))
-      boundaryValues <- mapM (mapM literal) (maybe (boundaryCases e) id (finiteCases e))
-      -- Share large handler-bound assertions before registration is chunked:
-      -- repeated bodies can overflow the JVM constant pool below 1,024 cases.
-      let sharedBoundaries = length boundaryValues >= 64
-          helper = base' ++ "Boundary"
-          names = map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
-          valuesArray = call "arrayOf<LawSpecRuntime.Value>" (map text names)
-          boundaryDocs = [testFunction (fn ++ "_" ++ boundaryTestName i) $ withSymbols
-            (handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-            [bracketed e [if sharedBoundaries then call helper [quoted context, text "symbols", valuesArray]
-            else assertionDoc context (assertion e)]]) | (i,values) <- zip [0::Int ..] boundaryValues
-            , let context = linked e (shown ++ " boundary " ++ show (i + 1))]
+      cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
+      coverData <- Finite.coverDoc finiteCall (L.lambda ["symbols"] . pure) literal cover
+      let helper = base' ++ "Boundary"
+          coverCases = runtime "finiteCases" [coverData]
+          caseCall = call helper [text "finiteCase"]
+          caseName = quoted (base' ++ "_boundary") <> text " + finiteCase.index()"
+          context = L.operators "+" ([quoted (shown ++ " boundary "), text "finiteCase.index()"] ++
+            [quoted (" — " ++ link) | Just link <- [lawLink e]])
           sharedDocs = [braced (call ("private suspend fun " ++ helper)
-              [text "context: String", text "symbols: MutableMap<String, Any>", text "values: Array<LawSpecRuntime.Value>"])
-            ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] names] ++
-              [contextualAssertion (const (text "context")) (assertion e)]) | sharedBoundaries, C.harnessSkip h == Nothing]
+              [text "finiteCase: LawSpecRuntime.FiniteCase"])
+            (withSymbols (bind "values" (call "finiteCase.values" [text "symbols"]) : handlerInstalls e ++
+              [bind (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i,inp) <- zip [0::Int ..] (inputs e)] ++
+              [bracketed e [contextualAssertion (const context) (assertion e)]]))
+            | C.harnessSkip h == Nothing]
+          caseBody = text "lawspec.testing.LawSpecHarness.Body " <>
+            L.lambda [] [L.trailing (text "kotlinx.coroutines.runBlocking") [] [caseCall]]
+          extraBodies = D.group (D.nest 4 coverCases <> D.nest 4 (D.softbreak <> L.trailing (text ".map") ["finiteCase"] [caseBody]))
+          runCase | runSettings h = harness "run"
+                      [quoted label, caseName, number (maybe 0 id (C.harnessTimeout h)),
+                       number (C.harnessRepeat h), number (C.harnessRetries h),
+                       call "intArrayOf" [], call "arrayOf<String>" [], text "false", caseBody]
+                  | otherwise = caseCall
+          boundaryDocs = [braced (D.group (text "for (finiteCase in" <> D.nest 4 (D.softline <> coverCases) <> text ")"))
+              [text "(" <> caseName <> text ") " <> L.lambda [] [runCase]]
+            | C.harnessSkip h == Nothing, C.harnessKnownFailing h == Nothing]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs
@@ -416,9 +426,9 @@ emitTests Config{..} unit laws = do
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn propertyLabel e check
           else pure [nativeProperty fn propertyLabel e check]
-      let kinds = ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] ++ ["_" ++ boundaryTestName i | i <- [0 .. length boundaryDocs - 1]] ++
+      let kinds = ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] ++
             ["_property" | not (null property)]
-      let tests = harnessTests base' propertyLabel h kinds (exampleDocs ++ boundaryDocs ++ property)
+      let tests = harnessTests base' propertyLabel h kinds extraBodies (exampleDocs ++ boundaryDocs ++ property)
           -- A complete finite law can register thousands of distinct tests.
           -- Local chunks retain the law's replay state and registration scope.
           chunks [] = []
@@ -429,6 +439,9 @@ emitTests Config{..} unit laws = do
                 [text ("chunk" ++ show i ++ "()") | i <- [1..length (chunks tests)]]
             | otherwise = tests
       pure (sharedDocs, mconcat (map (D.lineComment 96 "// ") (lawCommentLines e)) <> separate (searchBefore ++ registered ++ searchAfter))
+    finiteCall "LawSpecRuntime.finiteValues" [factory] =
+      D.group (text "LawSpecRuntime.finiteValues(" <> factory <> text ")")
+    finiteCall name arguments = call name arguments
     contextualProperty fn label e check = do
       let inputBindings xs = [text "val symbols = inputs.symbols", text "val values = inputs.values", fromValues xs]
           state value = call "LawSpecKotlinStrategies.Case" [value, text "symbols", text "drawn.error"]

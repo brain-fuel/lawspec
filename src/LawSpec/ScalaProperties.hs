@@ -14,6 +14,7 @@ import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
+import qualified LawSpec.JvmCases as Finite
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.ScalaExpr as E
@@ -240,10 +241,13 @@ emitTestsWith split Config{..} unit laws = do
             call "Array[LawSpecRuntime.Value]" (map expr (C.harnessLabels h))] | observed h] ++
          [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
-    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+    harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
       (Just reason, _) -> [braced (call "ignore" [quoted (fn ++ "_skipped: " ++ label)]) [text ("// " ++ reason)]]
-      (_, Just reason) -> docs ++ [braced (call register [quoted (fn ++ "_knownFailing: " ++ label)]) [harness "knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, call "java.util.List.of[lawspec.testing.LawSpecHarness.Body]" [harnessBody (harnessValue (fn ++ k)) | k <- kinds]]]]
+      (_, Just reason) -> docs ++ [braced (call register [quoted (fn ++ "_knownFailing: " ++ label)])
+        ([bind "knownFailures" (call "new java.util.ArrayList[lawspec.testing.LawSpecHarness.Body]" [])] ++
+         [finiteBodyCall "knownFailures.add" (call (harnessValue (fn ++ k)) []) | k <- kinds] ++
+         extraBodies ++ [harness "knownFailing"
+           [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, text "knownFailures"]])]
       _ | runSettings h -> docs ++ [braced (call register [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else ""))]) [harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "Array[Int]" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -380,30 +384,36 @@ emitTestsWith split Config{..} unit laws = do
         (handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
           [contextualAssertion (const (quoted (linked e shown))) (assertion e)])]))) (zip exampleSuffixes (examples (original e)))
-      boundaryValues <- mapM (mapM literal) (maybe (boundaryCases e) id (finiteCases e))
-      -- Share large handler-bound assertions before registration is chunked:
-      -- repeated bodies can overflow the JVM constant pool below 1,024 cases.
-      let sharedBoundaries = length boundaryValues >= 64
-          helper = base' ++ "Boundary"
-          names = map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
-          valuesArray = call "Array[LawSpecRuntime.Value]" (map text names)
-          boundaryDocs = [testFunction (fn ++ "_" ++ boundaryTestName i) $ withSymbols
-            (handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-            [bracketed e [if sharedBoundaries then call helper [quoted context, text "symbols", valuesArray]
-            else assertionDoc context (assertion e)]]) | (i,values) <- zip [0::Int ..] boundaryValues
-            , let context = linked e (shown ++ " boundary " ++ show (i + 1))]
+      cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
+      coverData <- Finite.coverDoc finiteCall (L.arrow "symbols") literal cover
+      let helper = base' ++ "Boundary"
+          coverCases = runtime "finiteCases" [coverData]
+          caseCall = call helper [text "finiteCase"]
+          indexDoc = D.group (text "finiteCase" <> D.nest 2 (D.softbreak <> call ".index" []))
+          caseName = quoted (base' ++ "_boundary") <> text " + " <> indexDoc
+          context = quoted (shown ++ " boundary ") <> text " + " <> indexDoc <>
+            maybe mempty (\link -> text " + " <> quoted (" — " ++ link)) (lawLink e)
           sharedDocs = [braced (L.parameters (text (visibility ++ "def " ++ helper))
-              [text "context: String", text "symbols: LawSpecScala.Symbols", text "values: Array[LawSpecRuntime.Value]"] <> text ": Unit =")
-            ([bind n (text ("values(" ++ show i ++ ")")) | (i,n) <- zip [0::Int ..] names] ++
-              [contextualAssertion (const (text "context")) (assertion e)]) | sharedBoundaries, C.harnessSkip h == Nothing]
-          -- A registration method also has a JVM bytecode size limit. Keep
-          -- the same test names and order in bounded registration methods.
-          registeredBoundaries
-            | sharedBoundaries && C.harnessSkip h == Nothing && C.harnessKnownFailing h == Nothing && not (runSettings h) =
-                concat [let part' = "boundaries" ++ show part in
-                  [braced (text ("def " ++ part' ++ "(): Unit =")) [separate group'], text (part' ++ "()")]
-                  | (part, group') <- zip [1::Int ..] (groupsOf 64 boundaryDocs)]
-            | otherwise = boundaryDocs
+              [text "finiteCase: LawSpecRuntime.FiniteCase"] <> text ": Unit =")
+            (withSymbols (bind "values" (call "finiteCase.values" [text "symbols"]) : handlerInstalls e ++
+              [bind (inputId inp) (checked (inputType inp) (text ("values.get(" ++ show i ++ ")"))) | (i,inp) <- zip [0::Int ..] (inputs e)] ++
+              [bracketed e [contextualAssertion (const context) (assertion e)]]))
+            | C.harnessSkip h == Nothing]
+          caseBody = L.arrow "()" caseCall
+          extraBodies = [braced (text "locally")
+            [bind "finiteCases" (finiteChain (text "LawSpecRuntime") [("finiteCases", [coverData]), ("iterator", [])]),
+             braced (text "while (finiteCases.hasNext())")
+               [bind "finiteCase" (call "finiteCases.next" []), finiteBodyCall "knownFailures.add" caseCall]]]
+          runCase | runSettings h = harness "run"
+                      [quoted label, caseName, number (maybe 0 id (C.harnessTimeout h)),
+                       number (C.harnessRepeat h), number (C.harnessRetries h),
+                       call "Array[Int]" [], call "Array[String]" [], text "false", caseBody]
+                  | otherwise = caseCall
+          boundaryDocs = [braced (text "locally")
+              [bind "finiteCases" (finiteChain (text "LawSpecRuntime") [("finiteCases", [coverData]), ("iterator", [])]),
+               braced (text "while (finiteCases.hasNext())")
+                 [bind "finiteCase" (call "finiteCases.next" []), braced (call register [caseName]) [runCase]]]
+            | C.harnessSkip h == Nothing, C.harnessKnownFailing h == Nothing]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs
@@ -438,9 +448,16 @@ emitTestsWith split Config{..} unit laws = do
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn propertyLabel e check
           else pure [nativeProperty fn propertyLabel e check]
-      let kinds = ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] ++ ["_" ++ boundaryTestName i | i <- [0 .. length boundaryDocs - 1]] ++
+      let kinds = ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] ++
             ["_property" | not (null property)]
-      pure (sharedDocs, (comment 2 (lawCommentLines e), separate (searchBefore ++ harnessTests base' propertyLabel h kinds (exampleDocs ++ registeredBoundaries ++ property) ++ searchAfter)))
+      pure (sharedDocs, (comment 2 (lawCommentLines e), separate (searchBefore ++ harnessTests base' propertyLabel h kinds extraBodies (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)))
+    finiteCall "LawSpecRuntime.finiteValues" [factory] =
+      finiteLambdaCall "LawSpecRuntime.finiteValues" factory
+    finiteCall name arguments = call name arguments
+    finiteBodyCall name body = D.group (text (name ++ "(() =>") <> D.nest 2 (D.softline <> body) <> D.softbreak <> text ")")
+    finiteLambdaCall name body = D.group (text (name ++ "(") <> body <> D.softbreak <> text ")")
+    finiteChain receiver methods = D.group (receiver <> D.nest 2
+      (mconcat [D.softbreak <> call ('.' : method) args | (method,args) <- methods]))
     groupsOf _ [] = []
     groupsOf count values = let (group', rest) = splitAt count values in group' : groupsOf count rest
     contextualProperty fn label e check = do
