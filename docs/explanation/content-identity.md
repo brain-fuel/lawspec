@@ -26,6 +26,15 @@ Core (`lawspec.semantic.v1`). The encoding follows four rules.
 - **Literals are normalized.** Decimals drop trailing zeros and rationals are
   reduced, as structural record identities already do.
 
+Constructor spelling is presentation, but its observable ordering is not.
+The checked portable comparator orders distinct constructor tags by their
+resolved identities. A data node therefore also records each constructor's
+portable rank at its source-list position. Renaming `Alpha` to `Zulu` across
+`Middle` changes that rank vector, the type identity, and dependent law,
+execution and proof keys. A rename that preserves the ranks leaves semantic
+identity unchanged. This records Core's existing ordering policy; hashing does
+not choose a new one.
+
 Mutually recursive declarations form one group. Each member roots a traversal
 of that group in Core field and reference order. First encounters assign
 positions; back-references use those positions. Each member reaches the whole

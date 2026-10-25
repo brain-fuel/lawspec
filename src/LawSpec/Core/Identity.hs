@@ -26,6 +26,7 @@ import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as BL
+import Data.List (sortOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -295,7 +296,16 @@ instance Encode Property where
 instance Encode Declaration
 instance Encode Definition
 instance Encode Contract
-instance Encode DataDeclaration
+-- Constructor spellings are display metadata except for their observable
+-- portable ordering. compareValues orders distinct tags by idText; encode
+-- that exact rank at each source-list position, which constructor references
+-- already use. A rank-changing rename must stale every dependent result.
+instance Encode DataDeclaration where
+  enc resolver declaration = do
+    genc resolver (from declaration)
+    tag "portable-constructor-ranks"
+    let ranks = M.fromList (zip (sortOn idText (map constructorId (dataConstructors declaration))) [0 :: Int ..])
+    enc resolver [ranks M.! constructorId constructor | constructor <- dataConstructors declaration]
 instance Encode DataConstructor
 instance Encode StructuralRecord
 instance Encode Expr

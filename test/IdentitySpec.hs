@@ -1,10 +1,12 @@
 -- | Content identity: what changes a semantic hash, and what does not.
 module IdentitySpec (test_semanticIdentityIsBehaviourAndPresentationIsTheRest) where
 
+import Control.Monad (forM_)
 import qualified Data.Map.Strict as M
 import Data.List (isInfixOf, isPrefixOf)
 import Data.Char (isHexDigit)
 import qualified LawSpec.Core.Validate as Validate
+import qualified LawSpec.Core.Value as Value
 import LawSpec.Common (Diagnostic(..))
 import Test.Hspec
 import qualified LawSpec.Core as C
@@ -68,6 +70,28 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
   let before = identities base
       at key = before M.! key
       same key after = semantic key after (at key)
+  it "changes data and dependent identities when a constructor rename changes portable order" $ do
+    let source = ["unit identity.ordering", "type Choice is one of Alpha | Middle end type",
+          "function precedes (unused :: Unit) -> Ordering is prelude.compare Alpha Middle end function",
+          "law precedence is definition: precedes unitValue = Less end definition end law", "end unit"]
+        renamed = edit "Alpha" "Zulu" source
+        preserving = edit "Alpha" "Apple" source
+        compile text = either (error . show) id (compileCore 64 defaultGeneration [Source "order.lawspec" (unlines text)])
+        keys text = map entryKey (testManifest "javascript" Nothing (compile text))
+        ordering text =
+          let program = compile text
+              [declaration] = filter ((== "Choice") . C.dataName) (C.programDataDeclarations program)
+              [first,second] = C.dataConstructors declaration
+              ty = C.Constructor (C.idText (C.dataId declaration)) []
+          in Value.compareValues (Value.DataValue ty (C.constructorId first) []) (Value.DataValue ty (C.constructorId second) [])
+    ordering source `shouldBe` Right LT
+    ordering renamed `shouldBe` Right GT
+    ordering preserving `shouldBe` Right LT
+    forM_ ["Choice","precedes","precedence"] $ \name -> do
+      semanticHash (identities renamed M.! name) `shouldNotBe` semanticHash (identities source M.! name)
+      semanticHash (identities preserving M.! name) `shouldBe` semanticHash (identities source M.! name)
+    keys renamed `shouldNotBe` keys source
+    keys preserving `shouldBe` keys source
   it "keeps the semantic hash when a bound local is renamed" $ do
     let after = identities (edit "(x :: Integer) -> Integer is x + x end" "(y :: Integer) -> Integer is y + y end" base)
     same "double" after `shouldBe` True
