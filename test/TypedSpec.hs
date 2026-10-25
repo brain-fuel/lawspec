@@ -2,6 +2,7 @@
 -- body, and what the Rust, Go, JVM and BEAM emitters make of them.
 module TypedSpec (test_typedDefinitionsRunNativeWithTheirMeaning) where
 
+import Control.Monad (forM_)
 import Data.List (isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
 import Test.Hspec
@@ -220,6 +221,18 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform") (emitJvmTyped JavaStyle declarations units)
       either expectationFailure (\typed -> beamTypedSource typed `shouldSatisfy` maybe False (isInfixOf "lawspec_beam_effects:perform(")) (emitBeamTyped "erlang" [] declarations units)
   describe "typed names" $ do
+    it "keeps generated selection roles readable and claims colliding JVM locals" $ do
+      let source = unlines
+            ["unit typed.localNames",
+             "function selected (lawspecSelection0x0 :: Integer) (selection :: Integer) -> Integer is lawspecSelection0x0 + selection end function",
+             "function other (value :: Integer) -> Integer is value + 1 end function", "end unit"]
+      p <- either (\e -> expectationFailure (show e) >> fail "no program") pure
+        (compileCore 64 defaultGeneration [Source "names.lawspec" source])
+      forM_ [JavaStyle,KotlinStyle,ScalaStyle] $ \style -> do
+        typed <- either (\e -> expectationFailure e >> fail "no typed JVM") pure
+          (emitJvmTyped style (C.programDataDeclarations p) (C.programUnits p))
+        jvmTypedSource typed `shouldSatisfy` isInfixOf "java.math.BigInteger selection, java.math.BigInteger selection2"
+        jvmTypedSource typed `shouldNotSatisfy` isInfixOf "lawspecselection"
     it "stay the same when unrelated definitions are added before them" $ do
       let compile extra = either (\e -> error (show e)) id (compileCore 64 defaultGeneration [Source "ledger.lawspec" (extra ++ ledger)])
           edited = "function unrelated (x :: Int64) -> Int64 is x end function\n\nfunction another (t :: Text) -> Text is t end function\n\n"

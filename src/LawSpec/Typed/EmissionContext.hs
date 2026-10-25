@@ -2,7 +2,7 @@
 -- Helpers are named before lowering; a function records only its own requests.
 -- ref:DEC-content-identity ref:DEC-incremental-compilation
 module LawSpec.Typed.EmissionContext
-  ( expressionTypes, definitionTypes, typeClosure, helperAllocation, calledFunctions ) where
+  ( expressionTypes, definitionTypes, typeClosure, helperAllocation, helperAllocationWith, calledFunctions ) where
 
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
@@ -46,17 +46,36 @@ typeClosure declarations = S.toAscList . S.unions . map (walk S.empty)
 -- exact nominal interface as presentation disambiguation.
 helperAllocation :: Identity.Graph -> [String] -> (String -> Type -> String)
   -> [String] -> [Type] -> M.Map (String, String) String
-helperAllocation graph reserved base kinds types = M.fromList
-  [((kind, show ty), selected kind ty) | (kind,ty) <- pairs]
+helperAllocation = helperAllocationWith (\name suffix -> name ++ "_" ++ suffix)
+
+-- A friendly spelling may itself equal another entry's digest fallback.
+-- Reserve every unambiguous candidate before allocating the colliding set;
+-- the final target-name claim checks the complete namespace, not just hashes.
+helperAllocationWith :: (String -> String -> String) -> Identity.Graph -> [String]
+  -> (String -> Type -> String) -> [String] -> [Type] -> M.Map (String, String) String
+helperAllocationWith suffix graph reserved base kinds types = M.fromList
+  [((kind, show ty), allocated M.! (kind,ty)) | (kind,ty) <- pairs]
   where
-    pairs = [(kind,ty) | ty <- nub types, kind <- kinds]
-    groups = M.fromListWith (++) [(base kind ty, [(kind,ty)]) | (kind,ty) <- pairs]
-    semantic kind ty = base kind ty ++ "_" ++ Identity.semanticKey graph "typed-helper" ty
-    semanticGroups = M.fromListWith (++) [(semantic kind ty, [(kind,ty)]) | (kind,ty) <- pairs]
-    selected kind ty
-      | Just [_] <- M.lookup (base kind ty) groups, base kind ty `notElem` reserved = base kind ty
-      | Just [_] <- M.lookup (semantic kind ty) semanticGroups, semantic kind ty `notElem` reserved = semantic kind ty
-      | otherwise = semantic kind ty ++ "_" ++ Identity.fullKey graph "typed-helper-interface" ty
+    pairs = sort [(kind,ty) | ty <- nub types, kind <- kinds]
+    groups values = M.fromListWith (++) [(name,[pair]) | (pair,name) <- values]
+    bases = groups [(pair,uncurry base pair) | pair <- pairs]
+    semantic (kind,ty) = suffix (base kind ty) (Identity.semanticKey graph "typed-helper" ty)
+    semantics = groups [(pair,semantic pair) | pair <- pairs]
+    initial pair@(kind,ty)
+      | Just [_] <- M.lookup (base kind ty) bases, base kind ty `notElem` reserved = base kind ty
+      | Just [_] <- M.lookup (semantic pair) semantics, semantic pair `notElem` reserved = semantic pair
+      | otherwise = suffix (semantic pair) (Identity.fullKey graph "typed-helper-interface" ty)
+    candidates = [(pair,initial pair) | pair <- pairs]
+    collisions = groups candidates
+    clear = [(pair,name) | (pair,name) <- candidates,
+      Just [_] <- [M.lookup name collisions], name `notElem` reserved]
+    pending = [(pair,name) | (pair,name) <- candidates, pair `notElem` map fst clear]
+    allocated = snd (foldl claim (S.fromList (reserved ++ map snd clear),M.fromList clear) pending)
+    claim (taken,names) (pair@(_,ty),name) =
+      let rooted = suffix name (Identity.fullKey graph "typed-helper-interface" ty)
+          chosen = head [candidate | candidate <- rooted : [suffix rooted (show n) | n <- [2 :: Int ..]],
+            candidate `S.notMember` taken]
+      in (S.insert chosen taken,M.insert pair chosen names)
 
 calledFunctions :: TypedPlan -> M.Map Int String -> Int -> Definition -> [(String,Bool,Maybe Intrinsic,Bool)]
 calledFunctions plan names classification definition = sort (nub

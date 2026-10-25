@@ -1,7 +1,7 @@
 -- | The emitter for the statically typed targets, Java, Kotlin, Go, Haskell and
 -- Rust, whose tests use each language's own property framework and types.
 -- ref:DEC-native-property-frameworks
-module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, nativeScalarProductWithAdapterBindings, dataBudget) where
+module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, nativeScalarProductWithAdapterBindings, nativeScalarUnitProductWithAdapterBindings, goCompanionArtifacts, goUnitUsesSchema, dataBudget) where
 import LawSpec.Bounds (inputRange)
 import qualified LawSpec.JavaAbi as Abi
 import qualified LawSpec.JvmProduct as Product
@@ -38,6 +38,7 @@ import LawSpec.Common
 import LawSpec.Testing
 import LawSpec.Core.Value (toScalarValue)
 import qualified LawSpec.Core.Value as V
+import qualified LawSpec.Testing.Budget as Budget
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import LawSpec.RuntimeSources
@@ -94,10 +95,50 @@ nativeScalarEmitWithAdapterBindings adapters generators minify datas definitions
   Product.jvmArtifacts <$> nativeScalarProductWithAdapterBindings JUnit adapters generators minify datas definitions bits target unit laws
 
 nativeScalarProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
+nativeScalarProductWithAdapterBindings = nativeScalarProductWithCompanions True
+
+-- | The unit's tests, stubs and ABI, with public Go schema artifacts assembled
+-- separately. This lets their type contents have independent cache identities.
+nativeScalarUnitProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
+nativeScalarUnitProductWithAdapterBindings = nativeScalarProductWithCompanions False
+
+-- | Public declarations are preserved for every package, including types no
+-- law in that package happens to mention.
+goCompanionArtifacts :: [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+goCompanionArtifacts adapters nativeGenerators minify declarations definitions bits unit laws
+  | not (goUnitUsesSchema adapters nativeGenerators declarations definitions unit laws) = pure []
+  | otherwise = do
+      let splitName value = case break (== '.') value of
+            (piece,[]) -> [piece]
+            (piece,_:rest) -> piece : splitName rest
+          parts = splitName (unitName unit)
+          package = last parts
+          emitted = [GoData.emitGoData, GoData.emitGoSchemaWithProfile bits, GoData.emitGoCodecs]
+          filenames = ["lawspec_data.go", "lawspec_data_schema.go", "lawspec_data_codecs.go"]
+          file placement filename content = Artifact (intercalate "/" parts ++ "/" ++ filename) content "generated" placement
+      contents <- mapM (either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right .
+        (\emit -> emit (Doc.selectLayout minify (Doc.PrettyTabs 100)) package declarations)) emitted
+      pure ([file "source" filename content | (filename,content) <- zip filenames contents] ++
+        [file placement filename (replace "RUNTIME_PACKAGE" package (runtimeSource source)) |
+          (placement,filename,source) <- [("source","lawspec_schema.go","go-schema"),
+            ("source","lawspec_codecs.go","go-codecs"),("test","lawspec_data_strategies_test.go","go-data-strategies")]])
+
+goUnitUsesSchema :: [(C.Id,String)] -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Unit -> [Expanded] -> Bool
+goUnitUsesSchema adapters nativeGenerators declarations definitions unit laws =
+  nativeGenerators || not (null adapters) || not (null definitions) || not (null declarations) ||
+  any (custom . snd) (functions unit) || any (any (custom . inputType) . inputs) owned ||
+  any needsSchema (concatMap C.contractExpressions (contracts unit) ++ concatMap (C.propertyExpressions . original) owned)
+  where
+    owned = filter ((== unitName unit) . owner) laws
+    custom = GoData.requiresSchema declarations
+    needsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
+    needsSchema term = custom (expressionType term) || any needsSchema (C.children term)
+
+nativeScalarProductWithCompanions :: Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
 -- Scala's units have an emitter of their own (LawSpec.ScalaUnitEmit).
-nativeScalarProductWithAdapterBindings _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
+nativeScalarProductWithCompanions _ _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
   Product.files <$> emitScalaUnit (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
-nativeScalarProductWithAdapterBindings javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
+nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()
   tests <- if go then goDocument <$> GoProperties.emitTests goProperties u ls
@@ -106,17 +147,8 @@ nativeScalarProductWithAdapterBindings javaStyle adapterBindings nativeGenerator
     else if hs then hsDocument <$> HaskellProperties.emitTests haskellProperties u ls
     else concat <$> mapM lawTests (zip [0 :: Int ..] ls)
   wrappers <- if go || kt || hs || target == "java" then pure "" else concat <$> mapM contractWrapper (contracts u)
-  goFiles <- if goSchemaNeeded then do
-    let emitted = [GoData.emitGoData, GoData.emitGoSchemaWithProfile bits, GoData.emitGoCodecs]
-        filenames = ["lawspec_data.go", "lawspec_data_schema.go", "lawspec_data_codecs.go"]
-        file placement filename content = Artifact (intercalate "/" parts ++ "/" ++ filename) content "generated" placement
-    contents <- mapM (either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right .
-      (\emit -> emit (Doc.selectLayout minify (Doc.PrettyTabs 100)) (last parts) dataDeclarations)) emitted
-    pure ([file "source" filename content | (filename,content) <- zip filenames contents] ++
-      [file placement filename (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource source)) |
-        (placement,filename,source) <- [("source","lawspec_schema.go","go-schema"),
-          ("source","lawspec_codecs.go","go-codecs"),
-          ("test","lawspec_data_strategies_test.go","go-data-strategies")]])
+  goFiles <- if go && companions
+    then goCompanionArtifacts adapterBindings nativeGenerators minify dataDeclarations definitions bits u allLaws
     else pure []
   let completeHeader = if go || kt || hs || target == "java" then "" else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
   modelProduct <- modelTestProduct javaStyle target bits dataDeclarations definitions u
@@ -168,11 +200,7 @@ nativeScalarProductWithAdapterBindings javaStyle adapterBindings nativeGenerator
     hsCollections = any (isCollectionsType . C.idText . C.dataId) dataDeclarations
     hsDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 80))
     goCustom = (go &&) . GoData.requiresSchema dataDeclarations
-    goSchemaNeeded = go && (nativeGenerators || not (null adapterBindings) || not (null definitions) || not (null dataDeclarations) || any (goCustom . snd) (functions u) ||
-      any (any (goCustom . inputType) . inputs) ls ||
-      any goExpression (concatMap C.contractExpressions (contracts u) ++ concatMap (C.propertyExpressions . original) ls))
-    goExpression term | C.AllPayloads _ _ <- C.expressionNode term = True
-    goExpression term = goCustom (expressionType term) || any goExpression (C.children term)
+    goSchemaNeeded = go && goUnitUsesSchema adapterBindings nativeGenerators dataDeclarations definitions u allLaws
     goRef = java . GoData.goTypeReference
     goCodec = replace "schema, bits" ("_lawspecSchema, " ++ goBits) . java . GoData.goCodecWithContext "symbols" dataDeclarations
     -- A Go test file names the machine width once (lawspecMachineBits).
@@ -1503,8 +1531,4 @@ replace old new (c:cs) = c:replace old new cs
 -- | Java's generated data budget: the largest boundary value of any law in the
 -- program, so every unit's tests size their generators alike.
 dataBudget :: [Expanded] -> Integer
-dataBudget laws = maximum (64 : [valueNodes v | law <- laws, tuple <- boundaryCases law, v <- tuple])
-  where
-    valueNodes (V.DataValue _ _ fields) = 1 + sum (map valueNodes fields)
-    valueNodes (V.PresenceValue _ payload) = 1 + maybe 0 valueNodes payload
-    valueNodes _ = 1
+dataBudget = Budget.dataBudget

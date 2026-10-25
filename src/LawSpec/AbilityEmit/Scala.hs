@@ -209,7 +209,7 @@ emit minify bits datas units = do
         -- it can; otherwise through its codecs and the dynamic Value.
         let direct = jvmTypedNative typed
             argument i aty c t = case direct aty of
-              Just (fromNative, _) -> line (fromNative ++ "(value" ++ show i ++ ")")
+              Just (fromNative, _) -> L.call fromNative [line ("value" ++ show i)]
               Nothing -> L.call (t ++ ".decode") [L.chain c [("encode", [line ("value" ++ show i)])]]
             arguments = [line "symbols" | isContextual (jvmTypedPlan typed) clause] ++ [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lawspec.runtime.LawSpecFast.Unit.UNIT"]
@@ -220,7 +220,7 @@ emit minify bits datas units = do
               Just _ -> [L.bind "pair" invocation, line "state = pair.second", line "val result = pair.first"]
             returned
               | result == C.scalarType "Unit" = [line "()"]
-              | Just (_, toNative) <- direct result = [line (toNative ++ "(result)")]
+              | Just (_, toNative) <- direct result = [L.call toNative [line "result"]]
               | otherwise = [L.chain resultCodec [("decode", [line (typedResult ++ ".encode(result)")])]]
         body <- failingBody owner op (outcome ++ returned)
         pure (L.equalsBody (line "override " <> s) (line "synchronized " <> block (D.joinWith D.hardline body)))) (C.abilityOperations ability)
@@ -231,7 +231,8 @@ emit minify bits datas units = do
           stateCodec <- codec t
           typedCodec <- jvmTypedCodec typed t
           let (read', write') = case jvmTypedNative typed t of
-                Just (fromNative, toNative) -> (line (toNative ++ "(this.state)"), line ("this.state = " ++ fromNative ++ "(state)"))
+                Just (fromNative, toNative) -> (L.call toNative [line "this.state"],
+                  D.group (line "this.state =" <> D.nest 2 (D.softline <> L.call fromNative [line "state"])))
                 Nothing -> ( L.chain stateCodec [("decode", [line (typedCodec ++ ".encode(this.state)")])]
                            , line "this.state = " <> L.call (typedCodec ++ ".decode") [L.chain stateCodec [("encode", [line "state"])]] )
           pure [ comment 4 "The handler's state, in its native types: a snapshot to show or keep." <>

@@ -849,6 +849,7 @@ library
       LawSpec.Targets
       LawSpec.Temporal
       LawSpec.Testing
+      LawSpec.Testing.Budget
       LawSpec.Testing.Cover
       LawSpec.TestManifest
       LawSpec.TestNames

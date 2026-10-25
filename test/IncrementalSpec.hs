@@ -2,10 +2,12 @@
 module IncrementalSpec (test_incrementalCompilationGivesTheSameResultAsAFreshOne) where
 
 import Control.Monad (forM_)
+import Control.Exception (evaluate)
 import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
 import Data.List (find, isInfixOf, isPrefixOf)
 import Data.Char (toLower)
+import Data.Foldable (toList)
 import qualified LawSpec.Code.ECMAScript as ECMAScript
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified LawSpec.Code.Doc as Doc
@@ -15,6 +17,10 @@ import Data.Version (showVersion)
 import Paths_lawspec (version)
 import Test.Hspec
 import qualified LawSpec.Core as C
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Api (dispatch)
 import LawSpec.Dependencies (dependencyGraph, fullKey)
 import LawSpec.SurfaceContext (contextFor)
@@ -28,7 +34,7 @@ import LawSpec.Core.Evidence (Obligation(..))
 import qualified Data.ByteString.Lazy.Char8 as BC
 import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory, createDirectoryIfMissing, copyFile)
 import System.FilePath ((</>))
-import LawSpec.Memo (newPersistentTable, memoized, memoizedState, withCacheDirectory)
+import LawSpec.Memo (newPersistentTable, memoized, memoizedState, withCacheDirectory, withoutMemoization)
 import LawSpec.Discharge (dischargeEvidence)
 
 -- Read only the structured document prefix of a persisted (document,state)
@@ -137,6 +143,18 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       selected (Surface.ConstructLit "Score" [Surface.Number 1]) [] `shouldContain` ["Score"]
       selected (Surface.Annotate (Surface.Var "input") (Surface.Named "Wide")) [] `shouldContain` ["Wide"]
   describe "structured emission chunks" $ do
+    it "keeps helper names distinct when a friendly name equals another type's digest fallback" $ do
+      let graph = dependencyGraph [] []
+          int = C.Constructor "Int32" []
+          other = C.Constructor "Int64" []
+          unit = C.Constructor "Unit" []
+          alias = "collision_" ++ Identity.semanticKey graph "typed-helper" int
+          base _ ty = if ty == unit then alias else "collision"
+          names = EmissionContext.helperAllocation graph [] base ["convert"] [int,other,unit]
+      M.size names `shouldBe` 3
+      S.size (S.fromList (M.elems names)) `shouldBe` 3
+      EmissionContext.helperAllocation graph [] base ["convert"] [unit,other,int] `shouldBe` names
+
     it "round-trips layout decisions without reading generated source" $ do
       let document = Doc.group (Doc.text "function" <> Doc.nest 2 (Doc.softline <> Doc.parens (Doc.text "argument")))
           restored = Binary.decode (Binary.encode document)
@@ -199,7 +217,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         -- A cached function must replay its own request even if another function
         -- now introduces a distinct literal before it in the module.
         removePathForcibly root
-    forM_ [("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function"),("go","typed-go-function"),("haskell","typed-haskell-function")] $ \(target, table) ->
+    forM_ [("java","typed-jvm-function"),("kotlin","typed-jvm-function"),("scala","typed-jvm-function"),("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function"),("go","typed-go-function"),("haskell","typed-haskell-function")] $ \(target, table) ->
       it ("reuses an unchanged " ++ target ++ " function when an earlier function requests a new helper") $ do
         root <- (</> ("lawspec-" ++ target ++ "-definition-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -240,7 +258,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       second <- listDirectory (root </> versioned </> "typed-go-function")
       length second `shouldBe` 3
       removePathForcibly root
-    forM_ [("go","typed-go-data"),("haskell","typed-haskell-data")] $ \(target,table) ->
+    forM_ [("java","typed-jvm-data"),("kotlin","typed-jvm-data"),("scala","typed-jvm-data"),("go","typed-go-data"),("haskell","typed-haskell-data")] $ \(target,table) ->
       it ("reuses an independent " ++ target ++ " type document after another type changes") $ do
         root <- (</> ("lawspec-" ++ target ++ "-type-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -262,7 +280,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         second <- listDirectory (root </> versioned </> table)
         length second `shouldBe` length first + 1
         removePathForcibly root
-    forM_ [("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
+    forM_ [("java","typed-jvm-helper",2),("kotlin","typed-jvm-helper",2),("scala","typed-jvm-helper",2),("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
            ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2)] $ \(target,table,changed) ->
       it ("reuses independent " ++ target ++ " codec documents after another type changes") $ do
         root <- (</> ("lawspec-" ++ target ++ "-helper-memo-test")) <$> getTemporaryDirectory
@@ -292,7 +310,99 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         run "Int32" `shouldSatisfy` good
         cachedHelperDocuments target directory >>= (`shouldMatchList` second)
         removePathForcibly root
+  describe "unit emission dependencies" $ do
+    forM_ ["python","javascript","typescript","java","kotlin","scala","go","haskell"] $ \target ->
+      it ("reuses independent " ++ target ++ " unit products after a type or unused body changes") $ do
+        root <- (</> ("lawspec-outer-" ++ target ++ "-memo-test")) <$> getTemporaryDirectory
+        removePathForcibly root
+        let run fieldType increment = decode (dispatch (encode (object
+              ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+               "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
+               "sources" .= [object ["path" .= ("first.lawspec" :: String), "content" .= unlines
+                 ["unit outer.first", "type Stable is a record { number :: Integer } end type",
+                  "function stable (value :: Stable) -> Stable is value end function",
+                  "function unused (value :: Integer) -> Integer is value + " ++ increment ++ " end function",
+                  "law selected is definition: for all (value :: Stable) => stable value = value end for all end definition end law", "end unit"]],
+                 object ["path" .= ("second.lawspec" :: String), "content" .= unlines
+                 ["unit outer.second", "type Other is a record { marker :: " ++ fieldType ++ " } end type", "nativeOther :: Other -> Bool",
+                  "law selected is definition: for all (value :: Other) => nativeOther value = true end for all end definition end law", "end unit"]]]]))) :: Maybe Value
+            good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+            good _ = False
+        run "Unit" "1" `shouldSatisfy` good
+        [versioned] <- listDirectory root
+        let directory = root </> versioned </> "emit-product"
+        before <- listDirectory directory
+        length before `shouldBe` 2
+        run "Maybe Unit" "1" `shouldSatisfy` good
+        changedType <- listDirectory directory
+        length changedType `shouldBe` 3
+        run "Maybe Unit" "2" `shouldSatisfy` good
+        listDirectory directory >>= (`shouldMatchList` changedType)
+        removePathForcibly root
+    forM_ ["python","javascript","typescript","java","kotlin","scala","go","haskell"] $ \target ->
+      it ("matches cold " ++ target ++ " output after name, type and contract changes") $ do
+        let source fieldType increment name predicate =
+              [("first.lawspec",unlines ["unit cold.first", "type Stable is a record { number :: Integer } end type",
+                "function stable (value :: Stable) -> Stable is value end function",
+                "function unused (value :: Integer) -> Integer is value + " ++ increment ++ " end function",
+                "nativeBool :: Integer -> Bool",
+                "law selected is definition: for all (value :: Stable) => stable value = value end for all end definition end law", "end unit"]),
+               ("second.lawspec",unlines ["unit cold.second",
+                 maybe ("type " ++ name ++ " is a record { marker :: " ++ fieldType ++ " } end type")
+                   (\n -> "wrapper " ++ name ++ " is Int8 where value >= " ++ n ++ " end wrapper") predicate,
+                 "nativeOther :: " ++ name ++ " -> Bool",
+                 "law selected is definition: for all (value :: " ++ name ++ ") => nativeOther value = true end for all end definition end law", "end unit"])]
+            variants = [source "Unit" "1" "Other" Nothing,source "Maybe Unit" "1" "Other" Nothing,
+              source "Maybe Unit" "2" "Other" Nothing,source "Unit" "2" "Stable" Nothing,
+              source "Unit" "2" "Other" (Just "0"),source "Unit" "2" "Other" (Just "1"),
+              [(path,if path == "first.lawspec" then "\n" ++ body else body) |
+                (path,body) <- source "Unit" "2" "Other" (Just "1")]] ++
+              [source "Unit" "2" "NativeBool" Nothing | target == "go"]
+        forM_ variants $ \sources -> do
+          let input = request "planGeneration" target sources
+          dispatch input `shouldBe` withoutMemoization dispatch input
+    it "validates changed unused definitions before reusing a unit with law proof disabled" $ do
+      let run body = response (encode (object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
+            "method" .= ("planGeneration"::String),"target" .= ("python"::String),
+            "verification" .= object ["layers" .= (["examples"]::[String])],
+            "sources" .= [object ["path" .= ("admission.lawspec"::String),"content" .= unlines
+              ["unit cold.admission", "function ordinary (value :: Integer) -> Integer is value + value end function",
+               "function unused (value :: Integer) -> (result :: Integer where result > 0) is " ++ body ++ " end function",
+               "law selected is definition: for all (value :: Integer) => ordinary value = value * 2 end for all end definition end law", "end unit"]]]]))
+      case run "1" of
+        Just (Object result) -> KeyMap.lookup "diagnostics" result `shouldBe` Just (Array mempty)
+        result -> expectationFailure (show result)
+      case run "0" of
+        Just (Object result) -> KeyMap.lookup "diagnostics" result `shouldSatisfy` maybe False (\case Array diagnostics -> not (null diagnostics); _ -> False)
+        result -> expectationFailure (show result)
+  describe "native execution context" $ do
+    it "keys the actual shared node budget without imposing it on Python or Web" $ do
+      let sources count =
+            [("budget-first.lawspec",unlines ["unit budget.first", "type Box is a record { values :: List Unit } end type",
+              "law selected is definition: for all (value :: Box) => value = value end for all end definition end law", "end unit"]),
+             ("budget-second.lawspec",unlines (["unit budget.second", "type Oversized is a record", "{"] ++
+               ["  field" ++ show index ++ " :: Unit" | index <- [1..count :: Int]] ++ ["}", "end type",
+                "law unrelated is definition: for all (value :: Oversized) => value = value end for all end definition end law", "end unit"]))]
+          selected target count = case response (request "planGeneration" target (sources count)) of
+            Just (Object result) | KeyMap.lookup "diagnostics" result == Just (Array mempty),
+              Just (Array entries) <- KeyMap.lookup "tests" result ->
+                [KeyMap.lookup "key" entry | Object entry <- toList entries,
+                  KeyMap.lookup "law" entry == Just (String "budget.first::law::selected")]
+            result -> error (show result)
+      forM_ ["java","kotlin","scala","groovy","clojure","go","haskell"] $ \target -> do
+        selected target 4 `shouldSatisfy` (not . null)
+        selected target 80 `shouldNotBe` selected target 4
+      forM_ ["python","javascript","typescript"] $ \target ->
+        selected target 80 `shouldBe` selected target 4
   describe "the on-disk cache" $ do
+    it "uses a cold baseline without reading or changing entries and restores lookup after failure" $ do
+      table <- newPersistentTable "cold-baseline-probe" 256 length
+      memoized table "same" "stored" `shouldBe` "stored"
+      let cold value = BC.unpack (withoutMemoization (\input -> BC.pack (memoized table "same" input)) value)
+      cold "recomputed" `shouldBe` "recomputed"
+      memoized table "same" (error "overwrote the warm baseline") `shouldBe` "stored"
+      evaluate (B.length (withoutMemoization (\() -> error "cold baseline failure") ())) `shouldThrow` anyErrorCall
+      memoized table "same" (error "did not restore memo lookup") `shouldBe` "stored"
     it "reads an entry another process stored, and recomputes one it cannot read" $ do
       root <- (</> "lawspec-memo-test") <$> getTemporaryDirectory
       removePathForcibly root

@@ -16,11 +16,11 @@
 -- for a native compiler, its executable's size and modification time: a
 -- compiler rebuilt from changed sources (a checkout run in place) never
 -- reads what another build wrote, so generation depends only on the program.
-module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, memoizedState, withCacheDirectory, buildIdentity) where
+module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, memoizedState, withCacheDirectory, withoutMemoization, buildIdentity) where
 
 import qualified Control.Monad.Trans.State.Strict as Transition
 import LawSpec.Blake3 (blake3, hexOf)
-import Control.Exception (SomeException, evaluate, try)
+import Control.Exception (SomeException, evaluate, try, bracket)
 import Data.Binary (Binary, decodeOrFail, encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -91,6 +91,20 @@ withCacheDirectory directory result = unsafePerformIO $ do
   pure result
 {-# NOINLINE withCacheDirectory #-}
 
+memoizationEnabled :: IORef Bool
+memoizationEnabled = unsafePerformIO (newIORef True)
+{-# NOINLINE memoizationEnabled #-}
+
+-- | A cold compiler baseline for cache correctness checks. Apply the function
+-- inside the bracket, rather than accept an already evaluated cached result.
+-- This changes no admission or verification step; it bypasses memo tables only.
+withoutMemoization :: (a -> BL.ByteString) -> a -> BL.ByteString
+withoutMemoization action input = unsafePerformIO $ bracket
+  (atomicModifyIORef' memoizationEnabled (\before -> (False,before)))
+  (writeIORef memoizationEnabled)
+  (\_ -> let result = action input in evaluate (BL.length result) >> pure result)
+{-# NOINLINE withoutMemoization #-}
+
 -- | A structured emission chunk may request helpers or literals while it is
 -- lowered. Cache the full state transition, not just its document. Its
 -- incoming serialized helper/name state is an exact presentation input;
@@ -106,7 +120,13 @@ memoizedState table key action = Transition.StateT $ \before ->
 -- completely, so returning a recorded value cannot change any result.
 -- ref:DEC-incremental-compilation
 memoized :: Table a -> String -> a -> a
-memoized (Table budget weigh persistence ref) key value = unsafePerformIO $ do
+memoized table key value = unsafePerformIO $ do
+  enabled <- readIORef memoizationEnabled
+  if enabled then memoizedIO table key value else evaluate value
+{-# NOINLINE memoized #-}
+
+memoizedIO :: Table a -> String -> a -> IO a
+memoizedIO (Table budget weigh persistence ref) key value = do
   let k = T.pack key
   recorded <- atomicModifyIORef' ref $ \s -> case M.lookup k (entries s) of
     Just e ->
@@ -159,4 +179,3 @@ memoized (Table budget weigh persistence ref) key value = unsafePerformIO $ do
             let w = maybe 0 entryWeight (M.lookup oldest (entries s))
             in evict s { entries = M.delete oldest (entries s), order = rest, total = total s - w }
           Nothing -> s
-{-# NOINLINE memoized #-}
