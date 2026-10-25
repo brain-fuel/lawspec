@@ -157,29 +157,30 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       second <- listDirectory (root </> versioned </> "typed-rust-function")
       length second `shouldBe` 3
       removePathForcibly root
-    it "reuses an unchanged F# function when an earlier function requests a new byte literal" $ do
-      root <- (</> "lawspec-fsharp-definition-memo-test") <$> getTemporaryDirectory
-      removePathForcibly root
-      let run body = decode (dispatch (encode (object
-            ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
-             "method" .= ("planGeneration" :: String), "target" .= ("fsharp" :: String), "cacheDirectory" .= root,
-             "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
-               ["unit incremental.fsharpChunks",
-                "function unrelated (value :: Bytes) -> Bytes is " ++ body ++ " end function",
-                "function unchanged (value :: Integer) -> Bytes is bytes([9]) end function", "end unit"]]]]))) :: Maybe Value
-          good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
-          good _ = False
-      run "value" `shouldSatisfy` good
-      [versioned] <- listDirectory root
-      first <- listDirectory (root </> versioned </> "typed-fsharp-function")
-      length first `shouldBe` 2
-      run "bytes([1, 2, 3])" `shouldSatisfy` good
-      second <- listDirectory (root </> versioned </> "typed-fsharp-function")
-      length second `shouldBe` 3
-      -- A cached function must replay its own request even if another function
-      -- now introduces a distinct literal before it in the module.
-      removePathForcibly root
-    forM_ [("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function")] $ \(target, table) ->
+    forM_ [("fsharp","typed-fsharp-function"),("haskell","typed-haskell-function")] $ \(target,table) ->
+      it ("reuses an unchanged " ++ target ++ " function when an earlier function requests a new byte literal") $ do
+        root <- (</> ("lawspec-" ++ target ++ "-literal-memo-test")) <$> getTemporaryDirectory
+        removePathForcibly root
+        let run body = decode (dispatch (encode (object
+              ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+               "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
+               "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
+                 ["unit incremental.fsharpChunks",
+                  "function unrelated (value :: Bytes) -> Bytes is " ++ body ++ " end function",
+                  "function unchanged (value :: Integer) -> Bytes is bytes([9]) end function", "end unit"]]]]))) :: Maybe Value
+            good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+            good _ = False
+        run "value" `shouldSatisfy` good
+        [versioned] <- listDirectory root
+        first <- listDirectory (root </> versioned </> table)
+        length first `shouldBe` 2
+        run "bytes([1, 2, 3])" `shouldSatisfy` good
+        second <- listDirectory (root </> versioned </> table)
+        length second `shouldBe` 3
+        -- A cached function must replay its own request even if another function
+        -- now introduces a distinct literal before it in the module.
+        removePathForcibly root
+    forM_ [("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function"),("go","typed-go-function"),("haskell","typed-haskell-function")] $ \(target, table) ->
       it ("reuses an unchanged " ++ target ++ " function when an earlier function requests a new helper") $ do
         root <- (</> ("lawspec-" ++ target ++ "-definition-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -199,6 +200,48 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         run "if [\"x\"] = [\"x\"] then value else -value end if" `shouldSatisfy` good
         second <- listDirectory (root </> versioned </> table)
         length second `shouldBe` 3
+        removePathForcibly root
+    it "separates Go operation plans by machine profile while reusing pure functions" $ do
+      root <- (</> "lawspec-go-operation-memo-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      let run bits = decode (dispatch (encode (object
+            ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+             "method" .= ("planGeneration" :: String), "target" .= ("go" :: String), "cacheDirectory" .= root,
+             "machineBits" .= (bits :: Int), "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
+               ["unit incremental.goOperations", "ability Echo is echo :: Integer -> Integer end ability",
+                "procedure selected (value :: Integer) -> Integer is echo value end procedure",
+                "function unchanged (value :: Integer) -> Integer is value + value end function", "end unit"]]]]))) :: Maybe Value
+          good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+          good _ = False
+      run 64 `shouldSatisfy` good
+      [versioned] <- listDirectory root
+      first <- listDirectory (root </> versioned </> "typed-go-function")
+      length first `shouldBe` 2
+      run 32 `shouldSatisfy` good
+      second <- listDirectory (root </> versioned </> "typed-go-function")
+      length second `shouldBe` 3
+      removePathForcibly root
+    forM_ [("go","typed-go-data"),("haskell","typed-haskell-data")] $ \(target,table) ->
+      it ("reuses an independent " ++ target ++ " type document after another type changes") $ do
+        root <- (</> ("lawspec-" ++ target ++ "-type-memo-test")) <$> getTemporaryDirectory
+        removePathForcibly root
+        let run fieldType = decode (dispatch (encode (object
+              ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+               "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
+               "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
+                 ["unit incremental.goTypes", "type Changed is a record { value :: " ++ fieldType ++ " } end type",
+                  "type Independent is a record { label :: Text } end type",
+                  "function first (value :: Changed) -> Changed is value end function",
+                  "function second (value :: Independent) -> Independent is value end function", "end unit"]]]]))) :: Maybe Value
+            good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+            good _ = False
+        run "Integer" `shouldSatisfy` good
+        [versioned] <- listDirectory root
+        first <- listDirectory (root </> versioned </> table)
+        length first `shouldSatisfy` (> 0)
+        run "Int32" `shouldSatisfy` good
+        second <- listDirectory (root </> versioned </> table)
+        length second `shouldBe` length first + 1
         removePathForcibly root
   describe "the on-disk cache" $ do
     it "reads an entry another process stored, and recomputes one it cannot read" $ do

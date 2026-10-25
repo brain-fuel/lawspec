@@ -22,6 +22,8 @@ module LawSpec.Code.Haskell
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
 import Data.Char (isHexDigit)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import LawSpec.Naming (Casing(..), cased, nameWords, localIdentifier)
 
 data Expr
@@ -40,7 +42,7 @@ data Expr
   | Typed Expr String  -- expression :: type
   | Record String [(String, Expr)]  -- Constructor {field = value, ...}
   | Paren Expr  -- parentheses a reader needs, such as around a section
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data Stmt
   = Bind String Expr  -- pattern <- expression
@@ -48,7 +50,10 @@ data Stmt
   | Run Expr
   | Comment [String]
   | Blank
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance Binary Expr
+instance Binary Stmt
 
 var :: String -> Expr
 var = Var

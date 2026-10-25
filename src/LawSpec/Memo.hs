@@ -91,9 +91,6 @@ withCacheDirectory directory result = unsafePerformIO $ do
   pure result
 {-# NOINLINE withCacheDirectory #-}
 
--- | Pure callers get caching without threading state: the key names the inputs
--- completely, so returning a recorded value cannot change any result.
--- ref:DEC-incremental-compilation
 -- | A structured emission chunk may request helpers or literals while it is
 -- lowered. Cache the full state transition, not just its document. Its
 -- incoming serialized helper/name state is an exact presentation input;
@@ -105,6 +102,9 @@ memoizedState table key action = Transition.StateT $ \before ->
   memoized table (key ++ ":state:" ++ hexOf (blake3 (BL.toStrict (encode before))))
     (Transition.runStateT action before)
 
+-- | Pure callers get caching without threading state: the key names the inputs
+-- completely, so returning a recorded value cannot change any result.
+-- ref:DEC-incremental-compilation
 memoized :: Table a -> String -> a -> a
 memoized (Table budget weigh persistence ref) key value = unsafePerformIO $ do
   let k = T.pack key

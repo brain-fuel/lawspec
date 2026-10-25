@@ -186,10 +186,25 @@ the selected helper names, rather than the previously accumulated module.
 An unplanned helper is an explicit compiler error, not an order-dependent
 name-allocation fallback.
 
-Other emitter families also accumulate shared codec, literal or helper state.
-`memoizedState` memoizes their full structured state transition, including the
-exact incoming name/helper state. Their family-specific adoption remains work
-in progress; the whole-unit memo remains conservative in the meantime.
+Go and Haskell cache independent typed function and data documents. They
+replay helper requests into the current module, and Haskell likewise replays
+its content-named Text/Bytes literals. Go's effectful path consumes an abstract
+`GoOperationPlan`: the same checked plan supplies both typed and dynamic
+rendering, including the selected handler/interface, native codecs, failure
+mapping and machine profile. Thus an operation profile change invalidates its
+function while an independent pure function remains reusable. No function
+closure is treated as a cache identity.
+
+`memoizedState` remains an exact state-transition primitive for emitters whose
+incoming helper state is relevant. Independent chunks instead isolate their
+request sets as above; hashing the accumulated prior module state would make
+an unrelated earlier function invalidate later chunks.
+
+Remaining emission work includes JVM per-definition adoption, public per-type
+emitters beyond these typed chunks, and splitting the outer unit emitter's
+all-data presentation context into actual per-type/name dependencies. The
+whole-unit memo remains conservative until those contexts are established;
+semantic test and proof reuse already uses the checked dependency closure.
 
 Generated type suffixes use checked semantic identities. Specialization
 structurally lowers the already-checked concrete carrier rather than hashing
