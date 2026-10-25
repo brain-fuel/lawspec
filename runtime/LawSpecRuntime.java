@@ -225,6 +225,10 @@ public final class LawSpecRuntime
   public static Iterable<FiniteCase> selectedFiniteCases(FiniteCover cover, String count)
   {
     var selection = System.getProperty("lawspec.case");
+    if (selection == null)
+    {
+      selection = System.getenv("LAWSPEC_CASE");
+    }
     if (selection == null || selection.isBlank())
     {
       return finiteCases(cover);

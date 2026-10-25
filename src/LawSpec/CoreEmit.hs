@@ -55,10 +55,11 @@ import qualified LawSpec.WebData as WebData
 import qualified LawSpec.WebNativeBinding as WebNativeBinding
 import qualified LawSpec.WebDefinitions as WebDefinitions
 import qualified LawSpec.Code.Doc as Doc
+import qualified LawSpec.JavaTestingRuntime as JavaTestingRuntime
 import LawSpec.RuntimeSources
 import LawSpec.Network (withNetworkModules, usesNetworkUnits)
 import qualified LawSpec.Core as C
-import LawSpec.BuiltinDefaults (withBuiltinDefaults)
+import LawSpec.BuiltinDefaults (withBuiltinDefaults, withBuiltinDefaultsFor, javaVectorCases)
 import LawSpec.Builtins (defaultedUnits)
 import LawSpec.Scalar (primitive)
 import LawSpec.TargetNames (nativeName, phraseNativeName, allTargetKeywords)
@@ -161,7 +162,7 @@ emitPlanWithFormatUnchecked minify "groovy" given =
   Groovy.groovyFromProduct given =<< javaProduct SpockCases minify NB.emptyBindingPlan (escapePlan "groovy" given)
 -- Clojure runs over them too (DEC-clojure-over-java).
 emitPlanWithFormatUnchecked minify "clojure" given =
-  Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitMaterializedPlanWithFormat minify "java" (escapePlan "clojure" given)
+  Clojure.clojureFromProduct Clojure.noClojureBindings given =<< javaProduct PlainCases minify NB.emptyBindingPlan (escapePlan "clojure" given)
 emitPlanWithFormatUnchecked minify "prolog" given = do
   let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
   Prolog.prologFromPython plan =<< emitMaterializedPlanWithFormat minify "python" plan
@@ -244,11 +245,17 @@ javaProduct style minify bindings given = do
     (JavaAbilities.emitProduct minify (planMachineBits plan) (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)))
   let companions = Product.files (sessions ++ actors ++ mailboxes ++ remoteArtifacts "java" (remoteCalls "java" plan) plan) <> abilities
       combined = emitted <> companions
-  files <- builtinDefaults "java" plan (Product.jvmArtifacts combined)
+  files <- either (\message -> Left [Diagnostic "builtins" message Nothing])
+    (Right . withNetworkModules "java" (usesNetworkUnits (map plannedUnit (plannedUnits plan))))
+    (withBuiltinDefaultsFor style "java" (planDataDeclarations plan)
+      (ownedAbilityUnits (map plannedUnit (plannedUnits plan))) (Product.jvmArtifacts combined))
+  let completed = combined { Product.jvmArtifacts = files,
+        Product.jvmCases = Product.jvmCases combined ++
+          [javaVectorCases | any ((== Abi.casePath javaVectorCases) . artifactPath) files] }
   bound <- if NB.hasBindings bindings
     then either (Left . pure . (\message -> Diagnostic "native-binding" message Nothing)) Right
-      (JavaNativeBinding.emitBindingsProduct style minify bindings plan (combined { Product.jvmArtifacts = files }))
-    else pure (combined { Product.jvmArtifacts = files })
+      (JavaNativeBinding.emitBindingsProduct style minify bindings plan completed)
+    else pure completed
   canonical <- if minify then javaProduct style False bindings given else pure bound
   let references = [(artifactPath a, artifactContent a) | a <- Product.jvmArtifacts canonical, ownership a == "user"]
   withReferences <- mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
@@ -491,7 +498,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
         "haskell" -> Artifact "src/LawSpecRuntime.hs" (runtimeSource "haskell") "generated" "source"
         _ -> Artifact "src/lawspec_runtime.mjs" (runtimeSource "javascript") "generated" "source"
       files = concatMap Product.jvmArtifacts emitted ++ dataFiles ++ definitionFiles ++
-        [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" | target == "java" && not (null dataFiles)] ++
+        [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (JavaTestingRuntime.dataStrategies javaStyle) "generated" "test" | target == "java" && not (null dataFiles)] ++
         -- Java: the scalar generators the tests draw from, for the machine's
         -- width, once per project rather than in every test.
         [Artifact "src/test/java/lawspec/testing/LawSpecScalars.java" javaScalars "generated" "test"
@@ -694,8 +701,8 @@ emitPlanWithNativeNames minify "groovy" sourceDir testDir unescaped unwitnessed 
     javaProduct SpockCases minify (escapeBindings "groovy" unescaped) (escapePlan "groovy" unwitnessed))
 emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed = do
   (java, clojure) <- Clojure.splitBindings unescaped
-  Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava clojure unwitnessed =<<
-    emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
+  Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromProduct clojure unwitnessed =<<
+    javaProduct PlainCases minify (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
 emitPlanWithNativeNames minify "prolog" sourceDir testDir bindings given = do
   let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
   Prolog.prologFromPythonWithBindings sourceDir testDir bindings plan =<< emitMaterializedPlanWithFormat minify "python" plan

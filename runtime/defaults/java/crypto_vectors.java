@@ -2,19 +2,17 @@
 
 package lawspec;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static @@ASSERTIONS@@.assertArrayEquals;
+import static @@ASSERTIONS@@.assertEquals;
+import static @@ASSERTIONS@@.assertFalse;
+import static @@ASSERTIONS@@.assertNull;
+import static @@ASSERTIONS@@.assertTrue;
 
-import org.junit.jupiter.api.Test;
-
-/**
+@@TEST_IMPORT@@/**
  * Known-answer tests of lawspec.crypto's default handlers, against NIST's vectors (see
  * docs/reference/language/cryptography.md for the sources).
  */
-class CryptoVectorsTest
+public final class CryptoVectorsTest
 {
   private static final String[] VECTORS = {
 @@VECTOR_LINES@@
@@ -65,8 +63,7 @@ class CryptoVectorsTest
     return copy;
   }
 
-  @Test
-  void sha3_256()
+@@TEST_MARK@@  public void sha3_256()
   {
     for (String[] v : vectors("sha3-256"))
     {
@@ -74,8 +71,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void shake256()
+@@TEST_MARK@@  public void shake256()
   {
     for (String[] v : vectors("shake256"))
     {
@@ -83,8 +79,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void aes256Gcm()
+@@TEST_MARK@@  public void aes256Gcm()
   {
     for (String[] v : vectors("aes-256-gcm"))
     {
@@ -96,8 +91,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void mlKem768KeyGeneration()
+@@TEST_MARK@@  public void mlKem768KeyGeneration()
   {
     for (String[] v : vectors("mlkem768-keygen"))
     {
@@ -105,8 +99,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void mlKem768Encapsulation()
+@@TEST_MARK@@  public void mlKem768Encapsulation()
   {
     for (String[] v : vectors("mlkem768-encaps"))
     {
@@ -116,8 +109,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void mlKem768Decapsulation() throws Exception
+@@TEST_MARK@@  public void mlKem768Decapsulation() throws Exception
   {
     for (String[] v : vectors("mlkem768-decaps"))
     {
@@ -143,8 +135,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void mlDsa65KeyGeneration()
+@@TEST_MARK@@  public void mlDsa65KeyGeneration()
   {
     for (String[] v : vectors("mldsa65-keygen"))
     {
@@ -154,8 +145,7 @@ class CryptoVectorsTest
 
   // The JDK's ML-DSA takes no context strings; Bouncy Castle's verifies
   // the vectors that have one.
-  @Test
-  void mlDsa65Verification()
+@@TEST_MARK@@  public void mlDsa65Verification()
   {
     for (String[] v : vectors("mldsa65-verify"))
     {
@@ -165,8 +155,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void mlDsa65DeterministicSignature()
+@@TEST_MARK@@  public void mlDsa65DeterministicSignature()
   {
     for (String[] v : vectors("mldsa65-sign-seed"))
     {
@@ -177,8 +166,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void slhDsaKeyGeneration()
+@@TEST_MARK@@  public void slhDsaKeyGeneration()
   {
     for (String[] v : vectors("slhdsa128f-keygen"))
     {
@@ -188,8 +176,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void slhDsaVerification()
+@@TEST_MARK@@  public void slhDsaVerification()
   {
     for (String[] v : vectors("slhdsa128f-verify"))
     {
@@ -200,8 +187,7 @@ class CryptoVectorsTest
     }
   }
 
-  @Test
-  void slhDsaRoundTrip()
+@@TEST_MARK@@  public void slhDsaRoundTrip()
   {
     for (String[] v : vectors("slhdsa128f-keygen"))
     {

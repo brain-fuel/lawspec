@@ -514,7 +514,7 @@ runToolWith extra tool args project = do
   -- knows the project root, so a package named recorded must not shadow the
   -- suite's recordings when the runtime searches parent directories.
   recordings <- makeAbsolute (project </> "recorded")
-  let overrides = extra ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
+  let overrides = extra ++ [("LAWSPEC_CASE", "") | "LAWSPEC_CASE" `notElem` map fst extra] ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
       settings = Just (overrides ++ [kv | kv@(k, _) <- environment, k `notElem` map fst overrides])
   (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project, env = settings } ""
   extra' <- report tool

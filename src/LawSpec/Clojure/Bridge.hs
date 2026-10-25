@@ -5,100 +5,16 @@
 -- becomes a function returning a map of the handler's operations.
 -- ref:DEC-clojure-over-java
 module LawSpec.Clojure.Bridge
-  ( Stub(..), Item(..), Operation(..), parseStub, bridgeJava, bridgeJavaDoc, clojureStub, interfaceMethods, boundHandlerJava, boundHandlerJavaDoc
+  ( Stub(..), Item(..), Operation(..), bridgeJava, bridgeJavaDoc, clojureStub, boundHandlerJava, boundHandlerJavaDoc
   , kebab, clojureName, namespaceOf, clojurePath
   ) where
 
-import Data.Char (isAlphaNum, isSpace, isUpper, toLower)
-import Data.List (intercalate, isPrefixOf, isSuffixOf, stripPrefix)
+import Data.Char (isAlphaNum, isUpper, toLower)
+import Data.List (intercalate, isPrefixOf, stripPrefix)
 
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.JavaExpr as J
-import LawSpec.JavaAbi (Stub(..), Item(..), Operation(..), plainOperation)
-
--- | The stub LawSpec's Java target writes for a unit.
-parseStub :: String -> Either String Stub
-parseStub source = do
-  let ls = lines source
-      package = [takeWhile (/= ';') rest | l <- ls, Just rest <- [stripPrefix "package " l]]
-  (className, body) <- case break (isPrefixOf "public final class ") ls of
-    (_, header : rest) -> Right (takeWhile (\c -> isAlphaNum c || c == '_') (drop (length ("public final class " :: String)) header), rest)
-    _ -> Left "no adapter class in the stub"
-  items <- classItems [] body
-  pure (Stub (concat (take 1 package)) [l | l <- ls, "import " `isPrefixOf` l] className items)
-  where
-    trimmed = dropWhile isSpace
-    classItems pending ls = case ls of
-      [] -> Right []
-      l : rest
-        | trimmed l == "}" -> Right []
-        | null (trimmed l) -> classItems [] rest
-        | "//" `isPrefixOf` trimmed l -> classItems (pending ++ [trimmed l]) rest
-        | "/**" `isPrefixOf` trimmed l -> let (doc, after) = comment ls in classItems (pending ++ doc) after
-        | Just first <- stripPrefix "public static final class " (trimmed l) -> do
-            -- The header may wrap before implements, its brace on a line of
-            -- its own.
-            let (continued, body) = break (\x -> "{" `isSuffixOf` trimmed x || "@" `isPrefixOf` trimmed x || "public" `isPrefixOf` trimmed x || "private" `isPrefixOf` trimmed x) rest
-                header = unwords (first : map trimmed continued)
-                ws = words (takeWhile (/= '{') header)
-                name = concat (take 1 ws)
-                interface = filter (/= ',') (concat (take 1 (drop 2 ws)))
-                rest' = if "{" `isSuffixOf` header then body else drop (length (takeWhile ((== "{") . trimmed) (take 1 body))) body
-            (resource, operations, after) <- handlerItems False [] rest'
-            (Handler pending name interface resource (if resource then Just (D.text "java.lang.Object") else Nothing) operations :) <$> classItems [] after
-        | "public static " `isPrefixOf` trimmed l -> do
-            (operation, after) <- method ls
-            (Function pending operation :) <$> classItems [] after
-        | otherwise -> classItems pending rest
-    comment ls = let (doc, after) = break (isSuffixOf "*/" . trimmed) ls
-                 in (map trimmed (doc ++ take 1 after), drop 1 after)
-    handlerItems resource operations ls = case ls of
-      [] -> Left "an unclosed handler class"
-      l : rest
-        | trimmed l == "}" -> Right (resource, operations, rest)
-        | trimmed l == "public final java.lang.Object resource;" -> handlerItems True operations rest
-        | "public " `isPrefixOf` trimmed l, any (`isSuffixOf` l) ["(java.lang.Object resource) {", "(java.lang.Object resource)"] ->
-            handlerItems resource operations (drop 1 (dropWhile ((/= "}") . trimmed) rest))
-        | trimmed l == "@Override" -> do
-            (operation, after) <- method rest
-            handlerItems resource (operations ++ [operation]) after
-        | otherwise -> handlerItems resource operations rest
-    -- A method header, which may span lines, its body's one throw, and its
-    -- closing brace.
-    method ls = do
-      let (headerLines, rest) = break (isSuffixOf "{" . trimmed) ls
-          header = unwords (map trimmed (headerLines ++ take 1 rest))
-      -- The body is one throw, which may wrap.
-      bodyAndClose <- case break ((== "}") . trimmed) (drop 1 rest) of
-        (body@(first : _), _ : after) | "throw " `isPrefixOf` trimmed first -> Right (unwords (map trimmed body), after)
-        _ -> Left ("an unexpected body for " ++ header)
-      let label = takeWhile (/= '"') (drop 1 (dropWhile (/= '"') (fst bodyAndClose)))
-      operation <- signature header label
-      pure (operation, snd bodyAndClose)
-    signature header label = do
-      let plain = unwords (filter (`notElem` ["public", "static", "final"]) (words (takeWhile (/= '{') header)))
-          (before, after) = break (== '(') plain
-          parameters = takeWhile (/= ')') (reverse (dropWhile (/= ')') (reverse (drop 1 after))))
-          ws = words before
-      if null ws then Left ("no method name in " ++ header) else
-        pure (plainOperation (unitFuture (unwords (init ws))) (last ws) (map parameter (splitTop parameters)) label)
-    -- The Java stub writes an asynchronous Unit adapter's future as
-    -- CompletableFuture<void>; the model's is of the Unit value.
-    unitFuture t = case stripPrefix "java.util.concurrent.CompletableFuture<void>" t of
-      Just "" -> "java.util.concurrent.CompletableFuture<lawspec.runtime.LawSpecRuntime.Value>"
-      _ -> t
-    parameter p = let ws = words p in (unwords (init ws), last ws)
-
--- | Commas outside angle brackets.
-splitTop :: String -> [String]
-splitTop s = filter (not . all isSpace) (go (0 :: Int) "" s)
-  where
-    go _ acc [] = [reverse acc]
-    go depth acc (c : rest)
-      | c == '<' = go (depth + 1) (c : acc) rest
-      | c == '>' = go (depth - 1) (c : acc) rest
-      | c == ',' && depth == 0 = reverse acc : go depth "" rest
-      | otherwise = go depth (c : acc) rest
+import LawSpec.JavaAbi (Stub(..), Item(..), Operation(..))
 
 -- | A Java name in Clojure's words: countStoreLoad is count-store-load.
 kebab :: String -> String
@@ -326,28 +242,6 @@ clojureStub unit ns bound (Stub _ _ _ allItems) = unlines $
                                      ++ show ("not implemented: " ++ label) ++ " {})))"
                                    | Operation _ op parameters label _ _ <- operations ] ++ "})" ]
     stripDoc c = unwords (filter (`notElem` ["/**", "*/", "*"]) (words c))
-
--- | The methods of a Java interface the model declares: name, result and
--- parameters, from its source (an abilities class's nested interface).
-interfaceMethods :: String -> String -> [Operation]
-interfaceMethods interface source =
-  -- The interface's brace may be on its line or the next (Allman).
-  case dropWhile ((`notElem` ["public interface " ++ interface ++ " {", "public interface " ++ interface]) . dropWhile isSpace) (lines source) of
-    _ : rest -> [ op | l <- statements (map (dropWhile isSpace) (takeWhile ((/= "}") . dropWhile isSpace) (dropWhile ((== "{") . dropWhile isSpace) rest))), Just op <- [declaration l] ]
-    [] -> []
-  where
-    -- A declaration may wrap: lines join up to its semicolon.
-    statements ls = case break (isSuffixOf ";") ls of
-      (start, end : more) -> unwords (start ++ [end]) : statements more
-      _ -> []
-    declaration l
-      | ";" `isSuffixOf` l, '(' `elem` l, not ("default " `isPrefixOf` l) =
-          let (before, after) = break (== '(') (init l)
-              ws = words before
-              params = takeWhile (/= ')') (reverse (dropWhile (/= ')') (reverse (drop 1 after))))
-          in if length ws < 2 then Nothing else
-               Just (plainOperation (unwords (init ws)) (last ws) [let pw = words p in (unwords (init pw), last pw) | p <- splitTop params] "")
-      | otherwise = Nothing
 
 -- | A bound handler: the ability's interface over the Clojure map of its
 -- operations that the bound function makes.

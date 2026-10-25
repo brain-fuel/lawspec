@@ -1,9 +1,6 @@
 decision/haskell/src/LawSpec/Groovy/Emit.hs/module/LawSpec.Groovy.Emit:
   digest: sha256:8fd9c8a89df9fae2
   verdict: pending
-decision/haskell/src/LawSpec/Groovy/Emit.hs/module/LawSpec.Groovy.Emit/function/groovyFromJava:
-  digest: sha256:fe387809a90edd1c
-  verdict: pending
 decision/haskell/src/LawSpec/Groovy/Emit.hs/module/LawSpec.Groovy.Emit/function/groovyLayout:
   digest: sha256:2bbcce6f0e5bdd9e
   verdict: pending

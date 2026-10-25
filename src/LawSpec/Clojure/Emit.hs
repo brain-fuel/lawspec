@@ -6,18 +6,20 @@
 -- ex-info; each unit's laws are clojure.test tests whose properties run on
 -- test.check with LawSpec's generators.
 -- ref:DEC-clojure-over-java ref:DEC-clojure-property-library
-module LawSpec.Clojure.Emit (clojureFromJava, clojureLayout, clojureTestTitle, ClojureBindings, noClojureBindings, splitBindings) where
+module LawSpec.Clojure.Emit (clojureFromProduct, clojureLayout, clojureTestTitle, ClojureBindings, noClojureBindings, splitBindings) where
 
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, stripPrefix)
 import Data.Maybe (listToMaybe)
+import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Core as C
+import qualified LawSpec.JvmProduct as Product
+import qualified LawSpec.JavaAbi as Abi
 import qualified LawSpec.JavaData as JavaData
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..))
 import LawSpec.TestNames (unitTestNames, lawWords, kindSuffix)
 import LawSpec.Clojure.Bridge
-import LawSpec.Clojure.Tests
 import LawSpec.Clojure.Bindings
 import LawSpec.ClojureSources (clojureSource)
 import LawSpec.Backend (prettyExpandedWith, sourceNames)
@@ -27,8 +29,8 @@ import LawSpec.Naming (displayLabel)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, unitSourceFile)
 
 -- | The Clojure project from the Java target's files for the same plan.
-clojureFromJava :: ClojureBindings -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
-clojureFromJava cb plan javaFiles = do
+clojureFromProduct :: ClojureBindings -> Plan -> Product.JvmProduct -> Either [Diagnostic] [Artifact]
+clojureFromProduct cb plan product = do
   -- The appended type index needs paths only. Materialize that small index
   -- before conversion so its thunk cannot retain all original Java contents.
   length (concat typeNames) `seq` pure ()
@@ -37,6 +39,7 @@ clojureFromJava cb plan javaFiles = do
   mappings <- mapM failureEntry (boundFailures cb)
   pure (converted ++ runtime ++ handlers ++ [failures mappings, types] ++ [generators | not (null (boundGenerators cb))])
   where
+    javaFiles = Product.jvmArtifacts product
     -- A bound handler's class, over the ability's interface.
     boundHandler (key, className, target) = do
       let unit = takeWhile (/= ':') key
@@ -45,10 +48,10 @@ clojureFromJava cb plan javaFiles = do
           owner = concatMap capital (splitOn '_' (last parts))
           file = "src/main/java/lawspec/abilities/" ++ concatMap (++ "/") (init parts) ++ owner ++ ".java"
           interface = intercalate "." (["lawspec", "abilities"] ++ init parts ++ [owner, ability])
-      source <- maybe (diagnose ("no ability interface for the bound handler of " ++ key)) (Right . artifactContent)
-        (listToMaybe [a | a <- javaFiles, artifactPath a == file])
+      operations <- maybe (diagnose ("no checked ability interface for the bound handler of " ++ key))
+        (Right . Abi.interfaceOperations) (listToMaybe [abi | abi <- Product.jvmInterfaces product, Abi.interfaceName abi == interface])
       pure (Artifact ("java/src/lawspec/clojure/bound/" ++ className ++ ".java")
-        (boundHandlerJava className interface target (interfaceMethods ability source)) "generated" "source")
+        (boundHandlerJava className interface target operations) "generated" "source")
     -- Bound generators: test.check generators of tagged values, drawn from
     -- a seed and size the LawSpec generator gives.
     generators = Artifact "java/test/lawspec/clojure/bound/Generators.java" (unlines $
@@ -135,7 +138,7 @@ clojureFromJava cb plan javaFiles = do
       | ownership a == "user", Just rest <- stripPrefix "src/main/java/" path, "lawspec/" `isPrefixOf` rest =
           pure [a { artifactPath = "java/src/" ++ rest }]
       | ownership a == "user", Just rest <- stripPrefix "src/main/java/" path, ".java" `isSuffixOf` rest = do
-          stub <- either (\e -> diagnose ("Clojure bridge for " ++ rest ++ ": " ++ e)) Right (parseStub (artifactContent a))
+          stub <- maybe (diagnose ("missing checked JVM adapter ABI for " ++ rest)) Right (lookup path (Product.jvmAdapters product))
           let unit = maybe (classUnit rest) id (unitOfClass rest)
               ns = namespaceOf unit
               user = clojureStub unit ns (bound unit) stub
@@ -144,23 +147,18 @@ clojureFromJava cb plan javaFiles = do
           pure ([ Artifact ("java/src/" ++ rest) (bridgeJava ns (bound unit) stub) "generated" "source" ] ++
                 [ AdapterArtifact ("src/" ++ clojurePath ns) user "user" "source" user | not (null unbound) ])
       | Just rest <- stripPrefix "src/main/java/" path = pure [a { artifactPath = "java/src/" ++ rest }]
-      | Just rest <- stripPrefix "src/test/java/" path, ".java" `isSuffixOf` rest, "@Test" `isInfixOf` artifactContent a = do
-          let className = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse rest)))
-              directory = take (length rest - length className - 5) rest
-              package = intercalate "." (filter (not . null) (splitOn '/' directory))
-              cases = lawCases className (artifactContent a)
-              casesClass = (if null package then "" else package ++ ".") ++ casesClassName className
-              unitTest = listToMaybe [pu | pu <- plannedUnits plan, javaTestPath (C.idText (C.unitId (plannedUnit pu))) == path]
+      | Just rest <- stripPrefix "src/test/java/" path, Just cases <- listToMaybe [info | info <- Product.jvmCases product, Abi.casePath info == path] = do
+          let package = Abi.casePackage cases
+              className = Abi.caseClass cases
+              casesClass = (if null package then "" else package ++ ".") ++ className
+              unitTest = listToMaybe [pu | pu <- plannedUnits plan, Just (C.idText (C.unitId (plannedUnit pu))) == Abi.caseUnit cases]
               ns = case unitTest of
                 Just pu -> namespaceOf (C.idText (C.unitId (plannedUnit pu))) ++ "-lawspec-test"
                 Nothing -> (if null package then "" else namespaceOf package ++ ".") ++ kebab className
               title name = maybe (kebab name) (`clojureTestTitle` name) unitTest
-          pure [ Artifact ("java/test/" ++ directory ++ casesClassName className ++ ".java") (casesJava cases) "generated" "test"
-               , Artifact ("test/" ++ clojurePath ns) (testNamespace ns unitTest casesClass title cases) "generated" "test" ]
-      | Just rest <- stripPrefix "src/test/java/" path =
-          pure [a { artifactPath = "java/test/" ++ rest
-                  , artifactContent = replaceAll "org.junit.jupiter.api.Assertions" "lawspec.testing.check.Assertions"
-                      (replaceAll "org.jetbrains.jetCheck." "lawspec.testing.check." (artifactContent a)) }]
+          pure [a { artifactPath = "java/test/" ++ rest },
+                Artifact ("test/" ++ clojurePath ns) (testNamespaceForAbi ns unitTest casesClass title cases) "generated" "test"]
+      | Just rest <- stripPrefix "src/test/java/" path = pure [a { artifactPath = "java/test/" ++ rest }]
       | otherwise = pure [a]
       where path = artifactPath a
     -- A class no unit names: its package and kebab name.
@@ -186,46 +184,40 @@ clojureLayout sourceDir testDir = map move
       listToMaybe [ d ++ "/" ++ rest | (Just d, base) <- [(sourceDir, "src/"), (testDir, "test/")]
                   , Just rest <- [stripPrefix base path] ]
 
--- | A unit's clojure.test namespace over its law cases.
-testNamespace :: String -> Maybe PlannedUnit -> String -> (String -> String) -> LawCases -> String
-testNamespace ns unit casesClass title cases = unlines $
-  [ ";; " ++ generatedHeader (unit >>= unitSourceFile . plannedUnit)
-  , "(ns " ++ ns
-  , "  " ++ string (maybe ("Tests of " ++ casesClass ++ ".") (\pu -> "The laws of " ++ C.idText (C.unitId (plannedUnit pu)) ++ ".") unit)
-  , "  (:require [clojure.test :refer [deftest testing]]"
-  , "            [lawspec.test :as law]))"
-  , ""
-  , "(def ^:private cases (law/cases " ++ string casesClass ++ "))" ] ++
-  concat [ [ "" ] ++
-           -- Each law's tests follow its name and source line; each test
-           -- says what it checks: the law's statement, with source names.
-           [ ";; " ++ labelled (displayLabel (C.propertyName (plannedProperty p))) (lawLink p) | Just p <- [firstOfLaw] ] ++
-           [ "(deftest " ++ (case skip of Just reason -> "^{:lawspec/skip " ++ string reason ++ "} "; Nothing -> "") ++ title name ] ++
-           case (skip, lawOf name) of
-             (Just reason, _) -> [ "  (law/skip " ++ string reason ++ "))" ]
-             (Nothing, Just p) -> [ "  (testing " ++ string (statement p)
-                                  , "    (law/holds cases " ++ string name ++ ")))" ]
-             (Nothing, Nothing) -> [ "  (law/holds cases " ++ string name ++ "))" ]
-         | ((name, skip), previous) <- zip (casesTests cases) (Nothing : map (Just . fst) (casesTests cases))
-         , let firstOfLaw = case lawOf name of
-                 Just p | fmap C.propertyId (fmap plannedProperty (previous >>= lawOf)) /= Just (C.propertyId (plannedProperty p)) -> Just p
-                 _ -> Nothing ] ++
-  [ ""
-  , "(def lawspec-tests"
-  , "  \"The tests in their order.\""
-  , "  [" ++ intercalate "\n   " ["#'" ++ title name | (name, _) <- casesTests cases] ++ "])"
-  , ""
-  , "(def lawspec-schedule"
-  , "  \"How the harness runs them: order random shuffles them by the run's seed; parallel runs them at once.\""
-  , "  {:order " ++ (if casesOrderRandom cases then ":random" else ":declared") ++ ", :parallel " ++ (if casesParallel cases then "true" else "false") ++ "})"
-  , ""
-  , "(defn test-ns-hook []"
-  , "  (law/run " ++ show ns ++ " lawspec-tests lawspec-schedule))" ]
+-- | Register one named clojure.test var per checked case descriptor.
+testNamespaceForAbi :: String -> Maybe PlannedUnit -> String -> (String -> String) -> Abi.CaseClass -> String
+testNamespaceForAbi ns unit casesClass title cases = unlines
+  ([ ";; " ++ generatedHeader (unit >>= unitSourceFile . plannedUnit)
+   , "(ns " ++ ns
+   , "  " ++ string (maybe ("Tests of " ++ casesClass ++ ".") (\pu -> "The laws of " ++ C.idText (C.unitId (plannedUnit pu)) ++ ".") unit)
+   , "  (:require [lawspec.test :as law]))"
+   , ""
+   , "(def ^:private cases (law/cases " ++ string casesClass ++ "))"
+   , "" ] ++
+   [";; " ++ labelled (displayLabel (C.propertyName (plannedProperty property))) (lawLink property) | info <- Abi.caseTests cases, Just property <- [lawOf info]] ++
+   [ "(def lawspec-tests"
+   , "  \"The tests in their order.\""
+   , "  (law/register-cases"
+   , "   *ns* cases" ]) ++
+  D.render (D.Pretty 100) (D.text "   [" <> D.nest 4 (D.joinWith D.hardline (map descriptor (Abi.caseTests cases))) <> D.text "]))") ++ "\n" ++
+  unlines
+   [ ""
+   , "(def lawspec-schedule"
+   , "  {:order " ++ (if Abi.caseOrderRandom cases then ":random" else ":declared") ++ ", :parallel " ++ (if Abi.caseParallel cases then "true" else "false") ++ "})"
+   , ""
+   , "(defn test-ns-hook []"
+   , "  (law/run " ++ show ns ++ " lawspec-tests lawspec-schedule))" ]
   where
-    -- The law a test case belongs to, by its name's prefix.
-    lawOf name = case unit of
-      Just pu -> listToMaybe [ p | (j, p) <- zip (unitTestNames "java" (map (C.propertyName . plannedProperty) (plannedProperties pu))) (plannedProperties pu)
-                                 , (j ++ "_") `isPrefixOf` name ]
+    descriptor info = D.text "{:name " <> quoted (title (Abi.caseName info)) <>
+      D.nest 1 (mconcat [D.hardline <> D.text (key ++ " ") <> quoted value | (key,value) <-
+        [(":method", Abi.caseMethod info)] ++
+        [(":skipped", reason) | Just reason <- [Abi.caseSkip info]] ++
+        [(":source", source) | Abi.FiniteCases source _ _ <- [Abi.caseKind info]] ++
+        [(":statement", statement property) | Just property <- [lawOf info]]]) <> D.text "}"
+    quoted = D.text . string
+    lawOf info = case unit of
+      Just pu -> listToMaybe [property | property <- plannedProperties pu,
+        Just (C.idText (C.propertyId (plannedProperty property))) == Abi.caseOwner info]
       Nothing -> Nothing
 
 -- | Text as a Clojure string literal.
@@ -288,11 +280,3 @@ splitOn c s = case break (== c) s of
 javaTestPath :: String -> String
 javaTestPath unit = "src/test/java/" ++ concatMap (++ "/") (init parts) ++ concatMap capital (splitOn '_' (last parts)) ++ "LawSpecTest.java"
   where parts = splitOn '.' unit
-
-replaceAll :: String -> String -> String -> String
-replaceAll old new = go
-  where
-    go [] = []
-    go s@(c : rest)
-      | Just after <- stripPrefix old s = new ++ go after
-      | otherwise = c : go rest

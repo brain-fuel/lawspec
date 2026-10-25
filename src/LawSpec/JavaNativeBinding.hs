@@ -21,6 +21,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Scalar (nativeRepresentation)
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
+import qualified LawSpec.JavaTestingRuntime as JavaTestingRuntime
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Collections (collectionContainer)
 import LawSpec.Time (isDurationType)
@@ -210,7 +211,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
         (modelTestUnit testing (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits testing, not (null (plannedProperties unit))]
     pure (emitted { Product.jvmAdapters = [], Product.jvmArtifacts = helper : [file | file <- Product.jvmArtifacts emitted,artifactPlacement file == "test"] ++
-      [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" |
+      [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (JavaTestingRuntime.dataStrategies javaStyle) "generated" "test" |
         not (any ((== "src/test/java/lawspec/testing/LawSpecDataStrategies.java") . artifactPath) files)] })
   let generatorFiles = Product.jvmArtifacts generatorProduct
       replaced = map artifactPath (bridges ++ generatorFiles)

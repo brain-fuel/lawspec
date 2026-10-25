@@ -12,7 +12,7 @@ import qualified LawSpec.AbilityEmit.Go as GoAbilities
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import qualified LawSpec.AbilityEmit.Kotlin as KotlinAbilities
 import qualified LawSpec.AbilityEmit.Haskell as HaskellAbilities
-import LawSpec.ModelTests (modelTestArtifacts)
+import LawSpec.ModelTests (modelTestProduct)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaExpr as JavaExpr
@@ -119,12 +119,13 @@ nativeScalarProductWithAdapterBindings javaStyle adapterBindings nativeGenerator
           ("test","lawspec_data_strategies_test.go","go-data-strategies")]])
     else pure []
   let completeHeader = if go || kt || hs || target == "java" then "" else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
-  models <- modelTestArtifacts target bits dataDeclarations definitions u
+  modelProduct <- modelTestProduct javaStyle target bits dataDeclarations definitions u
+  let models = Product.jvmArtifacts modelProduct
   let artifacts = (goFiles ++ models ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go]
         -- The harness plane's runtime, for a unit with a harness.
         ++ [Artifact (intercalate "/" parts ++ "/lawspec_harness_test.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go-harness")) "generated" "test" | go, C.unitHarnessSettings u /= Nothing])
   pure (Product.JvmProduct artifacts [(stubPath, javaStubAbi) | target == "java"] []
-    [JavaProperties.casePlan javaProperties u ls | target == "java"])
+    ([JavaProperties.casePlan javaProperties u ls | target == "java"] ++ Product.jvmCases modelProduct))
   where
     -- JVM locals keep their source names (LawSpec.JvmNames), each law's
     -- distinct within it; other targets keep the generated ones.

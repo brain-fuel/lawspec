@@ -33,10 +33,6 @@ operation result name parameters label = Operation
   (D.render D.Compact result) name [(D.render D.Compact ty, parameter) | (ty, parameter) <- parameters] label
   result parameters
 
--- Used only by the legacy adapter reader until its callers consume products.
-plainOperation :: String -> String -> [(String, String)] -> String -> Operation
-plainOperation result name parameters = operation (D.text result) name [(D.text ty, parameter) | (ty, parameter) <- parameters]
-
 data InterfaceAbi = InterfaceAbi
   { interfaceName :: String, interfaceOperations :: [Operation] }
   deriving (Eq, Show, Generic)
