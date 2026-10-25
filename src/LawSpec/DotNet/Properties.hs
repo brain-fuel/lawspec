@@ -10,6 +10,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Literals as Literals
 import qualified Control.Monad.State.Strict as S
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.TestNames (unitTestNames)
@@ -334,11 +335,32 @@ tCover = Ty "Finite.Cover" "Finite.Cover"
 -- factories over an invocation's symbol context until the runtime selects one.
 finiteCoverExpression :: Cover.FiniteCover -> Either String Expr
 finiteCoverExpression root = do
-  (reference, (_, bindings)) <- S.runStateT (cover root) ([], [])
-  pure (foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings))
+  plan <- Literals.planLiterals (Literals.coverLiterals root)
+  shapeFunctions <- forM (Literals.literalShapes plan) $ \(index, shape) -> do
+    body <- shapeBody shape
+    pure (shapeName index, tFun [tSymbols,tValues] tValue,
+      Lambda [("symbols",tSymbols),("fields",tValues)] tValue body)
+  factories <- forM (Literals.literalFactories plan) $ \(index, body) -> do
+    expression <- termExpr body
+    pure (factoryName index, tFun [tSymbols] tValue, Lambda [("symbols",tSymbols)] tValue expression)
+  (reference, (_, bindings)) <- S.runStateT (cover plan root) ([], [])
+  let coverBody = foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings)
+  pure (foldr (\(name,ty,value) rest -> Let name ty value rest) coverBody (shapeFunctions ++ factories))
   where
-    cover :: Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
-    cover node = do
+    shapeName index = "literalShape" ++ show index
+    factoryName index = "literal" ++ show index
+    termExpr = Literals.foldLiteral (pure . X.literal (Var "symbols"))
+      (\index fields -> pure (Invoke (Var (shapeName index)) [Var "symbols",ListOf tValue fields]))
+      (\index -> pure (Invoke (Var (factoryName index)) [Var "symbols"]))
+    shapeBody shape = case shape of
+      Literals.ConstructorShape _ tag -> pure (X.valueCall "Data" [Str (C.idText tag),Var "fields"])
+      Literals.ListShape _ -> pure (X.valueCall "List" [Var "fields"])
+      Literals.PresenceShape (C.Constructor name _) present -> pure (if present
+        then call "Runtime" "present" [Str name,Call (Fn "List.head" "Microsoft.FSharp.Collections.ListModule.Head") [Var "fields"]]
+        else call "Runtime" "absent" [Str name])
+      _ -> Left "invalid planned .NET presence type"
+    cover :: Literals.LiteralPlan -> Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
+    cover plan node = do
       (known, _) <- S.get
       case lookup node known of
         Just name -> pure (Var name)
@@ -347,11 +369,13 @@ finiteCoverExpression root = do
             Cover.Complete count -> pure (call "Finite" "finish" [IntLit (toInteger count)])
             Cover.Alternatives alternatives -> do
               branches <- forM alternatives $ \(domain, suffix) -> do
-                let values = case domain of
-                      Cover.Values items -> call "Finite" "values" [ListOf (tFun [tSymbols] tValue)
-                        [Lambda [("symbols",tSymbols)] tValue (X.value (Var "symbols") item) | item <- items]]
-                      Cover.IntegerInterval name first last' -> call "Finite" "range" [Str name, BigLit first, BigLit last']
-                rest <- cover suffix
+                values <- case domain of
+                  Cover.Values items -> do
+                    expressions <- S.lift (mapM (\item -> Literals.literalReference plan item >>= termExpr) items)
+                    pure (call "Finite" "values" [ListOf (tFun [tSymbols] tValue)
+                      [Lambda [("symbols",tSymbols)] tValue expression | expression <- expressions]])
+                  Cover.IntegerInterval name first last' -> pure (call "Finite" "range" [Str name, BigLit first, BigLit last'])
+                rest <- cover plan suffix
                 pure (call "Finite" "branch" [values,rest])
               pure (call "Finite" "choices" [ListOf (Ty "Finite.Domain * Finite.Cover" "Tuple<Finite.Domain, Finite.Cover>") branches])
           (known', bindings) <- S.get
