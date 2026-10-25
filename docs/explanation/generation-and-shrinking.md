@@ -164,3 +164,12 @@ loop detection and unchanged-argument checks also use compiler state and Core
 identities. Public Swift data and codec documents, and BEAM conversion helpers,
 are cached independently by reachable checked types and their allocated native
 interfaces; cached helper requests are replayed into the current unit.
+
+Finite proof lowering likewise keeps one scoped predicate over finite data,
+using the existing checked `AllElements` operation and its Boolean dual for
+existence. Execution still uses its separate compressed, three-outcome loop.
+Guarded proof candidates are selected inside the predicate, keeping rejected
+and unvisited computations unevaluated. Coverage limits and the distinction
+between a constructive witness and complete absence evidence are unchanged.
+The preceding proof-system study and trust boundary are recorded in
+`DEC-shared-finite-proof-bodies`.

@@ -4,10 +4,15 @@
 module FiniteSearchLoopSpec (test_finiteSearchHasOneCheckedBody) where
 
 import Data.List (isInfixOf)
+import Control.Monad (forM_)
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core as C
 import LawSpec.Core.Validate (validateProgram)
-import LawSpec.Common (artifactContent, artifactPath)
+import LawSpec.Core.Quantification (lowerSearchProof)
+import LawSpec.Core.Search (Candidate(..))
+import LawSpec.Core.Eval (evaluate)
+import LawSpec.Scalar (Scalar(..))
+import LawSpec.Common (artifactContent, artifactPath, Quantification(..))
 import LawSpec.CoreEmit (emitPlan)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
@@ -60,5 +65,59 @@ test_finiteSearchHasOneCheckedBody = describe "finite search execution loops" $ 
         mapM_ (\source -> do
           (code, _, err) <- readProcessWithExitCode "node" ["--input-type=module", "--check"] source
           (code, err) `shouldBe` (ExitSuccess, "")) checks
+  it "shares the finite proof predicate and agrees with an independent finite oracle" $ do
+    let origin = C.GeneratedFrom (C.Id "proof-loop")
+        byte = C.scalarType "Int8"
+        bool = C.scalarType "Bool"
+        binder = C.Binder (C.Id "candidate") "candidate" byte
+        local = C.Expr byte (C.Local (C.binderId binder)) origin
+        number n = C.Expr byte (C.Constant (SInteger "Int8" n)) origin
+        predicate = C.Expr bool (C.ExternalCall (C.Id "observe") [local]) origin
+        equation = C.Equation (C.Structural bool) predicate (C.Expr bool (C.Constant (SBool True)) origin)
+        domain _ = Right (Just (map number [-128..127]))
+        adapter _ [SInteger _ n] = Right (SBool (n == 127))
+        adapter _ _ = Left "unexpected oracle arguments"
+    forM_ [ForEvery,ForSome] $ \kind -> do
+      let quantified = C.Quantified kind (C.Quantifier binder [] []) equation
+          lowered = lowerSearchProof domain (\_ _ -> Right []) 4096 100 (C.Id "proof-loop") [] quantified
+      case lowered of
+        Right (C.Equation _ claim _) -> do
+          let expected = (if kind == ForEvery then all else any) (== (127 :: Integer)) [-128..127]
+              nodes = descend claim
+          evaluate 64 adapter [] claim `shouldBe` Right (SBool expected)
+          length [() | C.Expr _ (C.ExternalCall identity _) _ <- nodes, identity == C.Id "observe"] `shouldBe` 1
+          length nodes `shouldSatisfy` (< 800)
+        other -> expectationFailure (show other)
+  it "does not force rejected or unvisited constructive proof candidates" $ do
+    let origin = C.GeneratedFrom (C.Id "guarded-proof")
+        byte = C.scalarType "Int8"
+        bool = C.scalarType "Bool"
+        binder = C.Binder (C.Id "candidate") "candidate" byte
+        local = C.Expr byte (C.Local (C.binderId binder)) origin
+        number n = C.Expr byte (C.Constant (SInteger "Int8" n)) origin
+        poison = C.Expr byte (C.ExternalCall (C.Id "must-not-run") []) origin
+        rejected = CandidateGuard (C.Expr bool (C.Constant (SBool False)) origin) (Candidate poison)
+        body = C.Quantified ForSome (C.Quantifier binder [] []) (C.Equation (C.Numeric byte) local (number 127))
+        lowered = lowerSearchProof (\_ -> Right Nothing)
+          (\_ _ -> Right [rejected,Candidate (number 127),Candidate poison]) 4096 3 (C.Id "guarded-proof") [] body
+    case lowered of
+      Right (C.Equation _ claim _) -> evaluate 64 (\_ _ -> Left "forced a rejected or unvisited candidate") [] claim
+        `shouldBe` Right (SBool True)
+      other -> expectationFailure (show other)
+  it "retains outer bindings in dependent finite proof domains" $ do
+    let origin = C.GeneratedFrom (C.Id "dependent-proof")
+        integer = C.scalarType "Integer"
+        x = C.Binder (C.Id "x") "x" integer
+        y = C.Binder (C.Id "y") "y" integer
+        local binder = C.Expr integer (C.Local (C.binderId binder)) origin
+        number n = C.Expr integer (C.Constant (SInteger "Integer" n)) origin
+        domain q = Right (Just (if C.binderId (C.quantifiedBinder q) == C.binderId x
+          then map number [0,1] else [local x]))
+        body = C.Quantified ForEvery (C.Quantifier x [] [])
+          (C.Quantified ForSome (C.Quantifier y [] []) (C.Equation (C.Numeric integer) (local x) (local y)))
+    case lowerSearchProof domain (\_ _ -> Right []) 4096 3 (C.Id "dependent-proof") [] body of
+      Right (C.Equation _ claim _) -> evaluate 64 (\_ _ -> Left "unexpected adapter") [] claim
+        `shouldBe` Right (SBool True)
+      other -> expectationFailure (show other)
   where
     descend expression = expression : concatMap descend (C.children expression)

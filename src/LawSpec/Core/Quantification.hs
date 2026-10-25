@@ -138,7 +138,6 @@ lowerSearchProof domain search limit searchBudget identity choices proposition =
       let binder = quantifiedBinder q
           universal = kind == ForEvery
           restriction = aggregate True (quantifiedPredicates q)
-          with value claim = Expr bool (Let binder value claim) origin
       available <- domain q
       if available == Just [] then pure (constant (desired == universal),1) else do
         (claim,cost) <- derive desired body
@@ -147,15 +146,47 @@ lowerSearchProof domain search limit searchBudget identity choices proposition =
             required = if all then binary Or (negate' restriction) claim else binary And restriction claim
         complete <- if total > toInteger limit then pure (constant False) else case available of
           Nothing -> pure (constant False)
-          Just values -> pure (aggregate all (map (\value -> with value required) values))
+          Just values -> pure (proofLoop origin all binder required values)
         candidates <- if all then pure [] else do
           sampled <- if available /= Nothing && total <= toInteger limit then pure [] else search q body
           let configured = [Candidate (witnessValue w) | w <- choices,witnessTarget w == binderId binder]
           pure (take (fromInteger (max 0 (toInteger searchBudget `quot` max 1 cost))) (configured ++ sampled))
-        let constructive = aggregate False [applyCandidate candidate (\value -> with value required) (constant False) |
-              candidate <- candidates]
+        let constructive = proofCandidates origin binder required candidates
         pure (binary Or constructive complete,if null candidates then total else
           min total (toInteger (length candidates) * max 1 cost))
+-- | Proof data contains each value once and keeps one scoped predicate. The
+-- established totality checker already understands AllElements over List data.
+-- This is separate from execution's compressed range and three-outcome loop.
+proofLoop :: Origin -> Bool -> Binder -> Expr -> [Expr] -> Expr
+proofLoop origin universal _ _ [] = Expr (scalarType "Bool") (Constant (SBool universal)) origin
+proofLoop origin universal binder required terms =
+  let bool = scalarType "Bool"
+      negative value = Expr bool (Unary Not value) origin
+      every = Expr bool (AllElements (proofTerms origin binder terms) binder
+        (if universal then required else negative required)) origin
+  in if universal then every else negative every
+
+proofTerms :: Origin -> Binder -> [Expr] -> Expr
+proofTerms origin binder = foldr cons nil
+  where
+    listType = Constructor "List" [TypeArgument (binderType binder)]
+    nil = Expr listType (Construct (Id "List::Nil") []) origin
+    cons first rest = Expr listType (Construct (Id "List::Cons") [first,rest]) origin
+
+proofCandidates :: Origin -> Binder -> Expr -> [Candidate] -> Expr
+proofCandidates origin binder required candidates
+  | Just terms <- traverse plain candidates = proofLoop origin False binder required terms
+  | otherwise = proofLoop origin False index body indices
+  where
+    plain (Candidate value) = Just value
+    plain _ = Nothing
+    (index,selected) = candidateSelection origin binder candidates
+    integer = scalarType "Integer"
+    indices = [Expr integer (Constant (SInteger "Integer" (toInteger n))) origin | n <- [0..length candidates-1]]
+    body = Expr (scalarType "Bool") (Match selected
+      [MatchCase (Id "Maybe::Absent") [] (Expr (scalarType "Bool") (Constant (SBool False)) origin),
+       MatchCase (Id "Maybe::Present") [binder] required]) origin
+
 -- | Partial search has three outcomes. A candidate proves existence only when
 -- its restriction and body hold; candidate failure supplies no absence fact.
 -- Negation swaps true/false and leaves incomplete unchanged. Ordinary typed
@@ -277,10 +308,21 @@ candidateLoop origin pureDomain universal binder required candidates
     plain _ = Nothing
     literal (Candidate (Expr _ (Constant _) _)) = True
     literal _ = False
+    (index,selected) = candidateSelection origin binder candidates
+    indices = finiteTerms index [Expr integer (Constant (SInteger "Integer" (toInteger n))) origin |
+      n <- [0..length candidates-1]]
+    body = Expr code (Match selected
+      [MatchCase (Id "Maybe::Absent") [] (outcome neutral),
+       MatchCase (Id "Maybe::Present") [binder] required]) origin
+
+-- | Select one guarded computation without evaluating other candidates.
+candidateSelection :: Origin -> Binder -> [Candidate] -> (Binder,Expr)
+candidateSelection origin binder candidates = (index,selected)
+  where
+    integer = scalarType "Integer"
     index = Binder (Id (idText (binderId binder) ++ "::candidate-index")) (binderName binder ++ "Index") integer
     position = Expr integer (Local (binderId index)) origin
     ordinal n = Expr integer (Constant (SInteger "Integer" n)) origin
-    indices = finiteTerms index (map (ordinal . toInteger) [0..length candidates-1])
     optional = Constructor "Maybe" [TypeArgument (binderType binder)]
     absent = Expr optional (Construct (Id "Maybe::Absent") []) origin
     present value = Expr optional (Construct (Id "Maybe::Present") [value]) origin
@@ -292,10 +334,6 @@ candidateLoop origin pureDomain universal binder required candidates
       condition = Expr (scalarType "Bool") (Binary Less (Numeric integer) position (ordinal midpoint)) origin
       in Expr optional (If condition (select lower left) (select midpoint right)) origin
     selected = select 0 candidates
-    body = Expr code (Match selected
-      [MatchCase (Id "Maybe::Absent") [] (outcome neutral),
-       MatchCase (Id "Maybe::Present") [binder] required]) origin
-
 -- | Keep the candidate body outside its domain. Consecutive constants use the
 -- existing half-open range plus the final value, so a bounded maximum needs
 -- no overflowing upper-plus-one constant. Other checked domains retain their

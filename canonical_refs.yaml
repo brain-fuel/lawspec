@@ -697,3 +697,24 @@ cbor-shared-values:
   kind: article
   title: "IANA CBOR tags 28 and 29: marked shared values and positional back-references"
   locator: https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
+
+why3-list-quantifiers:
+  kind: article
+  title: "Why3 standard library: list quantifiers"
+  locator: https://why3.org/stdlib/list.html
+lean-list-quantifiers:
+  kind: article
+  title: "Lean 4 implementation: List.all and List.any"
+  locator: https://github.com/leanprover/lean4/blob/master/src/Init/Data/List/Basic.lean
+idris-list-quantifiers:
+  kind: article
+  title: "Idris 2 implementation: total Foldable Boolean quantifiers"
+  locator: https://github.com/idris-lang/Idris2/blob/main/libs/prelude/Prelude/Interfaces.idr
+rocq-list-quantifiers:
+  kind: article
+  title: "Rocq standard library: forallb and existsb specifications"
+  locator: https://github.com/rocq-prover/stdlib/blob/master/theories/Lists/List.v
+spark-quantifier-execution-proof:
+  kind: article
+  title: "SPARK User's Guide: quantified expressions, execution and proof"
+  locator: https://docs.adacore.com/spark2014-docs/html/ug/en/source/specification_features.html#execution-vs-proof
