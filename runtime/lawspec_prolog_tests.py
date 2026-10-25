@@ -1,4 +1,4 @@
-"""PLUnit law slots backed by the existing generated Hypothesis/pytest cases.
+"""PLUnit case slots backed by the existing generated Hypothesis/pytest cases.
 
 Selected host cases run once in one pytest session, retaining refinements,
 shrinking, examples, replay, scheduling and shared-resource scopes. Each PLUnit
@@ -10,6 +10,7 @@ ref:DEC-prolog-janus
 import argparse
 from copy import deepcopy
 from contextvars import ContextVar
+from contextlib import nullcontext, redirect_stdout
 from functools import wraps
 from pathlib import Path
 import json
@@ -26,8 +27,10 @@ import lawspec_prolog  # noqa: F401 - consult the sibling Prolog runtime
 _cases = {}
 _observed = {}
 _selected = []
-_results = None
 _called = set()
+_native_cases = {}
+_exact_cases = set()
+_collected = {}
 _current_case = ContextVar("lawspec_prolog_case", default=None)
 
 
@@ -73,7 +76,11 @@ class _ExecutionStatus(logging.Handler):
                     else item.name.startswith(case["selection"])
                 )
             ]
-            if not matches:
+            if not matches or (
+                _exact_cases
+                and item.nodeid not in _exact_cases
+                and self.selected[matches[0]].get("kind") != "support"
+            ):
                 removed.append(item)
                 continue
             if len(matches) != 1:
@@ -93,6 +100,11 @@ class _ExecutionStatus(logging.Handler):
             # Hypothesis's public wrapper attributes and normal fixture signature.
             item.obj = self.traced(item.nodeid, item.obj)
             kept.append(item)
+        missing = _exact_cases - set(self.node_slots)
+        if missing:
+            raise pytest.UsageError(
+                "unknown selected native cases: " + ", ".join(sorted(missing))
+            )
         items[:] = kept
         config.hook.pytest_deselected(items=removed)
 
@@ -167,17 +179,17 @@ def _incomplete(key, case, message):
     ET.SubElement(element, "error").text = message
     _mark_incomplete(element)
     _observed["bridge::" + key] = element
+    _native_cases[key] = {key + "::incomplete": (False, "run")}
     return False
 
 
-def _run_selected():
+def _run_selected(collect_only=False):
     """One host session retains the existing unit scheduler and resource scope.
 
     PLUnit reads cached outcomes only after actual selected host cases ran.
     A failing sibling cannot invent, duplicate or suppress another slot's cases.
     """
     selected = {key: _cases[key] for key in _selected}
-    results = dict.fromkeys(selected, False)
     by_slot = {key: [] for key in selected}
     with TemporaryDirectory(prefix="lawspec-prolog-report-") as scratch:
         report = Path(scratch) / "pytest.xml"
@@ -192,24 +204,38 @@ def _run_selected():
             # diagnostics. Plain assertions and standard Python tracebacks
             # avoid pytest's whole-module AST work while retaining call frames
             # and failure messages in JUnit.
-            code = pytest.main(
-                [
-                    "-q",
-                    "-s",
-                    "--assert=plain",
-                    "--tb=native",
-                    *files,
-                    "--junitxml=" + str(report),
-                ],
-                plugins=[status],
-            )
+            with redirect_stdout(sys.stderr) if collect_only else nullcontext():
+                code = pytest.main(
+                    [
+                        "-q",
+                        "-s",
+                        "--assert=plain",
+                        "--tb=native",
+                        *files,
+                        *(
+                            ["--collect-only"]
+                            if collect_only
+                            else ["--junitxml=" + str(report)]
+                        ),
+                    ],
+                    plugins=[status],
+                )
         finally:
             logger.removeHandler(status)
             logger.setLevel(level)
+        _collected.update(status.collected)
+        if collect_only:
+            if (
+                code != pytest.ExitCode.OK
+                or any(not nodes for nodes in status.collected.values())
+                and not _exact_cases
+            ):
+                raise ValueError("native test collection was empty or incomplete")
+            return
         if not report.exists():
             for key, case in selected.items():
                 _incomplete(key, case, "pytest produced no execution report")
-            return results
+            return
         observed = ET.parse(report).getroot().findall(".//testcase")
         invalid = None
         seen_nodes = set()
@@ -250,6 +276,9 @@ def _run_selected():
         invalid = f"pytest execution incomplete: {code.name}"
     for key, case in selected.items():
         cases = by_slot[key]
+        if _exact_cases and not status.collected[key] and invalid is None:
+            _native_cases[key] = {}
+            continue
         if invalid is not None:
             _incomplete(key, case, invalid)
         elif not cases or {
@@ -262,37 +291,43 @@ def _run_selected():
                 "the selected PLUnit slot did not observe all its collected host cases",
             )
         else:
-            results[key] = all(
-                element.find("failure") is None and element.find("error") is None
+            observed_nodes = {
+                element.find("properties/property[@name='lawspec.nodeid']").get(
+                    "value"
+                ): element
                 for element in cases
-            )
-    return results
-
-
-def run_case(key):
-    """A PLUnit callback consumes one actual host outcome, once per slot."""
-    global _results
-    if key not in _selected:
-        raise ValueError("PLUnit called an unselected native slot: " + key)
-    if key in _called:
-        return _incomplete(
-            key, _cases[key], "PLUnit called a native slot more than once"
-        )
-    _called.add(key)
-    if _results is None:
-        # An infrastructure error must not cause a later PLUnit callback to
-        # execute the selected native cases a second time.
-        _results = dict.fromkeys(_selected, False)
-        try:
-            _results = _run_selected()
-        except Exception as error:
-            for selected in _selected:
-                _incomplete(
-                    selected,
-                    _cases[selected],
-                    f"host execution report unavailable: {type(error).__name__}: {error}",
+            }
+            _native_cases[key] = {
+                node: (
+                    observed_nodes[node].find("failure") is None
+                    and observed_nodes[node].find("error") is None,
+                    "skipped"
+                    if observed_nodes[node].find("skipped") is not None
+                    else "run",
                 )
-    return _results[key]
+                for node in status.collected[key]
+            }
+    return
+
+
+def case_tests(key):
+    """Structured names/options for the normal PLUnit term-expansion hook."""
+    if key not in _cases:
+        raise ValueError("unknown native group in a PLUnit declaration: " + key)
+    return [(name, status) for name, (_, status) in _native_cases.get(key, {}).items()]
+
+
+def run_native_case(key, node):
+    """A PLUnit callback consumes one observed native outcome, exactly once."""
+    identity = (key, node)
+    if key not in _selected or node not in _native_cases.get(key, {}):
+        raise ValueError("PLUnit called an unselected native case: " + repr(identity))
+    if identity in _called:
+        return _incomplete(
+            key, _cases[key], "PLUnit called a native case more than once"
+        )
+    _called.add(identity)
+    return _native_cases[key][node][0]
 
 
 def _report(path):
@@ -312,11 +347,14 @@ def _report(path):
 
 
 def main(argv=None):
-    global _results
     sys.modules.setdefault("lawspec_prolog_tests", sys.modules[__name__])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--select", action="append", default=[], metavar="FILE::NAME")
     parser.add_argument("--junitxml")
+    parser.add_argument(
+        "--select-case", action="append", default=[], metavar="PYTEST_NODEID"
+    )
+    parser.add_argument("--list-tests", action="store_true")
     options = parser.parse_args(argv)
     if not __debug__:
         parser.error(
@@ -327,7 +365,12 @@ def main(argv=None):
     _cases.clear()
     _observed.clear()
     _called.clear()
-    _results = None
+    _native_cases.clear()
+    _collected.clear()
+    _exact_cases.clear()
+    if len(options.select_case) != len(set(options.select_case)):
+        parser.error("a native case was selected more than once")
+    _exact_cases.update(options.select_case)
     for case in metadata:
         key = case["file"] + "::" + case["name"]
         if key in _cases:
@@ -350,15 +393,49 @@ def main(argv=None):
         )
     )
     _selected[:] = selected
+    try:
+        _run_selected(collect_only=options.list_tests)
+    except Exception as error:
+        for key in selected:
+            _incomplete(
+                key,
+                _cases[key],
+                f"host execution report unavailable: {type(error).__name__}: {error}",
+            )
+    if options.list_tests:
+        listed = [
+            {"unit": _cases[key]["unit"], "name": node, "group": key}
+            for key, nodes in _collected.items()
+            for node in nodes
+        ]
+        print(json.dumps(listed))
+        return 0 if listed and not _observed else 1
     for file in dict.fromkeys(_cases[key]["file"] for key in selected):
         janus.consult(str(root / file))
-    selectors = [(_cases[key]["unit"], _cases[key]["name"]) for key in selected]
+    selectors = [
+        (_cases[key]["unit"], node)
+        for key in selected
+        for node in _native_cases.get(key, {})
+    ]
+    if not selectors:
+        parser.error("no executable native cases were collected")
     # Tuples become SWI's -(Unit,Name); the runtime makes qualified selectors.
     # Names stay data rather than being interpolated into executable source.
     truth = janus.cmd("lawspec_prolog", "run_slots", selectors)
     if options.junitxml:
         _report(options.junitxml)
-    return 0 if truth is True else 1
+    return (
+        0
+        if truth is True
+        and _called
+        == {
+            (key, node)
+            for key in selected
+            for node, (_, status) in _native_cases.get(key, {}).items()
+            if status != "skipped"
+        }
+        else 1
+    )
 
 
 if __name__ == "__main__":

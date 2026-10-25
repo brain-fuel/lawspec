@@ -22,6 +22,8 @@ ref:DEC-prolog-janus
             decode/2
           ]).
 :- use_module(library(error)).
+:- use_module(library(apply)).
+:- use_module(library(pairs)).
 :- use_module(library(janus)).
 
 % Python supplies names as data, never as interpolated goal text. An adapter
@@ -333,11 +335,40 @@ model(context(Context), Identity, Arguments, Result) :-
             Outcome),
     operation_result(Outcome, Result).
 
+% Public term expansion lets the normal PLUnit compiler register one test
+% for each collected pytest node. Names and goals are terms throughout; no
+% generated source text is parsed and no private PLUnit registry is used.
+:- (multifile user:term_expansion/2).
+
+user:term_expansion((:-lawspec_prolog:host_cases(Key)), Clauses) :-
+    lawspec_prolog:host_case_clauses(Key, Clauses).
+
+host_case_clauses(Key, Clauses) :-
+    py_call(lawspec_prolog_tests:case_tests(Key), Cases),
+    maplist(host_case_clause(Key), Cases, Nested),
+    append(Nested, Clauses).
+
+host_case_clause(Key, Name-Status, Clauses) :-
+    (   Status==skipped
+    ->  Options=[blocked('native case was skipped')]
+    ;   Options=[]
+    ),
+    expand_term((test(Name, Options):-py_call(lawspec_prolog_tests:run_native_case(Key, Name), @(true))),
+                Clauses).
+
 run_slots(Pairs) :-
-    maplist(test_selector, Pairs, Tests),
+    unit_selectors(Pairs, Tests),
     run_tests(Tests).
 
-test_selector(Unit-Name, Unit:Name).
+% A unit's setup and cleanup run once even when it contains thousands of
+% individually named rows. Preserve each unit's first occurrence and row order.
+unit_selectors([], []).
+unit_selectors([Unit-Name|Pairs], [Unit:[Name|Names]|Tests]) :-
+    partition(in_unit(Unit), Pairs, Same, Other),
+    pairs_values(Same, Names),
+    unit_selectors(Other, Tests).
+
+in_unit(Unit, Unit-_).
 
 % Native implementations can call the original object's API while returning
 % the original opaque term when they need to preserve handle identity.

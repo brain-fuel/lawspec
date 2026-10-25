@@ -174,9 +174,18 @@ waiting task does not forcibly terminate the running Prolog predicate or make
 event-loop shutdown wait for that predicate. Losing native work can finish
 after a timeout or hedge has returned.
 Respect Janus's documented GIL and mutex ordering in application callbacks.
-The selected host cases run in one pytest session. The existing host harness
-controls seeded ordering, parallel workers and unit resource scopes; PLUnit
-reads the actual per-slot outcomes without executing those cases again.
+The selected host cases run once in one pytest session. The existing host
+harness controls seeded ordering, parallel workers and unit resource scopes.
+Each collected pytest node becomes a separately named PLUnit test through
+SWI-Prolog's public term expansion. PLUnit consumes that case's recorded result
+without executing the provider again. Names and goals remain structured data;
+the bridge does not parse generated source or modify private PLUnit registries.
+
+Run `.venv/bin/python lawspec_test.py --list-tests` to print the native cases as
+JSON without executing their bodies. Pass a returned `name` to `--select-case`
+to execute just that case, including its actual provider call. The existing
+`--select FILE::LAW` selects a whole generated law group. Unknown or repeated
+selections, empty discovery and incomplete reports cannot establish a pass.
 Generated assertions retain their explicit law, argument and expected-value
 messages. The runner uses plain assertions and standard Python tracebacks to
 avoid repeated AST processing of large generated modules. Optimized Python
