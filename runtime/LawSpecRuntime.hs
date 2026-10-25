@@ -137,6 +137,29 @@ integerBounds machine n = do
       pure $
         if signed p then (negate (2 ^ (w - 1)), 2 ^ (w - 1) - 1) else (0, 2 ^ w - 1)
 
+-- | Ordered finite rows retain factories, so each test attempt materializes
+-- values in its own symbol context. Shared suffixes and inclusive integer
+-- ranges remain lazy; no expanded Cartesian table is retained.
+-- ref:DEC-planned-generation
+data FiniteCover value
+  = FiniteCopies Integer
+  | FiniteBranches [(FiniteDomain value, FiniteCover value)]
+
+data FiniteDomain value
+  = FiniteValues [value]
+  | FiniteRange Integer Integer (Integer -> value)
+
+finiteCases :: FiniteCover value -> [(Integer, [value])]
+finiteCases cover = zip [0 ..] (walk [] cover)
+  where
+    walk prefix (FiniteCopies count)
+      | count < 0 = error "invalid finite cover"
+      | otherwise = [reverse prefix | _ <- [1 .. count]]
+    walk prefix (FiniteBranches branches) =
+      [row | (domain, suffix) <- branches, value <- values domain, row <- walk (value : prefix) suffix]
+    values (FiniteValues entries) = entries
+    values (FiniteRange first last factory) = map factory [first .. last]
+
 -- | Raw strings travel as numeric code points/units,
 -- never JSON surrogate strings.
 data Scalar

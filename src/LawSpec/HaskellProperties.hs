@@ -11,12 +11,13 @@ module LawSpec.HaskellProperties (Config(..), emitTests, haskellReserved, wrapCo
 import LawSpec.Bounds (inputRange, drawRange)
 import LawSpec.Backend hiding (inputId, bindings, contractArguments, contractResult, Expr)
 import LawSpec.Common
-import LawSpec.Naming (exampleTestSuffix, boundaryTestSuffix, displayLabel, nameWords, cased, Casing(..))
+import LawSpec.Naming (claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, nameWords, cased, Casing(..))
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, generatedHeader, sourceLink)
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.HaskellDefinitions (sortedImports)
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -182,6 +183,8 @@ emitTests Config{..} unit laws = do
     example testName action = Run (if parallel
       then dollar (var "parallel") (dollar (call "it" [string testName]) (case action of H.Do _ -> action; _ -> H.Do [Run action]))
       else dollar (call "it" [string testName]) action)
+    exampleNamed testName action = Run (if parallel then call "parallel" [native] else native)
+      where native = call "it" [testName, action]
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
     observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing
     observations e =
@@ -328,8 +331,18 @@ emitTests Config{..} unit laws = do
           fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
           lawLink = propertyLink (original e)
           boundaryValues = maybe (boundaryCases e) id (finiteCases e)
-          shareBoundaries = length boundaryValues >= 64
           boundaryName = short ++ "Boundary"
+          coverName = short ++ "Cases"
+          checkName = short ++ "Check"
+          parameters = map inputId (inputs e) ++
+            [local (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
+          (generated, _) = claimAll (scopeWith ("symbols" : parameters)) ["caseIndex", "caseValues", "caseContext"]
+          [indexName, valuesName, contextName] = generated
+          check context = [Run (call checkName (var "symbols" : context : map var parameters))]
+          checkDoc = D.joinWith D.hardline
+            [H.signature checkName (["LS.SymbolContext", "P.String"] ++ replicate (length parameters) "Scalar" ++ ["P.IO ()"]),
+             H.declaration (unwords (checkName : "symbols" : contextName : parameters))
+               (H.Do (doBody (assertionStmts (\suffix -> operator "P.++" [var contextName, string suffix]) lawLink (assertion e))))]
           bind' inp value = Let (inputId inp) value
           boundaryBody values check = handlerInstalls e ++
             [bind' inp (checked (inputType inp) value) | (inp,value) <- zip (inputs e) values] ++
@@ -339,16 +352,11 @@ emitTests Config{..} unit laws = do
           exampleSuffixes = map camel (exampleTestSuffix "haskell"
             ("property" : "replay" : "search" : "skipped" : "known_failing" : map boundaryTestSuffix [0 .. length boundaryValues - 1])
             (map exampleName (examples (original e))))
-          -- Keep every case independently registered, but compile its handler
-          -- setup and checked assertion once. Large repeated bodies otherwise
-          -- exceed native assembler branch ranges even without optimization.
-          boundaryHelpers = [D.joinWith D.hardline
-            [ D.text ("{-# NOINLINE " ++ boundaryName ++ " #-}")
-            , H.signature boundaryName ["P.String", "(LS.SymbolContext -> [Scalar])", "P.IO ()"]
-            , H.declaration (boundaryName ++ " context values") (H.Do (withSymbols (boundaryBody
-                [operator "P.!!" [call "values" [var "symbols"], integer (toInteger i)] | i <- [0 .. length (inputs e) - 1]]
-                (assertionStmts (\suffix -> operator "P.++" [var "context", string suffix]) lawLink (assertion e))))) ]
-            | shareBoundaries]
+          boundaryHelper = D.joinWith D.hardline
+            [ H.signature boundaryName ["P.String", "(LS.SymbolContext -> [Scalar])", "P.IO ()"]
+            , H.declaration (boundaryName ++ " " ++ contextName ++ " " ++ valuesName) (H.Do (withSymbols (boundaryBody
+                [operator "P.!!" [call valuesName [var "symbols"], integer (toInteger i)] | i <- [0 .. length (inputs e) - 1]]
+                (check (var contextName))))) ]
           examplesLinked = [ (suffix, ex) | (suffix, ex) <- zip exampleSuffixes (examples (original e)) ]
       exampleDocs <- mapM (\(suffix, ex) -> do
         let exLink = maybe lawLink (Just . locationLink) (exampleLocation ex)
@@ -357,16 +365,27 @@ emitTests Config{..} unit laws = do
              , testFunction (fn ++ "_" ++ suffix) (withSymbols
                 (handlerInstalls e ++ [Let (local i) (expr v) | (i,v) <- C.exampleBindings ex] ++
                  bracketed e (concatMap (assertionStmts (string . (context ++)) exLink) (expectations ex) ++
-                   assertionStmts (string . (shown ++)) lawLink (assertion e)))) ]) examplesLinked
-      boundaryDocs <- mapM (\(i,vs) -> do
-        values <- mapM literal vs
-        let suffix = camel (boundaryTestSuffix i)
-            context = shown ++ " boundary " ++ show (i + 1)
-        pure [ Comment (wrapComment 78 [labelled (displayLabel (name e) ++ ", boundary " ++ show (i + 1)) lawLink])
-             , testFunction (fn ++ "_" ++ suffix)
-                (if shareBoundaries then [Run (call boundaryName [string context, lambda ["symbols"] (H.List values)])]
-                 else withSymbols (boundaryBody values (assertionStmts (string . (context ++)) lawLink (assertion e)))) ])
-        (zip [0::Int ..] boundaryValues)
+                   check (string shown)))) ]) examplesLinked
+      cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
+      coverExpression <- finiteCoverExpr cover
+      let finiteName = operator "P.++" [string (base' ++ "_boundary"), call "P.show" [operator "P.+" [var indexName, integer 1]]]
+          finiteContext = operator "P.++" [string (shown ++ " boundary "), call "P.show" [operator "P.+" [var indexName, integer 1]]]
+          finiteAction = call boundaryName [finiteContext, lambda ["symbols"]
+            (call "P.map" [lambda ["value"] (call "value" [var "symbols"]), var valuesName])]
+          wrappedAction = if runSettings h then call "LawSpecHarness.run"
+            [string label, finiteName, integer (maybe 0 id (C.harnessTimeout h)), integer (toInteger (C.harnessRepeat h)),
+             integer (toInteger (C.harnessRetries h)), H.List [], var "False", finiteAction] else finiteAction
+          enumerate body = Run (call "P.mapM_" [lambda ["(" ++ indexName ++ ", " ++ valuesName ++ ")"] body,
+            call "LS.finiteCases" [var coverName]])
+          knownFailing = C.harnessKnownFailing h /= Nothing
+          boundaryDocs = if Cover.coverCount cover > 0 && C.harnessSkip h == Nothing
+            then [[Comment (wrapComment 78 [labelled (displayLabel (name e) ++ ", finite cases") lawLink]),
+              if knownFailing
+                then Let ("lawspecHarness" ++ base' ++ "_boundaries") (H.Do [enumerate finiteAction])
+                else enumerate (H.Do [exampleNamed finiteName wrappedAction])]]
+            else []
+          finiteHelpers = if null boundaryDocs then [] else
+            [D.joinWith D.hardline [H.signature coverName ["LS.FiniteCover (LS.SymbolContext -> Scalar)"], H.declaration coverName coverExpression], boundaryHelper]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs
@@ -383,7 +402,7 @@ emitTests Config{..} unit laws = do
             Just ds ->
               let refinements = concatMap inputRefinements (inputs e)
                   score = maybe (integer 0) (\s' -> call "LS.searchNumber" [checked (expressionType s') (expr s')]) (C.harnessTarget h)
-                  checking = bracketed e (assertionStmts (string . ((shown ++ " search") ++)) lawLink (assertion e)) ++
+                  checking = bracketed e (check (string (shown ++ " search"))) ++
                     [Run (call "P.pure" [call "P.Just" [score]])]
               in ( [ Let inputsName (H.List (map string ds))
                    , Let (caseName ++ " values") (H.Do (withSymbols (handlerInstalls e ++
@@ -392,25 +411,41 @@ emitTests Config{..} unit laws = do
                         else [Run (H.If (call "P.not" [conjunction (map (truth . expr) refinements)]) (call "P.pure" [var "P.Nothing"]) (H.Do checking))]))))
                    , example (base' ++ "_replay") (call "LS.searchReplay" [string label, var inputsName, var caseName]) ]
                  , [example (base' ++ "_search") (call "LS.searchClimb" [string label, var inputsName, var caseName]) | C.harnessTarget h /= Nothing] )
-      let check = bracketed e (observations e ++ remembered (assertionStmts (string . ((shown ++ " property") ++)) lawLink (assertion e)))
+      let propertyCheck = bracketed e (observations e ++ remembered (check (string (shown ++ " property"))))
       property <- if finiteCases e /= Nothing then pure []
-        else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
+        else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e propertyCheck
         else if nativeGenerators || constructorContracts || any (maybe False (const True) . generatorIndex) (generationPlan e)
-          then (:[]) <$> contextualProperty fn label e check
-        else if any (structural . inputType) (inputs e) then pure [nativeProperty fn label e check]
+          then (:[]) <$> contextualProperty fn label e propertyCheck
+        else if any (structural . inputType) (inputs e) then pure [nativeProperty fn label e propertyCheck]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
-          then (:[]) <$> refinedProperty fn label e check
-          else pure [nativeProperty fn label e check]
+          then (:[]) <$> refinedProperty fn label e propertyCheck
+          else pure [nativeProperty fn label e propertyCheck]
       let kinds = ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] ++
-            ["_" ++ camel (boundaryTestSuffix i) | i <- [0 .. length boundaryDocs - 1]] ++
+            ["_boundaries" | not (null boundaryDocs)] ++
             ["_property" | not (null property)]
           tests = exampleDocs ++ boundaryDocs ++ map pure property
           lawComment = Comment (wrapComment 78 (lawLine (lawCommentLines e)))
           lawLine (first : rest) = ("law " ++ first) : rest
           lawLine [] = []
-          groups = filter (not . null) ([searchBefore] ++ harnessTests base' label h kinds tests ++ map pure searchAfter)
+          wrapped
+            | knownFailing || C.harnessSkip h /= Nothing = harnessTests base' label h kinds tests
+            | otherwise = harnessTests base' label h ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] exampleDocs ++
+                boundaryDocs ++ harnessTests base' label h ["_property" | not (null property)] (map pure property)
+          groups = filter (not . null) ([searchBefore] ++ wrapped ++ map pure searchAfter)
       -- A law with no tests here (its cases are all excluded) has no block.
-      pure (boundaryHelpers, if null groups then [] else lawComment : intercalate [Blank] groups)
+      pure (checkDoc : finiteHelpers, if null groups then [] else lawComment : intercalate [Blank] groups)
+    finiteCoverExpr (Cover.Complete count) = pure (call "LS.FiniteCopies" [integer (toInteger count)])
+    finiteCoverExpr (Cover.Alternatives branches) = do
+      entries <- mapM (\(domain, suffix) -> do
+        domainExpression <- finiteDomainExpr domain
+        suffixExpression <- finiteCoverExpr suffix
+        pure (H.Tuple [domainExpression, suffixExpression])) branches
+      pure (call "LS.FiniteBranches" [H.List entries])
+    finiteDomainExpr (Cover.Values values) = do
+      entries <- mapM literal values
+      pure (call "LS.FiniteValues" [H.List [lambda ["symbols"] entry | entry <- entries]])
+    finiteDomainExpr (Cover.IntegerInterval scalar first last') = pure (call "LS.FiniteRange"
+      [integer first, integer last', lambda ["value", "_symbols"] (call "SInteger" [string scalar, var "value"])])
     -- The search case's statements sit in an if: run them as one block.
     contextualProperty fn label e check = do
       draws <- mapM (\plan -> do
