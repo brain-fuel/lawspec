@@ -183,10 +183,13 @@ renderExpression declarations bits named external expression = render scopedTerm
         no <- render b
         -- Branches that are blocks keep their braces on the if's lines.
         let block doc = take 1 (D.render D.Compact doc) == "{"
+            otherwiseBranch = case expressionNode b of
+              If {} -> D.text " " <> no
+              _ -> D.nest 2 (D.softline <> no)
         pure (if block yes || block no
           then L.condition "if" (runtime "truth" [condition]) <> D.text " " <> yes <> D.text " else " <> no
           else D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
-            D.softline <> D.text "else" <> D.nest 2 (D.softline <> no)))
+            D.softline <> D.text "else" <> otherwiseBranch))
       -- A chain of one operator is one condition, broken after each.
       ShortCircuit op _ _ -> do
         operands <- mapM render (chainOf op term)
