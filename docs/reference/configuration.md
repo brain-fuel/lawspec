@@ -206,7 +206,9 @@ the component manifest, including sibling directories outside the target root.
 Build/cache directories are excluded. LawSpec also validates and excludes its
 own generated outputs from native cache inputs. Other implementation sources
 still count. Pure checked laws that use no native implementations do not depend
-on these inputs.
+on these inputs. Native execution keys also bind the installed SDK runner, its
+dependency code and Node interpreter. This is separate from the WebAssembly
+compiler cache and from the solver host's proof receipts.
 
 `lawspec describe --json` returns the checked `lawspec-component` version 1
 descriptor, including component identity, fingerprint, targets, resolved contract

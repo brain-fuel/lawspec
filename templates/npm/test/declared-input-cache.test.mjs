@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtemp,mkdir,writeFile,readFile,rm,symlink} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,copyFile,rm,symlink} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,6 +19,13 @@ test('CLI execution and evidence include sibling declared inputs without rerunni
   const workspace=await mkdtemp(path.join(os.tmpdir(),'lawspec-declared-native-'));
   t.after(()=>rm(workspace,{recursive:true,force:true}));
   const component=path.join(workspace,'component'),native=path.join(component,'native'),server=path.join(workspace,'server');
+  const sdk=path.join(workspace,'sdk');await mkdir(path.join(sdk,'bin'),{recursive:true});
+  for(const entry of await readdir(path.join(root,'npm'),{withFileTypes:true}))if(entry.isFile()){
+    const source=path.join(root,'npm',entry.name),destination=path.join(sdk,entry.name);
+    if(entry.name==='core.wasm')await symlink(source,destination);else await copyFile(source,destination);
+  }
+  for(const entry of await readdir(path.join(root,'npm/bin')))await copyFile(path.join(root,'npm/bin',entry),path.join(sdk,'bin',entry));
+  await symlink(path.join(root,'npm/node_modules'),path.join(sdk,'node_modules'),'dir');
   await Promise.all([mkdir(path.join(component,'laws'),{recursive:true}),mkdir(native,{recursive:true}),mkdir(server)]);
   await symlink(dependencies,path.join(native,'node_modules'),'dir');
   for(const[file,content]of Object.entries(templates('javascript'))){
@@ -41,7 +48,7 @@ end unit
   await writeImplementation(7);
   const cli=async(verb,ok=true)=>{
     try{
-      const result=await execute(process.execPath,[path.join(root,'npm/bin/lawspec.mjs'),verb,'--config',manifest,'--json',...(verb==='test'?['--seed','73']:[])],
+      const result=await execute(process.execPath,[path.join(sdk,'bin/lawspec.mjs'),verb,'--config',manifest,'--json',...(verb==='test'?['--seed','73']:[])],
         {cwd:component,maxBuffer:16*1024*1024,timeout:60000});
       assert.equal(ok,true,result.stderr);return JSON.parse(result.stdout);
     }catch(error){if(ok)throw error;assert.equal(error.code,1,error.stderr);return JSON.parse(error.stdout);}
@@ -70,6 +77,16 @@ end unit
   const edited=await cli('test');assert.equal(edited[0].ran.length,1);assert.match(edited[0].ran[0],/nativeAnswer$/);assert.equal(edited[0].unchanged,1);
   assert.ok((await executions()).length>initial.length);
   const repeated=await executions();assert.deepEqual((await cli('test'))[0].ran,[]);assert.equal(await executions(),repeated);
+  const cacheFolders=await readdir(path.join(component,'.lawspec/cache'));
+  const hostFile=path.join(sdk,'test-command.mjs'),hostSource=await readFile(hostFile,'utf8');
+  const changedHost=hostSource.replace('export function invocations(...arguments_) {',
+    'export function invocations(...arguments_) {\n  if(!Array.isArray(arguments_[1]))throw new TypeError("Native selection entries must be a list");');
+  assert.notEqual(changedHost,hostSource);await writeFile(hostFile,changedHost);
+  const hostEvidence=await cli('evidence'),hostRows=Array.isArray(hostEvidence)?hostEvidence:hostEvidence.evidence;
+  for(const name of ['nativeAnswer','pureAnswer'])assert.equal(hostRows.find(row=>row.declaration.endsWith(name)).nativeEvidence.observations[0].freshness,'stale');
+  const hostRun=await cli('test');assert.equal(hostRun[0].ran.length,2);assert.equal(hostRun[0].unchanged,0);
+  assert.deepEqual(await readdir(path.join(component,'.lawspec/cache')),cacheFolders,'host changes must not change WASM compiler cache mounts');
+  const hostExecutions=await executions();assert.deepEqual((await cli('test'))[0].ran,[]);assert.equal(await executions(),hostExecutions);
   await writeImplementation(9);
   const failed=await cli('test',false);assert.equal(failed[0].ok,false);assert.equal(failed[0].ran.length,1);
   assert.match(failed[0].ran[0],/nativeAnswer$/);assert.equal(failed[0].unchanged,1);

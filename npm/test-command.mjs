@@ -15,6 +15,7 @@ import path from "node:path";
 
 import {buildDirectories as skipped,cryptoBuildOutput,isAttestation,fingerprintInputs} from './input-files.mjs';
 export {isAttestation} from './input-files.mjs';
+import {nativeHostIdentity} from './native-host.mjs';
 
 // Build and lock files, which choose the toolchain and dependencies.
 const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "go.mod",
@@ -55,7 +56,7 @@ export async function environmentDigest(root, report) {
   // Coverage locations describe build output; native tools can discover more
   // output directories after the first run. Build configuration is hashed below.
   const {coverage: _coverage, ...toolchain} = report ?? {};
-  const parts = [JSON.stringify(report ? toolchain : null)];
+  const parts = [await nativeHostIdentity(), JSON.stringify(report ? toolchain : null)];
   const names = (await readdir(root)).filter((name) => environmentFiles.includes(name) || name.endsWith(".cabal")).sort();
   for (const name of names) parts.push(name, await readFile(path.join(root, name), "utf8"));
   return digest(JSON.stringify(parts));
