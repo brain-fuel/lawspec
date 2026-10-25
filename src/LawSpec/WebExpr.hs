@@ -35,7 +35,7 @@ machineBitsDeclaration bits =
 
 -- | Names generated JavaScript keeps for itself.
 webReserved :: [String]
-webReserved = reservedFor "javascript" ++ words "MACHINE_BITS symbols _lawspec_schema _definitions _abilities _harness _typed"
+webReserved = reservedFor "javascript" ++ words "MACHINE_BITS symbols caseIndex caseValues _lawspec_schema _definitions _abilities _harness _typed"
 
 -- | Wire values are written as JavaScript object literals.
 literalValue :: A.Value -> E.Expr

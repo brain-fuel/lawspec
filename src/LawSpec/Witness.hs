@@ -9,6 +9,7 @@ import LawSpec.Core
 import LawSpec.Core.Value (Value(..), witnessFields, witnessKeys)
 import LawSpec.Scalar (textScalar)
 import LawSpec.Testing
+import LawSpec.Testing.Cover (mapCoverValues)
 
 -- | Programs without field-only existentials pass through unchanged; the others
 -- gain the witness fields runtimes need to rebuild an existential's type.
@@ -40,7 +41,7 @@ witnessPlan plan@Plan{..}
     proposition = mapPropositionExpressions expr
     planned p = p
       { plannedProperty = property (plannedProperty p)
-      , finiteCases = map (map value) <$> finiteCases p
+      , finiteCover = mapCoverValues value <$> finiteCover p
       , boundaryCases = map (map value) (boundaryCases p)
       , generatorRequirements = map requirement (generatorRequirements p) }
     requirement r = r

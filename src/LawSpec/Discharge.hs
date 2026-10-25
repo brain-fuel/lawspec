@@ -39,7 +39,7 @@ import LawSpec.Scalar (Scalar(..), prettyScalar)
 import LawSpec.Builtins (defaultedUnits, defaultHandlerReason)
 import LawSpec.Temporal (isBudgetBinder)
 import qualified LawSpec.Core.Verification as V
-import LawSpec.Testing (PlannedProperty(..), lawPlanner, finiteValuesWithRegistry, boundedLawSearch)
+import LawSpec.Testing (finiteCases, PlannedProperty(..), lawPlanner, finiteValuesWithRegistry, boundedLawSearch)
 
 -- | Laws first, then contracts, constructions and adapters. A law over checked
 -- definitions whose finite domain contains a counterexample is refuted here.

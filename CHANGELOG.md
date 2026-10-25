@@ -8,6 +8,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Finite test plans store ordered shared prefixes and inclusive integer ranges.
+  JavaScript, TypeScript and Python enumerate that data at runtime and register
+  each case separately, with fresh values and a fresh context for every run.
+  In the handler-bindings suite, the JavaScript test file shrinks from 1,096,011
+  lines to 2,771 and Python from 1,127,192 to 3,026. Both still execute all 8,012
+  cases and reject the two adapter mutations. Other target emitters and scoped
+  quantifier lowering are still being converted.
 - **Breaking: generated Python names.** Generated Python is written to be
   read. Locals keep their source names, checked definitions are named after
   the definition (`_definitions.fee_model`, `lawspec_typed.settings`, with

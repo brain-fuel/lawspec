@@ -19,6 +19,8 @@ extra-source-files:
     vendor/unicode/17.0.0/DerivedAge.txt
     README.md
     CHANGELOG.md
+    test/finite-cases.mjs
+    test/finite_cases.py
     runtime/lawspec_harness.rs
     runtime/lawspec_network.rs
     runtime/lawspec_runtime.rs
@@ -827,6 +829,7 @@ library
       LawSpec.Targets
       LawSpec.Temporal
       LawSpec.Testing
+      LawSpec.Testing.Cover
       LawSpec.TestManifest
       LawSpec.TestNames
       LawSpec.Time
@@ -1023,6 +1026,7 @@ test-suite lawspec-test
       ExactWideningSpec
       ExplainSpec
       FieldDefinitionExpansionSpec
+      FiniteCoverSpec
       FixtureSource
       FlowSpec
       GadtSpec

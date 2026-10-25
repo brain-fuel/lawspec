@@ -23,6 +23,57 @@ import struct
 import threading
 
 
+def _finite_cover_rows(cover, prefix):
+    """Walk planner-owned ordered domains without expanding a product table."""
+    if isinstance(cover, int):
+        for _ in range(cover):
+            yield prefix
+        return
+    for domain, suffix in cover:
+        if domain[0] == 0:
+            values = domain[1]
+        else:
+            values = (
+                lambda _symbols, value=value: value
+                for value in range(domain[1], domain[2] + 1)
+            )
+        for factory in values:
+            yield from _finite_cover_rows(suffix, [*prefix, factory])
+
+
+def finite_cases(cover):
+    """Case indices and factories; values are created in each test's context."""
+    yield from enumerate(_finite_cover_rows(cover, []))
+
+
+def register_finite_cases(namespace, prefix, cover, check, context, wrap=None):
+    """Register individually selectable pytest functions with a shared check."""
+
+    def make_case(factories, name, number):
+        def run():
+            check(factories, f"{context} boundary {number}")
+
+        if wrap is None:
+            case = run
+        else:
+
+            def case():
+                wrap(name, run)
+
+        case.__name__ = name
+        return case
+
+    registered = []
+    for index, factories in finite_cases(cover):
+        name = f"{prefix}_boundary_{index + 1}"
+        if name in namespace:
+            raise ValueError(f"Duplicate finite case test: {name}")
+        case = make_case(factories, name, index + 1)
+        namespace[name] = case
+        registered.append(case)
+    return registered
+
+
 @dataclass(frozen=True)
 class Presence:
     kind: str

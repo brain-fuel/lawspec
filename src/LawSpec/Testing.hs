@@ -14,6 +14,7 @@ import LawSpec.Core.Search (Candidate(..), strategyCandidates)
 import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
+import LawSpec.Testing.Cover (FiniteCover(..), compressCases, coverCases, coverCount)
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
@@ -48,9 +49,17 @@ data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [Plan
 -- exhaustive check; boundary cases run before random ones on every target.
 -- ref:DEC-evidence-statuses
 data PlannedProperty = PlannedProperty
-  { plannedProperty :: Property, finiteCases :: Maybe [[Value]], boundaryCases :: [[Value]]
+  { plannedProperty :: Property, finiteCover :: Maybe FiniteCover, boundaryCases :: [[Value]]
   , generatorRequirements :: [GeneratorRequirement]
   } deriving (Eq, Show, Generic)
+
+-- | Reference/evidence compatibility view. Native emitters consume caseCover
+-- to keep intervals and shared suffixes in their generated source.
+finiteCases :: PlannedProperty -> Maybe [[Value]]
+finiteCases = fmap coverCases . finiteCover
+
+caseCover :: PlannedProperty -> Either String FiniteCover
+caseCover p = maybe (compressCases (boundaryCases p)) Right (finiteCover p)
 -- | What each input's generator must respect, so every target's framework
 -- generates inside the same domain. ref:DEC-shrink-within-domain
 data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show, Generic)
@@ -99,16 +108,16 @@ planTestingWith config program = do
     choose p = p
       { plannedProperty = (plannedProperty p) { propertyExamples =
           if V.selected config V.Examples then propertyExamples (plannedProperty p) else [] }
-      , finiteCases = if propertyInputDomain (plannedProperty p) == UniversalDomain && finiteCases p == Just [] then Just []
-          else if V.selected config V.Exhaustive && finiteCases p /= Nothing then finiteCases p
+      , finiteCover = if propertyInputDomain (plannedProperty p) == UniversalDomain && finiteCases p == Just [] then Just (Alternatives [])
+          else if V.selected config V.Exhaustive && finiteCover p /= Nothing then finiteCover p
           else if V.selected config V.Property then
             -- A complete singleton has no varying choices. Execute that
             -- input once, just as a law with no inputs, instead of asking a
             -- native framework to invent distinct random samples.
-            if null (propertyInputs (plannedProperty p)) || singleton p then finiteCases p else Nothing
-          else Just []
+            if null (propertyInputs (plannedProperty p)) || singleton p then finiteCover p else Nothing
+          else Just (Alternatives [])
       , boundaryCases = if V.selected config V.Property then boundaryCases p else [] }
-    singleton p = case finiteCases p of Just [_] -> True; _ -> False
+    singleton p = maybe False ((== 1) . coverCount) (finiteCover p)
 
 planLowered :: Program -> Either [Diagnostic] Plan
 planLowered program@Program{..} = do
@@ -185,7 +194,7 @@ planProperty registry bits invoke definitions p
           -- the execution plan needs neither generators nor a body evaluation.
           let boolean = scalarType "Bool"
               truth = Expr boolean (Constant (SBool True)) (GeneratedFrom (propertyId p))
-          pure (PlannedProperty (p { propertyBody = Equation (Structural boolean) truth truth }) (Just []) [] [])
+          pure (PlannedProperty (p { propertyBody = Equation (Structural boolean) truth truth }) (Just (Alternatives [])) [] [])
         _ -> planPopulatedProperty registry bits invoke definitions p
   | otherwise = planPopulatedProperty registry bits invoke definitions p
 
@@ -255,7 +264,8 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
         expectations <- mapM (lowerFiniteProposition scopedDomain
           (exhaustiveLimit settings) (propertyId p)) (exampleExpectations example)
         pure (example { exampleExpectations = expectations })) (propertyExamples p)
-      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
+      cover <- traverse compressCases finite
+      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) cover cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
 
 -- | Bounded deterministic search shares typed strategy expressions with the
 -- ordinary harness. Samples are never exposed as complete finite covers.

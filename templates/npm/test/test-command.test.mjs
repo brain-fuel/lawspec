@@ -9,6 +9,21 @@ const law = (index, file, label = `example.unit::law ${index}`, language = "pyth
   ({ law: `example.unit::law::law ${index}`, unit: "example.unit", label, index, file, key: `k${index}`, callsAdapters: true,
     name: (names[language] ?? ((i) => `lawLaw${i}`))(index), tags: [] });
 
+test("numbered finite cases select and report exactly their JavaScript law", () => {
+  for (const language of ["javascript", "typescript"]) {
+    const first = law(1, "test/example.test.mjs");
+    const neighbor = law(10, "test/example.test.mjs");
+    const runs = invocations({language}, [first, neighbor]);
+    const run = runs.at(-1);
+    assert.deepEqual(run.matches({name: `${first.label} boundary 256`, status: "passed"}), [first]);
+    assert.deepEqual(run.ran({name: `${first.label} boundary 256`, status: "failed"}), []);
+    assert.deepEqual(run.matches({name: `${neighbor.label} boundary 1`, status: "passed"}), [neighbor]);
+    assert.deepEqual(run.matches({name: `${first.label} boundary wrong`, status: "passed"}), []);
+    const selection = new RegExp(run.args.find(arg => arg.startsWith("--test-name-pattern=")).slice("--test-name-pattern=".length));
+    assert.match(`${first.label} boundary 256`, selection);
+  }
+});
+
 test("recorded failures replay even after restoring a previously passing adapter", () => {
   const entries = [law(1, "test/a"), law(2, "test/a")];
   const keys = new Map(entries.map((entry) => [entry.law, entry.key]));

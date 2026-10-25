@@ -10,6 +10,7 @@ import LawSpec.Naming (claim, scopeWith, localIdentifier, exampleTestSuffix, bou
 import LawSpec.SourceLink (generatedHeader, unitSourceFile, labelled, locationLink, exampleLocation, originLocation)
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.PythonData as PythonData
@@ -205,7 +206,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let (chosen, scope') = claim scope (localIdentifier "python" (C.binderName b))
       in (scope', named ++ [(C.binderId b, chosen)])) (scopeWith (PythonExpr.pythonReserved ++ testModuleNames), []) binders)
     -- What a Python test module imports, which its locals must not shadow.
-    testModuleNames = words "impl json os st given settings assume"
+    testModuleNames = words "impl json os st given settings assume _case_values _case_context"
     -- Readable text about a law names its binders as the source does.
     shownLaw e = owner e ++ "::" ++ displayLabel (name e)
     -- A failing assertion names its law and case and points at its source.
@@ -409,13 +410,14 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                 else nativeFailures decl (checkedResult (expressionType expression) invocation))
           _ -> Left "expected portable external call"
     -- Python messages end with the expectation's source line, or the law's.
-    assertionDocLinked fallback context proposition = case proposition of
-      AssertAll propositions -> statements (map (assertionDocLinked fallback context) propositions)
+    assertionDocLinked fallback context = assertionDocWith fallback (\link -> message (labelled context link))
+    assertionDocWith fallback context proposition = case proposition of
+      AssertAll propositions -> statements (map (assertionDocWith fallback context) propositions)
       AssertImplies guard body ->
-        PythonExpr.suite (text "if " <> Doc.unparen (renderBody guard)) (assertionDocLinked fallback context body)
+        PythonExpr.suite (text "if " <> Doc.unparen (renderBody guard)) (assertionDocWith fallback context body)
       AssertEqual left right ->
         let thunk value = lambda [] value
-            arguments = [message (labelled context (maybe fallback Just (expectationLink proposition))),
+            arguments = [context (maybe fallback Just (expectationLink proposition)),
               thunk (renderBody left),thunk (renderBody right)]
             structural = usesData (expressionType left)
             extra = if structural then [referenceDoc (expressionType left),text "symbols"]
@@ -447,7 +449,6 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           -- from 1; each test's comment links it to its source line.
           exampleSuffixes = map ("_" ++) (exampleTestSuffix "python" ("property" : "replay" : "skipped" : "known_failing" :
               map boundaryTestSuffix [0 .. length cases' - 1]) (map exampleName (examples (original e))))
-          boundarySuffix j = "_" ++ boundaryTestSuffix j
           shown = shownLaw e
           exampleContext example = shown ++ " example " ++ displayLabel (exampleName example)
           linked context link test = Doc.lineComment 88 "# " (labelled context link) <> test
@@ -462,11 +463,25 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             (suffix,example) <- zip exampleSuffixes (examples (original e))]
           finite = finiteCases e
           cases' = maybe (boundaryCases e) id finite
-      boundaries' <- mapM (\(j,values) -> do
-        literals <- mapM valueLit values
-        pure (linked (short ++ ", boundary " ++ show (j + 1)) lawLink $ testBlock label (prefix ++ boundarySuffix j) (
-          (withSymbols e ([assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
-           [bracket e (assertionDocLinked lawLink (shown ++ " boundary " ++ show (j + 1)) (assertion e))]))))) (zip [0 :: Int ..] cases')
+      cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
+      coverExpression <- caseCoverExpression cover
+      let coverCheck = "_lawspec_" ++ drop 5 base ++ "_finite_case"
+          coverRun = coverCheck ++ "_run"
+          coverFunctions = coverCheck ++ "_tests"
+          coverPrefix = if wrapped then base ++ "_" else prefix
+          coverContext link = Doc.operation [text "_case_context", message (labelled "" link)] ["+"]
+          coverAssignments = [assign (inputId input)
+            (invoke ("_case_values[" ++ show i ++ "]") [text "symbols"])
+            | (i, input) <- zip [0 :: Int ..] (inputs e)]
+          checkDoc = function coverCheck ["_case_values", "_case_context"]
+            (withSymbols e (coverAssignments ++ [bracket e (assertionDocWith lawLink coverContext (assertion e))]))
+          wrapDoc = function coverRun ["name", "body"] (harnessInvocation label harness (text "body") (text "name") False)
+          registerDoc = assign coverFunctions (runtime "register_finite_cases"
+            ([invoke "globals" [], quoted coverPrefix, coverExpression, text coverCheck, message shown] ++
+             [text coverRun | wrapped]))
+          boundariesText = if Cover.coverCount cover == 0 then "" else
+            renderDocument (linked (short ++ ", finite cases") lawLink checkDoc) ++
+            (if wrapped then renderDocument wrapDoc else "") ++ renderDocument registerDoc
       -- LawSpec's own search (LawSpec.Search): a failing generated case's
       -- inputs are kept in the failure database, and replayed before the
       -- law's next cases; where fast-check cannot target, a law with
@@ -512,21 +527,25 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let properties = if maybe False (const True) finite then [] else
             if not (null drawn) then drawn else
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
-          tests = examples' ++ boundaries' ++ map (linked (short ++ ", property") lawLink) properties
-          suffixes = exampleSuffixes ++
-            map boundarySuffix [0 .. length boundaries' - 1] ++
-            ["_property" | not (null properties)]
+          propertyDocs = map (linked (short ++ ", property") lawLink) properties
+          propertySuffixes = ["_property" | not (null properties)]
+          renderTests suffixes docs = if wrapped then concat
+            [renderDocument doc ++ renderDocument (harnessRun label harness (prefix ++ suffix) (base ++ "_" ++ suffix) (suffix == "_property"))
+            | (suffix, doc) <- zip suffixes docs] else concatMap renderDocument docs
+          knownCases = Doc.operation
+            [array [text (prefix ++ suffix) | suffix <- exampleSuffixes],
+             if Cover.coverCount cover == 0 then array [] else text coverFunctions,
+             array [text (prefix ++ suffix) | suffix <- propertySuffixes]] ["+", "+"]
       pure (Doc.render outputLayout (mconcat (map (Doc.lineComment 88 "# ") (lawCommentLines e))) ++ fst searchDocs ++ (++ snd searchDocs) (
         case (C.harnessSkip harness, C.harnessKnownFailing harness) of
           -- A skipped law runs nothing; it is still an obligation.
           (Just reason, _) -> renderDocument (function (base ++ "__skipped") []
             (statement (invoke "_harness.skip" [message label, message reason])))
-          (_, Just reason) -> concatMap renderDocument tests ++ renderDocument (function (base ++ "__known_failing") []
+          (_, Just reason) -> concatMap renderDocument examples' ++ boundariesText ++ concatMap renderDocument propertyDocs ++
+            renderDocument (function (base ++ "__known_failing") []
             (statement (invoke "_harness.known_failing" [message label, quoted (base ++ "__known_failing"), message reason,
-              array [text (prefix ++ suffix) | suffix <- suffixes]])))
-          _ | wrapped -> concat [renderDocument doc ++ renderDocument (harnessRun label harness (prefix ++ suffix) (base ++ "_" ++ suffix) (suffix == "_property"))
-                                | (suffix, doc) <- zip suffixes tests]
-            | otherwise -> concatMap renderDocument tests))
+              knownCases])))
+          _ -> renderTests exampleSuffixes examples' ++ boundariesText ++ renderTests propertySuffixes propertyDocs))
     -- The harness plane (LawSpec.Harness). A law whose harness sets how its
     -- tests run (timeout, repeat, retry flaky, adequacy) has each test
     -- wrapped: the generated test calls the runtime with the law's own test.
@@ -534,13 +553,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       C.harnessRetries harness /= 0 || observed harness
     observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) &&
       null (C.harnessLabels harness)) || C.harnessTarget harness /= Nothing
-    harnessRun label harness inner public isProperty = function public [] (statement (invoke "_harness.run"
-      ([message label, quoted public, text inner] ++
+    harnessRun label harness inner public isProperty = function public []
+      (harnessInvocation label harness (text inner) (quoted public) isProperty)
+    harnessInvocation label harness inner public isProperty = statement (invoke "_harness.run"
+      ([message label, public, inner] ++
        [text "timeout=" <> text (show ms) | Just ms <- [C.harnessTimeout harness]] ++
        [text ("repeat=" ++ show (C.harnessRepeat harness)) | C.harnessRepeat harness /= 1] ++
        [text ("retries=" ++ show (C.harnessRetries harness)) | C.harnessRetries harness /= 0] ++
        [text "covers=" <> array [array [text (show p), quoted l] | C.Cover p l _ <- C.harnessCover harness] | isProperty, not (null (C.harnessCover harness))] ++
-       [text "observed=True" | isProperty, observed harness])))
+       [text "observed=True" | isProperty, observed harness]))
     -- What a generated case covers, classifies and labels, and the score
     -- targeted search maximizes. Only property tests observe.
     observations e =
@@ -644,6 +665,19 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
              require "postcondition" (contractPostconditions contract),
              statement (text ("return " ++ resultName))]
       in pure (renderDocument (function ("_lawspec_call_" ++ contractName contract) ("symbols":map fst arguments) body))
+    caseCoverExpression (Cover.Complete count) = pure (text (show count))
+    caseCoverExpression (Cover.Alternatives alternatives) = array <$> mapM branch alternatives
+      where
+        branch (domain, suffix) = do
+          values <- case domain of
+            Cover.Values items -> do
+              literals <- mapM valueLit items
+              pure (array [text "0", array [lambda [text "symbols"] literal | literal <- literals]])
+            Cover.IntegerInterval name first last' -> do
+              endpoints <- mapM (valueLit . V.ScalarValue . SInteger name) [first, last']
+              pure (array (text "1" : endpoints))
+          rest <- caseCoverExpression suffix
+          pure (array [values, rest])
     valueLit (V.ScalarValue value) = Right (PythonExpr.scalarLiteral value)
     valueLit value@(V.DataValue (C.Constructor "List" _) _ _) = do
       items <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (V.listItems value)

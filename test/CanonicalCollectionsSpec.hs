@@ -11,7 +11,7 @@ import LawSpec.Core.Verification (Verification(..),Layer(..))
 import LawSpec.Discharge (dischargeEvidenceWith)
 import LawSpec.Frontend (compileCoreCanonical)
 import LawSpec.Model (Source(..),defaultGeneration,code)
-import LawSpec.Testing (planTestingWith,Plan(..),PlannedUnit(..),PlannedProperty(..))
+import LawSpec.Testing (finiteCases, planTestingWith,Plan(..),PlannedUnit(..),PlannedProperty(..))
 import LawSpec.Core.Evidence (Obligation(..),Status(..))
 import LawSpec.SourceText (formatSource)
 

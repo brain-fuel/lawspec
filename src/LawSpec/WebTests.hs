@@ -14,6 +14,7 @@ import LawSpec.TestNames (lawWords)
 import LawSpec.SourceLink (unitSourceFile, labelled, locationLink, exampleLocation, originLocation)
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.WebData as WebData
@@ -383,11 +384,12 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     lawStems = fst (claimAll (scopeWith (testModuleNames ++ X.webReserved)) [cased Camel (lawWords (name e)) | e <- laws])
     -- Each expectation is checked by the runtime, which names the law and
     -- case and the source line when it fails.
-    assertion' fallback context proposition = case proposition of
-      AssertAll propositions -> concatMap (assertion' fallback context) propositions
-      AssertImplies guard body -> [E.If (render guard) (assertion' fallback context body) Nothing]
+    assertion' fallback context = assertionWith fallback (\link -> E.Str (labelled context link))
+    assertionWith fallback context proposition = case proposition of
+      AssertAll propositions -> concatMap (assertionWith fallback context) propositions
+      AssertImplies guard body -> [E.If (render guard) (assertionWith fallback context body) Nothing]
       AssertEqual leftE rightE ->
-        let message = E.Str (labelled context (maybe fallback Just (expectationLink proposition)))
+        let message = context (maybe fallback Just (expectationLink proposition))
             structural = usesData (expressionType leftE)
             arguments = if structural
               then [E.Ident "_lawspec_schema", message, thunk (render leftE), thunk (render rightE), referenceOf (expressionType leftE), X.machineBits, E.Ident "symbols"]
@@ -417,12 +419,21 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
                   assertion' lawLink shown (assertion e))))
             | example <- examples (original e)]
           finite = finiteCases e
-          cases' = maybe (boundaryCases e) id finite
-      boundaries' <- mapM (\(j,values) -> do
-        literals <- mapM valueLit values
-        pure (linked (short ++ ", boundary " ++ show (j + 1)) lawLink $ testCall label
-          (withSymbols e ([E.constDecl (inputId input) value | (input,value) <- zip (inputs e) literals] ++
-            bracket e (assertion' lawLink (shown ++ " boundary " ++ show (j + 1)) (assertion e)))))) (zip [0 :: Int ..] cases')
+      cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
+      coverExpression <- caseCoverExpression cover
+      let caseIndex = E.Ident "caseIndex"
+          values = E.Ident "caseValues"
+          number = E.Binary "+" caseIndex (E.num 1)
+          caseLabel = E.Binary "+" (E.Str (label ++ " boundary ")) number
+          context link = E.Binary "+" (E.Binary "+" (E.Str (shown ++ " boundary ")) number) (E.Str (labelled "" link))
+          assigned = [E.constDecl (inputId input) (E.Call (E.index values (E.num (toInteger i))) [] [E.Ident "symbols"] False)
+            | (i, input) <- zip [0 :: Int ..] (inputs e)]
+          boundaries' = [[linkComment (short ++ ", finite cases") lawLink,
+            E.ForOf "const" (E.PArray [E.PIdent "caseIndex", E.PIdent "caseValues"])
+              (runtime "finiteCases" [coverExpression])
+              [E.ExprStmt (E.call "test" [caseLabel, callback []
+                (withSymbols e (assigned ++ bracket e (assertionWith lawLink context (assertion e))))])]]
+            | Cover.coverCount cover /= 0]
       -- LawSpec's own search (LawSpec.Search): a failing generated case's
       -- inputs are kept in the failure database, and replayed before the
       -- law's next cases; where fast-check cannot target, a law with
@@ -608,6 +619,19 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
                   , E.constDecl resultName (checkedResult resultType invocation)
                   , require "postcondition" (contractPostconditions contract)
                   , E.ret (E.Ident resultName) ] ]
+    caseCoverExpression (Cover.Complete count) = pure (E.num (toInteger count))
+    caseCoverExpression (Cover.Alternatives alternatives) = E.Array <$> mapM branch alternatives
+      where
+        branch (domain, suffix) = do
+          values <- case domain of
+            Cover.Values items -> do
+              literals <- mapM valueLit items
+              pure (E.Array [E.num 0, E.Array [E.arrow [E.param "symbols"] literal | literal <- literals]])
+            Cover.IntegerInterval name first last' -> do
+              endpoints <- mapM (valueLit . V.ScalarValue . SInteger name) [first, last']
+              pure (E.Array (E.num 1 : endpoints))
+          rest <- caseCoverExpression suffix
+          pure (E.Array [values, rest])
     valueLit (V.ScalarValue value) = Right (case X.scalarLiteral value of
       Just native' | plainScalar value -> native'
       _ -> runtime "literal" [X.literalValue (toJSON value), E.Ident "symbols"])

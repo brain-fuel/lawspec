@@ -14,7 +14,7 @@ import LawSpec.SourceText (formatSourceWithSyntax, formatSourcesUsing)
 import LawSpec.SourceSyntax (SourceSyntax(..))
 import LawSpec.Compile
 import LawSpec.Frontend (elaborateCanonical,sourcePropertyId)
-import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting, planTestingWith)
+import LawSpec.Testing (finiteCases, Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C

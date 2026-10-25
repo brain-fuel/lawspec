@@ -315,7 +315,7 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
     });
   if (language === "javascript" || language === "typescript") {
     const pattern = (e) => model(e)?`^${regex(e.label)}$`:
-      `^${regex(e.label)}( example: .*| property| known failing| skipped| replay| search)?$`;
+      `^${regex(e.label)}( example: .*| boundary \\d+| property| known failing| skipped| replay| search)?$`;
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const file = path.join(scratch, "node-events.jsonl");

@@ -8,7 +8,7 @@ import Data.List (isInfixOf, nub)
 import Data.Either (isLeft)
 import LawSpec.Common
 import LawSpec.Frontend (compileCore)
-import LawSpec.Testing (planTesting, planTestingWith, Plan(..), PlannedUnit(..), PlannedProperty(..), GeneratorRequirement(..))
+import LawSpec.Testing (finiteCases, planTesting, planTestingWith, Plan(..), PlannedUnit(..), PlannedProperty(..), GeneratorRequirement(..))
 import LawSpec.CoreEmit (emitPlanWithFormat, emitPlanWithOptions)
 import LawSpec.TestManifest (unitTestPath)
 import qualified LawSpec.TestManifest as TestManifest

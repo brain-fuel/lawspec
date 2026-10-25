@@ -15,6 +15,34 @@
  * domain. ref:DEC-typed-core-boundary
  */
 
+// A finite cover is either a terminal repetition count or ordered pairs of
+// [domain, suffix]. A domain holds explicit values (tag 0) or inclusive integer
+// endpoints (tag 1). Every target walks this planner-owned data in the same order.
+function* finiteCoverRows(cover, prefix) {
+  if (typeof cover === "number") {
+    for (let repeat = 0; repeat < cover; repeat++) yield prefix;
+    return;
+  }
+  for (const [domain, suffix] of cover) {
+    if (domain[0] === 0) {
+      for (const value of domain[1]) {
+        yield* finiteCoverRows(suffix, [...prefix, value]);
+      }
+    } else {
+      for (let value = domain[1]; value <= domain[2]; value++) {
+        yield* finiteCoverRows(suffix, [...prefix, () => value]);
+      }
+    }
+  }
+}
+
+// Values are factories, invoked inside each test's fresh context. Registration
+// must not share mutable structural values or a symbol table between cases.
+export function* finiteCases(cover) {
+  let index = 0;
+  for (const values of finiteCoverRows(cover, [])) yield [index++, values];
+}
+
 export class Rational {
   constructor(n, d = 1n) {
     n = BigInt(n);
