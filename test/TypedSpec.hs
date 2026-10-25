@@ -3,7 +3,8 @@
 module TypedSpec (test_typedDefinitionsRunNativeWithTheirMeaning) where
 
 import Control.Monad (forM_)
-import Data.List (isInfixOf, isPrefixOf)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
+import Data.Char (isSpace)
 import qualified Data.Map.Strict as M
 import Test.Hspec
 import qualified LawSpec.Core as C
@@ -137,6 +138,23 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       Right typed -> do
         jvmTypedSource typed `shouldSatisfy` isInfixOf "public static final class Account"
         jvmTypedSource typed `shouldSatisfy` isInfixOf "while (true)"
+  it "keeps Java native-conversion switch braces on their arrow lines" $ do
+    let source = unlines ["unit typed.arrowBlocks",
+          "type Action is one of Authorize | Dispatch | Cancel end type",
+          "type Outcome is one of Pending | Count of type Int32 end type",
+          "function action (value :: Action) -> Action is value end function",
+          "function outcome (value :: Outcome) -> Outcome is value end function", "end unit"]
+    p <- either (\errors -> expectationFailure (show errors) >> fail "no program") pure
+      (compileCore 64 defaultGeneration [Source "arrows.lawspec" source])
+    typed <- either (\problem -> expectationFailure problem >> fail "no typed JVM") pure
+      (emitJvmTyped JavaStyle (C.programDataDeclarations p) (C.programUnits p))
+    let body = jvmTypedSource typed
+        separated = [(line,next) | (line,next) <- zip (lines body) (drop 1 (lines body)),
+          "case " `isPrefixOf` dropWhile isSpace line, "->" `isSuffixOf` line,
+          dropWhile isSpace next == "{"]
+    body `shouldSatisfy` isInfixOf "case Authorize -> {"
+    body `shouldSatisfy` isInfixOf "case 1 -> {"
+    separated `shouldBe` []
   it "emits BEAM code over each language's own data, with KeyVal as a map" $ withProgram $ \p -> do
     let declarations = C.programDataDeclarations p
         units = C.programUnits p

@@ -1184,11 +1184,11 @@ toNative env ty = case ty of
               [J.call cv [D.text (prefix ++ fieldName f)] | (f, cv) <- zip (constructorFields c) cs]
         switch subject arms = J.block (D.text ("switch (" ++ subject ++ ")")) (arms ++ [D.text "default -> throw LawSpecFast.unreachable();"])
     if fieldless d
-      then pure [switch "x" [J.block (D.text ("case " ++ variantName env d c ++ " ->")) [J.returned (made "" c [])] | c <- dataConstructors d]]
+      then pure [switch "x" [J.arrowBlock (D.text ("case " ++ variantName env d c ++ " ->")) [J.returned (made "" c [])] | c <- dataConstructors d]]
       else if isProductType d
         then let c = firstOf (dataConstructors d) in pure [J.returned (made "x." c (firstOf converters))]
         else pure [switch "x.tag"
-          [ J.block (D.text ("case " ++ show k ++ " ->"))
+          [ J.arrowBlock (D.text ("case " ++ show k ++ " ->"))
               ([J.bind "y" (castDoc (J.applied (typedName ++ "." ++ variantName env d c) typedArgs) (D.text "x")) | not (null (constructorFields c))] ++
                 [J.returned (made "y." c cs)])
           | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ]]

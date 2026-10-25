@@ -529,7 +529,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
               (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (if kt then Doc.text "(error.message ?: \"\")" else JavaExpr.call "java.util.Objects.toString" [Doc.text "error.getMessage()", Doc.text "\"\""])) b)
             mapped = [ if kt
                          then KotlinExpr.call "LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ "::class.java"), KotlinLayout.lambda ["error"] [made b]]
-                         else JavaExpr.call "new LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ ".class"), Doc.text "error -> " <> made b]
+                         else JavaExpr.call "new LawSpecRuntime.MappedFailure" [JavaExpr.classLiteral (intercalate "." (C.failureNative b)), Doc.text "error -> " <> made b]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
             converted = if kt then KotlinLayout.lambda ["nativeValue"] [convert failure native] else Doc.text opening <> convert failure native
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
@@ -1155,7 +1155,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       }
     -- A handler as the ability's Java interface.
     javaHandler ability = JavaExpr.call "LawSpecRuntime.handler"
-      [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability), Doc.text (javaInterface ability ++ ".class")]
+      [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability), JavaExpr.classLiteral (javaInterface ability)]
     javaConstruct' ty tag fields
       | custom ty = JavaExpr.call "SCHEMA.construct" ([javaRef ty,JavaExpr.quoted tag,javaBits,Doc.text "symbols"] ++ fields)
       | otherwise = javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted tag,JavaExpr.array fields]

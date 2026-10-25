@@ -10,6 +10,7 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.JavaExpr as Java
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
 import qualified LawSpec.PortableGenerator as Generator
@@ -20,6 +21,15 @@ import qualified LawSpec.PortableTestHelpers as Helpers
 -- ref:DEC-readable-output-default ref:REQ-readable-layout
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged :: Spec
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated code layout" $ do
+  it "wraps qualified Java class literals at deep indentation without changing their tokens" $ do
+    let names = ["lawspec.abilities.lawspec.Crypto.KeyExchange", "lawspec.abilities.lawspec.Crypto.Signature"]
+    forM_ names $ \name -> do
+      D.render D.Compact (Java.classLiteral name) `shouldBe` name ++ ".class"
+      forM_ [48,56,64,100 - length (name ++ ".class")] $ \indent -> do
+        let doc = D.text "{" <> D.nest indent (D.hardline <> Java.classLiteral name <> D.text ",") <> D.hardline <> D.text "}"
+            readable = D.render (D.Pretty 100) doc
+        filter ((> 100) . length) (lines readable) `shouldBe` []
+        filter (`notElem` (" \n" :: String)) readable `shouldBe` "{" ++ name ++ ".class,}"
   it "uses explicit layout delimiters for compact Haskell case and let expressions" $ do
     let value = H.LetIn [("first", H.integer 1), ("second", H.integer 2)]
           (H.Case (H.var "first") [("0", H.integer 0), ("_", H.var "second")])

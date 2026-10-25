@@ -1,5 +1,5 @@
 -- | Typed expression documents shared by Java tests and reusable definitions.
-module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, renderExpressionWithSchema, scalarLiteral, call, array, reference, referenceIn, quoted, javaDataKey) where
+module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, renderExpressionWithSchema, scalarLiteral, call, classLiteral, array, reference, referenceIn, quoted, javaDataKey) where
 
 import LawSpec.Core
 import qualified LawSpec.Core.Schema as Schema
@@ -61,6 +61,18 @@ call name args
   where
     plain n = D.group (D.text (n ++ "(") <> D.nest 4 (D.softbreak <> D.group (D.commaSep args)) <> D.text ")")
     breakLast n = let (after, before) = break (== '.') (reverse n) in (reverse (drop 1 before), if null before then [] else '.' : reverse after)
+
+-- | A checked qualified type's class literal may wrap before a name segment.
+-- Keep the nominal name intact in compact output and never split a token.
+classLiteral :: String -> D.Doc
+classLiteral name = qualified name ".class"
+  where
+    qualified path suffix = case break (== '.') (reverse path) of
+      (member@(_ : _), '.' : owner@(_ : _)) ->
+        D.prefixChoice (path ++ suffix) (D.text (path ++ suffix))
+          (qualified (reverse owner) "" <> D.nest 4
+            (D.softbreak <> D.text ('.' : reverse member ++ suffix)))
+      _ -> D.text (path ++ suffix)
 
 -- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
