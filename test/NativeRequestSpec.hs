@@ -8,6 +8,7 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Foldable (toList)
 import qualified Data.Text as T
 import Data.List (isInfixOf)
+import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import LawSpec.Api (dispatch)
 import LawSpec.Common
@@ -482,6 +483,50 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     result "rust" (object ["toNative" .= ("crate::decode" :: String),
       "fromNative" .= (["crate","encode"] :: [String])]) `shouldBe` [String "request"]
 
+  it "keeps zero-argument Scala constructors out of generated Java while preserving Unit checks" $ do
+    let request parameter = object
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+            "method" .= ("planGeneration" :: String), "target" .= ("scala" :: String),
+            "sources" .= [Source "constructors.lawspec" ("unit sample.constructors\nhandle Box\nnewBox :: " ++ parameter ++ " -> Box\nend unit\n")],
+            "nativeBindings" .= object
+              ["types" .= [object ["type" .= ("sample.constructors::type::Box" :: String),
+                "native" .= (["application","Factory","Box"] :: [String])]],
+               "functions" .= [object ["declaration" .= ("sample.constructors::newBox" :: String),
+                 "constructor" .= (["application","Factory","Box"] :: [String])]]]]
+        emitted parameter = case eitherDecode (dispatch (encode (request parameter))) of
+          Left problem -> error problem
+          Right value@(Object response) -> (codes value,
+            [(T.unpack name,T.unpack body) | Just (Array files) <- [KM.lookup "files" response],
+             Object file <- toList files, Just (String name) <- [KM.lookup "path" file],
+             Just (String body) <- [KM.lookup "content" file]])
+          Right value -> error (show value)
+        (diagnostics,files) = emitted "Unit -> Unit"
+        bridge = concat [content | (path,content) <- files,path == "src/main/scala/sample/Constructors.scala"]
+    diagnostics `shouldBe` []
+    bridge `shouldContain` "new application.Factory.Box()"
+    filter (not . isSpace) bridge `shouldContain` ".encode(value0)"
+    filter (not . isSpace) bridge `shouldContain` ".encode(value1)"
+    [path | (path,_) <- files,"LawSpecNativeCalls.java" `isInfixOf` path] `shouldBe` []
+    let (argumentDiagnostics,argumentFiles) = emitted "Int32"
+    argumentDiagnostics `shouldBe` []
+    [path | (path,_) <- argumentFiles,"LawSpecNativeCalls.java" `isInfixOf` path]
+      `shouldBe` ["src/main/java/lawspec/runtime/LawSpecNativeCalls.java"]
+  it "keeps Scala application classes out of the asynchronous binding fixture's Java sources" $ do
+    source <- readFile "examples/specs/async_bindings.lawspec"
+    bindings <- BL.readFile "acceptance/asyncbindings/scala/bindings.json" >>= either fail pure . eitherDecode
+    let request = object
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+            "method" .= ("planGeneration" :: String), "target" .= ("scala" :: String),
+            "sources" .= [Source "async_bindings.lawspec" source], "nativeBindings" .= (bindings :: Value)]
+    case eitherDecode (dispatch (encode request)) of
+      Left problem -> expectationFailure problem
+      Right result@(Object response) -> do
+        codes result `shouldBe` []
+        let java = [T.unpack body | Just (Array files) <- [KM.lookup "files" response],
+              Object file <- toList files, Just (String name) <- [KM.lookup "path" file],
+              ".java" `isInfixOf` T.unpack name, Just (String body) <- [KM.lookup "content" file]]
+        concat java `shouldNotContain` "warehouse.Stock"
+      Right value -> expectationFailure (show (value :: Value))
   it "bridges Rust handle methods and constructors to a bound native type" $ do
     source <- readFile "examples/specs/handles.lawspec"
     let method name native = object ["declaration" .= ("example.handles::" ++ name :: String), "method" .= (native :: String)]

@@ -37,10 +37,11 @@ emitBindings minify plan testing files = do
     [ref | m <- mappings, Just hook <- [resolvedCodec m], ref <- [codecToNative hook, codecFromNative hook]])
   mapM_ (S.identifier . snd) [f | m <- mappings,c <- resolvedConstructors m,f <- resolvedFields c]
   codecs <- S.emitScalaNativeCodecs layout declarations mappings
-  -- Method and constructor bindings call through Java, which can name a
-  -- generic native class raw: one static method each, taking and returning
-  -- Object. An async method answers a Future, which Scala calls itself.
+  -- Value arguments and synchronous methods retain Java's raw-generic
+  -- casts. A constructor with no native arguments needs no Java shim;
+  -- invoking it in Scala avoids an unnecessary mixed-compilation cycle.
   let javaCalls = [c | c@(d,nativeCall) <- bindingCalls plan,
+        not (directConstructor d nativeCall),
         not (C.declarationAsync d && case nativeCall of MethodCall _ -> True; _ -> False)]
   calls <- forM (zip [0::Int ..] javaCalls) $ \(index,(d,nativeCall)) -> do
     let (args,_) = C.functionType (C.declarationType d)
@@ -105,11 +106,15 @@ emitBindings minify plan testing files = do
         resultBody <- case ref of
           StaticCall r -> do
             let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
-            pure $ if async then [mapped application returned]
+            -- Unit arguments still cross both codecs, in order, before the
+            -- constructor. Only the native argument list is empty.
+            pure $ [value | directConstructor d ref, value <- converted] ++ if async then [mapped application returned]
               else if result == C.scalarType "Unit" then [application, D.text "()"] else
               [L.bind "result" application, returned]
           _ -> do
             application <- case ref of
+              ConstructorCall constructor | directConstructor d ref ->
+                pure (E.call ("new " ++ intercalate "." (referenceParts constructor)) [])
               MethodCall name | async -> case lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args] of
                 Just i -> do
                   receiver <- javaCast (args !! i) >>= maybe (Left ("an async method binding needs a bound handle type: " ++
@@ -121,7 +126,9 @@ emitBindings minify plan testing files = do
                 helper <- maybe (Left "unplanned native call") Right
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
                 pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
-            pure $ if async then [mapped application
+            -- Unit arguments still cross both codecs, in order, before the
+            -- constructor. Only the native argument list is empty.
+            pure $ [value | directConstructor d ref, value <- converted] ++ if async then [mapped application
                 (if result == C.scalarType "Unit" then D.text "()" else returnedOf (L.call ("LawSpecScala.cast[" ++ D.render D.Compact nativeResultType ++ "]") [D.text "result"]))]
               else if result == C.scalarType "Unit" then [application, D.text "()"]
               -- A method's null is None; anything else is Some.
@@ -243,6 +250,9 @@ emitBindings minify plan testing files = do
   stubs <- generatorStubs generated
   pure (generated ++ stubs)
   where
+    directConstructor declaration native = case native of
+      ConstructorCall _ -> all (== C.scalarType "Unit") (fst (C.functionType (C.declarationType declaration)))
+      _ -> False
     declarations = planDataDeclarations testing
     bits = planMachineBits testing
     interfaceType ability = maybe "Any" (interfaceType' . snd) (C.findAbility (map plannedUnit (plannedUnits testing)) ability)
