@@ -125,8 +125,7 @@ emit minify bits datas units = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.scalaDataTypeDoc datas) args
       resultType <- operationResult datas a op result
-      pure (L.parameters (line ("def " ++ Native.escaped op)) [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
-        line ": " <> resultType)
+      pure (L.signature (line ("def " ++ Native.escaped op)) [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] resultType)
     owning answered op = case [a | a <- answered, op `elem` map fst (C.abilityOperations a)] of
       a : _ -> a
       [] -> C.failAbility
@@ -277,8 +276,8 @@ productionStub datas u a = do
     let (args, result) = C.functionType ty
     types <- mapM (Native.scalaDataTypeDoc datas) args
     resultType <- operationResult datas a op result
-    pure (L.equalsBody (L.parameters (D.text ("override def " ++ Native.escaped op))
-      [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <> D.text ": " <> resultType)
+    pure (L.equalsBody (L.signature (D.text ("override def " ++ Native.escaped op))
+      [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] resultType)
       (D.text ("throw NotImplementedError(" ++ show op ++ ")")))) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   made <- traverse (Native.scalaDataTypeDoc datas) (C.abilityResource a)

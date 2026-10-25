@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, arrow, Receiver, referenceReceiver, callReceiver, typedReceiver, chainedReceiver, trailingReceiver, receiverDoc, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, bindControl, bindBlock, chain, block, statements
+  ( scalaStyle, scalaString, arrow, Receiver, referenceReceiver, callReceiver, typedReceiver, chainedReceiver, trailingReceiver, receiverDoc, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, signature, bind, bindControl, bindBlock, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
@@ -75,6 +75,13 @@ callWith name values
 parameters :: D.Doc -> [D.Doc] -> D.Doc
 parameters name [] = name <> D.text "()"
 parameters name values = D.group (name <> D.text "(" <> D.nest 4 (D.softbreak <> D.commaSep values) <> D.softbreak <> D.text ")")
+
+-- | A method signature retains the result type's legal break before its
+-- colon. With no parameters, scalafmt uses that break for a long result.
+signature :: D.Doc -> [D.Doc] -> D.Doc -> D.Doc
+signature name args result
+  | null args = D.group (parameters name args <> D.nest 4 (D.softbreak <> D.text ": " <> result))
+  | otherwise = parameters name args <> D.text ": " <> result
 
 -- | { a => body }: on one line when it fits, otherwise the body on lines of
 -- its own. A body of several statements always breaks.
