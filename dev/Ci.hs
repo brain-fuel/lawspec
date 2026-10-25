@@ -383,8 +383,10 @@ data Inputs = Inputs [FilePath] [FilePath] [[String]]
 
 stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
-  -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
-  "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers) [["stack", "--version"]])
+  -- Hspec reads acceptance specs, bindings and fixtures. Its context probe
+  -- also binds the selected tools, optional solver and actual SDK artifacts.
+  "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers)
+    [["node", "tools/ci-artifact-key.mjs", "compiler-tests"]])
   -- SDK tests select optional native tools by availability and environment,
   -- and resolve dependencies for fresh projects. A whole-suite cached pass
   -- must not bypass their actual toolchain and native-freshness checks.
