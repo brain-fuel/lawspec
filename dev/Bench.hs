@@ -33,11 +33,11 @@ import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Set as S
 import Data.List (isPrefixOf, isSuffixOf, sort)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import System.Directory
 import System.Environment (getExecutablePath, lookupEnv)
@@ -142,9 +142,9 @@ deterministic name targets = do
     cold <- inProcess "with a cold cache" [("cacheDirectory", toJSON cache)]
     warm <- inProcess "with a warm cache" [("cacheDirectory", toJSON cache)]
     putStr ("  " ++ target ++ " by lawspec-core ... ") >> hFlush stdout
-    (code, out, err) <- readCreateProcessWithExitCode (proc core []) (BLC.unpack (encode (generationRequest (extra ++ [("cacheDirectory", toJSON cache)]) sources target)))
+    (code, out, err) <- readCreateProcessWithExitCode (proc core []) (T.unpack (TE.decodeUtf8 (BL.toStrict (encode (generationRequest (extra ++ [("cacheDirectory", toJSON cache)]) sources target)))))
     when (code /= ExitSuccess) (die ("lawspec-core failed: " ++ err))
-    native <- either (\message -> die ("lawspec-core: " ++ message)) pure (generationFiles (fromMaybe Null (decode (BLC.pack out))))
+    native <- either (\message -> die ("lawspec-core: " ++ message)) pure (generationFiles (fromMaybe Null (decode (BL.fromStrict (TE.encodeUtf8 (T.pack out))))))
     putStrLn (show (length native) ++ " files")
     let runs = [first, cold, warm, ("by lawspec-core", native)]
         (_, reference) = firstRun runs
@@ -314,13 +314,15 @@ planGeneration extra sources target =
 
 -- | A response's files, or its diagnostics.
 generationFiles :: Value -> Either String [(FilePath, String)]
-generationFiles response = do
-  case field "diagnostics" response of
-    Just (Array ds) | not (V.null ds) -> Left (show (encode ds))
-    _ -> pure ()
-  pure [ (T.unpack p, T.unpack c)
-       | Just (Array files) <- [field "files" response], Object f <- V.toList files
-       , Just (String p) <- [KM.lookup "path" f], Just (String c) <- [KM.lookup "content" f] ]
+generationFiles response = case (field "diagnostics" response, field "files" response) of
+  (Just (Array ds), _) | not (V.null ds) -> Left (show (encode ds))
+  (Just (Array _), Just (Array files)) -> traverse artifact (V.toList files)
+  _ -> Left "invalid generation response: expected diagnostics and files arrays"
+  where
+    artifact (Object file) | Just (String path) <- KM.lookup "path" file,
+                            Just (String content) <- KM.lookup "content" file =
+      Right (T.unpack path, T.unpack content)
+    artifact _ = Left "invalid generation artifact: expected path and content strings"
 
 -- | A package as the lawspec CLI sends it: its manifest with the sources read.
 loadPackage :: FilePath -> IO Value
@@ -328,7 +330,7 @@ loadPackage directory = do
   (status, text, errors) <- readCreateProcessWithExitCode
     (proc "node" ["--input-type=module", "-e", "import {readManifest} from './npm/component.mjs'; console.log(JSON.stringify(await readManifest(process.argv[1])));", directory </> "lawspec.edn"]) ""
   unless (status == ExitSuccess) (die errors)
-  manifest <- maybe (die ("invalid " ++ directory ++ "/lawspec.edn")) pure (decode (BLC.pack text))
+  manifest <- maybe (die ("invalid " ++ directory ++ "/lawspec.edn")) pure (decode (BL.fromStrict (TE.encodeUtf8 (T.pack text))))
   let value = case manifest of
         Object fields | Just (Object identity) <- KM.lookup "package" fields -> Object (KM.union identity (KM.delete "package" fields))
         _ -> manifest
