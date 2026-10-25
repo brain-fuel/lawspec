@@ -3,6 +3,7 @@
 -- ref:DEC-native-property-frameworks
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, nativeScalarProductWithAdapterBindings, nativeScalarUnitProductWithAdapterBindings, goCompanionArtifacts, goUnitUsesSchema, dataBudget) where
 import LawSpec.Bounds (inputRange)
+import Control.Monad (forM)
 import qualified LawSpec.JavaAbi as Abi
 import qualified LawSpec.JvmProduct as Product
 import LawSpec.JavaTestStyle (TestStyle(..))
@@ -36,6 +37,7 @@ import LawSpec.ScalaUnitEmit (emitScalaUnit)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Testing.Literals as Literals
 import LawSpec.Core.Value (toScalarValue)
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Testing.Budget as Budget
@@ -170,10 +172,26 @@ nativeScalarProductWithCompanions _ _ _ nativeGenerators minify dataDeclarations
 nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()
-  tests <- if go then goDocument <$> GoProperties.emitTests goProperties u ls
-    else if target == "java" then javaDocument <$> JavaProperties.emitTests javaProperties u ls
-    else if kt then ktDocument <$> KotlinProperties.emitTests kotlinProperties u ls
-    else if hs then hsDocument <$> HaskellProperties.emitTests haskellProperties u ls
+  literalPlan <- either (Left . pure . (\message -> Diagnostic "literal" message Nothing)) Right $ do
+    covers <- mapM caseCover ls
+    Literals.planLiterals (concatMap Literals.coverLiterals covers ++ concatMap (concatMap generatorBoundaries . generationPlan) ls)
+  literalHelpers <- if go then goLiteralHelpers literalPlan
+    else if target == "java" then javaLiteralHelpers literalPlan
+    else if kt then ktLiteralHelpers literalPlan
+    else if hs then hsLiteralHelpers literalPlan
+    else pure []
+  tests <- if go then goDocument <$> GoProperties.emitTests (goProperties
+      { GoProperties.literal = goPlannedLiteral literalPlan
+      , GoProperties.adapterWrappers = GoProperties.adapterWrappers goProperties ++ literalHelpers }) u ls
+    else if target == "java" then javaDocument <$> JavaProperties.emitTests (javaProperties
+      { JavaProperties.literal = javaPlannedLiteral literalPlan
+      , JavaProperties.adapterWrappers = JavaProperties.adapterWrappers javaProperties ++ literalHelpers }) u ls
+    else if kt then ktDocument <$> KotlinProperties.emitTests (kotlinProperties
+      { KotlinProperties.literal = ktPlannedLiteral literalPlan
+      , KotlinProperties.adapterWrappers = KotlinProperties.adapterWrappers kotlinProperties ++ literalHelpers }) u ls
+    else if hs then hsDocument <$> HaskellProperties.emitTests (haskellProperties
+      { HaskellProperties.literal = hsPlannedLiteral literalPlan
+      , HaskellProperties.literalHelpers = literalHelpers }) u ls
     else concat <$> mapM lawTests (zip [0 :: Int ..] ls)
   wrappers <- if go || kt || hs || target == "java" then pure "" else concat <$> mapM contractWrapper (contracts u)
   goFiles <- if go && companions
@@ -658,6 +676,108 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
           KotlinExpr.call "mapOf" [KotlinLayout.pairTo (KotlinExpr.quoted (C.abilityKey ability)) (ktConstructHandler plainMaking ability choice)],
           KotlinLayout.lambda [] [body]])
       _ -> Left "expected checked Kotlin external call"
+    -- The literal plan shares emitted shape/factory bodies, while every call
+    -- constructs new fields in its caller's live symbol context.
+    literalShapeName index = (if go then "_lawspecLiteralShape" else "literalShape") ++ show index
+    literalFactoryName index = (if go then "_lawspecLiteral" else "literal") ++ show index
+    ktPlannedTerm = Literals.foldLiteral (ktValueLiteral . V.ScalarValue)
+      (\index fields -> pure (KotlinExpr.call (literalShapeName index)
+        [Doc.text "symbols", KotlinExpr.call "listOf" fields]))
+      (\index -> pure (KotlinExpr.call (literalFactoryName index) [Doc.text "symbols"]))
+    ktPlannedLiteral plan value = case Literals.literalReference plan value of
+      Right term -> ktPlannedTerm term
+      Left _ -> ktValueLiteral value
+    ktLiteralHelpers plan = do
+      values <- forM (Literals.literalFactories plan) $ \(index, term) -> do
+        body <- ktPlannedTerm term
+        pure (ktLiteralFunction (literalFactoryName index) [] [Doc.text "return " <> body])
+      pure ([ktLiteralFunction (literalShapeName index) [Doc.text "fields: List<LawSpecRuntime.Value>"] (ktLiteralShape shape)
+        | (index, shape) <- Literals.literalShapes plan] ++ values)
+    ktLiteralFunction name fields body = KotlinExpr.call ("private fun " ++ name)
+      (Doc.text "symbols: MutableMap<String, Any>" : fields) <>
+      Doc.text ": LawSpecRuntime.Value " <> KotlinLayout.block body
+    ktLiteralShape shape = case shape of
+      Literals.ConstructorShape ty tag -> [Doc.text "return " <> ktLiteralConstruct ty (C.idText tag) (Doc.text "fields")]
+      -- Match the original Nil/Cons codec construction and validation order,
+      -- with each element already evaluated once in left-to-right order.
+      Literals.ListShape ty ->
+        [Doc.group (Doc.text "var result =" <> Doc.nest 4 (Doc.softline <> ktLiteralConstruct ty "List::Nil" (KotlinExpr.call "listOf" []))),
+         Doc.text "for (value in fields.asReversed()) " <> KotlinLayout.block
+           [Doc.group (Doc.text "result =" <> Doc.nest 4 (Doc.softline <> ktLiteralConstruct ty "List::Cons" (KotlinExpr.call "listOf" [Doc.text "value", Doc.text "result"])))],
+         Doc.text "return result"]
+      Literals.PresenceShape ty present -> [Doc.text "return " <> KotlinExpr.call "LawSpecRuntime.present"
+        [KotlinExpr.quoted (key ty), Doc.text (if present then "fields[0]" else "null")]]
+    ktLiteralConstruct ty tag fields = KotlinExpr.call "LawSpecKotlinCodecs.construct"
+      [Doc.text "SCHEMA", java (KotlinExpr.reference ty), KotlinExpr.quoted tag, fields, Doc.text "MACHINE_BITS", Doc.text "symbols"]
+    javaPlannedTerm = Literals.foldLiteral (javaValueLiteral . V.ScalarValue)
+      (\index fields -> pure (JavaExpr.call (literalShapeName index)
+        [Doc.text "symbols", JavaExpr.call "java.util.List.of" fields]))
+      (\index -> pure (JavaExpr.call (literalFactoryName index) [Doc.text "symbols"]))
+    javaPlannedLiteral plan value = case Literals.literalReference plan value of
+      Right term -> javaPlannedTerm term
+      Left _ -> javaValueLiteral value
+    javaLiteralHelpers plan = do
+      values <- forM (Literals.literalFactories plan) $ \(index, term) -> do
+        body <- javaPlannedTerm term
+        pure (javaLiteralFunction (literalFactoryName index) [] body)
+      pure ([javaLiteralFunction (literalShapeName index) [Doc.text "java.util.List<LawSpecRuntime.Value> fields"] (javaLiteralShape shape)
+        | (index, shape) <- Literals.literalShapes plan] ++ values)
+    javaLiteralFunction name fields body = JavaExpr.call ("private static LawSpecRuntime.Value " ++ name)
+      (Doc.text "Map<String, Object> symbols" : fields) <> Doc.hardline <>
+      Doc.block 2 (Doc.text "return " <> body <> Doc.text ";")
+    javaLiteralShape shape = case shape of
+      Literals.ConstructorShape ty tag | custom ty -> JavaExpr.call "SCHEMA.construct"
+        [javaRef ty, JavaExpr.quoted (C.idText tag), Doc.text "MACHINE_BITS", Doc.text "symbols",
+         JavaExpr.call "fields.toArray" [Doc.text "LawSpecRuntime.Value[]::new"]]
+      Literals.ConstructorShape ty tag -> javaRuntime "construct" [JavaExpr.quoted (key ty), JavaExpr.quoted (C.idText tag),
+        JavaExpr.call "fields.toArray" [Doc.text "LawSpecRuntime.Value[]::new"]]
+      Literals.ListShape ty -> javaRuntime "list" [JavaExpr.quoted (key ty), Doc.text "fields"]
+      Literals.PresenceShape ty present -> javaRuntime "present" [JavaExpr.quoted (key ty),
+        if present then JavaExpr.call "fields.get" [Doc.text "0"] else Doc.text "null"]
+    goPlannedTerm = Literals.foldLiteral (goValueLiteral . V.ScalarValue)
+      (\index fields -> pure (GoExpr.call (literalShapeName index)
+        [Doc.text "symbols", GoExpr.array fields]))
+      (\index -> pure (GoExpr.call (literalFactoryName index) [Doc.text "symbols"]))
+    goPlannedLiteral plan value = case Literals.literalReference plan value of
+      Right term -> goPlannedTerm term
+      Left _ -> goValueLiteral value
+    goLiteralHelpers plan = do
+      values <- forM (Literals.literalFactories plan) $ \(index, term) -> do
+        body <- goPlannedTerm term
+        pure (goLiteralFunction (literalFactoryName index) [] body)
+      pure ([goLiteralFunction (literalShapeName index) ["fields []LawSpecValue"] (goLiteralShape shape)
+        | (index, shape) <- Literals.literalShapes plan] ++ values)
+    goLiteralFunction name fields body = Doc.text ("func " ++ name ++ "(" ++
+      intercalate ", " ("symbols map[string]*lawSpecSymbol" : fields) ++ ") LawSpecValue ") <>
+      Doc.block 8 (Doc.text "return " <> body)
+    goLiteralShape shape = case shape of
+      Literals.ConstructorShape ty tag -> GoExpr.call "_lawspecSchema.construct"
+        [Doc.text (goRef ty), GoExpr.quoted (C.idText tag), Doc.text "fields", Doc.text goBits, Doc.text "symbols"]
+      Literals.ListShape ty -> GoExpr.call "lsList" [GoExpr.quoted (key ty), Doc.text "fields"]
+      Literals.PresenceShape ty present -> GoExpr.call "lsPresent" [GoExpr.quoted (key ty),
+        if present then GoExpr.call "lsPointer" [Doc.text "fields[0]"] else Doc.text "nil"]
+    hsPlannedTerm = Literals.foldLiteral (hsValueLiteral . V.ScalarValue)
+      (\index fields -> pure (H.call (literalShapeName index) [H.var "symbols", H.List fields]))
+      (\index -> pure (H.call (literalFactoryName index) [H.var "symbols"]))
+    hsPlannedLiteral plan value = case Literals.literalReference plan value of
+      Right term -> hsPlannedTerm term
+      Left _ -> hsValueLiteral value
+    hsLiteralHelpers plan = do
+      values <- forM (Literals.literalFactories plan) $ \(index, term) -> do
+        body <- hsPlannedTerm term
+        pure (hsLiteralFunction (literalFactoryName index) [] [] body)
+      pure ([hsLiteralFunction (literalShapeName index) ["fields"] ["[LS.Scalar]"] (hsLiteralShape shape)
+        | (index, shape) <- Literals.literalShapes plan] ++ values)
+    hsLiteralFunction name parameters types body = Doc.joinWith Doc.hardline
+      [H.signature name (["LS.SymbolContext"] ++ types ++ ["LS.Scalar"]),
+       H.declaration (unwords (name : "symbols" : parameters)) body]
+    hsLiteralShape shape = case shape of
+      Literals.ConstructorShape ty tag -> hsInSchema "built" ty [H.string (C.idText tag), H.var "fields"]
+      Literals.ListShape _ -> H.call "SList" [H.var "fields"]
+      Literals.PresenceShape (C.Constructor wrapper _) present -> H.call "SPresent" [H.string wrapper,
+        if present then H.Case (H.var "fields") [("[value]", H.call "P.Just" [H.var "value"]),
+          ("_", H.call "P.error" [H.string "invalid planned presence value"])] else H.var "P.Nothing"]
+      _ -> H.call "P.error" [H.string "invalid planned presence type"]
     ktValueLiteral value = case value of
       V.ScalarValue scalarValue -> either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
         (KotlinExpr.scalarLiteral (C.scalarType (scalarName scalarValue)) scalarValue)
@@ -896,6 +1016,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       , HaskellProperties.machineBits = bits
       , HaskellProperties.expression = hsRender
       , HaskellProperties.literal = hsValueLiteral
+      , HaskellProperties.literalHelpers = []
       , HaskellProperties.checked = hsCheckedDoc
       , HaskellProperties.structural = containsStructural
       , HaskellProperties.typeKey = key

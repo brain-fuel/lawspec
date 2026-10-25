@@ -17,6 +17,7 @@ import qualified LawSpec.Backend as Presentation
 import LawSpec.Common
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Finite
+import qualified LawSpec.Testing.Literals as Literals
 import qualified LawSpec.NativeBinding as NB
 import qualified LawSpec.NativeRequest as NR
 import qualified LawSpec.RustNativeGenerators as NG
@@ -993,21 +994,59 @@ function name args result body = Doc.text ("fn " ++ name) <>
 -- each attempted case materializes its own values and handler context.
 -- ref:DEC-planned-generation
 rustFiniteCover :: Finite.FiniteCover -> Either String RL.Expr
-rustFiniteCover (Finite.Complete count) = pure (RL.call "ls::FiniteCover::Copies" [RL.atom (show count)])
-rustFiniteCover (Finite.Alternatives branches) = do
-  entries <- forM branches $ \(domain, suffix) -> do
-    domainExpr <- case domain of
-      Finite.Values values -> do
-        literals <- mapM valueExpr values
-        let factory literal = RL.closure (if mentions "ctx" (RL.expr literal) then "|ctx|" else "|_ctx|")
-              (RL.call "Ok" [literal])
-        pure (RL.call "ls::FiniteDomain::Values" [RL.vecOf (map factory literals)])
-      Finite.IntegerInterval _ first last' -> pure (RL.call "ls::FiniteDomain::Integers"
-        [endpoint first, endpoint last'])
-    suffixExpr <- rustFiniteCover suffix
-    pure (RL.Macro "" "(" ")" [domainExpr, suffixExpr])
-  pure (RL.call "ls::FiniteCover::Branches" [RL.vecOf entries])
-  where endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "unwrap" []
+rustFiniteCover root = do
+  plan <- Literals.planLiterals (Literals.coverLiterals root)
+  shapeHelpers <- forM (Literals.literalShapes plan) $ \(index, shape) -> do
+    body <- shapeBody shape
+    let fields = case shape of Literals.PresenceShape _ False -> "_fields"; _ -> "fields"
+    pure (RL.Item (RL.function ("fn " ++ shapeName index) [fields ++ ": Vec<ls::Value>"] "ls::Result<ls::Value>" (RL.expr body)))
+  factories <- forM (Literals.literalFactories plan) $ \(index, term) -> do
+    body <- termExpr term
+    let ctx = if usesContext term then "ctx" else "_ctx"
+    pure (RL.Item (RL.function ("fn " ++ factoryName index) [ctx ++ ": &mut ls::Context"] "ls::Result<ls::Value>"
+      (RL.expr (RL.call "Ok" [body]))))
+  expression <- cover plan root
+  pure (RL.letIn (shapeHelpers ++ factories) expression)
+  where
+    shapeName index = "literal_shape_" ++ show index
+    factoryName index = "literal_" ++ show index
+    termExpr = Literals.foldLiteral Expression.scalarExpr
+      (\index fields -> pure (RL.try' (RL.call (shapeName index) [RL.vecOf fields])))
+      (\index -> pure (RL.try' (RL.call (factoryName index) [RL.atom "ctx"])))
+    shapeBody shape = case shape of
+      Literals.ConstructorShape _ tag
+        | builtinConstructor tag -> pure (RL.call "ls::construct" [RL.atom (q (idText tag)), RL.atom "fields"])
+        | otherwise -> pure (RL.call "Ok" [RL.call "ls::construct_data" [RL.atom (q (idText tag)), RL.atom "fields"]])
+      Literals.ListShape _ -> pure (RL.call "Ok" [RL.call "ls::Value::List" [RL.atom "fields"]])
+      Literals.PresenceShape (Constructor name [TypeArgument _]) present ->
+        let payload = RL.try' (RL.method (RL.method (RL.method (RL.atom "fields") "into_iter" []) "next" [])
+              "ok_or" [RL.atom (q "invalid planned presence payload")])
+            optional = if present then RL.call "Some" [RL.call "Box::new" [payload]] else RL.atom "None"
+        in pure (RL.call "Ok" [RL.call ("ls::Value::" ++ name) [optional]])
+      _ -> Left "invalid planned presence type for Rust"
+    usesContext (Literals.ScalarLiteral scalar) = scalarContext scalar
+    usesContext (Literals.ApplyLiteral _ fields) = any usesContext fields
+    usesContext Literals.SharedLiteral {} = True
+    scalarContext SSymbol {} = True
+    scalarContext (SPresent _ payload) = maybe False scalarContext payload
+    scalarContext (SComplex _ real imaginary) = scalarContext real || scalarContext imaginary
+    scalarContext _ = False
+    cover _ (Finite.Complete count) = pure (RL.call "ls::FiniteCover::Copies" [RL.atom (show count)])
+    cover plan (Finite.Alternatives branches) = do
+      entries <- forM branches $ \(domain, suffix) -> do
+        domainExpr <- case domain of
+          Finite.Values values -> do
+            literals <- forM values $ \value -> do
+              term <- Literals.literalReference plan value
+              expression <- termExpr term
+              pure (RL.closure (if usesContext term then "|ctx|" else "|_ctx|") (RL.call "Ok" [expression]))
+            pure (RL.call "ls::FiniteDomain::Values" [RL.vecOf literals])
+          Finite.IntegerInterval _ first last' -> pure (RL.call "ls::FiniteDomain::Integers"
+            [endpoint first, endpoint last'])
+        suffixExpr <- cover plan suffix
+        pure (RL.Macro "" "(" ")" [domainExpr, suffixExpr])
+      pure (RL.call "ls::FiniteCover::Branches" [RL.vecOf entries])
+    endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "unwrap" []
 
 valueLiteral :: V.Value -> Either String Doc.Doc
 valueLiteral value = RL.expr <$> valueExpr value

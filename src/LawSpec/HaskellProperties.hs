@@ -46,6 +46,7 @@ data Config = Config
   , machineBits :: Int
   , expression :: Expr' -> Expr
   , literal :: V.Value -> Either [Diagnostic] Expr
+  , literalHelpers :: [D.Doc]
   , checked :: Type -> Expr -> Expr
   , structural :: Type -> Bool
   , typeKey :: Type -> String
@@ -108,7 +109,7 @@ emitTests Config{..} unit laws = do
   let testNames = unitTestNames "haskell" (map name laws)
   parts <- mapM (law testNames) (zip [0::Int ..] laws)
   contractDocs <- pure (map contract (contracts unit))
-  let helpers = concatMap fst parts
+  let helpers = literalHelpers ++ concatMap fst parts
       bodies = map snd parts
       body = ([Run (call "runIO" [call "LS.useVirtualClock" [integer 0]])] ++
         [Run (call "LawSpecHarness.parallelism" [string (C.idText (C.unitId unit))]) | parallel] ++
