@@ -1,6 +1,10 @@
 -- | Native algebraic declarations are rendered from resolved Core identities.
 module LawSpec.HaskellData (namesFor, requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, emitHaskellCodecsWithLayouts, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellCodecExpr, haskellTypeReferenceDoc, moduleImports, sortedImports, moduleText) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.NativeBinding (ResolvedConstructorBinding(..), foldNativeLayoutM)
 import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous, fieldClosed)
@@ -22,6 +26,14 @@ import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, keyedRequi
 import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+
+nativeDocumentTable :: Table (Either String [D.Doc])
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-haskell-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
+
+codecDocumentTable :: Table (Either String D.Doc)
+codecDocumentTable = unsafePerformIO (newPersistentTable "public-haskell-codec" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id,String)]
 
@@ -132,7 +144,15 @@ emitHaskellData layout declarations = do
   let nativeEq = fieldClosed (all (null . C.constructorExistentials) . C.dataConstructors) declarations
       ordered declaration = fieldClosed (not . gadtDeclaration) declarations declaration && either (const False) (const True) (keyedRequirements registry
         (C.Constructor (C.idText (C.dataId declaration)) [C.TypeArgument (C.TypeVariable p) | p <- C.dataParameters declaration]))
-  definitions <- mapM (\d -> definition names selectors (nativeEq d) (ordered d) d) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
+  let graph = Identity.dependencyGraph declarations []
+      cachedDefinition declaration =
+        let selected = [entry | entry@((constructor,_),_) <- selectors,
+              constructor `elem` map C.constructorId (C.dataConstructors declaration)]
+            context = (nativeEq declaration,ordered declaration,selected)
+        in memoized nativeDocumentTable
+          (Identity.fullKey graph ("public-haskell-data:" ++ show context ++ EmissionContext.declarationContext graph declarations names declaration) declaration)
+          (definition names selectors (nativeEq declaration) (ordered declaration) declaration)
+  definitions <- mapM cachedDefinition [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   let gadts = any gadtDeclaration declarations
   pure (moduleText layout "LawSpecData" ""
     (["EmptyDataDecls", "EmptyDataDeriving"] ++ (if gadts then ["GADTs", "StandaloneDeriving"] else []))
@@ -479,7 +499,16 @@ emitHaskellCodecsWithLayouts
 emitHaskellCodecsWithLayouts layout declarations owner imports representations constructors hooks layouts = do
   _ <- emitHaskellData layout declarations
   names <- namesFor declarations
-  definitions' <- mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
+  let graph = Identity.dependencyGraph declarations []
+      cachedDefinition declaration =
+        let reached = declaration : Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration))
+            selected = [identity | value <- reached, identity <- C.dataId value : map C.constructorId (C.dataConstructors value)]
+            relevant entries = [entry | entry@(identity,_) <- entries, identity `elem` selected]
+            context = (owner,relevant representations,relevant constructors,relevant hooks,relevant layouts)
+        in memoized codecDocumentTable
+          (Identity.fullKey graph ("public-haskell-codec:" ++ show context ++ EmissionContext.declarationContext graph declarations names declaration) declaration)
+          (definition names declaration)
+  definitions' <- mapM cachedDefinition [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   dynamic <- if owner == "LawSpecDataCodecs" && any existentialDeclaration declarations
     then (: []) <$> dynamicDispatch names else pure []
   let gadts = any gadtDeclaration declarations

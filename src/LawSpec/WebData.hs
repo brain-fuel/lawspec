@@ -1,6 +1,10 @@
 -- | Native JS classes and TS generic unions rendered from checked Core.
 module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeOf, webDataTypeOfWith, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema, testStrategies, printWith) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import Control.Monad (unless, forM)
 import Data.List (intercalate, isPrefixOf)
 import qualified LawSpec.Backend as Backend
@@ -19,6 +23,10 @@ import qualified LawSpec.WebExpr as X
 import qualified LawSpec.Code.ECMAScript as E
 import LawSpec.WebModule (linkComment)
 import LawSpec.SourceLink (sourceLink)
+
+nativeDocumentTable :: Table (Either String [E.Stmt])
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-web-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
 
 -- | Target imports and a known TypeScript signature slot are substituted. Runtime
 -- expressions and literals stay opaque; no whitespace rewriting is performed.
@@ -64,7 +72,11 @@ emitWebDataWithProfile ts bits layout declarations = do
         ("symbols",E.TRef "Map" [E.TKeyword "string", E.TKeyword "symbol"])]) Nothing
       [E.ret (if ts then E.As body (E.TKeyword "boolean") else body)])
   -- A handle has no class: its values are the adapters' own objects.
-  classes <- concat <$> mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,
+  let graph = Identity.dependencyGraphWithBits bits declarations []
+      cachedDefinition declaration = memoized nativeDocumentTable
+        (Identity.fullKey graph ("public-web-data:" ++ show ts ++ EmissionContext.declarationContext graph declarations names declaration) declaration)
+        (definition (EmissionContext.selectedDeclarationNames graph declarations names declaration) declaration)
+  classes <- concat <$> mapM cachedDefinition [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,
     not (C.dataHandle d)]
   metadata <- mapM (definitionSchema names bindings) schemas
   let extension = if ts then "ts" else "mjs"

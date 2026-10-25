@@ -2,7 +2,7 @@
 -- Helpers are named before lowering; a function records only its own requests.
 -- ref:DEC-content-identity ref:DEC-incremental-compilation
 module LawSpec.Typed.EmissionContext
-  ( expressionTypes, definitionTypes, typeClosure, helperAllocation, helperAllocationWith, declarationContext, calledFunctions ) where
+  ( expressionTypes, definitionTypes, typeClosure, helperAllocation, helperAllocationWith, declarationContext, selectedDeclarationNames, calledFunctions ) where
 
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
@@ -82,11 +82,20 @@ helperAllocationWith suffix graph reserved base kinds types = M.fromList
 -- on every request before any document lookup.
 declarationContext :: Identity.Graph -> [DataDeclaration] -> [(Id,String)] -> DataDeclaration -> String
 declarationContext graph declarations names declaration = show
-  ([(identity,lookup identity names) | identity <- S.toAscList selected],
+  (selectedDeclarationNames graph declarations names declaration,
    sort [(dataId value,dataHandle value,dataNative value) | value <- declarations, dataId value `S.member` selected])
+  where selected = S.fromList (map dataId (declarationClosure graph declaration))
+
+selectedDeclarationNames :: Identity.Graph -> [DataDeclaration] -> [(Id,String)] -> DataDeclaration -> [(Id,String)]
+selectedDeclarationNames graph _ names declaration =
+  [(identity,name) | identity <- S.toAscList selected, Just name <- [lookup identity names]]
   where
-    selected = S.fromList (dataId declaration : map dataId
-      (Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration))))
+    selected = S.fromList [identity | value <- declarationClosure graph declaration,
+      identity <- dataId value : map constructorId (dataConstructors value)]
+
+declarationClosure :: Identity.Graph -> DataDeclaration -> [DataDeclaration]
+declarationClosure graph declaration = declaration :
+  Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration))
 
 calledFunctions :: TypedPlan -> M.Map Int String -> Int -> Definition -> [(String,Bool,Maybe Intrinsic,Bool)]
 calledFunctions plan names classification definition = sort (nub

@@ -219,6 +219,15 @@ schema construction still run on every request. Dynamic existential dispatch
 and public schema assembly remain outside these declaration caches, so adding
 a public type updates the API without invalidating independent documents.
 
+Public Python/Web/Go/Haskell type documents and Go/Haskell codec documents
+are likewise cached independently. Their exact contexts include reached
+constructor allocations and, for Haskell, actual record selectors and deriving
+capabilities. Generic parameter scopes reserve the interfaces the declaration
+can actually name; adding an unrelated type no longer changes a parameter's
+spelling merely because it resembles a compiler-chosen parameter. Constructor
+predicate callbacks, schema metadata and dynamic dispatch are assembled afresh
+under the validated registry, separately from cached native type documents.
+
 `memoizedState` remains an exact state-transition primitive for emitters whose
 incoming helper state is relevant. Independent chunks instead isolate their
 request sets as above; hashing the accumulated prior module state would make

@@ -1,6 +1,10 @@
 -- | Native Python declarations and checked constructor predicate callbacks.
 module LawSpec.PythonData (emitPythonData, emitPythonDataWithProfile, pythonDataType, pythonTypeReference, pythonDataTypeDoc, pythonDataTypeDocWith, pythonTypeReferenceDoc, requiresSchema) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Time (isDurationType)
 import Control.Monad (unless, forM)
 import qualified LawSpec.Core as C
@@ -15,6 +19,10 @@ import LawSpec.DataNames (isProduct, nativeConstructorFieldType)
 import LawSpec.Testing (fieldRegexSamples)
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
+
+nativeDocumentTable :: Table (Either String [D.Doc])
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-python-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
 
 -- | The 64-bit profile unless a caller states another.
 -- ref:DEC-explicit-machine-profile
@@ -48,7 +56,11 @@ emitPythonDataWithProfile bits layout declarations = do
     pure (suite (D.text "def " <> invoke name (map D.text
       ["_lawspec_schema","_types","_fields","bits","symbols"])) (D.text "return " <> D.unparen body))
   -- A handle has no class: its values are the adapters' own objects.
-  classes <- concat <$> mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,
+  let graph = Identity.dependencyGraphWithBits bits declarations []
+      cachedDefinition declaration = memoized nativeDocumentTable
+        (Identity.fullKey graph ("public-python-data:" ++ EmissionContext.declarationContext graph declarations names declaration) declaration)
+        (definition (EmissionContext.selectedDeclarationNames graph declarations names declaration) declaration)
+  classes <- concat <$> mapM cachedDefinition [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,
     not (isDurationType (C.idText (C.dataId d))), not (C.dataHandle d)]
   -- A Text field a regex refines also draws texts the regex matches.
   -- ref:DEC-shrink-within-domain

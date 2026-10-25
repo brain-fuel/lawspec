@@ -1,6 +1,10 @@
 -- | Native sealed interfaces and variants follow Go+'s resolved enum lowering.
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goFieldName, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (flatDataCandidatesWith, productConstructors, isProduct)
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (labelled, sourceLink)
@@ -26,6 +30,14 @@ import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import qualified LawSpec.Code.Doc as D
+
+nativeDocumentTable :: Table (Either String D.Doc)
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-go-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
+
+codecDocumentTable :: Table (Either String D.Doc)
+codecDocumentTable = unsafePerformIO (newPersistentTable "public-go-codec" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id, String)]
 
@@ -177,7 +189,11 @@ emitGoData layout packageName declarations = do
   unless (packageName `notElem` words "break default func interface select case defer go map struct chan else goto package switch const fallthrough if range type continue for import return var")
     (Left "reserved Go package name")
   names <- namesFor declarations
-  definitions <- mapM (definition names) [d | d <- declarations, native d]
+  let graph = Identity.dependencyGraph declarations []
+      cachedDefinition declaration = memoized nativeDocumentTable
+        (Identity.fullKey graph ("public-go-data:" ++ EmissionContext.declarationContext graph declarations names declaration) declaration)
+        (definition (EmissionContext.selectedDeclarationNames graph declarations names declaration) declaration)
+  definitions <- mapM cachedDefinition [d | d <- declarations, native d]
   pure (D.render (if layout == D.Compact then D.CompactTabs else layout) (E.goHeaderDoc <>
     D.text ("package " ++ packageName) <>
     (if null definitions then mempty else D.hardline <> D.hardline <>
@@ -404,7 +420,17 @@ emitCodecs :: String -> [ResolvedTypeBinding] -> Maybe [C.Id] -> [(String,String
 emitCodecs prefix mappings needed imports layout packageName declarations = do
   _ <- emitGoData layout packageName declarations
   names <- namesFor declarations
-  definitions <- mapM (definition names) [d | d <- declarations, maybe True (C.dataId d `elem`) needed, native d]
+  let graph = Identity.dependencyGraph declarations []
+      cachedDefinition declaration =
+        let reached = declaration : Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration))
+            selected = [C.dataId value | value <- reached]
+            selectedBindings = [mapping | mapping <- mappings, C.dataId (resolvedDeclaration mapping) `elem` selected]
+            context = (prefix,not (null mappings),selectedBindings)
+            names' = EmissionContext.selectedDeclarationNames graph declarations names declaration
+        in memoized codecDocumentTable
+          (Identity.fullKey graph ("public-go-codec:" ++ show context ++ EmissionContext.declarationContext graph declarations names declaration) declaration)
+          (definition names' declaration)
+  definitions <- mapM cachedDefinition [d | d <- declarations, maybe True (C.dataId d `elem`) needed, native d]
   pure (D.render (if layout == D.Compact then D.CompactTabs else layout) (E.goHeaderDoc <>
     D.text ("package " ++ packageName) <>
     (if null imports then mempty else D.hardline <> D.hardline <>

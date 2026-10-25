@@ -53,6 +53,17 @@ cachedHelperDocuments target directory = do
     then ECMAScript.printModule ECMAScript.TypeScript (documentPrefix value)
     else Doc.render (Doc.Pretty 100) (documentPrefix value)) | value <- bytes]
 
+cachedPublicDocuments :: String -> String -> FilePath -> IO [String]
+cachedPublicDocuments target kind directory = do
+  files <- listDirectory directory
+  bytes <- mapM (B.readFile . (directory </>)) files
+  pure [map toLower (case target of
+    "javascript" -> ECMAScript.printModule ECMAScript.JavaScript (documentPrefix value)
+    "typescript" -> ECMAScript.printModule ECMAScript.TypeScript (documentPrefix value)
+    "python" -> Doc.render (Doc.Pretty 100) (Doc.joinWith Doc.hardline (documentPrefix value))
+    "haskell" | kind == "data" -> Doc.render (Doc.Pretty 100) (Doc.joinWith Doc.hardline (documentPrefix value))
+    _ -> Doc.render (Doc.Pretty 100) (documentPrefix value)) | value <- bytes]
+
 -- | Two programs that differ only in one law of their second unit. The compiler
 -- memoizes stages by content, so a missing input in any key would make one
 -- program's result depend on whether the other was compiled first.
@@ -310,8 +321,9 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         run "Int32" `shouldSatisfy` good
         cachedHelperDocuments target directory >>= (`shouldMatchList` second)
         removePathForcibly root
-  describe "public JVM declaration chunks" $ do
-    forM_ [(target,kind) | target <- ["java","kotlin","scala"], kind <- ["data","codec"]] $ \(target,kind) ->
+  describe "public declaration chunks" $ do
+    forM_ ([(target,kind) | target <- ["java","kotlin","scala","go","haskell"], kind <- ["data","codec"]] ++
+      [(target,"data") | target <- ["python","javascript","typescript"]]) $ \(target,kind) ->
       it ("reuses independent public " ++ target ++ " " ++ kind ++ " documents") $ do
         root <- (</> ("lawspec-public-" ++ target ++ "-" ++ kind ++ "-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -320,18 +332,18 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
                "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
                "sources" .= [object ["path" .= ("public.lawspec" :: String), "content" .= unlines
                  ["unit incremental.publicChunks." ++ kind ++ "Chunks", "type Changed is a record { value :: " ++ fieldType ++ " } end type",
-                  "type Independent is a record { label :: Text } end type", "end unit"]]]])
+                  "type Independent is a record { label :: Text } end type", "nativeSelected :: Independent -> Bool", "end unit"]]]])
             run = decode . dispatch . input
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "Integer" `shouldSatisfy` good
         [versioned] <- listDirectory root
-        let directory = root </> versioned </> ("public-" ++ target ++ "-" ++ kind)
+        let directory = root </> versioned </> ("public-" ++ (if target `elem` ["javascript","typescript"] then "web" else target) ++ "-" ++ kind)
             documents name = filter (isInfixOf name)
-        first <- cachedHelperDocuments target directory
+        first <- cachedPublicDocuments target kind directory
         documents "independent" first `shouldSatisfy` (not . null)
         run "Int32" `shouldSatisfy` good
-        second <- cachedHelperDocuments target directory
+        second <- cachedPublicDocuments target kind directory
         documents "independent" second `shouldMatchList` documents "independent" first
         length (documents "changed" second) `shouldBe` length (documents "changed" first) + 1
         cold <- evaluate (decode (withoutMemoization dispatch (input "Int32")) :: Maybe Value)
