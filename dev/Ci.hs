@@ -474,8 +474,7 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
                  , null keep || any (`isPrefixOf` f) keep
                  , not (any (`isPrefixOf` f) drop') ]
   contents <- forM selected $ \path -> (,) path <$> B.readFile path
-  inherited <- getEnvironment
-  let effective = env ++ [(key, value) | (key, value) <- inherited, key `notElem` map fst env]
+  effective <- stepEnvironment env
   observations <- forM probes $ \probe -> case probe of
     program : arguments -> do
       result <- try (readCreateProcessWithExitCode ((proc program arguments){env = Just effective}) "") :: IO (Either IOException (ExitCode, String, String))
@@ -610,13 +609,7 @@ runStep console children (Step name env command) = do
     printf "%-40s " name
     hFlush stdout
   started <- getCurrentTime
-  inherited <- getEnvironment
-  root <- getCurrentDirectory
-  gradle <- doesDirectoryExist localGradle
-  -- A Gradle unpacked into .tools serves every step, not only the harness.
-  let path = [(root </> localGradle) ++ ":" ++ maybe "" id (lookup "PATH" inherited) | gradle]
-      overrides = env ++ [("PATH", p) | p <- path, "PATH" `notElem` map fst env]
-      environment = overrides ++ [(k, v) | (k, v) <- inherited, k `notElem` map fst overrides]
+  environment <- stepEnvironment env
   (code, out, err) <- case command of
     program : arguments -> do
       result <- try (runGroup children (proc program arguments) { env = Just environment })
@@ -641,6 +634,19 @@ runStep console children (Step name env command) = do
     lastLine text = case reverse (filter (not . null) (lines text)) of
       l : _ -> take 160 l
       [] -> ""
+
+-- | Identity probes and checks receive exactly the same executable search
+-- path and overrides, including the repository's pinned Gradle installation.
+stepEnvironment :: [(String, String)] -> IO [(String, String)]
+stepEnvironment env = do
+  inherited <- getEnvironment
+  root <- getCurrentDirectory
+  gradle <- doesDirectoryExist localGradle
+  -- A Gradle unpacked into .tools serves every step, not only the harness.
+  let path = [(root </> localGradle) ++ ":" ++ maybe "" id (lookup "PATH" inherited) | gradle]
+      overrides = env ++ [("PATH", p) | p <- path, "PATH" `notElem` map fst env]
+      environment = overrides ++ [(k, v) | (k, v) <- inherited, k `notElem` map fst overrides]
+  pure environment
 
 -- | Run a process as the leader of a new process group, with its output
 -- captured as readCreateProcessWithExitCode captures it (standard input is

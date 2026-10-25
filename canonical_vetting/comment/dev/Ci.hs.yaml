@@ -52,6 +52,9 @@ decision/haskell/dev/Ci.hs/module/Ci/function/rustRuntimeSteps:
 decision/haskell/dev/Ci.hs/module/Ci/function/say:
   digest: sha256:3ae5fa5d8460e59a
   verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/function/stepEnvironment:
+  digest: sha256:d51b3831b7db2af0
+  verdict: pending
 decision/haskell/dev/Ci.hs/module/Ci/function/stepError:
   digest: sha256:e5873ee0b8e24315
   verdict: pending
