@@ -139,7 +139,7 @@ public enum Property {
     Generators.Context(schema: schema, symbols: symbols, factories: [:], attempts: attempts)
   }
 
-  /// As generation, with the application's generators (bound in lawspec.json)
+  /// As generation, with the application's generators (bound in lawspec.edn)
   /// in place of the built-in ones for their types.
   public static func generationWith(
     _ schema: Schema, _ symbols: SymbolContext, _ attempts: Int,

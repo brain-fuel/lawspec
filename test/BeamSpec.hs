@@ -786,7 +786,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_harness:known_discrepancy", "|known property failure| known discrepancy", "|skipped completely| skipped"]
+            ["lawspec_beam_harness:known_discrepancy", "|known property discrepancy| known discrepancy", "|skipped completely| skipped"]
           body `shouldSatisfy` (not . isInfixOf "law_skipped_completely_body")
           body `shouldSatisfy` (not . isInfixOf "also skipped")
           if target == "elixir" then body `shouldSatisfy` isInfixOf "law(:example_status_lawspec_cases, :law_skipped_completely,"

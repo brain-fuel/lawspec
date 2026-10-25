@@ -351,8 +351,8 @@ where
     Ok(())
 }
 
-/// A known-discrepancy law's test must fail. One that passes is reported: the
-/// harness should no longer say it has a known discrepancy.
+/// An acknowledged discrepancy must reproduce. An unexpected pass requires
+/// human review of the specification and implementation.
 pub fn known_discrepancy(
     law: &str,
     name: &str,
@@ -387,7 +387,7 @@ pub fn known_discrepancy(
                 ],
             );
             Err(format!(
-                "{law} is marked known discrepancy ({reason}), but it passes; remove `known discrepancy` from its harness"
+                "{law} is marked known discrepancy ({reason}), but it passes; review the specification and implementation before removing `known discrepancy` from its harness"
             ))
         }
     }

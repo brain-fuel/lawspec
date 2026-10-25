@@ -221,9 +221,14 @@ export async function knownDiscrepancy(law, name, reason, tests) {
       return;
     }
   }
-  record(name, { law, test: name, outcome: "known-discrepancy-passed", reason });
+  record(name, {
+    law,
+    test: name,
+    outcome: "known-discrepancy-passed",
+    reason,
+  });
   throw new HarnessError(
-    `${law} is marked known discrepancy (${reason}), but it passes; remove \`known discrepancy\` from its harness`,
+    `${law} is marked known discrepancy (${reason}), but it passes; review the specification and implementation before removing \`known discrepancy\` from its harness`,
   );
 }
 

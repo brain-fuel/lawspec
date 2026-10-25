@@ -18,7 +18,7 @@ public enum Generators {
   public typealias Factory = ([Gen<Value>]) throws -> Gen<Value>
 
   /// What generation reads beyond the schema: native generator factories by
-  /// type name (from lawspec.json) and the attempts budget.
+  /// type name (from lawspec.edn) and the attempts budget.
   public struct Context {
     public let schema: Schema
     public let symbols: SymbolContext

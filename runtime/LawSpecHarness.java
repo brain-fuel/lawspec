@@ -543,7 +543,7 @@ public final class LawSpecHarness
     }
   }
 
-  /** A known-discrepancy law's tests must fail; one that passes is reported. */
+  /** A known discrepancy must reproduce; an unexpected pass requires human review. */
   public static void knownDiscrepancy(String law, String name, String reason, List<Body> tests)
   {
     var entry = new LinkedHashMap<String, Object>();
@@ -575,7 +575,8 @@ public final class LawSpecHarness
         law
             + " is marked known discrepancy ("
             + reason
-            + "), but it passes; remove `known discrepancy` from its harness");
+            + "), but it passes; review the specification and implementation before removing "
+            + "`known discrepancy` from its harness");
   }
 
   /** Measured, never asserted: the mean and fastest time of body. */

@@ -246,8 +246,8 @@ def skip(law, reason):
 
 
 def known_discrepancy(law, name, reason, tests):
-    """A known-discrepancy law's tests must fail. One that passes is reported:
-    the harness requires human review of the specification and implementation."""
+    """An acknowledged discrepancy must reproduce; an unexpected pass requires
+    human review of the specification and implementation."""
     import pytest
 
     for test in tests:
@@ -263,14 +263,22 @@ def known_discrepancy(law, name, reason, tests):
                     "reason": reason,
                 },
             )
-            pytest.xfail(f"{law} has a known discrepancy ({reason}): {type(error).__name__}")
+            pytest.xfail(
+                f"{law} has a known discrepancy ({reason}): {type(error).__name__}"
+            )
     _record(
         name,
-        {"law": law, "test": name, "outcome": "known-discrepancy-passed", "reason": reason},
+        {
+            "law": law,
+            "test": name,
+            "outcome": "known-discrepancy-passed",
+            "reason": reason,
+        },
     )
     raise HarnessError(
         f"{law} is marked known discrepancy ({reason}), but it passes; "
-        "remove `known discrepancy` from its harness"
+        "review the specification and implementation before removing "
+        "`known discrepancy` from its harness"
     )
 
 

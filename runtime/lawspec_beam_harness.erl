@@ -107,12 +107,14 @@ known_discrepancy(Law, Name, Reason, Tests) ->
             commit(Base#{outcome => <<"known-discrepancy-passed">>}),
             io:format(
                 standard_error,
-                "~ts is marked known discrepancy (~ts), but it passes; remove `known discrepancy` from its harness~n",
+                "~ts is marked known discrepancy (~ts), but it passes; review the specification and implementation before removing `known discrepancy` from its harness~n",
                 [Law, Reason]
             ),
             error({lawspec, {known_discrepancy_passed, Law, Reason}});
         {{failed, Kind1, Cause1, _}, none} ->
-            commit(Base#{outcome => <<"known-discrepancy">>, failure => exception_text(Kind1, Cause1)}),
+            commit(Base#{
+                outcome => <<"known-discrepancy">>, failure => exception_text(Kind1, Cause1)
+            }),
             io:format("~ts has a known discrepancy (~ts): ~ts~n", [
                 Law, Reason, exception_text(Kind1, Cause1)
             ]),

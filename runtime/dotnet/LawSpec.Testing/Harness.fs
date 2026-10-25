@@ -602,14 +602,18 @@ let knownDiscrepancy (law: string) (name: string) (reason: string) (checks: (uni
     match failure, context.ExpectedAborted with
     | None, None ->
         record "known-discrepancy-passed" []
-        eprintfn "%s is marked known discrepancy (%s), but it passes; remove `known discrepancy` from its harness" law reason
+
+        eprintfn
+            "%s is marked known discrepancy (%s), but it passes; review the specification and implementation before removing `known discrepancy` from its harness"
+            law
+            reason
 
         Fail.raiseWith
             "KnownDiscrepancyPassed"
             (law
              + " is marked known discrepancy ("
              + reason
-             + "), but it passes; remove `known discrepancy` from its harness")
+             + "), but it passes; review the specification and implementation before removing `known discrepancy` from its harness")
     | Some e, None ->
         record "known-discrepancy" [ "failure", box e.Message ]
         printfn "%s has a known discrepancy (%s): %s" law reason e.Message

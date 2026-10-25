@@ -497,8 +497,8 @@ public enum Harness {
       ]))
   }
 
-  /// A law known to fail: its checks must fail, and a law that passes fails
-  /// the run so the mark is removed.
+  /// An acknowledged discrepancy must reproduce. An unexpected pass requires
+  /// human review of the specification and implementation.
   public static func knownDiscrepancy(
     _ law: String, _ name: String, _ reason: String, _ checks: [() throws -> Void]
   ) throws {
@@ -524,7 +524,7 @@ public enum Harness {
     case (nil, nil):
       record("known-discrepancy-passed", [])
       let message =
-        "\(law) is marked known discrepancy (\(reason)), but it passes; remove `known discrepancy` from its harness"
+        "\(law) is marked known discrepancy (\(reason)), but it passes; review the specification and implementation before removing `known discrepancy` from its harness"
       FileHandle.standardError.write(Data((message + "\n").utf8))
       throw LawSpecError("KnownDiscrepancyPassed", message)
     case (let e?, nil):
