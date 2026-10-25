@@ -219,6 +219,26 @@ schema construction still run on every request. Dynamic existential dispatch
 and public schema assembly remain outside these declaration caches, so adding
 a public type updates the API without invalidating independent documents.
 
+Public Python/Web/Go/Haskell type documents and Go/Haskell codec documents
+are likewise cached independently. Their exact contexts include reached
+constructor allocations and, for Haskell, actual record selectors and deriving
+capabilities. Generic parameter scopes reserve the interfaces the declaration
+can actually name; adding an unrelated type no longer changes a parameter's
+spelling merely because it resembles a compiler-chosen parameter. Constructor
+predicate callbacks, schema metadata and dynamic dispatch are assembled afresh
+under the validated registry, separately from cached native type documents.
+
+Public Rust declaration chunks include their checked conversions and exact
+recursive-boxing/ordering dependencies. F# caches independent native shape,
+codec, bound-codec, handle and alias products. A recursive codec's keyword is
+an assembly choice around a serializable signature and `Layout.F` body; no
+function closure is stored or hashed. Pattern aliases use readable allocated
+type names, reserve user type names, and add checked semantic suffixes only
+for collisions. Their actual allocation is part of the codec presentation
+context. A namespace regression adds a colliding user type after warming the
+cache; its output matches a cold compile, and the resulting F# project also
+passes Fantomas and its native tests.
+
 `memoizedState` remains an exact state-transition primitive for emitters whose
 incoming helper state is relevant. Independent chunks instead isolate their
 request sets as above; hashing the accumulated prior module state would make
@@ -237,8 +257,10 @@ while unrelated type contents and unused bodies do not invalidate them. Public
 Go scalar registry and assertion helpers are assembled as a separate test
 companion, preserving exactly the previously selected primitive generators.
 Adding a public type with a new scalar updates that companion without
-re-lowering independent unit tests. Remaining public per-type emitter adoption
-outside the JVM and typed chunks is tracked by target family.
+re-lowering independent unit tests. Schema metadata, global dispatch tables and module assembly still run under
+the current validated registry. They are distinct from the independent native
+type/function/codec chunks; no cached execution bypasses current definition
+admission or validation of newly generated presentation.
 
 The regression oracle compares warm products against a cold compiler baseline
 that bypasses all Haskell memo-table reads and writes. It covers type/name and

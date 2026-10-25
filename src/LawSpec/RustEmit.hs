@@ -829,7 +829,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               "collect::<ls::Result<Vec<_>>>" [])
             finiteMessage = RL.Macro "format!" "(" ")"
               [RL.atom (q "boundary {}: values={values:?}: {error}"), RL.infixOp "+" (RL.atom "case_index") (RL.atom "1")]
-            finiteFailure = RL.closure "|error|" (RL.Block [] (Just finiteMessage))
+            finiteFailure = RL.closure "|error|" finiteMessage
             finiteCall = RL.method (RL.call "check" (RL.atom "ctx" : map RL.Laid valueArgs)) "map_err" [finiteFailure]
             finiteCheck = statements (opened [RL.stmt (RL.Let "values" finiteValues), RL.expr finiteCall])
             rowAction
