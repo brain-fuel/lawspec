@@ -18,6 +18,7 @@ import qualified LawSpec.AbilityNames as N
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Literals as Literals
 import LawSpec.NativeRequest (BindingPlan)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
 import LawSpec.Search (lawDescriptors, searchable)
@@ -247,7 +248,11 @@ emit target layout bindings plan = do
               else [workflowScope (if plainScope then acquired else scoped schema exampleSchema acquired)]
         pure (test suffix exampleLink False body')
       cover <- caseCover planned
-      let coverExpression = beamCover cover
+      literalPlan <- Literals.planLiterals (Literals.coverLiterals cover)
+      let literalValue value = Literals.literalReference literalPlan value >>= literalTerm name
+      coverExpression <- beamCover literalValue cover
+      literalHelpers <- literalFunctions name literalPlan
+      let
           finiteIndex = D.text "CaseIndex"
           finiteFactories = D.text "CaseFactories"
           finiteValues = E.remote "lawspec_beam_finite" "values" [symbols, finiteFactories]
@@ -258,12 +263,12 @@ emit target layout bindings plan = do
           finiteMake = E.lambda [finiteIndex, finiteFactories] (nativeTimeout (E.tuple
             [E.remote "lawspec_beam_finite" "description" [E.binary shown, finiteIndex], E.lambda [] finiteBody]))
           finiteGroups = [E.tuple [E.atom "finite", coverExpression, finiteMake] | Cover.coverCount cover > 0]
-      randomTests <- case finiteCases planned of
+      (randomTests, generatorHelpers) <- case finiteCases planned of
         -- An exhaustive law has no random samples to satisfy cover. Still
         -- report zero observations; a cover clause must not silently pass.
-        Just _ | not (sampleFinite plan planned) -> pure [test "statistics" lawLink True [E.atom "ok"] | observed harness]
+        Just _ | not (sampleFinite plan planned) -> pure ([test "statistics" lawLink True [E.atom "ok"] | observed harness], [])
         _ -> do
-          generator <- Generators.inputs framework schema symbols plan local planned
+          (generator, helpers) <- Generators.inputsWithHelpers name framework schema symbols plan local planned
           predicates <- mapM render (concatMap C.quantifiedPredicates (C.propertyInputs law))
           covers <- mapM (render . C.coverWhen) (C.harnessCover harness)
           classes <- forM (C.harnessClassify harness) $ \(predicate, name') -> do
@@ -294,7 +299,7 @@ emit target layout bindings plan = do
               propertyTest = test "property" lawLink (observed harness) (replay ++ [E.remote framework "check" [lawIdentity,
                 E.remote framework "forall" [E.remote framework "complete" [generator],
                   callback],options]])
-          pure [propertyTest]
+          pure ([propertyTest], helpers)
       searchTests <- case targetSearch plan planned of
         Nothing -> pure []
         Just (descriptors, targetScore) -> do
@@ -338,14 +343,37 @@ emit target layout bindings plan = do
                then E.remote "lawspec_beam_finite" "case_at" [E.call planName [], D.text "Index"]
                else E.remote "lists" "nth" [E.operator "+" (D.text "Index") (D.text "1"), E.call (name ++ "_test_") []]]
       pure ([bodyDoc] ++ [caseDoc | not plainCase] ++
-        [planDoc, E.function (name ++ "_test_") [] [tests], caseAtDoc] ++ caseFunctions)
+        [planDoc, E.function (name ++ "_test_") [] [tests], caseAtDoc] ++ literalHelpers ++ generatorHelpers ++ caseFunctions)
 
-    beamCover (Cover.Complete count) = E.tuple [E.atom "copies", D.text (show count)]
-    beamCover (Cover.Alternatives branches) = E.tuple [E.atom "branches", E.array
-      [E.tuple [domainDoc domain, beamCover suffix] | (domain, suffix) <- branches]]
-    domainDoc (Cover.Values values) = E.tuple [E.atom "values", E.array
-      [E.lambda [symbols] (E.value symbols value) | value <- values]]
-    domainDoc (Cover.IntegerInterval _ first last') = E.tuple [E.atom "integers", D.text (show first), D.text (show last')]
+    beamCover literal (Cover.Complete count) = pure (E.tuple [E.atom "copies", D.text (show count)])
+    beamCover literal (Cover.Alternatives branches) = do
+      branches' <- forM branches $ \(domain,suffix) -> do
+        domain' <- domainDoc literal domain
+        suffix' <- beamCover literal suffix
+        pure (E.tuple [domain',suffix'])
+      pure (E.tuple [E.atom "branches",E.array branches'])
+    domainDoc literal (Cover.Values values) = do
+      factories <- mapM (fmap (E.lambda [symbols]) . literal) values
+      pure (E.tuple [E.atom "values",E.array factories])
+    domainDoc _ (Cover.IntegerInterval _ first last') = pure (E.tuple [E.atom "integers", D.text (show first), D.text (show last')])
+    literalTerm prefix = Literals.foldLiteral (pure . E.literal symbols)
+      (\index fields -> pure (E.call (prefix ++ "_literal_shape_" ++ show index) [symbols,E.array fields]))
+      (\index -> pure (E.call (prefix ++ "_literal_" ++ show index) [symbols]))
+    literalFunctions prefix literalPlan = do
+      let fields = D.text "Fields"
+          function name arguments body = E.function name (map (\name -> E.variable name body) arguments) [body]
+      shapes <- forM (Literals.literalShapes literalPlan) $ \(index,shape) -> do
+        body <- case shape of
+          Literals.ConstructorShape _ tag -> pure (E.tuple [E.atom "ls_data",E.binary (C.idText tag),fields])
+          Literals.ListShape _ -> pure fields
+          Literals.PresenceShape (C.Constructor name _) present -> pure (E.tuple [E.atom "ls_presence",E.binary name,
+            if present then E.tuple [E.atom "some",E.remote "erlang" "hd" [fields]] else E.atom "none"])
+          Literals.PresenceShape _ _ -> Left "non-constructor presence in checked literal plan"
+        pure (function (prefix ++ "_literal_shape_" ++ show index) ["Symbols","Fields"] body)
+      factories <- forM (Literals.literalFactories literalPlan) $ \(index,term) -> do
+        body <- literalTerm prefix term
+        pure (function (prefix ++ "_literal_" ++ show index) ["Symbols"] body)
+      pure (shapes ++ factories)
 
 -- | The names of a law's cases, in the order its test list runs them:
 -- each example's own words, boundary_1, boundary_2, ..., then property,

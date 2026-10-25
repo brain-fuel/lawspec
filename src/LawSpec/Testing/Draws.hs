@@ -62,7 +62,11 @@ planDraw requirement available root = do
         C.DrawBind binder from rest -> BindDraw binder <$> visit from <*> visit rest
       let identities = nub (free step)
       captures <- lift (mapM capture identities)
-      let key = semanticBytes (encode resolver (captures, step))
+      -- Free type/index variables name lexical parameters, not helper
+      -- value arguments. Keep those references distinct when normalizing
+      -- value binders for sharing.
+      let typeReferences = nub (concatMap variables (map C.binderType captures ++ stepTypes step))
+          key = semanticBytes (encode resolver (typeReferences, captures, step))
       (known, nodes) <- get
       case M.lookup key known of
         Just number -> pure (DrawCall number identities)
@@ -82,6 +86,22 @@ planDraw requirement available root = do
       FrequencyDraw alternatives -> concatMap (drawArguments . snd) alternatives
       FilterDraw inner binder predicate _ -> drawArguments inner ++ without binder (C.freeBinders predicate)
       BindDraw binder from rest -> drawArguments from ++ without binder (drawArguments rest)
+    stepTypes step = case step of
+      AnyDraw ty aim -> ty : maybe [] (\q -> C.binderType (C.quantifiedBinder q) :
+        concatMap expressionTypes (C.quantifiedPredicates q ++ map snd (C.quantifiedBounds q))) aim
+      OneOfDraw ty expressions -> ty : concatMap expressionTypes expressions
+      FrequencyDraw _ -> []
+      FilterDraw _ binder predicate _ -> C.binderType binder : expressionTypes predicate
+      BindDraw binder _ _ -> [C.binderType binder]
+    expressionTypes expression = C.expressionType expression : concatMap expressionTypes (C.children expression)
+    variables ty = case ty of
+      C.TypeVariable identity -> [C.idText identity]
+      C.Arrow a b -> variables a ++ variables b
+      C.Constructor _ arguments -> concatMap argumentVariables arguments
+    argumentVariables argument = case argument of
+      C.TypeArgument ty -> variables ty
+      C.IndexArgument (C.IndexVariable identity) -> [C.idText identity]
+      C.IndexArgument _ -> []
     without binder = filter (/= C.binderId binder)
     binders draw = case draw of
       C.DrawAny _ aim -> maybe [] (pure . C.quantifiedBinder) aim
