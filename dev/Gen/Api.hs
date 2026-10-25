@@ -331,7 +331,7 @@ declarations = joinWith (softbreak <> softbreak)
       ("searchCompleteness","'not-established'"), ("executionRun?", "string"), ("environment?", "string")])
   , alias "RecordedNativeExecutionAttempt"
       [text "Omit<NativeExecutionAttempt, 'outcome'> &" <> nest 2 (softline <>
-        record [("outcome",union [text "NativeOutcome",quoted "known-discrepancy"])])]
+        record [("outcome",union [text "NativeOutcome",quoted "known-failing"])])]
   , interface "NativeExecutionObservation" (fields [("target","string"),("root","string"),
       ("outcome","NativeOutcome"),("freshness","NativeFreshness"),
       ("reason","string"),("check?","{id: string; obligations: NativeEvidenceTarget[]}"),
