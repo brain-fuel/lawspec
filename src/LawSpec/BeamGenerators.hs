@@ -1,7 +1,7 @@
 -- | Native generator composition from checked inputs and harness strategies.
 -- Every choice and bind retains its framework's own shrink tree.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks ref:REQ-harness-units
-module LawSpec.BeamGenerators (inputs, directBounds, lengthBounds, nonEmptyBounds) where
+module LawSpec.BeamGenerators (inputs, inputsWithHelpers, directBounds, lengthBounds, nonEmptyBounds) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -12,10 +12,18 @@ import qualified LawSpec.BeamDefinitions as Definitions
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Testing
+import qualified LawSpec.Testing.Draws as Draws
 import Data.List (nub)
 
 inputs :: String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String D.Doc
-inputs framework schema symbols plan local planned = walk [] (generatorRequirements planned)
+inputs framework schema symbols plan local planned = fst <$> buildInputs Nothing framework schema symbols plan local planned
+
+-- | Native modules retain helper functions beside the root generator call.
+inputsWithHelpers :: String -> String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String (D.Doc, [D.Doc])
+inputsWithHelpers prefix = buildInputs (Just prefix)
+
+buildInputs :: Maybe String -> String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String (D.Doc, [D.Doc])
+buildInputs helperPrefix framework schema symbols plan local planned = walk [] (generatorRequirements planned)
   where
     units = map plannedUnit (plannedUnits plan)
     strategies = C.harnessDraws (C.propertyHarness (plannedProperty planned))
@@ -25,22 +33,24 @@ inputs framework schema symbols plan local planned = walk [] (generatorRequireme
     bindName binder name outer identity = if C.binderId binder == identity then name else outer identity
     conjunction [] = E.atom "true"
     conjunction ps = foldr1 (E.operator "andalso") ps
-    walk previous [] = pure (native "exactly" [E.array previous])
+    walk previous [] = pure (native "exactly" [E.array previous], [])
     walk previous (requirement:rest) = do
       let binder = generatorBinder requirement
           name = local (C.binderId binder)
-      generator <- case [(s,d) | (identity,s,d) <- strategies, identity == C.binderId binder] of
-        [] -> regular local requirement
+      (generator, helpers) <- case [(s,d) | (identity,s,d) <- strategies, identity == C.binderId binder] of
+        [] -> (\generator -> (generator,[])) <$> regular local requirement
         (strategy,draw):_ -> do
-          generated <- strategyDraw local requirement strategy (show (length previous)) draw
+          (generated, helpers) <- case helperPrefix of
+            Nothing -> (\generator -> (generator,[])) <$> strategyDraw local requirement strategy (show (length previous)) draw
+            Just prefix -> sharedDraw (prefix ++ "_" ++ show (length previous)) local requirement strategy draw
           let checkedName = name ++ "_Checked"
           predicates <- mapM (render (bindName binder checkedName local)) (generatorPredicates requirement)
-          pure (if null predicates then generated else native "map" [generated,E.lambda [D.text name]
+          pure ((if null predicates then generated else native "map" [generated,E.lambda [D.text name]
             (E.remote "lawspec_beam_generators" "check_drawn" [E.binary strategy,E.binary (C.binderName binder),
               E.lambda [D.text checkedName] (conjunction predicates),
-              D.text name])])
-      remaining <- walk (previous ++ [D.text name]) rest
-      pure (bind generator name remaining)
+              D.text name])]), helpers)
+      (remaining, laterHelpers) <- walk (previous ++ [D.text name]) rest
+      pure (bind generator name remaining, helpers ++ laterHelpers)
     regular names requirement = do
       generator <- raw names requirement
       predicates <- mapM (render names) (generatorPredicates requirement)
@@ -101,6 +111,42 @@ inputs framework schema symbols plan local planned = walk [] (generatorRequireme
         let name = "_" ++ Names.variableName (C.binderName binder) ++ path
         remaining <- strategyDraw (bindName binder name names) requirement strategy (path ++ "_rest") rest
         pure (bind generator name remaining)
+    sharedDraw prefix outer requirement strategy draw = do
+      let available = map C.quantifiedBinder (C.propertyInputs (plannedProperty planned)) ++
+            map C.resourceBinder (C.propertyResources (plannedProperty planned))
+      graph <- Draws.planDraw requirement available draw
+      let helperName number = prefix ++ "_draw_" ++ show number
+          invoke names call = E.call (helperName (Draws.drawCallee call))
+            (schema : symbols : map (D.text . names) (Draws.drawArguments call))
+          nodeDoc node = do
+            let captures = Draws.drawCaptures node
+                captureNames = Names.variables Names.generatedVariables (map C.binderName captures)
+                names identity = maybe (error ("unbound shared BEAM strategy capture: " ++ C.idText identity)) id
+                  (lookup identity (zip (map C.binderId captures) captureNames))
+                bound binder = case Names.variables (Names.generatedVariables ++ captureNames) [C.binderName binder] of
+                  name : _ -> name
+                  [] -> "Drawn"
+                path = show (Draws.drawNumber node)
+            body <- case Draws.drawStep node of
+              Draws.AnyDraw ty aim -> strategyDraw
+                (bindName (generatorBinder requirement) (bound (generatorBinder requirement)) names)
+                requirement strategy path (C.DrawAny ty aim)
+              Draws.OneOfDraw ty values -> strategyDraw names requirement strategy path (C.DrawOneOf ty values)
+              Draws.FrequencyDraw alternatives -> do
+                let selector = native "frequency" [E.array [E.tuple [D.text (show weight),native "exactly" [D.text (show i)]]
+                      | (i,(weight,_)) <- zip [1::Int ..] alternatives]]
+                pure (choose strategy path selector [invoke names call | (_,call) <- alternatives])
+              Draws.FilterDraw child binder predicate limit -> do
+                let name = bound binder
+                condition <- render (bindName binder name names) predicate
+                pure (native "such_that" [invoke names child,E.lambda [D.text name] condition,D.text (show limit),E.binary strategy])
+              Draws.BindDraw binder from rest -> do
+                let name = bound binder
+                pure (bind (invoke names from) name (invoke (bindName binder name names) rest))
+            pure (E.function (helperName (Draws.drawNumber node))
+              (E.variable "Schema" body : E.variable "Symbols" body : [E.variable name body | name <- captureNames]) [body])
+      helpers <- mapM nodeDoc (Draws.drawNodes graph)
+      pure (invoke outer (Draws.drawRoot graph), helpers)
     choose strategy path selector branches =
       let name = "_" ++ Names.variableName strategy ++ "Choice" ++ path
       in bind selector name (E.apply (E.remote "lists" "nth"
