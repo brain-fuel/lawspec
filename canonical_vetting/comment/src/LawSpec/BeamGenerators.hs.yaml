@@ -4,6 +4,12 @@ decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators:
 decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/directBounds:
   digest: sha256:d08836c79e0e799e
   verdict: pending
+decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/inputsWithHelpers:
+  digest: sha256:4c01ce84d5055066
+  verdict: pending
+decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/inputsWithLiteralHelpers:
+  digest: sha256:b60b1a203f3b6338
+  verdict: pending
 decision/haskell/src/LawSpec/BeamGenerators.hs/module/LawSpec.BeamGenerators/function/lengthBounds:
   digest: sha256:493f18e86bc22001
   verdict: pending

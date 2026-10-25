@@ -16,6 +16,9 @@ decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/functio
 decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/testManifest:
   digest: sha256:29caac3a259a30f5
   verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/testManifestWithBindings:
+  digest: sha256:eca83f9ea01825da
+  verdict: pending
 decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/unitTestPath:
   digest: sha256:48302d58fdee693b
   verdict: pending

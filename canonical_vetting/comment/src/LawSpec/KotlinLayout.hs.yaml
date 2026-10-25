@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout:
   digest: sha256:46ec9e35819a9f22
   verdict: pending
+decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/data/Receiver:
+  digest: sha256:a9d515777c3ed45a
+  verdict: pending
 decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/arguments:
   digest: sha256:1b64994b53bb1dc2
   verdict: pending
@@ -48,9 +51,6 @@ decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/functio
   verdict: pending
 decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/pairTo:
   digest: sha256:4b7fd1e3fa8d15ae
-  verdict: pending
-decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/qualifiedCall:
-  digest: sha256:e37918ea6829d129
   verdict: pending
 decision/haskell/src/LawSpec/KotlinLayout.hs/module/LawSpec.KotlinLayout/function/selects:
   digest: sha256:4a7d7b50f02cc06d

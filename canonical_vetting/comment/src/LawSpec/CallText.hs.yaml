@@ -1,9 +1,0 @@
-decision/haskell/src/LawSpec/CallText.hs/module/LawSpec.CallText:
-  digest: sha256:1f63c7c9c71bcd54
-  verdict: pending
-decision/haskell/src/LawSpec/CallText.hs/module/LawSpec.CallText/data/CallTree:
-  digest: sha256:d5abf585bf434df0
-  verdict: pending
-decision/haskell/src/LawSpec/CallText.hs/module/LawSpec.CallText/function/parseCall:
-  digest: sha256:7973bcc38ab330c2
-  verdict: pending

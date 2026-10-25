@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Testing/Draws.hs/module/LawSpec.Testing.Draws:
+  digest: sha256:964beb9346ef0355
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Draws.hs/module/LawSpec.Testing.Draws/data/DrawCall:
+  digest: sha256:f251d52914c1ce4e
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Draws.hs/module/LawSpec.Testing.Draws/data/DrawNode:
+  digest: sha256:8d73499f11fce379
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Draws.hs/module/LawSpec.Testing.Draws/data/DrawStep:
+  digest: sha256:8e79a4f96361bda0
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Draws.hs/module/LawSpec.Testing.Draws/function/planDraw:
+  digest: sha256:6453be4ee50fd666
+  verdict: pending

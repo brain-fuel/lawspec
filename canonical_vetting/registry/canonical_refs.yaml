@@ -295,6 +295,9 @@ registry/lean-lake:
 registry/lean-list-quantifiers:
   digest: sha256:ca6f6df9b5915bb3
   verdict: pending
+registry/lean-preprocessing-operational-behavior:
+  digest: sha256:b991e6ca77b1884e
+  verdict: pending
 registry/lichtenstein-pnueli-fairness:
   digest: sha256:0149b64a37b403cc
   verdict: pending

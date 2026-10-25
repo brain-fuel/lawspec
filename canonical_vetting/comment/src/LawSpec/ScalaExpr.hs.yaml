@@ -16,6 +16,9 @@ decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/chec
 decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/codec:
   digest: sha256:5efad28799554cba
   verdict: pending
+decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/codecReceiver:
+  digest: sha256:5708965bd9a60503
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaExpr.hs/module/LawSpec.ScalaExpr/function/lambda:
   digest: sha256:162102682845b046
   verdict: pending

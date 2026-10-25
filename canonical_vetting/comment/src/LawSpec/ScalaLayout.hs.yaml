@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout:
   digest: sha256:86679600ebf8ecf3
   verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/data/Receiver:
+  digest: sha256:d00d7f56715887b0
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/arrow:
   digest: sha256:549f27a146d5f17a
   verdict: pending
@@ -18,6 +21,9 @@ decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/
   verdict: pending
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/call:
   digest: sha256:f731e40f096bff19
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/callReceiver:
+  digest: sha256:c0feddaa23ccb5df
   verdict: pending
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/callThen:
   digest: sha256:4564796858de0f01
@@ -46,8 +52,14 @@ decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/parameters:
   digest: sha256:47ba60452982101e
   verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/referenceReceiver:
+  digest: sha256:08bd71f981a2448b
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/scalaString:
   digest: sha256:b4f731199e6e5b27
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/signature:
+  digest: sha256:ce6511d213b79217
   verdict: pending
 decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/trailing:
   digest: sha256:2a77d587c2a26de6
@@ -57,4 +69,7 @@ decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/
   verdict: pending
 "decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/trailingChain'":
   digest: sha256:bf9e60ac02bcc657
+  verdict: pending
+decision/haskell/src/LawSpec/ScalaLayout.hs/module/LawSpec.ScalaLayout/function/trailingReceiver:
+  digest: sha256:155c8d83859407f2
   verdict: pending

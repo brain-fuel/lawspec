@@ -13,6 +13,9 @@ decision/haskell/src/LawSpec/BeamExpr.hs/module/LawSpec.BeamExpr/function/intege
 decision/haskell/src/LawSpec/BeamExpr.hs/module/LawSpec.BeamExpr/function/operatorFunction:
   digest: sha256:d13e18b90db16a13
   verdict: pending
+decision/haskell/src/LawSpec/BeamExpr.hs/module/LawSpec.BeamExpr/function/renderExpressionWithConstruction:
+  digest: sha256:947b360e7149e6fa
+  verdict: pending
 decision/haskell/src/LawSpec/BeamExpr.hs/module/LawSpec.BeamExpr/function/renderExpressionWithContext:
   digest: sha256:13890021ab2f35c7
   verdict: pending

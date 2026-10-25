@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/ar
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/bindValue:
   digest: sha256:7c7aa92bff295aa2
   verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/bindValueWith:
+  digest: sha256:588d3481a2f59d5c
+  verdict: pending
 decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/call:
   digest: sha256:85b1fe35cbf0db3f
   verdict: pending

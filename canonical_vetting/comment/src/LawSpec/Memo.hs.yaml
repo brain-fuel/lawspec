@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/data/Persistence:
 decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/data/Table:
   digest: sha256:21fd0a10f1737018
   verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/boundedShowWeight:
+  digest: sha256:43df656252c05f4a
+  verdict: pending
 decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/buildIdentity:
   digest: sha256:9608e5a08bf49a68
   verdict: pending
@@ -21,6 +24,9 @@ decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/newPersistentT
   verdict: pending
 decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/newTable:
   digest: sha256:04831ff05bc7d368
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/newTableByShow:
+  digest: sha256:6389c309628d3347
   verdict: pending
 decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/withCacheDirectory:
   digest: sha256:826d662a38630093

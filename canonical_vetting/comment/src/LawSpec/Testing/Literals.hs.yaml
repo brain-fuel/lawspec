@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals:
+  digest: sha256:6bdd3c1a3f63ffdc
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals/data/LiteralShape:
+  digest: sha256:dce1a21c76adbacb
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals/data/LiteralTerm:
+  digest: sha256:49b6968ab61689dc
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals/function/coverLiterals:
+  digest: sha256:471634496978438c
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals/function/foldLiteral:
+  digest: sha256:4f91714e360289fb
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals/function/planLiterals:
+  digest: sha256:313156f5eedeb82c
+  verdict: pending
+decision/haskell/src/LawSpec/Testing/Literals.hs/module/LawSpec.Testing.Literals/function/planRootLiterals:
+  digest: sha256:737566ef3375aa03
+  verdict: pending

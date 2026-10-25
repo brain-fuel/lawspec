@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities:
 decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities/function/argumentNames:
   digest: sha256:46642ef40ee276ab
   verdict: pending
+decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities/function/elixirType:
+  digest: sha256:5ba0fa1e9b864941
+  verdict: pending
 decision/haskell/src/LawSpec/BeamAbilities.hs/module/LawSpec.BeamAbilities/function/failingOperations:
   digest: sha256:9a68f1835ed546d9
   verdict: pending

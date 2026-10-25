@@ -49,6 +49,9 @@ decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scal
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecDocWithContext:
   digest: sha256:6650bdd3f33a4f79
   verdict: pending
+decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaCodecReceiverWithContext:
+  digest: sha256:ced58a33f85231c5
+  verdict: pending
 decision/haskell/src/LawSpec/ScalaData.hs/module/LawSpec.ScalaData/function/scalaDataType:
   digest: sha256:91f56320e676a8ea
   verdict: pending

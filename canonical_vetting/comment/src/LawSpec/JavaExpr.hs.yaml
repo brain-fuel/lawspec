@@ -7,6 +7,9 @@ decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/array:
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/call:
   digest: sha256:5449eb5200e2a76e
   verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/classLiteral:
+  digest: sha256:f350fca6eecdd315
+  verdict: pending
 decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/declare:
   digest: sha256:e3142821990404bd
   verdict: pending
