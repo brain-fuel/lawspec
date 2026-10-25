@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/OutputLayout.hs/module/LawSpec.OutputLayout:
+  digest: sha256:5a389d2ebec466e4
+  verdict: pending
+decision/haskell/src/LawSpec/OutputLayout.hs/module/LawSpec.OutputLayout/function/defaultDirectories:
+  digest: sha256:ba1cabc47812fdd4
+  verdict: pending
+decision/haskell/src/LawSpec/OutputLayout.hs/module/LawSpec.OutputLayout/function/sourceImportRoot:
+  digest: sha256:cfb71e479bcdbfd1
+  verdict: pending

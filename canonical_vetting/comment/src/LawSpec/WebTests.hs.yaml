@@ -7,3 +7,6 @@ decision/haskell/src/LawSpec/WebTests.hs/module/LawSpec.WebTests/function/typeKe
 decision/haskell/src/LawSpec/WebTests.hs/module/LawSpec.WebTests/function/webTests:
   digest: sha256:70263f1b8e7cdf1c
   verdict: pending
+decision/haskell/src/LawSpec/WebTests.hs/module/LawSpec.WebTests/function/webTestsWithSourceRoot:
+  digest: sha256:1fd8c9e6423f56b0
+  verdict: pending

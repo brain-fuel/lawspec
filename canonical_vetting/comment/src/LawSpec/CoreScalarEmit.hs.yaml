@@ -16,6 +16,9 @@ decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/fun
 decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmitWithNativeGenerators:
   digest: sha256:d7248f94b25f19e8
   verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmitWithSourceRoot:
+  digest: sha256:4e2f390846f130ee
+  verdict: pending
 decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/typeKey:
   digest: sha256:56e65ebe4970934f
   verdict: pending

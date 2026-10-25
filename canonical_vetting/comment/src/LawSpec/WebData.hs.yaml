@@ -16,3 +16,6 @@ decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/replace:
 decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/testStrategies:
   digest: sha256:2054fe381700836e
   verdict: pending
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/testStrategiesWithSourceRoot:
+  digest: sha256:e05740e9b5568d4c
+  verdict: pending

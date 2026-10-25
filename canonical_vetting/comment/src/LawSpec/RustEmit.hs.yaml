@@ -19,6 +19,9 @@ decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRu
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRustWithBindings:
   digest: sha256:d4b4744de9885bd8
   verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRustWithBindingsAt:
+  digest: sha256:c48d717ee675a7cf
+  verdict: pending
 decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRustWithFormat:
   digest: sha256:b58592a85d5c38c8
   verdict: pending

@@ -13,6 +13,9 @@ decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/fun
 decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/emitWebDefinitions:
   digest: sha256:36e7c4360b4e9cf0
   verdict: pending
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/emitWebDefinitionsWithNativeBridge:
+  digest: sha256:cd77c951a1cdd675
+  verdict: pending
 decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/plainCall:
   digest: sha256:258ef579247a5df4
   verdict: pending

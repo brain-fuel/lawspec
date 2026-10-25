@@ -28,3 +28,6 @@ decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeSc
 decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/nativeScalarUnitProductWithAdapterBindings:
   digest: sha256:71cb22bd228563ff
   verdict: pending
+decision/haskell/src/LawSpec/CoreNativeScalarEmit.hs/module/LawSpec.CoreNativeScalarEmit/function/nativeScalarUnitProductWithNetwork:
+  digest: sha256:44cf35a5e75a2106
+  verdict: pending

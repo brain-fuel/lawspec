@@ -16,6 +16,9 @@ decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/go
 decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/modelTestArtifacts:
   digest: sha256:04b93bec2f1d2926
   verdict: pending
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/modelTestProductWithNetwork:
+  digest: sha256:7882fb16146d3313
+  verdict: pending
 decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/prepare:
   digest: sha256:eb57aca2be1a8dea
   verdict: pending
