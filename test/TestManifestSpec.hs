@@ -42,7 +42,7 @@ text _ = ""
 named :: String -> String -> String
 named target name = case target of
   "python" -> "def " ++ name ++ "__"
-  "prolog" -> "test(" ++ name ++ ")"
+  "prolog" -> "::" ++ name
   "go" -> "func " ++ name ++ "_"
   -- A Rust law is a module of tests (law_<words>::<test>).
   "rust" -> "mod " ++ takeWhile (/= ':') name ++ " {"
@@ -54,7 +54,7 @@ named target name = case target of
 modelNamed :: String -> String -> String
 modelNamed target name = case target of
   "python" -> "def " ++ name ++ "("
-  "prolog" -> "test(" ++ name ++ ")"
+  "prolog" -> "::" ++ name
   "go" -> "func " ++ name ++ "("
   "rust" -> "fn " ++ name ++ "()"
   "haskell" -> "\"" ++ name ++ "\""
@@ -112,6 +112,9 @@ test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $
             | target `elem` ["javascript", "typescript"] ->
                 -- Labels are inside native string literals there.
                 content `shouldSatisfy` isInfixOf (init (drop 1 (javascriptLiteral (text (field "label" t)))))
+            | target == "prolog" -> do
+                content `shouldSatisfy` isInfixOf "lawspec_prolog:host_cases"
+                content `shouldSatisfy` isInfixOf ("::" ++ name)
             | target == "python", field "kind" t /= String "model" ->
                 -- Finite functions are registered by their public prefix;
                 -- property/example functions retain ordinary declarations.

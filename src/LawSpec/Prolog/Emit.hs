@@ -14,7 +14,7 @@ import qualified Data.Text.Encoding as T
 import qualified LawSpec.Core as C
 import LawSpec.Core.DefinitionContracts (validateNativeEmissionDefinitions)
 import LawSpec.Common (Artifact(..), Diagnostic(..), pythonUnitFile)
-import LawSpec.Naming (Casing(..), cased, claimAll, displayLabel, escapeKeyword, nameWords, reservedFor, scopeWith)
+import LawSpec.Naming (Casing(..), cased, claimAll, displayLabel, escapeKeyword, nameWords, reservedFor, scopeWith, sourceDefinitionName)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, sourceLink, unitSourceFile)
 import LawSpec.PythonTypes (pythonTypeReferenceDoc, pythonLayout)
 import qualified LawSpec.PythonExpr as E
@@ -171,13 +171,12 @@ prologFromPreparedPython sourceDir testDir bindings plan input = do
       , [directive (Compound "use_module" [Compound "library" [Atom "plunit"]]),
          directive (Compound "use_module" [Compound "library" [Atom "janus"]])]
       , [directive (Compound "begin_tests" [Atom (testUnit host)])] ] ++
-      [ lawLink name ++ [clause (Compound "test" [Atom name]) (Just (Compound "py_call"
-          [Infix ":" (Atom "lawspec_prolog_tests") (Compound "run_case" [Atom (testFile host ++ "::" ++ name)]),
-           Compound "@" [Atom "true"]]))]
+      [ lawLink name ++ [directive (Infix ":" (Atom "lawspec_prolog")
+          (Compound "host_cases" [Atom (testFile host ++ "::" ++ name)]))]
       | (file,name,_,_) <- slots, file == host ] ++
       [[directive (Compound "end_tests" [Atom (testUnit host)])]])) "test" | host <- hosts]
     indented line = if null line then line else "    " ++ line
-    linkComment d = ["    # " ++ labelled (C.declarationName d) (Just l) | Just l <- [sourceLink (C.declarationOrigin d)]]
+    linkComment d = ["    # " ++ labelled (sourceDefinitionName (C.declarationName d)) (Just l) | Just l <- [sourceLink (C.declarationOrigin d)]]
     specFile = case nub [f | u <- units, Just f <- [unitSourceFile u]] of [one] -> Just one; _ -> Nothing
     handlers d = filter (not . C.isFail) (C.declarationUses d)
     failures d = mapM failure [a | a <- C.declarationUses d, C.isFail a]
