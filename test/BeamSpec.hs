@@ -455,6 +455,26 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         source `shouldSatisfy` isInfixOf "scoped(_OuterSchema,"
         source `shouldSatisfy` isInfixOf "scoped(_HandledSchema0,"
         source `shouldSatisfy` isInfixOf "read(_HandledSchema1)"
+  it "passes fresh ordered constructor fields through the innermost handler schema" $ do
+    let ability = C.AbilityRef (C.Id "example::ability::Counter") []
+        origin = C.GeneratedFrom (C.Id "constructor-scope-test")
+        boxed = C.Constructor "example::Box" []
+        readField name = C.Expr (C.scalarType "Integer") (C.Perform (C.Operation ability name) []) origin
+        construct = C.Expr boxed (C.Construct (C.Id "example::Box::Pack") [readField "first",readField "second"]) origin
+        handled body = C.Expr boxed (C.Handle (C.WithHandler ability (C.SpecHandler (C.Id "counter"))) body) origin
+        external schema expression values = pure (E.call
+          (case C.expressionNode expression of C.Handle _ _ -> "scoped"; C.Perform op _ -> C.operationName op; _ -> "unexpected") (schema : values))
+        constructor schema ty tag values = do
+          ty `shouldBeType` boxed
+          tag `shouldBeTag` C.Id "example::Box::Pack"
+          pure (E.call "checked_box" (schema : values))
+        shouldBeType a b = if a == b then Right () else Left "constructor type changed"
+        shouldBeTag a b = if a == b then Right () else Left "constructor tag changed"
+    case Expr.renderExpressionWithConstruction (D.text "64") E.typeReference (const (Right (E.binary "unused")))
+        constructor (D.text "Outer") (D.text "Symbols") C.idText external (handled (handled construct)) of
+      Left err -> expectationFailure err
+      Right doc -> D.render D.Compact doc `shouldSatisfy`
+        isInfixOf "checked_box(_HandledSchema1, first(_HandledSchema1), second(_HandledSchema1))"
   -- ref:DEC-total-definitions ref:DEC-native-property-frameworks
   mapM_ (\target -> it (target ++ " emits native abilities and keeps example recordings in the case scope") $ do
     input <- readFile "acceptance/beam-handler-context/context.lawspec"
