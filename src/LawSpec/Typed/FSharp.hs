@@ -15,9 +15,14 @@
 module LawSpec.Typed.FSharp (FSharpTyped(..), emitFSharpTyped, dotnetTypedDeclarations) where
 
 import Control.Monad (forM)
+import Control.Applicative ((<|>))
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
 import Control.Monad.State.Strict
 import Data.Char (isLower)
-import Data.List (intercalate)
+import Data.List (intercalate, nub, sort)
 import qualified Data.Map.Strict as M
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
@@ -64,11 +69,14 @@ data Env = Env
   , envFunctions :: M.Map Int String
   , envUnits :: [Unit]
   , envIdentity :: Identity.Graph
+  , envByteNames :: M.Map String String
   }
 
 -- | The names taken in the module (functions, literals) and in the function
 -- being written, and the literals made so far.
-data St = St { stModule :: Scope, stLocals :: Scope, stLiterals :: M.Map String (String, F), stOrdering :: Maybe String }
+data St = St { stModule :: Scope, stLocals :: Scope, stLiterals :: M.Map String (String, F), stOrdering :: Maybe String } deriving (Show, Generic)
+
+instance Binary St
 
 type M = StateT St (Either String)
 
@@ -89,15 +97,41 @@ enterFunction :: M ()
 enterFunction = modify (\s -> s { stLocals = stModule s })
 
 -- | A byte array, made once.
-literal :: String -> F -> M String
-literal key definition = do
+literal :: Env -> String -> F -> M String
+literal env key definition = do
   st <- get
   case M.lookup key (stLiterals st) of
     Just (name, _) -> pure name
-    Nothing -> do
-      let (name, scope) = claim (stModule st) "bytes"
-      put st { stLiterals = M.insert key (name, definition) (stLiterals st), stModule = scope }
-      pure name
+    Nothing -> case M.lookup key (envByteNames env) of
+      Nothing -> lift' (Left "typed F#: a byte literal was not planned")
+      Just name -> do
+        put st { stLiterals = M.insert key (name, definition) (stLiterals st) }
+        pure name
+
+-- Content-derived literal names keep sharing stable when an earlier function
+-- adds a constant. Real prefix/public-name collisions expand deterministically
+-- before any chunk is lowered, never by the previous function's requests.
+byteLiterals :: Expr -> [Scalar]
+byteLiterals expression = case expressionNode expression of
+  Constant value@(SSequence "Bytes" _) -> [value]
+  _ -> concatMap byteLiterals (children expression)
+
+byteKey :: Scalar -> String
+byteKey (SSequence "Bytes" units) = "bytes " ++ show units
+byteKey _ = error "typed F#: not a byte literal"
+
+byteNames :: Identity.Graph -> [String] -> [Unit] -> M.Map String String
+byteNames graph reserved units = M.fromList [(byteKey value, chosen value) | value <- values]
+  where
+    expressions = [definitionBody definition | unit <- units, definition <- unitDefinitions unit] ++
+      [start | unit <- units, handler <- unitHandlers unit, Just (_,start) <- [handlerState handler]]
+    values = nub (concatMap byteLiterals expressions)
+    suffix value = Identity.semanticKey graph "typed-fsharp-byte-literal" value
+    short value = "bytes" ++ take 12 (suffix value)
+    chosen value =
+      let collisions = length [other | other <- values, short other == short value]
+          base = if collisions == 1 && short value `notElem` reserved then short value else "bytes" ++ suffix value
+      in fst (claim (scopeWith reserved) base)
 
 -- | Names the module itself uses.
 moduleReserved :: [String]
@@ -116,13 +150,16 @@ emitFSharpTyped bits bound allDeclarations units = do
       functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
   names <- dataNames allDeclarations
   let env = Env plan bits names (M.fromList [(idText (dataId d), d) | d <- datas])
-        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units (Identity.dependencyGraphWithBits bits allDeclarations units)
+        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units graph literalNames
+      graph = Identity.dependencyGraphWithBits bits allDeclarations units
+      literalNames = byteNames graph (M.elems functions ++ startNames) units
+      literalScope = foldl (\scope name -> snd (claim scope name)) startScope (M.elems literalNames)
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       started = [ (h, ty, start) | h <- typedHandlers, Just (ty, start) <- [handlerState h] ]
       (startNames, startScope) = claimAll moduleScope [ "start" ++ pascal (handlerName h) | (h, _, _) <- started ]
       starts = [ (handlerId h, name, ty, start) | ((h, ty, start), name) <- zip started startNames ]
-  (docs, st) <- flip runStateT (St startScope startScope M.empty Nothing) $ do
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+  (docs, st) <- flip runStateT (St literalScope literalScope M.empty Nothing) $ do
+    fs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, ty, start) -> do
       enterFunction
       (statements, result) <- cstmt env [] start
@@ -172,6 +209,40 @@ type Scope' = [(Id, String)]
 nativeType :: Env -> Type -> Either String String
 nativeType env = Data.nativeType FSharp (envBits env) (envNames env) []
 
+functionTable :: Table (Either String (L.Lines, St))
+functionTable = unsafePerformIO (newPersistentTable "typed-fsharp-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+calledIds :: Expr -> [Id]
+calledIds expression = case expressionNode expression of
+  ExternalCall callee arguments -> callee : concatMap calledIds arguments
+  _ -> concatMap calledIds (children expression)
+
+calledNames :: Env -> Int -> Definition -> [(String, Bool, Maybe Intrinsic, Bool)]
+calledNames env classification definition = sort (nub
+  [(name, selected == classification, M.lookup identity (typedIntrinsics (envPlan env)), isContextual (envPlan env) identity) |
+    identity <- declarationId (definitionDeclaration definition) : calledIds (definitionBody definition),
+    Just selected <- [definitionClass (envPlan env) identity], Just name <- [M.lookup selected (envFunctions env)]])
+
+memoFunction :: Env -> Int -> Definition -> M L.Lines
+memoFunction env classification definition = do
+  parent <- get
+  let calls = calledNames env classification definition
+      literals = [(byteKey value, envByteNames env M.! byteKey value) | value <- nub (byteLiterals (definitionBody definition))]
+      names = scopeWith (moduleReserved ++ [name | (name,_,_,_) <- calls] ++ map snd literals)
+      own = St names names M.empty Nothing
+      dataContext = [(idText (dataId declaration), dataNameOf env declaration,
+        M.member (idText (dataId declaration)) (envData env)) |
+        declaration <- Identity.reachableData (envIdentity env) (Identity.closure (envIdentity env)
+          (Identity.referencesOf (envIdentity env) definition))]
+      key = Identity.fullKey (envIdentity env) ("typed-fsharp:" ++ show (envBits env,calls,literals,dataContext)) definition
+  (document,requested) <- lift' (memoized functionTable key (runStateT (functionDoc env classification definition) own))
+  -- Only helper/literal requests leave the function. Its local scope is fresh
+  -- for every chunk, and prior module requests cannot stale a later function.
+  put parent { stLiterals = M.union (stLiterals requested) (stLiterals parent)
+             , stOrdering = stOrdering requested <|> stOrdering parent }
+  pure document
+
 functionDoc :: Env -> Int -> Definition -> M L.Lines
 functionDoc env c d = do
   enterFunction
@@ -219,7 +290,7 @@ cexpr env scope e = case expressionNode e of
   Match {} -> viaStatements
   If {} -> viaStatements
   Helper Select _ -> viaStatements
-  Constant s -> constant (expressionType e) s
+  Constant s -> constant env (expressionType e) s
   Local i -> do
     name <- lift' (maybe (Left ("typed F#: unbound local " ++ idText i)) Right (lookup i scope))
     pure ([], A name)
@@ -461,8 +532,8 @@ convert target source (s, x)
 
 -- | A constant: text as an F# string literal (Text is a .NET string, by
 -- code point), bytes as an array made once.
-constant :: Type -> Scalar -> M ([Stmt], F)
-constant _ s = case s of
+constant :: Env -> Type -> Scalar -> M ([Stmt], F)
+constant env _ s = case s of
   SBool b -> pure ([], A (if b then "true" else "false"))
   SAbsent "Unit" -> pure ([], A "()")
   SInteger t n -> pure ([], A (integerLiteral t n))
@@ -470,7 +541,7 @@ constant _ s = case s of
     | all (\u -> u >= 0 && u <= 0x10FFFF && (u < 0xD800 || u > 0xDFFF)) units -> pure ([], A (stringLiteral FSharp (map toEnum units)))
     | otherwise -> pure ([], App "Scalar.textOfPoints" [List (map (A . show) units)])
   SSequence "Bytes" units -> do
-    name <- literal ("bytes " ++ show units) (A (if null units then "[||]" else "[| " ++ intercalate "; " [show u ++ "uy" | u <- units] ++ " |]"))
+    name <- literal env ("bytes " ++ show units) (A (if null units then "[||]" else "[| " ++ intercalate "; " [show u ++ "uy" | u <- units] ++ " |]"))
     pure ([], A name)
   _ -> lift' (Left ("typed F#: unsupported constant " ++ show s))
 

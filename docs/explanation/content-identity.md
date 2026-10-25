@@ -169,6 +169,14 @@ context, key each structured document. Editing an independent function adds
 one cache entry rather than re-lowering both functions. The document's Binary
 encoding preserves layout choices; no emitted source text is parsed back.
 
+F# typed functions cache their structured layout and their literal/helper
+requests independently. Byte literals receive checked content-derived names
+before lowering, so adding a literal to an earlier independent function does
+not change a later function's cache key. Replaying a function merges its
+requests into the current module; no prior module request set is part of its
+key. The current called names, native type names and target context remain
+presentation inputs.
+
 Other emitter families also accumulate shared codec, literal or helper state.
 `memoizedState` memoizes their full structured state transition, including the
 exact incoming name/helper state. Their family-specific adoption remains work

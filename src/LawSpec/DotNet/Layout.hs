@@ -16,6 +16,8 @@ module LawSpec.DotNet.Layout
 
 import qualified LawSpec.Code.Doc as D
 import Data.List (intercalate)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 
 -- | An F# expression, as far as its layout goes.
 data F
@@ -44,11 +46,14 @@ data F
   | Prefix String F
   -- | An expression with its type: (x : T).
   | Annotated F String
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | A let binding, a local function (its declaration, parameters, result
 -- type and body) or an expression evaluated for its effect.
-data Stmt = LetS String F | DefS String [String] (Maybe String) F | DoS F deriving (Eq, Show)
+data Stmt = LetS String F | DefS String [String] (Maybe String) F | DoS F deriving (Eq, Show, Generic)
+
+instance Binary F
+instance Binary Stmt
 
 -- | Lines of code. In an expression's lines the first continues the current
 -- line and the rest carry their own indentation; a block's lines all do.

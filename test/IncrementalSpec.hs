@@ -156,6 +156,28 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       second <- listDirectory (root </> versioned </> "typed-rust-function")
       length second `shouldBe` 3
       removePathForcibly root
+    it "reuses an unchanged F# function when an earlier function requests a new byte literal" $ do
+      root <- (</> "lawspec-fsharp-definition-memo-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      let run body = decode (dispatch (encode (object
+            ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+             "method" .= ("planGeneration" :: String), "target" .= ("fsharp" :: String), "cacheDirectory" .= root,
+             "sources" .= [object ["path" .= ("chunks.lawspec" :: String), "content" .= unlines
+               ["unit incremental.fsharpChunks",
+                "function unrelated (value :: Bytes) -> Bytes is " ++ body ++ " end function",
+                "function unchanged (value :: Integer) -> Bytes is bytes([9]) end function", "end unit"]]]]))) :: Maybe Value
+          good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+          good _ = False
+      run "value" `shouldSatisfy` good
+      [versioned] <- listDirectory root
+      first <- listDirectory (root </> versioned </> "typed-fsharp-function")
+      length first `shouldBe` 2
+      run "bytes([1, 2, 3])" `shouldSatisfy` good
+      second <- listDirectory (root </> versioned </> "typed-fsharp-function")
+      length second `shouldBe` 3
+      -- A cached function must replay its own request even if another function
+      -- now introduces a distinct literal before it in the module.
+      removePathForcibly root
   describe "the on-disk cache" $ do
     it "reads an entry another process stored, and recomputes one it cannot read" $ do
       root <- (</> "lawspec-memo-test") <$> getTemporaryDirectory
