@@ -595,7 +595,7 @@ emitCodecs mappings owner layout declarations = do
     decodeArm names parameters dataOwner variant
       | Just bound<-constructorMapping variant,Just tree<-resolvedFieldLayout bound = do
           bridges<-layoutCodecs names parameters bound
-          let payload=[call (D.render D.Compact bridge++".decode") [projectLayout path] |
+          let payload=[L.callWith (bridge <> D.text ".decode") [projectLayout path] |
                 (bridge,path)<-zip bridges (nativeLayoutPaths tree)]
               constructor=D.render D.Compact (applied (constructorName dataOwner variant)
                 [D.text t | (_,(t,_))<-parameters])
