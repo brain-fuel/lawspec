@@ -346,7 +346,15 @@ data LiteralFunctions = LiteralFunctions
 literalFunctions :: String -> [V.Value] -> Either String LiteralFunctions
 literalFunctions prefix values = do
   plan <- Literals.planLiterals values
-  shapeFunctions <- forM (Literals.literalShapes plan) $ \(index, shape) -> do
+  -- Value.List already is the fresh, ordered factory for a List shape.
+  -- A second context-taking delegate only repeats its arguments and scaffolding.
+  let termExpr symbols = Literals.foldLiteral (pure . X.literal symbols)
+        (\index fields -> pure (case lookup index (Literals.literalShapes plan) of
+          Just Literals.ListShape {} -> X.valueCall "List" [ListOf tValue fields]
+          _ -> Invoke (Var (shapeName index)) [symbols,ListOf tValue fields]))
+        (\index -> pure (Invoke (Var (factoryName index)) [symbols]))
+      proxy shape = case shape of Literals.ListShape {} -> False; _ -> True
+  shapeFunctions <- forM [(index, shape) | (index, shape) <- Literals.literalShapes plan, proxy shape] $ \(index, shape) -> do
     body <- shapeBody shape
     pure (shapeName index, tFun [tSymbols,tValues] tValue,
       Lambda [(symbolsName,tSymbols),(fieldsName,tValues)] tValue body)
@@ -362,9 +370,6 @@ literalFunctions prefix values = do
     fieldsName = prefix ++ "LiteralFields"
     shapeName index = prefix ++ "LiteralShape" ++ show index
     factoryName index = prefix ++ "Literal" ++ show index
-    termExpr symbols = Literals.foldLiteral (pure . X.literal symbols)
-      (\index fields -> pure (Invoke (Var (shapeName index)) [symbols,ListOf tValue fields]))
-      (\index -> pure (Invoke (Var (factoryName index)) [symbols]))
     shapeBody shape = case shape of
       Literals.ConstructorShape _ tag -> pure (X.valueCall "Data" [Str (C.idText tag),Var fieldsName])
       Literals.ListShape _ -> pure (X.valueCall "List" [Var fieldsName])
