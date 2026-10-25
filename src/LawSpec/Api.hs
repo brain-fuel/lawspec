@@ -38,7 +38,7 @@ import LawSpec.Explain (ExplainOptions(..), View(..), parseView, explainResult)
 import Data.Foldable (toList)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map.Strict as M
-import LawSpec.TestManifest (TestEntry(..), testManifestWithNativeContext, executableEntries, BenchmarkEntry(..), benchmarkManifest)
+import LawSpec.TestManifest (TestEntry(..), testManifestWithBindings, executableEntries, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
@@ -125,8 +125,8 @@ dispatch bytes
             failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests core verification plan (verificationKeys verification
               (nativeBudgetKeys target plan (either (const id) executableEntries plan
-                (testManifestWithNativeContext (maybe True (`V.selected` V.Model) verification)
-                  (native { requestNames = [] } /= emptyNativeRequest) target testDir (plannedCore core plan))))) . result)
+                (testManifestWithBindings (maybe True (`V.selected` V.Model) verification)
+                  bindings target testDir (plannedCore core plan))))) . result)
             ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing])
        (analysisEvidence (maybe True (\config -> V.selected config V.Exhaustive || V.selected config V.Proof) verification)

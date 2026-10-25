@@ -258,13 +258,17 @@ test("a law's key changes with its adapters only when it calls them", () => {
   assert.equal(before.get(tests[1].law), after.get(tests[1].law));
 });
 
-test("native codecs and generators retain project dependencies for a checked law", () => {
-  const entry={...law(0,"t"),callsAdapters:false};
+test("compiler-resolved native codecs and generators affect only their dependent laws", () => {
+  const bound={...law(0,"t"),callsAdapters:true},independent={...law(1,"t"),callsAdapters:false};
+  const unknown={...law(2,"t")};delete unknown.callsAdapters;
   for(const nativeBindings of [{types:[{type:"unit::Value",native:["Value"]}]},
     {generators:[{type:"unit::Value",factory:["makeValue"]}]}]) {
-    const key=project=>lawKeys({build:"b",target:{language:"python",nativeBindings},machineBits:64,
-      tests:[entry],environment:"e",project}).get(entry.law);
-    assert.notEqual(key("first implementation"),key("changed implementation"));
+    const keys=project=>lawKeys({build:"b",target:{language:"python",nativeBindings},machineBits:64,
+      tests:[bound,independent,unknown],environment:"e",project});
+    const before=keys("first implementation"),after=keys("changed implementation");
+    assert.notEqual(before.get(bound.law),after.get(bound.law));
+    assert.equal(before.get(independent.law),after.get(independent.law));
+    assert.notEqual(before.get(unknown.law),after.get(unknown.law),'unknown compiler flags remain conservative');
   }
 });
 

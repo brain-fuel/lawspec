@@ -10,7 +10,7 @@
 -- model, scenario and supervision checks on every target have distinct
 -- evidence identities and dependency keys, even when a native method combines
 -- several checks. The manifest records their actual files and native slots.
-module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, testManifestWithNativeContext, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
+module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, testManifestWithNativeContext, testManifestWithBindings, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 import LawSpec.Targets (artifactTargets)
 import LawSpec.Naming (displayLabel)
 
@@ -22,6 +22,9 @@ import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Evidence as Evidence
 import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey, adapterKey)
 import qualified LawSpec.Dependencies as Dependencies
+import qualified LawSpec.Core.Identity as Identity
+import LawSpec.NativeRequest (BindingPlan(..))
+import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedTypeBinding(..), ResolvedGeneratorBinding(..))
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
@@ -67,10 +70,27 @@ testManifestWithModelChecks modelsSelected = testManifestWithNativeContext model
 -- Native bindings may invoke user codecs, generators or constructors even
 -- when the law's checked call graph contains no ordinary adapter declaration.
 testManifestWithNativeContext :: Bool -> Bool -> String -> Maybe String -> Program -> [TestEntry]
-testManifestWithNativeContext _ _ target _ _ | target `elem` artifactTargets = []
-testManifestWithNativeContext modelsSelected nativeBindings "prolog" testDir program =
-  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithNativeContext modelsSelected nativeBindings "python" testDir program]
-testManifestWithNativeContext modelsSelected nativeBindings target testDir program =
+testManifestWithNativeContext modelsSelected nativeBindings =
+  testManifestWithContext modelsSelected nativeBindings S.empty
+
+-- | Validated bindings affect the laws that reach their declarations or types,
+-- including nested data, strategies, handler state and primitive generators.
+-- Opaque implementations still keep their conservative public API closure.
+testManifestWithBindings :: Bool -> BindingPlan -> String -> Maybe String -> Program -> [TestEntry]
+testManifestWithBindings modelsSelected bindings = testManifestWithContext modelsSelected False bound
+  where
+    representation = bindingRepresentations bindings
+    bound = S.fromList (map idText
+      (map (dataId . resolvedDeclaration) (resolvedTypes representation) ++
+       map resolvedGeneratorType (resolvedGenerators representation) ++
+       map (declarationId . fst) (bindingFunctions bindings) ++
+       map (declarationId . fst) (bindingCalls bindings)))
+
+testManifestWithContext :: Bool -> Bool -> S.Set String -> String -> Maybe String -> Program -> [TestEntry]
+testManifestWithContext _ _ _ target _ _ | target `elem` artifactTargets = []
+testManifestWithContext modelsSelected nativeBindings bound "prolog" testDir program =
+  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithContext modelsSelected nativeBindings bound "python" testDir program]
+testManifestWithContext modelsSelected nativeBindings bound target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ displayLabel (propertyName p)) index
       (relocated (unitTestPath target unit)) (lawKey u p)
       (callsAdapters p)
@@ -149,26 +169,45 @@ testManifestWithNativeContext modelsSelected nativeBindings target testDir progr
            [(idText (handlerId handler), handlerName handler, handlerId handler) | handler <- unitHandlers unit])
         | unit <- programUnits program, not (null (unitSupervisors unit) && null (unitAbilities unit) && null (unitHandlers unit)) ] )
     namedArguments = target `elem` ["python", "csharp", "fsharp", "kotlin"]
-    -- A recording compares a nominal portable rendering with project data.
-    -- Its value's constructor/field names and external recording files are
-    -- observable even when every called definition is checked Core. Keep
-    -- that narrow interface separate from opaque native code's wider API.
+    -- Spec-handler initial state is executable Core too, beyond its clauses.
+    handlers p = [handler | unit <- programUnits program, handler <- unitHandlers unit,
+      any (selected (handlerId handler) . snd) (propertyHandlers p)]
+      where
+        selected identity choice = case choice of
+          SpecHandler name -> name == identity
+          RecordingHandler inner -> selected identity inner
+          ProductionHandler -> False
+    reached p = Dependencies.closure graph (Dependencies.referencesOf graph (p,handlers p))
+    boundNative p = not (S.null (S.intersection bound (S.fromList names)))
+      where
+        nodes = reached p
+        names = Identity.references (p,handlers p) ++
+          map nodeName (S.toList nodes) ++
+          concatMap Identity.references (Dependencies.reachableData graph nodes) ++
+          concatMap Identity.references (Dependencies.reachableDefinitions graph nodes) ++
+          concat [Identity.references contract | unit <- programUnits program, contract <- unitContracts unit,
+            Dependencies.DeclarationNode (contractDeclaration contract) `S.member` nodes]
+    nodeName node = case node of
+      Dependencies.DeclarationNode name -> idText name
+      Dependencies.TypeNode name -> idText name
     callsAdapters p = opaqueNative p || observesRecording p
+    -- Recordings observe a nominal portable rendering and project data even
+    -- when every called definition is checked Core, without a wider opaque API.
     observesRecording p = any recorded (propertyExpressions p ++
-      map definitionBody (Dependencies.reachableDefinitions graph reached) ++
+      concatMap (maybe [] (pure . snd) . handlerState) (handlers p) ++
+      map definitionBody (Dependencies.reachableDefinitions graph nodes) ++
       [expression | unit <- programUnits program, contract <- unitContracts unit,
-        Dependencies.DeclarationNode (contractDeclaration contract) `S.member` reached,
+        Dependencies.DeclarationNode (contractDeclaration contract) `S.member` nodes,
         expression <- contractExpressions contract ++ contractRuntimePostconditions contract])
       where
-        reached = Dependencies.closure graph (Dependencies.referencesOf graph p)
+        nodes = reached p
         recorded expression = case expressionNode expression of
           Helper Recorded _ -> True
           _ -> any recorded (children expression)
-    opaqueNative p = nativeBindings || any unimplemented (S.toList reached) ||
+    opaqueNative p = nativeBindings || boundNative p || any unimplemented (S.toList (reached p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
       where
-        reached = Dependencies.closure graph (Dependencies.referencesOf graph p)
         unimplemented (Dependencies.DeclarationNode identity) = identity `S.notMember` definitions
         unimplemented _ = False
     -- Model, scenario and supervision checks run the unit's machines against
