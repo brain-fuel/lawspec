@@ -190,6 +190,10 @@ renderExpression declarations bits named external expression = render scopedTerm
       -- A text literal is already its type's value.
       Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
         expressionType term == scalarType n -> scalarLiteral (expressionType term) value
+      -- Mandatory Core validation has checked exact primitive constants.
+      -- Contextual and refined constants still use their schema checks.
+      Constant value@(SInteger name _) | expressionType term == scalarType name -> scalarLiteral (expressionType term) value
+      Constant value@(SBool _) | expressionType term == scalarType "Bool" -> scalarLiteral (expressionType term) value
       Constant value -> scalarLiteral (expressionType term) value >>= checked declarations bits (expressionType term)
       Construct tag args -> do
         values <- mapM render args
@@ -213,15 +217,20 @@ renderExpression declarations bits named external expression = render scopedTerm
         condition <- render c
         yes <- render a
         no <- render b
-        -- Branches that are blocks keep their braces on the if's lines.
-        let block doc = take 1 (D.render D.Compact doc) == "{"
+        -- A nested then-branch has explicit braces. Besides making its else
+        -- ownership clear, this bounds scalafmt's search through decision trees.
+        let nestedThen = case expressionNode a of If {} -> True; _ -> False
+            yesBlock = if bareBlock a then yes else L.block [yes]
+            noBlock = if bareBlock b then no else L.block [no]
             otherwiseBranch = case expressionNode b of
               If {} -> D.text " " <> no
               _ -> D.nest 2 (D.softline <> no)
-        pure (if block yes || block no
-          then L.condition "if" (runtime "truth" [condition]) <> D.text " " <> yes <> D.text " else " <> no
-          else D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
-            D.softline <> D.text "else" <> otherwiseBranch))
+        pure (if nestedThen
+          then L.condition "if" (runtime "truth" [condition]) <> D.text " " <> yesBlock <> D.text " else " <> noBlock
+          else if bareBlock a || bareBlock b
+            then L.condition "if" (runtime "truth" [condition]) <> D.text " " <> yes <> D.text " else " <> no
+            else D.group (L.condition "if" (runtime "truth" [condition]) <> D.nest 2 (D.softline <> yes) <>
+              D.softline <> D.text "else" <> otherwiseBranch))
       -- A chain of one operator is one condition, broken after each.
       ShortCircuit op _ _ -> do
         operands <- mapM render (chainOf op term)
