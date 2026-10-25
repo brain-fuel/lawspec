@@ -3,8 +3,8 @@
 -- are kept, cased as the language writes them; a name Google Java Style
 -- would reject is made acceptable without an underscore (a keyword becomes
 -- classValue, a clash value2), so generated code passes the targets'
--- naming checks. Strings are the language's own literals, wrapped only at
--- spaces. ref:DEC-readable-generated-names ref:DEC-native-string-literals
+-- naming checks. Strings are the language's own literals, with bounded input
+-- chunks. ref:DEC-readable-generated-names ref:DEC-native-string-literals
 module LawSpec.JvmNames
   ( jvmReserved, jvmLocal, jvmClaim, jvmClaimAll, jvmLocalTable, jvmString, jvmStringChunks
   , jvmScopedNames, exampleTestNames, boundaryTestName, contractMethod, javadoc, jvmMethod, googleCase
@@ -84,8 +84,8 @@ jvmLocalTable target reserved = snd . foldl allocate (S.fromList reserved, M.emp
       | otherwise = let (chosen, taken') = jvmClaim taken (jvmLocal target reserved (C.binderName binder))
                     in (taken', M.insert (C.binderId binder) chosen table)
 
--- | A string's literal pieces, each at most about width characters, broken
--- only after a space, so no word is ever split.
+-- | A string's literal pieces, preferring spaces but bounding long unbroken
+-- payloads too. Splitting the input never changes the concatenated value.
 jvmStringChunks :: Int -> String -> [String]
 jvmStringChunks width value = case value of
   "" -> [""]
@@ -98,18 +98,32 @@ jvmStringChunks width value = case value of
           let spaces = [i + 1 | (i, c) <- zip [0 :: Int ..] (take width rest), c == ' ', i > 0]
               cut = case reverse spaces of
                 n : _ -> n
-                [] -> case [i + 1 | (i, c) <- zip [0 :: Int ..] rest, c == ' ', i > 0] of
-                  n : _ -> n
-                  [] -> length rest
+                [] -> max 1 width
           in take cut rest : go (drop cut rest)
 
--- | A string literal, wrapped at spaces with + when it does not fit.
+-- | Wrap literal payloads before encoding, accounting for escape width. Java
+-- additionally separates literal backslashes from following text: Checkstyle
+-- otherwise mistakes displayed escapes in example labels for source escapes.
 jvmString :: String -> String -> D.Doc
-jvmString target value = case map (D.text . literalFor target) (jvmStringChunks 60 value) of
+jvmString target value = case map (D.text . literalFor target) pieces of
   [] -> D.text "\"\""
   [single] -> single
-  first : rest -> D.bestFit [D.text (literalFor target value),
-    D.group (first <> D.nest 4 (mconcat [D.softline <> D.text "+ " <> piece | piece <- rest]))]
+  first : rest ->
+    let broken = D.group (first <> D.nest 4
+          (mconcat [D.softline <> D.text "+ " <> piece | piece <- rest]))
+    in if target == "java" && '\\' `elem` value then broken
+       else D.bestFit [D.text (literalFor target value), broken]
+  where
+    pieces = concatMap (bounded 0 []) (concatMap separate (jvmStringChunks 60 value))
+    separate text | target == "java" = case break (== '\\') text of
+      (before, '\\' : after) -> (before ++ "\\") : separate after
+      (before, _) -> [before | not (null before)]
+    separate text = [text]
+    bounded _ acc [] = [reverse acc | not (null acc)]
+    bounded width acc text@(c : rest)
+      | width + cost > 60 && not (null acc) = reverse acc : bounded 0 [] text
+      | otherwise = bounded (width + cost) (c : acc) rest
+      where cost = length (literalFor target [c]) - 2
 
 capital :: String -> String
 capital (c : cs) = toUpper c : cs

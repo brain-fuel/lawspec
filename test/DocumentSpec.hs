@@ -15,6 +15,7 @@ import qualified LawSpec.ScalaLayout as Scala
 import qualified LawSpec.ElixirCode as Elixir
 import qualified LawSpec.Swift.Code as Swift
 import qualified LawSpec.JavaExpr as Java
+import LawSpec.JvmNames (jvmString)
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
 import qualified LawSpec.PortableGenerator as Generator
@@ -25,6 +26,13 @@ import qualified LawSpec.PortableTestHelpers as Helpers
 -- ref:DEC-readable-output-default ref:REQ-readable-layout
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged :: Spec
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated code layout" $ do
+  it "bounds unbroken Java labels and escaped payloads without embedding displayed octal escapes" $ do
+    let payload = concat (replicate 50 "unbroken\\181\\000 text") ++ replicate 120 '\x1'
+        readable = D.render (D.Pretty 100) (D.text "{" <> D.nest 12
+          (D.hardline <> jvmString "java" payload <> D.text ";") <> D.hardline <> D.text "}")
+    maximum (map length (lines readable)) `shouldSatisfy` (<= 100)
+    readable `shouldSatisfy` (not . isInfixOf "\\\\181")
+    readable `shouldSatisfy` (not . isInfixOf "\\\\000")
   it "wraps qualified Java class literals at deep indentation without changing their tokens" $ do
     let names = ["lawspec.abilities.lawspec.Crypto.KeyExchange", "lawspec.abilities.lawspec.Crypto.Signature"]
     forM_ names $ \name -> do
