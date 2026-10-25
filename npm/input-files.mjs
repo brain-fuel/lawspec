@@ -7,7 +7,7 @@ import path from 'node:path';
 
 export const buildDirectories = new Set(['.git','.lawspec','node_modules','dist','build','target','out','.gradle','bin','obj','TestResults',
   '.stack-work','_build','deps','.elixir_ls','__pycache__','.hypothesis','.pytest_cache','.venv','venv','.idea','.vscode',
-  '.scala-build','.bsp','.bloop','.metals','.build','.swiftpm']);
+  '.scala-build','.bsp','.bloop','.metals','.build','.swiftpm','.cpcache']);
 
 // These outputs belong to the generated crypto builder; its sources and
 // other priv/ assets still contribute to the native implementation identity.
