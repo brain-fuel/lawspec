@@ -45,7 +45,7 @@
 -- and records it, and LAWSPEC_CACHE=0 neither reads nor records.
 module Main (main) where
 
-import Control.Exception (finally)
+import Control.Exception (finally, try, SomeException)
 import Control.Monad (filterM, foldM, forM, forM_, unless, when)
 import Data.Aeson
 import qualified Data.Aeson.Key as K
@@ -56,11 +56,12 @@ import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Time.Clock (addUTCTime)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import System.Directory
 import System.Environment (getArgs, getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), die, exitFailure)
-import System.FilePath ((</>), takeDirectory)
+import System.FilePath ((</>), takeDirectory, takeFileName)
 import System.IO (BufferMode(LineBuffering), hPutStrLn, hSetBuffering, readFile', stderr, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
@@ -531,6 +532,16 @@ runToolWith extra tool args project = do
   let overrides = extra ++ [("LAWSPEC_CASE", "") | "LAWSPEC_CASE" `notElem` map fst extra] ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
       settings = Just (overrides ++ [kv | kv@(k, _) <- environment, k `notElem` map fst overrides])
   (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project, env = settings } ""
+  -- Capture compiler-owned state before a caller restores a mutant or
+  -- regenerates the project. The original exit status stays authoritative.
+  when (code /= ExitSuccess && takeFileName (command tool) `elem` ["scala","scala-cli"] && compileFailure (out ++ err)) $ do
+    let context = object ["root" .= project, "command" .= command tool, "args" .= args,
+                          "output" .= (out ++ err), "phase" .= ("native" :: String)]
+    captured <- try (readCreateProcessWithExitCode (proc "node" ["tools/scala-build-state.mjs"])
+      (T.unpack (TE.decodeUtf8 (BL.toStrict (encode context))))) :: IO (Either SomeException (ExitCode,String,String))
+    case captured of
+      Right (ExitSuccess, message, _) -> hPutStrLn stderr message
+      _ -> pure ()
   extra' <- report tool
   pure (code, out ++ err ++ extra')
 

@@ -15,6 +15,7 @@ import { doctor } from "../doctor.mjs";
 import { recordNativeAttempts, nativeSeed, attestedKeys, readNativeObservations, attachNativeEvidence, nativeEvidenceText } from "../native-evidence.mjs";
 import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.mjs";
 import { collectScalaCoverage } from "../scala-coverage.mjs";
+import {captureScalaBuildFailure,isScalaCompilationFailure} from "../scala-build-state.mjs";
 import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { benchmarkInvocations, presentationInvocations, presentationDigest, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, previousResult, projectDigest, recordedDigest, selectByTags, mergeJunit,
@@ -548,6 +549,10 @@ async function runTests(compiler, input, selected, roots, config) {
           { ...process.env, ...run.env, LAWSPEC_SEED: batch.seed, HSPEC_SEED: batch.seed,
             LAWSPEC_STATS: stats, LAWSPEC_FAILURES: failures, LAWSPEC_RECORDED: recordedFolder,
             ...(options["update-recorded"] ? { LAWSPEC_UPDATE_RECORDED: "1" } : {}) }, run.report?.kind === "go-json");
+        if(!ok&&target.language==='scala'&&isScalaCompilationFailure(output)) {
+          const directory=await captureScalaBuildFailure({root,command:run.command,args:run.args,output});
+          if(directory)console.error(`Scala compiler state: ${directory}`);
+        }
         if (run.coverage) coverageRuns.push(run.coverage);
         const executed = await executedTests(run.report, output, root, since);
         const observed=recordNativeAttempts(run,executed,{keys,seed:batch.seed,ok,profile,output,allEntries:planned.tests});

@@ -139,6 +139,11 @@ stays inside the input's refinement and a dependent input is redrawn from the
 same random state. `LAWSPEC_SEED` fixes the seed, and a failure prints the seed
 that replays it.
 
+When Scala compilation fails, `lawspec test` preserves the command, compiler
+log, Bloop configuration and class-file inventory under
+`.lawspec/scala-build-failures/<run>/`. Inspect that snapshot when diagnosing
+build failures; it is captured before later invocations change the project.
+
 ## Coverage
 
 `lawspec test --coverage` needs nothing installed beyond Scala CLI. Scala 3

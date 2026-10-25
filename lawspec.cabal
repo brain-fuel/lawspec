@@ -551,6 +551,7 @@ extra-source-files:
     test/fixtures/native-codecs/domain.lawspec
     test/FiniteCases.fs
     test/finite_cases_dotnet.py
+    test/scala_no_arg_constructors.py
     runtime/dotnet/LawSpec.Runtime/Actors.fs
     runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs
     runtime/dotnet/LawSpec.Runtime/Codecs.fs

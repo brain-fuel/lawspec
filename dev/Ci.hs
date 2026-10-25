@@ -475,6 +475,7 @@ targetSteps target =
   [ step "haskell-finite-cover" ["stack", "--no-terminal", "exec", "--", "runghc", "-iruntime", "test/finite_cases_haskell.hs"] | target == "haskell" ] ++
   [ step "swift-finite-cover" ["python3", "-B", "test/finite_cases_swift.py"] | target == "swift" ] ++
   [ step "dotnet-finite-cover" ["python3", "-B", "test/finite_cases_dotnet.py"] | target == "fsharp" ] ++
+  [ step "scala-native-constructors" ["python3", "-B", "test/scala_no_arg_constructors.py"] | target == "scala" ] ++
   [ Step name [("PYTHONPATH","runtime")] [".integration/prolog/.venv/bin/python", "-B", file]
   | target == "prolog", (name,file) <- [("prolog-runtime","test/prolog_runtime.py"),
       ("prolog-execution-reporting","test/prolog_reporting.py")] ] ++
