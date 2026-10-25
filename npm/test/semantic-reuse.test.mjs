@@ -105,8 +105,63 @@ end unit
     await assert.rejects(run('test'));
     assert.ok(await count(log)>beforeContract);
 
+    // An admitted workflow can hide native stages behind a checked entry.
+    // Select the user's law alone, so generated stage laws cannot conceal a
+    // stale user-law result when the native implementation changes.
+    const workflow=`unit identity.nativeClosure
+workflow wrapper :: Integer -> Either Text Integer is
+  foreign :: Integer -> Either Text Integer
+end workflow
+law selected is definition: for all (value :: Integer where value >= 0 && value <= 1) => wrapper value = Right (value + 1) end for all end definition end law
+end unit
+`;
+    await writeFile(path.join(folder,'harness.lawspec'),`harness identity.nativeClosure.testing for identity.nativeClosure is
+  for law selected
+    tags chosen
+  end for law
+end harness
+`);
+    await writeFile(path.join(folder,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+      sources:['input.lawspec','harness.lawspec'],verification:{layers:['property','examples']},
+      targets:[{language:'javascript',root:'app'}]}));
+    await generate(workflow);
+    const adapter=path.join(project,'src/identity/nativeClosure.mjs');
+    await writeFile(adapter,'import * as data from "../lawspec_data.mjs";\nexport function foreign(value){return new data.Right(value+1n); }\n');
+    const workflowFirst=JSON.parse((await run('test',['--tag','chosen'])).stdout);
+    assert.deepEqual(workflowFirst[0].ran,['identity.nativeClosure::law::selected']);
+    const beforeWorkflow=await count(log);
+    const workflowCached=JSON.parse((await run('test',['--tag','chosen'])).stdout);
+    assert.deepEqual(workflowCached[0].ran,[]);
+    assert.equal(await count(log),beforeWorkflow);
+    await writeFile(adapter,'import * as data from "../lawspec_data.mjs";\nexport function foreign(value){return new data.Right(value+2n); }\n');
+    await assert.rejects(run('test',['--tag','chosen']));
+    assert.ok(await count(log)>beforeWorkflow);
+
 
   } finally {await rm(folder,{recursive:true,force:true});}
+});
+
+test('explicit native generators retain opaque implementation dependencies for a checked law',async()=>{
+  const compiler=await createCompiler();
+  const sources=[{path:'binding.lawspec',content:`unit identity.binding
+type Token is a record { value :: Int8 } end type
+law selected is definition: for all (value :: Token) => value = value end for all end definition end law
+end unit
+`}];
+  const result=await compiler.planGeneration({schemaVersion:5,languageProfile:'1.0-rc.2',target:'python',
+    verification:{layers:['property','examples']},sources,nativeBindings:{
+      types:[{type:'identity.binding::type::Token',native:['domain','Token'],constructors:[
+        {constructor:'Token',native:['domain','Token'],style:'record',fields:[{field:'value',native:'value'}]}]}],
+      generators:[{type:'identity.binding::type::Token',factory:['domain','tokens']}]}});
+  assert.deepEqual(result.diagnostics,[]);
+  assert.deepEqual(result.tests.map(entry=>entry.callsAdapters),[true]);
+  const request={schemaVersion:5,languageProfile:'1.0-rc.2',target:'javascript',
+    verification:{layers:['property','examples']},sources:[{path:'input.lawspec',content:base}]};
+  const before=await compiler.planGeneration(request);
+  const renamed=await compiler.planGeneration({...request,nativeBindings:{names:[
+    {declaration:'identity.reuse::twice',name:'doubleNative'}]}});
+  assert.deepEqual(renamed.diagnostics,[]);
+  assert.deepEqual(renamed.tests.map(entry=>[entry.key,entry.callsAdapters]),before.tests.map(entry=>[entry.key,entry.callsAdapters]));
 });
 
 const z3=process.env.LAWSPEC_Z3??(spawnSync('z3',['-version'],{encoding:'utf8'}).status===0?'z3':null);

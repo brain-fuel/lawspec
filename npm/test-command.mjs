@@ -4,8 +4,8 @@
 //
 // A law's result is keyed by everything it depends on: its plan key (the law
 // and the Merkle digests of the types and definitions it reaches), the
-// compiler build, the target's configuration, its unit's generated test file,
-// the project's build and lock files, the toolchain the doctor reports and, for
+// compiler build, the target's configuration, the project's build and lock
+// files, the toolchain the doctor reports and, for
 // a law that calls adapters, every file in the target project that LawSpec
 // did not generate. A passing run records each law's key and seed; a law runs
 // again when its key changes or with --fresh.
@@ -113,10 +113,14 @@ export async function recordedDigest(folder) {
 // were wired too, so a run against other endpoints, or the real dependency
 // in place of a stand-in, runs it again; other laws' keys are unchanged.
 export function lawKeys({ build, target, machineBits, minify, tests, environment, project, attested = new Map() }) {
-  const configuration = JSON.stringify({ ...target, root: undefined });
+  const bound = Object.entries(target.nativeBindings??{}).some(([key,value])=>
+    key!=="names"&&value!=null&&(Array.isArray(value)?value.length>0:
+      typeof value==="object"?Object.keys(value).length>0:value!==""));
+  const configuration = entry=>JSON.stringify({ ...target, root: undefined,
+    ...(!entry.callsAdapters&&!bound?{nativeBindings:undefined}:{}) });
   return new Map(tests.map((entry) => [entry.law, digest(JSON.stringify([
-    build, configuration, machineBits, entry.key,
-    environment, entry.callsAdapters ? project : null,
+    build, configuration(entry), machineBits, entry.key,
+    environment, entry.callsAdapters||bound ? project : null,
     ...(attested.has(entry.law) ? [attested.get(entry.law)] : []),
   ]))]));
 }

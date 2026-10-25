@@ -10,7 +10,7 @@
 -- model, scenario and supervision checks on every target have distinct
 -- evidence identities and dependency keys, even when a native method combines
 -- several checks. The manifest records their actual files and native slots.
-module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
+module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, testManifestWithNativeContext, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 import LawSpec.Targets (artifactTargets)
 
 import Data.Char (isAlphaNum, toUpper)
@@ -20,6 +20,7 @@ import LawSpec.Core
 import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Evidence as Evidence
 import LawSpec.Dependencies (dependencyGraphWithBits, semanticKey, adapterKey)
+import qualified LawSpec.Dependencies as Dependencies
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
@@ -60,10 +61,15 @@ executableEntries plan = filter ((`S.notMember` empty) . entryLaw)
       null (propertyExamples (Testing.plannedProperty property))]
 
 testManifestWithModelChecks :: Bool -> String -> Maybe String -> Program -> [TestEntry]
-testManifestWithModelChecks _ target _ _ | target `elem` artifactTargets = []
-testManifestWithModelChecks modelsSelected "prolog" testDir program =
-  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithModelChecks modelsSelected "python" testDir program]
-testManifestWithModelChecks modelsSelected target testDir program =
+testManifestWithModelChecks modelsSelected = testManifestWithNativeContext modelsSelected False
+
+-- Native bindings may invoke user codecs, generators or constructors even
+-- when the law's checked call graph contains no ordinary adapter declaration.
+testManifestWithNativeContext :: Bool -> Bool -> String -> Maybe String -> Program -> [TestEntry]
+testManifestWithNativeContext _ _ target _ _ | target `elem` artifactTargets = []
+testManifestWithNativeContext modelsSelected nativeBindings "prolog" testDir program =
+  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithNativeContext modelsSelected nativeBindings "python" testDir program]
+testManifestWithNativeContext modelsSelected nativeBindings target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
       (relocated (unitTestPath target unit)) (lawKey u p)
       (callsAdapters p)
@@ -140,9 +146,13 @@ testManifestWithModelChecks modelsSelected target testDir program =
            [(idText (handlerId handler), handlerName handler, handlerId handler) | handler <- unitHandlers unit])
         | unit <- programUnits program, not (null (unitSupervisors unit) && null (unitAbilities unit) && null (unitHandlers unit)) ] )
     namedArguments = target `elem` ["python", "csharp", "fsharp", "kotlin"]
-    callsAdapters p = any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
+    callsAdapters p = nativeBindings || any unimplemented (S.toList reached) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
+      where
+        reached = Dependencies.closure graph (Dependencies.referencesOf graph p)
+        unimplemented (Dependencies.DeclarationNode identity) = identity `S.notMember` definitions
+        unimplemented _ = False
     -- Model, scenario and supervision checks run the unit's machines against
     -- native code.
     modelKey u check = adapterKey graph (show (programMachineBits program, generatedNativeAPI, actionKind (ModelChecks.checkAction check)))
@@ -270,12 +280,6 @@ dotnetModelsPath target unit = "tests/LawSpec/" ++ dotnetName unit ++ "Models" +
   "csharp" -> ".cs"
   "swift" -> ".swift"
   _ -> ".fs")
-
--- | The declarations a law calls directly; definitions cannot call adapters.
-callees :: Expr -> [Id]
-callees e = case expressionNode e of
-  ExternalCall callee args -> callee : concatMap callees args
-  _ -> concatMap callees (children e)
 
 prologPath :: FilePath -> FilePath
 prologPath path = if ".py" `isSuffixOf` path then take (length path-3) path ++ ".pl" else path

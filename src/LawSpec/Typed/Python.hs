@@ -718,9 +718,30 @@ helpers env = go S.empty
       st <- get
       let pending = [w | w <- S.toList (stWanted st), w `S.notMember` done]
       if null pending then pure [] else do
-        docs <- forM pending $ \(kind, key) -> helperDoc env kind (stHelpers st M.! key)
+        docs <- forM pending $ \(kind, key) -> memoHelper env kind (stHelpers st M.! key)
         rest <- go (S.union done (S.fromList pending))
         pure (docs ++ rest)
+
+helperTable :: Table (Either String (D.Doc,St))
+helperTable = unsafePerformIO (newPersistentTable "typed-python-helper" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE helperTable #-}
+
+memoHelper :: Env -> String -> Type -> M D.Doc
+memoHelper env kind ty = do
+  before <- get
+  let types = Context.typeClosure (envData env) [ty]
+      selected = [((helperKind,show value),name) | value <- types, helperKind <- helperKinds,
+        Just name <- [M.lookup (helperKind,show value) (envHelperNames env)]]
+      names = scopeWith (moduleReserved ++ reservedFor "python" ++ map snd selected)
+      own = St names names names (M.fromList selected) (stShown before) M.empty S.empty
+      declarations = [declaration | Constructor name _ <- types, Just declaration <- [M.lookup name (envData env)]]
+      nativeNames = [(identity,M.lookup identity (envNative env)) | declaration <- declarations,
+        identity <- dataId declaration : map constructorId (dataConstructors declaration)]
+      key = Identity.fullKey (envIdentity env) ("typed-python-helper:" ++ show (envBits env,kind,selected,nativeNames)) ty
+  (document,requested) <- lift' (memoized helperTable key (runStateT (helperDoc env kind ty) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before),
+               stWanted = S.union (stWanted requested) (stWanted before) }
+  pure document
 
 helperDoc :: Env -> String -> Type -> M D.Doc
 helperDoc env kind ty = do

@@ -195,6 +195,12 @@ mapping and machine profile. Thus an operation profile change invalidates its
 function while an independent pure function remains reusable. No function
 closure is treated as a cache identity.
 
+The Python/Web/Go/Haskell codec and comparison helpers are also independent
+per-type chunks. Their cached structured products replay only newly requested
+helper/type dependencies. A changed nominal type recomputes its own codecs;
+codecs for an independent nominal type retain their entries even when the
+outer unit must be assembled again.
+
 `memoizedState` remains an exact state-transition primitive for emitters whose
 incoming helper state is relevant. Independent chunks instead isolate their
 request sets as above; hashing the accumulated prior module state would make
@@ -212,6 +218,14 @@ its printed surface type. Distinct native nominal interfaces with equal
 semantic shapes receive deterministic presentation disambiguation. F# aliases
 also retain their readable public type name.
 
+
+Native dependency classification follows the checked call graph transitively,
+including a workflow whose stages are native adapters. Explicit native binding
+requests also make law results opaque: user codecs, constructors and generators
+can invoke native code or any generated public API, even when a law calls only
+checked definitions. Their implementation and public generated API therefore
+remain cache inputs. A generated-name override alone stays presentation for a
+pure law; a native adapter can observe that public name and retains it.
 
 ## Scenario bindings
 

@@ -790,9 +790,28 @@ helpers env = go S.empty
       st <- get
       let pending = [w | w <- S.toList (stWanted st), w `S.notMember` done]
       if null pending then pure [] else do
-        docs <- forM pending $ \(kind, key) -> helperDoc env kind (stHelpers st M.! key)
+        docs <- forM pending $ \(kind, key) -> memoHelper env kind (stHelpers st M.! key)
         rest <- go (S.union done (S.fromList pending))
         pure (docs ++ rest)
+
+helperTable :: Table (Either String (D.Doc,St))
+helperTable = unsafePerformIO (newPersistentTable "typed-haskell-helper" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE helperTable #-}
+
+memoHelper :: Env -> String -> Type -> M D.Doc
+memoHelper env kind ty = do
+  before <- get
+  let types = Context.typeClosure (envData env) [ty]
+      selected = [((helperKind,show value),name) | value <- types, helperKind <- helperKinds,
+        Just name <- [M.lookup (helperKind,show value) (envHelperNames env)]]
+      names = scopeWith (moduleReserved ++ map snd selected)
+      own = St names names M.empty S.empty (M.fromList selected) M.empty
+      key = Identity.fullKey (envIdentity env) ("typed-haskell-helper:" ++ show (kind,selected,nativeContext env types)) ty
+  (document,requested) <- lift' (memoized helperTable key (runStateT (helperDoc env kind ty) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before),
+               stWanted = S.union (stWanted requested) (stWanted before),
+               stLiterals = M.union (stLiterals requested) (stLiterals before) }
+  pure document
 
 helperDoc :: Env -> String -> Type -> M D.Doc
 helperDoc env kind ty = do

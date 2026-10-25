@@ -5,6 +5,8 @@ import Control.Monad (forM_)
 import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
 import Data.List (find, isInfixOf, isPrefixOf)
+import Data.Char (toLower)
+import qualified LawSpec.Code.ECMAScript as ECMAScript
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified LawSpec.Code.Doc as Doc
 import qualified Data.Binary as Binary
@@ -28,6 +30,22 @@ import System.Directory (getTemporaryDirectory, removePathForcibly, listDirector
 import System.FilePath ((</>))
 import LawSpec.Memo (newPersistentTable, memoized, memoizedState, withCacheDirectory)
 import LawSpec.Discharge (dischargeEvidence)
+
+-- Read only the structured document prefix of a persisted (document,state)
+-- result. The type-private helper state remains owned by the emitter.
+documentPrefix :: Binary.Binary a => B.ByteString -> a
+documentPrefix bytes = case Binary.decodeOrFail bytes of
+  Right (_,_,Right document) -> document
+  Right (_,_,Left message) -> error ("cached document failed: " ++ (message :: String))
+  Left (_,_,message) -> error message
+
+cachedHelperDocuments :: String -> FilePath -> IO [String]
+cachedHelperDocuments target directory = do
+  files <- listDirectory directory
+  bytes <- mapM (B.readFile . (directory </>)) files
+  pure [map toLower (if target `elem` ["javascript","typescript"]
+    then ECMAScript.printModule ECMAScript.TypeScript (documentPrefix value)
+    else Doc.render (Doc.Pretty 100) (documentPrefix value)) | value <- bytes]
 
 -- | Two programs that differ only in one law of their second unit. The compiler
 -- memoizes stages by content, so a missing input in any key would make one
@@ -242,6 +260,36 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         run "Int32" `shouldSatisfy` good
         second <- listDirectory (root </> versioned </> table)
         length second `shouldBe` length first + 1
+        removePathForcibly root
+    forM_ [("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
+           ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2)] $ \(target,table,changed) ->
+      it ("reuses independent " ++ target ++ " codec documents after another type changes") $ do
+        root <- (</> ("lawspec-" ++ target ++ "-helper-memo-test")) <$> getTemporaryDirectory
+        removePathForcibly root
+        let run fieldType = decode (dispatch (encode (object
+              ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+               "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
+               "sources" .= [object ["path" .= ("helpers.lawspec" :: String), "content" .= unlines
+                 ["unit incremental.codecTypes", "type Changed is a record { value :: " ++ fieldType ++ " } end type",
+                  "type Independent is a record { label :: Text } end type",
+                  "function first (value :: Changed) -> Changed is value end function",
+                  "function second (value :: Independent) -> Independent is value end function", "end unit"]]]]))) :: Maybe Value
+            good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
+            good _ = False
+        run "Integer" `shouldSatisfy` good
+        [versioned] <- listDirectory root
+        let directory = root </> versioned </> table
+            documents name = filter (isInfixOf name)
+        first <- cachedHelperDocuments target directory
+        documents "independent" first `shouldSatisfy` (not . null)
+        run "Int32" `shouldSatisfy` good
+        second <- cachedHelperDocuments target directory
+        -- Portable primitive codecs may already be in memory from another
+        -- unit. Count the actual nominal documents, independently of that.
+        documents "independent" second `shouldMatchList` documents "independent" first
+        length (documents "changed" second) `shouldBe` length (documents "changed" first) + changed
+        run "Int32" `shouldSatisfy` good
+        cachedHelperDocuments target directory >>= (`shouldMatchList` second)
         removePathForcibly root
   describe "the on-disk cache" $ do
     it "reads an entry another process stored, and recomputes one it cannot read" $ do
