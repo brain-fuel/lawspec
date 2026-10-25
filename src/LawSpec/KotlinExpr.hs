@@ -3,6 +3,7 @@
 module LawSpec.KotlinExpr (bindValue, bindValueWith, renderExpression, renderExpressionIn, scalarLiteral, call, array, reference, quoted, checked, checkedIn, codec, codecIn, codecReceiverIn) where
 
 import LawSpec.Core
+import LawSpec.Core.ListLiteral (constantListElements)
 import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.JavaData as Java
 import LawSpec.Scalar
@@ -133,6 +134,9 @@ renderExpressionIn scope@(schema, width) declarations named external expression 
               bindings = [D.text ("val " ++ local (binderId binder) ++ " = " ++ resultsName ++ "[" ++ show i ++ "]")
                 | (i,binder) <- zip [0::Int ..] binders]
           pure (runtime "concurrently" (L.lambda [resultsName] (bindings ++ [inner]) : [L.lambda [] [step] | step <- steps]))
+    render term | Just values <- constantListElements term = do
+      fields <- mapM render values
+      pure (runtime "list" [key (expressionType term),call "listOf" fields])
     render term = case expressionNode term of
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
@@ -167,6 +171,12 @@ renderExpressionIn scope@(schema, width) declarations named external expression 
       -- A text literal is already its type's value.
       Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
         expressionType term == scalarType n -> scalarLiteral (expressionType term) value
+      -- Mandatory Core validation has already checked these exact primitive
+      -- representations. Keep contextual/refined constants on the checked path.
+      Constant value@(SInteger name _) | expressionType term == scalarType name ->
+        scalarLiteral (expressionType term) value
+      Constant value@(SBool _) | expressionType term == scalarType "Bool" ->
+        scalarLiteral (expressionType term) value
       Constant value -> scalarLiteral (expressionType term) value >>= checked' (expressionType term)
       Construct tag args -> do
         values <- mapM render args

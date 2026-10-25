@@ -117,7 +117,7 @@ operators _ [] = mempty
 operators _ [single] = single
 operators op (first : rest) = D.prefixChoice (D.render D.Compact first ++ " " ++ op)
   (D.group (first <> D.nest 4 (mconcat [D.text (" " ++ op) <> D.softline <> o | o <- rest])))
-  (first <> mconcat [D.group (D.text (" " ++ op) <> D.nest 4 (D.softline <> o)) | o <- rest])
+  (first <> D.group (mconcat [D.text (" " ++ op) <> D.nest 4 (D.softline <> o) | o <- rest]))
 
 -- | val name = value, broken after the = when it does not fit.
 bind :: String -> D.Doc -> D.Doc
