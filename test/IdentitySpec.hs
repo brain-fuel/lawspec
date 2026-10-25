@@ -13,7 +13,7 @@ import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, dependencyG
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import qualified LawSpec.Core.Smt as Smt
-import LawSpec.TestManifest (TestEntry(..), testManifest)
+import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithNativeContext)
 import FixtureSource (extendUnit)
 
 -- | A program's laws and declarations by their source names, each with its
@@ -197,6 +197,29 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     semanticHash (identityOf graph (keyed "first user key")) `shouldNotBe` semanticHash (identityOf graph (keyed "second user key"))
     Validate.validateProgram (replaceProperty forged) `shouldSatisfy`
       either (any (("scope provenance" `isInfixOf`) . message)) (const False)
+  it "marks native dependencies reached through a checked workflow" $ do
+    let source = unlines ["unit identity.nativeClosure",
+          "workflow wrapper :: Integer -> Either Text Integer is",
+          "  foreign :: Integer -> Either Text Integer", "end workflow",
+          "law selected is definition: for all (value :: Integer) => wrapper value = Right value end for all end definition end law",
+          "end unit"]
+        program = either (error . show) id (compileCore 64 defaultGeneration [Source "closure.lawspec" source])
+        selected = [entryCallsAdapters entry | entry <- testManifest "javascript" Nothing program,
+          entryLaw entry == C.Id "identity.nativeClosure::law::selected"]
+    selected `shouldBe` [True]
+  it "preserves opaque generated API dependencies for explicitly bound native codecs" $ do
+    let make body = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec"
+          (unlines (edit "x + x + x" body base))])
+        selected opaque program = [(entryKey entry,entryCallsAdapters entry) |
+          entry <- testManifestWithNativeContext True opaque "javascript" Nothing program,
+          entryLaw entry `elem` [C.propertyId property | unit <- C.programUnits program, property <- C.unitProperties unit,
+            filter (`notElem` ("\"|" :: String)) (C.propertyName property) == "doubles"]]
+        before = make "x + x + x"
+        after = make "x * 3"
+    map snd (selected False before) `shouldBe` [False]
+    selected False before `shouldBe` selected False after
+    map snd (selected True before) `shouldBe` [True]
+    map fst (selected True before) `shouldNotBe` map fst (selected True after)
   it "conservatively invalidates opaque model adapters when a callable generated definition changes" $ do
     let fixture = "test/fixtures/canonical-model-layer-selection.lawspec"
     original <- readFile fixture

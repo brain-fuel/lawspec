@@ -969,9 +969,25 @@ helpers env = go S.empty
       if null pending then pure [] else do
         docs <- forM pending $ \(kind, key) -> do
           let (index, ty) = stHelpers st M.! key
-          helperDoc env kind index ty
+          memoHelper env kind index ty
         rest <- go (S.union done (S.fromList pending))
         pure (docs ++ rest)
+
+helperTable :: Table (Either String (D.Doc,St))
+helperTable = unsafePerformIO (newPersistentTable "typed-go-helper" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE helperTable #-}
+
+memoHelper :: Env -> String -> Int -> Type -> M D.Doc
+memoHelper env kind _ ty = do
+  before <- get
+  let types = Context.typeClosure (envData env) [ty]
+      selected = [(helperKind,value,helperName env helperKind value) | value <- types, helperKind <- helperKinds]
+      own = emptySt { stTaken = S.fromList (localReserved ++ [name | (_,_,name) <- selected]) }
+      key = Identity.fullKey (envIdentity env) ("typed-go-helper:" ++ show (kind,selected,nativeContext env types)) ty
+  (document,requested) <- lift' (memoized helperTable key (runStateT (helperDoc env kind 0 ty) own))
+  put before { stHelpers = M.union (stHelpers requested) (stHelpers before),
+               stWanted = S.union (stWanted requested) (stWanted before) }
+  pure document
 
 helperDoc :: Env -> String -> Int -> Type -> M D.Doc
 helperDoc env kind _ ty = do

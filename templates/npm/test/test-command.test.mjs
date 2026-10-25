@@ -258,6 +258,24 @@ test("a law's key changes with its adapters only when it calls them", () => {
   assert.equal(before.get(tests[1].law), after.get(tests[1].law));
 });
 
+test("native codecs and generators retain project dependencies for a checked law", () => {
+  const entry={...law(0,"t"),callsAdapters:false};
+  for(const nativeBindings of [{types:[{type:"unit::Value",native:["Value"]}]},
+    {generators:[{type:"unit::Value",factory:["makeValue"]}]}]) {
+    const key=project=>lawKeys({build:"b",target:{language:"python",nativeBindings},machineBits:64,
+      tests:[entry],environment:"e",project}).get(entry.law);
+    assert.notEqual(key("first implementation"),key("changed implementation"));
+  }
+});
+
+test("generated name overrides affect pure presentation and preserve native API dependencies", () => {
+  const tests=[{...law(0,"t"),callsAdapters:false},law(1,"t")];
+  const keys=name=>lawKeys({build:"b",target:{language:"python",nativeBindings:{names:[{declaration:"unit::double",name}]}},
+    machineBits:64,tests,environment:"e",project:"p"});
+  assert.equal(keys("first").get(tests[0].law),keys("renamed").get(tests[0].law));
+  assert.notEqual(keys("first").get(tests[1].law),keys("renamed").get(tests[1].law));
+});
+
 test("a law's key ignores the generated file's bytes", () => {
   const tests = [law(0, "t")];
   const keys = (content) => lawKeys({ build: "b", target: { language: "python" }, machineBits: 64, minify: false,
