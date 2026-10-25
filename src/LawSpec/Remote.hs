@@ -203,7 +203,7 @@ remoteArtifacts target calls plan = case (target, remotes) of
       , "    return node.evaluate(address, h, list(args), a, r, TYPES, timeout=timeout)" ])) ++ "\n"
     pyQuote = literalFor "python"
     descriptor d = E.call "_d" [E.quoted d]
-    jdescriptor d = jcall "LawSpecRuntime.descriptor" [Doc.text (literalFor "java" d)]
+    jdescriptor d = jcall "LawSpecRuntime.descriptor" [jvmString "java" d]
     jcall n args = Doc.group (Doc.text (n ++ "(") <> Doc.nest 4 (Doc.softbreak <> Doc.commaSep args) <> Doc.text ")")
     -- Java: Allman braces with Google's other rules (LawSpec's Java profile).
     jquote = literalFor "java"
