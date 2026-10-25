@@ -33,6 +33,15 @@ test_generatedTestsStayProportionalToTheirSpecification = describe "compact gene
             "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
             "sources" .= [object ["path" .= path source, "content" .= content source] | source <- sources]]
       checkBudget sources request
+  forM_ programTargets $ \target ->
+    it (target ++ " shares sampled set literals with only property and example layers selected") $ do
+      let files = ["test/fixtures/canonical-set-domains.lawspec", "test/fixtures/canonical-set-generation.lawspec"]
+      sources <- mapM (\file -> Source file <$> readFile file) files
+      let request = object ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+            "method" .= ("planGeneration" :: String), "target" .= target,
+            "verification" .= object ["layers" .= (["property", "examples"] :: [String])],
+            "sources" .= [object ["path" .= path source, "content" .= content source] | source <- sources]]
+      checkBudget sources request
   forM_ ["java", "kotlin", "groovy", "clojure"] $ \target ->
     it (target ++ " shares native-failure scaffolding within the source-size budget") $ do
       let file = "test/fixtures/canonical-native-failure-products.lawspec"
