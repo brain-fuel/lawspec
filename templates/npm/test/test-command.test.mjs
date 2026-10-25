@@ -693,6 +693,10 @@ test("selects .NET laws with xUnit query filters and reads them back by display 
     '<testcase name="example.unit::law 10 example 0: first" classname="LawSpec.Tests.ExampleUnit"/></testsuite></testsuites>'), [1, 10]);
   assert.deepEqual(await ranLaws({ language: "csharp" }, [law(1, "tests/LawSpec/ExampleUnit.cs", undefined, "csharp")],
     '<testsuites><testsuite><testcase name="example.unit::law 10 property" classname="LawSpec.Tests.ExampleUnit"/></testsuite></testsuites>'), []);
+  assert.deepEqual(await ranLaws({ language: "fsharp" }, fsharp,
+    '<testsuites><testsuite><testcase name="example.unit::law 1 boundary 256 — values.lawspec:9(caseIndex: 256)" classname="LawSpec.Tests.ExampleUnit"/>' +
+    '<testcase name="example.unit::law 10 boundary 1(caseIndex: 1)" classname="LawSpec.Tests.ExampleUnit"/>' +
+    '<testcase name="example.unit::law 1 boundary fake" classname="LawSpec.Tests.ExampleUnit"/></testsuite></testsuites>'), [1, 10]);
   const coverage = invocations({ language: "csharp" }, [law(1, "tests/LawSpec/ExampleUnit.cs")], { coverage: "c" });
   assert.ok(coverage[0].args.includes("--coverage"));
   const bench = benchmarkInvocations({ language: "fsharp" }, [{ unit: "example.unit", benchmark: "a booking", file: "tests/LawSpec/ExampleUnit.fs", name: "benchmarkABooking" }]);

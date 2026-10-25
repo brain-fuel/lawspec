@@ -9,6 +9,8 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
+import qualified LawSpec.Testing.Cover as Cover
+import qualified Control.Monad.State.Strict as S
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Backend (lawCommentLines)
@@ -184,12 +186,22 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
         inScope <- Policy.withTestRuntime units tValue <$> Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketed)
         pure (test (name ++ exampleName) (label ++ " example " ++ show i ++ ": " ++ C.exampleName example) False
           (labelled ("example " ++ displayLabel (C.exampleName example)) exampleLink) (setup (discarded inScope)))
-      let cases = maybe (boundaryCases planned) id (finiteCases planned)
-          boundary = [ test (name ++ suffix "boundary") (label ++ " boundary") False (labelled (displayLabel (C.propertyName law) ++ " boundary cases") lawLink) (setup
-                         (call "Property" "boundaries" [Str label, ListOf tValues [ListOf tValue (map (X.value X.symbolsVar) values) | values <- cases],
-                           Lambda [("values", tValues)] tValue (invoke (Var "values"))]))
-                     | not (null cases) ]
-      random <- case finiteCases planned of
+      cover <- caseCover planned
+      coverBody <- finiteCoverExpression cover
+      let coverName = name ++ suffix "cases"
+          coverRef = Call (Fn coverName coverName) []
+          coverDocs = [private' (function lang True coverName [] tCover coverBody) | Cover.coverCount cover > 0]
+          boundaryName = name ++ suffix "boundary"
+          boundaryNote = labelled (displayLabel (C.propertyName law) ++ " boundary cases") lawLink
+          check = Lambda [("values", tValues)] tValue (invoke (Var "values"))
+          boundary = [test boundaryName (label ++ " boundary") False boundaryNote (setup
+            (call "Finite" "checkAll" [Str label, coverRef, X.symbolsVar, check])) | Cover.coverCount cover > 0]
+          boundaryCase = setup (call "Finite" "check" [Str label, Var "caseIndex",
+            call "Finite" "at" [coverRef, X.symbolsVar, Var "caseIndex"], check])
+          finiteTest harness = declareFinite (nested unit) boundaryName label boundaryNote
+            (maybe "" id lawLink) (Cover.coverCount cover)
+            (wrapHarness label (label ++ " boundary") False harness boundaryCase)
+      random <- case finiteCover planned of
         Just _ -> pure [test (name ++ suffix "statistics") (label ++ " statistics") True (labelled (displayLabel (C.propertyName law) ++ " statistics") lawLink) UnitLit | observed harness]
         Nothing -> do
           generator <- generators bits plan external local planned
@@ -241,12 +253,13 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             (_, Just reason) -> [declareTest (nested unit) (name ++ suffix "knownFailing") (label ++ " known failing") (labelled (displayLabel (C.propertyName law) ++ " known failing") lawLink)
               (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
                 ListOf (tFun [] tUnit) [Lambda [] tUnit (wrapHarness label d o harness b) | (_, d, o, _, b) <- ordinary]])]
-            _ -> map (\(n, d, o, note, b) -> declareTest (nested unit) n d note (wrapHarness label d o harness b)) ordinary
+            _ -> map (\(n, d, o, note, b) -> if n == boundaryName then finiteTest harness
+              else declareTest (nested unit) n d note (wrapHarness label d o harness b)) ordinary
       -- The law's description, expansion and expectations, as every target
       -- writes them beside its tests.
       let (bodyText, bodyTest, bodyName') = bodyDoc
           described = (comment (lawCommentLines planned) <> bodyText, bodyTest, bodyName')
-      pure (described : caseDoc ++ tests)
+      pure (described : caseDoc ++ coverDocs ++ tests)
     suffix kind = case lang of
       FSharp -> "_" ++ kind
       CSharp -> "_" ++ capital kind
@@ -258,6 +271,21 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
     -- A test: its source link, its fact and its function.
     declareTest inner n display note body = (comment [note] <> attributeLines ("Fact(DisplayName = " ++ stringLiteral lang display ++ ")") <>
       function' inner lang False n [] tUnit body, True, n)
+    -- The provider publishes only a serializable index. Its values and
+    -- symbol context are recreated inside each harness attempt, after selection.
+    declareFinite inner n label note source count body =
+      let provider = n ++ "Rows"
+          rowsType = Ty "seq<TheoryDataRow<int>>" "System.Collections.Generic.IEnumerable<TheoryDataRow<int>>"
+          indentation = (if lang == FSharp then 0 else 4) + (if inner then 4 else 0)
+          declaration = case lang of
+            FSharp -> "let " ++ provider
+            CSharp -> "public static " ++ tyText CSharp rowsType ++ " " ++ provider
+          rows = linesDoc indentation (functionLines lang indentation declaration [] rowsType
+            (call "Finite" "rows" [Str label, Str source, IntLit count]))
+          member = if lang == FSharp then "nameof " ++ provider else "nameof(" ++ provider ++ ")"
+      in (comment [note] <> rows <> D.hardline <> D.hardline <>
+          attributeLines "Theory" <> attributeLines ("MemberData(" ++ member ++ ")") <>
+          function' inner lang False n [("caseIndex",tInt)] tUnit body, True, n)
     -- A parallel unit's tests are nested a level deeper (see nestTest).
     nested u = maybe False C.harnessParallel (C.unitHarnessSettings u)
     -- Comment lines, at the file's indentation.
@@ -297,6 +325,39 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             CSharp -> (if private' then "private static " ++ tyText CSharp result ++ " " else "public void ") ++ n
       in linesDoc indentation (functionLines l indentation declaration params result body)
     unsupported _ = pure () :: Either String ()
+
+-- | The shared runtime's compressed finite-cover type.
+tCover :: Ty
+tCover = Ty "Finite.Cover" "Finite.Cover"
+
+-- | Covers retain shared suffixes as ordinary local bindings. Values stay
+-- factories over an invocation's symbol context until the runtime selects one.
+finiteCoverExpression :: Cover.FiniteCover -> Either String Expr
+finiteCoverExpression root = do
+  (reference, (_, bindings)) <- S.runStateT (cover root) ([], [])
+  pure (foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings))
+  where
+    cover :: Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
+    cover node = do
+      (known, _) <- S.get
+      case lookup node known of
+        Just name -> pure (Var name)
+        Nothing -> do
+          value <- case node of
+            Cover.Complete count -> pure (call "Finite" "finish" [IntLit (toInteger count)])
+            Cover.Alternatives alternatives -> do
+              branches <- forM alternatives $ \(domain, suffix) -> do
+                let values = case domain of
+                      Cover.Values items -> call "Finite" "values" [ListOf (tFun [tSymbols] tValue)
+                        [Lambda [("symbols",tSymbols)] tValue (X.value (Var "symbols") item) | item <- items]]
+                      Cover.IntegerInterval name first last' -> call "Finite" "range" [Str name, BigLit first, BigLit last']
+                rest <- cover suffix
+                pure (call "Finite" "branch" [values,rest])
+              pure (call "Finite" "choices" [ListOf (Ty "Finite.Domain * Finite.Cover" "Tuple<Finite.Domain, Finite.Cover>") branches])
+          (known', bindings) <- S.get
+          let name = "cover" ++ show (length known' + 1)
+          S.put ((node,name):known',(name,value):bindings)
+          pure (Var name)
 
 -- | file:line of a law, when it is written in a source.
 sourceLinkOf :: Location -> Maybe String

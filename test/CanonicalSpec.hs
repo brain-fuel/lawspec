@@ -71,6 +71,21 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       filter (isInfixOf "lawspec_same_") comments `shouldBe` []
       any (isInfixOf "same") comments `shouldBe` True)
       ["python","javascript","typescript","haskell","erlang","elixir","gleam","go","rust","fsharp","csharp"]
+  it "emits individually selectable compact .NET boundaries with one shared checker" $ do
+    program <- either (fail . show) pure $ core $ unlines
+      [ "function same (value :: Int8) -> Int8 is value end function"
+      , "law sameResult is definition: for all (value :: Int8) => same value = value end for all end definition end law" ]
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Exhaustive]) program)
+    mapM_ (\target -> do
+      artifacts <- either (fail . show) pure (emitPlan target plan)
+      let emitted = concat [LawSpec.Model.artifactContent artifact | artifact <- artifacts,
+            "tests/LawSpec/" `isPrefixOf` LawSpec.Model.artifactPath artifact]
+      lines emitted `shouldSatisfy` ((< 300) . length)
+      emitted `shouldSatisfy` isInfixOf "Theory"
+      emitted `shouldSatisfy` isInfixOf "MemberData"
+      emitted `shouldSatisfy` isInfixOf (if target == "fsharp" then "Finite.range" else "Finite.Range")
+      emitted `shouldSatisfy` (not . isInfixOf "Property.boundaries")
+      emitted `shouldSatisfy` (not . isInfixOf "Property.Boundaries")) ["fsharp","csharp"]
   it "preserves Java literal text resembling the generated runtime package" $ do
     program <- either (fail . show) pure $ core $ unlines
       [ "function matches (value :: Text) -> Float64 is"

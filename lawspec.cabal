@@ -20,6 +20,60 @@ extra-source-files:
     README.md
     CHANGELOG.md
     test/FiniteCases.java
+    test/FiniteCases.fs
+    test/finite_cases_dotnet.py
+    runtime/dotnet/LawSpec.Runtime/Actors.fs
+    runtime/dotnet/LawSpec.Runtime/ChannelProtocol.fs
+    runtime/dotnet/LawSpec.Runtime/Codecs.fs
+    runtime/dotnet/LawSpec.Runtime/Crypto.fs
+    runtime/dotnet/LawSpec.Runtime/CSharp.fs
+    runtime/dotnet/LawSpec.Runtime/Defaults.fs
+    runtime/dotnet/LawSpec.Runtime/Descriptors.fs
+    runtime/dotnet/LawSpec.Runtime/Effects.fs
+    runtime/dotnet/LawSpec.Runtime/Endpoint.fs
+    runtime/dotnet/LawSpec.Runtime/Mailbox.fs
+    runtime/dotnet/LawSpec.Runtime/MemoryNetwork.fs
+    runtime/dotnet/LawSpec.Runtime/Native.fs
+    runtime/dotnet/LawSpec.Runtime/NetworkApi.fs
+    runtime/dotnet/LawSpec.Runtime/NetworkCrypto.fs
+    runtime/dotnet/LawSpec.Runtime/Node.fs
+    runtime/dotnet/LawSpec.Runtime/Policy.fs
+    runtime/dotnet/LawSpec.Runtime/Portable.fs
+    runtime/dotnet/LawSpec.Runtime/Random.fs
+    runtime/dotnet/LawSpec.Runtime/Recorded.fs
+    runtime/dotnet/LawSpec.Runtime/Regex.fs
+    runtime/dotnet/LawSpec.Runtime/Remote.fs
+    runtime/dotnet/LawSpec.Runtime/Runtime.fs
+    runtime/dotnet/LawSpec.Runtime/Scalar.fs
+    runtime/dotnet/LawSpec.Runtime/Schema.fs
+    runtime/dotnet/LawSpec.Runtime/SecureNetwork.fs
+    runtime/dotnet/LawSpec.Runtime/Sessions.fs
+    runtime/dotnet/LawSpec.Runtime/SocketTransport.fs
+    runtime/dotnet/LawSpec.Runtime/Tasks.fs
+    runtime/dotnet/LawSpec.Runtime/Transport.fs
+    runtime/dotnet/LawSpec.Runtime/Typed.fs
+    runtime/dotnet/LawSpec.Runtime/Values.fs
+    runtime/dotnet/LawSpec.Runtime/Wire.fs
+    runtime/dotnet/LawSpec.Runtime/Workflow.fs
+    runtime/dotnet/LawSpec.Testing/ActorHost.fs
+    runtime/dotnet/LawSpec.Testing/CryptoVectors.fs
+    runtime/dotnet/LawSpec.Testing/Finite.fs
+    runtime/dotnet/LawSpec.Testing/Gen.fs
+    runtime/dotnet/LawSpec.Testing/Generators.fs
+    runtime/dotnet/LawSpec.Testing/Harness.fs
+    runtime/dotnet/LawSpec.Testing/History.fs
+    runtime/dotnet/LawSpec.Testing/Model.fs
+    runtime/dotnet/LawSpec.Testing/ModelParallel.fs
+    runtime/dotnet/LawSpec.Testing/Property.fs
+    runtime/dotnet/LawSpec.Testing/Resources.fs
+    runtime/dotnet/LawSpec.Testing/Scenario.fs
+    runtime/dotnet/LawSpec.Testing/ScenarioIo.fs
+    runtime/dotnet/LawSpec.Testing/ScenarioNetwork.fs
+    runtime/dotnet/LawSpec.Testing/Schedule.fs
+    runtime/dotnet/LawSpec.Testing/Search.fs
+    runtime/dotnet/LawSpec.Testing/Supervision.fs
+    runtime/dotnet/LawSpec.Runtime/LawSpec.Runtime.fsproj
+    runtime/dotnet/LawSpec.Testing/LawSpec.Testing.fsproj
     test/finite_cases_jvm.py
     test/finite_cases_go.py
     test/finite_cases_test.go
