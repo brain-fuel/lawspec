@@ -62,11 +62,11 @@ emitKotlinDefinitions layout bits declarations units = do
           let (_, declared) = ability
               (args, result) = maybe ([], scalarType "Unit") functionType (lookup (operationName op) (abilityOperations declared))
               interface = abilityInterface (operationAbility op)
-          codecs <- mapM (Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
-          resultCodec <- Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
+          codecs <- mapM (Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
+          resultCodec <- Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
           let parameters = D.text "symbols: MutableMap<String, Any>" :
                 [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
-              invocation = KotlinLayout.chain (handlerAs (operationAbility op)) [(operationName op,
+              invocation = KotlinLayout.chain (KotlinLayout.expressionReceiver (handlerAs (operationAbility op))) [(operationName op,
                 [decode codec (D.text ("value" ++ show i)) | (i, codec) <- zip [0::Int ..] codecs])]
               _ = interface
           -- An operation that fails with E: a native handler throws
@@ -79,8 +79,8 @@ emitKotlinDefinitions layout bits declarations units = do
           let (args, result) = functionType (declarationType adapter)
               parts = split '.' (idText owner)
               cls = intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
-          codecs <- mapM (Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
-          resultCodec <- Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
+          codecs <- mapM (Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
+          resultCodec <- Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
           let parameters = D.text "symbols: MutableMap<String, Any>" :
                 [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
               -- An adapter that uses abilities gets their handlers first.
@@ -146,8 +146,8 @@ emitKotlinDefinitions layout bits declarations units = do
           (args,result) = functionType (declarationType declaration)
       types <- mapM (Native.kotlinDataTypeDoc declarations) args
       resultType <- flat <$> Native.kotlinDataTypeDoc declarations result
-      codecs <- mapM (Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
-      resultCodec <- Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
+      codecs <- mapM (Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
+      resultCodec <- Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
       evaluator <- maybe (Left "unresolved Kotlin definition") Right (lookup (declarationId declaration) callees)
       let handlers = [ (ability, lowerFirst (interfaceName a)) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
@@ -160,11 +160,11 @@ emitKotlinDefinitions layout bits declarations units = do
             call "mapOf" [E.quoted (abilityKey ability) <> D.text (" to " ++ name) | (ability, name) <- handlers]] | not (null handlers)]
           signature = D.text ("fun " ++ declarationName declaration) <>
             KotlinLayout.arguments parameters <> D.text ": " <> resultType <> D.text " "
-          input i codec = [assign ("codec" ++ show i) codec,
+          input i codec = [assign ("codec" ++ show i) (KotlinLayout.receiverDoc codec),
             D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ")")]
           body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
-             assign "resultCodec" resultCodec,D.text "return resultCodec.decode(result)"]
+             assign "resultCodec" (KotlinLayout.receiverDoc resultCodec),D.text "return resultCodec.decode(result)"]
           context = E.quoted (idText (declarationId declaration) ++ ": ")
           -- A Fail ability's failure passes through, to the attempt that awaits it.
           guarded = D.text "try " <> D.block 4 (D.joinWith D.hardline body) <>
@@ -192,7 +192,7 @@ emitKotlinDefinitions layout bits declarations units = do
       [b | u <- units, unitId u == owner, b <- unitFailureBindings u]
     failingAs failures failureBindings body = case failures of
       ability@(AbilityRef _ [failure]) : _ ->
-        let codec = either error id (Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations failure)
+        let codec = either error id (Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations failure)
             native = either error id (Native.kotlinDataType declarations failure)
             bindings = [b | b <- failureBindings, failureType b == failure]
             mapped = [ call "LawSpecRuntime.MappedFailure" [D.text (intercalate "." (failureNative b) ++ "::class.java"),

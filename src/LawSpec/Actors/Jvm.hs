@@ -17,7 +17,7 @@ import Data.Char (toUpper)
 import Data.List (intercalate, isInfixOf, stripPrefix)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.JavaData (javaCodecDocWithContext)
-import LawSpec.KotlinData (kotlinCodecDocIn)
+import LawSpec.KotlinData (kotlinCodecReceiverIn)
 import qualified LawSpec.KotlinLayout as K
 import LawSpec.JvmNames (javadoc)
 import LawSpec.MachineSpec (describe)
@@ -258,7 +258,7 @@ kotlinSource datas wire a = do
     kdoc = javadoc
     awaited d call = if C.declarationAsync d then K.trailing (D.text "kotlinx.coroutines.runBlocking") [] [call] else call
     adapterCallDoc d args = K.call (adapterClass (actorUnit a) ++ "." ++ adapterName (actorUnit a) (C.declarationId d)) args
-    codec ty = kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") datas ty
+    codec ty = kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") datas ty
     descriptor d = K.call "LawSpecRuntime.descriptor" [K.kotlinString d]
     -- The companion's members, and the class's.
     kotlinRemote own w = do

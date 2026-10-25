@@ -1,5 +1,5 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
-module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc, namesFor, kotlinDataName) where
+module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc, namesFor, kotlinDataName, kotlinCodecReceiverIn, kotlinNativeCodecReceiverIn) where
 
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
@@ -285,35 +285,38 @@ codecDocUsing :: Maybe D.Doc -> Names -> [(C.Id, (String, String))] -> C.Type ->
 codecDocUsing = codecDocUsingOwner ("schema", "bits") "LawSpecDataCodecs"
 
 codecDocUsingOwner :: (String, String) -> String -> Maybe D.Doc -> Names -> [(C.Id, (String, String))] -> C.Type -> Either String D.Doc
-codecDocUsingOwner scope@(schemaName, bitsName) owner context names parameters ty = case ty of
+codecDocUsingOwner scope owner context names parameters = fmap KotlinLayout.receiverDoc . codecReceiverUsingOwner scope owner context names parameters
+
+codecReceiverUsingOwner :: (String, String) -> String -> Maybe D.Doc -> Names -> [(C.Id, (String, String))] -> C.Type -> Either String KotlinLayout.Receiver
+codecReceiverUsingOwner scope@(schemaName, bitsName) owner context names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin codec parameter")
-    (Right . D.text . snd) (lookup variable parameters)
+    (Right . KotlinLayout.expressionReceiver . D.text . snd) (lookup variable parameters)
   C.Constructor name [] | isDurationType name ->
-    pure (call "lawspec.runtime.LawSpecKotlinCodecs.duration" ([D.text schemaName, D.text bitsName] ++ maybe [] pure context))
+    pure (KotlinLayout.callReceiver "lawspec.runtime.LawSpecKotlinCodecs.duration" ([D.text schemaName, D.text bitsName] ++ maybe [] pure context))
   C.Constructor name args | Just short <- collectionContainer name -> do
-    children <- mapM (argument (codecDocUsingOwner scope owner context names parameters)) args
+    children <- mapM (argument (fmap KotlinLayout.receiverDoc . codecReceiverUsingOwner scope owner context names parameters)) args
     let rest = maybe [] pure context
     pure $ case short of
-      "Set" -> call "lawspec.runtime.LawSpecKotlinCodecs.set" ([D.text schemaName, D.text bitsName] ++ children ++ rest)
-      "KeyVal" -> call "lawspec.runtime.LawSpecKotlinCodecs.keyVal" ([D.text schemaName, D.text bitsName] ++ children ++ rest)
-      _ -> call "lawspec.runtime.LawSpecKotlinCodecs.sequence" ([D.text schemaName, D.text bitsName, quoted short] ++ children ++ rest)
+      "Set" -> KotlinLayout.callReceiver "lawspec.runtime.LawSpecKotlinCodecs.set" ([D.text schemaName, D.text bitsName] ++ children ++ rest)
+      "KeyVal" -> KotlinLayout.callReceiver "lawspec.runtime.LawSpecKotlinCodecs.keyVal" ([D.text schemaName, D.text bitsName] ++ children ++ rest)
+      _ -> KotlinLayout.callReceiver "lawspec.runtime.LawSpecKotlinCodecs.sequence" ([D.text schemaName, D.text bitsName, quoted short] ++ children ++ rest)
   C.Constructor name args -> do
-    children <- mapM (argument (codecDocUsingOwner scope owner context names parameters)) args
+    children <- mapM (argument (fmap KotlinLayout.receiverDoc . codecReceiverUsingOwner scope owner context names parameters)) args
     case lookup (C.Id name) names of
-      Just native -> pure (call (owner ++ "." ++ codecName native)
+      Just native -> pure (KotlinLayout.callReceiver (owner ++ "." ++ codecName native)
         ([D.text schemaName, D.text bitsName] ++ children ++ maybe [] pure context))
       Nothing | name `elem` ["List", "Maybe", "Either"] ->
-        pure (call (schemaName ++ "." ++ map toLower name) (children ++ [D.text bitsName] ++ maybe [] pure context))
+        pure (KotlinLayout.callReceiver (schemaName ++ "." ++ map toLower name) (children ++ [D.text bitsName] ++ maybe [] pure context))
       Nothing | name `elem` ["Nullable", "Optional"] ->
-        pure (call ("LawSpecKotlinCodecs." ++ map toLower name)
+        pure (KotlinLayout.callReceiver ("LawSpecKotlinCodecs." ++ map toLower name)
           ([D.text schemaName, D.text bitsName] ++ children ++ maybe [] pure context))
       Nothing | Just helper <- lookup name
         [("Unit","unit"),("Null","nullValue"),("Undefined","undefined"),
          ("Symbol","symbol"),("CodePointText","codePointText")] ->
-        pure (call ("LawSpecKotlinCodecs." ++ helper) [D.text schemaName, D.text bitsName])
+        pure (KotlinLayout.callReceiver ("LawSpecKotlinCodecs." ++ helper) [D.text schemaName, D.text bitsName])
       Nothing -> do
         native <- typeDoc [] names [] ty
-        pure (call (schemaName ++ ".scalar") [quoted name, D.text bitsName, D.group (native <> D.text "::class" <> D.nest 4 (D.softbreak <> D.text ".javaObjectType"))])
+        pure (KotlinLayout.callReceiver (schemaName ++ ".scalar") [quoted name, D.text bitsName, D.group (native <> D.text "::class" <> D.nest 4 (D.softbreak <> D.text ".javaObjectType"))])
   _ -> Left "function fields cannot cross Kotlin codecs"
 
 -- | Codec text for one-line uses.
@@ -341,6 +344,15 @@ kotlinCodecDocIn scope context declarations =
   (registry, names) <- prepared
   checkType registry ty
   codecDocUsingOwner scope "LawSpecDataCodecs" (Just context) names [] ty
+
+-- | The same checked codec, retaining its call arguments for chained layout.
+kotlinCodecReceiverIn :: (String, String) -> D.Doc -> [C.DataDeclaration] -> C.Type -> Either String KotlinLayout.Receiver
+kotlinCodecReceiverIn scope context declarations =
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
+  checkType registry ty
+  codecReceiverUsingOwner scope "LawSpecDataCodecs" (Just context) names [] ty
 
 -- | As kotlinCodecDoc, where the schema comes from the caller's scope.
 kotlinCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> C.Type -> Either String D.Doc
@@ -372,6 +384,12 @@ kotlinNativeCodecDocIn :: (String, String) -> [C.DataDeclaration] -> C.Type -> E
 kotlinNativeCodecDocIn scope declarations ty = do
   names <- namesFor declarations
   codecDocUsingOwner scope "LawSpecNativeCodecs" (Just (D.text "symbols")) names [] ty
+
+-- | The native codec with its invocation structure retained for chaining.
+kotlinNativeCodecReceiverIn :: (String, String) -> [C.DataDeclaration] -> C.Type -> Either String KotlinLayout.Receiver
+kotlinNativeCodecReceiverIn scope declarations ty = do
+  names <- namesFor declarations
+  codecReceiverUsingOwner scope "LawSpecNativeCodecs" (Just (D.text "symbols")) names [] ty
 
 emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration] -> Either String String
 emitCodecs mappings owner layout declarations = do

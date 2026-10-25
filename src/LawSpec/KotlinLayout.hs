@@ -5,12 +5,11 @@
 -- lines, a declaration broken after its =, and a chained call broken
 -- before its dot. Strings are Kotlin literals ($ escaped) and never split.
 module LawSpec.KotlinLayout
-  ( kotlinString, escapedPath, operators, call, callThen, selects, castCall, cast, callWith, arguments, lambda, trailing, trailingCall, bind, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
+  ( kotlinString, escapedPath, operators, call, callThen, selects, castCall, cast, callWith, arguments, lambda, trailing, trailingCall, bind, Receiver, expressionReceiver, callReceiver, receiverDoc, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Code.Literal (literalFor)
-import LawSpec.CallText (CallTree(..), parseCall)
 
 kotlinStyle :: D.Layout
 kotlinStyle = D.PrettyPoints 100
@@ -124,73 +123,38 @@ operators op (first : rest) = D.prefixChoice (D.render D.Compact first ++ " " ++
 bind :: String -> D.Doc -> D.Doc
 bind name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 4 (D.softline <> value))
 
+-- | A receiver retains invocation arguments as documents. A complete operand
+-- such as a checked cast is kept explicitly, rather than inferred from text.
+data Receiver
+  = ReceiverExpression D.Doc
+  | ReceiverCall (Maybe String) String [D.Doc]
+
+expressionReceiver :: D.Doc -> Receiver
+expressionReceiver = ReceiverExpression
+
+callReceiver :: String -> [D.Doc] -> Receiver
+callReceiver name args = case break (== '.') (reverse name) of
+  (method, '.' : owner) -> ReceiverCall (Just (reverse owner)) (reverse method) args
+  _ -> ReceiverCall Nothing name args
+
+receiverDoc :: Receiver -> D.Doc
+receiverDoc (ReceiverExpression doc) = doc
+receiverDoc (ReceiverCall owner method args) = call (maybe "" (++ ".") owner ++ method) args
+
 -- | receiver.a(...).b(...): broken before each dot after the first call;
 -- a broken receiver's arguments are indented past the chain's, as ktfmt
 -- indents them.
-chain :: D.Doc -> [(String, [D.Doc])] -> D.Doc
+chain :: Receiver -> [(String, [D.Doc])] -> D.Doc
 chain receiver methods = D.group (D.nest 4 (receiver' <> mconcat [D.softbreak <> call ("." ++ m) args | (m, args) <- methods]))
   where
-    -- A receiver that is a call on a class (Codecs.orderCodec(...)) stays
-    -- whole when it fits; otherwise it breaks before its method, at the
-    -- chain's indentation. One on a value breaks before each dot.
-    flat = D.render D.Compact receiver
-    receiver' = case qualifiedCall flat of
-      Just (owner, method, args) ->
-        let broken = D.text owner <> D.softbreak <> callWith (D.text ('.' : method)) (map argument args)
-            argument a = maybe (D.text a) rebuilt (parseCall a)
-            rebuilt tree = case tree of
-              Atom t -> D.text t
-              Apply n as -> call n (map rebuilt as)
-              Select r m as -> chain (rebuilt r) [(m, map rebuilt as)]
+    receiver' = case receiver of
+      ReceiverCall (Just owner) method args ->
+        let whole = D.text owner <> callWith (D.text ('.' : method)) args
+            broken = D.text owner <> D.softbreak <> callWith (D.text ('.' : method)) args
         in if take 1 owner `elem` map pure ['a' .. 'z'] && '.' `notElem` owner then broken
-           -- A constant (SCHEMA) is a value, not a class: its call keeps its dot.
-           else if all (\c -> c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c == '_') owner then receiver
-           -- A class's call keeps its dot when its opening fits, and breaks
-           -- its arguments; otherwise it breaks before its method.
-           else D.bestFit [D.text flat, D.prefixChoice (owner ++ "." ++ method ++ "(")
-             (D.text owner <> callWith (D.text ('.' : method)) (map argument args)) broken]
-      Nothing -> receiver
-
--- | Owner.method(a, b) in one line's text: the owner, method and arguments.
-qualifiedCall :: String -> Maybe (String, String, [String])
-qualifiedCall text
-  | '\n' `elem` text = Nothing
-  | otherwise = case break (== '(') text of
-      (path, '(' : rest) | not (null rest), last rest == ')', all pathChar path, closes (init rest) ->
-        case break (== '.') (reverse path) of
-          (method@(_ : _), '.' : owner@(_ : _)) -> Just (reverse owner, reverse method, arguments (init rest))
-          _ -> Nothing
-      _ -> Nothing
-  where
-    pathChar c = c `elem` ("._" :: String) || c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9']
-    -- The arguments' text closes every bracket it opens, outside strings.
-    closes s = go (0 :: Int) s
-      where
-        go depth [] = depth == 0
-        go depth ('"' : rest) = go depth (skipString rest)
-        go depth (c : rest)
-          | c `elem` ("([{<" :: String) = go (depth + 1) rest
-          | c `elem` (")]}>" :: String) = depth > 0 && go (depth - 1) rest
-          | otherwise = go depth rest
-    skipString ('\\' : _ : rest) = skipString rest
-    skipString ('"' : rest) = rest
-    skipString (_ : rest) = skipString rest
-    skipString [] = []
-    -- Top-level arguments, split at commas outside brackets and strings.
-    arguments s = map (dropWhile (== ' ')) (split (0 :: Int) "" s)
-    split _ current [] = [reverse current | not (null current)]
-    split depth current ('"' : rest) = let (str, after) = stringPrefix rest in split depth (reverse ('"' : str) ++ current) after
-    split depth current (c : rest)
-      | c == ',' && depth == 0 = reverse current : split depth "" rest
-      | c `elem` ("([{<" :: String) = split (depth + 1) (c : current) rest
-      | c `elem` (")]}>" :: String) = split (depth - 1) (c : current) rest
-      | otherwise = split depth (c : current) rest
-    stringPrefix s = go' "" s
-      where
-        go' acc ('\\' : c : rest) = go' (c : '\\' : acc) rest
-        go' acc ('"' : rest) = (reverse ('"' : acc), rest)
-        go' acc (c : rest) = go' (c : acc) rest
-        go' acc [] = (reverse acc, [])
+           else if all (\c -> c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c == '_') owner then receiverDoc receiver
+           else D.bestFit [whole, D.prefixChoice (owner ++ "." ++ method ++ "(") whole broken]
+      _ -> receiverDoc receiver
 
 -- | (name(args) as T): when the call fits on the line it stays whole and the
 -- cast breaks before its as; otherwise the call breaks its arguments and

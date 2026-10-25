@@ -1,6 +1,6 @@
 -- | Kotlin expression documents over checked Core. Native calls are supplied by
 -- the consumer so definitions and adapter bridges retain their own ABI.
-module LawSpec.KotlinExpr (bindValue, bindValueWith, renderExpression, renderExpressionIn, scalarLiteral, call, array, reference, quoted, checked, checkedIn, codec, codecIn) where
+module LawSpec.KotlinExpr (bindValue, bindValueWith, renderExpression, renderExpressionIn, scalarLiteral, call, array, reference, quoted, checked, checkedIn, codec, codecIn, codecReceiverIn) where
 
 import LawSpec.Core
 import qualified LawSpec.KotlinData as Native
@@ -74,6 +74,9 @@ codec declarations bits =
 -- test's SCHEMA and MACHINE_BITS).
 codecIn :: (String, String) -> [DataDeclaration] -> Type -> Either String D.Doc
 codecIn scope declarations = Native.kotlinCodecDocIn scope (D.text "symbols") declarations
+
+codecReceiverIn :: (String, String) -> [DataDeclaration] -> Type -> Either String L.Receiver
+codecReceiverIn scope declarations = Native.kotlinCodecReceiverIn scope (D.text "symbols") declarations
 
 -- | Literals become runtime values built from their declared type and exact
 -- digits, so Kotlin never reads a number at its own precision.
