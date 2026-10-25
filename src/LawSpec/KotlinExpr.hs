@@ -1,6 +1,6 @@
 -- | Kotlin expression documents over checked Core. Native calls are supplied by
 -- the consumer so definitions and adapter bridges retain their own ABI.
-module LawSpec.KotlinExpr (bindValue, renderExpression, renderExpressionIn, scalarLiteral, call, array, reference, quoted, checked, checkedIn, codec, codecIn) where
+module LawSpec.KotlinExpr (bindValue, bindValueWith, renderExpression, renderExpressionIn, scalarLiteral, call, array, reference, quoted, checked, checkedIn, codec, codecIn) where
 
 import LawSpec.Core
 import qualified LawSpec.KotlinData as Native
@@ -16,9 +16,15 @@ import qualified Data.Map.Strict as M
 -- opening after the binding's equals sign, independently of its body width.
 -- The choice uses the checked term, never generated text.
 bindValue :: String -> Expr -> D.Doc -> D.Doc
-bindValue name expression value = case expressionNode (flattenLets expression) of
-  Let {} -> D.text ("val " ++ name ++ " = ") <> value
-  _ -> L.bind name value
+bindValue name = bindValueWith ("val " ++ name ++ " =")
+
+-- | A checked expression after a declaration, including a typed mutable
+-- field. Only a Core let has the argumentless trailing block that ktfmt
+-- keeps after the equals sign independently of its body's width.
+bindValueWith :: String -> Expr -> D.Doc -> D.Doc
+bindValueWith declaration expression value = case expressionNode (flattenLets expression) of
+  Let {} -> D.text (declaration ++ " ") <> value
+  _ -> D.group (D.text declaration <> D.nest 4 (D.softline <> value))
 
 -- | Strings are Kotlin literals ($ escaped), never split: ktfmt leaves a
 -- long one whole. ref:DEC-native-string-literals
