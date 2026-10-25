@@ -35,6 +35,10 @@ parameter ty name = D.group (ty <> D.nest 4 (D.softline <> D.text name))
 block :: D.Doc -> [D.Doc] -> D.Doc
 block header body = header <> D.hardline <> D.block 2 (D.joinWith D.hardline body)
 
+-- | An arrow's block keeps its opening brace on the arrow's line.
+arrowBlock :: D.Doc -> [D.Doc] -> D.Doc
+arrowBlock header body = header <> D.text " " <> D.block 2 (D.joinWith D.hardline body)
+
 statement :: D.Doc -> D.Doc
 statement value = value <> D.text ";"
 

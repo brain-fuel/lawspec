@@ -576,9 +576,10 @@ emitTests Config{..} unit laws = do
               _ -> False]
           scalar = case inputRange machineBits input of
             Nothing -> text (Helpers.scalarsClass ++ "::generator")
-            Just range -> text "scalar -> scalar.equals(" <> quoted (typeKey ty) <>
-              text ") ? " <> generatorWithin (Just range) ty <> text " : " <>
-              call (Helpers.scalarsClass ++ ".generator") [text "scalar"]
+            Just range -> D.group (text "scalar ->" <> D.nest 4 (D.softline <>
+              D.group (call "scalar.equals" [quoted (typeKey ty)] <> D.nest 4
+                (D.softline <> text "? " <> generatorWithin (Just range) ty <>
+                 D.softline <> text ": " <> call (Helpers.scalarsClass ++ ".generator") [text "scalar"]))))
           strategy = case requiredSymbol plan of
             value:_ -> call "Generator.constant" [expr value]
             [] | Just indexed <- generatorIndex plan ->

@@ -19,7 +19,7 @@ import LawSpec.MachineSpec (describe)
 import Control.Monad (foldM, forM, unless)
 import Data.List (nub)
 
-data NativeType = NativeType D.Doc D.Doc D.Doc [D.Doc]
+data NativeType = NativeType D.Doc X.TypeLayout D.Doc [D.Doc]
 data Function = Function String [(String, NativeType)] NativeType [D.Doc]
 
 emit :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -261,46 +261,46 @@ lifetimeName Transient = "transient"
 lifetimeName Temporary = "temporary"
 
 nativeType :: Int -> [(C.Id,String)] -> C.Type -> Either String NativeType
-nativeType bits names ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeType bits names [] ty <*>
+nativeType bits names ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeTypeLayout bits names [] ty <*>
   G.nativeType False names [] ty <*> pure (G.imports False [ty])
 abilityType :: [C.Unit] -> C.AbilityRef -> Either String NativeType
-abilityType units a = NativeType <$> Abilities.nativeType "erlang" units a <*> Abilities.nativeType "elixir" units a <*>
+abilityType units a = NativeType <$> Abilities.nativeType "erlang" units a <*> Abilities.elixirType units a <*>
   Abilities.nativeType "gleam" units a <*> Abilities.gleamImports units [a]
 ownType :: String -> NativeType
-ownType name = NativeType (E.call "t" []) (X.call "t" []) (D.text name) []
+ownType name = NativeType (E.call "t" []) (X.TypeCall "t" []) (D.text name) []
 supervisorType :: Supervision -> NativeType
-supervisorType s = NativeType (E.remote (supervisorModule s) "t" []) (X.remote (supervisorElixir s) "t" [])
+supervisorType s = NativeType (E.remote (supervisorModule s) "t" []) (X.TypeCall ((supervisorElixir s) ++ ".t") [])
   (D.text (alias ++ "." ++ E.pascal (supervisionClass s)))
   [D.text ("import " ++ supervisorPath s ++ " as " ++ alias)]
   where alias = "supervisor_" ++ E.moduleName (C.unitId (supervisionUnit s)) ++ "_" ++ E.snake (supervisionName s)
 actorType :: Actor -> NativeType
-actorType a = NativeType (E.remote (actorModule a) "t" []) (X.remote (actorElixir a) "t" [])
+actorType a = NativeType (E.remote (actorModule a) "t" []) (X.TypeCall ((actorElixir a) ++ ".t") [])
   (D.text (alias ++ "." ++ E.pascal (actorClass a))) [D.text ("import " ++ actorPath a ++ " as " ++ alias)]
   where alias = "actor_" ++ E.moduleName (C.unitId (actorUnit a)) ++ "_" ++ E.snake (actorName a)
 unitType :: String -> NativeType
-unitType target = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
+unitType target = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.TypeAtom (X.atom "ok")) (D.text "Nil") []
 nodeType, rawRemoteType :: NativeType
-nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node") [D.text "import lawspec/network"]
+nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.TypeCall ("LawSpec.Network" ++ ".node_handle") []) (D.text "network.Node") [D.text "import lawspec/network"]
 rawRemoteType = NativeType (E.remote "lawspec_beam_remote" "remote" [])
-  (X.remote ":lawspec_beam_remote" "remote" []) mempty []
+  (X.TypeCall (":lawspec_beam_remote" ++ ".remote") []) mempty []
 genericType :: NativeType
-genericType = NativeType (E.call "term" []) (X.call "term" []) (D.text "result") []
+genericType = NativeType (E.call "term" []) (X.TypeCall "term" []) (D.text "result") []
 callbackType :: NativeType -> NativeType
 callbackType (NativeType e x g i) = NativeType
   (D.text "fun((" <> e <> D.text ") -> term())")
-  (D.text "(" <> x <> D.text " -> term())")
+  (X.TypeFunction [x] (X.TypeCall "term" []))
   (D.text "fn(" <> g <> D.text ") -> result") i
 processType, rawActorType, rawSupervisorType, specificationType, childSpecType, startLinkType :: NativeType
-processType = NativeType (E.call "pid" []) (X.call "pid" []) (D.text "actors.Process") actorImport
-rawActorType = NativeType (E.remote "lawspec_beam_actors" "actor" []) (X.remote ":lawspec_beam_actors" "actor" [])
+processType = NativeType (E.call "pid" []) (X.TypeCall "pid" []) (D.text "actors.Process") actorImport
+rawActorType = NativeType (E.remote "lawspec_beam_actors" "actor" []) (X.TypeCall (":lawspec_beam_actors" ++ ".actor") [])
   (D.text "actors.Handle") actorImport
-rawSupervisorType = NativeType (E.remote "lawspec_beam_actors" "supervisor" []) (X.remote ":lawspec_beam_actors" "supervisor" [])
+rawSupervisorType = NativeType (E.remote "lawspec_beam_actors" "supervisor" []) (X.TypeCall (":lawspec_beam_actors" ++ ".supervisor") [])
   (D.text "actors.Supervisor") actorImport
-specificationType = NativeType (E.call "map" []) (X.call "map" []) (D.text "actors.Specification") actorImport
-childSpecType = NativeType (E.call "map" []) (X.call "map" []) (D.text "actors.ChildSpec") actorImport
+specificationType = NativeType (E.call "map" []) (X.TypeCall "map" []) (D.text "actors.Specification") actorImport
+childSpecType = NativeType (E.call "map" []) (X.TypeCall "map" []) (D.text "actors.ChildSpec") actorImport
 startLinkType = NativeType
   (E.tuple [E.atom "ok",E.call "pid" []] <> D.text " | " <> E.tuple [E.atom "error",E.call "term" []])
-  (X.tuple [X.atom "ok",X.call "pid" []] <> D.text " | " <> X.tuple [X.atom "error",X.call "term" []])
+  (X.TypeUnion [X.TypeContainer "{" [X.TypeAtom (X.atom "ok"),X.TypeCall "pid" []] "}",X.TypeContainer "{" [X.TypeAtom (X.atom "error"),X.TypeCall "term" []] "}"])
   (D.text "Result(actors.Process, dynamic.Dynamic)") (actorImport ++ [D.text "import gleam/dynamic"])
 actorImport :: [D.Doc]
 actorImport = [D.text "import lawspec/actors"]
@@ -317,7 +317,8 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     startParameters = case [ps | Function "start" ps _ _ <- functions] of ps:_ -> ps; [] -> []
     args ps = [D.text ("_" ++ E.pascal n) | (n,_) <- ps]
     erlType (NativeType e _ _ _) = e
-    exType (NativeType _ x _ _) = x
+    exType (NativeType _ x _ _) = X.typeDoc x
+    exLayout (NativeType _ x _ _) = x
     gleamType (NativeType _ _ g _) = g
     imports (NativeType _ _ _ i) = i
     erlang = E.moduleDoc moduleName ([(n,length ps) | Function n ps _ _ <- functions] ++ [("child_spec",1) | lifecycle])
@@ -328,7 +329,7 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
        [E.function "child_spec" [E.array (args startParameters)] [E.call "otp_child_spec" (args startParameters)] | lifecycle])
     elixir = X.moduleDoc elixirModule False
       ([D.text "@opaque t :: " <> maybe (exType rawType) exType handleTy] ++
-       concat [ [X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
+       concat [ [X.typeAttribute "spec" (X.TypeCall n (map (exLayout . snd) ps)) (exLayout result),
          X.function n (map (D.text . fst) ps)
            [X.remote (":" ++ moduleName) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- public, n /= "otp_child_spec"] ++

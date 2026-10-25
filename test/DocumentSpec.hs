@@ -10,6 +10,9 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.ElixirCode as Elixir
+import qualified LawSpec.Swift.Code as Swift
+import qualified LawSpec.JavaExpr as Java
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
 import qualified LawSpec.PortableGenerator as Generator
@@ -20,6 +23,15 @@ import qualified LawSpec.PortableTestHelpers as Helpers
 -- ref:DEC-readable-output-default ref:REQ-readable-layout
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged :: Spec
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated code layout" $ do
+  it "wraps qualified Java class literals at deep indentation without changing their tokens" $ do
+    let names = ["lawspec.abilities.lawspec.Crypto.KeyExchange", "lawspec.abilities.lawspec.Crypto.Signature"]
+    forM_ names $ \name -> do
+      D.render D.Compact (Java.classLiteral name) `shouldBe` name ++ ".class"
+      forM_ [48,56,64,100 - length (name ++ ".class")] $ \indent -> do
+        let doc = D.text "{" <> D.nest indent (D.hardline <> Java.classLiteral name <> D.text ",") <> D.hardline <> D.text "}"
+            readable = D.render (D.Pretty 100) doc
+        filter ((> 100) . length) (lines readable) `shouldBe` []
+        filter (`notElem` (" \n" :: String)) readable `shouldBe` "{" ++ name ++ ".class,}"
   it "uses explicit layout delimiters for compact Haskell case and let expressions" $ do
     let value = H.LetIn [("first", H.integer 1), ("second", H.integer 2)]
           (H.Case (H.var "first") [("0", H.integer 0), ("_", H.var "second")])
@@ -122,6 +134,31 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
   it "wraps comments without dropping their required line markers" $
     D.render D.Compact (D.lineComment 12 "// " "alpha beta x")
       `shouldBe` "// alpha\n// beta x\n"
+  it "breaks deeply nested Swift closure parameter types without changing their signature" $ do
+    let closure = Swift.closureDoc [("symbols", Swift.Ty "SymbolContext")] Swift.ClosureThrows
+          (Swift.Ty "Value") (D.text "return value")
+        nested = D.nest 76 (D.hardline <> closure)
+        readable = D.render (D.Pretty 100) nested
+    readable `shouldSatisfy` isInfixOf "symbols:\n"
+    all ((<= 100) . length) (lines readable) `shouldBe` True
+    D.render D.Compact closure `shouldSatisfy` isInfixOf "(symbols: SymbolContext) throws -> Value in"
+  it "measures Elixir function heads before their do keyword" $ do
+    let name = replicate 83 'f'
+        doc = D.nest 2 (D.hardline <> Elixir.function name [D.text "value"] [D.text "value"])
+    D.render (D.Pretty 98) doc `shouldSatisfy` isInfixOf ("def " ++ name ++ "(value) do\n")
+  it "keeps Elixir map, callback and union type structure through attribute layout" $ do
+    let scalar = Elixir.TypeCall "integer" []
+        alternatives = Elixir.TypeUnion [Elixir.TypeAtom (Elixir.atom "absent"),
+          Elixir.TypeContainer "{" [Elixir.TypeAtom (Elixir.atom "present"),
+            Elixir.TypeCall "LawSpec.Data.ALongReplyType.reply" [scalar]] "}"]
+        callback = Elixir.TypeFunction [scalar] alternatives
+        body = Elixir.TypeContainer "%__MODULE__{" [Elixir.TypeMapField (Elixir.atom "read_current_reply") callback] "}"
+        doc = Elixir.typeAttribute "type" (Elixir.TypeAtom (D.text "t")) body
+        rendered = D.render (D.Pretty 98) doc
+    rendered `shouldSatisfy` isInfixOf ":read_current_reply => (integer() ->\n"
+    rendered `shouldSatisfy` isInfixOf "| {:present, LawSpec.Data.ALongReplyType.reply(integer())})"
+    D.render D.Compact (Elixir.typeDoc body) `shouldBe`
+      "%__MODULE__{:read_current_reply => (integer() -> :absent | {:present, LawSpec.Data.ALongReplyType.reply(integer())})}"
   it "selects compact layouts without losing Go indentation" $ do
     D.selectLayout True (D.PrettyTabs 100) `shouldBe` D.CompactTabs
     D.selectLayout True (D.Pretty 80) `shouldBe` D.Compact

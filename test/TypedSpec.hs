@@ -3,7 +3,8 @@
 module TypedSpec (test_typedDefinitionsRunNativeWithTheirMeaning) where
 
 import Control.Monad (forM_)
-import Data.List (isInfixOf, isPrefixOf)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
+import Data.Char (isSpace)
 import qualified Data.Map.Strict as M
 import Test.Hspec
 import qualified LawSpec.Core as C
@@ -137,6 +138,23 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       Right typed -> do
         jvmTypedSource typed `shouldSatisfy` isInfixOf "public static final class Account"
         jvmTypedSource typed `shouldSatisfy` isInfixOf "while (true)"
+  it "keeps Java native-conversion switch braces on their arrow lines" $ do
+    let source = unlines ["unit typed.arrowBlocks",
+          "type Action is one of Authorize | Dispatch | Cancel end type",
+          "type Outcome is one of Pending | Count of type Int32 end type",
+          "function action (value :: Action) -> Action is value end function",
+          "function outcome (value :: Outcome) -> Outcome is value end function", "end unit"]
+    p <- either (\errors -> expectationFailure (show errors) >> fail "no program") pure
+      (compileCore 64 defaultGeneration [Source "arrows.lawspec" source])
+    typed <- either (\problem -> expectationFailure problem >> fail "no typed JVM") pure
+      (emitJvmTyped JavaStyle (C.programDataDeclarations p) (C.programUnits p))
+    let body = jvmTypedSource typed
+        separated = [(line,next) | (line,next) <- zip (lines body) (drop 1 (lines body)),
+          "case " `isPrefixOf` dropWhile isSpace line, "->" `isSuffixOf` line,
+          dropWhile isSpace next == "{"]
+    body `shouldSatisfy` isInfixOf "case Authorize -> {"
+    body `shouldSatisfy` isInfixOf "case 1 -> {"
+    separated `shouldBe` []
   it "emits BEAM code over each language's own data, with KeyVal as a map" $ withProgram $ \p -> do
     let declarations = C.programDataDeclarations p
         units = C.programUnits p
@@ -233,6 +251,16 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
           (emitJvmTyped style (C.programDataDeclarations p) (C.programUnits p))
         jvmTypedSource typed `shouldSatisfy` isInfixOf "java.math.BigInteger selection, java.math.BigInteger selection2"
         jvmTypedSource typed `shouldNotSatisfy` isInfixOf "lawspecselection"
+    it "uses readable positional constructor parameters without changing tuple field labels" $ do
+      text <- readFile "test/fixtures/canonical-positional-products.lawspec"
+      p <- either (\e -> expectationFailure (show e) >> fail "no program") pure
+        (compileCore 64 defaultGeneration [Source "positional.lawspec" text])
+      typed <- either (\e -> expectationFailure e >> fail "no typed JVM") pure
+        (emitJvmTyped JavaStyle (C.programDataDeclarations p) (C.programUnits p))
+      let source = jvmTypedSource typed
+      source `shouldSatisfy` isInfixOf "public Tuple1Tuple2(boolean tuple1, boolean tuple2)"
+      source `shouldSatisfy` isInfixOf "this._tuple1_ = tuple1;"
+      source `shouldNotSatisfy` isInfixOf "boolean _tuple1_,"
     it "stay the same when unrelated definitions are added before them" $ do
       let compile extra = either (\e -> error (show e)) id (compileCore 64 defaultGeneration [Source "ledger.lawspec" (extra ++ ledger)])
           edited = "function unrelated (x :: Int64) -> Int64 is x end function\n\nfunction another (t :: Text) -> Text is t end function\n\n"
