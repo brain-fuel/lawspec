@@ -212,8 +212,10 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
           (labelled ("example " ++ displayLabel (C.exampleName example)) exampleLink) False
           (setup (Do [inScope] (Raw "()"))))
       cover <- caseCover planned
-      literalPlan <- Literals.planRootLiterals (Literals.coverLiterals cover ++
-        concatMap generatorBoundaries (generatorRequirements planned))
+      let (literalPlanner, sampleBoundaries) = case finiteCases planned of
+            Nothing -> (Literals.planRootLiterals, concatMap generatorBoundaries (generatorRequirements planned))
+            Just _ -> (Literals.planLiterals, [])
+      literalPlan <- literalPlanner (Literals.coverLiterals cover ++ sampleBoundaries)
       let literalValue value = Literals.literalReference literalPlan value >>= literalTerm name
           generatorLiteral value
             | M.member value (Literals.literalReferences literalPlan) = literalValue value
