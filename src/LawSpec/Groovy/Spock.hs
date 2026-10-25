@@ -10,6 +10,7 @@ module LawSpec.Groovy.Spock (Feature(..), specClassName, spockSpecification, cla
 
 import Data.List (intercalate, isSuffixOf)
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.JavaAbi as Abi
 import LawSpec.Code.Literal (literalFor)
 
 -- | A feature: its title, the comment above it (a law's first feature says
@@ -20,6 +21,7 @@ data Feature = Feature
   , featureComment :: [String]
   , featureSkipped :: Maybe String
   , featureMethod :: String
+  , featureKind :: Abi.CaseKind
   }
 
 -- | A test class's name as a specification's: FooLawSpecTest is
@@ -53,11 +55,19 @@ spockSpecification generated package testClass description orderRandom parallel 
     feature f =
       mconcat (map (D.lineComment 98 "// ") (featureComment f)) <>
       maybe mempty (\reason -> D.text "@spock.lang.Ignore(" <> reasonText reason <> D.text ")" <> D.hardline) (featureSkipped f) <>
-      D.text "def " <> string (featureTitle f) <> D.text "()" <> D.hardline <>
+      (case featureKind f of Abi.FiniteCases{} -> D.text "@spock.lang.Unroll" <> D.hardline; _ -> mempty) <>
+      D.text "def " <> string (featureTitle f ++ case featureKind f of Abi.FiniteCases{} -> " #caseIndex"; _ -> "") <> D.text "()" <> D.hardline <>
       D.block 2 (case featureSkipped f of
         Just _ -> D.text "expect: true"
         Nothing -> D.text "setup:" <> D.hardline <>
-          D.group (D.text ("new " ++ testClass ++ "()") <> D.nest 2 (D.softbreak <> D.text ("." ++ featureMethod f ++ "()"))))
+          D.group (D.text ("new " ++ testClass ++ "()") <> D.nest 2 (D.softbreak <>
+            D.text ("." ++ featureMethod f ++ case featureKind f of Abi.SingleCase -> "()"; _ -> "(finiteCase)"))) <>
+          case featureKind f of
+            Abi.SingleCase -> mempty
+            Abi.FiniteCases source _ _ -> D.hardline <> D.hardline <>
+              D.text "where:" <> D.hardline <>
+              D.text ("finiteCase << " ++ testClass ++ "." ++ source ++ "()") <> D.hardline <>
+              D.text "caseIndex = finiteCase.index()")
 
 -- | A specification running every JUnit test of a Java test class, one
 -- feature each.

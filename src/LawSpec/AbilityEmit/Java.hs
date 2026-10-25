@@ -2,9 +2,11 @@
 -- lawspec.abilities.<unit package>.<Unit>: a nested interface per ability, a
 -- class per spec handler and a recording class per ability. Handlers travel
 -- in the symbols map generated code passes to every definition.
-module LawSpec.AbilityEmit.Java (emit, productionStub, abilitiesClass, abilitiesClassOf, adapterClassOf) where
+module LawSpec.AbilityEmit.Java (emit, emitProduct, productionStub, productionProduct, abilitiesClass, abilitiesClassOf, adapterClassOf) where
 
 import LawSpec.JavaText (javaType)
+import qualified LawSpec.JavaAbi as Abi
+import qualified LawSpec.JvmProduct as Product
 import Data.Char (toUpper)
 import Data.List (intercalate)
 import Control.Monad (forM)
@@ -48,9 +50,12 @@ adapterClassOf unit =
   in intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit minify bits datas units = do
+emit minify bits datas units = Product.jvmArtifacts <$> emitProduct minify bits datas units
+
+emitProduct :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String Product.JvmProduct
+emitProduct minify bits datas units = do
   typed <- emitJvmTyped JavaStyle datas units
-  mapM (unitFile typed) (filter unitAbilityPieces units)
+  mconcat <$> mapM (unitFile typed) (filter unitAbilityPieces units)
   where
     layout = if minify then D.Compact else D.Pretty 100
     calls = Definitions.definitionCalls units
@@ -72,16 +77,15 @@ emit minify bits datas units = do
             line ("public final class " ++ name ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
               ([line ("private " ++ name ++ "() {}"),
                 line "private static final lawspec.runtime.LawSpecSchema SCHEMA =" <> D.nest 4 (D.hardline <> line "lawspec.runtime.LawSpecDataSchema.create();")] ++
-               interfaces ++ handlers ++ recordings)) <> D.hardline
-      pure (Artifact ("src/main/java/" ++ intercalate "/" qualified ++ ".java") (D.render layout source) "generated" "source")
-    signature op ty = do
-      let (args, result) = C.functionType ty
-      types <- mapM (Native.javaDataTypeDoc datas) args
-      resultType <- if result == C.scalarType "Unit" then pure (line "void") else Native.javaDataTypeDoc datas result
-      pure (resultType <> line (" " ++ op) <> D.delimit 4 "(" ")" [t <> line (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types])
+               map snd interfaces ++ handlers ++ recordings)) <> D.hardline
+      pure (Product.JvmProduct [Artifact ("src/main/java/" ++ intercalate "/" qualified ++ ".java") (D.render layout source) "generated" "source"]
+        [] (map fst interfaces) [])
+    signature op ty = operationDoc <$> operationAbi datas op ty
     interface a = do
-      methods <- mapM (\(op, ty) -> (<> line ";") <$> signature op ty) (C.abilityOperations a)
-      pure (javadoc 98 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
+      operations <- mapM (uncurry (operationAbi datas)) (C.abilityOperations a)
+      let methods = [operationDoc operation <> line ";" | operation <- operations]
+          abi = Abi.InterfaceAbi (abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a) operations
+      pure (abi, javadoc 98 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
         line ("public interface " ++ interfaceName a ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline) methods))
     codec ty = Native.javaCodecDocWithContext (line "symbols") datas bits ty
     -- A Java type as a type argument: primitives boxed.
@@ -249,14 +253,15 @@ emit minify bits datas units = do
 -- The user-owned production handler of each ability, nested in the unit's
 -- adapter class: new <Unit>.<Ability>Handler() is what the tests use.
 productionStub :: [C.DataDeclaration] -> C.Unit -> C.Ability -> Either String D.Doc
-productionStub datas u a = do
-  methods <- mapM (\(op, ty) -> do
-    let (args, result) = C.functionType ty
-    types <- mapM (Native.javaDataTypeDoc datas) args
-    resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else Native.javaDataTypeDoc datas result
-    pure (D.text "@Override" <> D.hardline <> D.text "public " <> resultType <> D.text (" " ++ op) <>
-      D.delimit 4 "(" ")" [t <> D.text (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types] <> D.hardline <>
-      D.block 2 (D.text ("throw new UnsupportedOperationException(" ++ show op ++ ");")))) (C.abilityOperations a)
+productionStub datas u a = snd <$> productionProduct datas u a
+
+-- | The production implementation and its ABI are made from the same checked
+-- operation types, before any source is rendered.
+productionProduct :: [C.DataDeclaration] -> C.Unit -> C.Ability -> Either String (Abi.Item, D.Doc)
+productionProduct datas u a = do
+  operations <- mapM (uncurry (operationAbi datas)) (C.abilityOperations a)
+  let methods = [D.text "@Override" <> D.hardline <> D.text "public " <> operationDoc operation <> D.hardline <>
+        D.block 2 (D.text ("throw new UnsupportedOperationException(" ++ show (Abi.opName operation) ++ ");")) | operation <- operations]
   -- ability A with T: the handler is made with the case's T.
   made <- case C.abilityResource a of
     Nothing -> pure []
@@ -264,9 +269,26 @@ productionStub datas u a = do
       resourceType <- Native.javaDataTypeDoc datas t
       pure [ D.text "public final " <> resourceType <> D.text " resource;"
            , D.text ("public " ++ productionName a ++ "(") <> resourceType <> D.text " resource)" <> D.hardline <> D.block 2 (D.text "this.resource = resource;") ]
-  pure (javadoc 98 ("The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
+  resourceType <- mapM (Native.javaDataTypeDoc datas) (C.abilityResource a)
+  let description = "The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ "."
+      abi = Abi.Handler ["// " ++ description] (productionName a) (abilitiesClass u ++ "." ++ interfaceName a)
+        (C.abilityResource a /= Nothing) resourceType operations
+  pure (abi, javadoc 98 description <> D.hardline <>
     D.group (D.text ("public static final class " ++ productionName a) <> D.nest 4 (D.softline <> D.text ("implements " ++ abilitiesClass u ++ "." ++ interfaceName a))) <> D.hardline <>
     D.block 2 (D.joinWith (D.hardline <> D.hardline) (made ++ methods)))
+
+-- The exact same checked signature is used in interfaces, production stubs,
+-- recordings and downstream JVM bridges.
+operationAbi :: [C.DataDeclaration] -> String -> C.Type -> Either String Abi.Operation
+operationAbi datas name ty = do
+  let (args, result) = C.functionType ty
+  types <- mapM (Native.javaDataTypeDoc datas) args
+  resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else Native.javaDataTypeDoc datas result
+  pure (Abi.operation resultType name [(t, "value" ++ show i) | (i,t) <- zip [0::Int ..] types] name)
+
+operationDoc :: Abi.Operation -> D.Doc
+operationDoc operation = Abi.opResultLayout operation <> D.text (" " ++ Abi.opName operation) <>
+  D.delimit 4 "(" ")" [ty <> D.text (" " ++ name) | (ty,name) <- Abi.opParameterLayouts operation]
 
 -- | A class header that breaks before implements, and between interfaces.
 implementing :: String -> [String] -> D.Doc

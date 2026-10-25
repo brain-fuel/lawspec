@@ -1,106 +1,49 @@
--- | Java source read as Groovy. Groovy 5 parses Java's statements, lambdas,
--- records, switch expressions and array initializers, so generated Java
--- becomes Groovy by its literals alone: a double-quoted string would
--- interpolate $, so every string is single-quoted, and a character literal
--- is a one-character string in Groovy, so it is cast to char. A newline
--- ends a Groovy statement where Java's continues it, so a line that starts
--- with a binary operator joins the line before.
--- ref:DEC-groovy-over-java
-module LawSpec.Groovy.Source (groovyLiterals, idiomaticGroovy) where
+-- | Groovy adapter declarations from the checked JVM ABI. Signatures retain
+-- their structured type layout; Java source is never an input.
+-- ref:DEC-groovy-over-java ref:DEC-readable-output-default
+module LawSpec.Groovy.Source (adapterStub) where
 
-import Data.Char (isAlpha, isAlphaNum, isSpace, isUpper)
-import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
+import Data.List (stripPrefix)
+import qualified LawSpec.JavaAbi as A
+import qualified LawSpec.Code.Doc as D
+import LawSpec.Code.Literal (literalFor)
 
--- | Literals rewritten; code and comments unchanged.
-groovyLiterals :: String -> String
-groovyLiterals = code
+adapterStub :: A.Stub -> String
+adapterStub stub = D.render (D.Pretty 100) $
+  D.text "// User-owned LawSpec adapter." <> D.hardline <> D.hardline <>
+  (if null (A.stubPackage stub) then mempty else D.text ("package " ++ A.stubPackage stub) <> D.hardline <> D.hardline) <>
+  D.text "@groovy.transform.CompileStatic" <> D.hardline <>
+  D.text ("final class " ++ A.stubClass stub) <> D.hardline <>
+  D.block 2 (D.joinWith (D.hardline <> D.hardline) (map item (A.stubItems stub))) <> D.hardline
   where
-    code s = case s of
-      [] -> []
-      -- A comment's newline is kept: nothing joins a comment.
-      '/' : '/' : rest -> let (comment, after) = break (== '\n') rest
-                          in "//" ++ comment ++ (case after of '\n' : more -> '\n' : code more; _ -> code after)
-      '/' : '*' : rest -> "/*" ++ blockComment rest
-      '"' : '"' : '"' : rest -> "'''" ++ textBlock rest
-      -- A line that starts with + continues the line before: the + moves
-      -- to that line's end, which Groovy reads as unfinished.
-      '\n' : rest | (indent, '+' : ' ' : more) <- span (== ' ') rest -> " +\n" ++ indent ++ code more
-      '\n' : rest | continues (dropWhile (== ' ') rest) -> ' ' : code (dropWhile (== ' ') rest)
-      '"' : rest -> '\'' : string rest
-      '\'' : rest | (literal, '\'' : after) <- character rest -> "((char) '" ++ literal ++ "')" ++ code after
-      c : rest | isAlphaNum c || c == '_' -> let (word, after) = span (\x -> isAlphaNum x || x == '_' || x == '$') s
-                                             in word ++ code after
-        | otherwise -> c : code rest
-    continues line = any (\op -> (op ++ " ") `isPrefixOf` line)
-      ["+", "-", "*", "/", "%", "&&", "||", "?", ":", "==", "!=", "<", ">", "<=", ">=", "&", "|", "^", "->", "instanceof"]
-    blockComment s = case s of
-      '*' : '/' : rest -> "*/" ++ code rest
-      c : rest -> c : blockComment rest
-      [] -> []
-    -- A Java string's escapes are Groovy's, but for the quotes.
-    string s = case s of
-      '\\' : '"' : rest -> '"' : string rest
-      '\\' : c : rest -> '\\' : c : string rest
-      '\'' : rest -> '\\' : '\'' : string rest
-      '"' : rest -> '\'' : code rest
-      c : rest -> c : string rest
-      [] -> []
-    textBlock s = case s of
-      '"' : '"' : '"' : rest -> "'''" ++ code rest
-      '\\' : c : rest -> '\\' : c : textBlock rest
-      '\'' : '\'' : '\'' : rest -> "\\'\\'\\'" ++ textBlock rest
-      c : rest -> c : textBlock rest
-      [] -> []
-    character s = case s of
-      '\\' : 'u' : rest -> let (hex, after) = span isAlphaNum rest in ("\\u" ++ hex, after)
-      '\\' : c : rest -> (['\\', c], rest)
-      c : rest -> ([c], rest)
-      [] -> ([], [])
+    item value = comments (A.itemComments value) <> case value of
+      A.Function _ operation -> method "static " operation
+      A.Handler _ name interface resource resourceLayout operations ->
+        D.text ("static final class " ++ name ++ " implements " ++ interface) <> D.hardline <>
+        D.block 2 (D.joinWith (D.hardline <> D.hardline)
+          (concat [[D.group (D.text "private final " <> ty <> D.text " resource"),
+            D.group (D.text (name ++ "(") <> ty <> D.text " resource)") <> D.hardline <>
+              D.block 2 (D.text "this.resource = resource")] | resource, let ty = maybe (D.text "Object") typeLayout resourceLayout] ++
+           map (method "") operations))
+    comments = mconcat . map (D.lineComment 98 "// " . maybeComment)
+    maybeComment text = maybe text id (stripPrefix "// " text)
+    method modifiers operation =
+      D.group (D.text modifiers <> typeLayout (A.opResultLayout operation) <>
+        D.nest 4 (D.softline <> D.group (D.text (A.opName operation ++ "(") <>
+          D.nest 4 (D.softbreak <> D.group (D.commaSep
+            [D.group (typeLayout ty <> D.softline <> D.text parameter) | (ty, parameter) <- A.opParameterLayouts operation])) <> D.text ")"))) <>
+      D.hardline <> D.block 2
+        (D.group (D.text "throw new UnsupportedOperationException(" <>
+          D.nest 4 (D.softbreak <> D.text (literalFor "groovy" (A.opLabel operation))) <> D.text ")"))
 
--- | A user-owned adapter written the way Groovy is: classes and members
--- public by default, no statement semicolons, java.lang's names unqualified,
--- and the classes type-checked with @CompileStatic.
-idiomaticGroovy :: String -> String
-idiomaticGroovy = unlines . annotate . map line . lines . groovyLiterals
+-- Type-name atoms are supplied by the ABI producer, rather than recovered
+-- from Java tokens. Groovy's joint compiler needs nested runtime owners in
+-- full; java.lang types use their ordinary implicit import.
+typeLayout :: D.Doc -> D.Doc
+typeLayout = D.mapText qualify
   where
-    line l =
-      let (indent, rest) = span (== ' ') l
-          plain = dropSemicolon (unqualified (maybe rest id (stripPrefix "public " rest)))
-          body = if declaration plain then qualified ' ' plain else plain
-      in if null rest then l else indent ++ body
-    -- Groovy's joint-compilation stubs drop the import of a class used only
-    -- as an outer name, so a nested runtime type in a signature is written
-    -- in full.
-    declaration l =
-      any (`isPrefixOf` l) ["static ", "private ", "protected ", "final ", "abstract "] ||
-      ("{" `isSuffixOf` l && '(' `elem` l && '=' `notElem` takeWhile (/= '(') l &&
-       takeWhile isAlpha l `notElem` ["if", "for", "while", "return", "switch", "try", "catch", "else", "new", "synchronized"])
-    qualified before s = case s of
-      [] -> []
-      _ | not (isAlphaNum before || before == '.' || before == '_')
-        , Just rest@(c : _) <- stripPrefix "LawSpecRuntime." s, isUpper c -> "lawspec.runtime.LawSpecRuntime." ++ qualified '.' rest
-      c : rest -> c : qualified c rest
-    dropSemicolon l
-      | ";" `isSuffixOf` l, not ("for (" `isPrefixOf` l) = init l
-      | otherwise = l
-    unqualified s = case s of
-      [] -> []
-      '\'' : rest -> let (literal, after) = quoted rest in '\'' : literal ++ unqualified after
-      c : _ | isAlpha c || c == '_' ->
-        let (word, after) = span (\x -> isAlphaNum x || x `elem` ("_.$" :: String)) s in strip word ++ unqualified after
-      c : rest -> c : unqualified rest
-    strip word = case stripPrefix "java.lang." word of
-      Just rest@(c : _) | isUpper c -> rest
-      _ -> word
-    quoted s = case s of
-      '\\' : c : rest -> let (l, a) = quoted rest in ('\\' : c : l, a)
-      '\'' : rest -> ("'", rest)
-      c : rest -> let (l, a) = quoted rest in (c : l, a)
-      [] -> ([], [])
-    -- @CompileStatic on each top-level class, after the imports.
-    annotate ls =
-      let (before, after) = break topLevelClass ls
-      in if null after then ls
-         else before ++ ["@groovy.transform.CompileStatic"] ++ take 1 after ++ annotate (drop 1 after)
-    topLevelClass l = any (`isPrefixOf` l) ["final class ", "class ", "interface ", "abstract class ", "enum ", "record "]
-      && not (all isSpace (take 1 l))
+    qualify atom
+      | Just rest <- stripPrefix "java.lang." atom = rest
+      | Just rest <- stripPrefix "LawSpecRuntime." atom = "lawspec.runtime.LawSpecRuntime." ++ rest
+      | atom == "Value" = "lawspec.runtime.LawSpecRuntime.Value"
+      | otherwise = atom

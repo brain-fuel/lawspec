@@ -1,6 +1,7 @@
 -- | Framework-specific Java generators downstream of checked Core.
-module LawSpec.JavaTestHelpers (generatorDoc, generatorDocWithin, scalarsDoc, scalarsClass) where
+module LawSpec.JavaTestHelpers (generatorDoc, generatorDocWithin, scalarsDoc, scalarsClass, generatorDocFor, generatorDocWithinFor, scalarsDocFor) where
 
+import LawSpec.JavaTestStyle (TestStyle(..), propertyPackage)
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import qualified LawSpec.JavaExpr as E
@@ -32,20 +33,28 @@ scalarsClass = "lawspec.testing.LawSpecScalars"
 -- the native JetCheck generation tree and its shrinker.
 generatorDoc :: Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDoc bits budget className structural reference key = generatorDocBounded (integerBounds bits) bits budget className structural reference key
+generatorDoc = generatorDocFor JUnit
+
+generatorDocFor :: TestStyle -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocFor style bits budget className structural reference key = generatorDocBounded style (integerBounds bits) bits budget className structural reference key
 
 -- | The generator, with a top-level integer drawn from a refinement's range.
 generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDocWithin within bits budget className structural reference key ty = generatorDocBounded boundsOf bits budget className structural reference key ty
+generatorDocWithin = generatorDocWithinFor JUnit
+
+generatorDocWithinFor :: TestStyle -> Maybe (Integer, Integer) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocWithinFor style within bits budget className structural reference key ty = generatorDocBounded style boundsOf bits budget className structural reference key ty
   where
     boundsOf name = case (within, ty) of
       (Just range, C.Constructor top []) | top == name -> Just range
       _ -> integerBounds bits name
 
-generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+generatorDocBounded :: TestStyle -> (String -> Maybe (Integer, Integer)) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDocBounded boundsOf bits budget className structural reference key = gen 0
+generatorDocBounded style boundsOf bits budget className structural reference key = gen 0
   where
     gen depth ty = renderGenerator (generatorChain depth ty)
     renderGenerator (base,[]) = base
@@ -123,9 +132,9 @@ generatorDocBounded boundsOf bits budget className structural reference key = ge
     unitFilter name = [("suchThat",[lambda "point" (text "point < 55296 || point > 57343")]) | name `elem` ["Text","Char"]]
     unitGen name = if null (unitFilter name) then unitBase name else chain (unitBase name) (unitFilter name)
     listGen lo hi inner = call "Generator.listsOf"
-      [D.prefixChoice "org.jetbrains.jetCheck.IntDistribution.uniform("
-        (call "org.jetbrains.jetCheck.IntDistribution.uniform" [number (lo :: Int),number hi])
-        (chain (text "org.jetbrains.jetCheck.IntDistribution") [("uniform",[number lo,number hi])]),inner]
+      [D.prefixChoice (propertyPackage style ++ ".IntDistribution.uniform(")
+        (call (propertyPackage style ++ ".IntDistribution.uniform") [number (lo :: Int),number hi])
+        (chain (text (propertyPackage style ++ ".IntDistribution")) [("uniform",[number lo,number hi])]),inner]
     byteWidth hi = walk 1 where walk n | hi < 256 ^ n = n | otherwise = walk (n+1)
     integerGen depth name lo hi signed =
       let env = "environment" ++ show depth
@@ -144,12 +153,15 @@ generatorDocBounded boundsOf bits budget className structural reference key = ge
 -- | The runtime's scalar generators for a machine width: one class per
 -- project, so test files hold only their laws. ref:DEC-readable-output-default
 scalarsDoc :: Maybe String -> Int -> (C.Type -> D.Doc) -> D.Doc
-scalarsDoc header bits generator = statements
+scalarsDoc = scalarsDocFor JUnit
+
+scalarsDocFor :: TestStyle -> Maybe String -> Int -> (C.Type -> D.Doc) -> D.Doc
+scalarsDocFor style header bits generator = statements
   [ maybe mempty (\h -> text ("// " ++ h) <> D.hardline <> D.hardline) header <> text "package lawspec.testing;"
   , mempty
   , text "import lawspec.runtime.LawSpecRuntime;"
   , text "import lawspec.runtime.LawSpecRuntime.Value;"
-  , text "import org.jetbrains.jetCheck.Generator;"
+  , text ("import " ++ propertyPackage style ++ ".Generator;")
   , mempty
   , text ("// LawSpec's generators of scalar values, for a " ++ show bits ++ "-bit machine.")
   , text "public final class LawSpecScalars"
