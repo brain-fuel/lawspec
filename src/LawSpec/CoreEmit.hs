@@ -888,7 +888,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
         | otherwise = src
       adjust a = (mapArtifactContent (adjustContent a) a)
         { artifactPath = if target `elem` ["erlang","elixir","gleam"] &&
-              artifactPath a `elem` ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c"]
+              artifactPath a `elem` ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c", "priv/lawspec_crypto_vectors.txt"]
             then artifactPath a -- Native build assets belong to the application root, beside ebin's priv.
             -- The .NET runtime projects stay beside the solution, whatever the layout.
             else if (target `elem` DotNet.dotnetTargets || target == "swift") && "lawspec/" `isPrefixOf` artifactPath a then artifactPath a

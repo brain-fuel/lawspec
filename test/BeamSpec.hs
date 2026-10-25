@@ -390,6 +390,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   -- ref:DEC-typed-core-boundary ref:DEC-adapter-ownership
   mapM_ (\target -> it (target ++ " emits portable crypto defaults, a native bridge and every vector family") $ do
     input <- readFile "examples/specs/crypto.lawspec"
+    vectors <- readFile "runtime/defaults/vectors.txt"
     case generatedFor target False input of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> do
@@ -397,7 +398,15 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             bodies = concatMap artifactContent artifacts
         mapM_ (\path -> paths `shouldContain` [path])
           ["src/lawspec_beam_crypto.erl", "src/lawspec_beam_crypto_native.erl",
-           "priv/lawspec_crypto_native.c", "lawspec_crypto_build.escript"]
+           "priv/lawspec_crypto_native.c", "lawspec_crypto_build.escript",
+           "priv/lawspec_crypto_vectors.txt"]
+        [(artifactContent a, artifactPlacement a) | a <- artifacts,
+          artifactPath a == "priv/lawspec_crypto_vectors.txt"]
+          `shouldBe` [(vectors, "source")]
+        let vectorModules = [artifactContent a | a <- artifacts,
+              "lawspec_beam_crypto_vectors.erl" `isInfixOf` artifactPath a]
+        vectorModules `shouldSatisfy` all ((< 10000) . length)
+        vectorModules `shouldSatisfy` all (isInfixOf "file:read_file(Path)")
         bodies `shouldSatisfy` isInfixOf "slh_dsa_signature_handler"
         bodies `shouldSatisfy` (not . isInfixOf "@@VECTORS@@")
         length (filter ((== "user") . ownership) artifacts) `shouldBe` 1
@@ -424,7 +433,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           let paths = map artifactPath artifacts
           mapM_ (\path -> paths `shouldContain` [path])
             ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c",
-             "application/lawspec_beam_crypto_native.erl"]
+             "priv/lawspec_crypto_vectors.txt", "application/lawspec_beam_crypto_native.erl"]
     ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-typed-core-boundary ref:DEC-adapter-ownership
   mapM_ (\target -> it (target ++ " emits compiler-owned built-in factories and temporal laws") $ do

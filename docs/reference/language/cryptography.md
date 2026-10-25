@@ -255,7 +255,13 @@ Every target runs every vector, but one:
   generation, encapsulation and signing, and for signature contexts. OTP
   checks the resulting signatures and performs seed-expanded and ordinary
   expanded-key decapsulation. All vector families run on all three targets;
-  Gleam keeps the vector runner in its development-only test package.
+  Gleam keeps the vector runner in its development-only test package. The
+  unchanged known-answer data ships as the compiler-owned
+  `priv/lawspec_crypto_vectors.txt`, separate from the compact test loop.
+  The runner locates it beside the loaded native bridge, including relocated
+  applications and standalone `erlc` output; it does not depend on the working
+  directory. Generated-file ownership checks reject edited vector assets
+  before native results can be reused.
 - Deterministic ML-DSA signatures are compared byte for byte on every
   target.
 
