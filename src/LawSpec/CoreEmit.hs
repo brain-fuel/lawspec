@@ -45,6 +45,7 @@ import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.KotlinDefinitions as KotlinDefinitions
 import qualified LawSpec.ScalaData as ScalaData
 import qualified LawSpec.ScalaDefinitions as ScalaDefinitions
+import qualified LawSpec.GoData as GoData
 import qualified LawSpec.GoDefinitions as GoDefinitions
 import qualified LawSpec.PythonData as PythonData
 import LawSpec.PythonTypes (pythonLayout)
@@ -61,7 +62,7 @@ import LawSpec.Network (withNetworkModules, usesNetworkUnits)
 import qualified LawSpec.Core as C
 import LawSpec.BuiltinDefaults (withBuiltinDefaults, withBuiltinDefaultsFor, javaVectorCases)
 import LawSpec.Builtins (defaultedUnits)
-import LawSpec.Scalar (primitive)
+import LawSpec.Scalar (primitive,primitiveName,primitives)
 import LawSpec.TargetNames (nativeName, phraseNativeName, allTargetKeywords)
 import qualified LawSpec.Targets as Targets
 import qualified LawSpec.ArtifactEmit as ArtifactEmit
@@ -71,6 +72,9 @@ import qualified LawSpec.JavaTestHelpers as JavaTestHelpers
 import qualified LawSpec.KotlinLayout as KotlinLayout
 import qualified LawSpec.ScalaLayout as ScalaLayout
 import qualified Data.Map.Strict as M
+import qualified Data.Set as Set
+import qualified LawSpec.PythonTypes as PythonTypes
+import qualified LawSpec.WebTypes as WebTypes
 import Control.Monad (unless)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
 import Data.Binary (Binary(..), encode)
@@ -613,15 +617,10 @@ emitPlanProduct javaStyle minify target Plan{..} = do
     expressionNeedsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     expressionNeedsSchema term = requiresSchema planDataDeclarations (C.expressionType term) ||
       any expressionNeedsSchema (C.children term)
-    -- A unit's files are a function of exactly these inputs, so its key is
-    -- their content: the unit, its laws (each by its plan key, which covers
-    -- the law and everything it reaches), Java's data budget (sized across
-    -- every law on purpose), every data declaration by its identity
-    -- (emitters disambiguate type names across the program) and the table naming each checked
-    -- definition. Editing a definition's body elsewhere re-emits only the
-    -- units whose laws reach it.
+    -- A unit cache records its reachable type contents and actual allocated
+    -- names. Public Go schema artifacts are assembled separately, so their
+    -- complete type universe does not stale independent test/stub products.
     graph = D.dependencyGraphWithBits planMachineBits planDataDeclarations (map plannedUnit plannedUnits)
-    dataDigest = D.fullKey graph "data" [C.Constructor (C.idText (C.dataId d)) [] | d <- planDataDeclarations]
     calls
       | target `elem` ["java","kotlin","scala"] = definitionCalls
       | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
@@ -629,15 +628,61 @@ emitPlanProduct javaStyle minify target Plan{..} = do
       | target == "python" = PythonDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
       | otherwise = WebDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
     lawKey law = D.fullKey graph (show planMachineBits) law
-    emitUnit laws u =
+    emitUnit laws u = do
       let owned = filter ((== unitName u) . owner) laws
           testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
-      in fmap unstoreProduct $ memoized emitTable (digestHex (digestString (show (javaStyle, minify, target, planMachineBits,
-             D.fullKey graph "unit" testing { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
-           (fmap storeProduct (emitUnitWith laws testing))
+          -- Models retain the complete context until their schema/wire
+          -- dependencies are exposed by their own structured products.
+          models = not (null (C.unitMachines testing) && null (C.unitSupervisors testing))
+          interface = testing { C.unitProperties = [], C.unitDefinitions = if models then C.unitDefinitions testing else [] }
+          definitions = [(C.definitionDeclaration definition,C.definitionArguments definition,
+            C.definitionOrchestrates definition,C.definitionPolicy definition) | definition <- C.unitDefinitions testing]
+          reached = D.closure graph (D.referencesOf graph (interface,owned))
+          types = if models then planDataDeclarations else D.reachableData graph reached
+          selectedIds = Set.fromList [identity | declaration <- types,
+            identity <- C.dataId declaration : map C.constructorId (C.dataConstructors declaration)]
+          neededCalls = Set.fromList (map C.declarationId (C.unitDeclarations testing) ++
+            map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions testing) ++
+            [identity | D.DeclarationNode identity <- Set.toList reached])
+          callNames = if models then calls else filter ((`Set.member` neededCalls) . fst) calls
+          globalFlags = (not (null planDataDeclarations),not (null calls),any (("Workflows." `isPrefixOf`) . snd) calls,
+            hasConstructorContracts planDataDeclarations)
+          collectionFlag = target == "haskell" && any (isCollectionsType . C.idText . C.dataId) planDataDeclarations
+          scalarNames = if target == "go" then Set.toAscList (Set.fromList
+            (concat [scalars (C.binderType field) | declaration <- planDataDeclarations,
+              constructor <- C.dataConstructors declaration,field <- C.constructorFields constructor])) else []
+      allocated <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right nativeNames
+      -- Namespace validation is independent of the memo. An unrelated public
+      -- type may newly collide with an adapter even when its law is unchanged.
+      if target == "go" then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
+        (GoData.validateGoBindings planDataDeclarations [cap (C.declarationName declaration) |
+          declaration <- C.unitDeclarations testing,C.declarationId declaration `notElem` map fst calls]) else pure ()
+      let visibleNames = filter ((`Set.member` selectedIds) . fst) allocated
+          key = digestHex (digestString (show ("unit-context-2",javaStyle,minify,target,planMachineBits,
+            D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
+            map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
+            Native.dataBudget laws,globalFlags,collectionFlag,scalarNames)))
+      cached <- fmap unstoreProduct $ memoized emitTable key (fmap storeProduct (emitUnitWith laws testing))
+      companions <- if target == "go" then Native.goCompanionArtifacts [] False minify planDataDeclarations calls planMachineBits testing laws else pure []
+      pure cached { Product.jvmArtifacts = companions ++ Product.jvmArtifacts cached }
+    nativeNames = case target of
+      "python" -> PythonTypes.namesFor planDataDeclarations
+      "javascript" -> WebTypes.namesFor planDataDeclarations
+      "typescript" -> WebTypes.namesFor planDataDeclarations
+      "java" -> map (\(identity,name) -> (C.Id identity,name)) <$> JavaData.namesFor planDataDeclarations
+      "kotlin" -> KotlinData.namesFor planDataDeclarations
+      "scala" -> ScalaData.namesFor planDataDeclarations
+      "haskell" -> HaskellData.namesFor planDataDeclarations
+      "go" -> concatMap (\(declaration,names) -> zip (C.dataId declaration : map C.constructorId (C.dataConstructors declaration)) names) <$> GoData.goEmittedNames planDataDeclarations
+      _ -> pure []
+    scalars ty = case ty of
+      C.Constructor name arguments -> [name | name `elem` map primitiveName primitives] ++
+        concat [scalars value | C.TypeArgument value <- arguments]
+      C.Arrow argument result -> scalars argument ++ scalars result
+      _ -> []
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
-          Native.nativeScalarProductWithAdapterBindings javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
+          Native.nativeScalarUnitProductWithAdapterBindings javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
       | otherwise = Product.files <$> Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool

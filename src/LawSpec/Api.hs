@@ -19,6 +19,7 @@ import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C
 import LawSpec.Core.Evidence (Obligation(..), Status(..), statusName)
+import qualified LawSpec.Testing.Budget as Budget
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.Targets (artifactTargets)
 import LawSpec.NativeRequest
@@ -120,9 +121,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           "planGeneration" | target `elem` artifactTargets, native /= emptyNativeRequest ->
             failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests core verification plan (verificationKeys verification
-              (either (const id) executableEntries plan
+              (nativeBudgetKeys target plan (either (const id) executableEntries plan
                 (testManifestWithNativeContext (maybe True (`V.selected` V.Model) verification)
-                  (native { requestNames = [] } /= emptyNativeRequest) target testDir (plannedCore core plan)))) . result)
+                  (native { requestNames = [] } /= emptyNativeRequest) target testDir (plannedCore core plan))))) . result)
             ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing])
        (analysisEvidence (maybe True (\config -> V.selected config V.Exhaustive || V.selected config V.Proof) verification)
@@ -283,6 +284,13 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       outcomes <- o .:? "attestedOutcomes" .!= M.empty
       attestation <- traverse parseAttestation <$> o .:? "attestation"
       pure (request', (Project rootPackage dependencies, packages), fmap (fmap (\a -> (a, outcomes))) attestation)
+
+-- The JVM/Go/Haskell harness currently shares its node budget across laws.
+-- Reuse must keep this real sampling input until the harness makes it local.
+nativeBudgetKeys :: String -> Either [Diagnostic] Plan -> [TestEntry] -> [TestEntry]
+nativeBudgetKeys target (Right plan) entries | Just budget <- Budget.sharedNativeBudget target plan =
+  [entry { entryKey = digestHex (digestString (show (entryKey entry,"native-node-budget",budget))) } | entry <- entries]
+nativeBudgetKeys _ _ entries = entries
 
 verificationKeys :: Maybe V.Verification -> [TestEntry] -> [TestEntry]
 verificationKeys Nothing entries = entries

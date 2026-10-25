@@ -206,11 +206,24 @@ incoming helper state is relevant. Independent chunks instead isolate their
 request sets as above; hashing the accumulated prior module state would make
 an unrelated earlier function invalidate later chunks.
 
-Remaining emission work includes JVM per-definition adoption, public per-type
-emitters beyond these typed chunks, and splitting the outer unit emitter's
-all-data presentation context into actual per-type/name dependencies. The
-whole-unit memo remains conservative until those contexts are established;
-semantic test and proof reuse already uses the checked dependency closure.
+The outer test/stub product cache now keys reachable type contents and their
+actual allocated native names, the call mappings it can read, and real global
+flags. An unused checked body is emitted separately and no longer stales its
+unit's test/stub product. Full definition admission and namespace checks still
+run before reuse. Public Go data/schema/codec artifacts are assembled outside
+this unit memo, preserving the complete public API in every package.
+
+Model-bearing unit products retain their complete schema/definition context
+until those dependencies are exposed separately. Other remaining emission
+work includes JVM per-definition adoption and public per-type emitters beyond
+the typed chunks above; shared Go scalar-generator helpers also retain their
+actual global scalar-set dependency.
+
+The regression oracle compares warm products against a cold compiler baseline
+that bypasses all Haskell memo-table reads and writes. It covers type/name and
+constructor-contract changes, source-line moves, and a public Go type newly
+colliding with an adapter. The cold wrapper restores lookup after failures;
+it does not disable mandatory admission or alter solver/native execution.
 
 Generated type suffixes use checked semantic identities. Specialization
 structurally lowers the already-checked concrete carrier rather than hashing
@@ -226,6 +239,14 @@ can invoke native code or any generated public API, even when a law calls only
 checked definitions. Their implementation and public generated API therefore
 remain cache inputs. A generated-name override alone stays presentation for a
 pure law; a native adapter can observe that public name and retains it.
+
+The JVM-family (including Groovy/Clojure), Go and Haskell generators currently
+share a node budget: the greater of 64 and the largest structural boundary
+value in the plan. Their native result keys include that actual sampling
+context. An otherwise independent edit that changes this shared budget may
+therefore rerun those tests; removing that dependency requires making the
+sampling budget local, not merely weakening its key. Python/Web use their own
+generator contexts and do not acquire the shared dependency.
 
 ## Scenario bindings
 
