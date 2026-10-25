@@ -39,6 +39,17 @@ core body = compileCoreCanonical 64 defaultGeneration [source body]
 -- ref:DEC-readable-notation
 test_canonicalAuthoringPreservesIntrinsicGuarantees :: Spec
 test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical authoring" $ do
+  it "preserves Java text literals that resemble qualified ability names" $ do
+    program <- either (fail . show) pure $ core $ unlines
+      [ "law literal is definition: for all (value :: Text) =>"
+      , "  value = \"lawspec.abilities.example.Corrupt.Operation\""
+      , "end for all end definition end law" ]
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Property,V.Examples]) program)
+    artifacts <- either (fail . show) pure (emitPlan "java" plan)
+    let tests = [LawSpec.Model.artifactContent artifact | artifact <- artifacts,
+                 "LawSpecTest.java" `isInfixOf` LawSpec.Model.artifactPath artifact]
+    concat tests `shouldSatisfy` isInfixOf "lawspec.abilities.example.Corrupt.Operation"
+    concat tests `shouldSatisfy` (not . isInfixOf "import lawspec.abilities.example.Corrupt;")
   it "chooses canonical grammar independently of user source filenames" $ do
     let legacy = "unit filename\ndefinition double (x :: Integer) :: Integer is x + x end\nend unit\n"
         canonical = "unit filename\n\nfunction double (x :: Integer) -> Integer is x + x end function\nend unit\n"

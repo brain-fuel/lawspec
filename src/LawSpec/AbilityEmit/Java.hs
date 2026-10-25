@@ -4,7 +4,6 @@
 -- in the symbols map generated code passes to every definition.
 module LawSpec.AbilityEmit.Java (emit, emitProduct, productionStub, productionProduct, abilitiesClass, abilitiesClassOf, adapterClassOf) where
 
-import LawSpec.JavaText (javaType)
 import qualified LawSpec.JavaAbi as Abi
 import qualified LawSpec.JvmProduct as Product
 import Data.Char (toUpper)
@@ -88,17 +87,6 @@ emitProduct minify bits datas units = do
       pure (abi, javadoc 98 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
         line ("public interface " ++ interfaceName a ++ "") <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline) methods))
     codec ty = Native.javaCodecDocWithContext (line "symbols") datas bits ty
-    -- A Java type as a type argument: primitives boxed.
-    boxed t = case D.render D.Compact t of
-      "long" -> line "Long"
-      "int" -> line "Integer"
-      "short" -> line "Short"
-      "byte" -> line "Byte"
-      "boolean" -> line "Boolean"
-      "double" -> line "Double"
-      "float" -> line "Float"
-      "char" -> line "Character"
-      _ -> t
     capitalizeFirst (c : cs) = toUpper c : cs
     capitalizeFirst [] = []
     specHandler u h = do
@@ -151,7 +139,7 @@ emitProduct minify bits datas units = do
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
-      stateType <- traverse (jvmTypedType typed . fst) (C.handlerState h)
+      stateType <- traverse (jvmTypedTypeDoc typed . fst) (C.handlerState h)
       let start = jvmTypedStart typed (C.handlerId h)
       let name = specName h
       methods <- mapM (\(op, ty) -> do
@@ -196,17 +184,17 @@ emitProduct minify bits datas units = do
                , line "/** Replaces the handler's state: to force it, reset it or restore a snapshot. */" <> D.hardline <>
                  line "public synchronized void setState(" <> native <> line " state)" <> D.hardline <> D.block 2 write'
                , line "/** The typed state, shared rather than copied. */" <> D.hardline <>
-                 D.group (line "public synchronized " <> javaType typedType <> D.nest 4 (D.softline <> line "typedState()")) <> D.hardline <> D.block 2 (line "return state;")
+                 D.group (line "public synchronized " <> typedType <> D.nest 4 (D.softline <> line "typedState()")) <> D.hardline <> D.block 2 (line "return state;")
                , line "/** Replaces the typed state. */" <> D.hardline <>
-                 D.group (line "public synchronized void setTypedState(" <> D.nest 4 (D.softbreak <> javaType typedType <> line " state") <> line ")") <> D.hardline <> D.block 2 (line "this.state = state;") ]
+                 D.group (line "public synchronized void setTypedState(" <> D.nest 4 (D.softbreak <> typedType <> line " state") <> line ")") <> D.hardline <> D.block 2 (line "this.state = state;") ]
         _ -> pure []
       -- Each operation that fails with E, with its failure as an Outcome.
       attempts <- fmap concat $ forM answered $ \a -> forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a
                                                          , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ] $ \(op, ty, failing, failure) -> do
         let (args, result) = C.functionType ty
         types <- mapM (Native.javaDataTypeDoc datas) args
-        resultType <- if result == C.scalarType "Unit" then pure (line "Void") else boxed <$> Native.javaDataTypeDoc datas result
-        failureType <- boxed <$> Native.javaDataTypeDoc datas failure
+        resultType <- if result == C.scalarType "Unit" then pure (line "Void") else Native.javaDataTypeDoc datas result
+        failureType <- Native.javaDataTypeDoc datas failure
         failureCodec <- codec failure
         let values = ["value" ++ show i | i <- [0 .. length args - 1]]
             call = op ++ "(" ++ intercalate ", " values ++ ")"
@@ -222,7 +210,7 @@ emitProduct minify bits datas units = do
               , line "return " <> D.group (line "lawspec.runtime.LawSpecFast.Outcome.failure(" <> D.nest 4 (D.softbreak <> failureCodec <> line ".decode(failure.value)") <> line ")") <> line ";" ])))
       pure (javadoc 98 ("The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
         implementing name [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
-          ([ line "private final Map<String, Object> symbols;" <> maybe mempty (\t -> D.hardline <> line ("private " ++ t ++ " state;")) stateType
+          ([ line "private final Map<String, Object> symbols;" <> maybe mempty (\t -> D.hardline <> line "private " <> t <> line " state;") stateType
            , line "/** The handler for a law, in its context. */" <> D.hardline <>
              line ("public " ++ name ++ "(Map<String, Object> symbols)") <> D.hardline <> D.block 2 (D.joinWith D.hardline
                (line "this.symbols = symbols;" : [line ("this.state = " ++ v ++ ";") | Just v <- [start]]))

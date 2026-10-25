@@ -11,22 +11,22 @@
 -- use (LawSpecRuntime.claimEnd).
 module LawSpec.Sessions.Jvm (emit) where
 
-import LawSpec.JavaText (javaLayout)
+import qualified LawSpec.JavaLayout as J
+import qualified LawSpec.JavaExpr as E
 import Control.Monad (foldM)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, isInfixOf, stripPrefix)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
-import LawSpec.JavaData (javaDataType, identifier, javaCodecDocWithContext)
+import LawSpec.JavaData (javaDataTypeDoc, identifier, javaCodecDocWithContext)
 import LawSpec.KotlinData (kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType)
 import LawSpec.ScalaData (scalaCodecDocWithContext, scalaCodecDocIn, scalaDataType)
 import qualified LawSpec.ScalaLayout as SL
 import qualified LawSpec.KotlinLayout as KL
 import LawSpec.JvmNames (javadoc)
-import qualified LawSpec.JavaExpr as E
 import LawSpec.MachineSpec (describe)
-import LawSpec.Scalar (isInteger)
+import LawSpec.Scalar (isInteger, nativeRepresentation)
 
 -- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -111,7 +111,7 @@ shortName datas n = maybe lastSegment id (lookup n [(C.idText (C.dataId d), C.da
 -- generated Kotlin object, since Kotlin's codecs are Kotlin objects), and a
 -- step sending another protocol's end is an EndPart (the end goes by the
 -- address the receiver takes it over from, or a relay's for a local end).
-data Part = Scalar String | Codec String | EndOf C.Session
+data Part = Scalar String | Codec D.Doc | EndOf C.Session
 
 networkParts :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String ([(Bool, String, Part)], [(String, String)])
 networkParts target bits datas sessions session = do
@@ -124,12 +124,12 @@ networkParts target bits datas sessions session = do
         (d, t') <- describe bits datas t ty
         p <- case ty of
           C.Constructor n [] | isInteger n || n `elem` ["Bool", "Text"] -> pure (Scalar n)
-          _ | target == "java" -> Codec . D.render (D.Pretty 1000) <$> javaCodecDocWithContext (D.text "symbols") datas bits ty
-            | target == "scala" -> Codec . D.render (D.Pretty 1000) <$> scalaCodecDocWithContext (D.text "symbols") datas ty
-            | otherwise -> Codec . D.render (D.Pretty 1000) <$> kotlinCodecDocWithContext (D.text "symbols") datas ty
+          _ | target == "java" -> Codec <$> javaCodecDocWithContext (D.text "symbols") datas bits ty
+            | target == "scala" -> Codec <$> scalaCodecDocWithContext (D.text "symbols") datas ty
+            | otherwise -> Codec <$> kotlinCodecDocWithContext (D.text "symbols") datas ty
         pure (t', acc ++ [(sends, d, p)])
 
-networkSource :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String ([String], Maybe String)
+networkSource :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String ([D.Doc], Maybe String)
 networkSource target bits datas sessions session = do
   (parts, table) <- networkParts target bits datas sessions session
   let name = C.sessionName session
@@ -137,59 +137,56 @@ networkSource target bits datas sessions session = do
       -- Kotlin's and Scala's codecs are their own objects, which the Java
       -- protocol class reaches through a generated conversions object.
       kotlin = target `elem` ["kotlin", "scala"]
-      partPiece (i, part@(_, _, p)) = case p of
+      partPiece (i, (_, _, p)) = case p of
+        Scalar n -> J.call "LawSpecRuntime.scalarConversion" [D.text (show n), D.text (show bits)]
+        Codec _ | kotlin -> J.call (name ++ "Conversions.conversion" ++ show i) []
+                | otherwise -> J.call "LawSpecRuntime.conversion"
+                    [D.text ("codec" ++ show i ++ "::encode"), D.text ("codec" ++ show i ++ "::decode")]
         EndOf q -> let start = firstStart datas sessions q in
-          E.call "new LawSpecRuntime.EndPart" [D.text ("c -> new " ++ start ++ "(c)"), D.text ("e -> ((" ++ start ++ ") e).handOver()"), D.text (C.sessionName q ++ "::wire")]
-        _ -> D.text (partDoc (i, part))
-      partDoc (i, (_, _, p)) = case p of
-        Scalar n -> "LawSpecRuntime.scalarConversion(" ++ show n ++ ", " ++ show bits ++ ")"
-        Codec _ | kotlin -> name ++ "Conversions.conversion" ++ show i ++ "()"
-                | otherwise -> "LawSpecRuntime.conversion(codec" ++ show i ++ "::encode, codec" ++ show i ++ "::decode)"
-        EndOf q -> let start = firstStart datas sessions q in
-          "new LawSpecRuntime.EndPart(c -> new " ++ start ++ "(c), e -> ((" ++ start ++ ") e).handOver(), " ++ C.sessionName q ++ "::wire)"
+          J.call "new LawSpecRuntime.EndPart"
+            [ J.lambdaValue ["channel"] (J.call ("new " ++ start) [D.text "channel"])
+            , J.lambdaValue ["end"] (J.method (D.text ("((" ++ start ++ ") end)")) "handOver" [])
+            , D.text (C.sessionName q ++ "::wire") ]
       first = startClass datas sessions session True
       second = startClass datas sessions session False
   kotlinFile <- if kotlin && not (null codecs)
     then Just <$> (if target == "scala" then scalaConversions name codecs else kotlinConversions name codecs)
     else pure Nothing
   pure (
-    [ "" ] ++
-    [ l | not (null codecs), not kotlin, l <- ["  private static final lawspec.runtime.LawSpecSchema SCHEMA =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
-    [ "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (unwords (map snd (reverse table))) ++ ");"
-    , ""
-    , "  /** Each step's descriptor and conversion, from the first end. */"
-    , "  static LawSpecRuntime.Wire wire()"
-    , "  {"
-    , "    var symbols = new java.util.HashMap<String, Object>();" ] ++
-    [ "    var codec" ++ show i ++ " = " ++ c ++ ";" | not kotlin, (i, c, _) <- codecs ] ++
-    wrapAt 4 (D.text "return " <> E.call "new LawSpecRuntime.Wire"
-      [ E.call "java.util.List.of" [E.call "new LawSpecRuntime.Step" [D.text (if sends then "true" else "false"), E.call "LawSpecRuntime.descriptor" [D.text (show d)]] | (sends, d, _) <- parts]
-      , E.call "java.util.Arrays.<Object>asList" (map partPiece (zip [0 ..] parts))
-      , D.text "TYPES" ] <> D.text ";") ++
-    [ "  }"
-    , ""
-    , "  /**"
-    , "   * The first end of a channel named name on node, which another node dials at {node"
-    , "   * address}/name. An end sent over it to another node moves there (a local end stays and is"
-    , "   * relayed by this node)."
-    , "   */"
-    , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name)"
-    , "  {"
-    , "    var w = wire();"
-    ] ++ wrapAt 4 (D.text "return " <> E.call ("new First." ++ first) [E.call "new LawSpecRuntime.NativeChannel" [D.text "node.listen(name, w.steps(), w.values())", D.text "w.parts()"]] <> D.text ";") ++
-    [ "  }"
-    , ""
-    , "  /** The second end of the channel listening at address on another node. */"
-    , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address)"
-    , "  {"
-    , "    var w = wire();"
-    , "    var steps = new java.util.ArrayList<LawSpecRuntime.Step>();"
-    , "    for (var s : w.steps())"
-    , "    {"
-    , "      steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
-    , "    }"
-    ] ++ wrapAt 4 (D.text "return " <> E.call ("new Second." ++ second) [E.call "new LawSpecRuntime.NativeChannel" [D.text "node.dial(address, steps, w.values())", D.text "w.parts()"]] <> D.text ";") ++
-    [ "  }" ], kotlinFile)
+    [ J.assigned (D.text "private static final lawspec.runtime.LawSpecSchema SCHEMA")
+        (J.call "lawspec.runtime.LawSpecDataSchema.create" []) | not (null codecs), not kotlin ] ++
+    [ J.assigned (D.text "private static final LawSpecRuntime.Values TYPES")
+        (J.call "LawSpecRuntime.valuesOf" [E.quoted (unwords (map snd (reverse table)))])
+    , commented "Each step's descriptor and conversion, from the first end." $
+        J.block (J.signature "static " (D.text "LawSpecRuntime.Wire") "wire" []) $
+          [J.bind "symbols" (J.call "new java.util.HashMap<String, Object>" [])] ++
+          [J.bind ("codec" ++ show i) c | not kotlin, (i, c, _) <- codecs] ++
+          [J.returned (J.call "new LawSpecRuntime.Wire"
+            [ J.call "java.util.List.of"
+                [J.call "new LawSpecRuntime.Step"
+                  [D.text (if sends then "true" else "false"), J.call "LawSpecRuntime.descriptor" [E.quoted d]]
+                | (sends, d, _) <- parts]
+            , J.call "java.util.Arrays.<Object>asList" (map partPiece (zip [0 :: Int ..] parts))
+            , D.text "TYPES" ])]
+    , commented "The first end of a channel named name on node, which another node dials at {node address}/name. An end sent over it to another node moves there (a local end stays and is relayed by this node)." $
+        J.block (J.signature "public static " (D.text ("First." ++ first)) "listen"
+          [J.parameter (D.text "LawSpecRuntime.Node") "node", J.parameter (D.text "String") "name"])
+          [ J.bind "w" (J.call "wire" [])
+          , J.returned (J.call ("new First." ++ first)
+              [J.call "new LawSpecRuntime.NativeChannel"
+                [J.method (D.text "node") "listen" [D.text "name", J.call "w.steps" [], J.call "w.values" []], J.call "w.parts" []]]) ]
+    , commented "The second end of the channel listening at address on another node." $
+        J.block (J.signature "public static " (D.text ("Second." ++ second)) "dial"
+          [J.parameter (D.text "LawSpecRuntime.Node") "node", J.parameter (D.text "String") "address"])
+          [ J.bind "w" (J.call "wire" [])
+          , J.bind "steps" (J.call "new java.util.ArrayList<LawSpecRuntime.Step>" [])
+          , J.block (D.text "for (var step : w.steps())")
+              [J.statement (J.method (D.text "steps") "add"
+                [J.call "new LawSpecRuntime.Step" [D.text "!step.sends()", J.call "step.descriptor" []]])]
+          , J.returned (J.call ("new Second." ++ second)
+              [J.call "new LawSpecRuntime.NativeChannel"
+                [J.method (D.text "node") "dial" [D.text "address", D.text "steps", J.call "w.values" []], J.call "w.parts" []]]) ]
+    ], kotlinFile)
   where
     scalaConversions name codecs = do
       functions <- mapM (\(i, _, t) -> do
@@ -227,145 +224,112 @@ networkSource target bits datas sessions session = do
         javadoc 100 ("Conversions of protocol " ++ name ++ "'s data steps, for its ends between nodes.") <> D.hardline <>
         D.text ("object " ++ name ++ "Conversions ") <> KL.block [D.joinWith (D.hardline <> D.hardline) members] <> D.hardline
 
-protocolSource :: [C.DataDeclaration] -> [C.Session] -> [String] -> C.Session -> Either String String
+-- | A Java comment and declaration share the enclosing indentation.
+commented :: String -> D.Doc -> D.Doc
+commented comment declaration = javadoc 84 comment <> D.hardline <> declaration
+
+protocolSource :: [C.DataDeclaration] -> [C.Session] -> [D.Doc] -> C.Session -> Either String String
 protocolSource datas sessions network session = do
   firstEnd <- endSource "First" "first" 0 (endSteps True session)
   secondEnd <- endSource "Second" "second" 1 (endSteps False session)
-  pure $ javaLayout $ unlines $
-    [ "// Generated by LawSpec from protocol " ++ name ++ ". Do not edit."
-    , ""
-    , "package lawspec.sessions;"
-    , ""
-    , "import java.util.concurrent.atomic.AtomicBoolean;"
-    , "import lawspec.runtime.LawSpecRuntime;"
-    , ""
-    , "/**"
-    , " * Protocol " ++ name ++ ": the typed ends of a channel."
-    , " *"
-    , " * <p>The first end " ++ summary (endSteps True session) ++ "; the second end does the reverse."
-    , " * Each end class is an end before one step: taking the step returns the next end,"
-    , " * and an end can be used only once."
-    , " */"
-    , "public final class " ++ name
-    , "{"
-    , "  private " ++ name ++ "() {}"
-    , ""
-    , "  /** Both ends of a fresh channel. */"
-    , "  public record Ends(First." ++ start True ++ " first, Second." ++ start False ++ " second) {}"
-    , ""
-    , "  /** Opens a fresh in-memory channel and returns its two ends. */"
-    , "  public static Ends open()"
-    , "  {"
-    , "    var channel = LawSpecRuntime.channel();"
-    , "    return new Ends(new First." ++ start True ++ "(channel), new Second." ++ start False ++ "(channel));"
-    , "  }" ] ++ network ++
-    [ "" ] ++ firstEnd ++ [""] ++ secondEnd ++ ["}"]
+  pure $ D.render (D.Pretty 100) $
+    D.text ("// Generated by LawSpec from protocol " ++ name ++ ". Do not edit.") <> D.hardline <> D.hardline <>
+    D.text "package lawspec.sessions;" <> D.hardline <> D.hardline <>
+    D.text "import java.util.concurrent.atomic.AtomicBoolean;" <> D.hardline <>
+    D.text "import lawspec.runtime.LawSpecRuntime;" <> D.hardline <> D.hardline <>
+    commented ("Protocol " ++ name ++ ": the typed ends of a channel.\n\n<p>The first end " ++ summary (endSteps True session) ++
+      "; the second end does the reverse. Each end class is an end before one step: taking the step returns the next end, and an end can be used only once.")
+      (J.block (D.text ("public final class " ++ name)) (separated $
+        [ D.text ("private " ++ name ++ "() {}")
+        , commented "Both ends of a fresh channel." $
+            D.group (D.text "public record " <> J.call "Ends"
+              [J.parameter (D.text ("First." ++ start True)) "first", J.parameter (D.text ("Second." ++ start False)) "second"] <> D.text " {}")
+        , commented "Opens a fresh in-memory channel and returns its two ends." $
+            J.block (J.signature "public static " (D.text "Ends") "open" [])
+              [ J.bind "channel" (J.call "LawSpecRuntime.channel" [])
+              , J.returned (J.call "new Ends"
+                  [J.call ("new First." ++ start True) [D.text "channel"], J.call ("new Second." ++ start False) [D.text "channel"]]) ]
+        ] ++ network ++ [firstEnd, secondEnd])) <> D.hardline
   where
     name = C.sessionName session
     start = startClass datas sessions session
     shown = display datas sessions
-
+    separated [] = []
+    separated [one] = [one]
+    separated (first : rest) = (first <> D.hardline) : separated rest
     summary [] = "takes no steps"
     summary ends = intercalate ", " [(if stepSends s then "sends " else "receives ") ++ article (shown (stepType s)) | s <- ends]
+    claim = J.statement (J.call "LawSpecRuntime.claimEnd" [D.text "used"])
+    nextEnd cls = J.call ("new " ++ cls) [D.text "channel"]
+    emptyConstructor cls = D.text (cls ++ "(LawSpecRuntime.Channel channel) {}")
 
     endSource className label side ends = do
       let names = classNames datas sessions session ends
       positions <- mapM (position label side names) (zip3 [0 :: Int ..] (map Just ends ++ [Nothing]) names)
-      pure $
-        [ "  /** The " ++ label ++ " end: it " ++ summary ends ++ ". */"
-        , "  public static final class " ++ className
-        , "  {"
-        , "    private " ++ className ++ "() {}"
-        ] ++ concatMap ("" :) positions ++ ["  }"]
+      pure $ commented ("The " ++ label ++ " end: it " ++ summary ends ++ ".") $
+        J.block (D.text ("public static final class " ++ className)) (separated $
+          D.text ("private " ++ className ++ "() {}") : positions)
 
     position label side names (index, step, cls) = do
-      let -- Only a first end travels over another channel (a delegated end).
-          moved = if index /= 0 || side /= (0 :: Int) then [] else
-            [ ""
-            , "      /** Hands this end, unused, to a send; this object becomes used. */"
-            , "      " ++ cls ++ " moved()"
-            , "      {"
-            , "        LawSpecRuntime.claimEnd(used);"
-            , "        return new " ++ cls ++ "(channel);"
-            , "      }"
-            , ""
-            , "      /** This unused end's channel, to send to another node; this object becomes used. */"
-            , "      LawSpecRuntime.Channel handOver()"
-            , "      {"
-            , "        LawSpecRuntime.claimEnd(used);"
-            , "        return channel;"
-            , "      }" ]
-          header doc =
-            [ "    /** " ++ doc ++ " */"
-            , "    public static final class " ++ cls
-            , "    {"
-            , "      private final LawSpecRuntime.Channel channel;"
-            , "      private final AtomicBoolean used = new AtomicBoolean();"
-            , ""
-            , "      " ++ cls ++ "(LawSpecRuntime.Channel channel)"
-            , "      {"
-            , "        this.channel = channel;"
-            , "      }" ]
+      let travels = index == 0 && side == (0 :: Int)
+          moved = if not travels then [] else
+            [ commented "Hands this end, unused, to a send; this object becomes used." $
+                J.block (J.signature "" (D.text cls) "moved" []) [claim, J.returned (nextEnd cls)]
+            , commented "This unused end's channel, to send to another node; this object becomes used." $
+                J.block (J.signature "" (D.text "LawSpecRuntime.Channel") "handOver" []) [claim, J.returned (D.text "channel")]
+            ]
       case step of
-        -- Nothing is left to use, so Done holds no channel; one that travels
-        -- (a protocol with no steps) is handed over as it is.
-        Nothing -> pure $
-          [ "    /** The " ++ label ++ " end after its last step: the protocol is done. */"
-          , "    public static final class Done"
-          , "    {"
-          , "      Done(LawSpecRuntime.Channel channel) {}" ] ++
-          (if null moved then [] else ["", "      Done moved() {", "        return this;", "      }"]) ++
-          ["    }"]
+        -- A completed end has no live channel. An empty delegated protocol
+        -- moves as the same completed object.
+        Nothing -> pure $ commented ("The " ++ label ++ " end after its last step: the protocol is done.") $
+          J.block (D.text "public static final class Done") (separated $
+            [emptyConstructor "Done"] ++
+            [J.block (J.signature "" (D.text "Done") "moved" []) [J.returned (D.text "this")] | travels])
         Just s -> do
           let next = names !! (index + 1)
               described = article (shown (stepType s))
           (boxed, parameter, sent) <- valueType (stepType s)
-          let body
-                | stepSends s =
-                    [ ""
-                    , "      /** Sends " ++ described ++ " and returns the next end. */"
-                    , "      public " ++ next ++ " send(" ++ parameter ++ " value)"
-                    , "      {"
-                    , "        LawSpecRuntime.claimEnd(used);"
-                    , "        channel.send(" ++ show side ++ ", " ++ sent ++ ");"
-                    , "        return new " ++ next ++ "(channel);"
-                    , "      }" ]
-                | otherwise =
-                    [ ""
-                    ] ++ jdoc 6 ("Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up.") ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
-                    [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive()"
-                    , "      {"
-                    , "        LawSpecRuntime.claimEnd(used);"
-                    , "        var value = (" ++ boxed ++ ") channel.receive(" ++ show side ++ ");"
-                    , "        return new LawSpecRuntime.Received<>(value, new " ++ next ++ "(channel));"
-                    , "      }" ]
-              doc = "The " ++ label ++ " end before step " ++ show (stepNumber s) ++ ": it " ++
+          let action
+                | stepSends s = commented ("Sends " ++ described ++ " and returns the next end.") $
+                    J.block (J.signature "public " (D.text next) "send" [J.parameter parameter "value"])
+                      [claim, J.statement (J.call "channel.send" [D.text (show side), sent]), J.returned (nextEnd next)]
+                | otherwise = commented ("Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up.") $
+                    (if generic (stepType s) then D.text "@SuppressWarnings(\"unchecked\")" <> D.hardline else mempty) <>
+                    J.block (J.signature "public " (J.applied "LawSpecRuntime.Received" [boxed, D.text next]) "receive" [])
+                      [ claim
+                      , J.bind "value" (D.group (D.text "(" <> boxed <> D.text ") " <> J.call "channel.receive" [D.text (show side)]))
+                      , J.returned (J.call "new LawSpecRuntime.Received<>" [D.text "value", nextEnd next]) ]
+              abandon = commented "Gives up the conversation: the other end's receives throw PeerFailed after what was sent." $
+                J.block (J.signature "public " (D.text "void") "abandon" [])
+                  [claim, J.statement (J.call "channel.abandon" [D.text (show side)])]
+              description = "The " ++ label ++ " end before step " ++ show (stepNumber s) ++ ": it " ++
                 (if stepSends s then "sends " else "receives ") ++ described ++ "."
-              abandon =
-                [ ""
-                ] ++ jdoc 6 "Gives up the conversation: the other end's receives throw PeerFailed after what was sent." ++
-                [ "      public void abandon()"
-                , "      {"
-                , "        LawSpecRuntime.claimEnd(used);"
-                , "        channel.abandon(" ++ show side ++ ");"
-                , "      }" ]
-          pure (header doc ++ body ++ abandon ++ moved ++ ["    }"])
+          pure $ commented description $ J.block (D.text ("public static final class " ++ cls)) $
+            [ D.text "private final LawSpecRuntime.Channel channel;"
+            , J.assigned (D.text "private final AtomicBoolean used") (J.call "new AtomicBoolean" [])
+            , mempty
+            , J.block (D.text cls <> J.call "" [J.parameter (D.text "LawSpecRuntime.Channel") "channel"])
+                [J.assigned (D.text "this.channel") (D.text "channel")]
+            ] ++ mempty : separated ([action, abandon] ++ moved)
 
-    -- A step's value as a type argument and as a send parameter, and what a
-    -- send puts on the channel. A delegated end is sent unused.
-    valueType t = case sessionOf sessions t of
-      Just other -> let cls = firstStart datas sessions other in pure (cls, cls, "value.moved()")
+    generic (C.Constructor _ arguments) = any isType arguments
+    generic (C.Arrow _ _) = True
+    generic _ = False
+    isType (C.TypeArgument _) = True
+    isType _ = False
+
+    -- Native types and primitive parameters come from checked Core types;
+    -- codec and type layout never makes a round trip through Java text.
+    valueType ty = case sessionOf sessions ty of
+      Just other -> let cls = D.text (firstStart datas sessions other) in
+        pure (cls, cls, J.call "value.moved" [])
       Nothing -> do
-        boxed <- shorten <$> javaDataType datas t
-        pure (boxed, maybe boxed id (lookup boxed unboxed), "value")
-
--- | A Javadoc comment at an indentation, wrapped within 100 columns.
-jdoc :: Int -> String -> [String]
-jdoc indent text = wrapAt indent (javadoc (100 - indent) text)
-
--- | A document's lines at an indentation, laid out within 100 columns.
-wrapAt :: Int -> D.Doc -> [String]
-wrapAt indent doc = map (replicate indent ' ' ++) (lines (D.render (D.Pretty (100 - indent)) doc))
+        boxed <- D.mapText shorten <$> javaDataTypeDoc datas ty
+        let parameter = case ty of
+              C.Constructor scalar [] | Just native <- nativeRepresentation "java" scalar,
+                native `elem` map snd unboxed -> D.text native
+              _ -> boxed
+        pure (boxed, parameter, D.text "value")
 
 article :: String -> String
 article word | '\'' `elem` word = word

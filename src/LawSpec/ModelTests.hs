@@ -7,7 +7,7 @@
 -- target's model runtime.
 module LawSpec.ModelTests (modelTestArtifacts, modelTestProduct, rustModelTests) where
 
-import LawSpec.JavaText (javaText)
+import qualified LawSpec.JavaLayout as J
 import LawSpec.JavaTestStyle (TestStyle(..))
 import qualified LawSpec.JvmProduct as Product
 import qualified LawSpec.JavaAbi as Abi
@@ -18,7 +18,6 @@ import LawSpec.Core.Machine
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.MachineSpec (machineSpec)
 import LawSpec.Core.Program (programSpec)
-import LawSpec.ScalaData (scalaQuoted)
 import LawSpec.SourceLink (generatedHeader, goGeneratedMarker, unitSourceFile)
 import LawSpec.Code.Literal (literalFor)
 import qualified LawSpec.Code.Doc as D
@@ -31,18 +30,22 @@ import LawSpec.JvmNames (jvmString)
 import qualified LawSpec.KotlinLayout as KotlinLayout
 import qualified LawSpec.ScalaLayout as ScalaLayout
 
+-- | A checked callable and its arity. Each target constructs its callback
+-- directly from these facts, without parsing another emitter's source.
+data Callback = Callback { callbackName :: String, callbackArity :: Int }
+
 data Callbacks = Callbacks
-  { startCallbacks :: Maybe (String, String)
-  , commandCallbacks :: [(String, String, Maybe String)]
-  , abstractCallback :: Maybe String
-  , invariantCallbacks :: [String] }
+  { startCallbacks :: Maybe (Callback, Callback)
+  , commandCallbacks :: [(Callback, Callback, Maybe Callback)]
+  , abstractCallback :: Maybe Callback
+  , invariantCallbacks :: [Callback] }
 
 -- | A Go model callback: a function literal whose body spans lines, so
 -- gofmt leaves it as it is.
-goCallback :: String -> [String]
-goCallback call =
+goCallback :: Callback -> [String]
+goCallback (Callback name arity) =
   [ "func(s map[string]*LawSpecSymbol, a []LawSpecValue) LawSpecValue {"
-  , "\treturn " ++ call
+  , "\treturn " ++ name ++ "(s" ++ concat [", a[" ++ show i ++ "]" | i <- [0 .. arity - 1]] ++ ")"
   , "}" ]
 
 -- | A Go composite literal of a type, one element per line.
@@ -69,8 +72,8 @@ goFields indent fields = concatMap run (groups fields)
       | (key, value) <- entries ]
 
 -- | Each machine's spec and callbacks, wrapped by the target's lambda.
-prepare :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> (String -> Int -> String) -> Machine C.Id -> Either [Diagnostic] (String, Callbacks)
-prepare bits datas calls u wrap machine = do
+prepare :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Machine C.Id -> Either [Diagnostic] (String, Callbacks)
+prepare bits datas calls u machine = do
   spec <- failing (machineSpec bits datas (C.unitDeclarations u) (C.unitContracts u) machine)
   let arity identity = case [d | d <- C.unitDefinitions u, C.declarationId (C.definitionDeclaration d) == identity] of
         [d] -> Right (length (C.definitionArguments d))
@@ -78,7 +81,7 @@ prepare bits datas calls u wrap machine = do
       callback identity = do
         name <- maybe (Left [Diagnostic "model" ("model " ++ machineName machine ++ ": no evaluator for " ++ C.idText identity) Nothing]) Right
           (lookup identity calls)
-        wrap (stripAwait name) <$> arity identity
+        Callback (stripAwait name) <$> arity identity
   start <- traverse (\s -> (,) <$> callback (startRun s) <*> callback (startModel s)) (machineStart machine)
   commands <- mapM (\c -> (,,) <$> callback (commandRun c) <*> callback (commandReference c) <*> traverse callback (commandWhen c))
     (machineCommands machine)
@@ -101,7 +104,7 @@ modelTestProduct :: TestStyle -> String -> Int -> [C.DataDeclaration] -> [(C.Id,
 modelTestProduct style target bits datas calls u
   | null (C.unitMachines u) && null (C.unitSupervisors u) = pure mempty
   | otherwise = do
-      prepared <- mapM (\m -> (,) m <$> prepare bits datas calls u wrap m) (C.unitMachines u)
+      prepared <- mapM (\m -> (,) m <$> prepare bits datas calls u m) (C.unitMachines u)
       pure (Product.JvmProduct [Artifact path (render prepared) "generated" "test"] [] []
         [Abi.CaseClass path pkg cls Nothing
           [Abi.CaseInfo name name Nothing Nothing Abi.SingleCase | name <-
@@ -109,23 +112,19 @@ modelTestProduct style target bits datas calls u
           False False | target == "java"])
   where
     testMark = if style == JUnit then D.text "@Test" <> D.hardline else mempty
-    -- A callback's body is a call name(s, a[0], ...), laid out as a call.
-    ktCallback body = D.text "LawSpecRuntime.ModelCallback " <> KotlinLayout.lambda ["s", "a"] [KotlinLayout.call (takeWhile (/= '(') body)
-      (map D.text (splitArguments (takeWhile (/= ')') (drop 1 (dropWhile (/= '(') body)))))]
-    -- A Scala callback: ((s, a) => name(args)) as the runtime's interface.
-    scCallback body = D.group (D.text "(s, a) =>" <> D.nest 2 (D.softline <> ScalaLayout.call (takeWhile (/= '(') body)
-      (map D.text (splitArguments (init (drop 1 (dropWhile (/= '(') body)))))))
+    ktCallback (Callback name arity) = D.text "LawSpecRuntime.ModelCallback " <>
+      KotlinLayout.lambda ["s", "a"] [KotlinLayout.call name
+        (D.text "s" : [D.text ("a[" ++ show i ++ "]") | i <- [0 .. arity - 1]])]
+    scCallback (Callback name arity) = D.group (D.text "(s, a) =>" <> D.nest 2
+      (D.softline <> ScalaLayout.call name
+        (D.text "s" : [ScalaLayout.call "a.get" [D.text (show i)] | i <- [0 .. arity - 1]])))
     scString = ScalaLayout.scalaString
     -- An array of one callback keeps it in its parentheses, as scalafmt does.
     scArray [one] = D.group (D.text "Array[LawSpecRuntime.ModelCallback](" <> one <> D.softbreak <> D.text ")")
     scArray many = ScalaLayout.call "Array[LawSpecRuntime.ModelCallback]" many
-    -- A Java callback: (s, a) -> name(args), broken after the arrow.
-    jCallback body = case break (== '>') body of
-      (params, '>' : ' ' : call) -> D.group (D.text (params ++ ">") <> D.nest 4 (D.softline <> javaText call))
-      _ -> D.text body
-    splitArguments s = case break (== ',') s of
-      (a, []) -> [a]
-      (a, _ : rest) -> a : splitArguments (dropWhile (== ' ') rest)
+    jCallback (Callback name arity) = J.lambdaValue ["s", "a"] (J.call (javaName name)
+      (D.text "s" : [J.call "a.get" [D.text (show i)] | i <- [0 .. arity - 1]]))
+    javaName name = maybe name ("LawSpecDefinitionBodies." ++) (stripPrefix "lawspec.runtime.LawSpecDefinitionBodies." name)
     -- A Java array: new T[] {a, b}, wrapping inside its braces.
     array element items = D.group (D.text ("new " ++ element ++ "[] {") <> D.nest 4 (D.softbreak <> D.commaSep items) <> D.softbreak <> D.text "}")
     braces items = D.group (D.text "{" <> D.nest 4 (D.softbreak <> D.commaSep items) <> D.softbreak <> D.text "}")
@@ -140,20 +139,6 @@ modelTestProduct style target bits datas calls u
       "kotlin" -> jvmPath "kotlin" ".kt"
       "scala" -> jvmPath "scala" ".scala"
       _ -> "test/" ++ map (\c -> if c == '.' then '/' else c) hsModule ++ ".hs"
-    arguments n
-      | target == "go" = intercalate ", " ["a[" ++ show i ++ "]" | i <- [0 .. n - 1]]
-      | target == "java" = intercalate ", " ["a.get(" ++ show i ++ ")" | i <- [0 .. n - 1]]
-      | target == "kotlin" = intercalate ", " ["a[" ++ show i ++ "]" | i <- [0 .. n - 1]]
-      | target == "scala" = intercalate ", " ["a.get(" ++ show i ++ ")" | i <- [0 .. n - 1]]
-      | otherwise = unwords ["x" ++ show i | i <- [0 .. n - 1]]
-    wrap name n = case target of
-      -- Go's callbacks are laid out where they are used (goCallback).
-      "go" -> name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ")"
-      "java" -> "(s, a) -> " ++ name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ")"
-      "kotlin" -> name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ")"
-      "scala" -> name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ")"
-      -- The runtime's uncurried takes the arguments from the list.
-      _ -> name
     nil = case target of
       "go" -> "nil"
       "haskell" -> "P.Nothing"
@@ -195,7 +180,7 @@ modelTestProduct style target bits datas calls u
       -- Java: Allman braces with Google's other rules, as LawSpec's Java
       -- profile asks; the spec wraps at its spaces.
       -- Checked definitions are called through their imported class.
-      "java" -> D.render (D.Pretty 100) $ D.mapText unqualifiedBodies $
+      "java" -> D.render (D.Pretty 100) $
         D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> D.hardline <>
         (if null pkg then mempty else D.text ("package " ++ pkg ++ ";") <> D.hardline <> D.hardline) <>
         D.text "import lawspec.runtime.LawSpecDefinitionBodies;" <> D.hardline <>
@@ -278,7 +263,7 @@ modelTestProduct style target bits datas calls u
           concat [ [ H.Run (H.dollar (H.call "it" [H.string "supervision"]) (H.Do
                        [ H.Bind "failure" (H.var "LS.checkSupervision"), H.Run (expected "failure") ])) ]
                  | not (null (C.unitSupervisors u)) ]))) <> D.hardline
-    callback name = H.call "LS.uncurried" [H.var name]
+    callback descriptor = H.call "LS.uncurried" [H.var (callbackName descriptor)]
     expected failure = H.call "P.maybe" [H.call "P.pure" [H.var "()"], H.var "expectationFailure", H.var failure]
 
 -- | Rust test functions for a unit's models, calling the mounted definitions
@@ -296,17 +281,17 @@ rustModelTests bits datas calls u = (++ supervision) <$> mapM test (C.unitMachin
           , "    }"
           , "}" ]
       | not (null (C.unitSupervisors u)) ]
-    wrap name _ = "lawspec_definitions::" ++ name ++ " as ls::ModelCallback"
+    rustCallback descriptor = RL.atom ("lawspec_definitions::" ++ callbackName descriptor ++ " as ls::ModelCallback")
     -- Laid out as rustfmt lays it out (LawSpec.RustLayout).
     test m = do
-      (spec, cs) <- prepare bits datas calls u wrap m
+      (spec, cs) <- prepare bits datas calls u m
       let rust = Doc.render (Doc.styleLayout (Doc.styleFor "rust"))
           model = RL.struct "ls::Model"
             [ ("spec", RL.atom (literalFor "rust" spec))
-            , ("start", RL.Macro "" "[" "]" (maybe [] (\(r, f) -> [RL.atom r, RL.atom f]) (startCallbacks cs)))
-            , ("commands", RL.vecOf [RL.Macro "" "(" ")" [RL.atom r, RL.atom f, maybe (RL.atom "None") (\w' -> RL.call "Some" [RL.atom w']) w] | (r, f, w) <- commandCallbacks cs])
-            , ("abstract_state", maybe (RL.atom "None") (\a -> RL.call "Some" [RL.atom a]) (abstractCallback cs))
-            , ("invariants", RL.vecOf (map RL.atom (invariantCallbacks cs))) ]
+            , ("start", RL.Macro "" "[" "]" (maybe [] (\(r, f) -> [rustCallback r, rustCallback f]) (startCallbacks cs)))
+            , ("commands", RL.vecOf [RL.Macro "" "(" ")" [rustCallback r, rustCallback f, maybe (RL.atom "None") (\w' -> RL.call "Some" [rustCallback w']) w] | (r, f, w) <- commandCallbacks cs])
+            , ("abstract_state", maybe (RL.atom "None") (\a -> RL.call "Some" [rustCallback a]) (abstractCallback cs))
+            , ("invariants", RL.vecOf (map rustCallback (invariantCallbacks cs))) ]
           checks = foldl (\acc next -> RL.method acc "and_then" [RL.closure "|_|" next]) (RL.call "ls::check_model" [RL.atom "&model"])
             ([RL.call "ls::check_model_parallel" [RL.atom "&model"] | machineShared m] ++
              [RL.call "ls::check_scenario" [RL.atom "&model", RL.atom (literalFor "rust" (programSpec p))] | p <- machineScenarios m])
@@ -329,14 +314,3 @@ capitalize [] = []
 
 hsPart :: String -> String
 hsPart = concatMap capitalize . splitOn '_'
-
--- | A Kotlin string literal: as Haskell's, with $ escaped.
-kotlinQuoted :: String -> String
-kotlinQuoted = concatMap (\c -> if c == '$' then "\\$" else [c]) . show
-
--- | Text with lawspec.runtime.LawSpecDefinitionBodies written by its class.
-unqualifiedBodies :: String -> String
-unqualifiedBodies s = case s of
-  [] -> []
-  _ | Just rest <- stripPrefix "lawspec.runtime.LawSpecDefinitionBodies." s -> "LawSpecDefinitionBodies." ++ unqualifiedBodies rest
-  c : rest -> c : unqualifiedBodies rest

@@ -731,7 +731,6 @@ library
       LawSpec.JavaTestHelpers
       LawSpec.JavaTestingRuntime
       LawSpec.JavaTestStyle
-      LawSpec.JavaText
       LawSpec.JvmCases
       LawSpec.JvmLets
       LawSpec.JvmNames

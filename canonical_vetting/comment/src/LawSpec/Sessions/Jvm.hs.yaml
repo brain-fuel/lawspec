@@ -19,9 +19,6 @@ decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/functio
 decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/firstStart:
   digest: sha256:e5240037e80c6896
   verdict: pending
-decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/jdoc:
-  digest: sha256:9883a3b2bfda5813
-  verdict: pending
 decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/sessionOf:
   digest: sha256:24255fe91aa9cf21
   verdict: pending
@@ -30,7 +27,4 @@ decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/functio
   verdict: pending
 decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/startClass:
   digest: sha256:8df3b300da016736
-  verdict: pending
-decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/wrapAt:
-  digest: sha256:ad9edf5da21478d8
   verdict: pending
