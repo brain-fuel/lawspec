@@ -1,5 +1,5 @@
 -- | Rust consumes an execution plan made entirely from typed core.
-module LawSpec.RustEmit (emitRust, emitRustWithFormat, emitRustWithBindings, rustType, emitRustSchema) where
+module LawSpec.RustEmit (emitRust, emitRustWithFormat, emitRustWithBindings, emitRustWithBindingsAt, rustType, emitRustSchema) where
 import LawSpec.Core
 import qualified LawSpec.Network as Network
 import LawSpec.Core.Total (constructorProofContracts)
@@ -201,7 +201,11 @@ emitRustWithFormat minify = emitRustWithBindings minify NR.emptyBindingPlan
 -- | Names are escaped against Rust's keywords before emission, so a law about
 -- type or match still compiles as Rust. ref:DEC-idiomatic-generated-types
 emitRustWithBindings :: Bool -> NR.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
-emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -> Diagnostic "rust" m Nothing)) Right $ do
+emitRustWithBindings = emitRustWithBindingsAt "../src"
+
+-- | Mount source modules from resolved layout metadata before formatting.
+emitRustWithBindingsAt :: FilePath -> Bool -> NR.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left . pure . (\m -> Diagnostic "rust" m Nothing)) Right $ do
   let declarations = concatMap (unitDeclarations . plannedUnit) plannedUnits
       keywords = words "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen"
   unless (all (\d -> declarationName d `notElem` keywords && all (\c -> isAscii c && (isAlphaNum c || c == '_')) (declarationName d)) declarations) (Left "reserved or invalid Rust adapter identifier")
@@ -251,6 +255,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
   generatorStubs <- NG.emitGeneratorStubs planDataDeclarations bindings
   pure (files ++ generatorStubs)
   where
+    sourcePath file = sourceRoot ++ "/" ++ file
     hasNativeTypes = not (null (NB.resolvedTypes (NR.bindingRepresentations bindings)))
     -- An adapter's native binding: a static function, or a handle's method
     -- or constructor.
@@ -976,25 +981,25 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             Doc.text ("mod " ++ name ++ ";"))
           networkImports mount = [if idText (unitId unit) == Network.networkUnit
             then useDoc "use adapter as lawspec_network;" else mount | hasNetwork]
-          localImports = [moduleDoc ("../src/" ++ modulePath ++ ".rs") "adapter"] ++
-            [moduleDoc "../src/lawspec_data.rs" "lawspec_data" | not (null planDataDeclarations)] ++
-            [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
-            workflowModules (\owner -> moduleDoc ("../src/" ++ map (\c -> if c == '.' then '/' else c) (idText owner) ++ ".rs") (ident (idText owner))) ++
-            networkImports (moduleDoc "../src/lawspec/network.rs" "lawspec_network") ++
-            [moduleDoc "../src/lawspec_runtime.rs" "lawspec_runtime"] ++
-            [moduleDoc "../src/lawspec_sessions.rs" "lawspec_sessions" | hasSessions] ++
-            [moduleDoc "../src/lawspec_actors.rs" "lawspec_actors" | hasActors] ++
-            [moduleDoc "../src/lawspec_remote.rs" "lawspec_remote" | hasRemote] ++
-            [moduleDoc "../src/lawspec_mailboxes.rs" "lawspec_mailboxes" | hasMailboxes] ++
-            [moduleDoc "../src/lawspec_abilities.rs" "lawspec_abilities" | hasAbilities] ++
-            [moduleDoc "../src/lawspec_schema.rs" "lawspec_schema" | hasSchema] ++
+          localImports = [moduleDoc (sourcePath (modulePath ++ ".rs")) "adapter"] ++
+            [moduleDoc (sourcePath "lawspec_data.rs") "lawspec_data" | not (null planDataDeclarations)] ++
+            [moduleDoc (sourcePath "lawspec_definitions.rs") "lawspec_definitions" | hasDefinitions] ++
+            workflowModules (\owner -> moduleDoc (sourcePath (map (\c -> if c == '.' then '/' else c) (idText owner) ++ ".rs")) (ident (idText owner))) ++
+            networkImports (moduleDoc (sourcePath "lawspec/network.rs") "lawspec_network") ++
+            [moduleDoc (sourcePath "lawspec_runtime.rs") "lawspec_runtime"] ++
+            [moduleDoc (sourcePath "lawspec_sessions.rs") "lawspec_sessions" | hasSessions] ++
+            [moduleDoc (sourcePath "lawspec_actors.rs") "lawspec_actors" | hasActors] ++
+            [moduleDoc (sourcePath "lawspec_remote.rs") "lawspec_remote" | hasRemote] ++
+            [moduleDoc (sourcePath "lawspec_mailboxes.rs") "lawspec_mailboxes" | hasMailboxes] ++
+            [moduleDoc (sourcePath "lawspec_abilities.rs") "lawspec_abilities" | hasAbilities] ++
+            [moduleDoc (sourcePath "lawspec_schema.rs") "lawspec_schema" | hasSchema] ++
             [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
             [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           imports = case NR.bindingRustCrate bindings of
             Nothing -> localImports
             Just library -> [useDoc ("use " ++ library ++ "::" ++ testName ++ " as adapter;")] ++
               [useDoc ("use " ++ library ++ "::lawspec_data;") | not (null planDataDeclarations)] ++
-              [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
+              [moduleDoc (sourcePath "lawspec_definitions.rs") "lawspec_definitions" | hasDefinitions] ++
               workflowModules (\owner -> useDoc ("use " ++ library ++ "::" ++ ident (idText owner) ++ ";")) ++
               networkImports (useDoc ("use " ++ library ++ "::lawspec_network;")) ++
               [useDoc ("use " ++ library ++ "::lawspec_runtime;")] ++
