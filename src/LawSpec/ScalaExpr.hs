@@ -11,6 +11,8 @@ import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.ScalaLayout as L
 import LawSpec.JvmLets (flattenLets)
+import LawSpec.JvmNames (jvmScopedNames)
+import qualified Data.Map.Strict as M
 
 -- | Strings are escaped for Scala here, once, so no generated literal can end
 -- early or change meaning.
@@ -102,8 +104,10 @@ scalarLiteral ty value = case value of
 -- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpression declarations bits local external = render . flattenLets
+renderExpression declarations bits named external expression = render scopedTerm
   where
+    (scopedTerm, scoped) = jvmScopedNames named (flattenLets expression)
+    local identity = M.findWithDefault (named identity) identity scoped
     width = const (D.text bitsName) bits
     key = quoted . Java.javaDataKey
     runtime name = call ("LawSpecRuntime." ++ name)

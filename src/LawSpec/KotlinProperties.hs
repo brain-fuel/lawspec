@@ -226,8 +226,12 @@ emitTests Config{..} unit laws = do
     -- The tests a law's harness wraps, skips or expects to fail.
     harnessTests fn label h kinds extraBodies docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
       (Just reason, _) -> [D.group (quoted (fn ++ "_skipped: " ++ label) <> D.nest 4 (D.softbreak <> text ".config(enabled = false) " <> L.block [text ("// " ++ reason)]))]
-      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> L.lambda [] [harness "knownFailing"
-        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, (L.operators "+" [call "listOf<lawspec.testing.LawSpecHarness.Body>" [harnessBody (harnessValue (fn ++ k)) | k <- kinds], extraBodies])]]]
+      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> L.lambda []
+        ([bind "knownFailures" (call "mutableListOf<lawspec.testing.LawSpecHarness.Body>" [])] ++
+         [call "knownFailures.add" [harnessBody (harnessValue (fn ++ k))] | k <- kinds, k /= "_property"] ++
+         extraBodies ++
+         [call "knownFailures.add" [harnessBody (harnessValue (fn ++ k))] | k <- kinds, k == "_property"] ++
+         [harness "knownFailing" [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, text "knownFailures"]])]
       _ | runSettings h -> docs ++ [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text " " <> L.lambda [] [harness "run"
             [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
              call "intArrayOf" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
@@ -359,29 +363,41 @@ emitTests Config{..} unit laws = do
           exampleSuffixes = exampleTestNames ("property" : "skipped" : "knownFailing" : "replay" : "search" :
             map boundaryTestName [0 .. boundaryCount - 1]) (map exampleName (examples (original e)))
           exampleContext ex = shown ++ " example " ++ displayLabel (exampleName ex)
+          checkNames = map inputId (inputs e) ++
+            [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
+          lawAssertion context = call (base' ++ "Check")
+            [context, text "symbols", call "arrayOf<LawSpecRuntime.Value>" (map text checkNames)]
       exampleDocs <- mapM (\(suffix,ex) -> pure $ D.lineComment 96 "// " (labelled ("example " ++ displayLabel (exampleName ex))
           (fmap locationLink (exampleLocation ex))) <>
         testFunction (fn ++ "_" ++ suffix) (withSymbols
-        (handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
+        (handlerInstalls e ++ [E.bindValue n v (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
-          [contextualAssertion (const (quoted (linked e shown))) (assertion e)])]))) (zip exampleSuffixes (examples (original e)))
+          [lawAssertion (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
       cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
-      coverData <- Finite.coverDoc finiteCall (L.lambda ["symbols"] . pure) literal cover
+      (coverDeclarations, coverData) <- Finite.coverBindings finiteCall (L.lambda ["symbols"] . pure) literal
+        (\n value -> text "private " <> L.bind n value) (base' ++ "Cases") cover
       let helper = base' ++ "Boundary"
           coverCases = runtime "finiteCases" [coverData]
           caseCall = call helper [text "finiteCase"]
           caseName = quoted (base' ++ "_boundary") <> text " + finiteCase.index()"
-          context = L.operators "+" ([quoted (shown ++ " boundary "), text "finiteCase.index()"] ++
-            [quoted (" — " ++ link) | Just link <- [lawLink e]])
-          sharedDocs = [braced (call ("private suspend fun " ++ helper)
+          context = D.group (quoted (shown ++ " boundary ") <> D.nest 4
+            (mconcat [text " +" <> D.softline <> value | value <-
+              text "finiteCase.index()" : [quoted (" — " ++ link) | Just link <- [lawLink e]]]))
+          sharedDocs = [declaration | C.harnessSkip h == Nothing, declaration <- coverDeclarations] ++ [braced (call ("private suspend fun " ++ helper)
               [text "finiteCase: LawSpecRuntime.FiniteCase"])
             (withSymbols (bind "values" (call "finiteCase.values" [text "symbols"]) : handlerInstalls e ++
               [bind (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i,inp) <- zip [0::Int ..] (inputs e)] ++
-              [bracketed e [contextualAssertion (const context) (assertion e)]]))
+              [bracketed e [lawAssertion context]]))
+            | C.harnessSkip h == Nothing] ++
+            [braced (call ("private fun " ++ base' ++ "Check")
+              [text "context: String", text "symbols: MutableMap<String, Any>", text "values: Array<LawSpecRuntime.Value>"])
+              ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] checkNames] ++
+               [contextualAssertion (const (text "context")) (assertion e)])
             | C.harnessSkip h == Nothing]
           caseBody = text "lawspec.testing.LawSpecHarness.Body " <>
             L.lambda [] [L.trailing (text "kotlinx.coroutines.runBlocking") [] [caseCall]]
-          extraBodies = D.group (D.nest 4 coverCases <> D.nest 4 (D.softbreak <> L.trailing (text ".map") ["finiteCase"] [caseBody]))
+          extraBodies = [braced (D.group (text "for (finiteCase in" <> D.nest 4 (D.softline <> coverCases) <> text ")"))
+            [call "knownFailures.add" [caseBody]]]
           runCase | runSettings h = harness "run"
                       [quoted label, caseName, number (maybe 0 id (C.harnessTimeout h)),
                        number (C.harnessRepeat h), number (C.harnessRetries h),
@@ -412,11 +428,11 @@ emitTests Config{..} unit laws = do
                        (withSymbols (handlerInstalls e ++
                         [bind (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
                         [braced (L.condition "if" (text "!(" <> conjunction (map (truth . expr) refinements) <> text ")")) [text "return@searchCase null"] | not (null refinements)] ++
-                        [bracketed e [assertionDoc (linked e (shown ++ " search")) (assertion e)],
+                        [bracketed e [lawAssertion (quoted (linked e (shown ++ " search")))],
                          maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h)]))
                    , quoted (base' ++ "_replay") <> text " " <> L.lambda [] [runtime "searchReplay" [quoted label, text inputsName, searchCase]] ]
                  , [quoted (base' ++ "_search") <> text " " <> L.lambda [] [runtime "searchClimb" [quoted label, text inputsName, searchCase]] | C.harnessTarget h /= Nothing] )
-      let check = bracketed e (observations e ++ [remembered (assertionDoc (linked e (shown ++ " property")) (assertion e))])
+      let check = bracketed e (observations e ++ [remembered (lawAssertion (quoted (linked e (shown ++ " property"))))])
           propertyLabel = displayLabel label
       property <- if finiteCases e /= Nothing then pure []
         else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn propertyLabel e check
