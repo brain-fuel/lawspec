@@ -3,7 +3,7 @@
 -- ref:DEC-idiomatic-generated-types ref:DEC-readable-output-default
 module LawSpec.ElixirCode
   ( string, atom, array, tuple, call, remote, function, moduleDoc, moduleDocFrom, integer, layoutFor, typeAttribute, variables
-  , nativeType, typeReference, reference ) where
+  , nativeType, nativeTypeLayout, TypeLayout(..), typeDoc, typeReference, reference ) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
@@ -43,109 +43,99 @@ remote owner name args = D.text owner <> D.text "." <> call name args
 -- | def name(args) do ... end, its body on lines of its own, as mix
 -- format writes a do block.
 function :: String -> [D.Doc] -> [D.Doc] -> D.Doc
-function name args body = D.text "def " <> D.nest 4 (call name args) <> D.text " do" <>
+function name args body = D.text "def " <>
+  D.prefixChoice headText (D.group (D.text headText)) (D.nest 4 (call name args)) <> D.text " do" <>
   D.nest 2 (D.hardline <> D.joinWith D.hardline body) <> D.hardline <> D.text "end"
+  where headText = D.render D.Compact (call name args)
 
--- | @spec or @type, Left :: Right, in a module body, laid out as mix format
--- lays it out at width 98: on one line when it fits; otherwise a union's
--- alternatives one to a line, a container's items one to a line, or the
--- left side's arguments one to a line, indented from the attribute.
-typeAttribute :: String -> D.Doc -> D.Doc -> D.Doc
+-- | Logical Elixir type syntax. Atomic references are indivisible; calls,
+-- unions, containers, map fields and arrows retain their checked structure.
+data TypeLayout
+  = TypeAtom D.Doc
+  | TypeCall String [TypeLayout]
+  | TypeUnion [TypeLayout]
+  | TypeContainer String [TypeLayout] String
+  | TypeMapField D.Doc TypeLayout
+  | TypeKeywordField String TypeLayout
+  | TypeFunction [TypeLayout] TypeLayout
+
+-- | The ordinary type document, independent of its attribute's alignment.
+typeDoc :: TypeLayout -> D.Doc
+typeDoc ty = case ty of
+  TypeAtom doc -> doc
+  TypeCall name args -> call name (map typeDoc args)
+  TypeUnion alternatives -> D.joinWith (D.text " | ") (map typeDoc alternatives)
+  TypeContainer open items close -> D.delimit 2 open close (map typeDoc items)
+  TypeMapField key value -> key <> D.text " => " <> typeDoc value
+  TypeKeywordField key value -> D.text (key ++ ": ") <> typeDoc value
+  TypeFunction args result -> D.text "(" <> mconcat
+    [D.joinWith (D.text ", ") (map typeDoc args) <> D.text " " | not (null args)] <>
+    D.text "-> " <> typeDoc result <> D.text ")"
+
+-- | @spec or @type uses the type constructors to select Mix's attribute
+-- alignment. Rendering measures widths only; no printed syntax is parsed.
+typeAttribute :: String -> TypeLayout -> TypeLayout -> D.Doc
+typeAttribute attribute left (TypeUnion [right]) = typeAttribute attribute left right
 typeAttribute attribute left right
   | 2 + length flat <= 98 = D.text flat
-  | length alternatives > 1, 2 + length (prefix ++ l ++ " ::") <= 98 = D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
-  | Just (open, items, close) <- container r, 2 + length (prefix ++ l ++ " :: " ++ open) <= 98 =
+  | TypeUnion alternatives <- right, length alternatives > 1,
+    2 + length (prefix ++ l ++ " ::") <= 98 = D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
+  | TypeContainer open items close <- right, 2 + length (prefix ++ l ++ " :: " ++ open) <= 98 =
       D.text (prefix ++ l ++ " :: " ++ open) <>
       mconcat [D.hardline <> item i (if k < length items then "," else "") | (k, i) <- zip [1 :: Int ..] items] <>
       D.hardline <> D.text (replicate 6 ' ' ++ close)
-  -- mix format measures the left side without its operator.
   | 2 + length (prefix ++ l) <= 98 = D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
-  -- A sole list argument hugs the parentheses.
-  | Just (name, [a]) <- calledWith l, Just ("[", items, "]") <- container a =
+  | TypeCall name [TypeContainer "[" items "]"] <- left =
       D.text (prefix ++ name ++ "([") <>
-      mconcat [D.hardline <> D.text (replicate 8 ' ' ++ i ++ (if k < length items then "," else "")) | (k, i) <- zip [1 :: Int ..] items] <>
+      mconcat [D.hardline <> D.text (replicate 8 ' ' ++ flatType i ++ (if k < length items then "," else "")) | (k, i) <- zip [1 :: Int ..] items] <>
       D.hardline <> closing "])"
-  | Just (name, args) <- calledWith l =
+  | TypeCall name args <- left =
       D.text (prefix ++ name ++ "(") <>
       mconcat [D.hardline <> argument a (if k < length args then "," else "") | (k, a) <- zip [1 :: Int ..] args] <>
       D.hardline <> closing ")"
   | otherwise = D.text flat
   where
-    -- After broken arguments: ") :: R", or R on lines of its own.
+    flatType = D.render D.Compact . typeDoc
     closing bracket
       | 8 + length (bracket ++ " :: " ++ r) <= 98 = D.text (replicate 6 ' ' ++ bracket ++ " :: " ++ r)
       | otherwise = D.text (replicate 6 ' ' ++ bracket ++ " ::") <> D.hardline <> rightAlone
-    -- A broken argument; a union breaks into its alternatives.
-    argument a suffix = case splitTop " | " a of
-      alternative : rest@(_ : _) -> D.joinWith D.hardline
-        [D.text (replicate 8 ' ' ++ (if i == 0 then "" else "| ") ++ x ++ (if i == length rest then suffix else ""))
-        | (i, x) <- zip [0 :: Int ..] (alternative : rest)]
-      _ -> D.text (replicate 8 ' ' ++ a ++ suffix)
-    -- The right side on lines of its own, from column 10.
+    argument a suffix = case a of
+      TypeUnion alternatives@(_ : _ : _) -> D.joinWith D.hardline
+        [D.text (replicate 8 ' ' ++ (if i == 0 then "" else "| ") ++ flatType x ++ (if i + 1 == length alternatives then suffix else ""))
+        | (i, x) <- zip [0 :: Int ..] alternatives]
+      _ -> D.text (replicate 8 ' ' ++ flatType a ++ suffix)
     rightAlone
       | 10 + length r <= 98 = D.text (replicate 8 ' ' ++ r)
-      | length alternatives > 1 = D.joinWith D.hardline
-          [D.text (replicate 8 ' ' ++ (if i == 0 then "" else "| ") ++ a) | (i, a) <- zip [0 :: Int ..] alternatives]
-      | Just (name, args) <- calledWith r = D.text (replicate 8 ' ' ++ name ++ "(") <>
-          mconcat [D.hardline <> D.text (replicate 10 ' ' ++ a ++ (if k < length args then "," else "")) | (k, a) <- zip [1 :: Int ..] args] <>
+      | TypeUnion alternatives@(_ : _ : _) <- right = D.joinWith D.hardline
+          [D.text (replicate 8 ' ' ++ (if i == 0 then "" else "| ") ++ flatType a) | (i, a) <- zip [0 :: Int ..] alternatives]
+      | TypeCall name args <- right = D.text (replicate 8 ' ' ++ name ++ "(") <>
+          mconcat [D.hardline <> D.text (replicate 10 ' ' ++ flatType a ++ (if k < length args then "," else "")) | (k, a) <- zip [1 :: Int ..] args] <>
           D.hardline <> D.text (replicate 8 ' ' ++ ")")
       | otherwise = D.text (replicate 8 ' ' ++ r)
     prefix = "@" ++ attribute ++ " "
-    l = D.render D.Compact left
-    r = D.render D.Compact right
+    l = flatType left
+    r = flatType right
     flat = prefix ++ l ++ " :: " ++ r
-    alternatives = splitTop " | " r
-    -- A map item too long for its line breaks after its =>.
     item i suffix
-      | 10 + length i + length suffix <= 98 = D.text (replicate 8 ' ' ++ i ++ suffix)
-      -- A function type breaks after its arrow, aligned past its parenthesis.
-      -- A union result breaks before each alternative, aligned with the first.
-      | (key, '(' : value) <- breakOn " => " i, last value == ')', (arguments, result@(_ : _)) <- breakOn' (init value),
-        first : rest@(_ : _) <- splitTop " | " result =
-          let opening = replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ (if null arguments then "-> " else " -> ")
-              -- With arguments, the result starts a line of its own.
-              resultColumn = 8 + length key + 4 + 1 + 2
-              alternatives' = [(if k == 0 then "" else "| ") ++ alt ++ (if k == length rest then ")" ++ suffix else "") | (k, alt) <- zip [0 :: Int ..] (first : rest)]
-          in if null arguments
+      | 10 + length (flatType i) + length suffix <= 98 = D.text (replicate 8 ' ' ++ flatType i ++ suffix)
+      | TypeMapField key (TypeFunction args (TypeUnion alternatives@(_ : _ : _))) <- i =
+          let arguments = D.render D.Compact (D.joinWith (D.text ", ") (map typeDoc args))
+              keyText = D.render D.Compact key
+              opening = replicate 8 ' ' ++ keyText ++ " => (" ++ arguments ++ (if null args then "-> " else " -> ")
+              resultColumn = 8 + length keyText + 4 + 1 + 2
+              alternatives' = [(if k == 0 then "" else "| ") ++ flatType alt ++ (if k + 1 == length alternatives then ")" ++ suffix else "") | (k, alt) <- zip [0 :: Int ..] alternatives]
+          in if null args
             then D.text (opening ++ concat (take 1 alternatives')) <> mconcat [D.hardline <> D.text (replicate (length opening) ' ' ++ alt) | alt <- drop 1 alternatives']
-            else D.text (replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ " ->") <>
+            else D.text (replicate 8 ' ' ++ keyText ++ " => (" ++ arguments ++ " ->") <>
               mconcat [D.hardline <> D.text (replicate resultColumn ' ' ++ alt) | alt <- alternatives']
-      | (key, '(' : value) <- breakOn " => " i, last value == ')', (arguments, result@(_ : _)) <- breakOn " -> " (init value) =
-          D.text (replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ " ->") <> D.hardline <>
-          D.text (replicate (8 + length key + 4 + 1 + 2) ' ' ++ result ++ ")" ++ suffix)
-      | (key, value@(_ : _)) <- breakOn " => " i = D.text (replicate 8 ' ' ++ key ++ " =>") <> D.hardline <> D.text (replicate 10 ' ' ++ value ++ suffix)
-      | otherwise = D.text (replicate 8 ' ' ++ i ++ suffix)
-    container t = case t of
-      '[' : rest | last t == ']' -> Just ("[", splitTop ", " (init rest), "]")
-      '{' : rest | last t == '}' -> Just ("{", splitTop ", " (init rest), "}")
-      '%' : _ | (opening, '{' : rest) <- span (/= '{') t, last t == '}' -> Just (opening ++ "{", splitTop ", " (init rest), "}")
-      _ -> Nothing
-    calledWith t = case span (/= '(') t of
-      (name@(_ : _), '(' : rest) | last t == ')' -> Just (name, splitTop ", " (init rest))
-      _ -> Nothing
-    -- A function type's arguments and result: "-> R" has no arguments.
-    breakOn' t = case t of
-      '-' : '>' : ' ' : r -> ("", r)
-      _ -> breakOn " -> " t
-    breakOn separator t = go "" t
-      where
-        go acc rest@(c : cs)
-          | take (length separator) rest == separator = (reverse acc, drop (length separator) rest)
-          | otherwise = go (c : acc) cs
-        go acc [] = (reverse acc, "")
-
--- | Text split at a separator outside brackets and strings.
-splitTop :: String -> String -> [String]
-splitTop separator = go (0 :: Int) False ""
-  where
-    go _ _ acc [] = [reverse acc]
-    go depth quoted acc s@(c : cs)
-      | quoted = go depth (c /= '"' || take 1 (reverse acc) == "\\") (c : acc) cs
-      | c == '"' = go depth True (c : acc) cs
-      | depth == 0, take (length separator) s == separator = reverse acc : go depth False "" (drop (length separator) s)
-      | c `elem` ("([{" :: String) = go (depth + 1) False (c : acc) cs
-      | c `elem` (")]}" :: String) = go (depth - 1) False (c : acc) cs
-      | otherwise = go depth False (c : acc) cs
+      | TypeMapField key (TypeFunction args result) <- i =
+          let arguments = D.render D.Compact (D.joinWith (D.text ", ") (map typeDoc args))
+              keyText = D.render D.Compact key
+          in D.text (replicate 8 ' ' ++ keyText ++ " => (" ++ arguments ++ " ->") <> D.hardline <>
+            D.text (replicate (8 + length keyText + 4 + 1 + 2) ' ' ++ flatType result ++ ")" ++ suffix)
+      | TypeMapField key value <- i = D.text (replicate 8 ' ' ++ D.render D.Compact key ++ " =>") <>
+          D.hardline <> D.text (replicate 10 ' ' ++ flatType value ++ suffix)
+      | otherwise = D.text (replicate 8 ' ' ++ flatType i ++ suffix)
 
 moduleDoc :: String -> Bool -> [D.Doc] -> D.Doc
 moduleDoc name editable = moduleWith (if editable then "# User-owned LawSpec adapter. Implement these functions." else "# " ++ generatedHeader Nothing) name
@@ -184,35 +174,38 @@ typeReference :: C.Type -> Either String D.Doc
 typeReference ty = reference <$> S.typeReference [] ty
 
 nativeType :: Int -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String D.Doc
-nativeType bits names parameters ty = case ty of
-  C.TypeVariable identity -> maybe (Left "unbound Elixir type parameter") (Right . D.text) (lookup identity parameters)
+nativeType bits names parameters ty = typeDoc <$> nativeTypeLayout bits names parameters ty
+
+nativeTypeLayout :: Int -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String TypeLayout
+nativeTypeLayout bits names parameters ty = case ty of
+  C.TypeVariable identity -> maybe (Left "unbound Elixir type parameter") (Right . TypeAtom . D.text) (lookup identity parameters)
   C.Constructor n args -> do
     ts <- mapM argument args
     case (n,ts) of
-      ("List",[t]) -> pure (array [t])
-      ("Maybe",[t]) -> pure (union [atom "absent",tuple [atom "present",t]])
-      ("Either",[a,b]) -> pure (union [tuple [atom "left",a],tuple [atom "right",b]])
-      ("Nullable",[t]) -> pure (union [atom "null",tuple [atom "non_null",t]])
-      ("Optional",[t]) -> pure (union [atom "none",tuple [atom "some",t]])
+      ("List",[t]) -> pure (TypeContainer "[" [t] "]")
+      ("Maybe",[t]) -> pure (union [TypeAtom (atom "absent"),TypeContainer "{" [TypeAtom (atom "present"),t] "}"])
+      ("Either",[a,b]) -> pure (union [TypeContainer "{" [TypeAtom (atom "left"),a] "}",TypeContainer "{" [TypeAtom (atom "right"),b] "}"])
+      ("Nullable",[t]) -> pure (union [TypeAtom (atom "null"),TypeContainer "{" [TypeAtom (atom "non_null"),t] "}"])
+      ("Optional",[t]) -> pure (union [TypeAtom (atom "none"),TypeContainer "{" [TypeAtom (atom "some"),t] "}"])
       (_,[]) | Just p <- primitive n -> pure $ case family p of
         IntegerFamily -> case integerBounds bits n of
-          Just (lo,hi) -> integer lo <> D.text ".." <> integer hi
-          Nothing -> call (if n == "BigUInt" then "non_neg_integer" else "integer") []
-        Boolean -> call "boolean" []
-        Floating -> remote ":lawspec_beam_scalar" "ieee" []
-        Complex -> remote ":lawspec_beam_scalar" "complex" []
-        Exact -> remote ":lawspec_beam_scalar" (map toLower n) []
-        Character -> call "non_neg_integer" []
-        Sequence -> if n `elem` ["Text","Bytes"] then call "binary" [] else array [call "non_neg_integer" []]
-        Identity -> remote ":lawspec_beam_scalar" "symbol" []
-        Absence -> atom (case n of "Unit" -> "ok"; "Null" -> "null"; _ -> "undefined")
+          Just (lo,hi) -> TypeAtom (integer lo <> D.text ".." <> integer hi)
+          Nothing -> TypeCall (if n == "BigUInt" then "non_neg_integer" else "integer") []
+        Boolean -> TypeCall "boolean" []
+        Floating -> TypeCall ":lawspec_beam_scalar.ieee" []
+        Complex -> TypeCall ":lawspec_beam_scalar.complex" []
+        Exact -> TypeCall (":lawspec_beam_scalar." ++ map toLower n) []
+        Character -> TypeCall "non_neg_integer" []
+        Sequence -> if n `elem` ["Text","Bytes"] then TypeCall "binary" [] else TypeContainer "[" [TypeCall "non_neg_integer" []] "]"
+        Identity -> TypeCall ":lawspec_beam_scalar.symbol" []
+        Absence -> TypeAtom (atom (case n of "Unit" -> "ok"; "Null" -> "null"; _ -> "undefined"))
       _ -> maybe (Left ("no Elixir native type: " ++ n))
-        (\name -> pure (remote "LawSpec.Data" name ts)) (lookup (C.Id n) names)
+        (\name -> pure (TypeCall ("LawSpec.Data." ++ name) ts)) (lookup (C.Id n) names)
   C.Arrow _ _ -> Left "function-valued Elixir data is unsupported"
   where
-    argument (C.TypeArgument t) = nativeType bits names parameters t
+    argument (C.TypeArgument t) = nativeTypeLayout bits names parameters t
     argument (C.IndexArgument _) = Left "unerased Elixir type index"
-    union = D.joinWith (D.text " | ")
+    union = TypeUnion
 
 -- | Elixir variables for source names, snake_case, unique in order; a
 -- reserved word gets a trailing underscore.

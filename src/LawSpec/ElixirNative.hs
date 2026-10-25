@@ -39,10 +39,10 @@ emitNative layout bits declarations units = do
       C.declarationId d `notElem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)]
     signature names d = do
       let (args,result) = C.functionType (C.declarationType d)
-      handlers <- mapM (Abilities.nativeType "elixir" units) (Effects.uses d)
-      inputs <- mapM (X.nativeType bits names []) args
-      output <- X.nativeType bits names [] result
-      pure (X.typeAttribute "spec" (X.call (functionName d) (handlers ++ inputs)) output)
+      handlers <- mapM (Abilities.elixirType units) (Effects.uses d)
+      inputs <- mapM (X.nativeTypeLayout bits names []) args
+      output <- X.nativeTypeLayout bits names [] result
+      pure (X.typeAttribute "spec" (X.TypeCall (functionName d) (handlers ++ inputs)) output)
     adapter names unit = do
       bodies <- concat <$> forM (adapterDeclarations unit) (\d -> do
         spec <- signature names d
@@ -75,26 +75,26 @@ emitNative layout bits declarations units = do
       let fields = E.elixirFields d c
           scope = parameters d ++ [(i,"term()") | i <- C.constructorExistentials c]
           used = [p | p@(identity,_) <- parameters d, any (occurs identity . C.binderType) (C.constructorFields c)]
-      types <- mapM (X.nativeType bits names scope . C.binderType) (C.constructorFields c)
-      let allTypes = types ++ [X.call "binary" [] | _ <- freeExistentials d c]
+      types <- mapM (X.nativeTypeLayout bits names scope . C.binderType) (C.constructorFields c)
+      let allTypes = types ++ [X.TypeCall "binary" [] | _ <- freeExistentials d c]
           body = [D.text "@enforce_keys " <> X.array (map X.atom fields),
             D.text "defstruct " <> X.array (map X.atom fields),
-            X.typeAttribute "type" (X.call "t" (map (D.text . snd) used))
-              (D.delimit 2 "%__MODULE__{" "}" [X.atom field <> D.text " => " <> ty | (field,ty) <- zip fields allTypes])]
+            X.typeAttribute "type" (X.TypeCall "t" (map (X.TypeAtom . D.text . snd) used))
+              (X.TypeContainer "%__MODULE__{" [X.TypeMapField (X.atom field) ty | (field,ty) <- zip fields allTypes] "}")]
       pure (Artifact ("lib/lawspec/data/" ++ tag ++ ".ex")
         (D.render (X.layoutFor layout) (X.moduleDoc (E.elixirDataModule tag) False body)) "generated" "source")
     dataType names d = do
       name <- named names (C.dataId d)
       cases <- forM (C.dataConstructors d) $ \c -> do
         tag <- named names (C.constructorId c)
-        pure (X.remote (E.elixirDataModule tag) "t" [D.text p | (identity,p) <- parameters d,
+        pure (X.TypeCall (E.elixirDataModule tag ++ ".t") [X.TypeAtom (D.text p) | (identity,p) <- parameters d,
           any (occurs identity . C.binderType) (C.constructorFields c)])
-      let handles = map (\n -> X.call n []) ["pid","reference","port"] ++
-            [X.tuple [X.atom "lawspec_actor",X.call "pid" [],X.array [X.call "term" []]]]
-          variants = if C.dataHandle d then handles else if null cases then [X.call "none" []] else cases
-          params = [D.text (if any (any (occurs identity . C.binderType) . C.constructorFields) (C.dataConstructors d)
-              then p else "_" ++ p) | (identity,p) <- parameters d]
-      pure (X.typeAttribute "type" (X.call name params) (D.joinWith (D.text " | ") variants))
+      let handles = map (\n -> X.TypeCall n []) ["pid","reference","port"] ++
+            [X.TypeContainer "{" [X.TypeAtom (X.atom "lawspec_actor"),X.TypeCall "pid" [],X.TypeContainer "[" [X.TypeCall "term" []] "]"] "}"]
+          variants = if C.dataHandle d then handles else if null cases then [X.TypeCall "none" []] else cases
+          params = [X.TypeAtom (D.text (if any (any (occurs identity . C.binderType) . C.constructorFields) (C.dataConstructors d)
+              then p else "_" ++ p)) | (identity,p) <- parameters d]
+      pure (X.typeAttribute "type" (X.TypeCall name params) (X.TypeUnion variants))
 
 occurs :: C.Id -> C.Type -> Bool
 occurs identity ty = case ty of

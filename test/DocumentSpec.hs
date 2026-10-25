@@ -10,6 +10,7 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.ElixirCode as Elixir
 import qualified LawSpec.Swift.Code as Swift
 import qualified LawSpec.JavaExpr as Java
 import LawSpec.Core (scalarType)
@@ -141,6 +142,23 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
     readable `shouldSatisfy` isInfixOf "symbols:\n"
     all ((<= 100) . length) (lines readable) `shouldBe` True
     D.render D.Compact closure `shouldSatisfy` isInfixOf "(symbols: SymbolContext) throws -> Value in"
+  it "measures Elixir function heads before their do keyword" $ do
+    let name = replicate 83 'f'
+        doc = D.nest 2 (D.hardline <> Elixir.function name [D.text "value"] [D.text "value"])
+    D.render (D.Pretty 98) doc `shouldSatisfy` isInfixOf ("def " ++ name ++ "(value) do\n")
+  it "keeps Elixir map, callback and union type structure through attribute layout" $ do
+    let scalar = Elixir.TypeCall "integer" []
+        alternatives = Elixir.TypeUnion [Elixir.TypeAtom (Elixir.atom "absent"),
+          Elixir.TypeContainer "{" [Elixir.TypeAtom (Elixir.atom "present"),
+            Elixir.TypeCall "LawSpec.Data.ALongReplyType.reply" [scalar]] "}"]
+        callback = Elixir.TypeFunction [scalar] alternatives
+        body = Elixir.TypeContainer "%__MODULE__{" [Elixir.TypeMapField (Elixir.atom "read_current_reply") callback] "}"
+        doc = Elixir.typeAttribute "type" (Elixir.TypeAtom (D.text "t")) body
+        rendered = D.render (D.Pretty 98) doc
+    rendered `shouldSatisfy` isInfixOf ":read_current_reply => (integer() ->\n"
+    rendered `shouldSatisfy` isInfixOf "| {:present, LawSpec.Data.ALongReplyType.reply(integer())})"
+    D.render D.Compact (Elixir.typeDoc body) `shouldBe`
+      "%__MODULE__{:read_current_reply => (integer() -> :absent | {:present, LawSpec.Data.ALongReplyType.reply(integer())})}"
   it "selects compact layouts without losing Go indentation" $ do
     D.selectLayout True (D.PrettyTabs 100) `shouldBe` D.CompactTabs
     D.selectLayout True (D.Pretty 80) `shouldBe` D.Compact

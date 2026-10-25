@@ -20,7 +20,7 @@ import LawSpec.Naming (readableDefinitionName)
 import Control.Monad (forM, unless)
 import Data.List (nub)
 
-data NativeType = NativeType D.Doc D.Doc D.Doc [D.Doc]
+data NativeType = NativeType D.Doc X.TypeLayout D.Doc [D.Doc]
 data Function = Function String [(String, NativeType)] NativeType [D.Doc]
 
 available :: Plan -> Bool
@@ -30,7 +30,7 @@ emit :: String -> D.Layout -> Plan -> Either String [Artifact]
 emit _ _ plan | not (available plan) = pure []
 emit target layout plan = do
   names <- E.dataNames declarations
-  let native ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeType bits names [] ty <*>
+  let native ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeTypeLayout bits names [] ty <*>
         G.nativeType False names [] ty <*> pure (G.imports False [ty])
       entries = Definitions.entries units
       declared = [(C.declarationId d,(u,d)) | u <- units, def <- C.unitDefinitions u, let d = C.definitionDeclaration def]
@@ -47,7 +47,7 @@ emit target layout plan = do
         pure (E.remote "lawspec_beam_schema" direction [value,ref,schema])
   resolved <- mapM (\r -> (,) r <$> resolve r) remotes
   parameters <- forM (zip [0::Int ..] (nub (concatMap (Effects.uses . snd . snd) resolved))) $ \(i,a) -> do
-    ty <- NativeType <$> Abilities.nativeType "erlang" units a <*> Abilities.nativeType "elixir" units a <*>
+    ty <- NativeType <$> Abilities.nativeType "erlang" units a <*> Abilities.elixirType units a <*>
       Abilities.nativeType "gleam" units a <*> Abilities.gleamImports units [a]
     pure (a,("handler" ++ show i,ty))
   served <- forM resolved $ \(r,(_,d)) -> do
@@ -111,7 +111,7 @@ variable = D.text . E.pascal
 fresh :: [D.Doc]
 fresh = [symbols <> D.text " = make_ref()",schema <> D.text " = " <> E.remote "lawspec_data" "schema" [symbols]]
 nodeType :: NativeType
-nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node") [D.text "import lawspec/network"]
+nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.TypeCall ("LawSpec.Network" ++ ".node_handle") []) (D.text "network.Node") [D.text "import lawspec/network"]
 
 render :: String -> D.Layout -> String -> String -> String -> [Function] -> [(String,Int)] -> [D.Doc] -> Either String [Artifact]
 render target layout name path elixirName functions extraExports extraBodies = do
@@ -125,14 +125,14 @@ render target layout name path elixirName functions extraExports extraBodies = d
     _ -> [])
   where
     erlType (NativeType e _ _ _) = e
-    exType (NativeType _ x _ _) = x
+    exLayout (NativeType _ x _ _) = x
     gleamType (NativeType _ _ g _) = g
     imports (NativeType _ _ _ i) = i
     erlang = E.moduleDoc name ([(n,length ps) | Function n ps _ _ <- functions] ++ extraExports)
       (concat [[E.spec n (map (erlType . snd) ps) (erlType result),
         E.function n (map (variable . fst) ps) body] | Function n ps result body <- functions] ++ extraBodies)
     elixir = X.moduleDoc elixirName False (concat
-      [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
+      [[X.typeAttribute "spec" (X.TypeCall n (map (exLayout . snd) ps)) (exLayout result),
         X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
         | Function n ps result _ <- functions])
     gleam = G.fileDoc False
