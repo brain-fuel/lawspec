@@ -1,5 +1,5 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
-module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc) where
+module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc, namesFor, kotlinDataName) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Core.Positional (positionalLabel)
@@ -58,6 +58,12 @@ namesFor declarations = do
   unless (length names == length (nub (map (map toLower . snd) names)))
     (Left "conflicting Kotlin data identities")
   pure names
+
+-- | A planned generated class name, without rendering or reparsing a type.
+kotlinDataName :: [C.DataDeclaration] -> C.Id -> Either String String
+kotlinDataName declarations identity = do
+  names <- namesFor declarations
+  maybe (Left "unknown Kotlin data identity") (Right . ("lawspec.data." ++)) (lookup identity names)
 
 applied :: String -> [D.Doc] -> D.Doc
 applied name [] = D.text name
