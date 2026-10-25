@@ -35,6 +35,17 @@ test_finiteCoversPreserveEveryOrderedCase = describe "ordered finite covers" $ d
     -- Independent dependency ordering permits ordinary, non-recursive helper
     -- declarations in every target, without changing value evaluation order.
     mapM_ (\(index, body) -> sharedReferences body `shouldSatisfy` all (< index)) (L.literalFactories plan)
+  it "lifts unique structural roots without forcing their children into factories" $ do
+    let child = Value.listValue (C.scalarType "Bool") [boolean True]
+        root = DataValue (C.Constructor "Envelope" []) (C.Id "Envelope::Pack") [child]
+    ordinary <- either expectationFailure' pure (L.planLiterals [root])
+    lifted <- either expectationFailure' pure (L.planRootLiterals [root])
+    L.literalFactories ordinary `shouldBe` []
+    length (L.literalFactories lifted) `shouldBe` 1
+    mapM (\value -> L.literalReference lifted value >>= materialize lifted) [root,child] `shouldBe` Right [root,child]
+    map (sharedReferences . snd) (L.literalFactories lifted) `shouldBe` [[]]
+    primitive <- either expectationFailure' pure (L.planRootLiterals [boolean True])
+    L.literalFactories primitive `shouldBe` []
   it "executes a shared literal factory afresh for each invocation" $ do
     let value = Value.listValue (C.scalarType "Bool") [boolean True, boolean False]
     plan <- either expectationFailure' pure (L.planLiterals [value,value])
