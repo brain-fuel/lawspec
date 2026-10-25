@@ -9,9 +9,9 @@ import LawSpec.Common
 import LawSpec.Scalar
 import LawSpec.Core.Eval (evaluateValue, evaluateValuePure)
 import LawSpec.Core.Definitions (prepareDefinitions)
-import LawSpec.Core.Quantification (lowerFiniteProposition, lowerWitnessProposition, lowerSearchProposition)
-import LawSpec.Core.Search (Candidate(..), strategyCandidates)
-import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
+import LawSpec.Core.Quantification (lowerFinitePropositionCandidates, lowerWitnessPropositionCandidates, lowerSearchPropositionCandidates)
+import LawSpec.Core.Search (Candidate(..), applyCandidate, strategyCandidates)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms, finiteQuantifierCandidates)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
 import LawSpec.Testing.Cover (FiniteCover(..), compressCases, coverCases, coverCount)
@@ -257,15 +257,15 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
           (lookup (binderId (quantifiedBinder q)) bindings)) qs
         valid <- validTupleWithDefinitions registry programMachineBits invoke qs values
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
-      let scopedDomain = finiteQuantifierTerms programMachineBits (exhaustiveLimit settings)
+      let scopedDomain = finiteQuantifierCandidates programMachineBits (exhaustiveLimit settings)
             (finiteValuesWithRegistry registry programMachineBits (exhaustiveLimit settings))
       body <- if propertyInputDomain p == UniversalDomain then
-        lowerSearchProposition scopedDomain (boundedLawSearch registry programMachineBits p)
+        lowerSearchPropositionCandidates scopedDomain (boundedLawSearch registry programMachineBits p)
           (exhaustiveLimit settings) (maxAttempts settings) (propertyId p) (harnessWitnesses (propertyHarness p)) (propertyBody p)
-        else lowerWitnessProposition scopedDomain
+        else lowerWitnessPropositionCandidates scopedDomain
           (exhaustiveLimit settings) (propertyId p) (harnessWitnesses (propertyHarness p)) (propertyBody p)
       exampleBodies <- mapM (\example -> do
-        expectations <- mapM (lowerFiniteProposition scopedDomain
+        expectations <- mapM (lowerFinitePropositionCandidates scopedDomain
           (exhaustiveLimit settings) (propertyId p)) (exampleExpectations example)
         pure (example { exampleExpectations = expectations })) (propertyExamples p)
       cover <- traverse compressCases finite
@@ -349,19 +349,27 @@ boundedLawSearch registry bits property q body = case selected of
 finiteUniversalInputs :: TypeRegistry -> Int -> Int -> (Id -> [Value] -> Either String Value)
   -> [Quantifier] -> Either String (Maybe [[Value]])
 finiteUniversalInputs registry bits limit invoke qs = do
-  domains <- mapM (finiteQuantifierTerms bits limit (finiteValuesWithRegistry registry bits limit)) qs
+  domains <- mapM (finiteQuantifierCandidates bits limit (finiteValuesWithRegistry registry bits limit)) qs
   if Just [] `elem` domains then pure (Just []) else case sequence domains of
     Just covers | product (map (toInteger . length) covers) <= toInteger limit ->
       Just <$> walk [] (zip qs covers)
     _ -> pure Nothing
   where
     walk prefix [] = pure [map snd prefix]
-    walk prefix ((q,terms):rest) = fmap concat $ mapM (\term -> do
-      value <- evaluateValue registry bits invoke prefix term
-      let bindings = prefix ++ [(binderId (quantifiedBinder q),value)]
-      accepted <- allM (\predicate -> (== ScalarValue (SBool True)) <$>
-        evaluateValue registry bits invoke bindings predicate) (quantifiedPredicates q)
-      if accepted then walk bindings rest else pure []) terms
+    walk prefix ((q,terms):rest) = fmap concat $ mapM (\candidate -> do
+      let optional = Constructor "Maybe" [TypeArgument (binderType (quantifiedBinder q))]
+          origin = GeneratedFrom (binderId (quantifiedBinder q))
+          absent = Expr optional (Construct (Id "Maybe::Absent") []) origin
+          present value = Expr optional (Construct (Id "Maybe::Present") [value]) origin
+      choice <- evaluateValue registry bits invoke prefix (applyCandidate candidate present absent)
+      case choice of
+        DataValue _ (Id "Maybe::Absent") [] -> pure []
+        DataValue _ (Id "Maybe::Present") [value] -> do
+          let bindings = prefix ++ [(binderId (quantifiedBinder q),value)]
+          accepted <- allM (\predicate -> (== ScalarValue (SBool True)) <$>
+            evaluateValue registry bits invoke bindings predicate) (quantifiedPredicates q)
+          if accepted then walk bindings rest else pure []
+        _ -> Left "invalid guarded finite candidate") terms
     allM _ [] = pure True
     allM f (x:xs) = do accepted <- f x; if accepted then allM f xs else pure False
 

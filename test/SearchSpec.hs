@@ -178,6 +178,27 @@ test_boundedWitnessSearchPreservesEvidence = describe "bounded scoped witness se
             readIORef counter `shouldReturn` 1
           (Left message,_) -> expectationFailure message
           (_,Left diagnostics) -> expectationFailure (show diagnostics)
+  it "visits bounded affine points once and skips out-of-range offsets before conversion" $
+    checked (compile ("probe :: Int8 -> Bool\n" ++ law
+      "for all (base :: Integer) => there does not exist (candidate :: Int8 where candidate + 0 >= base - 2 and candidate + 0 <= base + 2) such that probe candidate end exists end for all") [] []) $ \program -> do
+      seen <- newIORef ([] :: [[Value]])
+      let invoke _ arguments = unsafePerformIO $ do
+            modifyIORef' seen (++ [arguments])
+            pure (Right (ScalarValue (SBool False)))
+      case (makeRegistry (C.programDataDeclarations program),T.planTesting program) of
+        (Right registry,Right plan) -> do
+          let property = head [T.plannedProperty p | u <- T.plannedUnits plan,p <- T.plannedProperties u]
+              input = C.binderId (C.quantifiedBinder (head (C.propertyInputs property)))
+          mapM_ (\base -> do
+            writeIORef seen []
+            result <- evaluate (evaluateValueProposition registry 64 invoke
+              [(input,ScalarValue (SInteger "Integer" base))] (C.propertyBody property))
+            result `shouldBe` Right True
+            readIORef seen `shouldReturn`
+              [[ScalarValue (SInteger "Int8" n)] | n <- [max (-128) (base-2)..min 127 (base+2)]])
+            [-131,-129,-128,0,127,129]
+        (Left message,_) -> expectationFailure message
+        (_,Left diagnostics) -> expectationFailure (show diagnostics)
   it "checks the complete bounded search demonstration and every native plan" $ do
     let path = "examples/rc1/bounded-witness-search.lawspec"
     source <- readFile path

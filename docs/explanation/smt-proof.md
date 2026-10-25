@@ -282,13 +282,15 @@ keep a quantified variable within its declared subtype and range. Why3's
 [range types](https://why3.org/doc/syntaxref.html#range-types) project bounded
 values into mathematical integers and require range checks when constructing
 them. LawSpec follows that separation when generating dependent finite covers:
-it computes affine bounds in exact integers and clips each candidate to the
-intrinsic range before the checked conversion to a finite-width integer.
+it computes affine bounds in exact integers and intersects them with the
+intrinsic range before a checked conversion to a finite-width integer.
 
-The original restriction still guards every candidate. Clipping preserves every
-admitted value, and an extra copy of an endpoint can neither invent a witness
-nor turn a wholly out-of-range interval into a nonempty restricted domain.
-Unsigned unbounded integers are clipped only at zero. The compiler recognizes
+The original restriction still guards every candidate. Execution skips each
+out-of-range affine point before its conversion or body runs, so it cannot
+revisit a clipped endpoint. The pure proof-goal term view may clip endpoints;
+its original restriction prevents inventing a witness or making a wholly
+out-of-range restricted domain nonempty. Unsigned unbounded integers have
+only the zero lower bound. The compiler recognizes
 mandatory conjunctive affine bounds; sampled, nonlinear or disjunctive bounds
 do not become complete covers. The exhaustive limit still controls completeness.
 

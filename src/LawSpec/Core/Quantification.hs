@@ -3,7 +3,9 @@
 -- its scoped proposition; an execution plan contains this checked expansion.
 module LawSpec.Core.Quantification
   ( lowerFiniteProposition, lowerWitnessProposition, lowerWitnessProof
-  , lowerSearchProposition, lowerSearchProof ) where
+  , lowerSearchProposition, lowerSearchProof
+  , lowerFinitePropositionCandidates, lowerWitnessPropositionCandidates
+  , lowerSearchPropositionCandidates ) where
 
 import Control.Monad (unless)
 import LawSpec.Common (Quantification(..))
@@ -14,7 +16,15 @@ import Data.List (intercalate)
 import LawSpec.Core.Search (Candidate(..), applyCandidate)
 
 lowerFiniteProposition :: (Quantifier -> Either String (Maybe [Expr])) -> Int -> Id -> Proposition -> Either String Proposition
-lowerFiniteProposition domain limit identity proposition
+lowerFiniteProposition domain = lowerFinitePropositionCandidates (candidateDomain domain)
+
+candidateDomain :: (Quantifier -> Either String (Maybe [Expr]))
+  -> Quantifier -> Either String (Maybe [Candidate])
+candidateDomain domain quantifier = fmap (fmap (map Candidate)) (domain quantifier)
+
+lowerFinitePropositionCandidates :: (Quantifier -> Either String (Maybe [Candidate]))
+  -> Int -> Id -> Proposition -> Either String Proposition
+lowerFinitePropositionCandidates domain limit identity proposition
   | not (logical proposition) = Right proposition
   | otherwise = do
       (claim,_) <- walk proposition
@@ -33,7 +43,6 @@ lowerFiniteProposition domain limit identity proposition
       (Or,Just False) -> b
       _ -> Expr bool (ShortCircuit op a b) origin
     conjunction = foldr (binary And) (constant True)
-    disjunction = foldr (binary Or) (constant False)
     checked cost = unless (cost <= toInteger limit)
       (Left "quantifier-search-incomplete: complete finite search exceeds the exhaustive limit")
     walk (Equation evidence a b) = pure (case (known a,known b) of
@@ -62,8 +71,11 @@ lowerFiniteProposition domain limit identity proposition
             required = case kind of
               ForEvery -> binary Or (negate' restriction) claim
               ForSome -> binary And restriction claim
-            alternatives = [Expr bool (Let binder term required) origin | term <- values]
-        pure ((if kind == ForEvery then conjunction else disjunction) alternatives,total)
+            code = scalarType "Int8"
+            outcome n = Expr code (Constant (SInteger "Int8" n)) origin
+            decision = Expr code (If required (outcome 1) (outcome (-1))) origin
+            searched = candidateLoop origin True (kind == ForEvery) binder decision values
+        pure (Expr bool (Binary Equal (Numeric (scalarType "Integer")) searched (outcome 1)) origin,total)
     walkConjunction [] = pure (constant True,0)
     walkConjunction (body:rest) = do
       (claim,cost) <- walk body
@@ -151,14 +163,24 @@ lowerSearchProof domain search limit searchBudget identity choices proposition =
 lowerWitnessProposition :: (Quantifier -> Either String (Maybe [Expr])) -> Int -> Id
   -> [WitnessChoice] -> Proposition -> Either String Proposition
 lowerWitnessProposition domain limit identity choices proposition
-  | null choices = lowerFiniteProposition domain limit identity proposition
-  | otherwise = lowerSearchProposition domain (\_ _ -> pure []) limit limit identity choices proposition
+  = lowerWitnessPropositionCandidates (candidateDomain domain) limit identity choices proposition
+
+lowerWitnessPropositionCandidates :: (Quantifier -> Either String (Maybe [Candidate]))
+  -> Int -> Id -> [WitnessChoice] -> Proposition -> Either String Proposition
+lowerWitnessPropositionCandidates domain limit identity choices proposition
+  | null choices = lowerFinitePropositionCandidates domain limit identity proposition
+  | otherwise = lowerSearchPropositionCandidates domain (\_ _ -> pure []) limit limit identity choices proposition
 
 lowerSearchProposition :: (Quantifier -> Either String (Maybe [Expr]))
   -> (Quantifier -> Proposition -> Either String [Candidate]) -> Int -> Int -> Id
   -> [WitnessChoice] -> Proposition -> Either String Proposition
-lowerSearchProposition domain search limit searchBudget identity choices proposition
-  | not (hasLogicalQuantifier proposition) = lowerFiniteProposition domain limit identity proposition
+lowerSearchProposition domain = lowerSearchPropositionCandidates (candidateDomain domain)
+
+lowerSearchPropositionCandidates :: (Quantifier -> Either String (Maybe [Candidate]))
+  -> (Quantifier -> Proposition -> Either String [Candidate]) -> Int -> Int -> Id
+  -> [WitnessChoice] -> Proposition -> Either String Proposition
+lowerSearchPropositionCandidates domain search limit searchBudget identity choices proposition
+  | not (hasLogicalQuantifier proposition) = lowerFinitePropositionCandidates domain limit identity proposition
   | otherwise = flip evalStateT (0 :: Int) $ do
       (decision,_) <- walk proposition
       claim <- bind decision $ \outcome -> pure (branch (is 1 outcome) (boolean True)
@@ -225,19 +247,54 @@ lowerSearchProposition domain search limit searchBudget identity choices proposi
         (decision,cost) <- walk body
         let total = maybe (toInteger limit + 1) ((max 1 cost *) . toInteger . length) available
             required = branch (restriction q) decision (outcome (if kind == ForEvery then 1 else -1))
-            with value result = Expr code (Let binder value result) origin
         complete <- if total > toInteger limit then pure (outcome 0) else case available of
           Nothing -> pure (outcome 0)
-          Just terms -> pure (Expr code (SearchElements (kind == ForEvery) (finiteTerms binder terms) binder required) origin)
+          Just terms -> pure (candidateLoop origin True (kind == ForEvery) binder required terms)
         sampled <- if available /= Nothing && total <= toInteger limit then pure [] else lift (search q body)
         let configured = [Candidate (witnessValue w) | w <- choices,witnessTarget w == binderId binder]
             candidates = take (fromInteger (max 0 (toInteger searchBudget `quot` max 1 cost))) (configured ++ sampled)
-        attempted <- aggregate (kind == ForEvery)
-          [applyCandidate candidate (\value -> with value required) (outcome (if kind == ForEvery then 1 else -1)) |
-            candidate <- candidates]
+        let attempted = candidateLoop origin False (kind == ForEvery) binder required candidates
         let decisive = if kind == ForEvery then -1 else 1
         result <- bind attempted $ \x -> pure (branch (is decisive x) (outcome decisive) complete)
         pure (result,if null candidates then total else min total (toInteger (length candidates) * max 1 cost))
+
+-- A guarded or effectful candidate is selected before it is evaluated. Its
+-- value computation appears once in an indexed choice; the law body appears
+-- once after the successful choice. Rejected filters never run the conversion
+-- or body, and a decisive result never evaluates a later candidate.
+candidateLoop :: Origin -> Bool -> Bool -> Binder -> Expr -> [Candidate] -> Expr
+candidateLoop origin pureDomain universal binder required candidates
+  | null candidates = outcome neutral
+  | pureDomain || all literal candidates, Just terms <- traverse plain candidates =
+      Expr code (SearchElements universal (finiteTerms binder terms) binder required) origin
+  | otherwise = Expr code (SearchElements universal indices index body) origin
+  where
+    code = scalarType "Int8"
+    integer = scalarType "Integer"
+    outcome n = Expr code (Constant (SInteger "Int8" n)) origin
+    neutral = if universal then 1 else -1
+    plain (Candidate value) = Just value
+    plain _ = Nothing
+    literal (Candidate (Expr _ (Constant _) _)) = True
+    literal _ = False
+    index = Binder (Id (idText (binderId binder) ++ "::candidate-index")) (binderName binder ++ "Index") integer
+    position = Expr integer (Local (binderId index)) origin
+    ordinal n = Expr integer (Constant (SInteger "Integer" n)) origin
+    indices = finiteTerms index (map (ordinal . toInteger) [0..length candidates-1])
+    optional = Constructor "Maybe" [TypeArgument (binderType binder)]
+    absent = Expr optional (Construct (Id "Maybe::Absent") []) origin
+    present value = Expr optional (Construct (Id "Maybe::Present") [value]) origin
+    select _ [] = absent
+    select _ [candidate] = applyCandidate candidate present absent
+    select lower choices = let
+      (left,right) = splitAt (length choices `quot` 2) choices
+      midpoint = lower + toInteger (length left)
+      condition = Expr (scalarType "Bool") (Binary Less (Numeric integer) position (ordinal midpoint)) origin
+      in Expr optional (If condition (select lower left) (select midpoint right)) origin
+    selected = select 0 candidates
+    body = Expr code (Match selected
+      [MatchCase (Id "Maybe::Absent") [] (outcome neutral),
+       MatchCase (Id "Maybe::Present") [binder] required]) origin
 
 -- | Keep the candidate body outside its domain. Consecutive constants use the
 -- existing half-open range plus the final value, so a bounded maximum needs
@@ -251,9 +308,15 @@ finiteTerms binder terms = case terms of
            | (expected, term) <- zip [start + 1 ..] rest]
     , final : _ <- reverse rest ->
         Expr listType (Helper Append [Expr listType (Helper Range [first, final]) origin, cons final nil]) origin
-  _ -> foldr cons nil terms
+  _ -> balanced (chunks terms)
   where
     origin = GeneratedFrom (binderId binder)
     listType = Constructor "List" [TypeArgument (binderType binder)]
     nil = Expr listType (Construct (Id "List::Nil") []) origin
     cons first rest = Expr listType (Construct (Id "List::Cons") [first, rest]) origin
+    chunks [] = []
+    chunks values = let (front,rest) = splitAt 8 values in foldr cons nil front : chunks rest
+    balanced [] = nil
+    balanced [value] = value
+    balanced values = let (front,rest) = splitAt (length values `quot` 2) values
+      in Expr listType (Helper Append [balanced front,balanced rest]) origin

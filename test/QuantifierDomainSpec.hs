@@ -14,7 +14,8 @@ import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import qualified LawSpec.Core.Verification as V
 import LawSpec.Testing
 import LawSpec.CoreEmit (emitPlan, targets)
-import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms, finiteQuantifierCandidates)
+import LawSpec.Core.Search (applyCandidate)
 import LawSpec.Core.Value (Value(..))
 import LawSpec.Core.Eval (evaluateValue)
 import LawSpec.Core.Types (makeRegistry)
@@ -149,8 +150,18 @@ test_refinedIntegerDomainsAreComplete = describe "complete refined integer domai
               accepted <- filterM (\candidate -> (== replicate 2 (ScalarValue (SBool True))) <$>
                 mapM (evaluateValue registry machineBits invoke ((C.binderId binder,candidate):env)) predicates) values
               pure (length values,nub accepted)
+            visits = do
+              candidates <- finiteQuantifierCandidates machineBits 8 (const (Right Nothing)) q
+              let optional = C.Constructor "Maybe" [C.TypeArgument ty]
+                  absent = C.Expr optional (C.Construct (C.Id "Maybe::Absent") []) origin
+                  present x = C.Expr optional (C.Construct (C.Id "Maybe::Present") [x]) origin
+              choices <- maybe (Left "no guarded finite cover")
+                (mapM (evaluateValue registry machineBits invoke env . (\candidate -> applyCandidate candidate present absent))) candidates
+              pure [value | DataValue _ (C.Id "Maybe::Present") [value] <- choices]
             admitted n = case bounds of Just (lo,hi) -> n >= lo && n <= hi; Nothing -> n >= 0
-        actual `shouldBe` Right (5,[ScalarValue (SInteger name n) | n <- [start-2..start+2],admitted n]))
+            expected = [ScalarValue (SInteger name n) | n <- [start-2..start+2],admitted n]
+        actual `shouldBe` Right (5,expected)
+        visits `shouldBe` Right expected)
         [-131,-129,-128,-127,-2,-1,0,1,125,127,128,253,255,257,
          -(2^63)-1,2^31-1,2^31+2,2^63-1,2^64-1,2^64+2])
         [(bits,name,bounds) | bits <- [32,64],(name,bounds) <- ranges bits]

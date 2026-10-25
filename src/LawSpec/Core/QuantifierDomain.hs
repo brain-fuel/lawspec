@@ -1,10 +1,11 @@
 -- | Complete finite covers inferred from mandatory conjuncts of a logical
 -- restriction. Other predicates remain in the checked search term. A cover
 -- is never inferred from disjunction, floating-point order or sampled values.
-module LawSpec.Core.QuantifierDomain (finiteQuantifierTerms) where
+module LawSpec.Core.QuantifierDomain (finiteQuantifierTerms, finiteQuantifierCandidates) where
 
 import LawSpec.Core
 import LawSpec.Core.Value
+import LawSpec.Core.Search (Candidate(..))
 import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
 import qualified Data.Map.Strict as M
 import Data.List (minimumBy)
@@ -14,11 +15,22 @@ type Linear = (M.Map Id Integer, Integer)
 
 finiteQuantifierTerms :: Int -> Int -> (Type -> Either String (Maybe [Value]))
   -> Quantifier -> Either String (Maybe [Expr])
-finiteQuantifierTerms bits limit domain q = do
+finiteQuantifierTerms bits limit domain q = fmap (fmap fst) (finiteDomain bits limit domain q)
+
+-- Execution keeps the intrinsic range guard outside the checked conversion.
+-- An out-of-range affine point is skipped, rather than becoming another visit
+-- to a clipped endpoint. The term view remains useful for pure proof goals.
+finiteQuantifierCandidates :: Int -> Int -> (Type -> Either String (Maybe [Value]))
+  -> Quantifier -> Either String (Maybe [Candidate])
+finiteQuantifierCandidates bits limit domain q = fmap (fmap snd) (finiteDomain bits limit domain q)
+
+finiteDomain :: Int -> Int -> (Type -> Either String (Maybe [Value]))
+  -> Quantifier -> Either String (Maybe ([Expr], [Candidate]))
+finiteDomain bits limit domain q = do
   available <- domain ty
   case integerCover of
     Just terms -> pure (Just terms)
-    Nothing -> traverse (mapM valueTerm) available
+    Nothing -> traverse (fmap (\terms -> (terms,map Candidate terms)) . mapM valueTerm) available
   where
     binder = quantifiedBinder q
     current = binderId binder
@@ -40,9 +52,10 @@ finiteQuantifierTerms bits limit domain q = do
         ((variables,lower),(_,upper)) <- case intervals of
           [] -> Nothing
           _ -> Just (minimumBy (comparing (\((_,a),(_,b)) -> b-a)) intervals)
-        if upper < lower then Just []
+        if upper < lower then Just ([],[])
         else if upper-lower+1 > toInteger limit then Nothing
-        else Just [term name (variables,n) | n <- [lower..upper]]
+        else Just ([term name (variables,n) | n <- [lower..upper]],
+                   [candidate name (variables,n) | n <- [lower..upper]])
       _ -> Nothing
     constraints expression = case expressionNode expression of
       ShortCircuit And a b -> constraints a ++ constraints b
@@ -95,19 +108,37 @@ finiteQuantifierTerms bits limit domain q = do
       predicate <- quantifiedPredicates q,expression <- descend predicate,
       Local identity <- [expressionNode expression]]
     descend expression = expression : concatMap descend (children expression)
+    candidate name affine@(variables,_)
+      | M.null variables = Candidate (term name affine)
+      | otherwise = let
+          integer = scalarType "Integer"
+          value = exactTerm affine
+          constant n = Expr integer (Constant (SInteger "Integer" n)) origin
+          compare op n = Expr (scalarType "Bool") (Binary op (Numeric integer) value (constant n)) origin
+          converted = Expr ty (Convert CheckedArgument ty value) origin
+          within = case integerBounds bits name of
+            Just (lo,hi) -> Just (Expr (scalarType "Bool")
+              (ShortCircuit And (compare GreaterEqual lo) (compare LessEqual hi)) origin)
+            Nothing | name == "BigUInt" -> Just (compare GreaterEqual 0)
+            _ -> Nothing
+          in maybe id CandidateGuard within (Candidate converted)
+    exactTerm (variables,offset) = let
+      integer = scalarType "Integer"
+      constant n = Expr integer (Constant (SInteger "Integer" n)) origin
+      operation op a b = Expr integer (Binary op (Numeric integer) a b) origin
+      local identity = let
+        t = M.findWithDefault integer identity locals
+        e = Expr t (Local identity) origin
+        in if t == integer then e else Expr integer (Convert CheckedArgument integer e) origin
+      part (identity,coefficient) = if coefficient == 1 then local identity
+        else operation Multiply (constant coefficient) (local identity)
+      in foldl (operation Add) (constant offset) (map part (M.toAscList variables))
     term name (variables,offset)
       | M.null variables = Expr ty (Constant (SInteger name offset)) origin
       | otherwise = let
           integer = scalarType "Integer"
           constant n = Expr integer (Constant (SInteger "Integer" n)) origin
-          operation op a b = Expr integer (Binary op (Numeric integer) a b) origin
-          local identity =
-            let t = M.findWithDefault integer identity locals
-                e = Expr t (Local identity) origin
-            in if t == integer then e else Expr integer (Convert CheckedArgument integer e) origin
-          part (identity,coefficient) = if coefficient == 1 then local identity
-            else operation Multiply (constant coefficient) (local identity)
-          value = foldl (operation Add) (constant offset) (map part (M.toAscList variables))
+          value = exactTerm (variables,offset)
           lowerBound lo expression = Expr integer (If
             (Expr (scalarType "Bool") (Binary Less (Numeric integer) expression (constant lo)) origin)
             (constant lo) expression) origin
