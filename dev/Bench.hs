@@ -301,7 +301,9 @@ report target out peak =
 -- | The JSON request the CLI would send.
 generationRequest :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Value
 generationRequest extra sources target = object $
-  [ "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= (64 :: Int), "minify" .= False
+  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String)
+  , "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= (64 :: Int), "minify" .= False
+  , "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])]
   , "sources" .= [object ["path" .= reverse (takeWhile (/= '/') (reverse path)), "content" .= content] | (path, content) <- sources]
   ] ++ extra
 
