@@ -251,6 +251,16 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
           (emitJvmTyped style (C.programDataDeclarations p) (C.programUnits p))
         jvmTypedSource typed `shouldSatisfy` isInfixOf "java.math.BigInteger selection, java.math.BigInteger selection2"
         jvmTypedSource typed `shouldNotSatisfy` isInfixOf "lawspecselection"
+    it "uses readable positional constructor parameters without changing tuple field labels" $ do
+      text <- readFile "test/fixtures/canonical-positional-products.lawspec"
+      p <- either (\e -> expectationFailure (show e) >> fail "no program") pure
+        (compileCore 64 defaultGeneration [Source "positional.lawspec" text])
+      typed <- either (\e -> expectationFailure e >> fail "no typed JVM") pure
+        (emitJvmTyped JavaStyle (C.programDataDeclarations p) (C.programUnits p))
+      let source = jvmTypedSource typed
+      source `shouldSatisfy` isInfixOf "public Tuple1Tuple2(boolean tuple1, boolean tuple2)"
+      source `shouldSatisfy` isInfixOf "this._tuple1_ = tuple1;"
+      source `shouldNotSatisfy` isInfixOf "boolean _tuple1_,"
     it "stay the same when unrelated definitions are added before them" $ do
       let compile extra = either (\e -> error (show e)) id (compileCore 64 defaultGeneration [Source "ledger.lawspec" (extra ++ ledger)])
           edited = "function unrelated (x :: Int64) -> Int64 is x end function\n\nfunction another (t :: Text) -> Text is t end function\n\n"

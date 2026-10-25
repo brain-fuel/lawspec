@@ -10,6 +10,7 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.Swift.Code as Swift
 import qualified LawSpec.JavaExpr as Java
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
@@ -132,6 +133,14 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
   it "wraps comments without dropping their required line markers" $
     D.render D.Compact (D.lineComment 12 "// " "alpha beta x")
       `shouldBe` "// alpha\n// beta x\n"
+  it "breaks deeply nested Swift closure parameter types without changing their signature" $ do
+    let closure = Swift.closureDoc [("symbols", Swift.Ty "SymbolContext")] Swift.ClosureThrows
+          (Swift.Ty "Value") (D.text "return value")
+        nested = D.nest 76 (D.hardline <> closure)
+        readable = D.render (D.Pretty 100) nested
+    readable `shouldSatisfy` isInfixOf "symbols:\n"
+    all ((<= 100) . length) (lines readable) `shouldBe` True
+    D.render D.Compact closure `shouldSatisfy` isInfixOf "(symbols: SymbolContext) throws -> Value in"
   it "selects compact layouts without losing Go indentation" $ do
     D.selectLayout True (D.PrettyTabs 100) `shouldBe` D.CompactTabs
     D.selectLayout True (D.Pretty 80) `shouldBe` D.Compact
