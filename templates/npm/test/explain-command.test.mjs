@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCompiler} from '../api.mjs';
+import {configEDN} from './manifest-fixtures.mjs';
 
 // lawspec explain: eng by default, math and dev on request, --json for any
 // view, and clear errors for removed views. The CLI and the API agree.
@@ -16,7 +17,7 @@ const law = 'example.refunds::|an eligible flagged refund requires review|';
 async function project() {
   const directory = await mkdtemp(path.join(tmpdir(), 'lawspec-explain-'));
   await writeFile(path.join(directory, 'refund-policy.lawspec'), content);
-  await writeFile(path.join(directory, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.2',
+  await writeFile(path.join(directory, 'lawspec.edn'), configEDN({manifestVersion: 1, languageProfile: '1.0-rc.2',
     sources: ['refund-policy.lawspec'], targets: []}));
   return directory;
 }

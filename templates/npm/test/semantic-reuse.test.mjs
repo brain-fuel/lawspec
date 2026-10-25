@@ -9,6 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {createCompiler} from '../api.mjs';
 import {proveWithZ3} from '../proof.mjs';
 import {templates} from '../templates.mjs';
+import {configEDN} from './manifest-fixtures.mjs';
 
 const exec=promisify(execFile);
 const cli=fileURLToPath(new URL('../bin/lawspec.mjs',import.meta.url));
@@ -43,7 +44,7 @@ test('real native tests rerun zero cases after harmless source edits and rerun a
     const log=path.join(folder,'native-runs');
     const preload=path.join(folder,'observe.mjs');
     await writeFile(preload,`import {appendFileSync} from 'node:fs';\nif(process.env.LAWSPEC_NODE_RUN)appendFileSync(${JSON.stringify(log)},'native\\n');\n`);
-    await writeFile(path.join(folder,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(folder,'lawspec.edn'),configEDN({manifestVersion:1,languageProfile:'1.0-rc.2',
       sources:['input.lawspec'],verification:{layers:['property','examples']},targets:[{language:'javascript',root:'app'}]}));
     const run=async (command,args=[])=>exec(process.execPath,[cli,command,'--json',...args],{cwd:folder,
       env:{...process.env,NODE_OPTIONS:`--import=${preload}`},maxBuffer:4*1024*1024});
@@ -120,7 +121,7 @@ end unit
   end for law
 end harness
 `);
-    await writeFile(path.join(folder,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(folder,'lawspec.edn'),configEDN({manifestVersion:1,languageProfile:'1.0-rc.2',
       sources:['input.lawspec','harness.lawspec'],verification:{layers:['property','examples']},
       targets:[{language:'javascript',root:'app'}]}));
     await generate(workflow);
@@ -212,7 +213,7 @@ test('recording edits and nominal constructor changes rerun only recording-obser
       await writeFile(path.join(project,file),content);
     }
     await symlink(fileURLToPath(new URL('../../.integration/javascript/node_modules',import.meta.url)),path.join(project,'node_modules'),'dir');
-    await writeFile(path.join(folder,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+    await writeFile(path.join(folder,'lawspec.edn'),configEDN({manifestVersion:1,languageProfile:'1.0-rc.2',
       sources:['input.lawspec'],verification:{layers:['property','examples']},targets:[{language:'javascript',root:'app'}]}));
     const source=`unit identity.recording
 type Choice is one of Alpha | Middle end type

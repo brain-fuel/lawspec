@@ -34,7 +34,7 @@ test('known discrepancies have a reason and no assignment of fault in evidence a
     assert.deepEqual(plan.diagnostics,[],target);
     assert.equal(plan.tests.length,1,target);
     assert.equal(plan.tests[0].knownDiscrepancy,reason,target);
-    assert.equal('knownDiscrepancy' in plan.tests[0],false,target);
+    assert.equal('knownFailing' in plan.tests[0],false,target);
   }
 });
 
