@@ -195,3 +195,8 @@ are gone, as is the recorded Scala flow exemption. Their current generated
 files pass the pinned formatters. The Stage C exemption list is empty. Java's
 user-owned `_class` stub retains its documented GoogleMethodName exemption:
 that is the published adapter spelling for the `class` keyword.
+
+Swift closure signatures also retain parameter types, effects and result types
+as structured nodes. Generic results are laid out from that structure rather
+than splitting a previously printed signature. Public aliases and handle
+codecs use the same independent type-document caches as ordinary data.

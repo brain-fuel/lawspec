@@ -165,7 +165,9 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
       parameterCodecs <- mapM (Data.codec bits names []) parameterTypes
       resultCodec <- Data.codec bits names [] resultType
       resultRef <- X.typeRef resultType
-      (_, nativeResult, failure, async) <- nativeSignature bits names units declaration
+      (_, _, failure, async) <- nativeSignature bits names units declaration
+      resultLayout <- if isUnit resultType then pure tVoid else Data.nativeTy bits names [] resultType
+      failureLayout <- traverse (Data.nativeTy bits names []) (declarationFailure declaration)
       handlers <- forM (Effects.uses declaration) $ \ref -> do
         a <- maybe (Left ("unknown Swift ability " ++ C.abilityKey ref)) Right (N.abilityOf units ref)
         pure (Effects.bridgeCall a "ToNative" [X.schemaVar, X.symbolsVar, call "Effects" "handler" [X.schemaVar, Str (C.abilityKey ref)]])
@@ -176,10 +178,9 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           nativeNames = handlerNames ++ valueNames
           bindings = zip nativeNames (handlers ++ [codecInvoke c "toNative" [Var a] | (c, a) <- valueNatives])
           adapter = unitQualified (C.unitId unit) ++ "." ++ functionName declaration
-          voidResult = nativeResult == "Void"
-          resultTy = if voidResult then "Void" else nativeResult
+          voidResult = isUnit resultType
           key = failureKey declaration
-          convert fc = Code (closureDoc ("(failure: " ++ maybe "" id failure ++ ") throws -> Value") (codecCall fc "fromNative" [D.text "failure"]))
+          convert fc = Code (closureDoc [("failure",maybe (Ty "Error") id failureLayout)] ClosureThrows tValue (codecCall fc "fromNative" [D.text "failure"]))
           adapterInvocation = callDoc adapter (map D.text nativeNames)
           bound = lookup (C.declarationId declaration) calls
           refText = intercalate "." . referenceParts
@@ -195,15 +196,15 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           invocation = case (boundCallee, failure, failureCodec, async) of
             (Just (callee, args), _, _, False) -> Call "Effects.bound" (Raw callee : map Var args)
             (Just (callee, args), _, _, True) ->
-              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy)
+              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc [] ClosureAsyncThrows resultLayout
                 (callDoc "try await Effects.boundAsync" (map D.text (callee : args))))]]
             (Nothing, Just e, Just fc, False) ->
-              Call "Effects.ofThrown" [Str key, convert fc, Code (closureDoc ("() throws(" ++ e ++ ") -> " ++ resultTy) (D.text "try " <> adapterInvocation))]
+              Call "Effects.ofThrown" [Str key, convert fc, Code (closureDoc [] (ClosureThrowsType (maybe (Ty e) id failureLayout)) resultLayout (D.text "try " <> adapterInvocation))]
             (Nothing, Just e, Just fc, True) ->
-              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy)
+              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc [] ClosureAsyncThrows resultLayout
                 (D.text ("do throws(" ++ e ++ ")") <> blockDoc (hangValue "return" (D.text "try await " <> adapterInvocation)) <>
                  D.text " catch" <> blockDoc (callDoc "throw RaisedFailure" [D.text (stringLiteral key), codecCall fc "fromNative" [D.text "error"]])))]]
-            (Nothing, _, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc ("() async throws -> " ++ resultTy) (D.text "await " <> adapterInvocation))]]
+            (Nothing, _, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Code (closureDoc [] ClosureAsyncThrows resultLayout (D.text "await " <> adapterInvocation))]]
             _ -> Pure adapter (map Var nativeNames)
           converted = if voidResult then Do [Statement invocation] (Raw "Value.unit") else codecInvoke resultCodec "fromNative" [invocation]
       -- A bound function fails by throwing: its declared failure type, or
@@ -212,7 +213,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
         (Just _, Just failureTy, Just e, Just fc) -> do
           ref <- X.typeRef failureTy
           let own = Code (callDoc "Effects.mapError" [D.text (e ++ ".self")] <> D.text " " <>
-                closureDoc ("(failure: " ++ e ++ ") throws -> Value") (codecCall fc "fromNative" [D.text "failure"]))
+                closureDoc [("failure",maybe (Ty e) id failureLayout)] ClosureThrows tValue (codecCall fc "fromNative" [D.text "failure"]))
               mapping (k, fb) =
                 let native = intercalate "." (C.failureNative fb)
                     caught = "caught" ++ show (k :: Int)
@@ -221,7 +222,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
                         renderExpr (either error id (X.typeRef ty)), D.text "schema"])
                       (D.text ("Value.text(String(describing: " ++ caught ++ "))")) fb)
                 in Code (callDoc "Effects.mapError" [D.text (native ++ ".self")] <> D.text " " <>
-                     closureDoc ("(" ++ caught ++ ": " ++ native ++ ") throws -> Value")
+                     closureDoc [(caught,Ty native)] ClosureThrows tValue
                        (callDoc "try Schema.construct" [D.text (stringLiteral (C.idText (C.failureConstructor fb))), fields,
                          renderExpr ref, D.text "schema"]))
               mappings = map mapping (zip [0 ..] [fb | fb <- C.unitFailureBindings unit, C.failureType fb == failureTy])
@@ -247,6 +248,7 @@ emitApi layout bits declarations units = do
       codecs <- mapM (Data.codec bits names []) parameterTypes
       out <- Data.codec bits names [] resultType
       failureCodec <- traverse (Data.codec bits names []) (declarationFailure d)
+      resultLayout <- if isUnit resultType then pure tVoid else Data.nativeTy bits names [] resultType
       e <- maybe (Left "missing Swift entry") Right (lookup (C.declarationId d) (entries units))
       let valueParams = drop (length handlers) params
           valueArguments = go codecs parameterTypes (map fst valueParams)
@@ -255,7 +257,7 @@ emitApi layout bits declarations units = do
                     | (n : rest) <- ns = codecInvoke c "fromNative" [Var n] : go cs ts rest
                   go _ _ _ = []
           void = r == "Void"
-          resultTy = Ty (if void then "Void" else r)
+          resultTy = resultLayout
           scopeName = if null handlers then "schema" else "scope"
           entryCall = Call (entryOwner e ++ "." ++ entryName e) (Var scopeName : Var "symbols" : valueArguments)
           converted = if void then entryCall else codecInvoke out "toNative" [entryCall]

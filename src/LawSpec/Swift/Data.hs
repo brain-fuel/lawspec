@@ -5,7 +5,7 @@
 -- ref:DEC-idiomatic-generated-types ref:DEC-typed-core-boundary
 -- ref:DEC-swift-runtime-from-scratch
 module LawSpec.Swift.Data
-  ( Names, nativeType, codec, emitData, emitSchema, isRecord, isStruct, caseName, fieldName
+  ( Names, nativeType, nativeTy, codec, emitData, emitSchema, isRecord, isStruct, caseName, fieldName
   , nativeCollection, recursiveTypes, comparedParameters, typeParameterDeclarations
   ) where
 
@@ -39,28 +39,28 @@ type Names = [(C.Id, String)]
 
 -- | The native Swift type of a LawSpec type.
 nativeType :: Int -> Names -> [(C.Id, String)] -> C.Type -> Either String String
-nativeType bits names parameters ty = case ty of
-  C.TypeVariable identity -> Right (maybe "Value" id (lookup identity parameters))
+nativeType bits names parameters ty = typeText <$> nativeTy bits names parameters ty
+
+nativeTy :: Int -> Names -> [(C.Id, String)] -> C.Type -> Either String Ty
+nativeTy bits names parameters ty = case ty of
+  C.TypeVariable identity -> Right (Ty (maybe "Value" id (lookup identity parameters)))
   C.Constructor n args -> do
     ts <- mapM argument [t | C.TypeArgument t <- args]
-    case (n, ts) of
-      ("List", [t]) -> pure ("PersistentList<" ++ t ++ ">")
-      ("Maybe", [t]) -> pure (optional t)
-      ("Either", [a, b]) -> pure ("Either<" ++ a ++ ", " ++ b ++ ">")
-      ("Nullable", [t]) -> pure ("Nullable<" ++ t ++ ">")
-      ("Optional", [t]) -> pure ("Undefinable<" ++ t ++ ">")
-      ("lawspec.time::type::Duration", []) -> pure "Duration"
-      ("lawspec.collections::type::Set", [t]) -> pure ("SortedSet<" ++ t ++ ">")
-      ("lawspec.collections::type::KeyVal", [k, v]) -> pure ("SortedMap<" ++ k ++ ", " ++ v ++ ">")
-      (_, []) | Just _ <- primitive n -> pure (scalarType n)
+    case (n,ts) of
+      ("List",[t]) -> pure (AppliedTy "PersistentList" [t])
+      ("Maybe",[t]) -> pure (OptionalTy t)
+      ("Either",[a,b]) -> pure (AppliedTy "Either" [a,b])
+      ("Nullable",[t]) -> pure (AppliedTy "Nullable" [t])
+      ("Optional",[t]) -> pure (AppliedTy "Undefinable" [t])
+      ("lawspec.time::type::Duration",[]) -> pure (Ty "Duration")
+      ("lawspec.collections::type::Set",[t]) -> pure (AppliedTy "SortedSet" [t])
+      ("lawspec.collections::type::KeyVal",[k,v]) -> pure (AppliedTy "SortedMap" [k,v])
+      (_,[]) | Just _ <- primitive n -> pure (Ty (scalarType n))
       _ -> case lookup (C.Id n) names of
-        Just name -> pure (if null ts then name else name ++ "<" ++ intercalate ", " ts ++ ">")
+        Just name -> pure (if null ts then Ty name else AppliedTy name ts)
         Nothing -> Left ("no Swift native type for " ++ n)
   C.Arrow _ _ -> Left "function-valued data has no Swift native type"
-  where
-    argument = nativeType bits names parameters
-    optional t = if any (`elem` (" &" :: String)) t then "(" ++ t ++ ")?" else t ++ "?"
-    _ = bits
+  where argument = nativeTy bits names parameters
 
 scalarType :: String -> String
 scalarType n = case n of
@@ -240,12 +240,12 @@ emitData layout bits bound declarations
           opaque = reaching boundIds declarations
       types <- mapM (\d -> cached "type" names recursive opaque d (dataType names recursive opaque d)) shapes
       codecs <- mapM (\d -> cached "codec" names recursive opaque d (dataCodec names recursive d)) shapes
-      handleTypes <- forM handles $ \d -> do
+      handleTypes <- forM handles $ \d -> cached "handle-type" names recursive opaque d $ do
         name <- named names d
         let native = maybe "AnyHandle" (refText . resolvedNativeType) (boundOf d)
         pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ": a handle, a native object whose identity LawSpec keeps.") <> D.hardline <>
           D.text ("public typealias " ++ name ++ typeParams d ++ " = " ++ native))
-      handleCodecs <- forM handles $ \d -> do
+      handleCodecs <- forM handles $ \d -> cached "handle-codec" names recursive opaque d $ do
         name <- named names d
         let ps = [(typeParameter i, "t" ++ show i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
             tag = stringLiteral (C.idText (C.dataId d))
@@ -255,11 +255,12 @@ emitData layout bits bound declarations
         pure (sourceDoc (C.idText (C.dataId d)) (C.dataOrigin d) <>
           signature ("public static func " ++ codecName name ++ genericClause ps) ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p, v) <- ps]
             (" -> Codec<" ++ native ++ ">") made)
-      boundTypes <- forM [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))] $ \b -> do
-        let d = resolvedDeclaration b
-        name <- named names d
-        pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound in lawspec.json.") <> D.hardline <>
-          D.text ("public typealias " ++ name ++ typeParams d ++ " = " ++ refText (resolvedNativeType b) ++ typeParams d))
+      boundTypes <- forM [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))] $ \b ->
+        cached "bound-type" names recursive opaque (resolvedDeclaration b) $ do
+          let d = resolvedDeclaration b
+          name <- named names d
+          pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ": the application's own type, bound in lawspec.json.") <> D.hardline <>
+            D.text ("public typealias " ++ name ++ typeParams d ++ " = " ++ refText (resolvedNativeType b) ++ typeParams d))
       boundCodecs <- mapM (\b -> cached "bound-codec" names recursive opaque (resolvedDeclaration b) (boundCodec names b))
         [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))]
       let typesDoc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime"]] <> D.hardline <>

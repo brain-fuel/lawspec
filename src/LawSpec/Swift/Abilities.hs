@@ -110,6 +110,7 @@ emitBridges layout bits declarations units
         signature@(ps, r, failure) <- operationSignature bits names a (op, ty)
         codecs <- mapM (Data.codec bits names []) args
         out <- Data.codec bits names [] result
+        resultLayout <- if isUnit result then pure tVoid else Data.nativeTy bits names [] result
         let values = go codecs args (map fst ps)
               where go (c : cs) (t : ts) ns
                       | isUnit t = Raw "Value.unit" : go cs ts ns
@@ -117,13 +118,13 @@ emitBridges layout bits declarations units
                     go _ _ _ = []
             logical = Call "Effects.invoke" [Raw "self.originHandler", Raw "self.originSchema", Str op, ListOf tValues values]
             void = r == "Void"
-            closure = Lambda [] (Ty r) (if void then logical else codecInvoke out "toNative" [logical])
+            closure = Lambda [] resultLayout (if void then logical else codecInvoke out "toNative" [logical])
         runner <- case failure of
           Nothing -> pure (Pure "Embedding.run" [closure])
           Just _ -> do
             fc <- maybe (Left "missing failure") (Data.codec bits names []) (failureOf a op)
             pure (Call "Embedding.runFailing" [Str (failingKey a op), Code (D.text "{ " <> codecCall fc "toNative" [D.text "$0"] <> D.text " }"), closure])
-        pure (method op signature (Just (if void then renderStatements (Statement runner) else renderBody (Ty r) runner)))
+        pure (method op signature (Just (if void then renderStatements (Statement runner) else renderBody resultLayout runner)))
       clauses <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
         (_, r, failure) <- operationSignature bits names a (op, ty)
@@ -136,9 +137,11 @@ emitBridges layout bits declarations units
         invoked <- case (failure, failureOf a op) of
           (Just e, Just ft) -> do
             fc <- Data.codec bits names [] ft
+            failureLayout <- Data.nativeTy bits names [] ft
+            resultLayout <- if isUnit result then pure tVoid else Data.nativeTy bits names [] result
             pure (Call "Effects.ofThrown" [Str (failingKey a op),
-              Code (closureDoc ("(failure: " ++ e ++ ") throws -> Value") (codecCall fc "fromNative" [D.text "failure"])),
-              Code (closureDoc ("() throws(" ++ e ++ ") -> " ++ r) (D.text "try " <> renderExpr callNative))])
+              Code (closureDoc [("failure",failureLayout)] ClosureThrows tValue (codecCall fc "fromNative" [D.text "failure"])),
+              Code (closureDoc [] (ClosureThrowsType failureLayout) resultLayout (D.text "try " <> renderExpr callNative))])
           _ -> pure callNative
         let result = if r == "Void"
               then Do [Statement invoked] (Raw "Value.unit")

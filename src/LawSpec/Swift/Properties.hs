@@ -297,7 +297,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
     controlled h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0
     function n params result body =
       signature ("private func " ++ n) ["_ " ++ p ++ ": " ++ t | (p, Ty t) <- params] (" throws -> " ++ tyText result) (renderBody result body)
-    tyText (Ty t) = t
+    tyText = typeText
     -- A failing expectation points at its own line.
     expectationLink proposition = case proposition of
       C.Equation _ a _ | Just l <- originLocation (C.expressionOrigin a), take 1 (file l) /= "<" -> Just (locationLink l)
@@ -429,7 +429,7 @@ emitNativeGenerators layout bits declarations bound = do
     nativeCodec <- Data.codec bits names [] (C.Constructor (C.idText identity) [])
     let ref = intercalate "." factory
     pure (D.text ("(" ++ stringLiteral (C.idText identity) ++ ", ") <>
-      closureDoc "(_: [Gen<Value>]) throws -> Gen<Value>"
+      closureDoc [("_",ArrayTy tGen)] ClosureThrows tGen
         (D.text (ref ++ "().map {") <> D.nest 2 (D.hardline <>
           codecCall nativeCodec "fromNative" [D.text "$0"]) <> D.hardline <> D.text "}") <> D.text "),")
   let doc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime", "import LawSpecTesting"], ["@testable import " ++ moduleName]] <> D.hardline <>

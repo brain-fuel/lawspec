@@ -6,7 +6,7 @@
 -- twice in one body, so the output compiles without warnings.
 -- ref:DEC-swift-runtime-from-scratch ref:DEC-readable-output-default
 module LawSpec.Swift.Code
-  ( Ty(..), Expr(..), Codec(..), codecInvoke
+  ( Ty(..), Expr(..), Codec(..), ClosureEffect(..), codecInvoke, typeText, typeDoc
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, longStringLiteral, closureDoc, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
   , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, codecDoc, codecCall, fileHeader, blockDoc, comment
@@ -23,7 +23,27 @@ import qualified LawSpec.Core as C
 import LawSpec.SourceLink (labelled, sourceLink)
 
 -- | A Swift type, as written.
-newtype Ty = Ty String deriving (Eq, Show)
+data Ty = Ty String | AppliedTy String [Ty] | OptionalTy Ty | ArrayTy Ty
+  deriving (Eq, Show)
+
+typeText :: Ty -> String
+typeText ty = case ty of
+  Ty text -> text
+  AppliedTy name arguments -> name ++ "<" ++ intercalate ", " (map typeText arguments) ++ ">"
+  OptionalTy value -> let text = typeText value
+    in (if any (`elem` (" &" :: String)) text then "(" ++ text ++ ")" else text) ++ "?"
+  ArrayTy value -> "[" ++ typeText value ++ "]"
+
+typeDoc :: Ty -> D.Doc
+typeDoc ty = case ty of
+  Ty text -> D.text text
+  AppliedTy name arguments -> D.text name <> D.delimit indentation "<" ">" (map typeDoc arguments)
+  OptionalTy value -> D.text (typeText (OptionalTy value))
+  ArrayTy value -> D.text "[" <> typeDoc value <> D.text "]"
+
+-- Closure effects are separate from parameter and result types.
+data ClosureEffect = ClosureThrows | ClosureThrowsType Ty | ClosureAsyncThrows
+  deriving (Eq, Show)
 
 data Expr
   = Var String
@@ -80,17 +100,17 @@ tString = Ty "String"
 tSchema = Ty "Schema"
 tSymbols = Ty "SymbolContext"
 tInt = Ty "Int"
-tGen = Ty "Gen<Value>"
+tGen = AppliedTy "Gen" [tValue]
 tType = Ty "TypeRef"
 
 tFun :: [Ty] -> Ty -> Ty
-tFun args (Ty r) = Ty ("(" ++ intercalate ", " [a | Ty a <- args] ++ ") throws -> " ++ r)
+tFun args result = Ty ("(" ++ intercalate ", " (map typeText args) ++ ") throws -> " ++ typeText result)
 
 tArray :: Ty -> Ty
-tArray (Ty t) = Ty ("[" ++ t ++ "]")
+tArray = ArrayTy
 
 tOptional :: Ty -> Ty
-tOptional (Ty t) = Ty (if ' ' `elem` t then "(" ++ t ++ ")?" else t ++ "?")
+tOptional = OptionalTy
 
 call :: String -> String -> [Expr] -> Expr
 call owner name = Call (owner ++ "." ++ name)
@@ -297,7 +317,7 @@ arguments args
         -- A list keeps its element type, which its closures are inferred
         -- from (@Sendable clauses).
         let annotation = case a' of
-              ListOf (Ty t) xs | not (null t), any holdsLambda xs -> Ty t
+              ListOf t xs | not (null (typeText t)), any holdsLambda xs -> t
               _ -> Ty ""
         pure (ss ++ [Bind name annotation a'], Var name)
       else pure (ss, a')
@@ -457,7 +477,7 @@ statement s = case s of
     l <- lambda ps r b
     pure [hangValue ("let " ++ name ++ annotation t ++ " =") l]
   Bound name t v -> (: []) <$> hangExpr ("let " ++ name ++ annotation t ++ " =") v
-  where tyText (Ty x) = x
+  where tyText = typeText
         annotation (Ty "") = ""
         annotation t = ": " ++ tyText t
 
@@ -505,53 +525,31 @@ lambda ps r b = do
   inner <- body r Return b
   pure (closure ps r inner)
 
--- | A closure from its header (() throws -> T) and its body's lines.
-closureDoc :: String -> D.Doc -> D.Doc
-closureDoc header inner = closureHeader header <> D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
+-- | A closure's signature is built from parameter types, effects and its
+-- result type; layout never recovers them from generated Swift text.
+closureDoc :: [(String, Ty)] -> ClosureEffect -> Ty -> D.Doc -> D.Doc
+closureDoc parameters effects result inner = closureHeader parameters effects result <>
+  D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
 
--- | A closure's opening: { header in on one line, or the header and in on
--- lines of their own, as swift-format breaks one that does not fit.
-closureHeader :: String -> D.Doc
-closureHeader header = D.group (D.text "{" <> D.nest indentation (D.softline <> headerDoc <> D.softline <> D.text "in"))
+closureHeader :: [(String, Ty)] -> ClosureEffect -> Ty -> D.Doc
+closureHeader parameters effects result = D.group
+  (D.text "{" <> D.nest indentation (D.softline <> headerDoc <> D.softline <> D.text "in"))
   where
-    -- A result type's generic argument breaks inside its brackets when the
-    -- header does not fit even on a line of its own.
-    headerDoc = case (break (== '<') (reverse header), splitArrow header) of
-      ((inner, '<' : front), Just (params, result)) | take 1 (reverse header) == ">", '>' `notElem` drop 1 inner, ' ' `notElem` inner ->
-        let generic = D.text (reverse front ++ "<")
-            argument = D.nest indentation (D.softbreak <> D.text (reverse (drop 1 inner))) <> D.softbreak <> D.text ">"
-            resultHead = takeWhile (/= '<') result ++ "<"
-            broken = D.text (resultHead) <> argument
-            -- Before ->, then before throws, as far as it must.
-            (bare, effects) = splitEffects params
-        in D.prefixChoice (reverse front ++ "<") (D.group (generic <> argument))
-             (D.prefixChoice params (D.text params <> D.nest indentation (D.softline <> D.text "-> " <> broken))
-               (D.text bare <> D.nest indentation (D.softline <> D.text (effects ++ " -> ") <> broken)))
-      (_, Just (params, result)) ->
-        let (bare, effects) = splitEffects params
-        in D.prefixChoice header (D.text header)
-             (D.prefixChoice params (D.text params <> D.nest indentation (D.softline <> D.text ("-> " ++ result)))
-               (D.text bare <> D.nest indentation (D.softline <> D.text (effects ++ " -> " ++ result))))
-      _ -> D.text header
-    -- (x: T) throws and -> R
-    splitArrow h = case breakOn " -> " h of
-      Just (a, b) -> Just (a, b)
-      Nothing -> Nothing
-    breakOn needle hay = go "" hay
-      where
-        go _ [] = Nothing
-        go acc rest@(c : cs)
-          | take (length needle) rest == needle = Just (reverse acc, drop (length needle) rest)
-          | otherwise = go (c : acc) cs
-    -- (x: T) and throws, at the last parenthesis.
-    splitEffects ps = case break (== ')') (reverse ps) of
-      (effects, ')' : front) -> (reverse (')' : front), dropWhile (== ' ') (reverse effects))
-      _ -> (ps, "")
+    params = "(" ++ intercalate ", " [name ++ ": " ++ typeText ty | (name,ty) <- parameters] ++ ")"
+    effectText = case effects of
+      ClosureThrows -> "throws"
+      ClosureThrowsType ty -> "throws(" ++ typeText ty ++ ")"
+      ClosureAsyncThrows -> "async throws"
+    withEffects = params ++ " " ++ effectText
+    opening = case result of AppliedTy name _ -> name ++ "<"; _ -> typeText result
+    headerDoc = D.prefixChoice (withEffects ++ " -> " ++ opening)
+      (D.text (withEffects ++ " -> ") <> typeDoc result)
+      (D.prefixChoice withEffects
+        (D.text withEffects <> D.nest indentation (D.softline <> D.text "-> " <> typeDoc result))
+        (D.text params <> D.nest indentation (D.softline <> D.text (effectText ++ " -> ") <> typeDoc result)))
 
--- | A closure: its signature, then its body on lines of its own.
 closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
-closure ps (Ty rt) inner =
-  closureDoc ("(" ++ intercalate ", " [p ++ ": " ++ t | (p, Ty t) <- ps] ++ ") throws -> " ++ rt) inner
+closure parameters = closureDoc parameters ClosureThrows
 
 inline :: Expr -> Fresh D.Doc
 inline e = case e of
