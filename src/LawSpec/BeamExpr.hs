@@ -4,6 +4,7 @@
 module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, proposition, assertion, assertionLabelled) where
 
 import qualified LawSpec.Core as C
+import LawSpec.Core.ListLiteral (constantListElements)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import LawSpec.Backend (scalarTypeKey)
@@ -47,6 +48,8 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
               pure (E.remote "lawspec_beam_runtime" "bind"
                 [E.remote "lawspec_beam_runtime" "concurrently" [E.array (map (E.lambda []) steps)],
                  E.lambda [E.array (map (bound inner) binders)] inner])
+        render term
+          | Just values <- constantListElements term = E.array <$> mapM render values
         render term = case C.expressionNode term of
           -- A literal of its own primitive type needs no validation.
           C.Constant scalar

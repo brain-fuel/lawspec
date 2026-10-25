@@ -129,7 +129,14 @@ emit target layout bindings plan = do
               [let group = E.tuple [groupLabel n, eunitCases n]
                in if scheduled then schedule (E.array [group]) else group]]
               | target == "erlang", (_,n) <- groups]
-      bodies <- concat <$> sequence [lawTests unit n p | (n,p) <- zip names properties]
+      -- Share factory code across the unit, while passing each case's live
+      -- symbol context to every invocation. No native value is retained.
+      covers <- mapM caseCover [p | p <- properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) == Nothing]
+      literalPlan <- Literals.planLiterals (concatMap Literals.coverLiterals covers ++
+        [value | p <- properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) == Nothing,
+          requirement <- generatorRequirements p, value <- generatorBoundaries requirement])
+      literalHelpers <- literalFunctions "finite" literalPlan
+      bodies <- concat <$> sequence [lawTests literalPlan unit n p | (n,p) <- zip names properties]
       let modelTests = [E.function (ModelChecks.checkName check ++ "_test_") [] [E.array
             [let test = E.tuple [E.string (ModelChecks.checkLabel check), E.lambda []
                    (E.remote (Definitions.adapterModule unit ++ "_lawspec_models") (ModelChecks.checkName check) [])]
@@ -137,7 +144,7 @@ emit target layout bindings plan = do
             | check <- models]
       measurements <- sequence [benchmarkTest unit n label body | (n,(label,body)) <- zip benchmarkNames measured]
       pure (Artifact (testSupport ++ name ++ ".erl")
-        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name (exports ++ indexedExports) (bodies ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite ++ gleamFactories))) "generated" "test" :
+        (D.render layout (E.moduleDocFrom (unitSourceFile unit) name (exports ++ indexedExports) (bodies ++ literalHelpers ++ modelTests ++ measurements ++ bridges ++ grouped ++ selections ++ gleamSuite ++ gleamFactories))) "generated" "test" :
         [Elixir.unitTests layout unit [(n, allowance n, described n) | n <- allNames] | target == "elixir"] ++
         [Gleam.unitTests layout unit [(n,suffixes,n `elem` skips,n `elem` benchmarkNames) | (n,suffixes) <- counts] | target == "gleam"])
     benchmarkTest unit name label expression = do
@@ -150,14 +157,14 @@ emit target layout bindings plan = do
       pure (E.function (name ++ "_test_") [] [E.array
         [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
     single h = C.harnessSkip h /= Nothing || C.harnessKnownDiscrepancy h /= Nothing
-    lawTests unit name planned
+    lawTests _literalPlan unit name planned
       | Just reason <- C.harnessSkip (C.propertyHarness (plannedProperty planned)) =
           let law = plannedProperty planned
               label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName law
           in pure [E.linkComment (displayLabel (C.propertyName law) ++ ", skipped") (propertyLink law) <>
             E.function (name ++ "_test_") [] [E.array [E.tuple [E.string (firstDescriptionOf plan planned),
             E.tuple [E.atom "skip",E.binary label,E.binary reason]]]]]
-    lawTests unit name planned = do
+    lawTests literalPlan unit name planned = do
       let law = plannedProperty planned
           parameters = map (C.quantifiedBinder) (C.propertyInputs law)
           resources = C.propertyResources law
@@ -248,10 +255,13 @@ emit target layout bindings plan = do
               else [workflowScope (if plainScope then acquired else scoped schema exampleSchema acquired)]
         pure (test suffix exampleLink False body')
       cover <- caseCover planned
-      literalPlan <- Literals.planLiterals (Literals.coverLiterals cover)
-      let literalValue value = Literals.literalReference literalPlan value >>= literalTerm name
+      let literalValue value = Literals.literalReference literalPlan value >>= literalTerm "finite" literalPlan
+          generatorLiteral value
+            | M.member value (Literals.literalReferences literalPlan) = literalValue value
+            -- An explicit strategy can introduce a different child domain.
+            -- Its independently checked witnesses retain ordinary rendering.
+            | otherwise = pure (E.value symbols value)
       coverExpression <- beamCover literalValue cover
-      literalHelpers <- literalFunctions name literalPlan
       let
           finiteIndex = D.text "CaseIndex"
           finiteFactories = D.text "CaseFactories"
@@ -268,7 +278,7 @@ emit target layout bindings plan = do
         -- report zero observations; a cover clause must not silently pass.
         Just _ | not (sampleFinite plan planned) -> pure ([test "statistics" lawLink True [E.atom "ok"] | observed harness], [])
         _ -> do
-          (generator, helpers) <- Generators.inputsWithHelpers name framework schema symbols plan local planned
+          (generator, helpers) <- Generators.inputsWithLiteralHelpers name generatorLiteral framework schema symbols plan local planned
           predicates <- mapM render (concatMap C.quantifiedPredicates (C.propertyInputs law))
           covers <- mapM (render . C.coverWhen) (C.harnessCover harness)
           classes <- forM (C.harnessClassify harness) $ \(predicate, name') -> do
@@ -343,7 +353,7 @@ emit target layout bindings plan = do
                then E.remote "lawspec_beam_finite" "case_at" [E.call planName [], D.text "Index"]
                else E.remote "lists" "nth" [E.operator "+" (D.text "Index") (D.text "1"), E.call (name ++ "_test_") []]]
       pure ([bodyDoc] ++ [caseDoc | not plainCase] ++
-        [planDoc, E.function (name ++ "_test_") [] [tests], caseAtDoc] ++ literalHelpers ++ generatorHelpers ++ caseFunctions)
+        [planDoc, E.function (name ++ "_test_") [] [tests], caseAtDoc] ++ generatorHelpers ++ caseFunctions)
 
     beamCover literal (Cover.Complete count) = pure (E.tuple [E.atom "copies", D.text (show count)])
     beamCover literal (Cover.Alternatives branches) = do
@@ -356,13 +366,15 @@ emit target layout bindings plan = do
       factories <- mapM (fmap (E.lambda [symbols]) . literal) values
       pure (E.tuple [E.atom "values",E.array factories])
     domainDoc _ (Cover.IntegerInterval _ first last') = pure (E.tuple [E.atom "integers", D.text (show first), D.text (show last')])
-    literalTerm prefix = Literals.foldLiteral (pure . E.literal symbols)
-      (\index fields -> pure (E.call (prefix ++ "_literal_shape_" ++ show index) [symbols,E.array fields]))
+    literalTerm prefix literalPlan = Literals.foldLiteral (pure . E.literal symbols)
+      (\index fields -> pure $ case lookup index (Literals.literalShapes literalPlan) of
+        Just (Literals.ListShape _) -> E.array fields
+        _ -> E.call (prefix ++ "_literal_shape_" ++ show index) [symbols,E.array fields])
       (\index -> pure (E.call (prefix ++ "_literal_" ++ show index) [symbols]))
     literalFunctions prefix literalPlan = do
       let fields = D.text "Fields"
           function name arguments body = E.function name (map (\name -> E.variable name body) arguments) [body]
-      shapes <- forM (Literals.literalShapes literalPlan) $ \(index,shape) -> do
+      shapes <- forM [(index,shape) | (index,shape) <- Literals.literalShapes literalPlan, case shape of Literals.ListShape _ -> False; _ -> True] $ \(index,shape) -> do
         body <- case shape of
           Literals.ConstructorShape _ tag -> pure (E.tuple [E.atom "ls_data",E.binary (C.idText tag),fields])
           Literals.ListShape _ -> pure fields
@@ -371,7 +383,7 @@ emit target layout bindings plan = do
           Literals.PresenceShape _ _ -> Left "non-constructor presence in checked literal plan"
         pure (function (prefix ++ "_literal_shape_" ++ show index) ["Symbols","Fields"] body)
       factories <- forM (Literals.literalFactories literalPlan) $ \(index,term) -> do
-        body <- literalTerm prefix term
+        body <- literalTerm prefix literalPlan term
         pure (function (prefix ++ "_literal_" ++ show index) ["Symbols"] body)
       pure (shapes ++ factories)
 

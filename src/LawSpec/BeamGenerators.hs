@@ -1,7 +1,7 @@
 -- | Native generator composition from checked inputs and harness strategies.
 -- Every choice and bind retains its framework's own shrink tree.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks ref:REQ-harness-units
-module LawSpec.BeamGenerators (inputs, inputsWithHelpers, directBounds, lengthBounds, nonEmptyBounds) where
+module LawSpec.BeamGenerators (inputs, inputsWithHelpers, inputsWithLiteralHelpers, directBounds, lengthBounds, nonEmptyBounds) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -9,6 +9,7 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamNames as Names
 import qualified LawSpec.BeamDefinitions as Definitions
+import LawSpec.Core.Value (Value)
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Testing
@@ -16,14 +17,19 @@ import qualified LawSpec.Testing.Draws as Draws
 import Data.List (nub)
 
 inputs :: String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String D.Doc
-inputs framework schema symbols plan local planned = fst <$> buildInputs Nothing framework schema symbols plan local planned
+inputs framework schema symbols plan local planned = fst <$> buildInputs Nothing (Right . E.value symbols) framework schema symbols plan local planned
 
 -- | Native modules retain helper functions beside the root generator call.
 inputsWithHelpers :: String -> String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String (D.Doc, [D.Doc])
-inputsWithHelpers prefix = buildInputs (Just prefix)
+inputsWithHelpers prefix framework schema symbols = buildInputs (Just prefix) (Right . E.value symbols) framework schema symbols
 
-buildInputs :: Maybe String -> String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String (D.Doc, [D.Doc])
-buildInputs helperPrefix framework schema symbols plan local planned = walk [] (generatorRequirements planned)
+-- | Generator witnesses use the same fresh structural factories as finite
+-- cases, without retaining values or evaluating an unchosen branch.
+inputsWithLiteralHelpers :: String -> (Value -> Either String D.Doc) -> String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String (D.Doc, [D.Doc])
+inputsWithLiteralHelpers prefix = buildInputs (Just prefix)
+
+buildInputs :: Maybe String -> (Value -> Either String D.Doc) -> String -> D.Doc -> D.Doc -> Plan -> (C.Id -> String) -> PlannedProperty -> Either String (D.Doc, [D.Doc])
+buildInputs helperPrefix literal framework schema symbols plan local planned = walk [] (generatorRequirements planned)
   where
     units = map plannedUnit (plannedUnits plan)
     strategies = C.harnessDraws (C.propertyHarness (plannedProperty planned))
@@ -71,8 +77,9 @@ buildInputs helperPrefix framework schema symbols plan local planned = walk [] (
           target <- render names (indexedTarget indexed)
           pure (E.tuple [target,E.record [(E.binary (C.idText tag),E.array (map E.binary terms))
             | (tag,terms) <- indexedEquations indexed]])
+      witnesses <- mapM literal (generatorBoundaries requirement)
       pure (native "generator" [ref,schema,symbols,E.array (bounds ++ lengths),
-        E.array (map (E.value symbols) (generatorBoundaries requirement) ++ hints),index])
+        E.array (witnesses ++ hints),index])
     directed quantifier witnesses = GeneratorRequirement (C.quantifiedBinder quantifier)
       (C.quantifiedPredicates quantifier) witnesses (C.quantifiedBounds quantifier) (domainHints quantifier)
       (indexedGeneration (planDataDeclarations plan) (concatMap C.unitDefinitions units) quantifier)
