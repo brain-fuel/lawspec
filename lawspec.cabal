@@ -631,6 +631,7 @@ library
       LawSpec.Core.RecordViewFunctions
       LawSpec.Core.RecordViews
       LawSpec.Core.RefinementProof
+      LawSpec.Core.ResourceScope
       LawSpec.Core.Schema
       LawSpec.Core.Search
       LawSpec.Core.Semantics

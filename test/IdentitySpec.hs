@@ -4,6 +4,8 @@ module IdentitySpec (test_semanticIdentityIsBehaviourAndPresentationIsTheRest) w
 import qualified Data.Map.Strict as M
 import Data.List (isInfixOf, isPrefixOf)
 import Data.Char (isHexDigit)
+import qualified LawSpec.Core.Validate as Validate
+import LawSpec.Common (Diagnostic(..))
 import Test.Hspec
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Program as Scenario
@@ -137,14 +139,14 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
     semantic "zeta" renamed (first M.! "alpha") `shouldBe` True
     semantic "beta" renamed (first M.! "beta") `shouldBe` True
     semantic "alpha" changed (first M.! "alpha") `shouldBe` False
-  it "keeps adapter-calling test keys under checked local and definition renames" $ do
+  it "keeps adapter local refactors but tracks exported generated interfaces" $ do
     let source = edit "double x = x * 2" "observe (double x) = observe (x * 2)"
           (take 1 base ++ ["observe :: Integer -> Integer"] ++ drop 1 base)
         keys text = [entryKey e | e <- testManifest "javascript" Nothing
           (either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec" (unlines text)]))]
     keys (edit "(x :: Integer) -> Integer is x + x end" "(local :: Integer) -> Integer is local + local end" source)
       `shouldBe` keys source
-    keys (edit "double" "twice" source) `shouldBe` keys source
+    keys (edit "double" "twice" source) `shouldNotBe` keys source
     keys (edit "observe" "readNative" source) `shouldNotBe` keys source
   it "erases a checked generic definition's specialization provenance from semantic keys" $ do
     let source name variable = unlines
@@ -165,7 +167,37 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
         first = suffixes (source "Before")
     first `shouldSatisfy` (not . null)
     suffixes (source "After") `shouldBe` first
-  it "keeps model test keys when an unrelated checked definition changes" $ do
+  it "keeps law keys when a resolved strategy or its harness is renamed" $ do
+    laws <- readFile "examples/specs/harness.lawspec"
+    harness <- readFile "examples/specs/harness_testing.lawspec"
+    let keys body = [entryKey entry | entry <- testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source "harness.lawspec" laws, Source "harness_testing.lawspec" body]))]
+        renamed = unlines (edit "example.harness.testing" "example.harness.renamed" .
+          edit "strategy orders ::" "strategy generatedOrders ::" . edit "use orders for" "use generatedOrders for" $ lines harness)
+    keys harness `shouldSatisfy` (not . null)
+    keys renamed `shouldBe` keys harness
+  it "keeps resource-law keys under a law rename with validated generated sharing scopes" $ do
+    original <- readFile "examples/specs/resources.lawspec"
+    let source = unlines (edit "share Pool per unit" "share Pool per group" (lines original))
+        keys text = [entryKey entry | entry <- testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source "resources.lawspec" text]))]
+        renamed = unlines (edit "a pool starts each case empty" "a pool is reset before a case" (lines source))
+    keys source `shouldSatisfy` (not . null)
+    keys renamed `shouldBe` keys source
+  it "keeps explicit resource keys semantic and rejects forged generated provenance" $ do
+    source <- readFile "examples/specs/resources.lawspec"
+    let program = either (error . show) id (compileCore 64 defaultGeneration [Source "resources.lawspec" source])
+        unit = head [u | u <- C.programUnits program, any (not . null . C.propertyResources) (C.unitProperties u)]
+        property = head [p | p <- C.unitProperties unit, not (null (C.propertyResources p))]
+        resource = head (C.propertyResources property)
+        graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
+        keyed value = property { C.propertyResources = [resource { C.resourceShared = Just value, C.resourceSharedScope = Nothing }] }
+        forged = property { C.propertyResources = [resource { C.resourceShared = Just "a literal user key", C.resourceSharedScope = Just C.ResourcePerLaw }] }
+        replaceProperty p = program { C.programUnits = [if C.unitId candidate == C.unitId unit then candidate { C.unitProperties = [p] } else candidate | candidate <- C.programUnits program] }
+    semanticHash (identityOf graph (keyed "first user key")) `shouldNotBe` semanticHash (identityOf graph (keyed "second user key"))
+    Validate.validateProgram (replaceProperty forged) `shouldSatisfy`
+      either (any (("scope provenance" `isInfixOf`) . message)) (const False)
+  it "conservatively invalidates opaque model adapters when a callable generated definition changes" $ do
     let fixture = "test/fixtures/canonical-model-layer-selection.lawspec"
     original <- readFile fixture
     let source body = extendUnit original ("function unrelated (value :: Integer) -> Integer is " ++ body ++ " end function")
@@ -173,7 +205,7 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
           (either (error . show) id (compileCore 64 defaultGeneration [Source fixture text])), entryKind e == Just "model"]
         first = keys (source "value + 1")
     first `shouldSatisfy` (not . null)
-    keys (source "value + 2") `shouldBe` first
+    keys (source "value + 2") `shouldNotBe` first
     keys (unlines (edit "Pair n n end function" "Pair 0 n end function" (lines (source "value + 1"))))
       `shouldNotBe` first
   it "keeps admitted model/scenario keys under local/channel renames and isolates a changed scenario" $ do

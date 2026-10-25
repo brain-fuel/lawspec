@@ -75,7 +75,7 @@ presentationFields :: M.Map String Stream
 presentationFields = M.fromList $
   [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "declarationTemplate", "dataId", "dataName", "constructorId", "constructorName"
                       , "abilityName", "handlerId", "handlerName", "propertyId", "propertyName", "contractDeclaration"
-                      , "sessionId", "sessionName", "machineName", "commandName", "programTitle", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
+                      , "harnessUnit", "sessionId", "sessionName", "machineName", "commandName", "programTitle", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
   [ (f, Docs) | f <- [ "declarationOrigin", "dataOrigin", "constructorOrigin", "expressionOrigin", "abilityOrigin"
                      , "handlerOrigin", "propertyLocation", "propertyDescription", "propertyRationale"
                      , "propertyReferences", "propertyTrace", "propertyMetadata" ] ]
@@ -282,11 +282,12 @@ instance Encode Property where
     inStream Docs (enc r location >> text description >> text rationale >> enc r refs >> enc r trace >> enc r metadata)
     enc r parameters
     enc r inputs
+    -- Resource locals are in scope throughout the body and examples.
+    enc r resources
     enc r body
     enc r examples
     enc r generation
     enc r handlers
-    enc r resources
     enc r harness
     enc r domain
 
@@ -315,12 +316,28 @@ instance Encode Proposition
 instance Encode Quantifier
 instance Encode Quantification
 instance Encode Example
-instance Encode LawHarness
+instance Encode LawHarness where
+  enc resolver harness = do
+    -- The resolved draw AST selects candidates. Its source strategy alias
+    -- only labels diagnostics and generated helper names.
+    inStream Names (enc resolver [name | (_,name,_) <- harnessDraws harness] >>
+      enc resolver [name | (_,_,name,_) <- harnessSearches harness])
+    genc resolver (from harness
+      { harnessDraws = [(binder,"<resolved-strategy>",draw) | (binder,_,draw) <- harnessDraws harness]
+      , harnessSearches = [(binder,path,"<resolved-strategy>",draw) | (binder,path,_,draw) <- harnessSearches harness] })
 instance Encode WitnessChoice
 instance Encode Cover
 instance Encode Draw
 instance Encode UnitHarness
-instance Encode Resource
+instance Encode Resource where
+  enc resolver (Resource binder acquire release reset shared concurrent scope) = do
+    tag "Resource"
+    enc resolver binder >> enc resolver acquire >> enc resolver release >> enc resolver reset
+    case scope of
+      Nothing -> tag "explicit-key" >> enc resolver shared
+      Just generated -> tag "generated-scope" >> enc resolver generated >> inStream Names (enc resolver shared)
+    enc resolver concurrent
+instance Encode ResourceSharingScope
 instance Encode Unit
 instance Encode FailureBinding
 instance Encode FailurePayload
@@ -541,6 +558,7 @@ instance Collect Cover
 instance Collect Draw
 instance Collect UnitHarness
 instance Collect Resource
+instance Collect ResourceSharingScope
 instance Collect Unit
 instance Collect FailureBinding
 instance Collect FailurePayload

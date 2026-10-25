@@ -116,11 +116,20 @@ substitution.
 
 A native adapter's declaration and configured binding identify a real entry
 point. Its public type and constructor/field names remain inputs to native
-result keys. Checked local names do not: changing a helper's parameter must
-not rerun every adapter-calling law. The host additionally hashes actual
-adapter sources, toolchain and binding configuration. Model checks hash the
-selected model and reachable checked definitions rather than an unrelated
-unit definition's body.
+result keys. Local bindings inside checked bodies stay out. Public exported names and
+keyword parameter names belong to native interfaces where the target exposes
+them. The host additionally hashes actual adapter sources, toolchain and
+binding configuration.
+
+Opaque native code can call a generated helper that its law never references,
+or look up an actor/handler/session interface dynamically. Such laws therefore
+also key on a conservative generated public API footprint: callable checked
+bodies, public type/constructor/field names and runtime interfaces. An edit to
+a potentially callable generated helper invalidates these adapter results
+until precise native dependency metadata can establish that it is unrelated.
+Pure laws and solver goals retain precise semantic dependency closure. These
+keys assume adapters use the documented generated API, rather than reflecting
+private helper spellings or formatted source text.
 
 A cached acceptance execution is separate from presentation validation. A
 changed generated file is formatted and compiled/parsed by its native tools
@@ -190,3 +199,27 @@ stales that scenario's execution without invalidating unrelated random-run
 checks. Model/scenario titles and bound local/channel names are presentation.
 Free machine/protocol/type descriptor strings outside an enclosing checked
 context remain identity inputs, rather than being guessed or erased.
+
+
+## Resources and persisted host caches
+
+Resource binders are registered before the law body and examples encode their
+uses. Generated sharing keys retain their runtime spelling and carry explicit
+scope provenance (law, unit, run or named group). Mandatory Core validation
+checks the key and group against that provenance. Only validated generated
+spellings are presentation; unknown or explicit user keys remain semantic.
+Resolved strategy aliases and harness names are presentation beside their
+actual draw ASTs. Benchmarks are measured independently on every request.
+
+The Node SDK mounts an explicitly requested host cache root at a dedicated
+WASI path and puts compiler memos below the actual `core.wasm` SHA-256. Calls
+that switch cache roots are serialized and use independent instances. The
+proof host keeps the original host directory for its receipts. An absolute
+host path is never accidentally treated as a path below the working directory,
+and two binaries with the same package version cannot share compiler memos.
+
+A cached bounded SAT model that the current evaluator cannot replay is deleted
+and its current solver task is retried once. A structured compiler replay
+result controls the retry; the host does not classify diagnostic prose or
+rewrite solver/model text. This covers obsolete public constructor symbols
+while preserving explicit incomplete outcomes for unconfirmed fresh models.

@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {appendFile,chmod,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {proveWithZ3,proofTaskFingerprint} from '../proof.mjs';
 
 // These tests exercise actual child processes and disk reuse. The compiler
@@ -100,4 +101,42 @@ process.stdin.on('end',()=>process.exit(0));
     assert.equal((await readFile(log,'utf8')).trim().split('\n').length,2);
     await assert.rejects(readdir(path.join(folder,'cache','solver-goals-v1')),{code:'ENOENT'});
   } finally {await rm(folder,{recursive:true,force:true});}
+});
+
+
+test('a cached bounded model rejected by current replay retries the current task',async()=>{
+  const folder=await mkdtemp(path.join(tmpdir(),'lawspec-model-retry-'));
+  try{
+    const binary=path.join(folder,'solver'),log=path.join(folder,'executions');
+    await writeFile(binary,`#!/usr/bin/env node
+const fs=require('node:fs');
+if(process.argv.includes('-version')){console.log('Z3 version 0.0.0 - model replay cache test');process.exit(0);}
+fs.appendFileSync(${JSON.stringify(log)},'task\\n');
+let input='',answered=false,valued=false;
+process.stdin.on('data',chunk=>{input+=chunk;if(!answered&&input.includes('(check-sat)')){answered=true;process.stdout.write('sat\\n');}
+const values=input.match(/\\(get-value \\(([^)]+)\\)\\)/);if(!valued&&values){valued=true;process.stdout.write('(('+values[1]+' 0))\\n');}});
+process.stdin.on('end',()=>process.exit(0));
+`);await chmod(binary,0o755);
+    const compiler={proofTasks:async request=>{
+      const name=request.renamed?'current':'original';
+      const row={owner:'modelcache',declaration:'modelcache::law',tasks:[]};
+      const task={kind:'bounded search',inputs:[name],script:`(declare-const ${name} Int)\n(assert true)\n`,semanticFingerprint:'a'.repeat(64)};
+      task.fingerprint=createHash('sha256').update(row.declaration+'\0'+task.kind+'\0'+task.script).digest('hex');row.tasks=[task];
+      const answer=request.modelResults?.find(answer=>answer.fingerprint===task.fingerprint);
+      const confirmed=answer&&answer.inputs?.[0]===name&&answer.values.includes('(('+name+' ');
+      return {diagnostics:[],proofTasks:[],modelTasks:[row],evidence:[{owner:row.owner,declaration:row.declaration,stage:'law',status:'incomplete'}],
+        ...(answer?{modelChecks:[{fingerprint:task.fingerprint,status:confirmed?'confirmed':'model-not-confirmed',reason:'current replay'}],
+          modelEvidence:[{owner:row.owner,declaration:row.declaration,stage:'law',status:confirmed?'refuted':'incomplete',reason:'current replay'}]}:{})};
+    }};
+    const input={cacheDirectory:path.join(folder,'cache')};
+    const count=async()=> (await readFile(log,'utf8')).trim().split('\n').length;
+    const first=await proveWithZ3(compiler,input,{binary});
+    assert.equal(first.evidence[0].status,'refuted');assert.equal(await count(),1);
+    const retried=await proveWithZ3(compiler,{...input,renamed:true},{binary});
+    assert.equal(retried.evidence[0].status,'refuted');assert.equal(await count(),2);
+    assert.equal(retried.solverEvidence[0].reused,undefined);
+    const reused=await proveWithZ3(compiler,{...input,renamed:true},{binary});
+    assert.equal(reused.evidence[0].status,'refuted');assert.equal(await count(),2);
+    assert.ok(reused.solverEvidence[0].reused);
+  }finally{await rm(folder,{recursive:true,force:true});}
 });

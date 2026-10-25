@@ -488,7 +488,14 @@ data Resource = Resource
   , resourceReset :: Maybe Expr, resourceShared :: Maybe String
   -- Cases may use a shared one at the same time (resource T is concurrent):
   -- it is reset only when no case holds it.
-  , resourceConcurrent :: Bool }
+  , resourceConcurrent :: Bool
+  -- A compiler-generated runtime key carries validated scope provenance.
+  -- Without provenance, an explicit key remains a semantic literal.
+  , resourceSharedScope :: Maybe ResourceSharingScope }
+  deriving (Eq, Show, Generic)
+
+-- | Scope is meaning; the generated key's law/unit spellings are display.
+data ResourceSharingScope = ResourcePerLaw | ResourcePerUnit | ResourcePerRun | ResourceGroup String
   deriving (Eq, Show, Generic)
 -- | unitMachines are the unit's stateful models, which each target's model
 -- runtime runs against its adapters.

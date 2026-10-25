@@ -64,3 +64,52 @@ test("--no-cache and cache: false keep no cache", async (t) => {
   const invalid = await project(t, { cache: "yes" });
   await assert.rejects(check(invalid), (error) => /cache must be true or false/.test(error.stdout + error.stderr));
 });
+
+
+// SDK caches use the caller's actual host directories, including absolute
+// paths, while the compiler sees only its dedicated WASI mount.
+test("SDK cache roots are explicit mounts and concurrent root changes stay isolated",async t=>{
+  const {createCompiler}=await import('../api.mjs');
+  const roots=await Promise.all([0,1].map(()=>mkdtemp(path.join(os.tmpdir(),'lawspec-sdk-cache-'))));
+  t.after(()=>Promise.all(roots.map(root=>rm(root,{recursive:true,force:true}))));
+  const compiler=await createCompiler();
+  const request=cacheDirectory=>({schemaVersion:5,languageProfile:'1.0-rc.2',cacheDirectory,
+    verification:{layers:[]},sources:[{path:'input.lawspec',content:spec}]});
+  const results=await Promise.all(roots.map(root=>compiler.check(request(root))));
+  assert.deepEqual(results[0],results[1]);assert.deepEqual(results[0].diagnostics,[]);
+  for(const root of roots){
+    assert.ok((await entries(root)).length>0);
+    const accidental=path.join(process.cwd(),root.replace(/^[/\\]+/,''));
+    await assert.rejects(readdir(accidental),{code:'ENOENT'});
+  }
+  assert.deepEqual(await compiler.check(request(roots[0])),results[0]);
+});
+
+test("SDK persisted compiler memos are separated by the actual WASM binary",async t=>{
+  const {copyFile,appendFile}=await import('node:fs/promises');
+  const {createHash}=await import('node:crypto');
+  const {fileURLToPath}=await import('node:url');
+  const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-sdk-build-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const cache=path.join(root,'cache'), variant=path.join(root,'variant');
+  await mkdir(variant);
+  for(const file of ['api.mjs','launcher.mjs','core_jsffi.js','core.wasm'])
+    await copyFile(new URL('../'+file,import.meta.url),path.join(variant,file));
+  await writeFile(path.join(variant,'package.json'),'{"type":"module"}\n');
+  // A valid custom section changes the actual binary without changing its
+  // compiler behavior. Both real builds must keep separate disk entries.
+  const name=Buffer.from('lawspec-cache-test');
+  const payload=Buffer.concat([Buffer.from([name.length]),name,Buffer.from([1])]);
+  await appendFile(path.join(variant,'core.wasm'),Buffer.concat([Buffer.from([0,payload.length]),payload]));
+  const input={schemaVersion:5,languageProfile:'1.0-rc.2',cacheDirectory:cache,verification:{layers:[]},sources:[{path:'input.lawspec',content:spec}]};
+  const first=await import('../api.mjs');
+  const expected=await (await first.createCompiler()).check(input);assert.deepEqual(expected.diagnostics,[]);
+  const child=`import {createCompiler} from ${JSON.stringify(new URL('file://'+path.join(variant,'api.mjs')).href)};console.log(JSON.stringify(await(await createCompiler()).check(${JSON.stringify(input)})));`;
+  const actual=JSON.parse((await exec(process.execPath,['--input-type=module','-e',child])).stdout);
+  assert.deepEqual(actual,expected);
+  const hash=async file=>createHash('sha256').update(await readFile(file)).digest('hex');
+  const builds=[await hash(fileURLToPath(new URL('../core.wasm',import.meta.url))),await hash(path.join(variant,'core.wasm'))];
+  assert.notEqual(builds[0],builds[1]);
+  assert.deepEqual((await readdir(cache)).sort(),builds.sort());
+  for(const build of builds)assert.ok((await entries(path.join(cache,build))).length>0);
+});

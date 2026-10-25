@@ -80,6 +80,31 @@ test('real native tests rerun zero cases after harmless source edits and rerun a
     await generate(base.replace('is value + value end function','is value + value + 1 end function'));
     await assert.rejects(run('test'));
     assert.ok(await count(log)>beforeChanged);
+    // An opaque adapter may call an exported generated helper that its law
+    // never references. That generated implementation is still a dependency.
+    const indirect=`unit identity.adapter
+observe :: Integer -> Integer
+function generated (value :: Integer) -> Integer is value + 1 end function
+law selected is definition: for all (input :: Integer where input >= -3 && input <= 3) => observe input = input + 1 end for all end definition end law
+end unit
+`;
+    await generate(indirect);
+    await writeFile(path.join(project,'src/identity/adapter.mjs'),
+      'import {generated} from "../lawspec_definitions/identity/adapter.mjs";\nexport function observe(value){return generated(new Map(),value); }\n');
+    await run('test');
+    const beforeIndirect=await count(log);
+    await generate(indirect.replace('is value + 1 end function','is value + 2 end function'));
+    await assert.rejects(run('test'));
+    assert.ok(await count(log)>beforeIndirect);
+    const contract=indirect.replace('(value :: Integer)','(value :: Integer where value >= 0)')
+      .replace('input >= -3','input >= 0');
+    await generate(contract);await run('test');
+    const beforeContract=await count(log);
+    await generate(contract.replace('value >= 0','value > 0'));
+    await assert.rejects(run('test'));
+    assert.ok(await count(log)>beforeContract);
+
+
   } finally {await rm(folder,{recursive:true,force:true});}
 });
 

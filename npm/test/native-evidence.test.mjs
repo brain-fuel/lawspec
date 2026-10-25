@@ -123,3 +123,13 @@ test('current native evidence retains retry and adequacy observations without pr
   assert.equal(stale.status,'planned');assert.equal(stale.adequacy,undefined);
   assert.equal(attachNativeEvidence([{...obligation,status:'proved'}],[row])[0].status,'proved');
 });
+
+
+test('real-provider implementation changes invalidate wiring keys without inventing a fresh run',()=>{
+  const dependency={dependency:'Gateway',endpoint:'localhost:8080',kind:'real',provider:'real',
+    implementation:{kind:'application',product:'gateway',version:'1.0.0',commit:'first'}};
+  const key=value=>attestedKeys({evidence:[{declaration:'charge',plannedEnvironment:'staging',plannedAgainst:[value]}]}).get('charge');
+  assert.notEqual(key(dependency),key({...dependency,implementation:{...dependency.implementation,commit:'second'}}));
+  assert.notEqual(key(dependency),key({...dependency,implementation:{...dependency.implementation,version:'1.0.1'}}));
+  assert.equal(key(dependency),key({...dependency,reached:true,historyDigest:'observed',completed:{reached:true}}));
+});
