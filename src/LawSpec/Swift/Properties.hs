@@ -13,6 +13,7 @@ import qualified LawSpec.Testing.Draws as Draws
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Testing.Literals as Literals
+import qualified LawSpec.Core.Value as V
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
 import LawSpec.Backend (lawCommentLines, propertyLink)
@@ -211,8 +212,12 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
           (labelled ("example " ++ displayLabel (C.exampleName example)) exampleLink) False
           (setup (Do [inScope] (Raw "()"))))
       cover <- caseCover planned
-      literalPlan <- Literals.planLiterals (Literals.coverLiterals cover)
+      literalPlan <- Literals.planRootLiterals (Literals.coverLiterals cover ++
+        concatMap generatorBoundaries (generatorRequirements planned))
       let literalValue value = Literals.literalReference literalPlan value >>= literalTerm name
+          generatorLiteral value
+            | M.member value (Literals.literalReferences literalPlan) = literalValue value
+            | otherwise = pure (X.value X.symbolsVar value)
       coverCode <- coverExpression literalValue cover
       literalHelpers <- literalFunctions name literalPlan
       let valuesName = name ++ "Cases"
@@ -233,7 +238,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
       random <- case finiteCases planned of
         Just _ -> pure [test (name ++ "_statistics") (displayLabel (C.propertyName law) ++ " statistics") lawComment True (Raw "()") | observed harness]
         Nothing -> do
-          generator <- generators bits plan external local planned
+          generator <- generators generatorLiteral bits plan external local planned
           covers <- mapM (render . C.coverWhen) (C.harnessCover harness)
           classes <- forM (C.harnessClassify harness) $ \(predicate, className) -> do
             v <- render predicate
@@ -346,8 +351,8 @@ observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify
 
 -- | The generator of a law's inputs: each input drawn knowing the earlier
 -- ones, within its refinement, or from the harness's strategy for it.
-generators :: Int -> Plan -> (X.Context -> C.Expr -> [Expr] -> Either String Expr) -> (C.Id -> String) -> PlannedProperty -> Either String Expr
-generators bits plan external local planned = walk [] (generatorRequirements planned)
+generators :: (V.Value -> Either String Expr) -> Int -> Plan -> (X.Context -> C.Expr -> [Expr] -> Either String Expr) -> (C.Id -> String) -> PlannedProperty -> Either String Expr
+generators literal bits plan external local planned = walk [] (generatorRequirements planned)
   where
     strategies = C.harnessDraws (C.propertyHarness (plannedProperty planned))
     renderWith names = X.render (X.Context bits X.schemaVar X.symbolsVar names external X.typeRef X.typeKeyOf)
@@ -389,8 +394,9 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
           target <- renderWith names (indexedTarget indexed)
           pure (call "Generators" "index" [target, ListOf (Ty "[String]") [Str (C.idText tag) | (tag, _) <- indexedEquations indexed],
             ListOf (Ty "[[String]]") [ListOf (Ty "[String]") (map Str terms) | (_, terms) <- indexedEquations indexed]])
+      witnesses <- mapM literal (generatorBoundaries requirement)
       pure (pure' "Generators" "generator" [Var "generation", ref, ListOf (Ty "[Generators.Bound]") (bounds ++ lengths),
-        ListOf tValues (map (X.value X.symbolsVar) (generatorBoundaries requirement) ++ hints), index])
+        ListOf tValues (witnesses ++ hints), index])
     directed quantifier witnesses = GeneratorRequirement (C.quantifiedBinder quantifier)
       (C.quantifiedPredicates quantifier) witnesses (C.quantifiedBounds quantifier) (domainHints quantifier)
       (indexedGeneration (planDataDeclarations plan) (concatMap (C.unitDefinitions . plannedUnit) (plannedUnits plan)) quantifier)
