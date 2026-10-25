@@ -18,6 +18,7 @@ import LawSpec.HaskellDefinitions (sortedImports)
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -221,11 +222,11 @@ emitTests Config{..} unit laws = do
     harnessProperty fn label e check = do
       let h = C.propertyHarness (original e)
           strategyOf inp = [(n, d) | (i, n, d) <- C.harnessDraws h, i == C.binderId (C.quantifiedBinder inp)]
-      draws <- mapM (\plan -> do
+      draws <- mapM (\(index,plan) -> do
         let inp = domainInput plan
         case strategyOf inp of
-          (strategy, d) : _ -> Bind (inputId inp) <$> drawDoc inp strategy d
-          [] -> pure (Bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp)))) (generationPlan e)
+          (strategy, d) : _ -> Bind (inputId inp) <$> sharedDraw plan (take index (map generatorBinder (generationPlan e))) strategy d
+          [] -> pure (Bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp)))) (zip [0 :: Int ..] (generationPlan e))
       let names = H.List (map (var . inputId) (inputs e))
           defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           predicates = concatMap inputRefinements defaults
@@ -243,19 +244,43 @@ emitTests Config{..} unit laws = do
         Just _ -> propertyTest fn label e body
         Nothing -> example (fn ++ "_property")
           (dollar (call "T.holdsFor" [integer (toInteger (cases (generation e)))]) (H.Do body))
-    drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim))
-      C.DrawOneOf _ values -> pure (call "Gen.element" [H.List (map expr values)])
-      C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, a) -> (\g -> H.Tuple [integer (toInteger w), g]) <$> drawDoc inp strategy a) alternatives
-        pure (call "Gen.frequency" [H.List options])
-      C.DrawSuchThat inner binder predicate _ -> do
-        g <- drawDoc inp strategy inner
-        pure (call "Gen.filterT" [lambda [local (C.binderId binder)] (truth (expr predicate)), g])
-      C.DrawBind binder from rest -> do
-        fromG <- drawDoc inp strategy from
-        restG <- drawDoc inp strategy rest
-        pure (operator ">>=" [fromG, lambda [local (C.binderId binder)] restG])
+    -- Helper bodies share code only: each invocation receives its current
+    -- symbols and the callee's actual lexical captures and returns a fresh Gen.
+    sharedDraw requirement available strategy draw = do
+      let input = domainInput requirement
+      plan <- either (Left . pure . (\message -> Diagnostic "strategy" message Nothing)) Right
+        (Draws.planDraw requirement available draw)
+      let nodes = Draws.drawNodes plan
+          introduced node = Draws.drawCaptures node ++ case Draws.drawStep node of
+            Draws.AnyDraw _ (Just q) -> [C.quantifiedBinder q]
+            Draws.FilterDraw _ binder _ _ -> [binder]
+            Draws.BindDraw binder _ _ -> [binder]
+            _ -> []
+          used = map (local . C.binderId) (available ++ concatMap introduced nodes)
+          names = fst (claimAll (scopeWith (haskellReserved ++ used))
+            ["draw" ++ show (Draws.drawNumber node) | node <- nodes])
+          helpers = zip (map Draws.drawNumber nodes) names
+          invoke call' = case lookup (Draws.drawCallee call') helpers of
+            Just name -> pure (call name (var "symbols" : map (var . local) (Draws.drawArguments call')))
+            Nothing -> Left [Diagnostic "strategy" "missing Haskell draw helper" Nothing]
+          body node = case Draws.drawStep node of
+            Draws.AnyDraw ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty)
+              (drawRange machineBits input ty aim))
+            Draws.OneOfDraw _ values -> pure (call "Gen.element" [H.List (map expr values)])
+            Draws.FrequencyDraw branches -> do
+              values <- mapM (\(weight, child) -> H.Tuple . (integer weight :) . pure <$> invoke child) branches
+              pure (call "Gen.frequency" [H.List values])
+            Draws.FilterDraw child binder predicate _ -> do
+              inner <- invoke child
+              pure (call "Gen.filterT" [lambda [local (C.binderId binder)] (truth (expr predicate)), inner])
+            Draws.BindDraw binder from rest -> do
+              start <- invoke from
+              following <- invoke rest
+              pure (operator ">>=" [start, lambda [local (C.binderId binder)] following])
+      bindings <- mapM (\(node, name) -> do
+        value <- body node
+        pure (name, lambda ("symbols" : map (local . C.binderId) (Draws.drawCaptures node)) value)) (zip nodes names)
+      H.LetIn bindings <$> invoke (Draws.drawRoot plan)
     render = D.render D.Compact . H.expression
     expr = expression
     truth value = call "LS.truth" [value]

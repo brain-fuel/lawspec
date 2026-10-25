@@ -9,6 +9,7 @@ import LawSpec.Naming (exampleTestSuffix, displayLabel, cased, Casing(..), claim
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -160,33 +161,61 @@ emitTests Config{..} unit laws = do
     harnessProperty fn e check = do
       let h = C.propertyHarness (original e)
           strategyOf inp = [(n, d) | (i, n, d) <- C.harnessDraws h, i == C.binderId (C.quantifiedBinder inp)]
-      draws <- mapM (\plan -> do
+      draws <- mapM (\(index,plan) -> do
         let inp = domainInput plan
             predicate = conjunction (map (truth . expr) (inputRefinements inp))
         case strategyOf inp of
           (strategy, d) : _ -> do
-            value <- drawDoc inp strategy d
+            value <- sharedDraw plan (take index (map generatorBinder (generationPlan e))) strategy d
             pure [Declare (inputId inp) (call "lsHarnessCheckDrawn" [quoted strategy, quoted (inputName inp),
               closure (inputId inp ++ " LawSpecValue") "bool" (returned predicate), value])]
           [] -> pure ([Declare (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".Draw(t, " <> quoted (inputName inp) <> text ")")] ++
-            [Plain (text "if !(" <> predicate <> text ") " <> block (text "t.SkipNow()")) | not (null (inputRefinements inp))])) (generationPlan e)
+            [Plain (text "if !(" <> predicate <> text ") " <> block (text "t.SkipNow()")) | not (null (inputRefinements inp))])) (zip [0 :: Int ..] (generationPlan e))
       pure $ testFunction (fn ++ "_Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ body ([symbols] ++ concat draws ++ plainAll (handlerInstalls e) ++ resourceDocs e ++ [Plain check])]
-    drawDoc inp strategy d = case d of
-      C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".Draw(t, \"value\")")
-      C.DrawOneOf _ values -> pure (call "lsHarnessOneOf" [text "t", text "[]func() LawSpecValue{" <>
-        D.joinWith (text ", ") [closure "" "LawSpecValue" (returned (expr v)) | v <- values] <> text "}"])
-      C.DrawFrequency alternatives -> do
-        options <- mapM (\(w, a) -> (\doc -> text ("{" ++ show w ++ ", ") <> closure "" "LawSpecValue" (returned doc) <> text "}") <$> drawDoc inp strategy a) alternatives
-        pure (call "lsHarnessFrequency" [text "t", text "[]lsHarnessWeighted{" <> D.joinWith (text ", ") options <> text "}"])
-      C.DrawSuchThat inner binder predicate limit -> do
-        doc <- drawDoc inp strategy inner
-        pure (call "lsHarnessSuchThat" [closure "" "LawSpecValue" (returned doc),
-          closure (local (C.binderId binder) ++ " LawSpecValue") "bool" (returned (truth (expr predicate))), number limit, quoted strategy])
-      C.DrawBind binder from rest -> do
-        fromDoc <- drawDoc inp strategy from
-        restDoc <- drawDoc inp strategy rest
-        pure (closure (local (C.binderId binder) ++ " LawSpecValue") "LawSpecValue" (returned restDoc) <> text "(" <> fromDoc <> text ")")
+    -- Shared draw functions receive the current rapid generator, symbols
+    -- and lexical captures. Invoking a function still performs a fresh draw.
+    sharedDraw requirement available strategy draw = do
+      let input = domainInput requirement
+      plan <- either (Left . pure . (\message -> Diagnostic "strategy" message Nothing)) Right
+        (Draws.planDraw requirement available draw)
+      let nodes = Draws.drawNodes plan
+          introduced node = Draws.drawCaptures node ++ case Draws.drawStep node of
+            Draws.AnyDraw _ (Just q) -> [C.quantifiedBinder q]
+            Draws.FilterDraw _ binder _ _ -> [binder]
+            Draws.BindDraw binder _ _ -> [binder]
+            _ -> []
+          names = fst (claimAll (scopeWith ("t" : "symbols" : map (local . C.binderId) (available ++ concatMap introduced nodes)))
+            ["draw" ++ show (Draws.drawNumber node) | node <- nodes])
+          helpers = zip (map Draws.drawNumber nodes) names
+          invoke edge = case lookup (Draws.drawCallee edge) helpers of
+            Just name -> pure (call name (text "t" : text "symbols" : map (text . local) (Draws.drawArguments edge)))
+            Nothing -> Left [Diagnostic "strategy" "missing Go draw helper" Nothing]
+          nodeBody node = case Draws.drawStep node of
+            Draws.AnyDraw ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty)
+              (drawRange machineBits input ty aim) <> text ".Draw(t, \"value\")")
+            Draws.OneOfDraw _ values -> pure (call "lsHarnessOneOf" [text "t", text "[]func() LawSpecValue{" <>
+              D.joinWith (text ", ") [closure "" "LawSpecValue" (returned (expr value)) | value <- values] <> text "}"])
+            Draws.FrequencyDraw branches -> do
+              options <- mapM (\(weight, child) -> do
+                value <- invoke child
+                pure (text ("{" ++ show weight ++ ", ") <> closure "" "LawSpecValue" (returned value) <> text "}")) branches
+              pure (call "lsHarnessFrequency" [text "t", text "[]lsHarnessWeighted{" <> D.joinWith (text ", ") options <> text "}"])
+            Draws.FilterDraw child binder predicate limit -> do
+              inner <- invoke child
+              pure (call "lsHarnessSuchThat" [closure "" "LawSpecValue" (returned inner),
+                closure (local (C.binderId binder) ++ " LawSpecValue") "bool" (returned (truth (expr predicate))), number limit, quoted strategy])
+            Draws.BindDraw binder from rest -> do
+              start <- invoke from
+              following <- invoke rest
+              pure (closure (local (C.binderId binder) ++ " LawSpecValue") "LawSpecValue" (returned following) <> text "(" <> start <> text ")")
+      functions <- mapM (\(node, name) -> do
+        value <- nodeBody node
+        let parameters = intercalate ", " ("t *rapid.T" : "symbols map[string]*lawSpecSymbol" :
+              [local (C.binderId binder) ++ " LawSpecValue" | binder <- Draws.drawCaptures node])
+        pure (bind name (closure parameters "LawSpecValue" (returned value)))) (zip nodes names)
+      root <- invoke (Draws.drawRoot plan)
+      pure (closure "" "LawSpecValue" (statements (functions ++ [returned root])) <> text "()")
     -- LAWSPEC_SEED fixes rapid's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = text "func init() " <> block (text "if seed := os.Getenv(\"LAWSPEC_SEED\"); seed != \"\" " <>
