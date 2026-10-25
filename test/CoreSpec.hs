@@ -6,6 +6,8 @@ import LawSpec.Scalar
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Eval as E
 import qualified LawSpec.Core.Validate as V
+import LawSpec.JvmLets (flattenLets, flattenStrictLets)
+import qualified LawSpec.Core.Types as Types
 import LawSpec.Frontend
 import LawSpec.Testing (planTesting, plannedUnits, plannedProperties, finiteCases)
 import qualified LawSpec.Model as S
@@ -43,6 +45,38 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
         lit = C.Expr (C.scalarType "Int8") (C.Constant (SInteger "Int8" 127)) origin
         bad = C.Expr (C.scalarType "Int8") (C.Binary C.Add (C.Numeric (C.scalarType "Int8")) lit lit) origin
     V.validateExpression 64 M.empty M.empty bad `shouldSatisfy` isLeft
+  describe "JVM let hoisting" $ do
+    let origin = C.GeneratedFrom (C.Id "let-hoist")
+        bool = C.scalarType "Bool"
+        integer = C.scalarType "Integer"
+        term ty node = C.Expr ty node origin
+        binder name ty = C.Binder (C.Id name) name ty
+        local b = term (C.binderType b) (C.Local (C.binderId b))
+        bind b value body = term (C.expressionType body) (C.Let b value body)
+        one = term integer (C.Constant (SInteger "Integer" 1))
+        yes = term bool (C.Constant (SBool True))
+        x = binder "x" integer
+        y = binder "y" integer
+        nested = bind x (bind y one (local y)) yes
+        constructor = term (C.Constructor "Maybe" [C.TypeArgument integer])
+          (C.Construct (C.Id "Maybe::Present") [bind x one (local x)])
+        strictArgument = term bool (C.Binary C.Equal (C.Numeric integer)
+          one (bind x one (local x)))
+        verify transform input = do
+          let output = transform input
+          V.validateExpression 64 M.empty M.empty input `shouldBe` Right ()
+          V.validateExpression 64 M.empty M.empty output `shouldBe` Right ()
+          C.expressionType output `shouldBe` C.expressionType input
+          case Types.makeRegistry [] of
+            Left err -> expectationFailure err
+            Right registry -> E.evaluateValuePure registry 64 [] output
+              `shouldBe` E.evaluateValuePure registry 64 [] input
+    it "preserves the enclosing result type when nested values are hoisted" $
+      mapM_ (\transform -> verify transform nested) [flattenLets, flattenStrictLets]
+    it "preserves constructor result types when arguments are hoisted" $
+      mapM_ (\transform -> verify transform constructor) [flattenLets, flattenStrictLets]
+    it "preserves strict-operation result types when arguments are hoisted" $
+      verify flattenStrictLets strictArgument
   it "short circuits partial exact arithmetic" $ do
     let s = Source "core" "unit core\nlaw \"|short circuit| is definition : for all (x :: Bool) => (false && 1 / 0 == 0) = false end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [s] of
