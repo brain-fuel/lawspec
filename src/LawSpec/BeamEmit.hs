@@ -130,11 +130,10 @@ emitBeamWithBindings target minify bindings plan = do
     cryptoAssets = if not usesCrypto then [] else
       [Artifact "priv/lawspec_crypto_native.c" (runtimeSource "beam-crypto-native-c") "generated" "source",
        Artifact "lawspec_crypto_build.escript" (runtimeSource "beam-crypto-build") "generated" "source",
+       Artifact "priv/lawspec_crypto_vectors.txt" (defaultSource "vectors.txt") "generated" "source",
        Artifact (testSupport ++ "lawspec_beam_crypto_vectors.erl") vectorSource "generated" "test",
        vectorTests]
-    vectorSource = unlines [if line == "vector_text() -> @@VECTORS@@."
-      then "vector_text() ->\n    " ++ D.render layout (E.binary (defaultSource "vectors.txt")) ++ "." else line
-      | line <- lines (defaultSource "beam/crypto_vectors.erl")]
+    vectorSource = defaultSource "beam/crypto_vectors.erl"
     vectorKinds = ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
       "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
       "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]

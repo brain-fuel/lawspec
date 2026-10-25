@@ -105,4 +105,21 @@ hex(<<"-">>) -> <<>>;
 hex(Text) -> binary:decode_hex(Text).
 digest(Bytes) -> binary:encode_hex(lawspec_beam_crypto:sha3_256(Bytes), lowercase).
 flip(<<First, Rest/binary>>) -> <<(First bxor 1), Rest/binary>>.
-vector_text() -> @@VECTORS@@.
+%% The unchanged known-answer data ships beside the native crypto bridge.
+%% Resolve it from the loaded runtime, independently of the caller's directory.
+vector_text() ->
+    BeamDir = filename:dirname(code:which(lawspec_beam_crypto_native)),
+    Name = "lawspec_crypto_vectors.txt",
+    read_vectors([
+        filename:join([filename:dirname(BeamDir), "priv", Name]),
+        filename:join([BeamDir, "priv", Name])
+    ]).
+
+read_vectors([]) ->
+    error(missing_crypto_vector_data);
+read_vectors([Path | Rest]) ->
+    case file:read_file(Path) of
+        {ok, Text} -> Text;
+        {error, enoent} -> read_vectors(Rest);
+        {error, Reason} -> error({crypto_vector_data_read_failed, Path, Reason})
+    end.
