@@ -573,9 +573,11 @@ emitCodecs mappings owner layout declarations = do
         pure (call "schema.construct" [ty,quoted (C.idText (C.constructorId constructor)),
           call "java.util.List.of" children,D.text "bits",D.text "symbols"]))
     projectLayout []=D.text "value"
-    projectLayout (index:rest)=foldl (\value child->value<>
-      D.text (".data().asInstanceOf[LawSpecRuntime.Data].fields().get("++show child++")"))
-      (D.text ("data.fields().get("++show index++")")) rest
+    projectLayout (index:rest)=D.group (D.text "data" <> D.nest 2
+      (mconcat [D.softbreak <> selection | selection <- field index ++ concatMap nested rest]))
+      where
+        field child = [call ".fields" [],call ".get" [D.text (show child)]]
+        nested child = call ".data" [] : D.text ".asInstanceOf[LawSpecRuntime.Data]" : field child
     encodeArm names parameters dataOwner variant
       | Just bound<-constructorMapping variant,Just tree<-resolvedFieldLayout bound = do
           bridges<-layoutCodecs names parameters bound
@@ -619,7 +621,9 @@ emitCodecs mappings owner layout declarations = do
     decodeArm names parameters dataOwner variant
       | Just bound<-constructorMapping variant,Just tree<-resolvedFieldLayout bound = do
           bridges<-layoutCodecs names parameters bound
-          let payload=[call (D.render D.Compact bridge++".decode") [projectLayout path] |
+          -- A codec may itself be a typed call. Keep that receiver structured
+          -- when selecting decode instead of treating its source as a name.
+          let payload=[L.chain bridge [("decode", [projectLayout path])] |
                 (bridge,path)<-zip bridges (nativeLayoutPaths tree)]
               constructor=D.render D.Compact (applied (constructorName dataOwner variant)
                 [D.text t | (_,(t,_))<-parameters])
