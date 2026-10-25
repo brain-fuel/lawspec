@@ -40,6 +40,8 @@ data Config = Config
   , nativeGenerators :: Bool
   , nodeBudget :: Integer
   , machineBits :: Int
+  -- Native adapters convert logical arguments and failures once per signature.
+  , adapterWrappers :: [D.Doc]
   , expression :: Expr -> D.Doc
   , literal :: V.Value -> Either [Diagnostic] D.Doc
   , checked :: Type -> D.Doc -> D.Doc
@@ -104,7 +106,7 @@ emitTests Config{..} unit laws = do
   let testNames = unitTestNames "kotlin" (map name laws)
   generated <- mapM (law testNames) (zip [0::Int ..] laws)
   let lawDocs = map snd generated
-      sharedCases = concatMap fst generated
+      sharedCases = adapterWrappers ++ concatMap fst generated
       -- The JVM limits a method's bytecode to 64 KiB. Each law registers
       -- its tests in a function of its own, given the function that
       -- registers one test, so seeded ordering still collects them all.

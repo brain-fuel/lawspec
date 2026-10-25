@@ -38,6 +38,8 @@ data Config = Config
   , constructorContracts :: Bool
   , nodeBudget :: Integer
   , machineBits :: Int
+  -- Native adapters convert logical arguments and failures once per signature.
+  , adapterWrappers :: [D.Doc]
   , expression :: Expr -> D.Doc
   , literal :: V.Value -> Either [Diagnostic] D.Doc
   , checked :: Type -> D.Doc -> D.Doc
@@ -184,7 +186,7 @@ emitTests Config{..} unit laws = do
           [text "lawspec.Time.registerClock();" | installsClock unit]))] ++
         [braced (text "static") (statement (call "LawSpecHarness.parallelism"
           [quoted (unitName unit), quoted "threads (JUnit concurrent execution)", text "Runtime.getRuntime().availableProcessors()"])) | parallel] ++
-        map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
+        adapterWrappers ++ map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
       body = separate members
       rendered = D.render D.Compact body
       imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map", "java.util.function.Supplier",
