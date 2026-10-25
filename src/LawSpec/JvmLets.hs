@@ -36,7 +36,9 @@ flattenLetsIn strict = flatten
     in case break isLet args' of
       (before, letArg : after) | all simple before ->
         case expressionNode letArg of
-          Let b v inner -> flatten (letArg { expressionNode = Let b v (rebuild (before ++ [inner] ++ after)) })
+          Let b v inner ->
+            let body = rebuild (before ++ [inner] ++ after)
+            in flatten (letArg { expressionType = expressionType body, expressionNode = Let b v body })
           _ -> rebuild args'
       _ -> rebuild args'
   -- The nodes whose children are all evaluated, in order, before the node.
@@ -52,7 +54,9 @@ flattenLetsIn strict = flatten
 
   -- let x = (let y = a in b) in c: y's let first.
   hoist value rebuild = case expressionNode value of
-    Let b v inner -> value { expressionNode = Let b v (hoist inner rebuild) }
+    Let b v inner ->
+      let body = hoist inner rebuild
+      in value { expressionType = expressionType body, expressionNode = Let b v body }
     _ -> rebuild value
   isLet a = case expressionNode a of
     Let {} -> True
