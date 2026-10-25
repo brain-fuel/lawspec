@@ -21,7 +21,7 @@ import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import Data.Char (toUpper)
 import Data.List (nub, intercalate, zip4)
 import LawSpec.SourceLink (labelled, sourceLink)
-import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, uniqueNames)
+import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, uniqueNames, sourceDefinitionName)
 import LawSpec.AbilityNames (interfaceName, specName)
 
 -- | Generated tests call checked definitions by these names, so every test
@@ -170,9 +170,9 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
     callees = definitionCalls units
     evaluatorAt i = snd (callees !! i)
     -- Each function links to the definition it implements.
-    evaluatorComment i d = line ("// " ++ labelled (evaluatorAt i ++ " is " ++ idText (declarationId (definitionDeclaration d)) ++ " on logical values")
+    evaluatorComment _ d = line ("// " ++ labelled (sourceDefinitionName (declarationName (definitionDeclaration d)) ++ " on logical values")
       (sourceLink (declarationOrigin (definitionDeclaration d))) ++ ".") <> D.hardline
-    wrapperComment d = line ("// " ++ labelled (capitalize (declarationName (definitionDeclaration d)) ++ " is " ++ idText (declarationId (definitionDeclaration d)))
+    wrapperComment d = line ("// " ++ labelled (sourceDefinitionName (declarationName (definitionDeclaration d)))
       (sourceLink (declarationOrigin (definitionDeclaration d))) ++ ".") <> D.hardline
     -- A definition's parameters by their source names (LawSpec.Naming).
     parameterNames d = fst (claimAll (scopeWith (reservedFor "go" ++ wrapperNames)) [localIdentifier "go" (binderName b) | b <- definitionArguments d])

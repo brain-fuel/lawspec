@@ -20,7 +20,7 @@ import Control.Monad (forM)
 import Data.Char (isUpper)
 import Data.List (intercalate)
 import qualified LawSpec.BeamNames as Names
-import LawSpec.Naming (typeWords)
+import LawSpec.Naming (typeWords, sourceDefinitionName)
 import LawSpec.SourceLink (sourceLink, unitSourceFile)
 
 adapterModule :: C.Unit -> String
@@ -138,7 +138,7 @@ emitDefinitions target layout bits typed declarations units bound = do
       let statements = if null post then pre ++ body
             else pre ++ init body ++ [E.assign "Result" (last body)] ++ post ++ [D.text "Result"]
           inner = E.remote "lawspec_beam_runtime" "contextual" [E.binary (C.idText identity),E.lambda [] (E.sequenceDoc statements)]
-      pure (E.linkComment (C.declarationName declaration) (sourceLink (C.declarationOrigin declaration)) <>
+      pure (E.linkComment (sourceDefinitionName (C.declarationName declaration)) (sourceLink (C.declarationOrigin declaration)) <>
         E.function name (E.variable "Schema" inner : E.variable "Symbols" inner : map (\a -> E.variable a inner) arguments) [inner])
     require render label predicate = do
       body <- render predicate
@@ -166,7 +166,7 @@ emitDefinitions target layout bits typed declarations units bound = do
           Nothing -> if null handlers then pure [D.text "Symbols = make_ref()",
             D.text "Schema = " <> E.remote "lawspec_data" "schema" [symbols],result]
             else pure <$> Abilities.publicBody units handlers result
-        pure (E.linkComment (C.declarationName d) (sourceLink (C.declarationOrigin d)) <> mconcat (map (<> D.hardline) signatures) <>
+        pure (E.linkComment (sourceDefinitionName (C.declarationName d)) (sourceLink (C.declarationOrigin d)) <> mconcat (map (<> D.hardline) signatures) <>
           E.function (E.nativeFunction target d) (map snd handlers ++ arguments) body)
       let name = adapterModule unit ++ "_definitions" ++ (if target == "erlang" then "" else "_ffi")
           exports = [(E.nativeFunction target d,length (Effects.uses d) + length (fst (C.functionType (C.declarationType d))))

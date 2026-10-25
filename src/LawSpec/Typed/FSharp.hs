@@ -29,7 +29,7 @@ import LawSpec.DotNet.Code (stringLiteral, Lang(..))
 import LawSpec.DotNet.Names (pascal, camel, dataNames, localName, fsharpKeywords)
 import LawSpec.DotNet.Layout (F(A, App, Method, List, Record, Fun, Cond, Block, Infix, Paren, Prefix, Annotated), Stmt(..))
 import qualified LawSpec.DotNet.Layout as L
-import LawSpec.Naming (Scope, claim, claimAll, scopeWith, readableDefinitionName, localIdentifier)
+import LawSpec.Naming (Scope, claim, claimAll, scopeWith, readableDefinitionName, localIdentifier, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink)
 import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.DotNet.Effects as Effects
@@ -191,7 +191,7 @@ functionDoc env c d = do
     Nothing -> cstmt env params (definitionBody d)
   let parameters = concat [["(schema: Schema.Schema)", "(symbols: Scalar.SymbolContext)"] | contextual] ++
         ["(" ++ l ++ ": " ++ t ++ ")" | ((_, l), t) <- zip params types]
-  pure (["/// " ++ labelled (idText (declarationId declaration)) (sourceLink (declarationOrigin declaration)),
+  pure (["/// " ++ labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration)),
     "[<CompiledName(\"" ++ compiledName name ++ "\")>]"] ++
     L.function 0 ("let " ++ name) (if null parameters then ["()"] else parameters) (Just resultType) (Block statements value))
 

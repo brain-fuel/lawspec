@@ -25,12 +25,13 @@ import System.IO.Unsafe (unsafePerformIO)
 import qualified LawSpec.RustExpr as E
 import LawSpec.RustLayout (Arm(..))
 import qualified LawSpec.RustLayout as L
-import LawSpec.Naming (NameKind(..), claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, readableDefinitionName)
+import LawSpec.Naming (NameKind(..), claim, claimAll, scopeWith, localIdentifier, nativeIdentifier, readableDefinitionName, sourceDefinitionName)
 import qualified LawSpec.RustData as Native
 import LawSpec.Collections (collectionContainer)
 import LawSpec.Time (isDurationType)
 import LawSpec.RustAbilityPaths (performBridges)
 import LawSpec.RecordNames (recordDisplayNames)
+import LawSpec.SourceLink (labelled, sourceLink)
 
 data RustTyped = RustTyped
   { rustTypedModule :: D.Doc
@@ -345,7 +346,7 @@ functionDoc env c d = flip evalStateT (moduleReserved ++ map fst (calledNames en
       -- reads is marked unused.
       parameter l t = (if looping && reassigned l then "mut " else "") ++ E.unusedAs l rendered ++ ": " ++ t
       reassigned l = l `elem` [n | (i, n, _) <- params, i `elem` tailChanged env c (map (\(i', _, _) -> i') params) (definitionBody d)]
-      comment = D.text ("/// " ++ idText (declarationId declaration))
+      comment = D.text ("/// " ++ labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration)))
       returned = if looping
         then L.stmts [L.Do (L.Prefix "loop " (L.Block [L.Semi (L.Return (Just (L.call "Ok" [body])))] Nothing))] Nothing
         else L.stmts [] (Just (L.call "Ok" [body]))

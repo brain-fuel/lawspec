@@ -19,7 +19,7 @@ import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 import LawSpec.Typed.Plan (TypedPlan(..))
 import LawSpec.WebTypes (namesFor)
 import LawSpec.WebModule (Support(..), webModule, linkComment, printWebModule, importExtension)
-import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName, sourceDefinitionName)
 import LawSpec.SourceLink (sourceLink)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
@@ -99,7 +99,7 @@ emitWebDefinitions ts layout bits declarations units = do
     functionNameOf d = maybe "unnamed" id (lookup (declarationId (definitionDeclaration d)) names)
     -- Each function's comment links it to its definition.
     linked d stmt = let declaration = definitionDeclaration d
-      in [linkComment (declarationName declaration) (sourceLink (declarationOrigin declaration)), stmt]
+      in [linkComment (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration)), stmt]
     -- A definition's arguments keep their source names.
     argumentNames d = fst (claimAll (scopeWith (X.webReserved ++ ["result", "checkedResult"]))
       [localIdentifier "javascript" (binderName b) | b <- definitionArguments d])
