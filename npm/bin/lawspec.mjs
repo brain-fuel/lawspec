@@ -475,7 +475,8 @@ async function runTests(compiler, input, selected, roots, config) {
       build, target, machineBits: input.machineBits, minify: options.minify === true,
       tests: planned.tests,
       // Recorded values are spec data: a changed recording runs its laws again.
-      environment: await environmentDigest(root, report_,target.language) + (await recordedDigest(recordedFolder)),
+      environment: await environmentDigest(root, report_,target.language),
+      recorded: await recordedDigest(recordedFolder),
       project: await projectDigest(root, generated,target.language),
       attested,
     });

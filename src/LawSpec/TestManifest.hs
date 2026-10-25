@@ -116,9 +116,10 @@ testManifestWithNativeContext modelsSelected nativeBindings target testDir progr
     -- unit's harness settings, not the generated file. A law that runs
     -- native code keeps its public interface names, not checked locals.
     -- ref:DEC-content-identity
-    lawKey u p = if callsAdapters p
-      then adapterKey graph (show (programMachineBits program, generatedNativeAPI)) (p, settings u)
-      else semanticKey graph (show (programMachineBits program)) (p, settings u)
+    lawKey u p
+      | opaqueNative p = adapterKey graph (show (programMachineBits program, generatedNativeAPI)) (p, settings u)
+      | observesRecording p = adapterKey graph (show (programMachineBits program)) (p, settings u)
+      | otherwise = semanticKey graph (show (programMachineBits program)) (p, settings u)
     -- Benchmarks are measured independently on every request. Their
     -- names/bodies cannot stale ordinary law or model execution results.
     settings u = fmap (\harness -> harness { harnessBenchmarks = [] }) (unitHarnessSettings u)
@@ -146,7 +147,22 @@ testManifestWithNativeContext modelsSelected nativeBindings target testDir progr
            [(idText (handlerId handler), handlerName handler, handlerId handler) | handler <- unitHandlers unit])
         | unit <- programUnits program, not (null (unitSupervisors unit) && null (unitAbilities unit) && null (unitHandlers unit)) ] )
     namedArguments = target `elem` ["python", "csharp", "fsharp", "kotlin"]
-    callsAdapters p = nativeBindings || any unimplemented (S.toList reached) ||
+    -- A recording compares a nominal portable rendering with project data.
+    -- Its value's constructor/field names and external recording files are
+    -- observable even when every called definition is checked Core. Keep
+    -- that narrow interface separate from opaque native code's wider API.
+    callsAdapters p = opaqueNative p || observesRecording p
+    observesRecording p = any recorded (propertyExpressions p ++
+      map definitionBody (Dependencies.reachableDefinitions graph reached) ++
+      [expression | unit <- programUnits program, contract <- unitContracts unit,
+        Dependencies.DeclarationNode (contractDeclaration contract) `S.member` reached,
+        expression <- contractExpressions contract ++ contractRuntimePostconditions contract])
+      where
+        reached = Dependencies.closure graph (Dependencies.referencesOf graph p)
+        recorded expression = case expressionNode expression of
+          Helper Recorded _ -> True
+          _ -> any recorded (children expression)
+    opaqueNative p = nativeBindings || any unimplemented (S.toList reached) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)]
       where

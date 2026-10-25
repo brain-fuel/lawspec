@@ -91,6 +91,14 @@ description rewrites a comment and reruns nothing.
 Generated files keep their `file:line` source links. The links change the
 bytes, not the keys.
 
+A `recorded` law observes the portable rendering of its value and a recording
+file. Its native result key therefore also covers the reached data interface
+(type, constructor and field names), plus the host's project-input digest.
+Rank-preserving constructor renames can leave an ordinary law's semantic key
+unchanged while invalidating its recorded comparison. This does not require
+the whole generated public API salt used for opaque native implementations;
+local names, law labels and comments still do not change recorded results.
+
 ## The BLAKE3 implementation
 
 LawSpec hashes with its own pure Haskell BLAKE3, so native and WASM builds

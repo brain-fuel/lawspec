@@ -92,6 +92,29 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
       semanticHash (identities preserving M.! name) `shouldBe` semanticHash (identities source M.! name)
     keys renamed `shouldNotBe` keys source
     keys preserving `shouldBe` keys source
+  it "binds recorded renderings to their nominal interface and external files" $ do
+    let source = ["unit identity.recording", "type Choice is one of Alpha | Middle end type",
+          "function choose (unused :: Unit) -> Choice is Alpha end function",
+          "law snapshot is definition: choose unitValue = recorded \"first\" end definition end law",
+          "law ordinary is definition: choose unitValue = Alpha end definition end law", "end unit"]
+        entries text = testManifest "javascript" Nothing
+          (either (error . show) id (compileCore 64 defaultGeneration [Source "recording.lawspec" (unlines text)]))
+        keys = map entryKey . entries
+        [snapshot,ordinary] = entries source
+    map entryCallsAdapters [snapshot,ordinary] `shouldBe` [True,False]
+    let [renamedSnapshot,renamedOrdinary] = entries (edit "Alpha" "Apple" source)
+    entryKey renamedSnapshot `shouldNotBe` entryKey snapshot
+    entryKey renamedOrdinary `shouldBe` entryKey ordinary
+    keys (edit "choose" "select" (edit "snapshot" "history" (edit "unused" "ignored" source))) `shouldBe` keys source
+    keys (concatMap (\line -> [line, "-- presentation only"]) source) `shouldBe` keys source
+    keys (init source ++ ["type Unrelated is one of Separate end type", last source]) `shouldBe` keys source
+    let replaceSnapshot section = take 3 source ++ [
+          "law snapshot is definition: for all (sample :: Unit) => choose sample = Alpha end for all end definition " ++ section ++ " end law"] ++ drop 4 source
+        example = replaceSnapshot "example \"|recording|: sample = unitValue expect choose sample = recorded \"first\" end example"
+        documentary = replaceSnapshot "description: \"A case.\\n```example\\nsample = unitValue\\nexpect choose sample = recorded \\\"first\\\"\\n```\" end description"
+    forM_ [example,documentary] $ \text -> do
+      map entryCallsAdapters (entries text) `shouldBe` [True,False]
+      head (keys (edit "Alpha" "Apple" text)) `shouldNotBe` head (keys text)
   it "keeps the semantic hash when a bound local is renamed" $ do
     let after = identities (edit "(x :: Integer) -> Integer is x + x end" "(y :: Integer) -> Integer is y + y end" base)
     same "double" after `shouldBe` True

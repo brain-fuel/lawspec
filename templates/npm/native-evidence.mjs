@@ -116,7 +116,7 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
             }
             const owned=new Set(generated.files.filter(file=>file.ownership==='generated').map(file=>file.path));
             const keys=lawKeys({build,target,machineBits:input.machineBits,minify,tests:generated.tests,files:generated.files,
-              environment:environment+await recordedDigest(path.join(configRoot,'recorded')),
+              environment,recorded:await recordedDigest(path.join(configRoot,'recorded')),
               project:await projectDigest(root,owned,target.language),attested:attestedKeys(generated)});
             result={generated,keys};
           }
