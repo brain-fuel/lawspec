@@ -2,7 +2,7 @@
 -- Products are case classes, sums are enums, and the built-in types are
 -- Scala's own immutable ones: List, Option, Either, Set, Map and BigInt.
 -- ref:DEC-scala-on-the-jvm-runtime
-module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaCodecDocIn, scalaNativeCodecDocIn, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified, rootQualifiedDoc, applied, namesFor) where
+module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecReceiverWithContext, scalaCodecReceiverIn, scalaNativeCodecReceiverIn, scalaCodecDocWithContext, scalaCodecDocIn, scalaNativeCodecDocIn, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified, rootQualifiedDoc, applied, namesFor) where
 
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
@@ -323,28 +323,32 @@ codecDocUsing = codecDocUsingOwner ("schema", "bits") "LawSpecDataCodecs"
 
 -- | A codec, with the schema and machine width under the scope's names.
 codecDocUsingOwner :: (String, String) -> String -> Maybe D.Doc -> Names -> [(C.Id, (String, String))] -> C.Type -> Either String D.Doc
-codecDocUsingOwner scope@(schemaName, bitsName) owner context names parameters ty = case ty of
+codecDocUsingOwner scope owner context names parameters ty =
+  L.receiverDoc <$> codecReceiverUsingOwner scope owner context names parameters ty
+
+codecReceiverUsingOwner :: (String,String) -> String -> Maybe D.Doc -> Names -> [(C.Id,(String,String))] -> C.Type -> Either String L.Receiver
+codecReceiverUsingOwner scope@(schemaName, bitsName) owner context names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Scala codec parameter")
-    (Right . D.text . snd) (lookup variable parameters)
+    (Right . L.referenceReceiver . D.text . snd) (lookup variable parameters)
   C.Constructor name [] | isDurationType name ->
-    pure (call "LawSpecScalaCodecs.duration" ([D.text schemaName, D.text bitsName] ++ rest))
+    pure (L.callReceiver "LawSpecScalaCodecs.duration" ([D.text schemaName, D.text bitsName] ++ rest))
   C.Constructor name args | Just short <- collectionContainer name -> do
-    children <- mapM (argument (codecDocUsingOwner scope owner context names parameters)) args
+    children <- mapM (argument (codecReceiverUsingOwner scope owner context names parameters)) args
     let helper = case short of
           "Set" -> "set"
           "KeyVal" -> "keyVal"
           other -> map toLower other
-    pure (call ("LawSpecScalaCodecs." ++ helper) ([D.text schemaName, D.text bitsName] ++ children ++ rest))
+    pure (L.callReceiver ("LawSpecScalaCodecs." ++ helper) ([D.text schemaName, D.text bitsName] ++ map L.receiverDoc children ++ rest))
   C.Constructor name args -> do
-    children <- mapM (argument (codecDocUsingOwner scope owner context names parameters)) args
+    children <- mapM (argument (codecReceiverUsingOwner scope owner context names parameters)) args
     case lookup (C.Id name) names of
-      Just native -> pure (call (owner ++ "." ++ codecName native)
-        ([D.text schemaName, D.text bitsName] ++ children ++ rest))
+      Just native -> pure (L.callReceiver (owner ++ "." ++ codecName native)
+        ([D.text schemaName, D.text bitsName] ++ map L.receiverDoc children ++ rest))
       Nothing | Just helper <- lookup name [("List","list"),("Maybe","option"),("Either","either"),("Nullable","nullable"),("Optional","optional")] ->
-        pure (call ("LawSpecScalaCodecs." ++ helper) ([D.text schemaName, D.text bitsName] ++ children ++ rest))
+        pure (L.callReceiver ("LawSpecScalaCodecs." ++ helper) ([D.text schemaName, D.text bitsName] ++ map L.receiverDoc children ++ rest))
       Nothing -> do
         native <- typeDoc [] names [] ty
-        pure (call ("LawSpecScalaCodecs.scalar[" ++ D.render D.Compact native ++ "]") [D.text schemaName, quoted name, D.text bitsName])
+        pure (L.typedReceiver "LawSpecScalaCodecs" "scalar" [native] [D.text schemaName,quoted name,D.text bitsName])
   _ -> Left "function fields cannot cross Scala codecs"
   where rest = maybe [] pure context
 
@@ -390,6 +394,23 @@ emitScalaCodecs = emitCodecs [] "LawSpecDataCodecs"
 -- they call the user's constructors. ref:DEC-native-bindings-typed-identity
 emitScalaNativeCodecs :: D.Layout -> [C.DataDeclaration] -> [ResolvedTypeBinding] -> Either String String
 emitScalaNativeCodecs layout declarations mappings = emitCodecs mappings "LawSpecNativeCodecs" layout declarations
+
+-- | A checked codec call retains its receiver metadata for chained use.
+scalaCodecReceiverWithContext :: D.Doc -> [C.DataDeclaration] -> C.Type -> Either String L.Receiver
+scalaCodecReceiverWithContext = scalaCodecReceiverIn ("schema","bits")
+
+scalaCodecReceiverIn :: (String,String) -> D.Doc -> [C.DataDeclaration] -> C.Type -> Either String L.Receiver
+scalaCodecReceiverIn scope context declarations =
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+    (registry,names) <- prepared
+    checkType registry ty
+    codecReceiverUsingOwner scope "LawSpecDataCodecs" (Just context) names [] ty
+
+scalaNativeCodecReceiverIn :: (String,String) -> [C.DataDeclaration] -> C.Type -> Either String L.Receiver
+scalaNativeCodecReceiverIn scope declarations ty = do
+  names <- namesFor declarations
+  codecReceiverUsingOwner scope "LawSpecNativeCodecs" (Just (D.text "symbols")) names [] ty
 
 -- | As scalaCodecDoc, for a bound native type.
 scalaNativeCodecDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
@@ -565,7 +586,7 @@ emitCodecs mappings owner layout declarations = do
     nativeKeys variant = call "java.util.List.of" [D.text ("value." ++ S.witnessFieldName (witnessCount variant) k) | k <- [0 .. witnessCount variant - 1]]
     dataKeys variant = call "LawSpecSchema.witnessKeys" [D.text "data.fields()", D.text (show (witnessCount variant))]
     layoutCodecs names parameters bound=mapM
-      (codecDocUsingOwner ("schema", "bits") owner (Just (D.text "symbols")) names parameters . C.binderType . fst)
+      (codecReceiverUsingOwner ("schema", "bits") owner (Just (D.text "symbols")) names parameters . C.binderType . fst)
       (resolvedFields bound)
     packLayout parameters=foldNativeLayoutM (Right . D.text . ("nativeField"++) . show)
       (\field constructor children->do
@@ -587,7 +608,7 @@ emitCodecs mappings owner layout declarations = do
               condition="value: "++base++arguments++if null parameters then "" else " @unchecked"
               access native=D.text ("value."++native)
               locals=[D.text ("val nativeField"++show index++" = ")<>
-                call "LawSpecSchema.encodeField" [bridge,access native,
+                call "LawSpecSchema.encodeField" [L.receiverDoc bridge,access native,
                   quoted (C.idText (C.constructorId variant)++"."++intercalate "." path)] |
                   (index,((bridge,(_,native)),path))<-zip [0::Int ..]
                     (zip (zip bridges (resolvedFields bound)) (maybe [] id (resolvedFieldPaths bound)))]

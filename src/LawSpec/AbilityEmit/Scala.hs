@@ -134,7 +134,7 @@ emit minify bits datas units = do
       methods <- mapM (\(op, ty) -> signature a op ty) (C.abilityOperations a)
       pure (comment 2 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <>
         line ("trait " ++ interfaceName a ++ " ") <> block (D.joinWith D.hardline methods))
-    codec ty = Native.scalaCodecDocIn (E.schemaName, E.bitsName) (line "symbols") datas ty
+    codec ty = Native.scalaCodecReceiverIn (E.schemaName, E.bitsName) (line "symbols") datas ty
     -- An operation that fails with E answers Left when the clause raises E.
     failingBody a op statements = case lookup op (C.abilityFailures a) of
       Just failing@(C.AbilityRef _ [failure]) -> do

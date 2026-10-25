@@ -2,7 +2,7 @@
 -- the consumer so definitions and adapter bridges retain their own ABI. The
 -- generated object names its schema Schema and its machine width
 -- MachineBits; layout is scalafmt's (LawSpec.ScalaLayout).
-module LawSpec.ScalaExpr (bindValue, renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec, lambda, valueType, schemaName, bitsName) where
+module LawSpec.ScalaExpr (bindValue, renderExpression, scalarLiteral, call, array, reference, quoted, checked, codecReceiver, codec, lambda, valueType, schemaName, bitsName) where
 
 import LawSpec.Core
 import qualified LawSpec.ScalaData as Native
@@ -98,6 +98,10 @@ codec declarations bits =
   -- and names across types.
   let codecFor = Native.scalaCodecDocIn (schemaName, bitsName) (D.text "symbols") declarations
   in const codecFor bits
+
+-- | A checked codec receiver for producer-supplied chains.
+codecReceiver :: [DataDeclaration] -> Int -> Type -> Either String L.Receiver
+codecReceiver declarations _ = Native.scalaCodecReceiverIn (schemaName,bitsName) (D.text "symbols") declarations
 
 -- | Literals become runtime values built from their declared type and exact
 -- digits, so Scala never reads a number at its own precision.

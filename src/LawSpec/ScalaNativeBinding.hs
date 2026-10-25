@@ -105,30 +105,32 @@ emitBindings minify plan testing files = do
           _ -> pure Nothing
         resultBody <- case ref of
           StaticCall r -> do
-            let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
+            let applicationReceiver = L.callReceiver (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
+                application = L.receiverDoc applicationReceiver
             -- Unit arguments still cross both codecs, in order, before the
             -- constructor. Only the native argument list is empty.
-            pure $ [value | directConstructor d ref, value <- converted] ++ if async then [mapped application returned]
+            pure $ [value | directConstructor d ref, value <- converted] ++ if async then [mapped applicationReceiver returned]
               else if result == C.scalarType "Unit" then [application, D.text "()"] else
               [L.bind "result" application, returned]
           _ -> do
-            application <- case ref of
+            applicationReceiver <- case ref of
               ConstructorCall constructor | directConstructor d ref ->
-                pure (E.call ("new " ++ intercalate "." (referenceParts constructor)) [])
+                pure (L.callReceiver ("new " ++ intercalate "." (referenceParts constructor)) [])
               MethodCall name | async -> case lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args] of
                 Just i -> do
                   receiver <- javaCast (args !! i) >>= maybe (Left ("an async method binding needs a bound handle type: " ++
                     C.idText (C.declarationId d))) Right
-                  pure (L.chain (L.call ("LawSpecScala.cast[" ++ receiver ++ "]") [converted !! i])
+                  pure (L.chainedReceiver (L.typedReceiver "LawSpecScala" "cast" [D.text receiver] [converted !! i])
                     [(name, [v | (j,v) <- zip [0..] converted, j /= i])])
                 Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
               _ -> do
                 helper <- maybe (Left "unplanned native call") Right
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
-                pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
+                pure (L.callReceiver ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
             -- Unit arguments still cross both codecs, in order, before the
             -- constructor. Only the native argument list is empty.
-            pure $ [value | directConstructor d ref, value <- converted] ++ if async then [mapped application
+            let application = L.receiverDoc applicationReceiver
+            pure $ [value | directConstructor d ref, value <- converted] ++ if async then [mapped applicationReceiver
                 (if result == C.scalarType "Unit" then D.text "()" else returnedOf (L.call ("LawSpecScala.cast[" ++ D.render D.Compact nativeResultType ++ "]") [D.text "result"]))]
               else if result == C.scalarType "Unit" then [application, D.text "()"]
               -- A method's null is None; anything else is Some.
@@ -268,8 +270,8 @@ emitBindings minify plan testing files = do
     -- future.map(result => value)(using parasitic), as a chain.
     mapped future value = L.trailingChain' future "map" "result" value <>
       D.text "(using scala.concurrent.ExecutionContext.parasitic)"
-    canonicalCodec = S.scalaCodecDocIn ("Schema", "MachineBits") (D.text "symbols") declarations
-    nativeCodec = S.scalaNativeCodecDocIn ("Schema", "MachineBits") declarations
+    canonicalCodec = S.scalaCodecReceiverIn ("Schema", "MachineBits") (D.text "symbols") declarations
+    nativeCodec = S.scalaNativeCodecReceiverIn ("Schema", "MachineBits") declarations
     -- The exceptions lawspec.edn maps to a failure of type failure, as cases
     -- that answer Left with it.
     mappedFailures failure = do
