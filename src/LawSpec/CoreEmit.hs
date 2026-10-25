@@ -2,11 +2,12 @@
 -- types and companion artifacts. It reads only Core and the plan, never source
 -- syntax, which lawspec-dev boundaries enforces. ref:DEC-typed-core-boundary
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
+import qualified LawSpec.OutputLayout as OutputLayout
 import LawSpec.Sessions (sessionArtifacts)
 import qualified LawSpec.JvmProduct as Product
 import qualified LawSpec.JavaAbi as Abi
 import LawSpec.JavaTestStyle (TestStyle(..))
-import LawSpec.AbilityEmit (abilityArtifacts)
+import LawSpec.AbilityEmit (abilityArtifactsWithNativeBridge)
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName)
 import LawSpec.Actors (actorArtifacts)
@@ -115,11 +116,14 @@ emitPlanWithFormat minify target plan = do
 -- Internal representation plans have already passed logical admission. Witness
 -- lowering is idempotent; native definition emitters check its logical view.
 emitMaterializedPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitMaterializedPlanWithFormat minify target plan = do
+emitMaterializedPlanWithFormat = emitMaterializedPlanWithNativeBridge "../src" False
+
+emitMaterializedPlanWithNativeBridge :: String -> Bool -> Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitMaterializedPlanWithNativeBridge sourceRoot nativeBridge minify target plan = do
   checkExecutionPlan plan
   checkNativeModelNames target plan
   mapM_ (checkNames target . plannedUnit) (plannedUnits plan)
-  emitPlanWithFormatUnchecked minify target plan
+  emitPlanWithFormatUnchecked sourceRoot nativeBridge minify target plan
 
 checkNativeModelNames :: String -> Plan -> Either [Diagnostic] ()
 checkNativeModelNames target plan = do
@@ -154,31 +158,31 @@ checkExecutionPlan plan = mapM_ check [plannedProperty p | u <- plannedUnits pla
       concatMap C.exampleExpectations (C.propertyExamples property)))
       (Left [Diagnostic "verification-incomplete" "a scoped proposition requires a complete execution plan before native emission"
         (Just (C.propertyLocation property))])
-emitPlanWithFormatUnchecked :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormatUnchecked minify target plan | target `elem` Targets.artifactTargets =
+emitPlanWithFormatUnchecked :: String -> Bool -> Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify target plan | target `elem` Targets.artifactTargets =
   ArtifactEmit.emitArtifacts minify target Nothing Nothing plan
-emitPlanWithFormatUnchecked minify target given | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify target given | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
-emitPlanWithFormatUnchecked minify target given | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify target given | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 -- Groovy runs over the Java target's files (DEC-groovy-over-java).
-emitPlanWithFormatUnchecked minify "groovy" given =
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "groovy" given =
   Groovy.groovyFromProduct given =<< javaProduct SpockCases minify NB.emptyBindingPlan (escapePlan "groovy" given)
 -- Clojure runs over them too (DEC-clojure-over-java).
-emitPlanWithFormatUnchecked minify "clojure" given =
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "clojure" given =
   Clojure.clojureFromProduct Clojure.noClojureBindings given =<< javaProduct PlainCases minify NB.emptyBindingPlan (escapePlan "clojure" given)
-emitPlanWithFormatUnchecked minify "prolog" given = do
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "prolog" given = do
   let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
   Prolog.prologFromPython plan =<< emitMaterializedPlanWithFormat minify "python" plan
-emitPlanWithFormatUnchecked minify "swift" given = Swift.emitSwift minify
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "swift" given = Swift.emitSwift minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
-emitPlanWithFormatUnchecked minify target given = do
+emitPlanWithFormatUnchecked sourceRoot nativeBridge minify target given = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan given))))
-  emittedFiles <- emitPlanFormatted minify target plan
-  extras <- companionArtifacts minify target plan
+  emittedFiles <- emitPlanFormattedWithNativeBridge sourceRoot nativeBridge minify target plan
+  extras <- companionArtifactsWithNativeBridge nativeBridge minify target plan
   -- Built-in units' adapter modules hold their default handlers.
   files <- map (pythonPackages target plan) <$> builtinDefaults target plan (emittedFiles ++ extras)
-  canonical <- if minify then map (pythonPackages target plan) <$> emitPlanFormatted False target plan else pure files
+  canonical <- if minify then map (pythonPackages target plan) <$> emitPlanFormattedWithNativeBridge sourceRoot nativeBridge False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
     case lookup (artifactPath artifact) references of
@@ -229,11 +233,14 @@ builtinDefaults target plan artifacts = either (\message -> Left [Diagnostic "bu
 -- actors and mailboxes, and the definitions other nodes can evaluate by
 -- content hash.
 companionArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-companionArtifacts minify target plan = do
+companionArtifacts = companionArtifactsWithNativeBridge False
+
+companionArtifactsWithNativeBridge :: Bool -> Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+companionArtifactsWithNativeBridge nativeBridge minify target plan = do
   sessions <- sessionArtifacts minify target plan
   actors <- actorArtifacts minify target plan
   mailboxes <- mailboxArtifacts target plan
-  abilities <- abilityArtifacts minify target plan
+  abilities <- abilityArtifactsWithNativeBridge nativeBridge minify target plan
   pure (sessions ++ actors ++ mailboxes ++ abilities ++ remoteArtifacts target (remoteCalls target plan) plan)
 
 -- | Keep checked JVM metadata beside the files through bindings and adapter
@@ -369,13 +376,19 @@ escapeBindings target b = b { NB.bindingFunctions = [(escapeDeclaration target d
                              , NB.bindingCalls = [(escapeDeclaration target d, c) | (d, c) <- NB.bindingCalls b] }
 
 emitPlanFormatted :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanFormatted minify target plan = Product.jvmArtifacts <$> emitPlanProduct JUnit minify target plan
+emitPlanFormatted = emitPlanFormattedWithNativeBridge "../src" False
+
+emitPlanFormattedWithNativeBridge :: String -> Bool -> Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanFormattedWithNativeBridge sourceRoot nativeBridge minify target plan = Product.jvmArtifacts <$> emitPlanProductWithNativeBridge sourceRoot nativeBridge JUnit minify target plan
 
 emitPlanProduct :: TestStyle -> Bool -> String -> Plan -> Either [Diagnostic] Product.JvmProduct
-emitPlanProduct javaStyle _ target plan
+emitPlanProduct = emitPlanProductWithNativeBridge "../src" False
+
+emitPlanProductWithNativeBridge :: String -> Bool -> TestStyle -> Bool -> String -> Plan -> Either [Diagnostic] Product.JvmProduct
+emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target plan
   | target `notElem` ["python","javascript","typescript","rust","java","kotlin","scala","go","haskell"], any (not . null . C.constructorPredicates) (concatMap C.dataConstructors (planDataDeclarations plan)) =
       Left [Diagnostic "target" "constructor field contracts require native runtime enforcement" Nothing]
-emitPlanProduct javaStyle _ target plan | target /= "rust", any containsMatch expressions =
+emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target plan | target /= "rust", any containsMatch expressions =
   Left [Diagnostic "target" ("no match expression emitter for " ++ target) Nothing]
   where
     expressions = concat
@@ -391,7 +404,7 @@ emitPlanProduct javaStyle _ target plan | target /= "rust", any containsMatch ex
       target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] && name `elem` ["List","Maybe","Either"] ||
       target `elem` ["go"] && name == "List"
     supportedMatch _ = False
-emitPlanProduct javaStyle _ target plan | target /= "rust", any containsConstruction expressions =
+emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target plan | target /= "rust", any containsConstruction expressions =
   Left [Diagnostic "target" ("no constructor expression emitter for " ++ target) Nothing]
   where
     expressions = concat
@@ -404,13 +417,13 @@ emitPlanProduct javaStyle _ target plan | target /= "rust", any containsConstruc
          C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Absent","Maybe::Present","Either::Left","Either::Right"] ||
          target `elem` ["go"] && C.idText tag `elem` ["List::Nil","List::Cons"]) || any containsConstruction fields
       _ -> any containsConstruction (C.children expression)
-emitPlanProduct javaStyle _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =
+emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =
   Left [Diagnostic "target" ("no data declaration emitter for " ++ target) Nothing]
-emitPlanProduct javaStyle _ target plan | target /= "rust", any (not . supportedRepresentationWithData target (planDataDeclarations plan) . C.declarationType)
+emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target plan | target /= "rust", any (not . supportedRepresentationWithData target (planDataDeclarations plan) . C.declarationType)
   [d | u <- plannedUnits plan, d <- C.unitDeclarations (plannedUnit u)] =
     Left [Diagnostic "target" ("no structural adapter emitter for " ++ target) Nothing]
-emitPlanProduct _ minify "rust" plan = Product.files <$> emitRustWithFormat minify plan
-emitPlanProduct javaStyle minify target Plan{..} = do
+emitPlanProductWithNativeBridge sourceRoot nativeBridge _ minify "rust" plan = Product.files <$> emitRustWithFormat minify plan
+emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target Plan{..} = do
   unless (target `elem` targets) (Left [Diagnostic "target" ("unknown target: " ++ target) Nothing])
   let units = map plannedUnit plannedUnits
       laws = concatMap plannedProperties plannedUnits
@@ -482,10 +495,10 @@ emitPlanProduct javaStyle minify target Plan{..} = do
         (ScalaDefinitions.emitScalaDefinitions (layout ScalaLayout.scalaStyle) planMachineBits planDataDeclarations units)
       else if target == "python"
         then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-          (PythonDefinitions.emitPythonDefinitions (layout pythonLayout) planMachineBits planDataDeclarations units)
+          (PythonDefinitions.emitPythonDefinitionsWithNativeBridge nativeBridge (layout pythonLayout) planMachineBits planDataDeclarations units)
         else if target `elem` ["javascript","typescript"]
           then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
-            (WebDefinitions.emitWebDefinitions (target == "typescript") (layout (Doc.Pretty 80)) planMachineBits planDataDeclarations units)
+            (WebDefinitions.emitWebDefinitionsWithNativeBridge nativeBridge (target == "typescript") (layout (Doc.Pretty 80)) planMachineBits planDataDeclarations units)
           else if target == "go"
             then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
               (GoDefinitions.emitGoDefinitions (layout (Doc.PrettyTabs 100)) planMachineBits planDataDeclarations
@@ -598,7 +611,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
       , "  }"
       , "}" ]
     definitionCalls = JavaDefinitions.definitionCalls (map plannedUnit plannedUnits)
-    webStrategies = WebData.testStrategies (target == "typescript")
+    webStrategies = WebData.testStrategiesWithSourceRoot sourceRoot (target == "typescript")
     requiresSchema = if target == "python" then PythonData.requiresSchema else WebData.requiresSchema
     hasPayload = any payloadExpression
       (concatMap (concatMap C.contractExpressions . contracts . plannedUnit) plannedUnits ++
@@ -657,7 +670,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
         (GoData.validateGoBindings planDataDeclarations [cap (C.declarationName declaration) |
           declaration <- C.unitDeclarations testing,C.declarationId declaration `notElem` map fst calls]) else pure ()
       let visibleNames = filter ((`Set.member` selectedIds) . fst) allocated
-          key = digestHex (digestString (show ("unit-context-2",javaStyle,minify,target,planMachineBits,
+          key = digestHex (digestString (show ("unit-context-2",sourceRoot,javaStyle,minify,target,planMachineBits,
             D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
             map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
             Native.dataBudget laws,globalFlags,collectionFlag,target == "haskell" && usesNetworkUnits (map plannedUnit plannedUnits))))
@@ -677,7 +690,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
           Native.nativeScalarUnitProductWithNetwork (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
-      | otherwise = Product.files <$> Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
+      | otherwise = Product.files <$> Scalar.scalarEmitWithSourceRoot sourceRoot False minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
 supportedRepresentationWithData target declarations ty = case ty of
@@ -744,7 +757,7 @@ emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed
     javaProduct PlainCases minify (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
 emitPlanWithNativeNames minify "prolog" sourceDir testDir bindings given = do
   let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
-  Prolog.prologFromPythonWithBindings sourceDir testDir bindings plan =<< emitMaterializedPlanWithFormat minify "python" plan
+  Prolog.prologFromPythonWithBindings sourceDir testDir bindings plan =<< emitMaterializedPlanWithNativeBridge "../src" (not (null (Binding.resolvedGenerators (NB.bindingRepresentations bindings)))) minify "python" plan
 emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = do
   unless (target `elem` ["python","javascript","typescript","java","kotlin","scala","rust","go","haskell","fsharp","swift","erlang","elixir","gleam"] || all ((==Nothing) . Binding.resolvedFieldPaths)
     [constructor | mapping<-Binding.resolvedTypes (NB.bindingRepresentations unescaped),constructor<-Binding.resolvedConstructors mapping])
@@ -768,7 +781,9 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
   unless (target == "erlang" || null (NB.bindingErlangIncludes bindings))
     (Left [Diagnostic "native-binding" "erlangIncludes is only valid for Erlang bindings" Nothing])
-  emitted <- if not (NB.hasBindings bindings) then emitMaterializedPlanWithFormat minify target plan
+  let sourceRoot = if target `elem` ["javascript", "typescript"]
+        then OutputLayout.sourceImportRoot target sourceDir testDir [] else "../src"
+  emitted <- if not (NB.hasBindings bindings) then emitMaterializedPlanWithNativeBridge sourceRoot False minify target plan
     else if target `elem` ["erlang","elixir","gleam"] then
       Beam.emitBeamWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if target `elem` DotNet.dotnetTargets then
@@ -779,13 +794,13 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
       <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
     else if target == "python" then do
-      ordinary <- emitMaterializedPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithNativeBridge sourceRoot True minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (PythonNativeBinding.emitBindings minify bindings plan ordinary)
     else if target `elem` ["javascript","typescript"] then do
-      ordinary <- emitMaterializedPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithNativeBridge sourceRoot True minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
-        (WebNativeBinding.emitBindings (target == "typescript") minify bindings plan ordinary)
+        (WebNativeBinding.emitBindingsWithSourceRoots (OutputLayout.sourceImportRoot target sourceDir testDir) (target == "typescript") minify bindings plan ordinary)
     else if target == "java" then do
       ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
@@ -816,13 +831,13 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     else if NB.hasBindings bindings && minify && target == "rust"
     then emitRustWithBindings False bindings plan
     else if NB.hasBindings bindings && minify && target == "python" then do
-      ordinary <- emitMaterializedPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithNativeBridge sourceRoot True False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (PythonNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target `elem` ["javascript","typescript"] then do
-      ordinary <- emitMaterializedPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithNativeBridge sourceRoot True False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
-        (WebNativeBinding.emitBindings (target == "typescript") False bindings plan ordinary)
+        (WebNativeBinding.emitBindingsWithSourceRoots (OutputLayout.sourceImportRoot target sourceDir testDir) (target == "typescript") False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "java" then do
       ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
@@ -902,13 +917,6 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
             else if target == "gleam" && "test-support/" `isPrefixOf` artifactPath a then artifactPath a
             else move (snd defaults) tst (artifactPath a) }
       adjustContent a
-        | target `elem` ["javascript","typescript"] && artifactPlacement a == "test" =
-          let nested = init (split '/' (drop (length (snd defaults) + 1) (artifactPath a)))
-              old = concat (replicate (length nested + 1) "../") ++ "src/"
-              destination = rel (split '/' tst ++ nested) (split '/' src)
-              root = if null destination then "." else if ".." `isPrefixOf` destination
-                then destination else "./" ++ destination
-          in replace ("from \"" ++ old) ("from \"" ++ root ++ "/") . replace ("from '" ++ old) ("from '" ++ root ++ "/")
         | target == "rust" && artifactPlacement a == "test" = replace "\n#[path = \"../src/" ("\n#[path = \"" ++ importRoot ++ "/")
         | otherwise = id
       result = map adjust files

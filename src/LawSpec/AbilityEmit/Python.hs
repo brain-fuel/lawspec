@@ -6,7 +6,7 @@
 -- to every definition (evidence passing): a law installs them with
 -- ls.install_handlers, and a performed operation finds its handler with
 -- ls.handler(symbols, key). Native code gets them as arguments instead.
-module LawSpec.AbilityEmit.Python (emit, modulePath, moduleName, moduleNameOf, productionStub) where
+module LawSpec.AbilityEmit.Python (emit, emitWithNativeBridge, modulePath, moduleName, moduleNameOf, productionStub) where
 
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
@@ -33,7 +33,11 @@ modulePath :: [C.Unit] -> C.Unit -> String
 modulePath units u = "src/lawspec_abilities/" ++ pythonUnitFile (map (C.idText . C.unitId) units) (C.idText (C.unitId u))
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit minify bits datas units = do
+emit = emitWithNativeBridge False
+
+-- | Load bound handler representations through structured module imports.
+emitWithNativeBridge :: Bool -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
+emitWithNativeBridge nativeBridge minify bits datas units = do
   typed <- emitPythonTyped bits datas units
   mapM (unitModule typed) (filter unitAbilityPieces units)
   where
@@ -59,8 +63,9 @@ emit minify bits datas units = do
             , "import typing as _typing"
             , ""
             , "import lawspec_data as data"
-            , "import lawspec_runtime as ls"
-            , "import lawspec_schema as _schema" ] ++
+            , "import lawspec_runtime as ls" ] ++
+            [D.text "import lawspec_native as _lawspec_bridge" | nativeBridge] ++
+            [D.text "import lawspec_schema as _schema"] ++
             [D.text "import lawspec_definition_bodies as _definitions" | not (null (C.unitHandlers u))] ++
             [D.text "import lawspec_typed as _typed" | not (null typedHandlers)] ++
             [D.text "import threading as _threading" | not (null typedHandlers)] ++

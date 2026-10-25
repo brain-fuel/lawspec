@@ -173,13 +173,7 @@ emitBindings minify bindings plan files = do
     (Left "unit shadows generated lawspec_native support")
   let runtime = [Artifact "src/lawspec_runtime.py" (runtimeSource "python") "generated" "source" |
         not (any ((== "src/lawspec_runtime.py") . artifactPath) files)]
-  -- Generated code that calls handlers loads the bound types first.
-  let loading file
-        | any (`isPrefixOf` artifactPath file) ["src/lawspec_abilities/", "src/lawspec_definition_bodies.py"] =
-            file { artifactContent = unlines (concatMap (\l -> if l == "import lawspec_runtime as ls" then [l, "import lawspec_native as _lawspec_bridge"] else [l])
-              (lines (artifactContent file))) }
-        | otherwise = file
-  let generated = [loading file | file <- files, artifactPath file `notElem` replacements] ++
+  let generated = [file | file <- files, artifactPath file `notElem` replacements] ++
         dataFiles ++ runtime ++ [support] ++ bridges ++ generatorFiles
   stubs <- generatorStubs generators mappings (refs ++ map resolvedNativeType mappings) generated
   pure (generated ++ stubs)

@@ -4,7 +4,7 @@
 -- names, text is written as string literals, each test is linked to its
 -- source line, and the assertion helpers live in the runtime (ls.check).
 -- ref:DEC-portable-exact-arithmetic ref:DEC-readable-output-default
-module LawSpec.WebTests (webTests) where
+module LawSpec.WebTests (webTests, webTestsWithSourceRoot) where
 
 import LawSpec.Backend hiding (inputId, localName, bindings, contractArguments, contractResult)
 import qualified LawSpec.Backend as Backend
@@ -40,7 +40,11 @@ import LawSpec.WebModule (Support(..), webModule, headerComment, linkComment, co
 
 -- | A unit's tests and its adapter stub.
 webTests :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-webTests nativeGenerators minify declarations definitions bits target u allLaws = do
+webTests = webTestsWithSourceRoot "../src"
+
+-- | Test imports are chosen from the resolved output layout before printing.
+webTestsWithSourceRoot :: String -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitions bits target u allLaws = do
   lawGroups <- mapM lawTests (zip [0 :: Int ..] laws)
   literalHelpers <- literalFunctions
   modelGroups <- mapM modelTest (C.unitMachines u)
@@ -108,27 +112,27 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     up = concat (replicate (length parts - 1) "../")
     -- Every import a test module may need; it keeps those it uses.
     testImports =
-      [namespace "ls" ("../src/lawspec_runtime." ++ dialectExt)] ++
-      [namespace "_definitions" ("../src/lawspec_definition_bodies." ++ dialectExt) | not (null definitions)] ++
-      [namespace "data" ("../src/lawspec_data." ++ dialectExt) | hasData] ++
-      [namespace "schema" ("../src/lawspec_schema." ++ dialectExt) | hasData] ++
+      [namespace "ls" (sourceRoot ++ "/lawspec_runtime." ++ dialectExt)] ++
+      [namespace "_definitions" (sourceRoot ++ "/lawspec_definition_bodies." ++ dialectExt) | not (null definitions)] ++
+      [namespace "data" (sourceRoot ++ "/lawspec_data." ++ dialectExt) | hasData] ++
+      [namespace "schema" (sourceRoot ++ "/lawspec_schema." ++ dialectExt) | hasData] ++
       -- A parallel unit's laws run in one describe block.
       [("test", E.ImportDecl False (E.ImportNamed ([("describe", Nothing) | unitParallel] ++ [("test", Nothing)])) "node:test")] ++
       [("fc", E.ImportDecl False (E.ImportDefault "fc") "fast-check")] ++
-      [namespace "impl" ("../src/" ++ slash ++ "." ++ dialectExt)] ++
-      [namespace "_abilities" ("../src/lawspec_abilities/" ++ slash ++ "." ++ dialectExt) | unitAbilityPieces u] ++
-      concat [ [namespace ("_impl" ++ show i) ("../src/" ++ ownerSlash o ++ "." ++ dialectExt),
-                namespace ("_abilities" ++ show i) ("../src/lawspec_abilities/" ++ ownerSlash o ++ "." ++ dialectExt)]
+      [namespace "impl" (sourceRoot ++ "/" ++ slash ++ "." ++ dialectExt)] ++
+      [namespace "_abilities" (sourceRoot ++ "/lawspec_abilities/" ++ slash ++ "." ++ dialectExt) | unitAbilityPieces u] ++
+      concat [ [namespace ("_impl" ++ show i) (sourceRoot ++ "/" ++ ownerSlash o ++ "." ++ dialectExt),
+                namespace ("_abilities" ++ show i) (sourceRoot ++ "/lawspec_abilities/" ++ ownerSlash o ++ "." ++ dialectExt)]
              | (i, o) <- zip [0 :: Int ..] foreignOwners ] ++
-      [ (boundAlias ps, E.ImportDecl False (E.ImportNamed [(last ps, Just (boundAlias ps))]) ("../src/" ++ intercalate "/" (init ps) ++ "." ++ dialectExt))
+      [ (boundAlias ps, E.ImportDecl False (E.ImportNamed [(last ps, Just (boundAlias ps))]) (sourceRoot ++ "/" ++ intercalate "/" (init ps) ++ "." ++ dialectExt))
       | ps <- boundHandlers ] ++
-      [ (failureAlias ps, E.ImportDecl False (E.ImportNamed [(last ps, Just (failureAlias ps))]) ("../src/" ++ intercalate "/" (init ps) ++ "." ++ dialectExt))
+      [ (failureAlias ps, E.ImportDecl False (E.ImportNamed [(last ps, Just (failureAlias ps))]) (sourceRoot ++ "/" ++ intercalate "/" (init ps) ++ "." ++ dialectExt))
       | ps <- failureImports ] ++
       [namespace "_harness" ("./lawspec_harness." ++ dialectExt) | hasHarness] ++
       [("_data_strategy", E.ImportDecl False (E.ImportNamed [("strategy", Just "_data_strategy")])
           ("./" ++ (if nativeGenerators then "lawspec_native_generators" else "lawspec_data_strategies") ++ "." ++ dialectExt)) | hasData] ++
       [("primitiveGenerators", E.ImportDecl False (E.ImportNamed [("primitiveGenerators", Nothing)]) ("./lawspec_data_strategies." ++ dialectExt)) | hasData] ++
-      [("registerClock", E.ImportDecl False (E.ImportNamed [("registerClock", Nothing)]) ("../src/lawspec/time." ++ dialectExt)) | installsClock u]
+      [("registerClock", E.ImportDecl False (E.ImportNamed [("registerClock", Nothing)]) (sourceRoot ++ "/lawspec/time." ++ dialectExt)) | installsClock u]
     -- Declarations a test module includes when its code uses them.
     testSupport =
       [ Support "_lawspec_schema" [E.constDecl "_lawspec_schema" (E.call "data.makeSchema" [])]

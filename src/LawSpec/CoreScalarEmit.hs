@@ -2,7 +2,7 @@
 -- TypeScript, whose tests run on LawSpec's portable runtime rather than native
 -- numeric types. Python's tests are written here; JavaScript's and
 -- TypeScript's by LawSpec.WebTests. ref:DEC-portable-exact-arithmetic
-module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, scalarEmitWithNativeGenerators, typeKey) where
+module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, scalarEmitWithNativeGenerators, scalarEmitWithSourceRoot, typeKey) where
 import LawSpec.Backend hiding (inputId, localName, bindings, contractArguments, contractResult)
 import qualified LawSpec.Backend as Backend
 import qualified Data.Map.Strict as M
@@ -60,8 +60,12 @@ scalarEmitWithFormat = scalarEmitWithNativeGenerators False
 -- | Only the targets that run on the portable runtime are accepted here; asking
 -- for another is a compiler bug and fails loudly.
 scalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions bits target u allLaws
-  | target `elem` ["javascript", "typescript"] = WebTests.webTests nativeGenerators minify declarations definitions bits target u allLaws
+scalarEmitWithNativeGenerators = scalarEmitWithSourceRoot "../src"
+
+-- | Source references are resolved before the Web header is printed.
+scalarEmitWithSourceRoot :: String -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definitions bits target u allLaws
+  | target `elem` ["javascript", "typescript"] = WebTests.webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitions bits target u allLaws
   | otherwise = do
   unless (target == "python") (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   lawTexts <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
