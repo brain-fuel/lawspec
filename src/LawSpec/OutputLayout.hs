@@ -5,6 +5,7 @@ module LawSpec.OutputLayout (defaultDirectories, sourceImportRoot) where
 
 import Data.List (intercalate, isPrefixOf)
 
+-- | The established source and test roots for each target.
 defaultDirectories :: String -> (FilePath, FilePath)
 defaultDirectories target = case target of
   "java" -> ("src/main/java", "src/test/java")

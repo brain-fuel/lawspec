@@ -22,7 +22,7 @@ import LawSpec.Testing
 import LawSpec.Witness (witnessPlan)
 import LawSpec.Core.DefinitionContracts (validateEmissionDefinitions)
 import LawSpec.Collections (isCollectionsType)
-import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
+import LawSpec.RustEmit (emitRustWithBindingsAt)
 import qualified LawSpec.BeamEmit as Beam
 import qualified LawSpec.DotNet.Emit as DotNet
 import qualified LawSpec.Prolog.Emit as Prolog
@@ -422,7 +422,8 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target Plan{
 emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle _ target plan | target /= "rust", any (not . supportedRepresentationWithData target (planDataDeclarations plan) . C.declarationType)
   [d | u <- plannedUnits plan, d <- C.unitDeclarations (plannedUnit u)] =
     Left [Diagnostic "target" ("no structural adapter emitter for " ++ target) Nothing]
-emitPlanProductWithNativeBridge sourceRoot nativeBridge _ minify "rust" plan = Product.files <$> emitRustWithFormat minify plan
+emitPlanProductWithNativeBridge sourceRoot nativeBridge _ minify "rust" plan =
+  Product.files <$> emitRustWithBindingsAt sourceRoot minify NB.emptyBindingPlan plan
 emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target Plan{..} = do
   unless (target `elem` targets) (Left [Diagnostic "target" ("unknown target: " ++ target) Nothing])
   let units = map plannedUnit plannedUnits
@@ -670,7 +671,8 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
         (GoData.validateGoBindings planDataDeclarations [cap (C.declarationName declaration) |
           declaration <- C.unitDeclarations testing,C.declarationId declaration `notElem` map fst calls]) else pure ()
       let visibleNames = filter ((`Set.member` selectedIds) . fst) allocated
-          key = digestHex (digestString (show ("unit-context-2",sourceRoot,javaStyle,minify,target,planMachineBits,
+          key = digestHex (digestString (show (("unit-context-3" :: String),
+            (sourceRoot,javaStyle,minify,target,planMachineBits),
             D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
             map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
             Native.dataBudget laws,globalFlags,collectionFlag,target == "haskell" && usesNetworkUnits (map plannedUnit plannedUnits))))
@@ -781,7 +783,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
   unless (target == "erlang" || null (NB.bindingErlangIncludes bindings))
     (Left [Diagnostic "native-binding" "erlangIncludes is only valid for Erlang bindings" Nothing])
-  let sourceRoot = if target `elem` ["javascript", "typescript"]
+  let sourceRoot = if target `elem` ["javascript", "typescript", "rust"]
         then OutputLayout.sourceImportRoot target sourceDir testDir [] else "../src"
   emitted <- if not (NB.hasBindings bindings) then emitMaterializedPlanWithNativeBridge sourceRoot False minify target plan
     else if target `elem` ["erlang","elixir","gleam"] then
@@ -791,7 +793,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     else if target == "swift" then
       Swift.emitSwiftWithBindings minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     -- Rust emits bound units itself, so it adds the companion code here.
-    else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
+    else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindingsAt sourceRoot minify bindings plan
       <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
     else if target == "python" then do
       ordinary <- emitMaterializedPlanWithNativeBridge sourceRoot True minify target plan
@@ -829,7 +831,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     else if NB.hasBindings bindings && minify && target == "swift"
     then Swift.emitSwiftWithBindings False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if NB.hasBindings bindings && minify && target == "rust"
-    then emitRustWithBindings False bindings plan
+    then emitRustWithBindingsAt sourceRoot False bindings plan
     else if NB.hasBindings bindings && minify && target == "python" then do
       ordinary <- emitMaterializedPlanWithNativeBridge sourceRoot True False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
@@ -864,18 +866,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
       Nothing -> Left [Diagnostic "native-binding" "missing canonical adapter reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) emitted
-  let defaults = case target of
-        "java" -> ("src/main/java", "src/test/java")
-        "kotlin" -> ("src/main/kotlin", "src/test/kotlin")
-        "scala" -> ("src/main/scala", "src/test/scala")
-        "python" -> ("src", "tests")
-        "rust" -> ("src", "tests")
-        "elixir" -> ("lib", "test")
-        "fsharp" -> ("src", "tests")
-        "csharp" -> ("src", "tests")
-        "swift" -> ("src", "tests")
-        "go" -> ("", "")
-        _ -> ("src", "test")
+  let defaults = OutputLayout.defaultDirectories target
       src = maybe (fst defaults) id sourceDir
       tst = maybe (snd defaults) id testDir
       safe p = (null p && target == "go") || (not (null p) && all (\part -> not (null part) && part /= "." && part /= ".." && all (\c -> isAlphaNum c || c `elem` ("_-" :: String)) part) (split '/' p))
@@ -885,40 +876,27 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     (Left [Diagnostic "layout" "Gleam uses src and test directories because paths determine module identities; choose the project output root instead" Nothing])
   let prefix p f = if null p then f else p ++ "/" ++ f
       move old new f = prefix new (maybe f id (stripPrefix (if null old then "" else old ++ "/") f))
-      rel a b = case (a,b) of
-        (x:xs,y:ys) | x == y -> rel xs ys
-        _ -> intercalate "/" (replicate (length a) ".." ++ b)
-      relative = rel (split '/' tst) (split '/' src)
-      importRoot = if null relative then "." else if ".." `isPrefixOf` relative then relative else "./" ++ relative
-      replace old new text
-        | null text = []
-        | Just rest <- stripPrefix old text = new ++ replace old new rest
-        | c:rest <- text = c:replace old new rest
-        | otherwise = []
       sourceBase a
         | target `elem` ["kotlin","scala"] && ".java" `isSuffixOf` artifactPath a = "src/main/java"
         | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = "src"
         | otherwise = fst defaults
-      sourceRoot a
+      sourceDirectoryFor a
         | target `elem` ["kotlin","scala"] && ".java" `isSuffixOf` artifactPath a = maybe "src/main/java" id sourceDir
         | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = maybe "src" id sourceDir
         | otherwise = src
-      adjust a = (mapArtifactContent (adjustContent a) a)
+      adjust a = a
         { artifactPath = if target `elem` ["erlang","elixir","gleam"] &&
               artifactPath a `elem` ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c", "priv/lawspec_crypto_vectors.txt"]
             then artifactPath a -- Native build assets belong to the application root, beside ebin's priv.
             -- The .NET runtime projects stay beside the solution, whatever the layout.
             else if (target `elem` DotNet.dotnetTargets || target == "swift") && "lawspec/" `isPrefixOf` artifactPath a then artifactPath a
-            else if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
+            else if artifactPlacement a == "source" then move (sourceBase a) (sourceDirectoryFor a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.
             else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a
             -- Gleam test FFI lives in a separate development dependency: the
             -- compiler includes foreign files under test/ in production builds.
             else if target == "gleam" && "test-support/" `isPrefixOf` artifactPath a then artifactPath a
             else move (snd defaults) tst (artifactPath a) }
-      adjustContent a
-        | target == "rust" && artifactPlacement a == "test" = replace "\n#[path = \"../src/" ("\n#[path = \"" ++ importRoot ++ "/")
-        | otherwise = id
       result = map adjust files
   unless (length result == length (nub (map (map toLower . artifactPath) result))) (Left [Diagnostic "collision" "custom layout causes an output collision" Nothing])
   pure result

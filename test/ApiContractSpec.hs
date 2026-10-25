@@ -125,6 +125,34 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
       tests `shouldSatisfy` isInfixOf "../../library/core/lawspec_runtime.rs"
       tests `shouldSatisfy` isInfixOf "../../library/core/rust_example.rs"
 
+    it "resolves Rust source mounts before printing in both layouts and library linkage modes" $ do
+      forM_ [False, True] $ \compact ->
+        forM_ [Nothing, Just ("application" :: String)] $ \library ->
+          forM_ [("library/core", "checks/unit", "../../library/core"),
+                 ("code", "code", ".")] $ \(src, tests, root) -> do
+            let result = call (["method" .= ("planGeneration" :: String), "target" .= ("rust" :: String),
+                  "sources" .= [rustSource], "sourceDir" .= (src :: String), "testDir" .= (tests :: String),
+                  "minify" .= compact] ++
+                  ["nativeBindings" .= object ["rustCrate" .= name] | Just name <- [library]])
+                generated = content (fileWhere (isSuffixOf "rust_example_lawspec.rs") result)
+            diagnostics result `shouldBe` []
+            case library of
+              Nothing -> generated `shouldSatisfy` isInfixOf (root ++ "/lawspec_runtime.rs")
+              Just name -> generated `shouldSatisfy` isInfixOf ("use " ++ name ++ "::lawspec_runtime;")
+            generated `shouldSatisfy` isInfixOf "support/lawspec_strategies.rs"
+
+    it "rejects generator module names that collide with mounted network support" $ do
+      let input = source "network-generators.lawspec" $ unlines
+            [ "unit draws", "import lawspec.network"
+            , "law identity is definition: for all (value :: Int8) => value = value end for all end definition end law"
+            , "end unit" ]
+          result = call ["method" .= ("planGeneration" :: String), "target" .= ("rust" :: String),
+            "sources" .= [input], "nativeBindings" .= object ["rustCrate" .= ("application" :: String),
+              "generators" .= [object ["type" .= ("Int8" :: String),
+                "factory" .= (["crate", "lawspec_network", "values"] :: [String])]]]]
+      diagnostics result `shouldNotBe` []
+      snd (firstDiagnostic result) `shouldSatisfy` isInfixOf "namespace"
+
   describe "Web output layout" $ do
     it "resolves imports before printing and preserves authored import-like text across warm layouts" $ do
       let input = source "layout.lawspec" $ unlines

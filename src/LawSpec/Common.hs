@@ -102,9 +102,8 @@ adapterReference :: Artifact -> Maybe String
 adapterReference AdapterArtifact{canonicalAdapter=reference} = Just reference
 adapterReference _ = Nothing
 
--- | A rewrite of generated text, such as escaping names, must reach the
--- canonical adapter too, or regeneration would see a difference that is not
--- there.
+-- | Replacing a scaffold from structured metadata also replaces its canonical
+-- reference, so regeneration compares the same required interface.
 mapArtifactContent :: (String -> String) -> Artifact -> Artifact
 mapArtifactContent f artifact = case artifact of
   AdapterArtifact{} -> artifact { artifactContent = f (artifactContent artifact), canonicalAdapter = f (canonicalAdapter artifact) }
