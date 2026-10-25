@@ -9,7 +9,10 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..), Location(..))
 import LawSpec.Testing
+import qualified LawSpec.Testing.Draws as Draws
+import qualified Data.Map.Strict as M
 import qualified LawSpec.Testing.Cover as Cover
+import qualified LawSpec.Testing.Literals as Literals
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
 import LawSpec.Backend (lawCommentLines, propertyLink)
@@ -208,11 +211,15 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
           (labelled ("example " ++ displayLabel (C.exampleName example)) exampleLink) False
           (setup (Do [inScope] (Raw "()"))))
       cover <- caseCover planned
+      literalPlan <- Literals.planLiterals (Literals.coverLiterals cover)
+      let literalValue value = Literals.literalReference literalPlan value >>= literalTerm name
+      coverCode <- coverExpression literalValue cover
+      literalHelpers <- literalFunctions name literalPlan
       let valuesName = name ++ "Cases"
           caseCollection = Call valuesName []
           caseHelpers = [D.group (D.text ("private func " ++ valuesName ++ "() throws") <>
               D.nest 2 (D.softline <> D.text "-> LawSpecTesting.FiniteCases") <> D.softline <> D.text "{") <>
-              D.nest 2 (D.hardline <> renderBody (Ty "LawSpecTesting.FiniteCases") (Call "LawSpecTesting.FiniteCases" [coverExpression cover])) <>
+              D.nest 2 (D.hardline <> renderBody (Ty "LawSpecTesting.FiniteCases") (Call "LawSpecTesting.FiniteCases" [coverCode])) <>
               D.hardline <> D.text "}"
             | Cover.coverCount cover > 0 && C.harnessSkip harness == Nothing]
           boundaryBody = setup (Statement (call "finiteCase" "check" [Str shown, X.symbolsVar,
@@ -277,14 +284,36 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
                  [Test name n display link Nothing (wrapHarness label display observations harness body)
                     | (n, display, link, observations, body) <- random]
       let described = mconcat (map comment (lawCommentLines planned)) <> bodyDoc
-      pure ((described, Helper) : [(caseDoc, Helper) | not plainCase] ++ [(doc, Helper) | doc <- caseHelpers] ++ [(mempty, t) | t <- tests])
-    coverExpression (Cover.Complete count) = pure' "LawSpecTesting.FiniteCover" "copies" [IntLit (toInteger count)]
-    coverExpression (Cover.Alternatives branches) = pure' "LawSpecTesting.FiniteCover" "branches"
-      [ListOf (Ty "[(LawSpecTesting.FiniteDomain, LawSpecTesting.FiniteCover)]")
-        [TupleOf [domainExpression domain, coverExpression suffix] | (domain, suffix) <- branches]]
-    domainExpression (Cover.Values values) = pure' "LawSpecTesting.FiniteDomain" "values"
-      [ListOf (Ty "[LawSpecTesting.FiniteFactory]") [Lambda [("symbols", tSymbols)] tValue (X.value (Var "symbols") value) | value <- values]]
-    domainExpression (Cover.IntegerInterval _ first last') = pure' "LawSpecTesting.FiniteDomain" "integers" [BigLit first, BigLit last']
+      pure ((described, Helper) : [(caseDoc, Helper) | not plainCase] ++ [(doc, Helper) | doc <- literalHelpers ++ caseHelpers] ++ [(mempty, t) | t <- tests])
+    coverExpression literal (Cover.Complete count) = pure (pure' "LawSpecTesting.FiniteCover" "copies" [IntLit (toInteger count)])
+    coverExpression literal (Cover.Alternatives branches) = do
+      branches' <- forM branches $ \(domain,suffix) -> do
+        domain' <- domainExpression literal domain
+        suffix' <- coverExpression literal suffix
+        pure (TupleOf [domain',suffix'])
+      pure (pure' "LawSpecTesting.FiniteCover" "branches"
+        [ListOf (Ty "[(LawSpecTesting.FiniteDomain, LawSpecTesting.FiniteCover)]") branches'])
+    domainExpression literal (Cover.Values values) = do
+      factories <- mapM (fmap (Lambda [("symbols",tSymbols)] tValue) . literal) values
+      pure (pure' "LawSpecTesting.FiniteDomain" "values" [ListOf (Ty "[LawSpecTesting.FiniteFactory]") factories])
+    domainExpression _ (Cover.IntegerInterval _ first last') = pure
+      (pure' "LawSpecTesting.FiniteDomain" "integers" [BigLit first, BigLit last'])
+    literalTerm prefix = Literals.foldLiteral (pure . X.literal (Var "symbols"))
+      (\index fields -> pure (Call (prefix ++ "LiteralShape" ++ show index) [Var "symbols",ListOf tValues fields]))
+      (\index -> pure (Call (prefix ++ "Literal" ++ show index) [Var "symbols"]))
+    literalFunctions prefix literalPlan = do
+      shapes <- forM (Literals.literalShapes literalPlan) $ \(index,shape) -> do
+        body <- case shape of
+          Literals.ConstructorShape _ tag -> pure (pure' "Value" "data" [Str (C.idText tag),Var "fields"])
+          Literals.ListShape _ -> pure (pure' "Value" "list" [Var "fields"])
+          Literals.PresenceShape (C.Constructor name _) present -> pure
+            (pure' "Runtime" (if present then "present" else "absent") ([Str name] ++ [Raw "fields[0]" | present]))
+          Literals.PresenceShape _ _ -> Left "non-constructor presence in checked literal plan"
+        pure (function (prefix ++ "LiteralShape" ++ show index) [("symbols",tSymbols),("fields",tValues)] tValue body)
+      factories <- forM (Literals.literalFactories literalPlan) $ \(index,term) -> do
+        body <- literalTerm prefix term
+        pure (function (prefix ++ "Literal" ++ show index) [("symbols",tSymbols)] tValue body)
+      pure (shapes ++ factories)
     test n display link o body = (n, display, link, o, body)
     wrapHarness law display = wrapHarnessNamed law (Str display)
     wrapHarnessNamed law display observations harness body
@@ -334,7 +363,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       generator <- case [(s, d) | (identity, s, d) <- strategies, identity == C.binderId binder] of
         [] -> regular local requirement
         (strategy, draw) : _ -> do
-          generated <- strategyDraw local requirement strategy (show (length previous)) draw
+          generated <- sharedDraw local requirement strategy (show (length previous)) draw
           let checkedName = name ++ "Checked"
           predicates <- mapM (renderWith (bindName binder checkedName local)) (generatorPredicates requirement)
           pure (if null predicates then generated else pure' "Gens" "map" [Lambda [(checkedName, tValue)] tValue
@@ -367,6 +396,51 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       (indexedGeneration (planDataDeclarations plan) (concatMap (C.unitDefinitions . plannedUnit) (plannedUnits plan)) quantifier)
     witnessesFor ty = makeRegistry (planDataDeclarations plan) >>= \registry ->
       boundariesWithRegistry registry (planMachineBits plan) ty
+    sharedDraw outer requirement strategy path draw = do
+      let available = map C.quantifiedBinder (C.propertyInputs (plannedProperty planned)) ++
+            map C.resourceBinder (C.propertyResources (plannedProperty planned))
+      graph <- Draws.planDraw requirement available draw
+      let nodes = Draws.drawNodes graph
+          helperNames = fst (claimAll (scopeWith (reservedLocals ++ map (outer . C.binderId) available))
+            [camel strategy ++ "Draw" ++ path ++ "Node" ++ show (Draws.drawNumber node) | node <- nodes])
+          table = M.fromList (zip (map Draws.drawNumber nodes) helperNames)
+          invoke names child = Invoke (Var (table M.! Draws.drawCallee child))
+            [ListOf tValues (map (Var . names) (Draws.drawArguments child))]
+          nodeBinding node = do
+            let captures = Draws.drawCaptures node
+                capturedNames = fst (claimAll (scopeWith (reservedLocals ++ helperNames)) (map (camel . C.binderName) captures))
+                names identity = maybe (error ("unbound shared Swift strategy capture: " ++ C.idText identity)) id
+                  (lookup identity (zip (map C.binderId captures) capturedNames))
+                bound binder = case fst (claimAll (scopeWith (reservedLocals ++ helperNames ++ capturedNames)) [camel (C.binderName binder)]) of
+                  name : _ -> name
+                  [] -> "drawn"
+                nodePath = show (Draws.drawNumber node)
+            body <- case Draws.drawStep node of
+              Draws.AnyDraw ty aim -> strategyDraw
+                (bindName (generatorBinder requirement) (bound (generatorBinder requirement)) names)
+                requirement strategy nodePath (C.DrawAny ty aim)
+              Draws.OneOfDraw ty values -> strategyDraw names requirement strategy nodePath (C.DrawOneOf ty values)
+              Draws.FrequencyDraw alternatives -> do
+                let selector = pure' "Gens" "frequency" [ListOf (Ty "[(Int, Gen<Int>)]")
+                      [TupleOf [IntLit weight,pure' "Gens" "constant" [IntLit (toInteger i)]] | (i,(weight,_)) <- zip [0::Int ..] alternatives]]
+                pure (choose nodePath selector [Lambda [] genTy (invoke names child) | (_,child) <- alternatives])
+              Draws.FilterDraw child binder predicate limit -> do
+                let name = bound binder
+                condition <- renderWith (bindName binder name names) predicate
+                pure (pure' "Property" "suchThat" [Str strategy,Lambda [(name,tValue)] tBool (X.truth condition),IntLit limit,invoke names child])
+              Draws.BindDraw binder from more -> do
+                let name = bound binder
+                pure (bind (invoke names from) name (invoke (bindName binder name names) more) genTy)
+            let packed = case fst (claimAll (scopeWith (reservedLocals ++ helperNames ++ capturedNames)) ["capturedValues"]) of
+                  value : _ -> value
+                  [] -> "capturedValues"
+                unpacked = foldr (\(index,name) rest -> Let name tValue (Raw (packed ++ "[" ++ show index ++ "]")) rest)
+                  body (zip [0::Int ..] capturedNames)
+            pure (table M.! Draws.drawNumber node, packed, unpacked)
+      helpers <- mapM nodeBinding nodes
+      pure (foldr (\(name,parameter,body) rest ->
+        Let name (tFun [tValues] genTy) (Lambda [(parameter,tValues)] genTy body) rest)
+        (invoke outer (Draws.drawRoot graph)) helpers)
     strategyDraw names requirement strategy path draw = case draw of
       C.DrawAny ty (Just aim) -> do
         let name = "aim" ++ shortPath path
