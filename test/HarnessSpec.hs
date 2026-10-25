@@ -263,7 +263,7 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
         nub (statusOf "|booking succeeds|" evidence) `shouldBe` [Skipped]
   it "rejects known discrepancy on a law the compiler proves" $
     (compiled (harness ["  for law \"|reflexive|", "    known discrepancy \"never\"\nend for law"]) >>= dischargeEvidence)
-      `shouldSatisfy` failsWith "cannot mark it known discrepancy"
+      `shouldSatisfy` failsWith "cannot mark it as a known discrepancy"
   it "names tests after law labels, uniquely, and carries tags in the manifest" $ do
     unitTestNames "python" ["a law", "a law", "1 more"] `shouldBe` ["test_a_law", "test_a_law_2", "test_law_1_more"]
     unitTestNames "go" ["a law"] `shouldBe` ["TestALaw"]
