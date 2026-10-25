@@ -201,6 +201,16 @@ helper/type dependencies. A changed nominal type recomputes its own codecs;
 codecs for an independent nominal type retain their entries even when the
 outer unit must be assembled again.
 
+The JVM emitter caches independent typed function, data, boundary-codec and
+native-conversion documents. Each function starts with a fresh collision-checked
+local scope, preserving source names and generated field/selection roles. Native
+conversions and codec fields are named from checked types before lowering,
+rather than numbered by previous requests. Cached conversion chunks replay only
+their requested conversions; reachable allocated typed/native names and target
+style remain part of their presentation context. Helper allocation also checks
+friendly names against digest fallbacks, so a user-chosen name cannot alias a
+fallback merely by resembling it.
+
 `memoizedState` remains an exact state-transition primitive for emitters whose
 incoming helper state is relevant. Independent chunks instead isolate their
 request sets as above; hashing the accumulated prior module state would make

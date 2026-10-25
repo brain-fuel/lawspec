@@ -9,7 +9,14 @@ module LawSpec.Typed.Jvm (jvmPerformName, JvmTyped(..), JvmStyle(..), emitJvmTyp
 
 import Control.Monad (forM)
 import Control.Monad.State.Strict
-import Data.Char (isAlphaNum, isUpper, toLower)
+import Data.Char (isAlphaNum, toUpper)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.CorePersist ()
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as Context
 import Data.List (intercalate, isPrefixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
@@ -27,9 +34,9 @@ import qualified LawSpec.ScalaLayout as SL
 import qualified LawSpec.JavaLayout as J
 import LawSpec.DataNames (isProduct, caseNames)
 import LawSpec.Time (isDurationType)
-import LawSpec.JvmNames (jvmClaimAll, jvmLocal, jvmMethod, javadoc)
+import LawSpec.JvmNames (jvmClaim, jvmClaimAll, jvmLocal, jvmMethod, javadoc)
 import LawSpec.RecordNames (recordDisplayNames)
-import LawSpec.Naming (sourceDefinitionName)
+import LawSpec.Naming (sourceDefinitionName, nameWords)
 
 data JvmTyped = JvmTyped
   { jvmTypedSource :: String
@@ -55,7 +62,9 @@ data JvmTyped = JvmTyped
 -- | Whose native types the typed code converts to: Java's records or
 -- Kotlin's data classes. Scala's case classes and enums meet typed code
 -- through their codecs, so ScalaStyle has no direct conversions.
-data JvmStyle = JavaStyle | KotlinStyle | ScalaStyle deriving (Eq)
+data JvmStyle = JavaStyle | KotlinStyle | ScalaStyle deriving (Eq, Show, Generic)
+
+instance Binary JvmStyle
 
 -- | The scalars with a typed JVM form: UInt64 has no long.
 jvmScalars :: [String]
@@ -84,46 +93,63 @@ data Env = Env
   , envFast :: String
   , envStyle :: JvmStyle
   , envDeclarations :: [DataDeclaration]
+  , envIdentity :: Identity.Graph
+  , envNative :: M.Map Id String
+  , envHelperNames :: M.Map (String,String) String
   }
 
 -- | Fresh names, and the per-type native conversions the code asks for.
-data St = St { stCounter :: Int, stHelpers :: M.Map String (Int, Type), stWanted :: S.Set (String, String) }
+data St = St
+  { stTaken :: S.Set String
+  , stHelpers :: M.Map String Type
+  , stWanted :: S.Set (String, String)
+  } deriving (Show, Generic)
+
+instance Binary St
 
 type M = StateT St (Either String)
 
 initial :: St
-initial = St 0 M.empty S.empty
+initial = St (S.fromList (javaKeywords ++ localReserved)) M.empty S.empty
+
+localReserved :: [String]
+localReserved = words "symbols LawSpecFast LawSpecRuntime LawSpecTyped String Long Boolean Object Integer Math Character Arrays Objects BigInteger java kotlin scala lawspec"
 
 fresh :: String -> M String
 fresh base = do
   s <- get
-  put s { stCounter = stCounter s + 1 }
-  pure (jvmLocal "java" [] (sanitize base) ++ show (stCounter s))
+  let (name,taken) = jvmClaim (stTaken s) (jvmLocal "java" [] base)
+  put s { stTaken = taken }
+  pure name
 
--- | A conversion helper of a kind (tonative, fromnative) for a type.
-helper :: String -> Type -> M String
-helper kind ty = do
-  s <- get
+-- | Conversion requests are replayable deltas; allocation never depends on
+-- which definition happened to request a conversion first.
+helper :: Env -> String -> Type -> M String
+helper env kind ty = do
   let key = show ty
-  index <- case M.lookup key (stHelpers s) of
-    Just (i, _) -> pure i
-    Nothing -> do
-      let i = M.size (stHelpers s)
-      put s { stHelpers = M.insert key (i, ty) (stHelpers s) }
-      pure i
-  modify (\st -> st { stWanted = S.insert (kind, key) (stWanted st) })
-  pure (kind ++ show index)
+  modify (\st -> st { stHelpers = M.insert key ty (stHelpers st),
+    stWanted = S.insert (kind,key) (stWanted st) })
+  pure (helperName env kind ty)
+
+helperName :: Env -> String -> Type -> String
+helperName env kind ty = M.findWithDefault fallback (kind,show ty) (envHelperNames env)
+  where fallback = helperBase env kind ty ++ "hash" ++ Identity.fullKey (envIdentity env) "typed-jvm-helper-fallback" ty
+
+helperBase :: Env -> String -> Type -> String
+helperBase env kind ty = kind ++ typeWords ty
+  where
+    typeWords (Constructor name arguments) =
+      capital (jvmLocal "java" [] (M.findWithDefault (lastName name) name (envNames env))) ++
+      concat [typeWords t | TypeArgument t <- arguments]
+    typeWords (TypeVariable _) = "Parameter"
+    typeWords (Arrow a b) = "Function" ++ typeWords a ++ typeWords b
+    lastName = reverse . takeWhile (/= ':') . reverse
+    capital (c:cs) = toUpper c : cs
+    capital [] = "Value"
 
 -- | A header and its block, the brace on a line of its own.
 braced :: String -> D.Doc -> D.Doc
 braced header body = D.text header <> D.hardline <> D.block 2 body
-
-sanitize :: String -> String
-sanitize name = case [c | c <- map lower name, isAlphaNum c || c == '_'] of
-  [] -> "v"
-  cleaned@(c : _) | isAlphaNum c && not (c >= '0' && c <= '9') -> cleaned
-  cleaned -> "v" ++ cleaned
-  where lower c = if isUpper c then toLower c else c
 
 javaKeywords :: [String]
 javaKeywords = words "abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var yield record sealed permits _"
@@ -142,6 +168,10 @@ jvmPerformName op = jvmMethod "typedPerform" (idText (operationId op))
 
 emitJvmTyped :: JvmStyle -> [DataDeclaration] -> [Unit] -> Either String JvmTyped
 emitJvmTyped style declarations units = do
+  nativeNames <- case style of
+    JavaStyle -> map (\(name,value) -> (Id name,value)) <$> JavaData.namesFor declarations
+    KotlinStyle -> KotlinData.namesFor declarations
+    ScalaStyle -> ScalaData.namesFor declarations
   let plan = typedPlanPerforming jvmScalars declarations units
       datas = typedData plan
       names = dataNames datas
@@ -150,20 +180,25 @@ emitJvmTyped style declarations units = do
       functions = M.fromList (zip (map fst (typedRepresentatives plan))
         (fst (jvmClaimAll (S.fromList (javaKeywords ++ reservedMembers)) [functionName c d | (c, d) <- typedRepresentatives plan])))
       env = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
-        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions "" "LawSpecFast" style declarations
-      -- Scala's conversions live outside LawSpecTyped, so they name it in full.
-      scalaEnv = env { envPrefix = typedClassName ++ ".", envFast = "lawspec.runtime.LawSpecFast" }
-  dataDocs <- mapM (dataDoc env) datas
-  let signatureTypes = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
-                              | d <- M.elems (typedDefinitions plan) ]
+        (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions "" "LawSpecFast" style declarations graph (M.fromList nativeNames) helperNames
+      graph = Identity.dependencyGraph declarations units
+      allTypes = Context.typeClosure (envData env)
+        (concatMap (Context.definitionTypes . snd) (typedRepresentatives plan) ++ handlerTypes)
+      helperNames = Context.helperAllocationWith (\name digest -> name ++ "hash" ++ digest)
+        graph (M.elems functions ++ javaKeywords ++ reservedMembers) (helperBase env) helperKinds allTypes
       handlerTypes = [ t | h <- concatMap unitHandlers units, isTypedHandler plan h
                          , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
+      -- Scala's conversions live outside LawSpecTyped, so they name it in full.
+      scalaEnv = env { envPrefix = typedClassName ++ ".", envFast = "lawspec.runtime.LawSpecFast" }
+  dataDocs <- mapM (memoData env) datas
+  let signatureTypes = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
+                              | d <- M.elems (typedDefinitions plan) ]
   ((functionDocs, natives, nativeDocs), _) <- flip runStateT initial $ do
-    fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
+    fs <- mapM (\(c, d) -> memoFunction env c d) (typedRepresentatives plan)
     direct <- forM [t | t <- nub (handlerTypes ++ signatureTypes), nativeDirect env S.empty t] $ \t -> do
-      f <- helper "fromNative" t
-      g <- helper "toNative" t
+      f <- helper env "fromNative" t
+      g <- helper env "toNative" t
       pure (show t, (conversionOwner ++ "." ++ f, conversionOwner ++ "." ++ g))
     hs <- nativeHelpers (if style == ScalaStyle then scalaEnv else env)
     pure (fs, M.fromList direct, hs)
@@ -172,7 +207,7 @@ emitJvmTyped style declarations units = do
                                  | d <- M.elems (typedDefinitions plan) ] ++
                          [ t | h <- concatMap unitHandlers units, isTypedHandler plan h, (_, ty) <- handlerOperations h
                              , let (args, result) = functionType ty, t <- result : args ]))
-    (\t -> (,) t <$> codecExpression env [] t)
+    (\t -> (,) t <$> memoCodec env t)
   -- Each typed stateful handler's start state, made in Java for Java and
   -- Kotlin alike.
   let startable = [ (h, t, e) | h <- [x | x <- concatMap unitHandlers units, isTypedHandler plan x]
@@ -185,7 +220,10 @@ emitJvmTyped style declarations units = do
     (body, _) <- runStateT (cstmt env Nothing [] Return e) initial
     pure (J.block (J.signature "public static " jt name
       [J.parameter (J.applied "java.util.Map" [D.text "String", D.text "Object"]) "symbols"]) body)
-  let boundaryNames = M.fromList [ (show t, "C" ++ show i) | (i, (t, _)) <- zip [0 :: Int ..] boundary ]
+  let boundaryNames = M.fromList [(show ty,name) | ((_,key),name) <- M.toList allocatedCodecs,
+        (ty,_) <- boundary, show ty == key]
+      allocatedCodecs = Context.helperAllocationWith (\name digest -> name ++ "_" ++ map toUpper digest)
+        graph reservedMembers (\_ ty -> intercalate "_" (map (map toUpper) (nameWords (helperBase env "codec" ty)))) ["codec"] (map fst boundary)
       codecDocs = [ J.assigned
                       (D.text "public static final " <> J.applied "LawSpecFast.Codec"
                         [either (const (D.text "?")) id (javaTypeDoc env True t)] <>
@@ -467,6 +505,69 @@ orderingHelper env = case M.lookup (collectionsUnit ++ "::type::Ordering") (envN
 data Target = Return | Assign String
 
 type Scope = [(Id, String)]
+
+helperKinds :: [String]
+helperKinds = ["toNative","fromNative"]
+
+functionTable :: Table (Either String (D.Doc,St))
+functionTable = unsafePerformIO (newPersistentTable "typed-jvm-function" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE functionTable #-}
+
+dataTable :: Table (Either String D.Doc)
+dataTable = unsafePerformIO (newPersistentTable "typed-jvm-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE dataTable #-}
+
+helperTable :: Table (Either String (D.Doc,St))
+helperTable = unsafePerformIO (newPersistentTable "typed-jvm-helper" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE helperTable #-}
+
+codecTable :: Table (Either String D.Doc)
+codecTable = unsafePerformIO (newPersistentTable "typed-jvm-codec" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE codecTable #-}
+
+-- Exact allocated interfaces of just the types this chunk can name.
+chunkContext :: Env -> [Type] -> String
+chunkContext env types = show
+  (envStyle env,envPrefix env,envFast env,
+   [(name,M.lookup name (envNames env),M.lookup (Id name) (envNative env)) | Constructor name _ <- types],
+   [(kind,show ty,helperName env kind ty) | ty <- types, kind <- helperKinds])
+
+memoData :: Env -> DataDeclaration -> Either String D.Doc
+memoData env declaration = memoized dataTable key (dataDoc env declaration)
+  where
+    types = Context.typeClosure (envData env) [Constructor (idText (dataId declaration)) []]
+    key = Identity.fullKey (envIdentity env) ("typed-jvm-data:" ++ chunkContext env types) declaration
+
+memoCodec :: Env -> Type -> Either String D.Doc
+memoCodec env ty = memoized codecTable key (codecExpression env [] ty)
+  where
+    types = Context.typeClosure (envData env) [ty]
+    key = Identity.fullKey (envIdentity env) ("typed-jvm-codec:" ++ chunkContext env types) ty
+
+replay :: St -> M ()
+replay requested = modify (\before -> before
+  {stHelpers = M.union (stHelpers requested) (stHelpers before),
+   stWanted = S.union (stWanted requested) (stWanted before)})
+
+memoFunction :: Env -> Int -> Definition -> M D.Doc
+memoFunction env classification definition = do
+  let calls = Context.calledFunctions (envPlan env) (envFunctions env) classification definition
+      types = Context.typeClosure (envData env) (Context.definitionTypes definition)
+      own = initial {stTaken = S.union (stTaken initial)
+        (S.fromList [name | Constructor name _ <- types, Just name <- [M.lookup name (envNames env)]])}
+      key = Identity.fullKey (envIdentity env)
+        ("typed-jvm-function:" ++ show calls ++ chunkContext env types) definition
+  (document,requested) <- lift' (memoized functionTable key (runStateT (functionDoc env classification definition) own))
+  replay requested
+  pure document
+
+memoHelper :: Env -> String -> Type -> M D.Doc
+memoHelper env kind ty = do
+  let types = Context.typeClosure (envData env) [ty]
+      key = Identity.fullKey (envIdentity env) ("typed-jvm-helper:" ++ kind ++ chunkContext env types) ty
+  (document,requested) <- lift' (memoized helperTable key (runStateT (nativeHelper env kind ty) initial))
+  replay requested
+  pure document
 
 functionDoc :: Env -> Int -> Definition -> M D.Doc
 functionDoc env c d = do
@@ -1010,17 +1111,17 @@ nativeHelpers env = go S.empty
       let pending = [w | w <- S.toList (stWanted st), w `S.notMember` done]
       if null pending then pure [] else do
         docs <- forM pending $ \(kind, key) -> do
-          let (index, ty) = stHelpers st M.! key
-          nativeHelper env kind index ty
+          let ty = stHelpers st M.! key
+          memoHelper env kind ty
         rest <- go (S.union done (S.fromList pending))
         pure (docs ++ rest)
 
-nativeHelper :: Env -> String -> Int -> Type -> M D.Doc
-nativeHelper env kind index ty | envStyle env == ScalaStyle = scalaHelper env kind index ty
-nativeHelper env kind index ty = do
+nativeHelper :: Env -> String -> Type -> M D.Doc
+nativeHelper env kind ty | envStyle env == ScalaStyle = scalaHelper env kind ty
+nativeHelper env kind ty = do
   t <- lift' (javaTypeDoc env True ty)
   n <- D.mapText unqualify <$> lift' (nativeTypeDoc env ty)
-  let name = kind ++ show index
+  let name = helperName env kind ty
       fn result parameter body = J.block
         (J.signature "public static " result name [parameter]) body
   if kind == "toNative"
@@ -1043,30 +1144,30 @@ toNative env ty = case ty of
   Constructor "Bytes" [] -> pure [J.returned (J.call "x.toArray" [])]
   _ | isFixed ty -> pure [J.returned (D.text (narrowCast ty) <> castDoc (D.text "long") (D.text "x"))]
   Constructor "List" [TypeArgument a] -> do
-    c <- helper "toNative" a
+    c <- helper env "toNative" a
     na <- lift' (nativeTypeDoc env a)
     pure [ J.bind "out" (J.callWith (D.text "new " <> J.applied "java.util.ArrayList" [na]) [J.call "x.size" []])
          , J.block (D.text "for (var item : x)") [J.statement (J.call "out.add" [J.call c [D.text "item"]])]
          , J.returned (J.call "java.util.Collections.unmodifiableList" [D.text "out"]) ]
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "toNative" a
+    c <- helper env "toNative" a
     pure [ J.block (D.text "if (x.isPresent())") [J.returned (J.call "new LawSpecRuntime.Present<>" [J.call c [J.call "x.get" []]])]
          , J.returned (J.call "new LawSpecRuntime.Absent<>" []) ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    cl <- helper "toNative" a
-    cr <- helper "toNative" b
+    cl <- helper env "toNative" a
+    cr <- helper env "toNative" b
     pure [ J.block (D.text "if (x.isLeft())") [J.returned (J.call "new LawSpecRuntime.Left<>" [J.call cl [J.call "x.left" []]])]
          , J.returned (J.call "new LawSpecRuntime.Right<>" [J.call cr [J.call "x.right" []]]) ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        ck <- helper "toNative" k
-        cv <- helper "toNative" v
+        ck <- helper env "toNative" k
+        cv <- helper env "toNative" v
         nk <- lift' (nativeTypeDoc env k)
         nv <- lift' (nativeTypeDoc env v)
         pure [ J.bind "out" (J.callWith (D.text "new " <> J.applied "java.util.LinkedHashMap" [nk,nv]) [])
              , J.statement (J.call "x.forEach" [J.lambdaValue ["k", "v"] (J.call "out.put" [J.call ck [D.text "k"], J.call cv [D.text "v"]])])
              , J.returned (J.call "java.util.Collections.unmodifiableMap" [D.text "out"]) ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        c <- helper "toNative" a
+        c <- helper env "toNative" a
         na <- lift' (nativeTypeDoc env a)
         pure [ J.bind "out" (J.callWith (D.text "new " <> J.applied "java.util.LinkedHashSet" [na]) [])
              , J.block (D.text "for (var item : x.toList())") [J.statement (J.call "out.add" [J.call c [D.text "item"]])]
@@ -1076,7 +1177,7 @@ toNative env ty = case ty of
         typedName = envNames env M.! n
     base <- lift' (nativeBase env ty)
     typedArgs <- lift' (mapM (javaTypeDoc env True . snd) table)
-    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "toNative" (substituteIn table (binderType f))
+    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "toNative" (substituteIn table (binderType f))
     let made prefix c cs
           | null (constructorFields c) && kotlinObject d c = D.text (nativeVariant env d c base ++ ".INSTANCE")
           | otherwise = J.call ("new " ++ nativeVariant env d c base ++ if null table then "" else "<>")
@@ -1105,22 +1206,22 @@ fromNative env ty = case ty of
   Constructor "Bytes" [] -> pure [J.returned (J.call "new LawSpecFast.Bytes" [J.call "n.clone" []])]
   _ | isFixed ty -> pure [J.returned (J.call "n.longValue" [])]
   Constructor "List" [TypeArgument a] -> do
-    c <- helper "fromNative" a
+    c <- helper env "fromNative" a
     at <- lift' (javaTypeDoc env True a)
     pure [ J.assigned (J.applied "LawSpecFast.List" [at] <> D.text " out") (J.call "LawSpecFast.List.nil" [])
          , J.block (D.text "for (int i = n.size() - 1; i >= 0; i--)")
              [J.assigned (D.text "out") (J.call "LawSpecFast.List.cons" [J.call c [J.call "n.get" [D.text "i"]], D.text "out"])]
          , J.returned (D.text "out") ]
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "fromNative" a
+    c <- helper env "fromNative" a
     at <- lift' (javaTypeDoc env True a)
     na <- lift' (nativeTypeDoc env a)
     pure [ J.block (D.text "if (n instanceof " <> J.applied "LawSpecRuntime.Present" [na] <> D.text " j)")
              [J.returned (witnessCall "LawSpecFast.Maybe" [at] "present" [J.call c [J.call "j.value" []]])]
          , J.returned (witnessCall "LawSpecFast.Maybe" [at] "absent" []) ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    cl <- helper "fromNative" a
-    cr <- helper "fromNative" b
+    cl <- helper env "fromNative" a
+    cr <- helper env "fromNative" b
     lt <- lift' (javaTypeDoc env True a)
     rt <- lift' (javaTypeDoc env True b)
     nl <- lift' (nativeTypeDoc env a)
@@ -1130,8 +1231,8 @@ fromNative env ty = case ty of
          , J.bind "r" (castDoc (J.applied "LawSpecRuntime.Right" [nl,nr]) (D.text "n"))
          , J.returned (witnessCall "LawSpecFast.Either" [lt,rt] "right" [J.call cr [J.call "r.value" []]]) ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        ck <- helper "fromNative" k
-        cv <- helper "fromNative" v
+        ck <- helper env "fromNative" k
+        cv <- helper env "fromNative" v
         kt <- lift' (javaTypeDoc env True k)
         vt <- lift' (javaTypeDoc env True v)
         pure [ J.assigned (J.applied "LawSpecFast.Map" [kt,vt] <> D.text " out") (J.call "LawSpecFast.Map.empty" [])
@@ -1139,7 +1240,7 @@ fromNative env ty = case ty of
                  [J.assigned (D.text "out") (J.call "out.put" [J.call ck [J.call "entry.getKey" []], J.call cv [J.call "entry.getValue" []]])]
              , J.returned (D.text "out") ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        c <- helper "fromNative" a
+        c <- helper env "fromNative" a
         at <- lift' (javaTypeDoc env True a)
         pure [ J.assigned (J.applied "LawSpecFast.Set" [at] <> D.text " out") (J.call "LawSpecFast.Set.empty" [])
              , J.block (D.text "for (var item : n)") [J.assigned (D.text "out") (J.call "out.insert" [J.call c [D.text "item"]])]
@@ -1152,7 +1253,7 @@ fromNative env ty = case ty of
           _ -> binderName field
     base <- lift' (nativeBase env ty)
     nativeArgs <- lift' (mapM (nativeTypeDoc env . snd) table)
-    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
+    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = D.text (typedName ++ "." ++ variantName env d c)
           | otherwise = J.call ("new " ++ (if isProductType d then typedName else typedName ++ "." ++ variantName env d c) ++ if null table then "" else "<>")
@@ -1179,12 +1280,12 @@ kotlinGetter name = case name of
 -- method of LawSpecTypedScala. Scala's own types (List, Option, Either, Map,
 -- Set, BigInt, IArray, case classes and enums) meet the typed structures
 -- (LawSpecFast and LawSpecTyped's classes) without the dynamic Value.
-scalaHelper :: Env -> String -> Int -> Type -> M D.Doc
-scalaHelper env kind index ty = do
+scalaHelper :: Env -> String -> Type -> M D.Doc
+scalaHelper env kind ty = do
   typed <- lift' (scalaTypedDoc env ty)
   native <- lift' (scalaNativeDoc env ty)
   body <- if kind == "toNative" then scalaToNative env ty else scalaFromNative env ty
-  let name = kind ++ show index
+  let name = helperName env kind ty
       (parameter,result) = if kind == "toNative" then (D.text "x: " <> typed,native) else (D.text "n: " <> native,typed)
       signature = SL.parameters (D.text ("def " ++ name)) [parameter] <> D.text ": " <> result
   pure (signature <> D.text " = " <> SL.block body)
@@ -1246,28 +1347,28 @@ scalaToNative env ty = case ty of
   Constructor "Bytes" [] -> pure [SL.call "scala.IArray.unsafeFromArray" [SL.call "x.toArray" []]]
   Constructor n [] | isFixed ty -> pure [D.text ("x.longValue" ++ fromMaybe "" (lookup n [("Int8", ".toByte"),("Int16", ".toShort"),("Int32", ".toInt"),("UInt8", ".toShort"),("UInt16", ".toInt")]))]
   Constructor "List" [TypeArgument a] -> do
-    c <- helper "toNative" a
+    c <- helper env "toNative" a
     native <- lift' (scalaNativeDoc env a)
     pure [scalaAssign "val out" (scalaApplied "scala.collection.immutable.List.newBuilder" [native]),
           scalaLambdaCall "x.forEach" "item" (D.text "out += " <> SL.call c [D.text "item"]), SL.call "out.result" []]
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "toNative" a
+    c <- helper env "toNative" a
     pure [D.group (D.text "if (x.isPresent) " <> SL.call "scala.Some" [SL.call c [D.text "x.get"]]), D.text "else scala.None"]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    cl <- helper "toNative" a
-    cr <- helper "toNative" b
+    cl <- helper env "toNative" a
+    cr <- helper env "toNative" b
     pure [D.group (D.text "if (x.isLeft) " <> SL.call "scala.util.Left" [SL.call cl [D.text "x.left"]]),
           D.group (D.text "else " <> SL.call "scala.util.Right" [SL.call cr [D.text "x.right"]])]
   _ | Just ("KeyVal",[k,v]) <- collectionArguments ty -> do
-        ck <- helper "toNative" k
-        cv <- helper "toNative" v
+        ck <- helper env "toNative" k
+        cv <- helper env "toNative" v
         nk <- lift' (scalaNativeDoc env k)
         nv <- lift' (scalaNativeDoc env v)
         let tuple = SL.call "" [SL.call ck [D.text "k"],SL.call cv [D.text "v"]]
         pure [scalaAssign "val out" (scalaApplied "scala.collection.immutable.ListMap.newBuilder" [nk,nv]),
               scalaLambdaCall "x.forEach" "(k, v)" (D.text "out += (" <> tuple <> D.text ")"), SL.call "out.result" []]
     | Just ("Set",[a]) <- collectionArguments ty -> do
-        c <- helper "toNative" a
+        c <- helper env "toNative" a
         native <- lift' (scalaNativeDoc env a)
         pure [scalaAssign "val out" (scalaApplied "scala.collection.immutable.ListSet.newBuilder" [native]),
               scalaLambdaCall "x.toList().forEach" "item" (D.text "out += " <> SL.call c [D.text "item"]), SL.call "out.result" []]
@@ -1280,7 +1381,7 @@ scalaToNative env ty = case ty of
     let nativeCase c = if isProduct d then base else base ++ "." ++ fromMaybe (constructorName c)
           (lookup (constructorId c) (caseNames (reverse (takeWhile (/= '.') (reverse base))) (dataConstructors d)))
         singleton c = not (isProduct d) && null (constructorFields c) && null (dataParameters d)
-    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "toNative" (substituteIn table (binderType f))
+    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "toNative" (substituteIn table (binderType f))
     let made prefix c cs
           | singleton c = D.text (nativeCase c)
           | otherwise = SL.callWith (scalaApplied (nativeCase c) (if isProduct d then [] else nativeArgs))
@@ -1307,33 +1408,33 @@ scalaFromNative env ty = case ty of
   Constructor "Bytes" [] -> pure [SL.call "lawspec.runtime.LawSpecFast.Bytes" [D.text "scala.IArray.genericWrapArray(n).toArray"]]
   _ | isFixed ty -> pure [SL.call "java.lang.Long.valueOf" [D.text "n.toLong"]]
   Constructor "List" [TypeArgument a] -> do
-    c <- helper "fromNative" a
+    c <- helper env "fromNative" a
     typed <- lift' (scalaTypedDoc env a)
     pure [scalaAssign "var out" (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.List.nil" [typed]) []),
           scalaLambdaCall "n.reverseIterator.foreach" "item" (scalaAssign "out" (SL.call "lawspec.runtime.LawSpecFast.List.cons" [SL.call c [D.text "item"],D.text "out"])), D.text "out"]
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "fromNative" a
+    c <- helper env "fromNative" a
     typed <- lift' (scalaTypedDoc env a)
     pure [D.text "n match " <> SL.block
       [scalaCase (D.text "scala.Some(v)") (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.Maybe.present" [typed]) [SL.call c [D.text "v"]]),
        scalaCase (D.text "scala.None") (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.Maybe.absent" [typed]) [])]]
   Constructor "Either" [TypeArgument a,TypeArgument b] -> do
-    cl <- helper "fromNative" a
-    cr <- helper "fromNative" b
+    cl <- helper env "fromNative" a
+    cr <- helper env "fromNative" b
     lt <- lift' (scalaTypedDoc env a)
     rt <- lift' (scalaTypedDoc env b)
     pure [D.text "n match " <> SL.block
       [scalaCase (D.text "scala.util.Left(v)") (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.Either.left" [lt,rt]) [SL.call cl [D.text "v"]]),
        scalaCase (D.text "scala.util.Right(v)") (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.Either.right" [lt,rt]) [SL.call cr [D.text "v"]])]]
   _ | Just ("KeyVal",[k,v]) <- collectionArguments ty -> do
-        ck <- helper "fromNative" k
-        cv <- helper "fromNative" v
+        ck <- helper env "fromNative" k
+        cv <- helper env "fromNative" v
         kt <- lift' (scalaTypedDoc env k)
         vt <- lift' (scalaTypedDoc env v)
         pure [scalaAssign "var out" (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.Map.empty" [kt,vt]) []),
               scalaLambdaCall "n.foreach" "(k, v)" (scalaAssign "out" (SL.call "out.put" [SL.call ck [D.text "k"],SL.call cv [D.text "v"]])),D.text "out"]
     | Just ("Set",[a]) <- collectionArguments ty -> do
-        c <- helper "fromNative" a
+        c <- helper env "fromNative" a
         typed <- lift' (scalaTypedDoc env a)
         pure [scalaAssign "var out" (SL.callWith (scalaApplied "lawspec.runtime.LawSpecFast.Set.empty" [typed]) []),
               scalaLambdaCall "n.foreach" "item" (scalaAssign "out" (SL.call "out.insert" [SL.call c [D.text "item"]])),D.text "out"]
@@ -1350,7 +1451,7 @@ scalaFromNative env ty = case ty of
         pattern c | singleton c = D.text (nativeCase c)
                   | otherwise = D.text "y: " <> scalaApplied (nativeCase c) (if isProduct d then [] else nativeArgs) <>
                       (if isProduct d || null nativeArgs then mempty else D.text " @unchecked")
-    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
+    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = D.text (typedName ++ "." ++ variantName env d c)
           | otherwise = SL.callWith (D.text "new " <> scalaApplied (if isProductType d then typedName else typedName ++ "." ++ variantName env d c) typedArgs)

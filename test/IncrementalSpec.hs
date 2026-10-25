@@ -17,6 +17,10 @@ import Data.Version (showVersion)
 import Paths_lawspec (version)
 import Test.Hspec
 import qualified LawSpec.Core as C
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Api (dispatch)
 import LawSpec.Dependencies (dependencyGraph, fullKey)
 import LawSpec.SurfaceContext (contextFor)
@@ -139,6 +143,18 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       selected (Surface.ConstructLit "Score" [Surface.Number 1]) [] `shouldContain` ["Score"]
       selected (Surface.Annotate (Surface.Var "input") (Surface.Named "Wide")) [] `shouldContain` ["Wide"]
   describe "structured emission chunks" $ do
+    it "keeps helper names distinct when a friendly name equals another type's digest fallback" $ do
+      let graph = dependencyGraph [] []
+          int = C.Constructor "Int32" []
+          other = C.Constructor "Int64" []
+          unit = C.Constructor "Unit" []
+          alias = "collision_" ++ Identity.semanticKey graph "typed-helper" int
+          base _ ty = if ty == unit then alias else "collision"
+          names = EmissionContext.helperAllocation graph [] base ["convert"] [int,other,unit]
+      M.size names `shouldBe` 3
+      S.size (S.fromList (M.elems names)) `shouldBe` 3
+      EmissionContext.helperAllocation graph [] base ["convert"] [unit,other,int] `shouldBe` names
+
     it "round-trips layout decisions without reading generated source" $ do
       let document = Doc.group (Doc.text "function" <> Doc.nest 2 (Doc.softline <> Doc.parens (Doc.text "argument")))
           restored = Binary.decode (Binary.encode document)
@@ -201,7 +217,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         -- A cached function must replay its own request even if another function
         -- now introduces a distinct literal before it in the module.
         removePathForcibly root
-    forM_ [("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function"),("go","typed-go-function"),("haskell","typed-haskell-function")] $ \(target, table) ->
+    forM_ [("java","typed-jvm-function"),("kotlin","typed-jvm-function"),("scala","typed-jvm-function"),("python","typed-python-function"),("javascript","typed-web-function"),("typescript","typed-web-function"),("go","typed-go-function"),("haskell","typed-haskell-function")] $ \(target, table) ->
       it ("reuses an unchanged " ++ target ++ " function when an earlier function requests a new helper") $ do
         root <- (</> ("lawspec-" ++ target ++ "-definition-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -242,7 +258,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       second <- listDirectory (root </> versioned </> "typed-go-function")
       length second `shouldBe` 3
       removePathForcibly root
-    forM_ [("go","typed-go-data"),("haskell","typed-haskell-data")] $ \(target,table) ->
+    forM_ [("java","typed-jvm-data"),("kotlin","typed-jvm-data"),("scala","typed-jvm-data"),("go","typed-go-data"),("haskell","typed-haskell-data")] $ \(target,table) ->
       it ("reuses an independent " ++ target ++ " type document after another type changes") $ do
         root <- (</> ("lawspec-" ++ target ++ "-type-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
@@ -264,7 +280,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         second <- listDirectory (root </> versioned </> table)
         length second `shouldBe` length first + 1
         removePathForcibly root
-    forM_ [("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
+    forM_ [("java","typed-jvm-helper",2),("kotlin","typed-jvm-helper",2),("scala","typed-jvm-helper",2),("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
            ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2)] $ \(target,table,changed) ->
       it ("reuses independent " ++ target ++ " codec documents after another type changes") $ do
         root <- (</> ("lawspec-" ++ target ++ "-helper-memo-test")) <$> getTemporaryDirectory
