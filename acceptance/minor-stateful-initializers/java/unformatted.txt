@@ -1,1 +1,0 @@
-src/main/java/lawspec/runtime/LawSpecDefinitionBodies.java temporary — removed by Stage C (nesting/size refactor): a native codec reaches the definition bodies as text and is laid out in place (JavaText.javaLayout), five levels deep, so six lines pass 100 columns

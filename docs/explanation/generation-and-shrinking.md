@@ -189,3 +189,9 @@ function. Example expectations remain their own checks; each example, finite
 case, property invocation and replay then calls the shared law assertion with
 its own inputs, resources and failure context. Helper names are reserved before
 allocating source input names, and each case keeps its own symbol context.
+
+The temporary Java stateful-initializer and Scala existence formatter exemptions
+are gone, as is the recorded Scala flow exemption. Their current generated
+files pass the pinned formatters. The Stage C exemption list is empty. Java's
+user-owned `_class` stub retains its documented GoogleMethodName exemption:
+that is the published adapter spelling for the `class` keyword.

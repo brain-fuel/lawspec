@@ -1,1 +1,0 @@
-src/test/scala/example/FlowLawSpecTest.scala scalafmt 3.11.5 starts two of this file's twelve val scrutinee = checkedPush(...) bindings, at the fourth nested match, on the line after the =, and keeps the other ten after it; LawSpec's Scala layout does not yet model that choice (follow-up: bind such scrutinees without nesting blocks)
