@@ -84,7 +84,7 @@ emitBindings minify bindings plan files = do
             -- An adapter that uses abilities gets their handlers first, as
             -- they are: application code's handlers take the bound types.
             handlerNames = [D.text ("handler" ++ show i) | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
-            bits = D.text (show (planMachineBits plan))
+            bits = D.text "MACHINE_BITS"
             convert schema method ref value = P.invoke (schema ++ "." ++ method) [ref,value,bits,D.text "symbols"]
             converted = [convert "bridge._native" "to_native" ty
               (convert "bridge._canonical" "from_native" ty value) | (ty,value) <- zip refs' values]
@@ -112,7 +112,7 @@ emitBindings minify bindings plan files = do
             application' = awaited application
         resultBody <- case (call, result) of
           _ | isUnit result -> pure [application', D.text "return None"]
-          -- A method or constructor's absent value (None) is Nothing.
+          -- A method or constructor's absent value (None) is Absent.
           (StaticCall _, _) -> pure [D.text "result = " <> application',
             D.text "return " <> resultOf resultRef (D.text "result")]
           (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
@@ -134,6 +134,8 @@ emitBindings minify bindings plan files = do
       let pathname = "src/" ++ pythonUnitFile (map (unitName . plannedUnit) (plannedUnits plan)) (unitName unit)
           header = common ++ [D.text "import lawspec_native as bridge"] ++ imports
       pure [Artifact pathname (render (D.joinWith D.hardline header <>
+        D.hardline <> D.hardline <> D.text "# The machine profile's integer width." <>
+        D.hardline <> D.text ("MACHINE_BITS = " ++ show (planMachineBits plan)) <>
         D.hardline <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline <> D.hardline) bodies)) "generated" "source"]
   dataFiles <- if any ((== "src/lawspec_data.py") . artifactPath) files then pure []
