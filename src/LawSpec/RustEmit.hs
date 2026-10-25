@@ -1,6 +1,7 @@
 -- | Rust consumes an execution plan made entirely from typed core.
 module LawSpec.RustEmit (emitRust, emitRustWithFormat, emitRustWithBindings, rustType, emitRustSchema) where
 import LawSpec.Core
+import qualified LawSpec.Network as Network
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Machine (machineActor)
 import LawSpec.TestNames (unitTestNames, lawWords)
@@ -292,6 +293,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         Doc.text ("impl crate::" ++ Abilities.traitPath allUnits (abilityInstance a) ++ " for " ++ name ++ " ") <>
         block (Doc.joinWith (Doc.hardline <> Doc.hardline) methods))
     allUnits = map plannedUnit plannedUnits
+    hasNetwork = Network.usesNetworkUnits allUnits
+    networkSetup = [statement (invoke "lawspec_network::install" []) | hasNetwork]
     -- A handler from the context, borrowed as its ability's trait.
     -- A handler from the context, typed by its binding.
     handlerValue ability = RL.expr (RL.try' (RL.method (RL.atom "ctx") "handler" [RL.atom (q (abilityKey ability))]))
@@ -634,10 +637,10 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             installs = installsFor unit installed
         body <- render [] core
         pure (Doc.text "#[test]" <> Doc.hardline <> function ("benchmark_" ++ intercalate "_" (lawWords n)) [] "ls::Result<()>"
-          (statements $ [Doc.text "let ctx = &mut ls::Context::testing();"] ++ installs ++ [
+          (statements $ networkSetup ++ [Doc.text "let ctx = &mut ls::Context::testing();"] ++ installs ++ [
             closureCall "lawspec_harness::benchmark" [string n] (Doc.text "|| " <> block (statements [binding "_measured" body, Doc.text "Ok(())"]))]))
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
-        either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames (modelTestUnit plan unit))
+        either (Left . concatMap message) Right (ModelTests.rustModelTestsWithNetwork hasNetwork planMachineBits planDataDeclarations definitionNames (modelTestUnit plan unit))
       let testNames = unitTestNames "rust" (map (propertyName . plannedProperty) plannedProperties)
           unitName = idText (unitId unit)
       -- Each law is a module of tests: one per example and boundary case,
@@ -915,11 +918,11 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             caseTests = [(escapeKeyword "rust" n, Just e, ([d], Nothing)) | (n, (e, d)) <- zip exampleNames examples] ++
               [(n, Nothing, d) | (n, d) <- zip boundaryNames boundaryTests] ++
               [("exhaustive", Nothing, d) | d <- exhaustive] ++ [("property", Nothing, d) | d <- property]
-            whole = statements ([block (asStatements d) | (_, _, d) <- caseTests] ++ [Doc.text "Ok(())"])
+            whole = statements (networkSetup ++ [block (asStatements d) | (_, _, d) <- caseTests] ++ [Doc.text "Ok(())"])
             -- The harness plane: a law that is skipped or expected to fail is
             -- one test; otherwise each test runs under the harness's settings.
             harnessed k name' isProperty (stmts, final) =
-              let turned = asBody (turn k ++ stmts, final)
+              let turned = asBody (networkSetup ++ turn k ++ stmts, final)
                   runner = stackClosure turned
               in if runSettings h && name' `notElem` ["boundaries", "exhaustive"]
                 then closureCall "lawspec_harness::run" [string (unitName ++ "::" ++ label), string (moduleName ++ "::" ++ name'), Doc.text (show (maybe 0 id (harnessTimeout h))),
@@ -962,19 +965,22 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             (if null stubs && null productions then mempty else blank <> adapterItems) <> Doc.hardline
           -- The definitions file calls workflow steps by their crate paths;
           -- this unit's own module is already mounted as adapter.
-          workflowModules mount = [if owner == unitId unit then Doc.text ("use adapter as " ++ ident (idText owner) ++ ";") else mount owner
+          useDoc value = (("1",value),Doc.text value)
+          workflowModules mount = [if owner == unitId unit then useDoc ("use adapter as " ++ ident (idText owner) ++ ";") else mount owner
             | owner <- nub ([o | hasDefinitions, o <- Definitions.workflowAdapterUnits (map LawSpec.Testing.plannedUnit plannedUnits)] ++
-                -- The production handlers of imported abilities are their owners'.
                 map Id (Abilities.foreignOwners unit))]
-          -- A shared module the tests mount uses only part of it there; the
-          -- adapter and the test support are the tests' own.
-          moduleDoc filename name = Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <>
-            (if name `elem` ["adapter", "ls_gen", "lawspec_runtime", "lawspec_harness"] then mempty else Doc.text "#[allow(dead_code, unused_imports)]" <> Doc.hardline) <>
-            Doc.text ("mod " ++ name ++ ";")
+          -- Sort imports by their checked names, never by reparsing a document.
+          moduleDoc filename name = (("0",name),
+            Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <>
+            (if name `elem` ["adapter", "ls_gen", "lawspec_runtime", "lawspec_harness", "lawspec_network"] then mempty else Doc.text "#[allow(dead_code, unused_imports)]" <> Doc.hardline) <>
+            Doc.text ("mod " ++ name ++ ";"))
+          networkImports mount = [if idText (unitId unit) == Network.networkUnit
+            then useDoc "use adapter as lawspec_network;" else mount | hasNetwork]
           localImports = [moduleDoc ("../src/" ++ modulePath ++ ".rs") "adapter"] ++
             [moduleDoc "../src/lawspec_data.rs" "lawspec_data" | not (null planDataDeclarations)] ++
             [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
             workflowModules (\owner -> moduleDoc ("../src/" ++ map (\c -> if c == '.' then '/' else c) (idText owner) ++ ".rs") (ident (idText owner))) ++
+            networkImports (moduleDoc "../src/lawspec/network.rs" "lawspec_network") ++
             [moduleDoc "../src/lawspec_runtime.rs" "lawspec_runtime"] ++
             [moduleDoc "../src/lawspec_sessions.rs" "lawspec_sessions" | hasSessions] ++
             [moduleDoc "../src/lawspec_actors.rs" "lawspec_actors" | hasActors] ++
@@ -986,18 +992,19 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           imports = case NR.bindingRustCrate bindings of
             Nothing -> localImports
-            Just library -> [Doc.text ("use " ++ library ++ "::" ++ testName ++ " as adapter;")] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_data;") | not (null planDataDeclarations)] ++
+            Just library -> [useDoc ("use " ++ library ++ "::" ++ testName ++ " as adapter;")] ++
+              [useDoc ("use " ++ library ++ "::lawspec_data;") | not (null planDataDeclarations)] ++
               [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
-              workflowModules (\owner -> Doc.text ("use " ++ library ++ "::" ++ ident (idText owner) ++ ";")) ++
-              [Doc.text ("use " ++ library ++ "::lawspec_runtime;")] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_sessions;") | hasSessions] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_actors;") | hasActors] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_remote;") | hasRemote] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_mailboxes;") | hasMailboxes] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_abilities;") | hasAbilities] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_native::*;") | hasNativeTypes] ++
-              [Doc.text ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++
+              workflowModules (\owner -> useDoc ("use " ++ library ++ "::" ++ ident (idText owner) ++ ";")) ++
+              networkImports (useDoc ("use " ++ library ++ "::lawspec_network;")) ++
+              [useDoc ("use " ++ library ++ "::lawspec_runtime;")] ++
+              [useDoc ("use " ++ library ++ "::lawspec_sessions;") | hasSessions] ++
+              [useDoc ("use " ++ library ++ "::lawspec_actors;") | hasActors] ++
+              [useDoc ("use " ++ library ++ "::lawspec_remote;") | hasRemote] ++
+              [useDoc ("use " ++ library ++ "::lawspec_mailboxes;") | hasMailboxes] ++
+              [useDoc ("use " ++ library ++ "::lawspec_abilities;") | hasAbilities] ++
+              [useDoc ("use " ++ library ++ "::lawspec_native::*;") | hasNativeTypes] ++
+              [useDoc ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++
               [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
               [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           content = Doc.joinWith blank (filter (not . null . Doc.render Doc.Compact) (wrappers ++ tests ++ benchmarks ++ map Doc.text modelTests))
@@ -1005,11 +1012,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           -- strategy type when a law has generated cases.
           strategyUsed = any (`mentions` content) ["boxed", "prop_map", "prop_flat_map", "prop_filter"]
           -- Modules, then uses, each in rustfmt's order (by name).
-          ordered = sortOn fst [(sortKey (Doc.render Doc.Compact d), d) | d <- imports ++ generatorModules] ++
+          ordered = sortOn fst (imports ++ [(("0",name),doc) | (name,doc) <- generatorModules]) ++
             [(("2", ""), Doc.text "use lawspec_runtime as ls;") | mentions "ls" content || mentions "ValueStrategy" content] ++ [(("2", ""), Doc.text "use proptest::strategy::Strategy;") | strategyUsed]
-          sortKey text = case [w | l <- lines text, w <- take 1 (drop 1 (words l)), take 4 l == "mod "] of
-            name : _ -> ("0", name)
-            [] -> ("1", text)
           testDoc = statements ([Doc.text ("// " ++ generatedHeader (unitSourceFile unit))] ++ map snd ordered) <>
             (if mentions "ValueStrategy" content then blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") else mempty) <>
             (if hasNativeGenerators then blank <> generatorSupport else mempty) <>

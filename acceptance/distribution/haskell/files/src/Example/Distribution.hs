@@ -30,11 +30,12 @@ remoteShifted x = do
   network <- LS.newMemoryNetwork (fromIntegral x) 0.2 0.2 0
   here <- LS.newNode (LS.memoryTransport network "here")
   there <- LS.newNode (LS.memoryTransport network "there")
-  _ <- Remote.serve there
-  result <- Remote.evaluate here (LS.nodeAddress there) "example.distribution::shifted" [LS.SInteger "Int32" (toInteger x)]
-  case result of
-    LS.SInteger _ n -> pure (fromInteger n)
-    other -> error ("not an integer: " ++ LS.renderValue other)
+  (do
+    _ <- Remote.serve there
+    result <- Remote.evaluate here (LS.nodeAddress there) "example.distribution::shifted" [LS.SInteger "Int32" (toInteger x)]
+    case result of
+      LS.SInteger _ n -> pure (fromInteger n)
+      other -> error ("not an integer: " ++ LS.renderValue other)) `finally` (LS.closeNode here >> LS.closeNode there)
 
 openTally :: () -> Data.Tally
 openTally _ = Data.Tally 0

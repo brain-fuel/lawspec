@@ -1,7 +1,7 @@
 -- | The emitter for the statically typed targets, Java, Kotlin, Go, Haskell and
 -- Rust, whose tests use each language's own property framework and types.
 -- ref:DEC-native-property-frameworks
-module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, nativeScalarProductWithAdapterBindings, nativeScalarUnitProductWithAdapterBindings, goCompanionArtifacts, goUnitUsesSchema, dataBudget) where
+module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, nativeScalarProductWithAdapterBindings, nativeScalarUnitProductWithAdapterBindings, nativeScalarUnitProductWithNetwork, nativeScalarEmitWithNetwork, goCompanionArtifacts, goUnitUsesSchema, dataBudget) where
 import LawSpec.Bounds (inputRange)
 import Control.Monad (forM)
 import qualified LawSpec.JavaAbi as Abi
@@ -13,7 +13,7 @@ import qualified LawSpec.AbilityEmit.Go as GoAbilities
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import qualified LawSpec.AbilityEmit.Kotlin as KotlinAbilities
 import qualified LawSpec.AbilityEmit.Haskell as HaskellAbilities
-import LawSpec.ModelTests (modelTestProduct)
+import LawSpec.ModelTests (modelTestProductWithNetwork)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaExpr as JavaExpr
@@ -97,12 +97,21 @@ nativeScalarEmitWithAdapterBindings adapters generators minify datas definitions
   Product.jvmArtifacts <$> nativeScalarProductWithAdapterBindings JUnit adapters generators minify datas definitions bits target unit laws
 
 nativeScalarProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
-nativeScalarProductWithAdapterBindings = nativeScalarProductWithCompanions True
+nativeScalarProductWithAdapterBindings = nativeScalarProductWithCompanions True False
 
 -- | The unit's tests, stubs and ABI, with public Go schema artifacts assembled
 -- separately. This lets their type contents have independent cache identities.
 nativeScalarUnitProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
-nativeScalarUnitProductWithAdapterBindings = nativeScalarProductWithCompanions False
+nativeScalarUnitProductWithAdapterBindings = nativeScalarProductWithCompanions False False
+
+-- | Program-wide network setup is explicit even for a unit with no direct
+-- network declaration, and remains part of the unit emission cache context.
+nativeScalarUnitProductWithNetwork :: Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
+nativeScalarUnitProductWithNetwork network = nativeScalarProductWithCompanions False network
+
+nativeScalarEmitWithNetwork :: Bool -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+nativeScalarEmitWithNetwork network adapters generators minify datas definitions bits target unit laws =
+  Product.jvmArtifacts <$> nativeScalarProductWithCompanions True network JUnit adapters generators minify datas definitions bits target unit laws
 
 -- | Public declarations are preserved for every package, including types no
 -- law in that package happens to mention.
@@ -165,11 +174,11 @@ goUnitUsesSchema adapters nativeGenerators declarations definitions unit laws =
     needsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     needsSchema term = custom (expressionType term) || any needsSchema (C.children term)
 
-nativeScalarProductWithCompanions :: Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
+nativeScalarProductWithCompanions :: Bool -> Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
 -- Scala's units have an emitter of their own (LawSpec.ScalaUnitEmit).
-nativeScalarProductWithCompanions _ _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
+nativeScalarProductWithCompanions _ _ _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
   Product.files <$> emitScalaUnit (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
-nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
+nativeScalarProductWithCompanions companions network javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()
   literalPlan <- either (Left . pure . (\message -> Diagnostic "literal" message Nothing)) Right $ do
@@ -198,7 +207,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
     then goCompanionArtifacts adapterBindings nativeGenerators minify dataDeclarations definitions bits u allLaws
     else pure []
   let completeHeader = if go || kt || hs || target == "java" then "" else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
-  modelProduct <- modelTestProduct javaStyle target bits dataDeclarations definitions u
+  modelProduct <- modelTestProductWithNetwork network javaStyle target bits dataDeclarations definitions u
   let models = Product.jvmArtifacts modelProduct
   let artifacts = (goFiles ++ models ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go]
         -- The harness plane's runtime, for a unit with a harness.
@@ -1008,6 +1017,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       , HaskellProperties.sourceFile = unitSourceFile u
       , HaskellProperties.nativeGenerators = nativeGenerators
       , HaskellProperties.hasDefinitions = not (null definitions)
+      , HaskellProperties.hasNetwork = network
       , HaskellProperties.hasWorkflows = any (("Workflows." `isPrefixOf`) . snd) definitions
       , HaskellProperties.awaitResult = hsAwait
       , HaskellProperties.constructorContracts = hasConstructorContracts dataDeclarations

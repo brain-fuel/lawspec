@@ -38,6 +38,7 @@ data Config = Config
   , awaitResult :: String -> Expr -> Expr
   , nativeGenerators :: Bool
   , hasDefinitions :: Bool
+  , hasNetwork :: Bool
   , hasWorkflows :: Bool
   , constructorContracts :: Bool
   -- Built-in collections need LawSpecCollectionCodecs (and containers).
@@ -113,6 +114,7 @@ emitTests Config{..} unit laws = do
   let helpers = literalHelpers ++ concatMap fst parts
       bodies = map snd parts
       body = ([Run (call "runIO" [call "LS.useVirtualClock" [integer 0]])] ++
+        [Run (call "runIO" [var "LawSpecNetwork.install"]) | hasNetwork] ++
         [Run (call "LawSpecHarness.parallelism" [string (C.idText (C.unitId unit))]) | parallel] ++
         -- Workflows read the Clock handler a law installs (any of them).
         [Run (call "runIO" [var "Lawspec.Time.registerClock"]) | readsClock] ++
@@ -144,7 +146,7 @@ emitTests Config{..} unit laws = do
         [ ("Control.Exception", Nothing, Just ["evaluate"]) | usesWord "evaluate" ] ++
         [ (m, Just alias, Nothing) | (m, alias) <-
             [ ("Hedgehog", "Hedgehog"), ("Hedgehog.Gen", "Gen"), ("Hedgehog.Range", "Range")
-            , ("LawSpecRuntime", "LS"), ("LawSpecTesting", "T"), ("LawSpecSchema", "Schema")
+            , ("LawSpecRuntime", "LS"), ("LawSpecNetwork", "LawSpecNetwork"), ("LawSpecTesting", "T"), ("LawSpecSchema", "Schema")
             , ("LawSpecDataSchema", "DataSchema"), ("LawSpecCodecs", "Codec"), ("LawSpecDataCodecs", "Codecs")
             , ("LawSpecDataStrategies", "Strategies"), ("LawSpecCollectionCodecs", "Collections")
             , ("LawSpecDefinitionBodies", "Definitions"), ("LawSpecWorkflows", "Workflows")

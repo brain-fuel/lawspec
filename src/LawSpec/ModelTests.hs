@@ -5,7 +5,7 @@
 -- definitions, references, preconditions, abstraction and invariants, each
 -- wrapped to take a symbol context and a list of logical values) to the
 -- target's model runtime.
-module LawSpec.ModelTests (modelTestArtifacts, modelTestProduct, rustModelTests) where
+module LawSpec.ModelTests (modelTestArtifacts, modelTestProduct, modelTestProductWithNetwork, rustModelTests, rustModelTestsWithNetwork) where
 
 import qualified LawSpec.JavaLayout as J
 import LawSpec.JavaTestStyle (TestStyle(..))
@@ -101,7 +101,11 @@ modelTestArtifacts target bits datas calls u =
   Product.jvmArtifacts <$> modelTestProduct JUnit target bits datas calls u
 
 modelTestProduct :: TestStyle -> String -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] Product.JvmProduct
-modelTestProduct style target bits datas calls u
+modelTestProduct = modelTestProductWithNetwork False
+
+-- | The caller supplies the checked program-wide network requirement.
+modelTestProductWithNetwork :: Bool -> TestStyle -> String -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] Product.JvmProduct
+modelTestProductWithNetwork network style target bits datas calls u
   | null (C.unitMachines u) && null (C.unitSupervisors u) = pure mempty
   | otherwise = do
       prepared <- mapM (\m -> (,) m <$> prepare bits datas calls u m) (C.unitMachines u)
@@ -242,11 +246,13 @@ modelTestProduct style target bits datas calls u
       _ -> D.render (H.layout False) $ D.joinWith D.hardline (map D.text
         ([ "-- " ++ generatedHeader (unitSourceFile u), "module " ++ hsModule ++ " (spec) where", "" ] ++
          sortedImports ([("Prelude", Nothing, Nothing), ("Prelude", Just "P", Nothing), ("Test.Hspec", Nothing, Nothing), ("LawSpecRuntime", Just "LS", Nothing)] ++
+           [("LawSpecNetwork", Just "LawSpecNetwork", Nothing) | network] ++
            [ (m, Just alias, Nothing) | (m, alias) <- [("LawSpecDefinitionBodies", "Definitions"), ("LawSpecWorkflows", "Workflows")]
            , any (\(_, name) -> take (length alias + 1) name == alias ++ ".") calls ]) ++ [""])) <> D.hardline <>
         H.signature "spec" ["Spec"] <> D.hardline <>
         H.declaration "spec" (H.dollar (H.call "describe" [H.string (C.idText (C.unitId u) ++ " models")]) (H.Do
-          (concat [ [ H.Run (H.dollar (H.call "it" [H.string ("model " ++ machineName m)]) (H.Do (
+          ([H.Run (H.call "runIO" [H.var "LawSpecNetwork.install"]) | network] ++
+          concat [ [ H.Run (H.dollar (H.call "it" [H.string ("model " ++ machineName m)]) (H.Do (
                       [ H.Let "model" (H.call "LS.Model" [H.string spec,
                           maybe (H.Tuple []) (\(r, f) -> H.Tuple [callback r, callback f]) (startCallbacks cs),
                           H.List [H.Tuple [callback r, callback f, maybe (H.var "P.Nothing") (\w' -> H.call "P.Just" [callback w']) w] | (r, f, w) <- commandCallbacks cs],
@@ -269,14 +275,18 @@ modelTestProduct style target bits datas calls u
 -- | Rust test functions for a unit's models, calling the mounted definitions
 -- module's evaluators, which already take a context and a list of values.
 rustModelTests :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] [String]
-rustModelTests bits datas calls u = (++ supervision) <$> mapM test (C.unitMachines u)
+rustModelTests = rustModelTestsWithNetwork False
+
+rustModelTestsWithNetwork :: Bool -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] [String]
+rustModelTestsWithNetwork network bits datas calls u = (++ supervision) <$> mapM test (C.unitMachines u)
   where
     -- A unit with supervisors also checks the runtime's supervision.
     supervision =
-      [ unlines
+      [ unlines $
           [ "#[test]"
-          , "fn supervision() {"
-          , "    if let Err(message) = ls::actors::check_supervision() {"
+          , "fn supervision() {" ] ++
+          ["    lawspec_network::install();" | network] ++
+          [ "    if let Err(message) = ls::actors::check_supervision() {"
           , "        panic!(\"{}\", message);"
           , "    }"
           , "}" ]
@@ -298,7 +308,7 @@ rustModelTests bits datas calls u = (++ supervision) <$> mapM test (C.unitMachin
           failed = RL.If (RL.prefix "let Err(message) = " (RL.call "ls::with_stack" [RL.closure "move ||" checks]))
             (RL.Block [RL.Semi (RL.macroCall "panic" [RL.atom "\"{}\"", RL.atom "message"])] Nothing) Nothing
       pure (rust (Doc.text "#[test]" <> Doc.hardline <> RL.function ("fn model_" ++ machineName m) [] ""
-        (RL.stmts [RL.Let "model" model, RL.Do failed] Nothing)) ++ "\n")
+        (RL.stmts ([RL.Semi (RL.call "lawspec_network::install" []) | network] ++ [RL.Let "model" model, RL.Do failed]) Nothing)) ++ "\n")
 
 split :: String -> [String]
 split = splitOn '.'

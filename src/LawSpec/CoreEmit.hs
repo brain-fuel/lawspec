@@ -220,9 +220,10 @@ goAbilityNames target plan
 -- Built-in units' adapter modules hold their default handlers
 -- (LawSpec.BuiltinDefaults).
 builtinDefaults :: String -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
-builtinDefaults target plan = either (\message -> Left [Diagnostic "builtins" message Nothing])
-  (Right . withNetworkModules target (usesNetworkUnits (map plannedUnit (plannedUnits plan)))) .
-  withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))
+builtinDefaults target plan artifacts = either (\message -> Left [Diagnostic "builtins" message Nothing]) Right $ do
+  let units = map plannedUnit (plannedUnits plan)
+  completed <- withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits units) artifacts
+  withNetworkModules target units completed
 
 -- | Code beside the units: typed channel ends for the units' protocols, typed
 -- actors and mailboxes, and the definitions other nodes can evaluate by
@@ -249,10 +250,11 @@ javaProduct style minify bindings given = do
     (JavaAbilities.emitProduct minify (planMachineBits plan) (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)))
   let companions = Product.files (sessions ++ actors ++ mailboxes ++ remoteArtifacts "java" (remoteCalls "java" plan) plan) <> abilities
       combined = emitted <> companions
-  files <- either (\message -> Left [Diagnostic "builtins" message Nothing])
-    (Right . withNetworkModules "java" (usesNetworkUnits (map plannedUnit (plannedUnits plan))))
-    (withBuiltinDefaultsFor style "java" (planDataDeclarations plan)
-      (ownedAbilityUnits (map plannedUnit (plannedUnits plan))) (Product.jvmArtifacts combined))
+  files <- either (\message -> Left [Diagnostic "builtins" message Nothing]) Right $ do
+    let units = map plannedUnit (plannedUnits plan)
+    completed <- withBuiltinDefaultsFor style "java" (planDataDeclarations plan)
+      (ownedAbilityUnits units) (Product.jvmArtifacts combined)
+    withNetworkModules "java" units completed
   let completed = combined { Product.jvmArtifacts = files,
         Product.jvmCases = Product.jvmCases combined ++
           [javaVectorCases | any ((== Abi.casePath javaVectorCases) . artifactPath) files] }
@@ -658,7 +660,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
           key = digestHex (digestString (show ("unit-context-2",javaStyle,minify,target,planMachineBits,
             D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
             map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
-            Native.dataBudget laws,globalFlags,collectionFlag)))
+            Native.dataBudget laws,globalFlags,collectionFlag,target == "haskell" && usesNetworkUnits (map plannedUnit plannedUnits))))
       cached <- fmap unstoreProduct $ memoized emitTable key (fmap storeProduct (emitUnitWith laws testing))
       companions <- if target == "go" then Native.goCompanionArtifacts [] False minify planDataDeclarations calls planMachineBits testing laws else pure []
       pure cached { Product.jvmArtifacts = companions ++ Product.jvmArtifacts cached }
@@ -674,7 +676,7 @@ emitPlanProduct javaStyle minify target Plan{..} = do
       _ -> pure []
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
-          Native.nativeScalarUnitProductWithAdapterBindings javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
+          Native.nativeScalarUnitProductWithNetwork (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
       | otherwise = Product.files <$> Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
