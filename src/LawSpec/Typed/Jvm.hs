@@ -23,6 +23,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
+import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.Code.Doc as D
@@ -420,13 +421,14 @@ dataDoc env d = do
               line "switch (d.tag())" <> D.hardline <> D.block 2 (D.joinWith D.hardline
                 (zipWith decodeArm variants fieldCodecs ++ [D.group (line "default ->" <> D.nest 4 (D.softline <> line "throw " <> jcall "new IllegalArgumentException" [E.quoted ("expected " ++ dataName d ++ ", found ") <> line " + d.tag()"] <> line ";"))]))) ]) <> line ";" ])
       toStringDoc c = line "@Override" <> D.hardline <> braced "public String toString()"
-        (D.group (line ("return " ++ show (constructorName c) ++ " +") <> D.nest 4 (D.softline <>
+        (D.group (line ("return " ++ show (constructorName c)) <> D.nest 4 (D.softline <> line "+ " <>
           E.call "java.util.List.of" (map (line . fieldName) (constructorFields c)))) <> line ";")
       fieldsDoc c ts = D.joinWith D.hardline
         [J.statement (line "public final " <> J.parameter ty (fieldName f)) | (f,ty) <- zip (constructorFields c) ts]
+      parameterName f = fromMaybe (fieldName f) (positionalLabel (binderName f))
       constructorDoc cls c ts superCall = J.block
-        (J.call ("public " ++ cls) [J.parameter ty (fieldName f) | (f,ty) <- zip (constructorFields c) ts])
-        (superCall ++ [J.assigned (line ("this." ++ fieldName f)) (line (fieldName f)) | f <- constructorFields c])
+        (J.call ("public " ++ cls) [J.parameter ty (parameterName f) | (f,ty) <- zip (constructorFields c) ts])
+        (superCall ++ [J.assigned (line ("this." ++ fieldName f)) (line (parameterName f)) | f <- constructorFields c])
       equalsDoc cls c = line "@Override" <> D.hardline <> line "public boolean equals(Object other)" <> D.hardline <> D.block 2
         (braced ("if (!(other instanceof " ++ cls ++ " o))") (line "return false;") <> D.hardline <>
          (case [fieldEquals (binderType f) (line (fieldName f)) (line ("o." ++ fieldName f)) | f <- constructorFields c] of
@@ -1184,11 +1186,11 @@ toNative env ty = case ty of
               [J.call cv [D.text (prefix ++ fieldName f)] | (f, cv) <- zip (constructorFields c) cs]
         switch subject arms = J.block (D.text ("switch (" ++ subject ++ ")")) (arms ++ [D.text "default -> throw LawSpecFast.unreachable();"])
     if fieldless d
-      then pure [switch "x" [J.block (D.text ("case " ++ variantName env d c ++ " ->")) [J.returned (made "" c [])] | c <- dataConstructors d]]
+      then pure [switch "x" [J.arrowBlock (D.text ("case " ++ variantName env d c ++ " ->")) [J.returned (made "" c [])] | c <- dataConstructors d]]
       else if isProductType d
         then let c = firstOf (dataConstructors d) in pure [J.returned (made "x." c (firstOf converters))]
         else pure [switch "x.tag"
-          [ J.block (D.text ("case " ++ show k ++ " ->"))
+          [ J.arrowBlock (D.text ("case " ++ show k ++ " ->"))
               ([J.bind "y" (castDoc (J.applied (typedName ++ "." ++ variantName env d c) typedArgs) (D.text "x")) | not (null (constructorFields c))] ++
                 [J.returned (made "y." c cs)])
           | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ]]
@@ -1449,7 +1451,7 @@ scalaFromNative env ty = case ty of
         singleton c = not (isProduct d) && null (constructorFields c) && null (dataParameters d)
         field f = ScalaData.escaped (binderName f)
         pattern c | singleton c = D.text (nativeCase c)
-                  | otherwise = D.text "y: " <> scalaApplied (nativeCase c) (if isProduct d then [] else nativeArgs) <>
+                  | otherwise = D.text "y: " <> D.nest 4 (scalaApplied (nativeCase c) (if isProduct d then [] else nativeArgs)) <>
                       (if isProduct d || null nativeArgs then mempty else D.text " @unchecked")
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "fromNative" (substituteIn table (binderType f))
     let made prefix c cs

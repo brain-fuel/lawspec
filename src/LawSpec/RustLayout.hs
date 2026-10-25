@@ -507,9 +507,18 @@ arguments callee cap open close limit args =
     -- enclosing call's when this one overflows in it: rustfmt's shape
     -- leaves room for both.
     reserved = firstLine ++ close ++ (if isJust cap then ")" else "")
+    -- The available page width can reject an inline closure even when its
+    -- argument budget accepts it. Retry its block opening before placing the
+    -- entire argument list vertically, as rustfmt does for closure arrays.
+    closureOverflow = case lastArg of
+      Closure h body | not (multilineBody body), let blocked = Closure h (Block [] (Just body)), fitsWith blocked ->
+        let prefix = open ++ concatMap (++ ", ") initialTexts
+        in D.prefixChoice (prefix ++ opening blocked ++ close ++ if isJust cap then ")" else "")
+             (D.text prefix <> expr blocked <> D.text close) vertical
+      _ -> vertical
     rest
-      | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice reserved overflowed vertical)]
-      | overflowLast, overflowFits = [D.prefixChoice reserved overflowed vertical]
+      | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice reserved overflowed closureOverflow)]
+      | overflowLast, overflowFits = [D.prefixChoice reserved overflowed closureOverflow]
       | otherwise = [vertical]
 
 -- | Whether arguments go on the call's line: within the width limit, or a

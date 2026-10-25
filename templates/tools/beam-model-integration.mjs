@@ -99,9 +99,21 @@ const identity = entry => `${entry.unit}::${entry.name}`;
 const first = (await call('test', ['--fresh', '--seed', '4201', '--report', 'junit=models.xml', '--json', ...layoutFlags])).json[0];
 assert.ok(first.ok && !first.unrun, JSON.stringify(first));
 assert.deepEqual(first.ran, plan.tests.map(test => test.law));
-const junit = await readFile(path.join(base, 'models.xml'), 'utf8');
-for (const check of [...models, plan.tests.find(test => test.name === 'supervision')])
-  assert.ok(junit.includes(language === 'erlang' ? check.label : check.name), `Missing native JUnit case ${check.name}`);
+const junit = await executedTests({kind: 'junit', files: [path.join(base, 'models.xml')]}, '', project, 0);
+const attemptsFile = path.join(base, '.lawspec/results', `${language}-${projectKey(project)}.json`);
+const {attempts} = JSON.parse(await readFile(attemptsFile, 'utf8'));
+for (const check of [...models, plan.tests.find(test => test.name === 'supervision')]) {
+  const attempt = attempts[check.law];
+  assert.equal(attempt?.check.id, check.law, `Missing native attempt for ${check.name}`);
+  assert.equal(attempt.check.name, check.name);
+  assert.equal(attempt.tests.length, 1, `Each model check must execute once: ${check.name}`);
+  const [native] = attempt.tests;
+  assert.equal(native.identity, identity(check));
+  assert.equal(native.status, 'passed');
+  const cases = junit.filter(test => test.classname === check.unit && test.name === native.name);
+  assert.equal(cases.length, 1, `Missing or duplicated native JUnit case ${check.name}`);
+  assert.equal(cases[0].status, 'passed', `Native JUnit case did not pass: ${check.name}`);
+}
 const cached = (await call('test', ['--json', ...layoutFlags])).json[0];
 assert.ok(cached.ok && cached.ran.length === 0 && cached.unchanged === plan.tests.length, JSON.stringify(cached));
 

@@ -105,7 +105,7 @@ const plan = await compiler.planGeneration({...canonical, target: language, mach
   generation: config.generation, sources});
 assert.deepEqual(plan.diagnostics, []);
 const lawIdentity = (owner, name) => {
-  const law = plan.laws.find(law => law.owner === owner && law.name === '"|' + name + '|');
+  const law = plan.laws.find(law => law.owner === owner && law.name === '|' + name + '|');
   assert.ok(law, `Missing canonical law ${owner}: ${name}`);
   return `${law.owner}::${law.name}`;
 };

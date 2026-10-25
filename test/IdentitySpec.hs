@@ -15,8 +15,10 @@ import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraph, dependencyG
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import qualified LawSpec.Core.Smt as Smt
-import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithNativeContext)
+import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithNativeContext, testManifestWithBindings)
 import FixtureSource (extendUnit)
+import qualified LawSpec.NativeRequest as Native
+import qualified LawSpec.NativeBinding as Binding
 
 -- | A program's laws and declarations by their source names, each with its
 -- identity.
@@ -254,6 +256,56 @@ test_semanticIdentityIsBehaviourAndPresentationIsTheRest = describe "content ide
         selected = [entryCallsAdapters entry | entry <- testManifest "javascript" Nothing program,
           entryLaw entry == C.Id "identity.nativeClosure::law::selected"]
     selected `shouldBe` [True]
+  it "limits validated binding dependencies to reached types and definitions, including nested and primitive generators" $ do
+    let source = unlines
+          ["unit identity.bindings", "type Token is a record { value :: Int8 } end type",
+           "type Envelope is a record { token :: Token } end type",
+           "function hidden (ignored :: Unit) -> Int8 is (Token record{ value = 7 }).value end function",
+           "function unrelated (ignored :: Unit) -> Integer is 1 end function",
+           "function guarded (value :: Int8 where value >= (Token record{ value = 0 }).value) -> Int8 is value end function",
+           "ability Reader is read :: Int8 end ability",
+           "handler reference for Reader with state state :: Token start Token record{ value = 7 } is operation read is state.value end operation end handler",
+           "law nested is definition: for all (value :: Envelope) => value = value end for all end definition end law",
+           "law internal is definition: hidden unitValue = 7 end definition end law",
+           "law contractInput is definition: guarded 7 = 7 end definition end law",
+           "law handlerState using reference is definition: read = 7 end definition end law",
+           "law independent is definition: for all (value :: Int16) => value = value end for all end definition end law", "end unit"]
+        compile text = either (error . show) id (compileCore 64 defaultGeneration [Source "bindings.lawspec" text])
+        token = C.Id "identity.bindings::type::Token"
+        codec = Binding.TypeBinding token (Binding.NativeRef ["Domain","Token"]) []
+          (Just (Binding.CodecBinding (Binding.NativeRef ["Domain","encode"]) (Binding.NativeRef ["Domain","decode"]))) Nothing
+        generator identity = Binding.GeneratorBinding identity (Binding.NativeRef ["Domain","values"]) False
+        request types generators = Native.emptyNativeRequest {Native.requestBindings = Binding.Bindings types generators}
+        entries bindings text =
+          let core=compile text
+              resolved=either error id (Native.resolveNativeRequest core bindings)
+          in testManifestWithBindings True resolved "javascript" Nothing core
+        flags bindings = map entryCallsAdapters (entries bindings source)
+    flags (request [codec] []) `shouldBe` [True,True,True,True,False]
+    flags (request [] [generator token]) `shouldBe` [True,False,False,False,False]
+    flags (request [] [generator (C.Id "Int8")]) `shouldBe` [True,False,False,False,False]
+    flags (request [] [generator (C.Id "Int16")]) `shouldBe` [False,False,False,False,True]
+    flags (request [] [generator (C.Id "Bool")]) `shouldBe` replicate 5 False
+    let before=map entryKey (entries (request [codec] []) source)
+        changed=map entryKey (entries (request [codec] []) (unlines (edit "-> Integer is 1" "-> Integer is 2" (lines source))))
+    take 4 changed `shouldNotBe` take 4 before
+    last changed `shouldBe` last before
+    let harness = unlines ["harness identity.bindings.testing for identity.bindings is",
+          "strategy samples :: Int16 is any such that hidden unitValue = 7 at most 10 discards end strategy",
+          "for law independent use samples for value end for law", "end harness"]
+        withStrategy = either (error . show) id (compileCore 64 defaultGeneration
+          [Source "bindings.lawspec" source, Source "strategy.lawspec" harness])
+        withBindings = either error id (Native.resolveNativeRequest withStrategy (request [codec] []))
+    map entryCallsAdapters (testManifestWithBindings True withBindings "javascript" Nothing withStrategy)
+      `shouldBe` replicate 5 True
+    let fixed = unlines ["harness identity.bindings.testing for identity.bindings is",
+          "strategy chosen :: Envelope is one of Envelope record{ token = Token record{ value = 7 } } end strategy",
+          "for law nested use chosen for value end for law", "end harness"]
+        withConstants = either (error . show) id (compileCore 64 defaultGeneration
+          [Source "bindings.lawspec" source, Source "constants.lawspec" fixed])
+        unusedFactory = either error id (Native.resolveNativeRequest withConstants (request [] [generator token]))
+    map entryCallsAdapters (testManifestWithBindings True unusedFactory "javascript" Nothing withConstants)
+      `shouldBe` replicate 5 False
   it "preserves opaque generated API dependencies for explicitly bound native codecs" $ do
     let make body = either (error . show) id (compileCore 64 defaultGeneration [Source "identity.lawspec"
           (unlines (edit "x + x + x" body base))])

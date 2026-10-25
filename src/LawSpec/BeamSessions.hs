@@ -13,7 +13,7 @@ import LawSpec.MachineSpec (describe)
 import Control.Monad (forM, unless)
 import Data.List (nub)
 
-data NativeType = NativeType D.Doc D.Doc D.Doc [D.Doc]
+data NativeType = NativeType D.Doc X.TypeLayout D.Doc [D.Doc]
 data Function = Function String [(String,NativeType)] NativeType [D.Doc]
 
 emit :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -54,19 +54,19 @@ emit target layout bits declarations units = do
         runtime = E.remote "lawspec_beam_session"
         schema = D.text "Schema"
         fresh = D.text "Schema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []]
-        native ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeType bits names [] ty <*>
+        native ty = NativeType <$> E.nativeType bits names [] ty <*> X.nativeTypeLayout bits names [] ty <*>
           G.nativeType False names [] ty <*> pure (G.imports False [ty])
-        result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
-        generic = NativeType (E.call "term" []) (X.call "term" []) (D.text "result") []
+        result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.TypeAtom (X.atom "ok")) (D.text "Nil") []
+        generic = NativeType (E.call "term" []) (X.TypeCall "term" []) (D.text "result") []
         task = NativeType (E.remote "lawspec_beam_session_task" "task" [])
-          (X.remote "LawSpec.Sessions" "task" []) (D.text "sessions.Task(result)")
+          (X.TypeCall ("LawSpec.Sessions" ++ ".task") []) (D.text "sessions.Task(result)")
           [D.text "import lawspec/sessions"]
-        own side i = NativeType (E.call (stepName side i) []) (X.call (stepName side i) [])
+        own side i = NativeType (E.call (stepName side i) []) (X.TypeCall (stepName side i) [])
           (D.text (E.pascal side ++ show i)) []
         start side = own side (0::Int)
         pair = tupleType [start "first",start "second"]
         typedEnd u s = if C.sessionId session == C.sessionId s then start "first" else
-          NativeType (E.remote (moduleName u s) "first_0" []) (X.remote (elixirModule u s) "first_0" [])
+          NativeType (E.remote (moduleName u s) "first_0" []) (X.TypeCall ((elixirModule u s) ++ ".first_0") [])
             (D.text ("session_types." ++ globalType u s "first" 0)) [D.text "import lawspec/session_types"]
         spec = E.record [(E.atom "id",E.binary (C.idText (C.sessionId session))),
           (E.atom "protocols",E.record catalogue)]
@@ -77,7 +77,7 @@ emit target layout bits declarations units = do
           [Function ("spawn_" ++ side) [("channel_end",start side),("body",callbackType [start side] generic)] task
             [E.remote "lawspec_beam_session_task" "start" [variable "channel_end",variable "body"]] | side <- ["first","second"], not (null steps)]
     text <- native (C.Constructor "Text" [])
-    let node = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node") [D.text "import lawspec/network"]
+    let node = NativeType (E.remote "lawspec_network" "node_handle" []) (X.TypeCall ("LawSpec.Network" ++ ".node_handle") []) (D.text "network.Node") [D.text "import lawspec/network"]
         network = if C.sessionId session `notElem` wired then [] else
           [Function "listen" [("node",node),("name",text)] (start "first")
             [runtime "listen" [variable "node",variable "name",E.call "spec" []]],
@@ -116,7 +116,7 @@ emit target layout bits declarations units = do
              E.function n [variable p | (p,_) <- ps] body] | Function n ps r body <- functions])
         elixir = X.moduleDoc (elixirModule unit session) False
           ([D.text ("@opaque " ++ t ++ " :: :lawspec_beam_session.session()") | t <- types] ++
-           concat [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType r),
+           concat [[X.typeAttribute "spec" (X.TypeCall n (map (exLayout . snd) ps)) (exLayout r),
              X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
              | Function n ps r _ <- functions])
         gleam = G.fileDoc False
@@ -143,17 +143,18 @@ stepName :: String -> Int -> String
 stepName side i = side ++ "_" ++ show i
 globalType :: C.Unit -> C.Session -> String -> Int -> String
 globalType u s side i = E.pascal (moduleName u s) ++ E.pascal side ++ show i
-erlType, exType, gleamType :: NativeType -> D.Doc
+erlType, gleamType :: NativeType -> D.Doc
 erlType (NativeType e _ _ _) = e
-exType (NativeType _ x _ _) = x
 gleamType (NativeType _ _ g _) = g
+exLayout :: NativeType -> X.TypeLayout
+exLayout (NativeType _ x _ _) = x
 imports :: NativeType -> [D.Doc]
 imports (NativeType _ _ _ i) = i
 tupleType :: [NativeType] -> NativeType
-tupleType ts = NativeType (E.tuple (map erlType ts)) (X.tuple (map exType ts)) (G.tuple (map gleamType ts)) (concatMap imports ts)
+tupleType ts = NativeType (E.tuple (map erlType ts)) (X.TypeContainer "{" (map exLayout ts) "}") (G.tuple (map gleamType ts)) (concatMap imports ts)
 callbackType :: [NativeType] -> NativeType -> NativeType
 callbackType ps r = NativeType
   (E.funType (map erlType ps) (erlType r))
-  (D.text "(" <> D.joinWith (D.text ", ") (map exType ps) <> D.text " -> " <> exType r <> D.text ")")
+  (X.TypeFunction (map exLayout ps) (exLayout r))
   (D.text "fn(" <> D.joinWith (D.text ", ") (map gleamType ps) <> D.text ") -> " <> gleamType r)
   (concatMap imports (r:ps))

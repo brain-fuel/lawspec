@@ -289,7 +289,7 @@ emitTests Config{..} unit laws = do
             (case [C.declarationOrigin d | d <- C.unitDeclarations unit, C.declarationId d == C.contractDeclaration c] of
                origin : _ -> sourceLink origin
                [] -> Nothing)])
-        , H.signature helper (["LS.SymbolContext"] ++ replicate (length args + 1) "Scalar")
+        , H.signature helper (["LS.SymbolContext"] ++ replicate (length args + 1) "LS.Scalar")
         , H.declaration (unwords (helper : "symbols" : map fst args)) body ]
     -- A law's resources: each case acquires them, then runs, then releases
     -- them, the last first, even when the case fails. A built-in resource is
@@ -340,7 +340,7 @@ emitTests Config{..} unit laws = do
           [indexName, valuesName, contextName] = generated
           check context = [Run (call checkName (var "symbols" : context : map var parameters))]
           checkDoc = D.joinWith D.hardline
-            [H.signature checkName (["LS.SymbolContext", "P.String"] ++ replicate (length parameters) "Scalar" ++ ["P.IO ()"]),
+            [H.signature checkName (["LS.SymbolContext", "P.String"] ++ replicate (length parameters) "LS.Scalar" ++ ["P.IO ()"]),
              H.declaration (unwords (checkName : "symbols" : contextName : parameters))
                (H.Do (doBody (assertionStmts (\suffix -> operator "P.++" [var contextName, string suffix]) lawLink (assertion e))))]
           bind' inp value = Let (inputId inp) value
@@ -353,7 +353,7 @@ emitTests Config{..} unit laws = do
             ("property" : "replay" : "search" : "skipped" : "known_discrepancy" : map boundaryTestSuffix [0 .. length boundaryValues - 1])
             (map exampleName (examples (original e))))
           boundaryHelper = D.joinWith D.hardline
-            [ H.signature boundaryName ["P.String", "(LS.SymbolContext -> [Scalar])", "P.IO ()"]
+            [ H.signature boundaryName ["P.String", "(LS.SymbolContext -> [LS.Scalar])", "P.IO ()"]
             , H.declaration (boundaryName ++ " " ++ contextName ++ " " ++ valuesName) (H.Do (withSymbols (boundaryBody
                 [operator "P.!!" [call valuesName [var "symbols"], integer (toInteger i)] | i <- [0 .. length (inputs e) - 1]]
                 (check (var contextName))))) ]
@@ -385,7 +385,7 @@ emitTests Config{..} unit laws = do
                 else enumerate (H.Do [exampleNamed finiteName wrappedAction])]]
             else []
           finiteHelpers = if null boundaryDocs then [] else
-            [D.joinWith D.hardline [H.signature coverName ["LS.FiniteCover (LS.SymbolContext -> Scalar)"], H.declaration coverName coverExpression], boundaryHelper]
+            [D.joinWith D.hardline [H.signature coverName ["LS.FiniteCover (LS.SymbolContext -> LS.Scalar)"], H.declaration coverName coverExpression], boundaryHelper]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs

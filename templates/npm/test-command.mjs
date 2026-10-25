@@ -105,15 +105,16 @@ export async function recordedDigest(folder) {
 // were wired too, so a run against other endpoints, or the real dependency
 // in place of a stand-in, runs it again; other laws' keys are unchanged.
 export function lawKeys({ build, target, machineBits, minify, tests, environment, project, recorded = "", attested = new Map() }) {
-  const bound = Object.entries(target.nativeBindings??{}).some(([key,value])=>
-    key!=="names"&&value!=null&&(Array.isArray(value)?value.length>0:
-      typeof value==="object"?Object.keys(value).length>0:value!==""));
+  // The compiler resolves binding reachability per law. Missing flags remain
+  // conservative for an unknown producer; a checked false stays independent
+  // of unrelated native bindings in the same target.
+  const native = entry => entry.callsAdapters !== false;
   const configuration = entry=>JSON.stringify({ ...target, root: undefined,
-    ...(!entry.callsAdapters&&!bound?{nativeBindings:undefined}:{}) });
+    ...(!native(entry)?{nativeBindings:undefined}:{}) });
   return new Map(tests.map((entry) => [entry.law, digest(JSON.stringify([
     build, configuration(entry), machineBits, entry.key,
-    environment, entry.callsAdapters||bound ? project : null,
-    entry.callsAdapters||bound ? recorded : null,
+    environment, native(entry) ? project : null,
+    native(entry) ? recorded : null,
     ...(attested.has(entry.law) ? [attested.get(entry.law)] : []),
   ]))]));
 }

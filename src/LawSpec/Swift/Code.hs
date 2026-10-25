@@ -536,6 +536,8 @@ closureHeader parameters effects result = D.group
   (D.text "{" <> D.nest indentation (D.softline <> headerDoc <> D.softline <> D.text "in"))
   where
     params = "(" ++ intercalate ", " [name ++ ": " ++ typeText ty | (name,ty) <- parameters] ++ ")"
+    parametersDoc = D.delimit indentation "(" ")"
+      [D.group (D.text (name ++ ":") <> D.nest indentation (D.softline <> typeDoc ty)) | (name,ty) <- parameters]
     effectText = case effects of
       ClosureThrows -> "throws"
       ClosureThrowsType ty -> "throws(" ++ typeText ty ++ ")"
@@ -546,7 +548,7 @@ closureHeader parameters effects result = D.group
       (D.text (withEffects ++ " -> ") <> typeDoc result)
       (D.prefixChoice withEffects
         (D.text withEffects <> D.nest indentation (D.softline <> D.text "-> " <> typeDoc result))
-        (D.text params <> D.nest indentation (D.softline <> D.text (effectText ++ " -> ") <> typeDoc result)))
+        (parametersDoc <> D.nest indentation (D.softline <> D.text (effectText ++ " -> ") <> typeDoc result)))
 
 closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
 closure parameters = closureDoc parameters ClosureThrows

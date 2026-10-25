@@ -315,11 +315,18 @@ also retain their readable public type name.
 
 
 Native dependency classification follows the checked call graph transitively,
-including a workflow whose stages are native adapters. Explicit native binding
-requests also make law results opaque: user codecs, constructors and generators
-can invoke native code or any generated public API, even when a law calls only
-checked definitions. Their implementation and public generated API therefore
-remain cache inputs. A generated-name override alone stays presentation for a
+including a workflow whose stages are native adapters. Validated native bindings
+are scoped to the laws that reach their types or declarations, including nested
+data, primitive generators, selected strategies, checked definitions and
+contracts, and spec-handler state and clauses. An unrelated binding in the same
+target does not make a pure law opaque. Generator factories follow selected
+input/search draws and their nested payload types, rather than types appearing
+only in assertions; a configured Bool factory does not taint every Boolean law.
+Reached user codecs, constructors and
+generators can invoke native code or any generated public API, even when the law
+calls only checked definitions. Their implementation and public generated API
+therefore remain cache inputs. The SDK honors the compiler's per-law classification;
+an absent or unknown classification conservatively retains native dependencies. A generated-name override alone stays presentation for a
 pure law; a native adapter can observe that public name and retains it.
 
 The JVM-family (including Groovy/Clojure), Go and Haskell generators currently

@@ -483,6 +483,54 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     result "rust" (object ["toNative" .= ("crate::decode" :: String),
       "fromNative" .= (["crate","encode"] :: [String])]) `shouldBe` [String "request"]
 
+  it "keeps typed Scala codecs structured inside nested native field layouts" $ do
+    let source = unlines
+          [ "unit layouts"
+          , "type Packet (a :: Type) is one of Packed of type record{"
+          , "last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}"
+          , "} end type"
+          , "type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type"
+          , "copy :: Packet UInt8 -> Packet UInt8"
+          , "copyChain :: Chain -> Chain"
+          , "end unit" ]
+        mappedField path argument native = object
+          ["field" .= ("value" :: String), "path" .= (path :: [String]),
+           "argument" .= (argument :: Int), "native" .= (native :: String)]
+        mappedType name constructors = object
+          ["type" .= ("layouts::type::" ++ name), "native" .= (["application",name] :: [String]),
+           "constructors" .= (constructors :: [Value])]
+        variant name native fields = object
+          ["constructor" .= (name :: String), "native" .= (native :: [String]),
+           "style" .= (if null fields then "unit" else "variant" :: String), "fields" .= (fields :: [Value])]
+        bindings = object ["types" .=
+          [ mappedType "Packet" [variant "Packed" ["application","Packed"]
+              [mappedField ["first","count"] 2 "quantity", mappedField ["last"] 0 "tail",
+               mappedField ["first","flag"] 1 "enabled"]]
+          , mappedType "Chain" [variant "Stop" ["application","Chain","STOP"] [],
+              variant "Link" ["application","Link"]
+                [mappedField ["next"] 0 "next", mappedField ["item"] 1 "flag"]] ],
+          "functions" .= [object ["declaration" .= ("layouts::" ++ name),
+            "native" .= (["application","Operations",name] :: [String])] | name <- ["copy","copyChain"]]]
+    mapM_ (\(bits,compact) -> do
+      let request = object
+            ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+             "method" .= ("planGeneration" :: String), "target" .= ("scala" :: String),
+             "machineBits" .= (bits :: Int), "minify" .= (compact :: Bool),
+             "sources" .= [Source "layouts.lawspec" source], "nativeBindings" .= bindings]
+      case eitherDecode (dispatch (encode request)) of
+        Left problem -> expectationFailure problem
+        Right result@(Object response) -> do
+          codes result `shouldBe` []
+          let native = concat [T.unpack body | Just (Array files) <- [KM.lookup "files" response],
+                Object file <- toList files,
+                KM.lookup "path" file == Just (String "src/main/scala/lawspec/runtime/LawSpecNativeCodecs.scala"),
+                Just (String body) <- [KM.lookup "content" file]]
+              compactText = filter (not . isSpace) native
+          compactText `shouldContain` ".scalar[scala.Boolean](schema,\"Bool\",bits).decode("
+          compactText `shouldContain` "defchainCodec("
+          compactText `shouldContain` "defpacketCodec[T0]("
+        Right value -> expectationFailure (show (value :: Value))
+      ) [(bits,compact) | bits <- [32,64],compact <- [False,True]]
   it "keeps zero-argument Scala constructors out of generated Java while preserving Unit checks" $ do
     let request parameter = object
           [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),

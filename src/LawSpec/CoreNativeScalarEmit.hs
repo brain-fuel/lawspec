@@ -529,7 +529,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
               (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (if kt then Doc.text "(error.message ?: \"\")" else JavaExpr.call "java.util.Objects.toString" [Doc.text "error.getMessage()", Doc.text "\"\""])) b)
             mapped = [ if kt
                          then KotlinExpr.call "LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ "::class.java"), KotlinLayout.lambda ["error"] [made b]]
-                         else JavaExpr.call "new LawSpecRuntime.MappedFailure" [Doc.text (intercalate "." (C.failureNative b) ++ ".class"), Doc.text "error -> " <> made b]
+                         else JavaExpr.call "new LawSpecRuntime.MappedFailure" [JavaExpr.classLiteral (intercalate "." (C.failureNative b)), Doc.text "error -> " <> made b]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
             converted = if kt then KotlinLayout.lambda ["nativeValue"] [convert failure native] else Doc.text opening <> convert failure native
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
@@ -550,6 +550,73 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       C.RecordingHandler inner -> KotlinExpr.call (maybe "Unknown" (\x -> KotlinAbilities.abilitiesObjectOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a))
         [ktConstructHandler making a inner, Doc.text "symbols"]
       where madeWith = maybe [] (\(t, local) -> [ktNativeArgument t (Doc.text local)]) (resourceOf a c)
+    -- Native conversion and failure mapping belong to one logical-ABI
+    -- wrapper per checked signature. A call supplies the current symbols,
+    -- so handler selection, exceptions and value construction stay per case.
+    -- Logical arguments remain suppliers inside the original native-failure
+    -- boundary; moving their evaluation before that boundary changes catches.
+    jvmAdapterUses = nub [(identity, map expressionType args, expressionType term)
+      | e <- ls, root <- C.propertyExpressions (original e), term <- goUniverse root
+      , C.ExternalCall identity args <- [C.expressionNode term]
+      -- Static JVM methods have at most 255 one-slot parameters; symbols
+      -- occupies one. Larger calls retain the established inline path.
+      , length args <= 254
+      , identity `notElem` map fst definitions
+      , declarationName identity `notElem` map contractName (contracts u)
+      , declarationName identity `elem` map fst adapterFunctions]
+    jvmAdapterNames = uniqueNames ["callAdapter" ++ cap (adapterName u identity)
+      | (identity, _, _) <- jvmAdapterUses]
+    ktAdapterCall identity result typed =
+      let name = declarationName identity
+      in jvmFailing name (\failure native -> ktNativeResult failure (ktCast native)) "{ nativeValue -> "
+        (ktNativeResult result (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
+          (map ktHandler (usesOf name) ++ [ktNativeArgument ty value | (ty,value) <- typed]))))
+    ktAdapterWrappers = zipWith (\key@(identity, arguments, result) name ->
+      let parameters = ["value" ++ show i | i <- [0 :: Int .. length arguments - 1]]
+          body = ktAdapterCall identity result (zip arguments [KotlinExpr.call parameter [] | parameter <- parameters])
+          header = KotlinExpr.call ("private fun " ++ name)
+            (Doc.text "symbols: MutableMap<String, Any>" :
+              [Doc.text (parameter ++ ": () -> LawSpecRuntime.Value") | parameter <- parameters]) <>
+              Doc.text ": LawSpecRuntime.Value"
+      in (key, (name, header <> Doc.text " " <> KotlinLayout.block [Doc.text "return " <> body])))
+      jvmAdapterUses jvmAdapterNames
+    javaAdapterCall identity result typed =
+      let name = declarationName identity
+      in jvmFailing name (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") nativeValue"))) "nativeValue -> "
+        (javaNativeResult result (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity)
+          (map javaHandler (usesOf name) ++ [javaNativeArgument ty value | (ty,value) <- typed]))))
+    javaAdapterWrappers = zipWith (\key@(identity, arguments, result) name ->
+      let parameters = ["value" ++ show i | i <- [0 :: Int .. length arguments - 1]]
+          body = javaAdapterCall identity result (zip arguments [JavaExpr.call (parameter ++ ".get") [] | parameter <- parameters])
+          header = JavaExpr.call ("private static LawSpecRuntime.Value " ++ name)
+            (Doc.text "Map<String, Object> symbols" :
+              [Doc.text ("java.util.function.Supplier<LawSpecRuntime.Value> " ++ parameter) | parameter <- parameters])
+      in (key, (name, header <> Doc.hardline <> Doc.block 2 (Doc.text "return " <> body <> Doc.text ";"))))
+      jvmAdapterUses jvmAdapterNames
+    jvmAttemptUses = nub [(ability, expressionType term)
+      | e <- ls, root <- C.propertyExpressions (original e), term <- goUniverse root
+      , C.Handle (C.CatchFailure ability) _ <- [C.expressionNode term]
+      , C.Constructor "Either" [C.TypeArgument _, C.TypeArgument _] <- [expressionType term]]
+    jvmAttemptNames = ["attemptResult" ++ show i | i <- [1 :: Int .. length jvmAttemptUses]]
+    ktAttemptCall ability ty failure result supplier =
+      let side tag payload = KotlinLayout.lambda ["value"] [ktConstruct' ty tag [ktChecked payload (Doc.text "value")]]
+      in KotlinExpr.call "LawSpecRuntime.attempt" [KotlinExpr.quoted (C.abilityKey ability), supplier,
+        side "Either::Right" result, side "Either::Left" failure]
+    ktAttemptWrappers = [(key, (name, header <> Doc.text " " <> KotlinLayout.block [Doc.text "return " <>
+        ktAttemptCall ability ty failure result (Doc.text "body")]))
+      | (key@(ability, ty@(C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result])), name) <- zip jvmAttemptUses jvmAttemptNames
+      , let header = KotlinExpr.call ("private fun " ++ name)
+              [Doc.text "symbols: MutableMap<String, Any>", Doc.text "body: () -> LawSpecRuntime.Value"] <>
+              Doc.text ": LawSpecRuntime.Value"]
+    javaAttemptCall ability ty failure result supplier =
+      let side tag payload = Doc.text "value -> " <> javaConstruct' ty tag [javaChecked payload (Doc.text "value")]
+      in javaRuntime "attempt" [JavaExpr.quoted (C.abilityKey ability), supplier,
+        side "Either::Right" result, side "Either::Left" failure]
+    javaAttemptWrappers = [(key, (name, header <> Doc.hardline <> Doc.block 2 (Doc.text "return " <>
+        javaAttemptCall ability ty failure result (Doc.text "body") <> Doc.text ";")))
+      | (key@(ability, ty@(C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result])), name) <- zip jvmAttemptUses jvmAttemptNames
+      , let header = JavaExpr.call ("private static LawSpecRuntime.Value " ++ name)
+              [Doc.text "Map<String, Object> symbols", Doc.text "java.util.function.Supplier<LawSpecRuntime.Value> body"]]
     ktExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (KotlinExpr.call (KotlinLayout.escapedPath evaluator) (Doc.text "symbols" : values))
@@ -562,10 +629,10 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
           (ktNativeResult (expressionType term) (KotlinLayout.chain (ktHandler (C.operationAbility op)) [(C.operationName op,
             [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
-        (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = KotlinLayout.lambda ["value"] [ktConstruct' (expressionType term) tag [ktChecked ty (Doc.text "value")]]
-          in Right (KotlinExpr.call "LawSpecRuntime.attempt" [KotlinExpr.quoted (C.abilityKey ability), KotlinLayout.lambda [] [body],
-            side "Either::Right" result, side "Either::Left" failure])
+        (_, [body]) | Just (wrapper, _) <- lookup (ability, expressionType term) ktAttemptWrappers ->
+          Right (KotlinExpr.call wrapper [Doc.text "symbols", KotlinLayout.lambda [] [body]])
+        (ty@(C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result]), [body]) ->
+          Right (ktAttemptCall ability ty failure result (KotlinLayout.lambda [] [body]))
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
@@ -575,15 +642,16 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
                 [] -> Doc.text "true"]
         in Right (KotlinExpr.call "LawSpecRuntime.countCalls" [KotlinExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", KotlinExpr.quoted (C.abilityKey (C.operationAbility op))],
           KotlinExpr.quoted (C.operationName op), matches])
+      C.ExternalCall identity args
+        | Just (wrapper, _) <- lookup (identity, map expressionType args, expressionType term) ktAdapterWrappers ->
+            Right (KotlinExpr.call wrapper (Doc.text "symbols" : [KotlinLayout.lambda [] [value] | value <- values]))
       C.ExternalCall identity args ->
         let name = declarationName identity
             typed = zip (map expressionType args) values
         in Right $ if name `elem` map contractName (contracts u)
           then KotlinExpr.call (contractMethod name)
             (Doc.text "symbols" : [ktChecked ty value | (ty,value) <- typed])
-          else jvmFailing name (\failure native -> ktNativeResult failure (ktCast native)) "{ nativeValue -> "
-            (ktNativeResult (expressionType term) (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
-            (map ktHandler (usesOf name) ++ [ktNativeArgument ty value | (ty,value) <- typed]))))
+          else ktAdapterCall identity (expressionType term) typed
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (KotlinExpr.call "LawSpecRuntime.withHandlers" [Doc.text "symbols",
@@ -610,6 +678,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       , KotlinProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , KotlinProperties.nativeGenerators = nativeGenerators
       , KotlinProperties.nodeBudget = javaDataBudget
+      , KotlinProperties.adapterWrappers = [doc | (_, (_, doc)) <- ktAdapterWrappers] ++ [doc | (_, (_, doc)) <- ktAttemptWrappers]
       , KotlinProperties.expression = ktRender
       , KotlinProperties.literal = ktValueLiteral
       , KotlinProperties.checked = ktChecked
@@ -1136,6 +1205,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       , JavaProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , JavaProperties.nodeBudget = javaDataBudget
       , JavaProperties.awaitResult = awaitFor
+      , JavaProperties.adapterWrappers = [doc | (_, (_, doc)) <- javaAdapterWrappers] ++ [doc | (_, (_, doc)) <- javaAttemptWrappers]
       , JavaProperties.expression = javaRender
       , JavaProperties.literal = javaValueLiteral
       , JavaProperties.checked = javaChecked
@@ -1155,7 +1225,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       }
     -- A handler as the ability's Java interface.
     javaHandler ability = JavaExpr.call "LawSpecRuntime.handler"
-      [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability), Doc.text (javaInterface ability ++ ".class")]
+      [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability), JavaExpr.classLiteral (javaInterface ability)]
     javaConstruct' ty tag fields
       | custom ty = JavaExpr.call "SCHEMA.construct" ([javaRef ty,JavaExpr.quoted tag,javaBits,Doc.text "symbols"] ++ fields)
       | otherwise = javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted tag,JavaExpr.array fields]
@@ -1190,10 +1260,10 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
           (javaNativeResult (expressionType term) (Doc.group (javaHandler (C.operationAbility op) <> Doc.nest 4 (Doc.softbreak <> JavaExpr.call ("." ++ C.operationName op)
             [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
-        (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = Doc.text "value -> " <> javaConstruct' (expressionType term) tag [javaChecked ty (Doc.text "value")]
-          in Right (javaRuntime "attempt" [JavaExpr.quoted (C.abilityKey ability), Doc.text "() -> " <> body,
-            side "Either::Right" result, side "Either::Left" failure])
+        (_, [body]) | Just (wrapper, _) <- lookup (ability, expressionType term) javaAttemptWrappers ->
+          Right (JavaExpr.call wrapper [Doc.text "symbols", Doc.text "() -> " <> body])
+        (ty@(C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result]), [body]) ->
+          Right (javaAttemptCall ability ty failure result (Doc.text "() -> " <> body))
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
@@ -1202,14 +1272,15 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
                 [javaEqual (expressionType a) (Doc.text ("recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
         in Right (javaRuntime "countCalls" [javaRuntime "handler" [Doc.text "symbols", JavaExpr.quoted (C.abilityKey (C.operationAbility op))],
           JavaExpr.quoted (C.operationName op), matches])
+      C.ExternalCall identity args
+        | Just (wrapper, _) <- lookup (identity, map expressionType args, expressionType term) javaAdapterWrappers ->
+            Right (JavaExpr.call wrapper (Doc.text "symbols" : [Doc.text "() -> " <> value | value <- values]))
       C.ExternalCall identity args ->
         let n = declarationName identity
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then JavaExpr.call (contractMethod n) (Doc.text "symbols" : [javaChecked ty v | (ty,v) <- typed])
-          else jvmFailing n (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") nativeValue"))) "nativeValue -> "
-            (javaNativeResult (expressionType term) (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity)
-            (map javaHandler (usesOf n) ++ [javaNativeArgument ty v | (ty,v) <- typed]))))
+          else javaAdapterCall identity (expressionType term) typed
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (javaRuntime "withHandlers" [Doc.text "symbols",

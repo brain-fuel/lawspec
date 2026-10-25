@@ -16,7 +16,7 @@ import LawSpec.MachineSpec (describe)
 import Control.Monad (forM, unless)
 import Data.List (nub)
 
-data NativeType = NativeType D.Doc D.Doc D.Doc [D.Doc]
+data NativeType = NativeType D.Doc X.TypeLayout D.Doc [D.Doc]
 data Function = Function String [(String,NativeType)] NativeType [D.Doc]
 
 emit :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -31,12 +31,12 @@ emit target layout bits declarations units = do
   concat <$> forM boxes (\(unit,box) -> do
     let ty = C.mailboxType box
         maybeTy = C.Constructor "Maybe" [C.TypeArgument ty]
-        native t = NativeType <$> E.nativeType bits names [] t <*> X.nativeType bits names [] t <*>
+        native t = NativeType <$> E.nativeType bits names [] t <*> X.nativeTypeLayout bits names [] t <*>
           G.nativeType False names [] t <*> pure (G.imports False [t])
         className = E.pascal (C.mailboxName box) ++ "Mailbox"
-        own = NativeType (E.call "t" []) (X.call "t" []) (D.text className) []
-        sender = NativeType (E.call "sender" []) (X.call "sender" []) (D.text (className ++ "Sender")) []
-        result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
+        own = NativeType (E.call "t" []) (X.TypeCall "t" []) (D.text className) []
+        sender = NativeType (E.call "sender" []) (X.TypeCall "sender" []) (D.text (className ++ "Sender")) []
+        result = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.TypeAtom (X.atom "ok")) (D.text "Nil") []
         variable = D.text . ("_" ++) . E.pascal
         boxVar = variable "mailbox"
         schema = D.text "Schema"
@@ -44,9 +44,9 @@ emit target layout bits declarations units = do
         runtime = E.remote "lawspec_beam_mailbox"
         bridge direction ref value = E.remote "lawspec_beam_schema" direction [value,ref,schema]
         unitValue = E.atom (if target == "gleam" then "nil" else "ok")
-        callback = NativeType (D.text "fun((t()) -> term())") (D.text "(t() -> term())")
+        callback = NativeType (D.text "fun((t()) -> term())") (X.TypeFunction [X.TypeCall "t" []] (X.TypeCall "term" []))
           (D.text ("fn(" ++ className ++ ") -> result")) []
-        generic = NativeType (E.call "term" []) (X.call "term" []) (D.text "result") []
+        generic = NativeType (E.call "term" []) (X.TypeCall "term" []) (D.text "result") []
     value <- native ty
     optional <- native maybeTy
     integer <- native (C.Constructor "Integer" [])
@@ -55,7 +55,7 @@ emit target layout bits declarations units = do
     maybeReference <- E.typeReference maybeTy
     clockFunctions <- concat <$> forM [C.abilityInstance a | a <- Effects.abilities units,
       C.abilityKey (C.abilityInstance a) == "lawspec.time::ability::Clock"] (\clock -> do
-        handler <- NativeType <$> Abilities.nativeType "erlang" units clock <*> Abilities.nativeType "elixir" units clock <*>
+        handler <- NativeType <$> Abilities.nativeType "erlang" units clock <*> Abilities.elixirType units clock <*>
           Abilities.nativeType "gleam" units clock <*> Abilities.gleamImports units [clock]
         body <- Abilities.publicBody units [(clock,variable "clock")]
           (bridge "to_native" maybeReference (runtime "receive_with_clock" [boxVar,variable "microseconds",schema]))
@@ -92,7 +92,7 @@ moduleName unit box = "lawspec_mailbox_" ++ E.moduleName (C.unitId unit) ++ "_" 
 modulePath :: C.Unit -> C.Mailbox -> String
 modulePath unit box = "lawspec/mailboxes/" ++ E.gleamPath (C.unitId unit) ++ "/" ++ E.gleamName (E.snake (C.mailboxName box))
 nodeType :: NativeType
-nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node")
+nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.TypeCall ("LawSpec.Network" ++ ".node_handle") []) (D.text "network.Node")
   [D.text "import lawspec/network"]
 
 render :: String -> D.Layout -> C.Unit -> C.Mailbox -> String -> Bool -> [Function] -> [Artifact]
@@ -106,7 +106,8 @@ render target layout unit box typeName wired functions =
     path = modulePath unit box
     exModule = "LawSpec.Mailboxes." ++ drop 7 (E.nativeModule "elixir" unit) ++ "." ++ typeName
     erlType (NativeType e _ _ _) = e
-    exType (NativeType _ x _ _) = x
+    exType (NativeType _ x _ _) = X.typeDoc x
+    exLayout (NativeType _ x _ _) = x
     gleamType (NativeType _ _ g _) = g
     imports (NativeType _ _ _ i) = i
     erlang = E.moduleDoc name [(n,length ps) | Function n ps _ _ <- functions]
@@ -118,7 +119,7 @@ render target layout unit box typeName wired functions =
     elixir = X.moduleDoc exModule False
       ([D.text "@opaque t :: :lawspec_beam_mailbox.mailbox()"] ++
        [D.text "@opaque sender :: :lawspec_beam_mailbox.sender()" | wired] ++
-       concat [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),
+       concat [[X.typeAttribute "spec" (X.TypeCall n (map (exLayout . snd) ps)) (exLayout result),
          X.function n (map (D.text . fst) ps) [X.remote (":" ++ name) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- functions])
     gleam = G.fileDoc False

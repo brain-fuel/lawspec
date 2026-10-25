@@ -2,7 +2,7 @@
 -- and logical evidence. The shared Erlang bodies serve all three languages.
 -- ref:DEC-typed-core-boundary ref:DEC-idiomatic-generated-types
 module LawSpec.BeamAbilities
-  ( emit, nativeType, gleamImports, productionName, productionAbilities
+  ( emit, nativeType, elixirType, gleamImports, productionName, productionAbilities
   , interfaceModule, interfacePath, interfaceName, operationName
   , productionStub, productionExports, publicBody
   , hasDefault, defaultUnit
@@ -97,6 +97,17 @@ nativeType target units ability = do
     "elixir" -> X.remote (interfaceModule target a) "t" []
     _ -> E.remote (interfaceModule target a) (E.snake (interfaceName a)) []
 
+-- | A checked ability reference as an Elixir type call, retained for layout.
+elixirType :: [C.Unit] -> C.AbilityRef -> Either String X.TypeLayout
+elixirType units ref = do
+  a <- maybe (Left ("unknown BEAM ability " ++ C.abilityKey ref)) Right (N.abilityOf units ref)
+  pure (X.TypeCall (interfaceModule "elixir" a ++ ".t") [])
+
+elixirOperationType :: Int -> [(C.Id,String)] -> C.Type -> Either String X.TypeLayout
+elixirOperationType bits names ty = do
+  let (args,result) = C.functionType ty
+  X.TypeFunction <$> mapM (X.nativeTypeLayout bits names []) args <*> X.nativeTypeLayout bits names [] result
+
 gleamImports :: [C.Unit] -> [C.AbilityRef] -> Either String [D.Doc]
 gleamImports units refs = nub <$> mapM imported refs
   where imported ref = do
@@ -144,6 +155,7 @@ productionStub target bits names ability = do
     "gleam" -> G.nativeType False names []
     "elixir" -> X.nativeType bits names []
     _ -> E.nativeType bits names []) (C.abilityResource ability)
+  elixirResource <- if target == "elixir" then traverse (X.nativeTypeLayout bits names []) (C.abilityResource ability) else pure Nothing
   let name = productionName ability
       keys = map (operationName target . fst) (C.abilityOperations ability)
       resourceTypes = maybe [] pure resource
@@ -152,7 +164,7 @@ productionStub target bits names ability = do
       [case fields of
         [hugged] | length (C.abilityOperations ability) == 1 -> hugged
         _ -> G.call (alias ability ++ "." ++ builderName target ability) fields]]
-    "elixir" -> [X.typeAttribute "spec" (X.call name resourceTypes) (X.remote (interfaceModule target ability) "t" []),
+    "elixir" -> [X.typeAttribute "spec" (X.TypeCall name (maybe [] pure elixirResource)) (X.TypeCall (interfaceModule target ability ++ ".t") []),
       X.function name [D.text "_resource" | _ <- resourceTypes] [D.delimit 2 ("%" ++ interfaceModule target ability ++ "{") "}"
         [D.text key <> D.text ": " <> f | (key,f) <- zip keys fields]]]
     _ -> [E.spec name resourceTypes (E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) []),
@@ -162,7 +174,7 @@ defaultFactory :: String -> C.Ability -> String -> String -> [D.Doc]
 defaultFactory target ability name entry = case target of
   "gleam" -> [G.external "lawspec_abilities" entry name []
     (D.text (alias ability ++ "." ++ interfaceName ability))]
-  "elixir" -> [X.typeAttribute "spec" (X.call name []) (X.remote (interfaceModule target ability) "t" []),
+  "elixir" -> [X.typeAttribute "spec" (X.TypeCall name []) (X.TypeCall (interfaceModule target ability ++ ".t") []),
     X.function name [] [X.remote ":lawspec_abilities" entry []]]
   _ -> [E.spec name [] (E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) []),
     E.function name [] [E.remote "lawspec_abilities" entry []]]
@@ -298,23 +310,24 @@ emit target layout bits typed declarations units boundSchema = do
             D.delimit 4 "#{" "}" ([E.field ":=" (E.atom key) ty | (key,ty) <- zip fields ts] ++
               [E.atom "__lawspec_origin__" <> D.text " => lawspec_beam_effects:handler_origin()"]) <> D.text ".") : tries)
         "elixir" -> do
+          typeLayouts <- mapM (elixirOperationType bits names . snd) (C.abilityOperations ability)
           tries <- forM (failingOperations ability) $ \(op,ty,failure) -> do
             let (args,_) = C.functionType ty
                 values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
-            inputs <- mapM (X.nativeType bits names []) args
-            out <- X.nativeType bits names [] (snd (C.functionType ty))
-            failed <- X.nativeType bits names [] failure
+            inputs <- mapM (X.nativeTypeLayout bits names []) args
+            out <- X.nativeTypeLayout bits names [] (snd (C.functionType ty))
+            failed <- X.nativeTypeLayout bits names [] failure
             let name = "try_" ++ operationName target op
-            pure (X.typeAttribute "spec" (X.call name (D.text "t()" : inputs))
-              (X.tuple [X.atom "ok",out] <> D.text " | " <> X.tuple [X.atom "error",failed]) <> D.hardline <>
+            pure (X.typeAttribute "spec" (X.TypeCall name (X.TypeCall "t" [] : inputs))
+              (X.TypeUnion [X.TypeContainer "{" [X.TypeAtom (X.atom "ok"),out] "}",X.TypeContainer "{" [X.TypeAtom (X.atom "error"),failed] "}"]) <> D.hardline <>
               X.function name (D.text "handler" : values)
                 [X.remote ":lawspec_beam_effects" "native_try" [D.text "fn -> handler." <> D.text (operationName target op) <>
                   D.text "." <> D.delimit 2 "(" ")" values <> D.text " end"]])
           let body = [D.text "@enforce_keys " <> X.array (map X.atom fields),
                 D.text "defstruct " <> X.array (map X.atom fields ++ [D.text "__lawspec_origin__: :none"]),
-                X.typeAttribute "type" (D.text "t") (D.delimit 2 "%__MODULE__{" "}"
-                  ([X.atom key <> D.text " => " <> ty | (key,ty) <- zip fields ts] ++
-                    [D.text "__lawspec_origin__: :lawspec_beam_effects.handler_origin()"]))] ++ tries
+                X.typeAttribute "type" (X.TypeAtom (D.text "t")) (X.TypeContainer "%__MODULE__{"
+                  ([X.TypeMapField (X.atom key) ty | (key,ty) <- zip fields typeLayouts] ++
+                    [X.TypeKeywordField "__lawspec_origin__" (X.TypeCall ":lawspec_beam_effects.handler_origin" [])]) "}")] ++ tries
           pure [Artifact ("lib/" ++ interfacePath (C.abilityOwner ability) ++ "/" ++ n ++ ".ex")
             (D.render (X.layoutFor layout) (X.moduleDoc (interfaceModule target ability) False body)) "generated" "source"]
         _ -> do
@@ -362,12 +375,14 @@ emit target layout bits typed declarations units boundSchema = do
         types <- forM (C.handlerAbilities h) $ \ref -> do
           a <- maybe (Left "unknown native spec handler ability") Right (N.abilityOf units ref)
           if C.abilityOwner a == C.unitId unit then pure (interfaceNameDoc a) else nativeType target units ref
+        elixirTypes <- if target == "elixir" then mapM (elixirType units) (C.handlerAbilities h) else pure []
         entry <- F.handlerEntry units (C.handlerId h)
         let ty = case types of
               [single] -> single
               _ | target == "gleam" -> G.tuple types
                 | otherwise -> E.tuple types
-        pure (handlerPublicName as h,entry ++ "_native",[contextType target],ty)
+        pure (handlerPublicName as h,entry ++ "_native",[contextType target],ty,
+          ([X.TypeCall ":lawspec_beam_effects.context" []],case elixirTypes of [single] -> single; _ -> X.TypeContainer "{" elixirTypes "}"))
       -- A handler with state reads and replaces it in its native types,
       -- through the interface of its first ability.
       accessors <- fmap concat $ forM [h | h <- hs, C.handlerState h /= Nothing] $ \h -> do
@@ -380,7 +395,14 @@ emit target layout bits typed declarations units boundSchema = do
             "elixir" -> X.nativeType bits names [] t
             _ -> E.nativeType bits names [] t
           Nothing -> Left "a stateless handler has no state"
-        let done = case target of "gleam" -> D.text "Nil"; "elixir" -> D.text ":ok"; _ -> D.text "ok"
+        elixirState <- if target == "elixir" then case C.handlerState h of
+          Just (t,_) -> X.nativeTypeLayout bits names [] t
+          Nothing -> Left "a stateless handler has no state"
+          else pure (X.TypeAtom mempty)
+        let elixirHandle = X.TypeCall (interfaceModule "elixir" first ++ ".t") []
+            elixirDone = X.TypeAtom (X.atom "ok")
+            elixirTyped = X.TypeCall "term" []
+            done = case target of "gleam" -> D.text "Nil"; "elixir" -> D.text ":ok"; _ -> D.text "ok"
             public = handlerPublicName as h
             -- The typed state, which the application keeps without looking
             -- inside: maps for KeyVal, sets for Set.
@@ -388,13 +410,15 @@ emit target layout bits typed declarations units boundSchema = do
               "gleam" -> D.text (typedStateName public)
               "elixir" -> D.text "term()"
               _ -> D.text "term()"
-        pure ([(public ++ "_state",entry ++ "_state",[handle],stateType),
-              (public ++ "_set_state",entry ++ "_set_state",[handle,stateType],done)] ++
-              [(public ++ "_typed_state",entry ++ "_typed_state",[handle],typedType) | typedHandler h] ++
-              [(public ++ "_set_typed_state",entry ++ "_set_typed_state",[handle,typedType],done) | typedHandler h])
+        pure ([(public ++ "_state",entry ++ "_state",[handle],stateType,([elixirHandle],elixirState)),
+              (public ++ "_set_state",entry ++ "_set_state",[handle,stateType],done,([elixirHandle,elixirState],elixirDone))] ++
+              [(public ++ "_typed_state",entry ++ "_typed_state",[handle],typedType,([elixirHandle],elixirTyped)) | typedHandler h] ++
+              [(public ++ "_set_typed_state",entry ++ "_set_typed_state",[handle,typedType],done,([elixirHandle,elixirTyped],elixirDone)) | typedHandler h])
       recordings <- forM as $ \a -> do
         entry <- F.abilityEntry units (C.abilityInstance a)
-        pure ("recording_" ++ E.snake (interfaceName a),entry ++ "_recording",[contextType target,interfaceNameDoc a],interfaceNameDoc a)
+        let elixirAbility = X.TypeCall (interfaceModule "elixir" a ++ ".t") []
+        pure ("recording_" ++ E.snake (interfaceName a),entry ++ "_recording",[contextType target,interfaceNameDoc a],interfaceNameDoc a,
+          ([X.TypeCall ":lawspec_beam_effects.context" [],elixirAbility],elixirAbility))
       let typedStates = [D.text ("/// A typed state of " ++ C.handlerName h ++ ": its KeyVal values are maps, its Set values sets.") <> D.hardline <>
             D.text ("pub type " ++ typedStateName (handlerPublicName as h)) | target == "gleam", h <- hs, typedStateful h]
           bodies = typedStates ++ map publicFunction (specBodies ++ accessors ++ recordings)
@@ -402,11 +426,11 @@ emit target layout bits typed declarations units boundSchema = do
         [Artifact ("lib/lawspec/handlers/" ++ E.moduleName (C.unitId unit) ++ ".ex")
           (D.render (X.layoutFor layout) (X.moduleDoc ("LawSpec.Handlers." ++ E.pascal (C.idText (C.unitId unit))) False bodies)) "generated" "source"
           | not (null bodies)] else map fragment bodies
-    publicFunction (name,entry,args,result) =
+    publicFunction (name,entry,args,result,(elixirArgs,elixirResult)) =
       let values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
       in case target of
         "gleam" -> G.external "lawspec_abilities" entry name [v <> D.text ": " <> ty | (v,ty) <- zip values args] result
-        "elixir" -> X.typeAttribute "spec" (X.call name args) result <> D.hardline <>
+        "elixir" -> X.typeAttribute "spec" (X.TypeCall name elixirArgs) elixirResult <> D.hardline <>
           X.function name values [X.remote ":lawspec_abilities" entry values]
         _ -> E.spec name args result <> D.hardline <>
           E.function name [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]

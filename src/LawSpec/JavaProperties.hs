@@ -38,6 +38,8 @@ data Config = Config
   , constructorContracts :: Bool
   , nodeBudget :: Integer
   , machineBits :: Int
+  -- Native adapters convert logical arguments and failures once per signature.
+  , adapterWrappers :: [D.Doc]
   , expression :: Expr -> D.Doc
   , literal :: V.Value -> Either [Diagnostic] D.Doc
   , checked :: Type -> D.Doc -> D.Doc
@@ -184,7 +186,7 @@ emitTests Config{..} unit laws = do
           [text "lawspec.Time.registerClock();" | installsClock unit]))] ++
         [braced (text "static") (statement (call "LawSpecHarness.parallelism"
           [quoted (unitName unit), quoted "threads (JUnit concurrent execution)", text "Runtime.getRuntime().availableProcessors()"])) | parallel] ++
-        map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
+        adapterWrappers ++ map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
       body = separate members
       rendered = D.render D.Compact body
       imports = [name | name <- ["java.util.HashMap", "java.util.List", "java.util.Map", "java.util.function.Supplier",
@@ -576,9 +578,10 @@ emitTests Config{..} unit laws = do
               _ -> False]
           scalar = case inputRange machineBits input of
             Nothing -> text (Helpers.scalarsClass ++ "::generator")
-            Just range -> text "scalar -> scalar.equals(" <> quoted (typeKey ty) <>
-              text ") ? " <> generatorWithin (Just range) ty <> text " : " <>
-              call (Helpers.scalarsClass ++ ".generator") [text "scalar"]
+            Just range -> D.group (text "scalar ->" <> D.nest 4 (D.softline <>
+              D.group (call "scalar.equals" [quoted (typeKey ty)] <> D.nest 4
+                (D.softline <> text "? " <> generatorWithin (Just range) ty <>
+                 D.softline <> text ": " <> call (Helpers.scalarsClass ++ ".generator") [text "scalar"]))))
           strategy = case requiredSymbol plan of
             value:_ -> call "Generator.constant" [expr value]
             [] | Just indexed <- generatorIndex plan ->
