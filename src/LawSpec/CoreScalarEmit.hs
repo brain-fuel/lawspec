@@ -206,7 +206,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let (chosen, scope') = claim scope (localIdentifier "python" (C.binderName b))
       in (scope', named ++ [(C.binderId b, chosen)])) (scopeWith (PythonExpr.pythonReserved ++ testModuleNames), []) binders)
     -- What a Python test module imports, which its locals must not shadow.
-    testModuleNames = words "impl json os st given settings assume _case_values _case_context"
+    testModuleNames = words "impl json os st given settings assume _case_values _case_context" ++
+      ["_assert_" ++ drop 5 name | name <- testNames]
     -- Readable text about a law names its binders as the source does.
     shownLaw e = owner e ++ "::" ++ displayLabel (name e)
     -- A failing assertion names its law and case and points at its source.
@@ -449,6 +450,14 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           -- from 1; each test's comment links it to its source line.
           exampleSuffixes = map ("_" ++) (exampleTestSuffix "python" ("property" : "replay" : "skipped" : "known_failing" :
               map boundaryTestSuffix [0 .. length cases' - 1]) (map exampleName (examples (original e))))
+          sharedAssertion = "_assert_" ++ drop 5 base
+          assertionNames = map inputId (inputs e) ++
+            [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
+          assertionContext link = Doc.operation [text "_case_context", message (labelled "" link)] ["+"]
+          assertionFunction = function sharedAssertion ("_case_context" : "symbols" : assertionNames)
+            (assertionDocWith lawLink assertionContext (assertion e))
+          checkClaim context = statement (invoke sharedAssertion
+            (context : text "symbols" : map text assertionNames))
           shown = shownLaw e
           exampleContext example = shown ++ " example " ++ displayLabel (exampleName example)
           linked context link test = Doc.lineComment 88 "# " (labelled context link) <> test
@@ -459,7 +468,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             (prefix ++ suffix) (
               (withSymbols e ([assign name (render value) | (name,value) <- bindings example] ++
                [bracket e (statements (map (assertionDocLinked lawLink (exampleContext example)) (expectations example) ++
-                 [assertionDocLinked lawLink shown (assertion e)]))]))) |
+                 [checkClaim (message shown)]))]))) |
             (suffix,example) <- zip exampleSuffixes (examples (original e))]
           finite = finiteCases e
           cases' = maybe (boundaryCases e) id finite
@@ -469,12 +478,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           coverRun = coverCheck ++ "_run"
           coverFunctions = "_cases_" ++ drop 5 base
           coverPrefix = if wrapped then base ++ "_" else prefix
-          coverContext link = Doc.operation [text "_case_context", message (labelled "" link)] ["+"]
           coverAssignments = [assign (inputId input)
             (invoke ("_case_values[" ++ show i ++ "]") [text "symbols"])
             | (i, input) <- zip [0 :: Int ..] (inputs e)]
           checkDoc = function coverCheck ["_case_values", "_case_context"]
-            (withSymbols e (coverAssignments ++ [bracket e (assertionDocWith lawLink coverContext (assertion e))]))
+            (withSymbols e (coverAssignments ++ [bracket e (checkClaim (text "_case_context"))]))
           wrapDoc = function coverRun ["name", "body"] (harnessInvocation label harness (text "body") (text "name") False)
           registerDoc = statement (text (coverFunctions ++ " = ") <> runtime "register_finite_cases"
             ([invoke "globals" [], quoted coverPrefix, coverExpression, text coverCheck, message shown] ++
@@ -503,7 +511,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                 [PythonExpr.suite (text "if not " <> conjunction (map render refinements)) (text "return None")]
               score = maybe (text "0") render (C.harnessTarget harness)
               bodyDoc = withSymbols e (assigned ++ guardDoc ++
-                [bracket e (assertionDocLinked lawLink (shown ++ " search") (assertion e)), statement (text "return " <> score)])
+                [bracket e (checkClaim (message (shown ++ " search"))), statement (text "return " <> score)])
             in function caseName ["_values"] bodyDoc
           searchDocs = case descriptors of
             Nothing -> ("", "")
@@ -512,7 +520,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                 renderDocument caseDoc ++
                 renderDocument (function (base ++ "__replay") [] (statement (runtime "search_replay" [message label, descriptorDoc ds, text caseName])))
               , "" )
-      let body = statements (observations e ++ [remembered (bracket e (assertionDocLinked lawLink (shown ++ " property") (assertion e)))])
+      let body = statements (observations e ++ [remembered (bracket e (checkClaim (message (shown ++ " property"))))])
           generators = map (generatorDoc . inputType) (inputs e)
           names = map inputId (inputs e)
           ordinary = pythonProperty prefix [invoke "given" generators] names
@@ -536,7 +544,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             [array [text (prefix ++ suffix) | suffix <- exampleSuffixes],
              if Cover.coverCount cover == 0 then array [] else text coverFunctions,
              array [text (prefix ++ suffix) | suffix <- propertySuffixes]] ["+", "+"]
-      pure (Doc.render outputLayout (mconcat (map (Doc.lineComment 88 "# ") (lawCommentLines e))) ++ fst searchDocs ++ (++ snd searchDocs) (
+      pure ((if C.harnessSkip harness /= Nothing then "" else renderDocument assertionFunction) ++
+        Doc.render outputLayout (mconcat (map (Doc.lineComment 88 "# ") (lawCommentLines e))) ++ fst searchDocs ++ (++ snd searchDocs) (
         case (C.harnessSkip harness, C.harnessKnownFailing harness) of
           -- A skipped law runs nothing; it is still an obligation.
           (Just reason, _) -> renderDocument (function (base ++ "__skipped") []

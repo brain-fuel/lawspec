@@ -183,3 +183,9 @@ regression limits for code size, not execution-performance promises. Both the
 handler-bindings and arithmetic fixtures exercise all executable targets, and
 the acceptance planner applies the same guard before running providers or
 mutations. Minification cannot hide expansion because byte size is checked.
+
+Python, JavaScript and TypeScript also keep the law's assertion in one shared
+function. Example expectations remain their own checks; each example, finite
+case, property invocation and replay then calls the shared law assertion with
+its own inputs, resources and failure context. Helper names are reserved before
+allocating source input names, and each case keeps its own symbol context.

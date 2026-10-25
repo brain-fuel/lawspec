@@ -180,7 +180,8 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     locals = M.fromList (concatMap (allocate . propertyBinders . original) laws ++
       concatMap (\c -> allocate (C.contractArguments c ++ [C.contractResult c])) (contracts u))
     allocate binders = M.toList (X.bindingNames testModuleNames binders)
-    testModuleNames = words "impl fc test describe ls data schema primitives dataGenerator registerClock _harness _definitions _abilities"
+    moduleImports = words "impl fc test describe ls data schema primitives dataGenerator registerClock _harness _definitions _abilities"
+    testModuleNames = moduleImports ++ map (++ "Check") lawStems
     localName identity = M.findWithDefault (Backend.localName identity) identity locals
     inputId = localName . C.binderId . C.quantifiedBinder
     bindings example = [(localName i, v) | (i, v) <- C.exampleBindings example]
@@ -382,7 +383,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
           _ -> Left "expected portable external call"
     contractFunction n = "_lawspec_call_" ++ n
     -- Each law's search names start from its words (normalizersAgreeCase).
-    lawStems = fst (claimAll (scopeWith (testModuleNames ++ X.webReserved)) [cased Camel (lawWords (name e)) | e <- laws])
+    lawStems = fst (claimAll (scopeWith (moduleImports ++ X.webReserved)) [cased Camel (lawWords (name e)) | e <- laws])
     -- Each expectation is checked by the runtime, which names the law and
     -- case and the source line when it fails.
     assertion' fallback context = assertionWith fallback (\link -> E.Str (labelled context link))
@@ -408,6 +409,16 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
     lawTests (index,e) = do
       let label = owner e ++ "::" ++ name e
           harness = C.propertyHarness (original e)
+          sharedAssertion = lawStems !! index ++ "Check"
+          assertionNames = map inputId (inputs e) ++
+            [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
+          contextName = fst (claimAll (scopeWith assertionNames) ["caseContext"]) !! 0
+          assertionContext link = E.Binary "+" (E.Ident contextName) (E.Str (labelled "" link))
+          assertionFunction = E.FunctionDecl False asyncMode sharedAssertion []
+            (map E.param (contextName : "symbols" : assertionNames)) Nothing
+            (assertionWith lawLink assertionContext (assertion e))
+          checkClaim context = E.ExprStmt (awaitIf (E.call sharedAssertion
+            (context : E.Ident "symbols" : map E.Ident assertionNames)))
           shown = shownLaw e
           exampleContext example = shown ++ " example " ++ displayLabel (exampleName example)
           lawLink = if null (file (location (original e))) then Nothing else Just (locationLink (location (original e)))
@@ -417,7 +428,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
             testCall (label ++ " example: " ++ exampleName example)
               (withSymbols e ([E.constDecl n' (render value) | (n',value) <- bindings example] ++
                 bracket e (concatMap (assertion' lawLink (exampleContext example)) (expectations example) ++
-                  assertion' lawLink shown (assertion e))))
+                  [checkClaim (E.Str shown)])))
             | example <- examples (original e)]
           finite = finiteCases e
       cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
@@ -426,14 +437,14 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
           values = E.Ident "caseValues"
           number = E.Binary "+" caseIndex (E.num 1)
           caseLabel = E.Binary "+" (E.Str (label ++ " boundary ")) number
-          context link = E.Binary "+" (E.Binary "+" (E.Str (shown ++ " boundary ")) number) (E.Str (labelled "" link))
+          context = E.Binary "+" (E.Str (shown ++ " boundary ")) number
           assigned = [E.constDecl (inputId input) (E.Call (E.index values (E.num (toInteger i))) [] [E.Ident "symbols"] False)
             | (i, input) <- zip [0 :: Int ..] (inputs e)]
           boundaries' = [[linkComment (short ++ ", finite cases") lawLink,
             E.ForOf "const" (E.PArray [E.PIdent "caseIndex", E.PIdent "caseValues"])
               (runtime "finiteCases" [coverExpression])
               [E.ExprStmt (E.call "test" [caseLabel, callback []
-                (withSymbols e (assigned ++ bracket e (assertionWith lawLink context (assertion e))))])]]
+                (withSymbols e (assigned ++ bracket e ([checkClaim context])))])]]
             | Cover.coverCount cover /= 0]
       -- LawSpec's own search (LawSpec.Search): a failing generated case's
       -- inputs are kept in the failure database, and replayed before the
@@ -454,7 +465,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
               guardDoc = [E.IfSingle (E.notE (conjunction (map render refinements))) (E.Return (Just E.Null)) | not (null refinements)]
               score = maybe (E.num 0) render (C.harnessTarget harness)
               bodyDoc = withSymbols e (assigned ++ guardDoc ++
-                bracket e (assertion' lawLink (shown ++ " search") (assertion e)) ++ [E.ret score])
+                bracket e ([checkClaim (E.Str (shown ++ " search"))]) ++ [E.ret score])
             in E.FunctionDecl False asyncMode caseName [] [E.param "values"] Nothing bodyDoc
           searchDocs = case descriptors of
             Nothing -> ([], [])
@@ -465,7 +476,7 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
               , [ E.ExprStmt (E.call "test" [E.Str (label ++ " search"), E.asyncArrowBlock []
                     [E.ExprStmt (E.Await (runtime "searchClimb" [E.Str label, E.Ident descriptorName, E.Ident caseName]))]])
                 | C.harnessTarget harness /= Nothing ] )
-      let body = observations e ++ remembered (bracket e (assertion' lawLink (shown ++ " property") (assertion e)))
+      let body = observations e ++ remembered (bracket e ([checkClaim (E.Str (shown ++ " property"))]))
           generators = map (generatorOf . inputType) (inputs e)
           names = map inputId (inputs e)
           ordinary = propertyInvocation label generators (map E.param names) (freshSymbols : installs e ++ body) []
@@ -478,7 +489,8 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
             if not (null drawn) then drawn else
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
           tests = examples' ++ boundaries' ++ map (linked (short ++ ", property") lawLink) properties
-      pure ([E.Comment (concatMap commentLines (lawCommentLines e))] ++ fst searchDocs ++ [E.Blank | not (null (fst searchDocs))] ++
+      pure ([E.Comment (concatMap commentLines (lawCommentLines e))] ++
+            (if C.harnessSkip harness /= Nothing then [] else [assertionFunction,E.Blank]) ++ fst searchDocs ++ [E.Blank | not (null (fst searchDocs))] ++
             webHarness label harness tests ++ concatMap (\t -> [E.Blank, t]) (snd searchDocs))
     -- The harness plane (LawSpec.Harness). A law whose harness sets how its
     -- tests run (timeout, repeat, retry flaky, adequacy) has each test

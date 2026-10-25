@@ -2,7 +2,9 @@
 module CanonicalSpec (test_canonicalAuthoringPreservesIntrinsicGuarantees) where
 
 import Data.Either (isRight, isLeft)
-import Data.List (intercalate, isInfixOf, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf, tails)
+import System.Exit (ExitCode(..))
+import System.Process (readProcessWithExitCode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson
@@ -71,6 +73,24 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       filter (isInfixOf "lawspec_same_") comments `shouldBe` []
       any (isInfixOf "same") comments `shouldBe` True)
       ["python","javascript","typescript","haskell","erlang","elixir","gleam","go","rust","fsharp","csharp"]
+  it "shares one Python and Web law assertion across examples and finite cases without capturing input names" $ do
+    program <- either (fail . show) pure $ core $ unlines
+      [ "echo :: Bool -> Bool"
+      , "law selected is"
+      , "  definition: for all (selectedCheck :: Bool) (caseContext :: Bool) => echo selectedCheck = selectedCheck end for all end definition"
+      , "  example chosen: selectedCheck = true caseContext = false expect true = true end example"
+      , "end law" ]
+    plan <- either (fail . show) pure (planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program)
+    mapM_ (\target -> do
+      artifacts <- either (fail . show) pure (emitPlan target plan)
+      let source = concat [LawSpec.Model.artifactContent artifact | artifact <- artifacts,
+            LawSpec.Model.artifactPlacement artifact == "test"]
+      length (filter (isPrefixOf "impl.echo(") (tails source)) `shouldBe` 1
+      let (command,arguments) = if target == "python"
+            then ("python3",["-c","import ast,sys; ast.parse(sys.stdin.read())"])
+            else ("node",["--input-type=module","--check"])
+      (code,_,err) <- readProcessWithExitCode command arguments source
+      (code,err) `shouldBe` (ExitSuccess,"")) ["python","javascript","typescript"]
   it "emits individually selectable compact .NET boundaries with one shared checker" $ do
     program <- either (fail . show) pure $ core $ unlines
       [ "function same (value :: Int8) -> Int8 is value end function"
