@@ -2,7 +2,7 @@
 -- the consumer so definitions and adapter bridges retain their own ABI. The
 -- generated object names its schema Schema and its machine width
 -- MachineBits; layout is scalafmt's (LawSpec.ScalaLayout).
-module LawSpec.ScalaExpr (renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec, lambda, valueType, schemaName, bitsName) where
+module LawSpec.ScalaExpr (bindValue, renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec, lambda, valueType, schemaName, bitsName) where
 
 import LawSpec.Core
 import qualified LawSpec.ScalaData as Native
@@ -13,6 +13,32 @@ import qualified LawSpec.ScalaLayout as L
 import LawSpec.JvmLets (flattenLets)
 import LawSpec.JvmNames (jvmScopedNames)
 import qualified Data.Map.Strict as M
+
+-- | The checked term supplies a binding's layout shape. No emitted code is
+-- flattened or inspected to discover whether the value computes a branch.
+bindValue :: String -> Expr -> D.Doc -> D.Doc
+bindValue name source value
+  | bareBlock source = L.bindBlock name value
+  | controlFlow source = L.bindControl name value
+  | otherwise = L.bind name value
+  where
+    controlFlow term = case expressionNode term of
+      If {} -> True
+      _ -> any controlFlow (children term)
+
+bareBlock :: Expr -> Bool
+bareBlock source = case expressionNode source of
+  Match scrutinee _ -> case expressionNode scrutinee of Local _ -> False; _ -> True
+  Convert _ ty value | ty == expressionType value -> bareBlock value
+  Helper Concurrently [value] -> bareBlock value
+  _ -> False
+
+-- A computed match already is a braced expression. Its block belongs to the
+-- lambda's opening line and brings its own two-space indentation.
+lambdaValue :: [(String, String)] -> Expr -> D.Doc -> D.Doc
+lambdaValue parameters source body
+  | bareBlock source = D.multiline (lambdaOpening parameters <> D.text " " <> body)
+  | otherwise = lambda parameters body
 
 -- | Strings are escaped for Scala here, once, so no generated literal can end
 -- early or change meaning.
@@ -41,8 +67,10 @@ array = call ("Array[" ++ valueType ++ "]")
 -- functional interface a runtime method expects.
 -- A space before ':' keeps it separate from identifiers ending in '_'.
 lambda :: [(String, String)] -> D.Doc -> D.Doc
-lambda parameters body = D.group (D.text ("(" ++ commaList [n ++ (if last n == '_' then " : " else ": ") ++ t | (n, t) <- parameters] ++ ") =>") <>
-  D.nest 2 (D.softline <> body))
+lambda parameters body = D.group (lambdaOpening parameters <> D.nest 2 (D.softline <> body))
+
+lambdaOpening :: [(String, String)] -> D.Doc
+lambdaOpening parameters = D.text ("(" ++ commaList [n ++ (if last n == '_' then " : " else ": ") ++ t | (n,t) <- parameters] ++ ") =>")
   where commaList = foldr1' (\a b -> a ++ ", " ++ b)
         foldr1' _ [] = ""
         foldr1' f xs = foldr1 f xs
@@ -131,13 +159,13 @@ renderExpression declarations bits named external expression = render scopedTerm
         ref <- reference (expressionType value)
         callbacks <- mapM (\(binder,predicate) -> do
           body <- render predicate
-          pure (lambda [(local (binderId binder), valueType)] body)) predicates
+          pure (lambdaValue [(local (binderId binder), valueType)] predicate body)) predicates
         pure (call (schemaName ++ ".allPayloads")
           [ref,argument,call ("java.util.List.of[java.util.function.Function[" ++ valueType ++ ", " ++ valueType ++ "]]") callbacks,width,D.text "symbols"])
       AllElements value binder predicate -> do
         argument <- render value
         body <- render predicate
-        pure (runtime "allElements" [argument, lambda [(local (binderId binder), valueType)] body])
+        pure (runtime "allElements" [argument, lambdaValue [(local (binderId binder), valueType)] predicate body])
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
       -- A chain of lets is a block of declarations in one callback, which
@@ -147,7 +175,7 @@ renderExpression declarations bits named external expression = render scopedTerm
               Let b v rest -> let (steps, final) = chained rest in ((b, v) : steps, final)
               _ -> ([], e)
             (steps, final) = chained term
-        declarations <- mapM (\(binder, value) -> L.bind (local (binderId binder)) <$> render value) steps
+        declarations <- mapM (\(binder, value) -> bindValue (local (binderId binder)) value <$> render value) steps
         inner <- render final
         pure (L.trailing (D.text "LawSpecRuntime.block") ["()"] (declarations ++ [inner]))
       -- A text literal is already its type's value.
@@ -224,9 +252,11 @@ renderExpression declarations bits named external expression = render scopedTerm
               (D.text " { (tag, fields) =>" <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"))
         -- A computed scrutinee is bound first, so matches do not nest in
         -- each other's arguments.
+        let occupied = map local (freeBinders term)
+            scrutineeName = head [name | name <- "scrutinee" : ["scrutinee" ++ show i | i <- [2::Int ..]], name `notElem` occupied]
         pure $ case expressionNode scrutinee of
           Local _ -> matching value
-          _ -> L.block [L.bind "scrutinee" value, matching (D.text "scrutinee")]
+          _ -> L.block [bindValue scrutineeName scrutinee value, matching (D.text scrutineeName)]
     chainOf op e = case expressionNode e of
       ShortCircuit op' a b | op' == op -> chainOf op a ++ chainOf op b
       _ -> [e]

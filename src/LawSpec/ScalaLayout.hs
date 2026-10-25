@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, arrow, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, chain, block, statements
+  ( scalaStyle, scalaString, arrow, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, bind, bindControl, bindBlock, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
@@ -114,6 +114,16 @@ bind name value = case break (== '(') flat of
     prefix = "val " ++ name ++ " = "
     flat = D.render D.Compact value
     broken = D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value)
+
+-- | Computed control flow keeps its document tree. In particular, a typed
+-- lambda must not flatten the binding's nested conditions after its first line.
+bindControl :: String -> D.Doc -> D.Doc
+bindControl name value = D.multiline (D.group
+  (D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value)))
+
+-- | A braced value opens on the binding's line, without extra block nesting.
+bindBlock :: String -> D.Doc -> D.Doc
+bindBlock name value = D.text ("val " ++ name ++ " = ") <> value
 
 -- | receiver.a(...).b(...): a chain of two or more calls is broken before
 -- each call's dot when it does not fit, the receiver's own call included
