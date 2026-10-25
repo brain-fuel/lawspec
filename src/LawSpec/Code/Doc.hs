@@ -3,7 +3,7 @@
 -- code or rewrites whitespace inside tokens (including string literals).
 module LawSpec.Code.Doc
   ( Doc, Layout(..), text, utf8Text, utf8Length, displayWidth, hardline, softline, softbreak
-  , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment, mapText
+  , nest, group, multiline, prefixChoice, layoutChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment, mapText
   , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue, flatReserve
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
   , fitsIndented, fitsIndentedTwice, Preference(..), prefer, narrow, fullWidth
@@ -26,6 +26,7 @@ data Doc
   | Nest Int Doc
   | Group Doc
   | PrefixChoice String Doc Doc
+  | LayoutChoice Doc Doc
   | Multiline Doc
   | Flow [Doc]
   | FlowTail [Doc]
@@ -239,6 +240,7 @@ mapText f doc = case doc of
   Nest n a -> Nest n (mapText f a)
   Group a -> Group (mapText f a)
   PrefixChoice prefix a b -> PrefixChoice (f prefix) (mapText f a) (mapText f b)
+  LayoutChoice pretty compact -> LayoutChoice (mapText f pretty) (mapText f compact)
   Multiline a -> Multiline (mapText f a)
   Flow items -> Flow (map (mapText f) items)
   FlowTail items -> FlowTail (map (mapText f) items)
@@ -258,6 +260,12 @@ mapText f doc = case doc of
   FullWidth a -> FullWidth (mapText f a)
   FitsIndentedTwice width a b -> FitsIndentedTwice width (mapText f a) (mapText f b)
   StopHere -> StopHere
+
+-- | Select syntax for the requested output layout. Layout-sensitive
+-- languages can use explicit delimiters in compact output without changing
+-- their readable layout or inspecting printed text.
+layoutChoice :: Doc -> Doc -> Doc
+layoutChoice = LayoutChoice
 
 -- | Move a short right-hand side onto its own line when necessary. If it must
 -- wrap internally anyway, keep its opening on the same line as the prefix.
@@ -498,6 +506,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       _ -> length
     prettierFits = case layout of PrettyDisplay _ -> True; PrettyPoints _ -> True; _ -> False
     initialMode = case layout of Compact -> Flat; CompactTabs -> Flat; _ -> Broken
+    chooseLayout pretty compact = case layout of Compact -> compact; CompactTabs -> compact; _ -> pretty
     indentationText amount = case layout of
       PrettyTabs _ -> tabs amount
       CompactTabs -> tabs amount
@@ -507,6 +516,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     layoutWork _ [] = ""
     layoutWork column ((indentation, mode, margin, current):rest) = case current of
       Empty -> layoutWork column rest
+      LayoutChoice pretty compact -> layoutWork column ((indentation, mode, margin, chooseLayout pretty compact):rest)
       FlatReserve _ -> layoutWork column rest
       StopHere -> ""
       Text s -> s ++ layoutWork (lastColumnWith measure column s) rest
@@ -685,6 +695,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     fits column ((_, _, margin, _):_) | column > margin = False
     fits column ((indentation, mode, margin, current):rest) = case current of
       Empty -> fits column rest
+      LayoutChoice pretty compact -> fits column ((indentation, mode, margin, chooseLayout pretty compact):rest)
       FlatReserve n | mode == Flat -> column + n <= margin && fits (column + n) rest
       FlatReserve _ -> fits column rest
       StopHere -> fits column rest
@@ -737,6 +748,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       where
         line flat current = case current of
           Empty -> True
+          LayoutChoice pretty compact -> line flat (chooseLayout pretty compact)
           FlatReserve _ -> True
           Text s -> '\n' `notElem` s
           Utf8Text s -> '\n' `notElem` s

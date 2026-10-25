@@ -186,18 +186,23 @@ bare e = case e of
   If c a b -> text "if " <> from 3 c <> D.nest 2
     (D.softline <> text "then" <> branch a <> D.softline <> text "else" <> branch b)
   -- let x = v\n in body: the bindings past "let ", the body past " in ".
-  LetIn bindings body -> text "let " <> D.nest 4 (D.joinWith D.hardline
+  LetIn bindings body -> D.layoutChoice (text "let " <> D.nest 4 (D.joinWith D.hardline
     [if hangs value then text (lhs ++ " = ") <> hanging value else node value (text (lhs ++ " =") <> D.nest 2 (D.softline <> expression value))
     | (lhs, value) <- bindings]) <>
-    D.nest 1 (D.softline <> text "in " <> D.nest 3 (expression body))
+    D.nest 1 (D.softline <> text "in " <> D.nest 3 (expression body)))
+    (text "let { " <> D.joinWith (text "; ") [text (lhs ++ " = ") <> expression value | (lhs, value) <- bindings] <>
+      text " } in " <> expression body)
   -- e :: t, on one line: ormolu keeps it so, however long.
   Typed x t -> text (D.render D.Compact (annotated x)) <> text (" :: " ++ t)
   -- Constructor {f = v}, or the fields one per line in braces below it.
   Record con [] -> text (con ++ " {}")
   Record con fields -> text con <> D.nest 2 (D.softline <> text "{" <> D.whenBroken (text " ") <>
     D.nest 2 (D.joinWith (text "," <> D.softline) [field n v | (n, v) <- fields]) <> D.softbreak <> text "}")
-  Case scrutinee alternatives -> text "case " <> from 5 scrutinee <> text " of" <> D.nest 2
-    (mconcat [D.hardline <> alternative p body | (p, body) <- alternatives])
+  Case scrutinee alternatives -> D.layoutChoice
+    (text "case " <> from 5 scrutinee <> text " of" <> D.nest 2
+      (mconcat [D.hardline <> alternative p body | (p, body) <- alternatives]))
+    (text "case " <> expression scrutinee <> text " of { " <>
+      D.joinWith (text "; ") [text (p ++ " -> ") <> expression body | (p, body) <- alternatives] <> text " }")
   where
     branch x = if hangs x then text " " <> hanging x else node x (D.nest 2 (D.softline <> expression x))
     alternative p body

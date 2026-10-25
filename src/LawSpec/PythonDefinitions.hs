@@ -325,7 +325,7 @@ emitPythonDefinitions layout bits declarations units = do
           inputs = installs ++ [assign value checked | (value, checked) <- zip values arguments]
           invocation = E.call name (D.text "symbols" : map D.text values)
       pure (linkComment d <> E.suite (D.text ("def " ++ declarationName declaration) <>
-        D.delimitTrailing 4 "(" ")" parameters <> D.text " -> " <> D.text (D.render D.Compact resultType))
+        D.delimitTrailing 4 "(" ")" parameters <> D.text " -> " <> resultType)
         (contextual (declarationId declaration) (D.joinWith D.hardline
           (inputs ++ [assign "result" invocation,D.text "return " <> output]))))
     -- The handlers a definition's native wrapper takes, first: one per

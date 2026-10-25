@@ -222,7 +222,8 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
       [Exclusive "stack-build" | buildsStack command] ++
       [Exclusive "stack-work" | name `elem` stackBuilders] ++
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
-      [Shared "stack-work" | name `notElem` stackBuilders, take 1 command == ["stack"] || name == "rejection-examples"] ++
+      [Shared "stack-work" | name `notElem` stackBuilders,
+        take 1 command == ["stack"] || name `elem` ["rejection-examples", "parity"]] ++
       [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"]] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
       [Exclusive "env:artifacts" | name == "artifact-bootstrap"] ++

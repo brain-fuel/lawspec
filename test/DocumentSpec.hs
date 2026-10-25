@@ -9,6 +9,7 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.Code.Haskell as H
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
 import qualified LawSpec.PortableGenerator as Generator
@@ -19,6 +20,12 @@ import qualified LawSpec.PortableTestHelpers as Helpers
 -- ref:DEC-readable-output-default ref:REQ-readable-layout
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged :: Spec
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated code layout" $ do
+  it "uses explicit layout delimiters for compact Haskell case and let expressions" $ do
+    let value = H.LetIn [("first", H.integer 1), ("second", H.integer 2)]
+          (H.Case (H.var "first") [("0", H.integer 0), ("_", H.var "second")])
+        doc = H.expression value
+    D.render D.Compact doc `shouldBe` "let { first = 1; second = 2 } in case first of { 0 -> 0; _ -> second }"
+    D.render (D.Pretty 80) doc `shouldSatisfy` (not . isInfixOf "of {")
   it "leaves blank lines empty while preserving following indentation" $
     D.render (D.Pretty 80) (D.block 2 (D.text "a" <> D.hardline <> D.hardline <> D.text "b"))
       `shouldBe` "{\n  a\n\n  b\n}"

@@ -142,7 +142,12 @@ portableType _ = "LawSpec.Runtime.Value"
 
 -- | The codec between a LawSpec type and its native type, as an expression.
 codec :: Lang -> Int -> Names -> [(C.Id, String)] -> C.Type -> Either String String
-codec lang bits names parameters ty = case ty of
+codec = codecWith False
+
+-- References within a recursive codec module are local; callers outside it
+-- use the module's qualified name. Select the name before printing code.
+codecWith :: Bool -> Lang -> Int -> Names -> [(C.Id, String)] -> C.Type -> Either String String
+codecWith local lang bits names parameters ty = case ty of
   C.TypeVariable identity -> Right (maybe portable id (lookup identity parameters))
   C.Constructor n args -> do
     cs <- mapM argument [t | C.TypeArgument t <- args]
@@ -161,13 +166,13 @@ codec lang bits names parameters ty = case ty of
         Nothing -> Left ("no .NET codec for " ++ n)
   C.Arrow _ _ -> Left "function-valued data has no .NET codec"
   where
-    argument = codec lang bits names parameters
+    argument = codecWith local lang bits names parameters
     portable = case lang of FSharp -> "Codec.portable"; CSharp -> "Codecs.Portable"
     applied fs cs xs = case lang of
       FSharp -> "(Codec." ++ fs ++ " " ++ unwords xs ++ ")"
       CSharp -> "Codecs." ++ cs ++ "(" ++ intercalate ", " xs ++ ")"
     dataCodec name xs = case lang of
-      FSharp -> "(LawSpec.Data.Codecs." ++ escapeFSharp (camel name) ++ " " ++ (if null xs then "()" else unwords xs) ++ ")"
+      FSharp -> "(" ++ (if local then "" else "LawSpec.Data.Codecs.") ++ escapeFSharp (camel name) ++ " " ++ (if null xs then "()" else unwords xs) ++ ")"
       CSharp -> "LawSpec.Data.Codecs." ++ name ++ "(" ++ intercalate ", " xs ++ ")"
     scalar p = case lang of
       FSharp -> "Codec." ++ fsScalar (primitiveName p)
@@ -316,7 +321,7 @@ emitData FSharp layout bits bound declarations
         let c = resolvedConstructor rc
             tag = C.idText (C.constructorId c)
             ctor = refText (resolvedNativeConstructor rc)
-        fieldCodecs <- forM (resolvedFields rc) $ \(binder, _) -> codec FSharp bits names codecParams (C.binderType binder)
+        fieldCodecs <- forM (resolvedFields rc) $ \(binder, _) -> codecWith True FSharp bits names codecParams (C.binderType binder)
         let vars = ["f" ++ show i | (i, _) <- zip [0 :: Int ..] fieldCodecs]
             nativeNames = map snd (resolvedFields rc)
         case resolvedFieldLayout rc of
@@ -427,7 +432,7 @@ emitData FSharp layout bits bound declarations
             else if needsQualification s || not (isRecord s) then shapeName s ++ "." else ""
       cases <- forM (shapeCases s) $ \c -> do
         let existentials = [e | dc <- C.dataConstructors (shapeDeclaration s), C.idText (C.constructorId dc) == caseTag c, e <- C.constructorExistentials dc]
-        fieldCodecs <- forM (caseFields c) $ \(_, t) -> codec FSharp bits names (codecParams ++ [(e, "Codec.portable") | e <- existentials]) t
+        fieldCodecs <- forM (caseFields c) $ \(_, t) -> codecWith True FSharp bits names (codecParams ++ [(e, "Codec.portable") | e <- existentials]) t
         let witnessCodecs = replicate (caseWitnesses c) "Codec.text"
             all' = fieldCodecs ++ witnessCodecs
             vars = ["f" ++ show i | (i, _) <- zip [0 :: Int ..] all']
