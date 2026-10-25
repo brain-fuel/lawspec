@@ -1,6 +1,10 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc, namesFor, kotlinDataName) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.Scalar (nativeRepresentation, primitives, primitiveName)
@@ -24,6 +28,14 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinLayout as KotlinLayout
 import qualified Data.Map.Strict as M
 import LawSpec.RecordNames (recordDisplayNames)
+
+nativeDocumentTable :: Table (Either String D.Doc)
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-kotlin-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
+
+codecDocumentTable :: Table (Either String D.Doc)
+codecDocumentTable = unsafePerformIO (newPersistentTable "public-kotlin-codec" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id, String)]
 
@@ -164,68 +176,73 @@ emitKotlinDataWithProfile bits layout declarations = do
   names <- namesFor declarations
   schema <- JVM.emitJavaSchema bits (D.Pretty 100) declarations
   codecs <- emitKotlinCodecs layout declarations
+  let graph = Identity.dependencyGraphWithBits bits declarations []
   native <- forM [d | d <- declarations, builtinFree d, not (C.dataHandle d)] $ \declaration -> do
     name <- maybe (Left "unplanned Kotlin data name") Right (lookup (C.dataId declaration) names)
-    let parameters = zip (C.dataParameters declaration) [candidate | i <- [0::Int ..], let candidate = "T" ++ show i, candidate /= name]
-        arguments = map (D.text . snd) parameters
-        variants = C.dataConstructors declaration
-    -- A product is a data class (a data object when it has no fields); a sum
-    -- is a sealed interface of data classes and data objects, so adapters use
-    -- properties and exhaustive when instead of casts.
-    let cases = caseNames name variants
-        generic = not (null parameters)
-        valueEquality className = D.text " " <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
-          [ D.text ("override fun equals(other: Any?): Boolean = other is " ++ className ++ "<*>")
-          , D.text "override fun hashCode(): Int = javaClass.hashCode()"
-          , D.text ("override fun toString(): String = " ++ show className) ])
-        -- A GADT case is generic in the parameters it leaves open and in its
-        -- existentials, and implements the interface it refines to.
-        declare className supertype variant = do
-          identifier className
-          -- A field-only existential is Any?; its witness names its type.
-          let free = freeExistentials declaration variant
-              existentials = zip [e | e <- C.constructorExistentials variant, e `notElem` free]
-                [candidate | i <- [0::Int ..], let candidate = "E" ++ show i, candidate /= name]
-              scope = parameters ++ existentials ++ [(e, "Any?") | e <- free]
-              equations = C.constructorEquations variant
-              -- A product class is the public type itself, so it keeps the
-              -- declaration's parameters even when its constructor fixes one.
-              own = if isProduct declaration || (null equations && null existentials) then arguments
-                else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
-          declared <- forM (C.constructorFields variant) $ \field -> do
-            fieldIdentifier (C.binderName field)
-            ty <- typeDoc (handlesOf declarations) names scope (nativeConstructorFieldType declaration variant (C.binderType field))
-            pure (D.group (D.text ("val " ++ C.binderName field ++ ":") <> D.nest 4 (D.softline <> ty)))
-          let fields = declared ++ [D.text ("val " ++ S.witnessFieldName (length free) k ++ ": String") | k <- [0 .. length free - 1]]
-          implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
-          let superDoc = fmap (\owner -> applied owner (if null equations then arguments else implemented)) supertype
-              inherits = maybe mempty (\s -> D.text " : " <> s) superDoc
-              -- ktfmt keeps the fields on the line and breaks before the
-              -- supertype when that fits, and otherwise breaks the fields.
-              dataClass = KotlinLayout.callWith (applied ("data class " ++ className) own) fields
-              flatClass = D.render D.Compact dataClass
-              inheriting = case superDoc of
-                Nothing -> dataClass
-                Just s | '\n' `notElem` flatClass -> D.bestFit [D.text (flatClass ++ " : " ++ D.render D.Compact s),
-                  D.prefixChoice (flatClass ++ " :") (D.text (flatClass ++ " :") <> D.nest 4 (D.hardline <> s))
-                    (dataClass <> inherits)]
-                Just _ -> dataClass <> inherits
-          pure $ case (fields, not (null own)) of
-            ([], False) -> D.text ("data object " ++ className) <> inherits
-            ([], True) -> applied ("class " ++ className) own <> inherits <> valueEquality className
-            _ -> inheriting
-    declarationDoc <- case variants of
-      [] -> pure (D.text "class " <> applied name arguments <> D.text " private constructor()")
-      [only] | isProduct declaration -> declare name Nothing only
-      _ -> do
-        body <- forM variants $ \variant ->
-          declare (maybe (C.constructorName variant) id (lookup (C.constructorId variant) cases))
-            (Just ("lawspec.data." ++ name)) variant
-        pure (D.text "sealed interface " <> applied name arguments <> D.text " " <>
-          D.block 4 (D.joinWith (D.hardline <> D.hardline) body))
-    let source = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
-          D.text "package lawspec.data" <> D.hardline <> D.hardline <>
-          declarationDoc <> D.hardline
+    let context = EmissionContext.declarationContext graph declarations names declaration
+        key = Identity.fullKey graph ("public-kotlin-data:" ++ context) declaration
+    source <- memoized nativeDocumentTable key $ do
+      let parameters = zip (C.dataParameters declaration) [candidate | i <- [0::Int ..], let candidate = "T" ++ show i, candidate /= name]
+          arguments = map (D.text . snd) parameters
+          variants = C.dataConstructors declaration
+      -- A product is a data class (a data object when it has no fields); a sum
+      -- is a sealed interface of data classes and data objects, so adapters use
+      -- properties and exhaustive when instead of casts.
+      let cases = caseNames name variants
+          generic = not (null parameters)
+          valueEquality className = D.text " " <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
+            [ D.text ("override fun equals(other: Any?): Boolean = other is " ++ className ++ "<*>")
+            , D.text "override fun hashCode(): Int = javaClass.hashCode()"
+            , D.text ("override fun toString(): String = " ++ show className) ])
+          -- A GADT case is generic in the parameters it leaves open and in its
+          -- existentials, and implements the interface it refines to.
+          declare className supertype variant = do
+            identifier className
+            -- A field-only existential is Any?; its witness names its type.
+            let free = freeExistentials declaration variant
+                existentials = zip [e | e <- C.constructorExistentials variant, e `notElem` free]
+                  [candidate | i <- [0::Int ..], let candidate = "E" ++ show i, candidate /= name]
+                scope = parameters ++ existentials ++ [(e, "Any?") | e <- free]
+                equations = C.constructorEquations variant
+                -- A product class is the public type itself, so it keeps the
+                -- declaration's parameters even when its constructor fixes one.
+                own = if isProduct declaration || (null equations && null existentials) then arguments
+                  else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
+            declared <- forM (C.constructorFields variant) $ \field -> do
+              fieldIdentifier (C.binderName field)
+              ty <- typeDoc (handlesOf declarations) names scope (nativeConstructorFieldType declaration variant (C.binderType field))
+              pure (D.group (D.text ("val " ++ C.binderName field ++ ":") <> D.nest 4 (D.softline <> ty)))
+            let fields = declared ++ [D.text ("val " ++ S.witnessFieldName (length free) k ++ ": String") | k <- [0 .. length free - 1]]
+            implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
+            let superDoc = fmap (\owner -> applied owner (if null equations then arguments else implemented)) supertype
+                inherits = maybe mempty (\s -> D.text " : " <> s) superDoc
+                -- ktfmt keeps the fields on the line and breaks before the
+                -- supertype when that fits, and otherwise breaks the fields.
+                dataClass = KotlinLayout.callWith (applied ("data class " ++ className) own) fields
+                flatClass = D.render D.Compact dataClass
+                inheriting = case superDoc of
+                  Nothing -> dataClass
+                  Just s | '\n' `notElem` flatClass -> D.bestFit [D.text (flatClass ++ " : " ++ D.render D.Compact s),
+                    D.prefixChoice (flatClass ++ " :") (D.text (flatClass ++ " :") <> D.nest 4 (D.hardline <> s))
+                      (dataClass <> inherits)]
+                  Just _ -> dataClass <> inherits
+            pure $ case (fields, not (null own)) of
+              ([], False) -> D.text ("data object " ++ className) <> inherits
+              ([], True) -> applied ("class " ++ className) own <> inherits <> valueEquality className
+              _ -> inheriting
+      declarationDoc <- case variants of
+        [] -> pure (D.text "class " <> applied name arguments <> D.text " private constructor()")
+        [only] | isProduct declaration -> declare name Nothing only
+        _ -> do
+          body <- forM variants $ \variant ->
+            declare (maybe (C.constructorName variant) id (lookup (C.constructorId variant) cases))
+              (Just ("lawspec.data." ++ name)) variant
+          pure (D.text "sealed interface " <> applied name arguments <> D.text " " <>
+            D.block 4 (D.joinWith (D.hardline <> D.hardline) body))
+      let source = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
+            D.text "package lawspec.data" <> D.hardline <> D.hardline <>
+            declarationDoc <> D.hardline
+      pure source
     pure (Artifact ("src/main/kotlin/lawspec/data/" ++ name ++ ".kt")
       (D.render layout source) "generated" "source")
   pure (native ++
@@ -360,7 +377,14 @@ emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration]
 emitCodecs mappings owner layout declarations = do
   _ <- makeRegistry declarations
   names <- namesFor declarations
-  definitions' <- mapM (definition names) [d | d <- declarations, builtinFree d]
+  let graph = Identity.dependencyGraph declarations []
+  definitions' <- forM [d | d <- declarations, builtinFree d] $ \declaration -> do
+    let context = EmissionContext.declarationContext graph declarations names declaration
+        reached = C.dataId declaration : map C.dataId
+          (Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration)))
+        selectedBindings = [mapping | mapping <- mappings, C.dataId (resolvedDeclaration mapping) `elem` reached]
+        key = Identity.fullKey graph ("public-kotlin-codec:" ++ show (owner,selectedBindings) ++ context) declaration
+    memoized codecDocumentTable key (definition names declaration)
   dynamicDispatch <- if owner == "LawSpecDataCodecs" && any existentialData declarations
     then (: []) <$> dynamicCodec names else pure []
   let definitions = definitions' ++ dynamicDispatch

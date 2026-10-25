@@ -211,6 +211,14 @@ style remain part of their presentation context. Helper allocation also checks
 friendly names against digest fallbacks, so a user-chosen name cannot alias a
 fallback merely by resembling it.
 
+Public Java, Kotlin and Scala data declarations and codec methods likewise
+cache structured documents per declaration. Each context retains only reached
+allocated names, handle/native interfaces, and selected explicit bindings.
+Whole-program registry validation, public namespace validation and checked
+schema construction still run on every request. Dynamic existential dispatch
+and public schema assembly remain outside these declaration caches, so adding
+a public type updates the API without invalidating independent documents.
+
 `memoizedState` remains an exact state-transition primitive for emitters whose
 incoming helper state is relevant. Independent chunks instead isolate their
 request sets as above; hashing the accumulated prior module state would make

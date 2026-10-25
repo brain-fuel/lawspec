@@ -4,6 +4,10 @@
 -- ref:DEC-scala-on-the-jvm-runtime
 module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaCodecDocIn, scalaNativeCodecDocIn, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified, rootQualifiedDoc, applied, namesFor) where
 
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import qualified LawSpec.Dependencies as Identity
+import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Scalar (primitives, primitiveName)
 import Control.Monad (unless, forM)
@@ -27,6 +31,14 @@ import qualified LawSpec.ScalaLayout as L
 import LawSpec.ScalaText (scalaText)
 import qualified Data.Map.Strict as M
 import LawSpec.RecordNames (recordDisplayNames)
+
+nativeDocumentTable :: Table (Either String D.Doc)
+nativeDocumentTable = unsafePerformIO (newPersistentTable "public-scala-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE nativeDocumentTable #-}
+
+codecDocumentTable :: Table (Either String D.Doc)
+codecDocumentTable = unsafePerformIO (newPersistentTable "public-scala-codec" (8 * 1024 * 1024) (length . show))
+{-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id, String)]
 
@@ -212,51 +224,56 @@ emitScalaDataWithProfile bits layout declarations = do
   names <- namesFor declarations
   schema <- JVM.emitJavaSchema bits (D.Pretty 100) declarations
   codecs <- emitScalaCodecs layout declarations
+  let graph = Identity.dependencyGraphWithBits bits declarations []
   native <- forM [d | d <- declarations, builtinFree d, not (C.dataHandle d)] $ \declaration -> do
     name <- maybe (Left "unplanned Scala data name") Right (lookup (C.dataId declaration) names)
-    let parameters = zip (C.dataParameters declaration) [candidate | i <- [0::Int ..], let candidate = "T" ++ show i, candidate /= name]
-        arguments = map (D.text . snd) parameters
-        variants = C.dataConstructors declaration
-        cases = caseNames name variants
-        -- A GADT case is generic in the parameters it leaves open and in its
-        -- existentials, and extends the enum at the type it refines to.
-        declare keyword className enumCase variant = do
-          identifier className
-          -- A field-only existential is Any; its witness names its type.
-          let free = freeExistentials declaration variant
-              existentials = zip [e | e <- C.constructorExistentials variant, e `notElem` free]
-                [candidate | i <- [0::Int ..], let candidate = "E" ++ show i, candidate /= name]
-              scope = parameters ++ existentials ++ [(e, "scala.Any") | e <- free]
-              equations = C.constructorEquations variant
-              gadt = not (null equations) || not (null existentials)
-              -- A product class is the public type itself, so it keeps the
-              -- declaration's parameters even when its constructor fixes one.
-              own = if not enumCase then arguments
-                else if gadt then [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
-                else []
-          declared <- forM (C.constructorFields variant) $ \field -> do
-            ty <- typeDoc (handlesOf declarations) names scope (nativeConstructorFieldType declaration variant (C.binderType field))
-            let label=escaped (C.binderName field)
-            pure (D.text (label ++ if "_" `isSuffixOf` label then " : " else ": ") <> ty)
-          let fields = declared ++ [D.text (S.witnessFieldName (length free) k ++ ": java.lang.String") | k <- [0 .. length free - 1]]
-          implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
-          let inherits = if enumCase && gadt then D.text " extends " <> applied name implemented else mempty
-              -- A case without fields of a generic enum is a class case, so
-              -- it takes the enum's type parameters.
-              parameterList = if null fields && enumCase && null parameters && not gadt then mempty
-                else D.text "(" <> D.nest 4 (D.softbreak <> D.commaSep fields) <> D.softbreak <> D.text ")"
-          pure (D.group (applied (keyword ++ className) own <> parameterList <> inherits))
-    declarationDoc <- case variants of
-      [] -> pure (D.text "final class " <> applied name arguments <> D.text " private ()")
-      [only] | isProduct declaration -> declare "final case class " name False only
-      _ -> do
-        body <- forM variants $ \variant ->
-          declare "case " (maybe (C.constructorName variant) id (lookup (C.constructorId variant) cases)) True variant
-        pure (D.text "enum " <> applied name arguments <> D.text " " <>
-          D.block 2 (D.joinWith D.hardline body))
-    let source = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
-          D.text "package lawspec.data" <> D.hardline <> D.hardline <>
-          declarationDoc <> D.hardline
+    let context = EmissionContext.declarationContext graph declarations names declaration
+        key = Identity.fullKey graph ("public-scala-data:" ++ context) declaration
+    source <- memoized nativeDocumentTable key $ do
+      let parameters = zip (C.dataParameters declaration) [candidate | i <- [0::Int ..], let candidate = "T" ++ show i, candidate /= name]
+          arguments = map (D.text . snd) parameters
+          variants = C.dataConstructors declaration
+          cases = caseNames name variants
+          -- A GADT case is generic in the parameters it leaves open and in its
+          -- existentials, and extends the enum at the type it refines to.
+          declare keyword className enumCase variant = do
+            identifier className
+            -- A field-only existential is Any; its witness names its type.
+            let free = freeExistentials declaration variant
+                existentials = zip [e | e <- C.constructorExistentials variant, e `notElem` free]
+                  [candidate | i <- [0::Int ..], let candidate = "E" ++ show i, candidate /= name]
+                scope = parameters ++ existentials ++ [(e, "scala.Any") | e <- free]
+                equations = C.constructorEquations variant
+                gadt = not (null equations) || not (null existentials)
+                -- A product class is the public type itself, so it keeps the
+                -- declaration's parameters even when its constructor fixes one.
+                own = if not enumCase then arguments
+                  else if gadt then [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
+                  else []
+            declared <- forM (C.constructorFields variant) $ \field -> do
+              ty <- typeDoc (handlesOf declarations) names scope (nativeConstructorFieldType declaration variant (C.binderType field))
+              let label=escaped (C.binderName field)
+              pure (D.text (label ++ if "_" `isSuffixOf` label then " : " else ": ") <> ty)
+            let fields = declared ++ [D.text (S.witnessFieldName (length free) k ++ ": java.lang.String") | k <- [0 .. length free - 1]]
+            implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
+            let inherits = if enumCase && gadt then D.text " extends " <> applied name implemented else mempty
+                -- A case without fields of a generic enum is a class case, so
+                -- it takes the enum's type parameters.
+                parameterList = if null fields && enumCase && null parameters && not gadt then mempty
+                  else D.text "(" <> D.nest 4 (D.softbreak <> D.commaSep fields) <> D.softbreak <> D.text ")"
+            pure (D.group (applied (keyword ++ className) own <> parameterList <> inherits))
+      declarationDoc <- case variants of
+        [] -> pure (D.text "final class " <> applied name arguments <> D.text " private ()")
+        [only] | isProduct declaration -> declare "final case class " name False only
+        _ -> do
+          body <- forM variants $ \variant ->
+            declare "case " (maybe (C.constructorName variant) id (lookup (C.constructorId variant) cases)) True variant
+          pure (D.text "enum " <> applied name arguments <> D.text " " <>
+            D.block 2 (D.joinWith D.hardline body))
+      let source = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
+            D.text "package lawspec.data" <> D.hardline <> D.hardline <>
+            declarationDoc <> D.hardline
+      pure source
     pure (Artifact ("src/main/scala/lawspec/data/" ++ name ++ ".scala")
       (D.render layout source) "generated" "source")
   pure (native ++
@@ -388,7 +405,14 @@ emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration]
 emitCodecs mappings owner layout declarations = do
   _ <- makeRegistry declarations
   names <- namesFor declarations
-  definitions' <- mapM (definition names) [d | d <- declarations, builtinFree d]
+  let graph = Identity.dependencyGraph declarations []
+  definitions' <- forM [d | d <- declarations, builtinFree d] $ \declaration -> do
+    let context = EmissionContext.declarationContext graph declarations names declaration
+        reached = C.dataId declaration : map C.dataId
+          (Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration)))
+        selectedBindings = [mapping | mapping <- mappings, C.dataId (resolvedDeclaration mapping) `elem` reached]
+        key = Identity.fullKey graph ("public-scala-codec:" ++ show (owner,selectedBindings) ++ context) declaration
+    memoized codecDocumentTable key (definition names declaration)
   dynamicDispatch <- if owner == "LawSpecDataCodecs" && any existentialData declarations
     then (: []) <$> dynamicCodec names else pure []
   let definitions = definitions' ++ dynamicDispatch

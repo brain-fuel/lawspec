@@ -2,7 +2,7 @@
 -- Helpers are named before lowering; a function records only its own requests.
 -- ref:DEC-content-identity ref:DEC-incremental-compilation
 module LawSpec.Typed.EmissionContext
-  ( expressionTypes, definitionTypes, typeClosure, helperAllocation, helperAllocationWith, calledFunctions ) where
+  ( expressionTypes, definitionTypes, typeClosure, helperAllocation, helperAllocationWith, declarationContext, calledFunctions ) where
 
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
@@ -76,6 +76,17 @@ helperAllocationWith suffix graph reserved base kinds types = M.fromList
           chosen = head [candidate | candidate <- rooted : [suffix rooted (show n) | n <- [2 :: Int ..]],
             candidate `S.notMember` taken]
       in (S.insert chosen taken,M.insert pair chosen names)
+
+-- A public declaration may name only its own and its checked dependencies'
+-- allocated interfaces. Namespace planning and registry validation still run
+-- on every request before any document lookup.
+declarationContext :: Identity.Graph -> [DataDeclaration] -> [(Id,String)] -> DataDeclaration -> String
+declarationContext graph declarations names declaration = show
+  ([(identity,lookup identity names) | identity <- S.toAscList selected],
+   sort [(dataId value,dataHandle value,dataNative value) | value <- declarations, dataId value `S.member` selected])
+  where
+    selected = S.fromList (dataId declaration : map dataId
+      (Identity.reachableData graph (Identity.closure graph (Identity.referencesOf graph declaration))))
 
 calledFunctions :: TypedPlan -> M.Map Int String -> Int -> Definition -> [(String,Bool,Maybe Intrinsic,Bool)]
 calledFunctions plan names classification definition = sort (nub
