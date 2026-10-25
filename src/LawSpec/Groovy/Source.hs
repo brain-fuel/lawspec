@@ -6,7 +6,7 @@ module LawSpec.Groovy.Source (adapterStub) where
 import Data.List (stripPrefix)
 import qualified LawSpec.JavaAbi as A
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Code.Literal (literalFor)
+import LawSpec.JvmNames (jvmString)
 
 adapterStub :: A.Stub -> String
 adapterStub stub = D.render (D.Pretty 100) $
@@ -34,7 +34,7 @@ adapterStub stub = D.render (D.Pretty 100) $
             [D.group (typeLayout ty <> D.softline <> D.text parameter) | (ty, parameter) <- A.opParameterLayouts operation])) <> D.text ")"))) <>
       D.hardline <> D.block 2
         (D.group (D.text "throw new UnsupportedOperationException(" <>
-          D.nest 4 (D.softbreak <> D.text (literalFor "groovy" (A.opLabel operation))) <> D.text ")"))
+          D.nest 4 (D.softbreak <> jvmString "groovy" (A.opLabel operation)) <> D.text ")"))
 
 -- Type-name atoms are supplied by the ABI producer, rather than recovered
 -- from Java tokens. Groovy's joint compiler needs nested runtime owners in
