@@ -112,9 +112,10 @@ buildInputs helperPrefix framework schema symbols plan local planned = walk [] (
         remaining <- strategyDraw (bindName binder name names) requirement strategy (path ++ "_rest") rest
         pure (bind generator name remaining)
     sharedDraw prefix outer requirement strategy draw = do
-      let available = map C.quantifiedBinder (C.propertyInputs (plannedProperty planned)) ++
+      let visible = map generatorBinder (takeWhile
+            ((/= C.binderId (generatorBinder requirement)) . C.binderId . generatorBinder) (generatorRequirements planned)) ++
             map C.resourceBinder (C.propertyResources (plannedProperty planned))
-      graph <- Draws.planDraw requirement available draw
+      graph <- Draws.planDraw requirement visible draw
       let helperName number = prefix ++ "_draw_" ++ show number
           invoke names call = E.call (helperName (Draws.drawCallee call))
             (schema : symbols : map (D.text . names) (Draws.drawArguments call))
