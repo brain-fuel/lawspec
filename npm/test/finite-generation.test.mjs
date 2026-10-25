@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {test} from 'node:test';
 import {fileURLToPath} from 'node:url';
+import {existsSync} from 'node:fs';
 
-test('large finite Python generation retains every Int8 candidate at both widths and layouts', {timeout:200000}, () => {
+const python=process.env.LAWSPEC_PYTHON ?? fileURLToPath(new URL('../../.integration/python/.venv/bin/python',import.meta.url));
+const missingPython=!process.env.LAWSPEC_PYTHON && !existsSync(python);
+test('large finite Python generation retains every Int8 candidate at both widths and layouts',
+  {timeout:200000,skip:missingPython && 'Python target environment is not bootstrapped'}, () => {
   const api=new URL('../api.mjs',import.meta.url).href;
   const fixture=new URL('../../test/fixtures/canonical-smt-arithmetic.lawspec',import.meta.url).href;
-  const python=process.env.LAWSPEC_PYTHON ?? fileURLToPath(new URL('../../.integration/python/.venv/bin/python',import.meta.url));
   const script=`
     import assert from 'node:assert/strict';
     import {readFile,mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
