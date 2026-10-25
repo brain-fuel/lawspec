@@ -4,6 +4,8 @@ module QuantifierDomainSpec (test_refinedIntegerDomainsAreComplete) where
 
 import Test.Hspec
 import Data.Either (isLeft, isRight)
+import Control.Monad (filterM)
+import Data.List (nub)
 import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCoreCanonical)
@@ -120,6 +122,38 @@ test_refinedIntegerDomainsAreComplete = describe "complete refined integer domai
       statuses [] program `shouldBe` Right [NotVerified]
     compile ("function loop (value :: Integer) -> Integer is loop value end function\n" ++ law "true")
       `shouldSatisfy` either (any ((== "total") . code)) (const False)
+  it "clips dependent finite-width candidates without losing any admitted value" $ do
+    let integer = C.scalarType "Integer"
+        origin = C.GeneratedFrom (C.Id "clipped-domain-oracle")
+        constant n = C.Expr integer (C.Constant (SInteger "Integer" n)) origin
+        base = C.Expr integer (C.Local (C.Id "base")) origin
+        operation op a b = C.Expr (if op `elem` [C.Add,C.Subtract] then integer else C.scalarType "Bool")
+          (C.Binary op (C.Numeric integer) a b) origin
+        invoke _ _ = Left "the clipped domain oracle calls no functions"
+        ranges bits = [("Int8", Just (-128,127)), ("UInt8", Just (0,255)),
+                  ("IntSize", Just (-(2^(bits-1)),2^(bits-1)-1)), ("UIntSize", Just (0,2^bits-1)),
+                  ("UIntPtr", Just (0,2^bits-1)), ("BigUInt", Nothing)]
+    case makeRegistry [] of
+      Left message -> expectationFailure message
+      Right registry -> mapM_ (\(machineBits,name,bounds) -> mapM_ (\start -> do
+        let ty = C.scalarType name
+            binder = C.Binder (C.Id "candidate") "candidate" ty
+            value = C.Expr integer (C.Convert C.CheckedArgument integer (C.Expr ty (C.Local (C.binderId binder)) origin)) origin
+            predicates = [operation C.GreaterEqual value (operation C.Subtract base (constant 2)),
+                          operation C.LessEqual value (operation C.Add base (constant 2))]
+            q = C.Quantifier binder predicates []
+            env = [(C.Id "base",ScalarValue (SInteger "Integer" start))]
+            actual = do
+              terms <- finiteQuantifierTerms machineBits 8 (const (Right Nothing)) q
+              values <- maybe (Left "a five-value affine cover was not recognized") (mapM (evaluateValue registry machineBits invoke env)) terms
+              accepted <- filterM (\candidate -> (== replicate 2 (ScalarValue (SBool True))) <$>
+                mapM (evaluateValue registry machineBits invoke ((C.binderId binder,candidate):env)) predicates) values
+              pure (length values,nub accepted)
+            admitted n = case bounds of Just (lo,hi) -> n >= lo && n <= hi; Nothing -> n >= 0
+        actual `shouldBe` Right (5,[ScalarValue (SInteger name n) | n <- [start-2..start+2],admitted n]))
+        [-131,-129,-128,-127,-2,-1,0,1,125,127,128,253,255,257,
+         -(2^63)-1,2^31-1,2^31+2,2^63-1,2^64-1,2^64+2])
+        [(bits,name,bounds) | bits <- [32,64],(name,bounds) <- ranges bits]
   it "checks the finite-domain settlement demonstration through every target" $ do
     let path = "examples/rc1/finite-integer-domains.lawspec"
     source <- readFile path

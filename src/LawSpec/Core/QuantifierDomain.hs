@@ -36,8 +36,7 @@ finiteQuantifierTerms bits limit domain q = do
             constants = [((M.empty,maximum lowers),(M.empty,minimum uppers)) |
               not (null lowers),not (null uppers)]
             intervals = constants ++ [(lo,hi) | (GreaterEqual,lo@(a,_)) <- bounds,
-              (LessEqual,hi@(b,_)) <- bounds,a == b,not (M.null a),
-              name `elem` ["Integer","BigInt"]]
+              (LessEqual,hi@(b,_)) <- bounds,a == b,not (M.null a)]
         ((variables,lower),(_,upper)) <- case intervals of
           [] -> Nothing
           _ -> Just (minimumBy (comparing (\((_,a),(_,b)) -> b-a)) intervals)
@@ -87,8 +86,11 @@ finiteQuantifierTerms bits limit domain q = do
         Convert _ (Constructor target []) value | target `elem` ["Integer","BigInt"] -> linear value
         _ -> Nothing
       _ -> Nothing
-    -- Symbolic covers are built in exact signed integers. Finite-width and
-    -- unsigned covers use constants inside their intrinsic range instead.
+    -- Symbolic candidates are computed in exact signed integers, then clipped
+    -- before a checked conversion to their intrinsic domain. Every admitted
+    -- value of the affine interval is unchanged by clipping. Extra endpoint
+    -- copies remain subject to the original restriction and establish no new
+    -- witness. This also handles an interval wholly outside a bounded type.
     locals = M.fromList [(identity,expressionType expression) |
       predicate <- quantifiedPredicates q,expression <- descend predicate,
       Local identity <- [expressionNode expression]]
@@ -106,7 +108,17 @@ finiteQuantifierTerms bits limit domain q = do
           part (identity,coefficient) = if coefficient == 1 then local identity
             else operation Multiply (constant coefficient) (local identity)
           value = foldl (operation Add) (constant offset) (map part (M.toAscList variables))
-          in if ty == integer then value else Expr ty (Convert CheckedArgument ty value) origin
+          lowerBound lo expression = Expr integer (If
+            (Expr (scalarType "Bool") (Binary Less (Numeric integer) expression (constant lo)) origin)
+            (constant lo) expression) origin
+          upperBound hi expression = Expr integer (If
+            (Expr (scalarType "Bool") (Binary Greater (Numeric integer) expression (constant hi)) origin)
+            (constant hi) expression) origin
+          clipped = case integerBounds bits name of
+            Just (lo,hi) -> upperBound hi (lowerBound lo value)
+            Nothing | name == "BigUInt" -> lowerBound 0 value
+            _ -> value
+          in if ty == integer then value else Expr ty (Convert CheckedArgument ty clipped) origin
     valueTerm value = case value of
       ScalarValue scalar -> pure (Expr (valueType value) (Constant scalar) origin)
       DataValue t tag values -> (\terms -> Expr t (Construct tag terms) origin) <$> mapM valueTerm values
