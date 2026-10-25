@@ -173,3 +173,13 @@ and unvisited computations unevaluated. Coverage limits and the distinction
 between a constructive witness and complete absence evidence are unchanged.
 The preceding proof-system study and trust boundary are recorded in
 `DEC-shared-finite-proof-bodies`.
+
+Generated acceptance tests have a source-size regression budget. Each file may
+use 32,768 bytes plus 48 bytes per specification byte and 4,096 bytes per
+registered obligation. The line limit is 512 plus twice the specification byte
+count and 128 lines per obligation. These limits cover generated test files,
+including companion files; fixed runtime artifacts remain separate. They are
+regression limits for code size, not execution-performance promises. Both the
+handler-bindings and arithmetic fixtures exercise all executable targets, and
+the acceptance planner applies the same guard before running providers or
+mutations. Minification cannot hide expansion because byte size is checked.

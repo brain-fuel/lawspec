@@ -63,6 +63,8 @@ import System.FilePath ((</>), takeDirectory)
 import System.IO (BufferMode(LineBuffering), hPutStrLn, hSetBuffering, readFile', stderr, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
+import qualified LawSpec.Testing.Size as TestSize
+import qualified LawSpec.Common as Common
 import LawSpec.Blake3 (hexOf)
 import qualified LawSpec.Core as C
 import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraphWithBits, identityOf, nodeIdentity)
@@ -234,6 +236,12 @@ planEither extra sources target bits minify = do
   case list (field "diagnostics" response) of
     Just [] -> pure ()
     _ -> Left (show (encode (field "diagnostics" response)))
+  let files = fromMaybe [] (list (field "files" response))
+      budget = TestSize.testSizeBudget [Source path content | (path,content) <- sources]
+        (length (fromMaybe [] (list (field "tests" response))))
+  mapM_ (\file -> TestSize.checkTestSize budget (Common.Artifact
+    (text (field "path" file)) (text (field "content" file))
+    (text (field "ownership" file)) (text (field "placement" file)))) files
   pure [ Generated (text (field "path" f)) (text (field "content" f)) (text (field "ownership" f))
        | f <- fromMaybe [] (list (field "files" response)) ]
   where takeName = reverse . takeWhile (/= '/') . reverse

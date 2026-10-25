@@ -2,6 +2,7 @@
 -- it verifies and cites the requirement that property serves.
 -- ref:DEC-tests-cite-requirements
 module Main where
+import qualified GeneratedTestSizeSpec
 import qualified FiniteCoverSpec
 import qualified FiniteSearchLoopSpec
 import qualified ArtifactTargetSpec
@@ -126,6 +127,7 @@ concrete :: String -> String
 concrete d = "law \"|codec| is definition: " ++ d ++ " end definition end law\n"
 main :: IO ()
 main = hspec $ do
+  GeneratedTestSizeSpec.test_generatedTestsStayProportionalToTheirSpecification
   FiniteCoverSpec.test_finiteCoversPreserveEveryOrderedCase
   FiniteSearchLoopSpec.test_finiteSearchHasOneCheckedBody
   ArtifactTargetSpec.test_artifactTargets
