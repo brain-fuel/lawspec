@@ -458,9 +458,11 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
                  , null keep || any (`isPrefixOf` f) keep
                  , not (any (`isPrefixOf` f) drop') ]
   contents <- forM selected $ \path -> (,) path <$> B.readFile path
+  inherited <- getEnvironment
+  let effective = env ++ [(key, value) | (key, value) <- inherited, key `notElem` map fst env]
   observations <- forM probes $ \probe -> case probe of
     program : arguments -> do
-      result <- try (readCreateProcessWithExitCode (proc program arguments) "") :: IO (Either IOException (ExitCode, String, String))
+      result <- try (readCreateProcessWithExitCode ((proc program arguments){env = Just effective}) "") :: IO (Either IOException (ExitCode, String, String))
       pure $ case result of
         Right (ExitSuccess, out, err) -> Just (unwords probe ++ "\n" ++ out ++ err)
         _ -> Nothing
