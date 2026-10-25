@@ -93,6 +93,7 @@ export async function recordedDigest(folder) {
     const entries = await readdir(path.join(folder, relative), { withFileTypes: true }).catch(() => []);
     for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       const next = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) throw new Error(`Recording input is a symbolic link: ${path.join(folder,next)}`);
       if (entry.isDirectory()) await walk(next);
       else if (entry.isFile()) {
         any = true;
@@ -112,7 +113,7 @@ export async function recordedDigest(folder) {
 // A law an environment attestation touches is keyed by how its dependencies
 // were wired too, so a run against other endpoints, or the real dependency
 // in place of a stand-in, runs it again; other laws' keys are unchanged.
-export function lawKeys({ build, target, machineBits, minify, tests, environment, project, attested = new Map() }) {
+export function lawKeys({ build, target, machineBits, minify, tests, environment, project, recorded = "", attested = new Map() }) {
   const bound = Object.entries(target.nativeBindings??{}).some(([key,value])=>
     key!=="names"&&value!=null&&(Array.isArray(value)?value.length>0:
       typeof value==="object"?Object.keys(value).length>0:value!==""));
@@ -121,6 +122,7 @@ export function lawKeys({ build, target, machineBits, minify, tests, environment
   return new Map(tests.map((entry) => [entry.law, digest(JSON.stringify([
     build, configuration(entry), machineBits, entry.key,
     environment, entry.callsAdapters||bound ? project : null,
+    entry.callsAdapters||bound ? recorded : null,
     ...(attested.has(entry.law) ? [attested.get(entry.law)] : []),
   ]))]));
 }

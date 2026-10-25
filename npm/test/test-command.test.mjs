@@ -295,7 +295,7 @@ test("a renamed law finds its result by its key", () => {
   assert.deepEqual(previousResult(previous, entry.law, "k"), { key: "k", seed: "1" });
 });
 
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -410,6 +410,8 @@ test("a changed recording changes the recordings' digest", async () => {
     assert.notEqual(before, "");
     await writeFile(path.join(folder, "example.unit", "first"), "2\n");
     assert.notEqual(await recordedDigest(folder), before);
+    await symlink("first",path.join(folder,"example.unit","linked"));
+    await assert.rejects(recordedDigest(folder),/Recording input is a symbolic link/);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
@@ -824,4 +826,13 @@ test('Haskell prepares Stack-owned build metadata before hashing an execution',(
   assert.deepEqual(configurationInvocations({language:'haskell'}),[
     {command:'stack',args:['--no-terminal','config','build-files']}]);
   assert.deepEqual(configurationInvocations({language:'javascript'}),[]);
+});
+
+
+test("recording inputs affect externally observing laws while checked ordinary laws stay current",()=>{
+  const input={build:"compiler",target:{language:"javascript"},machineBits:64,environment:"node",project:"project",
+    tests:[{law:"recording",key:"same",callsAdapters:true},{law:"pure",key:"same",callsAdapters:false}]};
+  const before=lawKeys({...input,recorded:"first"}),after=lawKeys({...input,recorded:"second"});
+  assert.notEqual(before.get("recording"),after.get("recording"));
+  assert.equal(before.get("pure"),after.get("pure"));
 });

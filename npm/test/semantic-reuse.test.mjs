@@ -203,3 +203,49 @@ child.on('exit',(code,signal)=>{if(signal)process.kill(process.pid,signal);else 
       assert.ok(await count(log)>original);
     } finally {await rm(folder,{recursive:true,force:true});}
   });
+
+test('recording edits and nominal constructor changes rerun only recording-observing laws',async()=>{
+  const folder=await mkdtemp(path.join(tmpdir(),'lawspec-recorded-semantic-'));
+  try {
+    const project=path.join(folder,'app');await mkdir(project);
+    for(const [file,content] of Object.entries(templates('javascript'))) {
+      await mkdir(path.dirname(path.join(project,file)),{recursive:true});
+      await writeFile(path.join(project,file),content);
+    }
+    await symlink(fileURLToPath(new URL('../../.integration/javascript/node_modules',import.meta.url)),path.join(project,'node_modules'),'dir');
+    await writeFile(path.join(folder,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+      sources:['input.lawspec'],verification:{layers:['property','examples']},targets:[{language:'javascript',root:'app'}]}));
+    const source=`unit identity.recording
+type Choice is one of Alpha | Middle end type
+function choose (unused :: Unit) -> Choice is Alpha end function
+law snapshot is definition: choose unitValue = recorded "first" end definition end law
+law ordinary is definition: choose unitValue = Alpha end definition end law
+end unit
+`;
+    const run=(command,args=[])=>exec(process.execPath,[cli,command,'--json',...args],{cwd:folder,maxBuffer:4*1024*1024});
+    await writeFile(path.join(folder,'input.lawspec'),source);await run('generate');
+    await run('test',['--update-recorded']);
+    // Creating the recording changes its digest once; settle that observation.
+    await run('test');
+    assert.deepEqual(JSON.parse((await run('test')).stdout)[0].ran,[]);
+    const recording=path.join(folder,'recorded','identity.recording','first');
+    const saved=await readFile(recording,'utf8');
+    await writeFile(recording,'different recording\n');
+    const evidence=JSON.parse((await run('evidence')).stdout);
+    const rows=Array.isArray(evidence)?evidence:evidence.evidence;
+    assert.equal(rows.find(row=>row.declaration.endsWith('::ordinary')&&row.stage==='law').nativeEvidence.status,'passed');
+    assert.notEqual(rows.find(row=>row.declaration.endsWith('::snapshot')&&row.stage==='law').nativeEvidence.status,'passed');
+    const failsOnlySnapshot=async()=>{
+      let failure;try{await run('test');}catch(error){failure=error;}
+      assert.ok(failure,'the changed recording must be checked and fail');
+      const summary=JSON.parse(failure.stdout)[0];
+      assert.deepEqual(summary.ran,['identity.recording::law::snapshot']);
+      assert.equal(summary.unchanged,1);
+    };
+    await failsOnlySnapshot();
+    await writeFile(recording,saved);await run('test');
+    await writeFile(path.join(folder,'input.lawspec'),source.replaceAll('Alpha','Apple'));
+    await run('generate');
+    await failsOnlySnapshot();
+  }finally{await rm(folder,{recursive:true,force:true});}
+});
