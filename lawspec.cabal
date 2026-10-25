@@ -909,6 +909,7 @@ library
       LawSpec.Testing.Budget
       LawSpec.Testing.Cover
       LawSpec.Testing.Draws
+      LawSpec.Testing.Literals
       LawSpec.Testing.Size
       LawSpec.TestManifest
       LawSpec.TestNames
