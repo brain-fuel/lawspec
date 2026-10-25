@@ -6,11 +6,14 @@
 module LawSpec.DotNet.Properties (emitTests, testNames, emitNativeGenerators) where
 
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
 import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Testing.Literals as Literals
+import qualified LawSpec.Testing.Draws as Draws
+import qualified LawSpec.Naming as Naming
 import qualified Control.Monad.State.Strict as S
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.TestNames (unitTestNames)
@@ -333,33 +336,55 @@ tCover = Ty "Finite.Cover" "Finite.Cover"
 
 -- | Covers retain shared suffixes as ordinary local bindings. Values stay
 -- factories over an invocation's symbol context until the runtime selects one.
-finiteCoverExpression :: Cover.FiniteCover -> Either String Expr
-finiteCoverExpression root = do
-  plan <- Literals.planLiterals (Literals.coverLiterals root)
+data LiteralFunctions = LiteralFunctions
+  { literalDeclarations :: [(String,Ty,Expr)]
+  , literalValue :: Expr -> V.Value -> Either String Expr
+  }
+
+-- These closures are compiler-side renderers, not runtime values or cache
+-- identities. Every emitted invocation supplies its own symbol context.
+literalFunctions :: String -> [V.Value] -> Either String LiteralFunctions
+literalFunctions prefix values = do
+  plan <- Literals.planLiterals values
   shapeFunctions <- forM (Literals.literalShapes plan) $ \(index, shape) -> do
     body <- shapeBody shape
     pure (shapeName index, tFun [tSymbols,tValues] tValue,
-      Lambda [("symbols",tSymbols),("fields",tValues)] tValue body)
+      Lambda [(symbolsName,tSymbols),(fieldsName,tValues)] tValue body)
   factories <- forM (Literals.literalFactories plan) $ \(index, body) -> do
-    expression <- termExpr body
-    pure (factoryName index, tFun [tSymbols] tValue, Lambda [("symbols",tSymbols)] tValue expression)
-  (reference, (_, bindings)) <- S.runStateT (cover plan root) ([], [])
-  let coverBody = foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings)
-  pure (foldr (\(name,ty,value) rest -> Let name ty value rest) coverBody (shapeFunctions ++ factories))
+    expression <- termExpr (Var symbolsName) body
+    pure (factoryName index, tFun [tSymbols] tValue, Lambda [(symbolsName,tSymbols)] tValue expression)
+  let value symbols literal = case Literals.literalReference plan literal of
+        Right term -> termExpr symbols term
+        Left _ -> pure (X.value symbols literal)
+  pure (LiteralFunctions (shapeFunctions ++ factories) value)
   where
-    shapeName index = "literalShape" ++ show index
-    factoryName index = "literal" ++ show index
-    termExpr = Literals.foldLiteral (pure . X.literal (Var "symbols"))
-      (\index fields -> pure (Invoke (Var (shapeName index)) [Var "symbols",ListOf tValue fields]))
-      (\index -> pure (Invoke (Var (factoryName index)) [Var "symbols"]))
+    symbolsName = prefix ++ "LiteralSymbols"
+    fieldsName = prefix ++ "LiteralFields"
+    shapeName index = prefix ++ "LiteralShape" ++ show index
+    factoryName index = prefix ++ "Literal" ++ show index
+    termExpr symbols = Literals.foldLiteral (pure . X.literal symbols)
+      (\index fields -> pure (Invoke (Var (shapeName index)) [symbols,ListOf tValue fields]))
+      (\index -> pure (Invoke (Var (factoryName index)) [symbols]))
     shapeBody shape = case shape of
-      Literals.ConstructorShape _ tag -> pure (X.valueCall "Data" [Str (C.idText tag),Var "fields"])
-      Literals.ListShape _ -> pure (X.valueCall "List" [Var "fields"])
+      Literals.ConstructorShape _ tag -> pure (X.valueCall "Data" [Str (C.idText tag),Var fieldsName])
+      Literals.ListShape _ -> pure (X.valueCall "List" [Var fieldsName])
       Literals.PresenceShape (C.Constructor name _) present -> pure (if present
-        then call "Runtime" "present" [Str name,Call (Fn "List.head" "Microsoft.FSharp.Collections.ListModule.Head") [Var "fields"]]
+        then call "Runtime" "present" [Str name,Call (Fn "List.head" "Microsoft.FSharp.Collections.ListModule.Head") [Var fieldsName]]
         else call "Runtime" "absent" [Str name])
       _ -> Left "invalid planned .NET presence type"
-    cover :: Literals.LiteralPlan -> Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
+
+withLiteralFunctions :: LiteralFunctions -> Expr -> Expr
+withLiteralFunctions functions expression = foldr (\(name,ty,value) rest -> Let name ty value rest)
+  expression (literalDeclarations functions)
+
+finiteCoverExpression :: Cover.FiniteCover -> Either String Expr
+finiteCoverExpression root = do
+  functions <- literalFunctions "finite" (Literals.coverLiterals root)
+  (reference, (_, bindings)) <- S.runStateT (cover functions root) ([], [])
+  let coverBody = foldr (\(name,value) rest -> Let name tCover value rest) reference (reverse bindings)
+  pure (withLiteralFunctions functions coverBody)
+  where
+    cover :: LiteralFunctions -> Cover.FiniteCover -> S.StateT ([(Cover.FiniteCover,String)],[(String,Expr)]) (Either String) Expr
     cover plan node = do
       (known, _) <- S.get
       case lookup node known of
@@ -371,7 +396,7 @@ finiteCoverExpression root = do
               branches <- forM alternatives $ \(domain, suffix) -> do
                 values <- case domain of
                   Cover.Values items -> do
-                    expressions <- S.lift (mapM (\item -> Literals.literalReference plan item >>= termExpr) items)
+                    expressions <- S.lift (mapM (literalValue plan (Var "symbols")) items)
                     pure (call "Finite" "values" [ListOf (tFun [tSymbols] tValue)
                       [Lambda [("symbols",tSymbols)] tValue expression | expression <- expressions]])
                   Cover.IntegerInterval name first last' -> pure (call "Finite" "range" [Str name, BigLit first, BigLit last'])
@@ -411,10 +436,23 @@ observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify
 generators :: Int -> Plan -> (X.Context -> C.Expr -> [Expr] -> Either String Expr) -> (C.Id -> String) -> PlannedProperty -> Either String Expr
 generators bits plan external local planned = do
   -- Each input is drawn by a step that knows the inputs drawn before it.
+  functions <- seedLiterals
   steps <- walk [] (generatorRequirements planned)
-  pure (call "Gen" "dependent" [ListOf (tFun [tValues] (Ty "Gen<Value>" "Gen<Value>")) steps])
+  pure (withLiteralFunctions functions (call "Gen" "dependent" [ListOf (tFun [tValues] (Ty "Gen<Value>" "Gen<Value>")) steps]))
   where
     strategies = C.harnessDraws (C.propertyHarness (plannedProperty planned))
+    seedLiterals = do
+      extra <- concat <$> mapM witnessesFor (nub
+        [ty | requirement <- generatorRequirements planned, (identity,_,draw) <- strategies,
+          identity == C.binderId (generatorBinder requirement), ty <- anyTypes draw,
+          ty /= C.binderType (generatorBinder requirement)])
+      literalFunctions "seed" (concatMap generatorBoundaries (generatorRequirements planned) ++ extra)
+    anyTypes draw = case draw of
+      C.DrawAny ty _ -> [ty]
+      C.DrawOneOf {} -> []
+      C.DrawFrequency branches -> concatMap (anyTypes . snd) branches
+      C.DrawSuchThat child _ _ _ -> anyTypes child
+      C.DrawBind _ from rest -> anyTypes from ++ anyTypes rest
     renderWith names = X.render (X.Context bits X.schemaVar X.symbolsVar names external X.typeRef X.typeKeyOf)
     genTy = Ty "Gen<Value>" "Gen<Value>"
     listGen = Ty "Gen<Value list>" "Gen<FSharpList<Value>>"
@@ -428,7 +466,8 @@ generators bits plan external local planned = do
       generator <- case [(s, d) | (identity, s, d) <- strategies, identity == C.binderId binder] of
         [] -> regular local requirement
         (strategy, draw) : _ -> do
-          generated <- strategyDraw local requirement strategy (show (length previous)) draw
+          generated <- sharedDraw (take (length previous) (map C.quantifiedBinder (C.propertyInputs (plannedProperty planned))))
+            local requirement strategy (show (length previous)) draw
           let checkedName = name ++ "Checked"
           predicates <- mapM (renderWith (bindName binder checkedName local)) (generatorPredicates requirement)
           pure (if null predicates then generated else call "Gen" "map" [Lambda [(checkedName, tValue)] tValue
@@ -455,14 +494,114 @@ generators bits plan external local planned = do
           target <- renderWith names (indexedTarget indexed)
           pure (call "Generators" "index" [target, ListOf tString [Str (C.idText tag) | (tag, _) <- indexedEquations indexed],
             ListOf (tList tString) [ListOf tString (map Str terms) | (_, terms) <- indexedEquations indexed]])
+      functions <- seedLiterals
+      seeds <- mapM (literalValue functions X.symbolsVar) (generatorBoundaries requirement)
       pure (call "Generators" "generator" [Var "generation", ref, ListOf (Ty "Generators.Bound" "Generators.Bound") (bounds ++ lengths),
-        ListOf tValue (map (X.value X.symbolsVar) (generatorBoundaries requirement) ++ hints), index])
+        ListOf tValue (seeds ++ hints), index])
     directed quantifier witnesses = GeneratorRequirement (C.quantifiedBinder quantifier)
       (C.quantifiedPredicates quantifier) witnesses (C.quantifiedBounds quantifier) (domainHints quantifier)
       (indexedGeneration (planDataDeclarations plan) (concatMap (C.unitDefinitions . plannedUnit) (plannedUnits plan)) quantifier)
     witnessesFor ty = makeRegistry (planDataDeclarations plan) >>= \registry ->
       boundariesWithRegistry registry (planMachineBits plan) ty
-    strategyDraw names requirement strategy path draw = case draw of
+    -- Local helpers capture this run's generation/schema/symbol context;
+    -- lexical Core values are explicit, freshly aliased parameters. Bind
+    -- continuations retain the existing Gen.dependent grouping and seed use.
+    sharedDraw available outer requirement strategy path draw = do
+      graph <- Draws.planDraw requirement available draw
+      let nodes = Draws.drawNodes graph
+          nodeAt number = maybe (Left "missing .NET draw node") Right
+            (lookup number [(Draws.drawNumber node,node) | node <- nodes])
+          continuation node = case Draws.drawStep node of
+            Draws.BindDraw _ from rest -> do
+              following <- nodeAt (Draws.drawCallee rest)
+              more <- case Draws.drawStep following of
+                Draws.BindDraw {} -> continuation following
+                _ -> pure [rest]
+              pure (from : more)
+            Draws.FrequencyDraw branches -> pure (map snd branches)
+            Draws.FilterDraw child _ _ _ -> pure [child]
+            _ -> pure []
+          needed edge = do
+            node <- nodeAt (Draws.drawCallee edge)
+            children <- continuation node
+            nested <- concat <$> mapM needed children
+            pure (Draws.drawCallee edge : nested)
+      required <- nub <$> needed (Draws.drawRoot graph)
+      let selected = [node | node <- nodes, Draws.drawNumber node `elem` required]
+          source = C.propertyInputs (plannedProperty planned)
+          outerNames = map (outer . C.binderId . C.quantifiedBinder) source ++
+            map (outer . C.binderId . C.resourceBinder) (C.propertyResources (plannedProperty planned))
+          (helperNames, helperScope) = Naming.claimAll
+            (Naming.scopeWith (generatedLocals ++ outerNames ++ keywords FSharp ++ keywords CSharp))
+            ["draw" ++ show (Draws.drawNumber node) | node <- selected]
+          helpers = zip (map Draws.drawNumber selected) helperNames
+          invoke names edge = do
+            helper <- maybe (Left "missing .NET draw helper") Right (lookup (Draws.drawCallee edge) helpers)
+            pure (Invoke (Var helper) [ListOf tValue [Var (names identity) | identity <- Draws.drawArguments edge]])
+          fresh :: String -> S.StateT Naming.Scope (Either String) String
+          fresh prefix = do
+            scope <- S.get
+            let (name, next) = Naming.claim scope prefix
+            S.put next
+            pure name
+          chooseWith name selector branches = call "Gen" "bind" [selector, Lambda [(name, tInt)] genTy
+            (Invoke (call "Runtime" "nth" [Var name, ListOf (tFun [] genTy) branches]) [])]
+          enter names edge target identity = maybe (outer identity) id (lookup identity
+            (zip (map C.binderId (Draws.drawCaptures target)) (map names (Draws.drawArguments edge))))
+          -- Only code for the chain is collected here. Each step still draws
+          -- once, after the same preceding values, in Gen.dependent order.
+          chain names node = case Draws.drawStep node of
+            Draws.BindDraw binder from rest -> do
+              name <- fresh "bound"
+              start <- S.lift (invoke names from)
+              let nextNames = bindName binder name names
+              following <- S.lift (nodeAt (Draws.drawCallee rest))
+              (links, final) <- case Draws.drawStep following of
+                Draws.BindDraw {} -> chain (enter nextNames rest following) following
+                _ -> do
+                  final <- S.lift (invoke nextNames rest)
+                  pure ([], final)
+              pure ((name,start) : links, final)
+            _ -> S.lift (Left "expected .NET bind continuation")
+          body names node = case Draws.drawStep node of
+            Draws.AnyDraw ty aim -> S.lift (atomicDraw names requirement strategy path (C.DrawAny ty aim))
+            Draws.OneOfDraw _ values -> do
+              branches <- S.lift (mapM (fmap (\value -> Lambda [] genTy (call "Gen" "constant" [value])) . renderWith names) values)
+              name <- fresh "choice"
+              pure (chooseWith name (call "Gen" "range" [IntLit 0, IntLit (toInteger (length values - 1))]) branches)
+            Draws.FrequencyDraw alternatives -> do
+              branches <- S.lift (mapM (fmap (Lambda [] genTy) . invoke names . snd) alternatives)
+              let selector = call "Gen" "frequency" [ListOf (Ty "int * Gen<int>" "Tuple<int, Gen<int>>")
+                    [TupleOf [IntLit weight, call "Gen" "constant" [IntLit (toInteger i)]] | (i, (weight, _)) <- zip [0 :: Int ..] alternatives]]
+              name <- fresh "choice"
+              pure (chooseWith name selector branches)
+            Draws.FilterDraw child binder predicate limit -> do
+              inner <- S.lift (invoke names child)
+              name <- fresh "kept"
+              condition <- S.lift (renderWith (bindName binder name names) predicate)
+              pure (call "Property" "suchThat" [Str strategy, Lambda [(name, tValue)] tBool (X.truth condition), IntLit limit, inner])
+            Draws.BindDraw {} -> do
+              (links, final) <- chain names node
+              let earlier value bound = foldr (\(index, name) rest -> if mentions name rest
+                    then Let name tValue (call "Runtime" "item" [IntLit index, Var "drawnSoFar"]) rest else rest)
+                    value (zip [0 ..] bound)
+                  steps = [Lambda [("drawnSoFar", tValues)] genTy (earlier value (map fst (take index links)))
+                    | (index, (_,value)) <- zip [0 :: Int ..] links]
+              pure (call "Gen" "bind" [call "Gen" "dependent" [ListOf (tFun [tValues] genTy) steps],
+                Lambda [("drawnSoFar", tValues)] genTy (earlier final (map fst links))])
+      declarations <- forM (zip selected helperNames) $ \(node, helper) -> do
+        let captures = Draws.drawCaptures node
+            (captured, captureScope) = Naming.claim helperScope "capturedValues"
+            (aliases, scope) = Naming.claimAll captureScope ["captured" ++ show i | i <- [0 :: Int .. length captures - 1]]
+            names identity = maybe (outer identity) id (lookup identity (zip (map C.binderId captures) aliases))
+        expression <- S.evalStateT (body names node) scope
+        let projected = foldr (\(index, name) rest -> if mentions name rest
+              then Let name tValue (call "Runtime" "item" [IntLit index, Var captured]) rest else rest)
+              expression (zip [0 ..] aliases)
+        pure (helper, tFun [tValues] genTy, Lambda [(captured,tValues)] genTy projected)
+      root <- invoke outer (Draws.drawRoot graph)
+      pure (foldr (\(name, ty, value) rest -> Let name ty value rest) root declarations)
+    atomicDraw names requirement strategy path draw = case draw of
       C.DrawAny ty (Just aim) -> do
         let name = "aim" ++ show (length path)
             aliases = bindName (C.quantifiedBinder aim) name names
@@ -474,42 +613,7 @@ generators bits plan external local planned = do
         | otherwise -> do
             witnesses <- witnessesFor ty
             raw names (directed (C.Quantifier (C.Binder (C.Id ("draw::" ++ path)) "draw" ty) [] []) witnesses)
-      C.DrawOneOf _ values -> do
-        branches <- mapM (fmap (\v -> Lambda [] genTy (call "Gen" "constant" [v])) . renderWith names) values
-        pure (choose path (call "Gen" "range" [IntLit 0, IntLit (toInteger (length values - 1))]) branches)
-      C.DrawFrequency alternatives -> do
-        branches <- sequence [Lambda [] genTy <$> strategyDraw names requirement strategy (path ++ "f" ++ show i) d
-          | (i, (_, d)) <- zip [0 :: Int ..] alternatives]
-        let selector = call "Gen" "frequency" [ListOf (Ty "int * Gen<int>" "Tuple<int, Gen<int>>")
-              [TupleOf [IntLit weight, call "Gen" "constant" [IntLit (toInteger i)]] | (i, (weight, _)) <- zip [0 :: Int ..] alternatives]]
-        pure (choose path selector branches)
-      C.DrawSuchThat inner binder predicate limit -> do
-        generator <- strategyDraw names requirement strategy (path ++ "s") inner
-        let name = "keep" ++ show (length path)
-        condition <- renderWith (bindName binder name names) predicate
-        pure (call "Property" "suchThat" [Str strategy, Lambda [(name, tValue)] tBool (X.truth condition), IntLit limit, generator])
-      -- A run of draws, each knowing the earlier ones, is drawn in turn
-      -- (Gen.dependent), then the rest knowing them all.
-      C.DrawBind _ _ _ -> do
-        let chain d = case d of
-              C.DrawBind b from more -> let (bs, final) = chain more in ((b, from) : bs, final)
-              other -> ([], other)
-            (links, final) = chain draw
-            names' = ["draw" ++ show (length path) ++ "_" ++ show k | k <- [1 .. length links]]
-            scope = foldl (\outer (b, n) -> bindName b n outer) names (zip (map fst links) names')
-            earlier body bound = foldr (\(k, n) rest -> if mentions n rest then Let n tValue (call "Runtime" "item" [IntLit k, Var "drawnSoFar"]) rest else rest)
-              body (zip [0 ..] bound)
-        steps <- forM (zip3 [0 :: Int ..] links names') $ \(k, (_, from), _) -> do
-          let visible = foldl (\outer (b, n) -> bindName b n outer) names (take k (zip (map fst links) names'))
-          generator <- strategyDraw visible requirement strategy (path ++ "from" ++ show k) from
-          pure (Lambda [("drawnSoFar", tValues)] genTy (earlier generator (take k names')))
-        remaining <- strategyDraw scope requirement strategy (path ++ "rest") final
-        pure (call "Gen" "bind" [call "Gen" "dependent" [ListOf (tFun [tValues] genTy) steps],
-          Lambda [("drawnSoFar", tValues)] genTy (earlier remaining names')])
-    choose path selector branches =
-      let name = "choice" ++ show (length path)
-      in call "Gen" "bind" [selector, Lambda [(name, tInt)] genTy
-           (Invoke (call "Runtime" "nth" [Var name, ListOf (tFun [] genTy) branches]) [])]
+      _ -> Left "expected atomic .NET draw"
 
 -- | The application's generators bound in lawspec.edn, by type: each
 -- factory gives an FsCheck Arbitrary of native values, kept with its own
