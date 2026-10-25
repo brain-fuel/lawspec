@@ -476,7 +476,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           checkDoc = function coverCheck ["_case_values", "_case_context"]
             (withSymbols e (coverAssignments ++ [bracket e (assertionDocWith lawLink coverContext (assertion e))]))
           wrapDoc = function coverRun ["name", "body"] (harnessInvocation label harness (text "body") (text "name") False)
-          registerDoc = assign coverFunctions (runtime "register_finite_cases"
+          registerDoc = statement (text (coverFunctions ++ " = ") <> runtime "register_finite_cases"
             ([invoke "globals" [], quoted coverPrefix, coverExpression, text coverCheck, message shown] ++
              [text coverRun | wrapped]))
           boundariesText = if Cover.coverCount cover == 0 then "" else
