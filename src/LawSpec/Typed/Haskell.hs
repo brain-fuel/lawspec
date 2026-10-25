@@ -20,7 +20,7 @@ import Control.Monad.State.Strict
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as Context
 import Data.List (intercalate, sortOn, nub)
@@ -383,11 +383,11 @@ helperKinds :: [String]
 helperKinds = ["to","from","tn","fn"]
 
 functionTable :: Table (Either String (D.Doc,St))
-functionTable = unsafePerformIO (newPersistentTable "typed-haskell-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-haskell-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 dataTable :: Table (Either String [D.Doc])
-dataTable = unsafePerformIO (newPersistentTable "typed-haskell-data" (4 * 1024 * 1024) (length . show))
+dataTable = unsafePerformIO (newPersistentTableByShow "typed-haskell-data" (4 * 1024 * 1024))
 {-# NOINLINE dataTable #-}
 
 nativeContext :: Env -> [Type] -> [(Id,Maybe String)]
@@ -795,7 +795,7 @@ helpers env = go S.empty
         pure (docs ++ rest)
 
 helperTable :: Table (Either String (D.Doc,St))
-helperTable = unsafePerformIO (newPersistentTable "typed-haskell-helper" (4 * 1024 * 1024) (length . show))
+helperTable = unsafePerformIO (newPersistentTableByShow "typed-haskell-helper" (4 * 1024 * 1024))
 {-# NOINLINE helperTable #-}
 
 memoHelper :: Env -> String -> Type -> M D.Doc

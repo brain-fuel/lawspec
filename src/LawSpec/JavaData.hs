@@ -4,7 +4,7 @@
 module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaCodecDocIn, javaDataName, identifier, javaCodecName, namesFor) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.JvmNames (googleCase)
@@ -33,11 +33,11 @@ import qualified Data.Map.Strict as M
 import LawSpec.RecordNames (recordDisplayNames)
 
 nativeDocumentTable :: Table (Either String D.Doc)
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-java-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-java-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 codecDocumentTable :: Table (Either String D.Doc)
-codecDocumentTable = unsafePerformIO (newPersistentTable "public-java-codec" (8 * 1024 * 1024) (length . show))
+codecDocumentTable = unsafePerformIO (newPersistentTableByShow "public-java-codec" (8 * 1024 * 1024))
 {-# NOINLINE codecDocumentTable #-}
 
 type Names = [(String, String)]

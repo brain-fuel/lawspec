@@ -26,7 +26,7 @@ import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.CorePersist ()
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
@@ -251,7 +251,7 @@ helperAllocation env seeds = M.fromList
       (\kind -> conversionName (kindOf kind)) (map show helperKinds) types
 
 functionTable :: Table (Either String (D.Doc, St))
-functionTable = unsafePerformIO (newPersistentTable "typed-beam-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-beam-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 memoFunction :: Env -> Int -> Definition -> M D.Doc
@@ -907,7 +907,7 @@ helpers env done = do
     pure (docs ++ rest)
 
 helperTable :: Table (Either String (D.Doc, St))
-helperTable = unsafePerformIO (newPersistentTable "typed-beam-helper" (4 * 1024 * 1024) (length . show))
+helperTable = unsafePerformIO (newPersistentTableByShow "typed-beam-helper" (4 * 1024 * 1024))
 {-# NOINLINE helperTable #-}
 
 memoHelper :: Env -> String -> Crossing -> Type -> M D.Doc

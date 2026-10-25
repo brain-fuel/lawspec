@@ -2,7 +2,7 @@
 module LawSpec.PythonData (emitPythonData, emitPythonDataWithProfile, pythonDataType, pythonTypeReference, pythonDataTypeDoc, pythonDataTypeDocWith, pythonTypeReferenceDoc, requiresSchema) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Time (isDurationType)
@@ -21,7 +21,7 @@ import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
 
 nativeDocumentTable :: Table (Either String [D.Doc])
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-python-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-python-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 -- | The 64-bit profile unless a caller states another.

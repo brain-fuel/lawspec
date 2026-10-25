@@ -19,7 +19,7 @@ import Control.Applicative ((<|>))
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import Control.Monad.State.Strict
 import Data.Char (isLower)
 import Data.List (intercalate, nub, sort)
@@ -210,7 +210,7 @@ nativeType :: Env -> Type -> Either String String
 nativeType env = Data.nativeType FSharp (envBits env) (envNames env) []
 
 functionTable :: Table (Either String (L.Lines, St))
-functionTable = unsafePerformIO (newPersistentTable "typed-fsharp-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-fsharp-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 calledIds :: Expr -> [Id]

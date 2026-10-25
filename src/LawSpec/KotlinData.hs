@@ -2,7 +2,7 @@
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc, namesFor, kotlinDataName, kotlinCodecReceiverIn, kotlinNativeCodecReceiverIn) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
@@ -30,11 +30,11 @@ import qualified Data.Map.Strict as M
 import LawSpec.RecordNames (recordDisplayNames)
 
 nativeDocumentTable :: Table (Either String D.Doc)
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-kotlin-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-kotlin-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 codecDocumentTable :: Table (Either String D.Doc)
-codecDocumentTable = unsafePerformIO (newPersistentTable "public-kotlin-codec" (8 * 1024 * 1024) (length . show))
+codecDocumentTable = unsafePerformIO (newPersistentTableByShow "public-kotlin-codec" (8 * 1024 * 1024))
 {-# NOINLINE codecDocumentTable #-}
 
 type Names = [(C.Id, String)]

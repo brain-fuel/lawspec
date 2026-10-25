@@ -18,7 +18,7 @@ import Control.Monad.State.Strict
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as Context
 import Data.Char (toUpper)
@@ -366,7 +366,7 @@ helperKinds :: [String]
 helperKinds = ["eq", "cmp", "to", "from", "nin", "nout", "tonative", "fromnative"]
 
 functionTable :: Table (Either String ([E.Stmt], St))
-functionTable = unsafePerformIO (newPersistentTable "typed-web-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-web-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 memoFunction :: Env -> Int -> Definition -> M [E.Stmt]
@@ -818,7 +818,7 @@ helpers env = go S.empty
         pure (docs ++ rest)
 
 helperTable :: Table (Either String ([E.Stmt],St))
-helperTable = unsafePerformIO (newPersistentTable "typed-web-helper" (4 * 1024 * 1024) (length . show))
+helperTable = unsafePerformIO (newPersistentTableByShow "typed-web-helper" (4 * 1024 * 1024))
 {-# NOINLINE helperTable #-}
 
 memoHelper :: Env -> String -> Type -> M [E.Stmt]

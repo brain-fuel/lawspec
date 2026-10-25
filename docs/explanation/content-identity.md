@@ -379,3 +379,29 @@ and its current solver task is retried once. A structured compiler replay
 result controls the retry; the host does not classify diagnostic prose or
 rewrite solver/model text. This covers obsolete public constructor symbols
 while preserving explicit incomplete outcomes for unconfirmed fresh models.
+
+### Bounded structured emission caches
+
+A structured layout can share alternatives while its selected source remains
+small. Unbounded `show` or `Binary` traversal expands those alternatives as a
+tree. Show-weighted caches therefore inspect at most their existing budget plus
+one structural character, retaining the same weights for ordinary entries.
+Admission happens before persistence. An oversized chunk is returned unchanged
+and recomputed when requested again; it is stored in neither RAM nor the disk
+cache. Admitted chunks retain their existing Binary format and reuse behavior.
+
+This is a resource bound, not normalization or verification. It changes no Core
+identity, source bytes, mandatory definition check, proof receipt or execution
+claim. The bound walks the logical structure using pure Haskell and never uses
+runtime pointer identity, so native and WASM make the same admission decision.
+Tests cover shared and separately constructed alternatives, unchanged rendered
+output, rejected oversized entries, and normal persistent reuse.
+
+On the 25 October 2026 macOS/aarch64 case-fold generation probe, the former
+memo path exceeded 50 GiB before it was stopped. With bounded admission, the
+same request completed in 37.63 seconds at 1.25 GB peak RSS under a 2 GiB RTS
+heap cap. The uncached baseline took 18.79 seconds at 502 MB. Separate
+persistent cold/warm processes completed in 35.70/37.44 seconds, respectively;
+all four responses were byte-identical. These are diagnostic measurements,
+not fixture startup budgets or a native/WASM parity receipt. Oversized layout
+chunks deliberately forgo reuse, so a warm request need not be faster.

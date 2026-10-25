@@ -20,7 +20,7 @@ import Data.List (intercalate, nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
@@ -185,7 +185,7 @@ data Sink = Return | Assign String
 -- before it. Reserve only globals it calls; an unrelated global may safely
 -- share the spelling of one of its locals.
 functionTable :: Table (Either String D.Doc)
-functionTable = unsafePerformIO (newPersistentTable "typed-swift-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-swift-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 memoFunction :: Env -> Int -> Definition -> Either String D.Doc

@@ -2,7 +2,7 @@
 module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.DataNames (qualifiedDataName, caseInsensitiveCounts, ambiguous, fieldClosed)
@@ -24,7 +24,7 @@ import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.Naming (NameKind(..), claimAll, scopeWith, nativeIdentifier)
 
 nativeDocumentTable :: Table (Either String D.Doc)
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-rust-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-rust-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 type Names = [(String, String)]

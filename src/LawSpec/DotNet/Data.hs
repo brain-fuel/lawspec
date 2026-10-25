@@ -11,7 +11,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import LawSpec.CorePersist ()
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import qualified LawSpec.Core as C
@@ -52,15 +52,15 @@ renderCodecFunction keyword function = L.function 0 (keyword ++ " " ++ codecBind
   (codecParameters function) (Just (codecResult function)) (codecBody function)
 
 nativeDocumentTable :: Table (Either String (String,String,[String]))
-nativeDocumentTable = unsafePerformIO (newPersistentTable "public-fsharp-data" (4 * 1024 * 1024) (length . show))
+nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-fsharp-data" (4 * 1024 * 1024))
 {-# NOINLINE nativeDocumentTable #-}
 
 codecDocumentTable :: Table (Either String CodecFunction)
-codecDocumentTable = unsafePerformIO (newPersistentTable "public-fsharp-codec" (4 * 1024 * 1024) (length . show))
+codecDocumentTable = unsafePerformIO (newPersistentTableByShow "public-fsharp-codec" (4 * 1024 * 1024))
 {-# NOINLINE codecDocumentTable #-}
 
 auxiliaryDocumentTable :: Table (Either String [String])
-auxiliaryDocumentTable = unsafePerformIO (newPersistentTable "public-fsharp-alias" (2 * 1024 * 1024) (length . show))
+auxiliaryDocumentTable = unsafePerformIO (newPersistentTableByShow "public-fsharp-alias" (2 * 1024 * 1024))
 {-# NOINLINE auxiliaryDocumentTable #-}
 
 -- | Each data declaration's native name.

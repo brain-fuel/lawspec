@@ -14,7 +14,7 @@ import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.CorePersist ()
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as Context
 import Data.List (intercalate, isPrefixOf, nub, stripPrefix)
@@ -512,19 +512,19 @@ helperKinds :: [String]
 helperKinds = ["toNative","fromNative"]
 
 functionTable :: Table (Either String (D.Doc,St))
-functionTable = unsafePerformIO (newPersistentTable "typed-jvm-function" (8 * 1024 * 1024) (length . show))
+functionTable = unsafePerformIO (newPersistentTableByShow "typed-jvm-function" (8 * 1024 * 1024))
 {-# NOINLINE functionTable #-}
 
 dataTable :: Table (Either String D.Doc)
-dataTable = unsafePerformIO (newPersistentTable "typed-jvm-data" (4 * 1024 * 1024) (length . show))
+dataTable = unsafePerformIO (newPersistentTableByShow "typed-jvm-data" (4 * 1024 * 1024))
 {-# NOINLINE dataTable #-}
 
 helperTable :: Table (Either String (D.Doc,St))
-helperTable = unsafePerformIO (newPersistentTable "typed-jvm-helper" (8 * 1024 * 1024) (length . show))
+helperTable = unsafePerformIO (newPersistentTableByShow "typed-jvm-helper" (8 * 1024 * 1024))
 {-# NOINLINE helperTable #-}
 
 codecTable :: Table (Either String D.Doc)
-codecTable = unsafePerformIO (newPersistentTable "typed-jvm-codec" (4 * 1024 * 1024) (length . show))
+codecTable = unsafePerformIO (newPersistentTableByShow "typed-jvm-codec" (4 * 1024 * 1024))
 {-# NOINLINE codecTable #-}
 
 -- Exact allocated interfaces of just the types this chunk can name.
