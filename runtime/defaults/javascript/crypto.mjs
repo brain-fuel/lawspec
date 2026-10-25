@@ -170,7 +170,7 @@ export class SignatureHandler {
 }
 /**
  * SLH-DSA-SHAKE-128f, hedged: the alternative Signature handler. Bind it in
- * lawspec.edn: {"ability": "lawspec.crypto::Signature", "native": ["lawspec",
+ * lawspec.edn: {:ability "lawspec.crypto::Signature" :native ["lawspec",
  * "crypto", "SlhDsaSignatureHandler"]}.
  */
 export class SlhDsaSignatureHandler {

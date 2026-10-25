@@ -327,7 +327,7 @@ object Crypto {
 
     /**
      * SLH-DSA-SHAKE-128f, hedged: the alternative Signature handler. Bind it in lawspec.edn:
-     * {"ability": "lawspec.crypto::Signature", "native":
+     * {:ability "lawspec.crypto::Signature" :native
      * ["lawspec", "Crypto", "SlhDsaSignatureHandler"]}.
      */
     class SlhDsaSignatureHandler : lawspec.abilities.lawspec.Crypto.Signature {
