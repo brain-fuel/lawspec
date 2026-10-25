@@ -16,6 +16,8 @@ import LawSpec.ScalaDefinitions (adapterResult)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Testing.Literals as Literals
+import Control.Monad (forM)
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
@@ -32,10 +34,18 @@ import LawSpec.Search (lawDescriptors, searchable)
 -- | The adapter object and test suite of one unit.
 emitScalaUnit :: Integer -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u allLaws = do
-  whole <- document <$> ScalaProperties.emitTests properties u ls
+  covers <- mapM (either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure . caseCover) ls
+  literalPlan <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure
+    (Literals.planLiterals (concatMap Literals.coverLiterals covers ++ concatMap (concatMap generatorBoundaries . generatorRequirements) ls))
+  helpers <- literalFunctions literalPlan
+  let sharedLiteral value = case Literals.literalReference literalPlan value of
+        Left _ -> valueLiteral value
+        Right term -> literalTerm term
+      sharedProperties = properties { ScalaProperties.literal = sharedLiteral, ScalaProperties.literalHelpers = helpers }
+  whole <- document <$> ScalaProperties.emitTests sharedProperties u ls
   -- A unit whose tests would be one very long file has a file per law.
   testArtifacts <- if minify || length (lines whole) <= 20000 then pure [Artifact testPath whole "generated" "test"] else do
-    (suite, traits) <- ScalaProperties.emitSplitTests properties u ls
+    (suite, traits) <- ScalaProperties.emitSplitTests sharedProperties u ls
     pure (Artifact testPath (document suite) "generated" "test" :
       [Artifact ("src/test/scala/" ++ directory ++ name ++ ".scala") (document doc) "generated" "test" | (name, doc) <- traits])
   stub <- either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right stubDoc
@@ -195,6 +205,31 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         rendered <- traverse valueLiteral payload
         pure (ScalaExpr.call "LawSpecRuntime.present" [ScalaExpr.quoted (key ty),
           maybe (Doc.text "null") id rendered])
+    literalTerm = Literals.foldLiteral (valueLiteral . V.ScalarValue)
+      (\index fields -> pure (ScalaExpr.call ("finiteLiteralShape" ++ show index) [Doc.text "symbols",ScalaExpr.call "List" fields]))
+      (\index -> pure (ScalaExpr.call ("finiteLiteral" ++ show index) [Doc.text "symbols"]))
+    literalFunctions literalPlan = do
+      let text = Doc.text
+          call = ScalaExpr.call
+          function name parameters body = ScalaLayout.equalsBody
+            (ScalaLayout.parameters (text ("def " ++ name)) parameters <> text ": LawSpecRuntime.Value") body
+          symbolsType = text "symbols: java.util.Map[String, Object]"
+          construct ty tag fields = call "LawSpecScalaCodecs.construct"
+            [text "Schema",java (ScalaExpr.reference ty),ScalaExpr.quoted (C.idText tag),fields,text "MachineBits",text "symbols"]
+      shapes <- forM (Literals.literalShapes literalPlan) $ \(index,shape) -> do
+        let fields = text "fields"
+            body = case shape of
+              Literals.ConstructorShape ty tag -> construct ty tag fields
+              Literals.ListShape ty -> ScalaLayout.trailing
+                (call "fields.reverse.foldLeft" [construct ty (C.Id "List::Nil") (call "List" [])]) ["(tail, head)"]
+                [construct ty (C.Id "List::Cons") (call "List" [text "head",text "tail"])]
+              Literals.PresenceShape ty present -> call "LawSpecRuntime.present"
+                [ScalaExpr.quoted (key ty),if present then text "fields.head" else text "null"]
+        pure (function ("finiteLiteralShape" ++ show index) [symbolsType,text "fields: List[LawSpecRuntime.Value]"] body)
+      factories <- forM (Literals.literalFactories literalPlan) $ \(index,term) -> do
+        body <- literalTerm term
+        pure (function ("finiteLiteral" ++ show index) [symbolsType] body)
+      pure (shapes ++ factories)
     generatorDoc = ScalaTestHelpers.generatorDoc bits budget custom (java . ScalaExpr.reference) key
     properties = ScalaProperties.Config
       { ScalaProperties.packageName = pkg
@@ -206,6 +241,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       , ScalaProperties.nodeBudget = budget
       , ScalaProperties.expression = render
       , ScalaProperties.literal = valueLiteral
+      , ScalaProperties.literalHelpers = []
       , ScalaProperties.checked = scChecked
       , ScalaProperties.structural = custom
       , ScalaProperties.reference = java . ScalaExpr.reference
