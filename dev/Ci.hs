@@ -33,9 +33,10 @@
 -- Parity binds the native and WASM executables, SDK, effective environment
 -- and checked sources. Source/artifact correspondence is checked separately
 -- by integrity and generation validation (ref:DEC-content-identity). Package
--- smoke remains uncached: its fresh npm/Cargo dependency resolution is not a
--- frozen execution context.
--- Records live in .artifacts/cache; --fresh runs everything, as releases do.
+-- smoke and the SDK suite remain uncached: fresh native dependency resolution
+-- and optional tool availability do not have a frozen execution context.
+-- Native law and project caches still apply within those checks.
+-- Records live in .artifacts/cache; --fresh runs everything.
 module Ci (ci) where
 
 import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
@@ -384,8 +385,10 @@ stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
   "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers) [["stack", "--version"]])
-  "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/", "templates/editors/vscode/syntaxes/",
-    "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json", "tools/ci-artifact-key.mjs"] [] [["node", "--version"]])
+  -- SDK tests select optional native tools by availability and environment,
+  -- and resolve dependencies for fresh projects. A whole-suite cached pass
+  -- must not bypass their actual toolchain and native-freshness checks.
+  "npm-tests" -> Nothing
   "parity" -> Just (Inputs ["tools/parity.mjs", "tools/ci-artifact-key.mjs", "examples/specs/", "examples/packages/",
     "test/fixtures/artifact-configuration.lawspec", "test/fixtures/artifact-antlr-inputs.lawspec",
     "test/fixtures/artifact-antlr-indexed-input.lawspec", "npm/starter-rc1.lawspec"] []
