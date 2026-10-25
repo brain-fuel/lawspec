@@ -19,6 +19,8 @@ extra-source-files:
     vendor/unicode/17.0.0/DerivedAge.txt
     README.md
     CHANGELOG.md
+    test/FiniteCases.java
+    test/finite_cases_jvm.py
     test/finite-cases.mjs
     test/finite_cases.py
     runtime/lawspec_harness.rs
@@ -719,6 +721,7 @@ library
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
       LawSpec.JavaText
+      LawSpec.JvmCases
       LawSpec.JvmLets
       LawSpec.JvmNames
       LawSpec.KotlinData

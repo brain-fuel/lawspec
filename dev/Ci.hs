@@ -469,6 +469,7 @@ targetSteps target | target `elem` Targets.artifactTargets =
   [step (target ++ "-artifact-validation") ["sh", "tools/artifact-targets.sh", target]]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
+  [ step "jvm-finite-cover" ["python3", "-B", "test/finite_cases_jvm.py"] | target == "java" ] ++
   [ Step name [("PYTHONPATH","runtime")] [".integration/prolog/.venv/bin/python", "-B", file]
   | target == "prolog", (name,file) <- [("prolog-runtime","test/prolog_runtime.py"),
       ("prolog-execution-reporting","test/prolog_reporting.py")] ] ++
