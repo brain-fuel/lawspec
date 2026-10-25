@@ -112,8 +112,8 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       lookup "|doubles|" after `shouldBe` lookup "|doubles|" before
       lookup "|triples|" after `shouldNotBe` lookup "|triples|" before
     it "plans a law from the types it reaches" $ do
-      let alone = planOf "\"|score|" [wrapper "Score" "0"]
-          beside = planOf "\"|score|" [wrapper "Score" "0", wrapper "Wide" "1234"]
+      let alone = planOf "|score|" [wrapper "Score" "0"]
+          beside = planOf "|score|" [wrapper "Score" "0", wrapper "Wide" "1234"]
       beside `shouldBe` alone
       fmap (isInfixOf "1234" . show) beside `shouldBe` Just False
     it "reports the boundary cases the generated tests use" $ do
@@ -281,15 +281,16 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
         length second `shouldBe` length first + 1
         removePathForcibly root
     forM_ [("java","typed-jvm-helper",2),("kotlin","typed-jvm-helper",2),("scala","typed-jvm-helper",2),("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
-           ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2),("swift","swift-data",2),("erlang","typed-beam-helper",2)] $ \(target,table,changed) ->
-      it ("reuses independent " ++ target ++ " codec documents after another type changes") $ do
-        root <- (</> ("lawspec-" ++ target ++ "-helper-memo-test")) <$> getTemporaryDirectory
+           ("go","typed-go-helper",4),("haskell","typed-haskell-helper",2),("swift","swift-data",2),("erlang","typed-beam-helper",2),
+           ("erlang","beam-public-data",2),("elixir","beam-public-data",1),("gleam","beam-public-data",1)] $ \(target,table,changed) ->
+      it ("reuses independent " ++ target ++ " " ++ table ++ " codec documents after another type changes") $ do
+        root <- (</> ("lawspec-" ++ target ++ "-" ++ table ++ "-helper-memo-test")) <$> getTemporaryDirectory
         removePathForcibly root
         let run fieldType = decode (dispatch (encode (object
               ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
                "method" .= ("planGeneration" :: String), "target" .= target, "cacheDirectory" .= root,
                "sources" .= [object ["path" .= ("helpers.lawspec" :: String), "content" .= unlines
-                 ["unit incremental.codecTypes", "type Changed is a record { value :: " ++ fieldType ++ " } end type",
+                 ["unit incremental.codecTypes" ++ filter (/= '-') table, "type Changed is a record { value :: " ++ fieldType ++ " } end type",
                   "type Independent is a record { label :: Text } end type",
                   "function first (value :: Changed) -> Changed is value end function",
                   "function second (value :: Independent) -> Independent is value end function", "end unit"]]]]))) :: Maybe Value
@@ -519,7 +520,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       let program = compiled $ unlines ([ "unit incremental.locality\n"
                                         , ""
                                         ] ++ declarations ++
-            ["law " ++ law ++ " is definition: for all (s :: Score) => s = s end for all end definition end law", "end unit"])
+            ["law \"" ++ law ++ " is definition: for all (s :: Score) => s = s end for all end definition end law", "end unit"])
       plan <- either (const Nothing) Just (planTesting program)
       fmap boundaryCases (find ((== law) . C.propertyName . plannedProperty) (concatMap plannedProperties (plannedUnits plan)))
 

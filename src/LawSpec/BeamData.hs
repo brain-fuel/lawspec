@@ -8,8 +8,14 @@ import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
+import qualified LawSpec.BeamNames as Names
 import qualified LawSpec.BeamGenerators as Generators
 import LawSpec.Testing (GeneratorRequirement(..), domainHints)
+import LawSpec.CorePersist ()
+import qualified LawSpec.Dependencies as Identity
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import System.IO.Unsafe (unsafePerformIO)
+import qualified Data.Set as Set
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Scalar (Scalar(..), primitives, primitiveName)
@@ -17,6 +23,11 @@ import LawSpec.Regex (parseRegex, regexSamples)
 import LawSpec.Common (Artifact(..))
 import Control.Monad (forM, unless)
 import Data.List (nub)
+import LawSpec.Naming (uniqueNames)
+
+dataTable :: Table (Either String D.Doc)
+dataTable = unsafePerformIO (newPersistentTable "beam-public-data" (4 * 1024 * 1024) (length . show))
+{-# NOINLINE dataTable #-}
 
 emitData :: String -> D.Layout -> Int -> [C.DataDeclaration] -> Either String Artifact
 emitData target layout bits declarations = do
@@ -24,27 +35,31 @@ emitData target layout bits declarations = do
   _ <- either (Left . show) Right (constructorProofContracts bits declarations)
   names <- E.dataNames declarations
   (schemas,contracts) <- S.dataSchemasWithContracts declarations
-  definitions <- if target == "erlang" then mapM (nativeDefinition names) declarations else pure []
+  definitions <- if target == "erlang" then mapM (\d -> cached "native" names d (nativeDefinition names d)) declarations else pure []
   metadata <- forM schemas $ \definition -> do
-    cs <- forM (S.constructors definition) $ \c -> do
-      tag <- named names (C.Id (S.constructorTag c))
-      predicates <- sequence [predicate contract expression | contract <- contracts,
-        S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
-      generators <- fmap concat $ mapM fieldGenerators
-        [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
-      native <- nativeShape tag (S.constructorTag c)
-      pure (E.record ([(E.atom "tag",E.binary (S.constructorTag c)),
-        (E.atom "fields",E.array [E.tuple [E.binary (S.fieldName f),E.reference (S.fieldType f)] | f <- S.fields c])] ++ native ++
-        [(E.atom "predicates",E.array predicates) | not (null predicates)] ++
-        [(E.atom "generators",E.record generators) | not (null generators)] ++
-        [(E.atom "indices",E.array (map E.binary (S.constructorIndex c))) | not (null (S.constructorIndex c))] ++
-        [(E.atom "refinements",E.array [E.tuple [D.text (show i),E.reference t] | (i,t) <- S.constructorRefinements c]) | not (null (S.constructorRefinements c))] ++
-        [(E.atom "existentials",D.text (show (S.constructorExistentials c))) | S.constructorExistentials c > 0] ++
-        [(E.atom "witnesses",E.array (map (D.text . show) (S.constructorWitnesses c))) | not (null (S.constructorWitnesses c))]))
-    pure (E.record ([(E.atom "name",E.binary (S.typeName definition)),
-      (E.atom "parameters",D.text (show (S.parameterCount definition))),
-      (E.atom "constructors",E.array cs)] ++
-      [(E.atom "handle",E.atom "true") | any (\d -> C.idText (C.dataId d) == S.typeName definition && C.dataHandle d) declarations]))
+    declaration <- case [d | d <- declarations,C.idText (C.dataId d) == S.typeName definition] of
+      d:_ -> pure d
+      [] -> Left ("missing checked BEAM schema declaration: " ++ S.typeName definition)
+    cached "metadata" names declaration $ do
+      cs <- forM (S.constructors definition) $ \c -> do
+        tag <- named names (C.Id (S.constructorTag c))
+        predicates <- sequence [predicate contract expression | contract <- contracts,
+          S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
+        generators <- fmap concat $ mapM fieldGenerators
+          [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
+        native <- nativeShape tag (S.constructorTag c)
+        pure (E.record ([(E.atom "tag",E.binary (S.constructorTag c)),
+          (E.atom "fields",E.array [E.tuple [E.binary (S.fieldName f),E.reference (S.fieldType f)] | f <- S.fields c])] ++ native ++
+          [(E.atom "predicates",E.array predicates) | not (null predicates)] ++
+          [(E.atom "generators",E.record generators) | not (null generators)] ++
+          [(E.atom "indices",E.array (map E.binary (S.constructorIndex c))) | not (null (S.constructorIndex c))] ++
+          [(E.atom "refinements",E.array [E.tuple [D.text (show i),E.reference t] | (i,t) <- S.constructorRefinements c]) | not (null (S.constructorRefinements c))] ++
+          [(E.atom "existentials",D.text (show (S.constructorExistentials c))) | S.constructorExistentials c > 0] ++
+          [(E.atom "witnesses",E.array (map (D.text . show) (S.constructorWitnesses c))) | not (null (S.constructorWitnesses c))]))
+      pure (E.record ([(E.atom "name",E.binary (S.typeName definition)),
+        (E.atom "parameters",D.text (show (S.parameterCount definition))),
+        (E.atom "constructors",E.array cs)] ++
+        [(E.atom "handle",E.atom "true") | any (\d -> C.idText (C.dataId d) == S.typeName definition && C.dataHandle d) declarations]))
   exports <- mapM (\d -> do
     name <- named names (C.dataId d)
     pure (E.atom name <> D.text ("/" ++ show (length (C.dataParameters d))))) [d | d <- declarations, target == "erlang"]
@@ -59,13 +74,22 @@ emitData target layout bits declarations = do
       body = [D.text "-export_type(" <> E.array exports <> D.text ")." | not (null exports)] ++ definitions ++ [factory,context]
   pure (Artifact "src/lawspec_data.erl" (D.render layout (E.moduleDoc "lawspec_data" [("schema",1),("context",0)] body)) "generated" "source")
   where
+    graph = Identity.dependencyGraphWithBits bits declarations []
+    cached :: String -> [(C.Id,String)] -> C.DataDeclaration -> Either String D.Doc -> Either String D.Doc
+    cached kind names declaration = memoized dataTable key
+      where
+        reached = Identity.closure graph [Identity.TypeNode (C.dataId declaration)]
+        interfaces = [(C.dataId d,lookup (C.dataId d) names,
+          [(C.constructorId c,lookup (C.constructorId c) names) | c <- C.dataConstructors d]) |
+          d <- declarations, Identity.TypeNode (C.dataId d) `Set.member` reached]
+        key = Identity.fullKey graph ("beam-public-data:" ++ show (bits,target,kind,interfaces)) declaration
     nativeShape tag identity
       | target == "gleam" = pure [(E.atom "native_tag",E.atom (E.snake (E.pascal tag)))]
       | target /= "elixir" = pure [(E.atom "native_tag",E.atom tag)]
       | otherwise = case [(d,c) | d <- declarations, c <- C.dataConstructors d, C.idText (C.constructorId c) == identity] of
           [(d,c)] -> do
             let fields = E.elixirFields d c
-                variables = [D.text ("_LsField" ++ show i) | (i,_) <- zip [0::Int ..] fields]
+                variables = map D.text (uniqueNames (map Names.variableName fields))
                 entries = (E.atom "__struct__", E.atom ("Elixir." ++ E.elixirDataModule tag)) : zip (map E.atom fields) variables
                 patternDoc = D.delimit 4 "#{" "}" [E.field ":=" a b | (a,b) <- entries]
             unless (all (\n -> not (null n) && length n <= 255 && n /= "__struct__") fields && length fields == length (nub fields))
