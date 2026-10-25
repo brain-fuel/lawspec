@@ -107,7 +107,7 @@ emitBindings minify plan testing files = do
                 Just i -> do
                   receiver <- javaCast (args !! i) >>= maybe (Left ("an async method binding needs a bound handle type: " ++
                     C.idText (C.declarationId d))) Right
-                  pure (KotlinLayout.chain (D.text "(" <> converted !! i <> D.text " as " <> D.text receiver <> D.text ")")
+                  pure (KotlinLayout.chain (KotlinLayout.expressionReceiver (D.text "(" <> converted !! i <> D.text " as " <> D.text receiver <> D.text ")"))
                     [(name, [v | (j,v) <- zip [0..] converted, j /= i])])
                 Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
               _ -> do
@@ -239,8 +239,8 @@ emitBindings minify plan testing files = do
     -- value as T: on one line when it fits, otherwise after the value's
     -- last line, as ktfmt places a cast after a broken call.
     castTo value target = D.bestFit [D.text (D.render D.Compact (value <> D.text " as " <> target)), value <> D.text " as " <> target]
-    canonicalCodec = K.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations
-    nativeCodec = K.kotlinNativeCodecDocIn ("SCHEMA", "MACHINE_BITS") declarations
+    canonicalCodec = K.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations
+    nativeCodec = K.kotlinNativeCodecReceiverIn ("SCHEMA", "MACHINE_BITS") declarations
     kotlinLayout = D.selectLayout minify KotlinLayout.kotlinStyle
     handleDeclaration name = find (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations
     isHandle (C.Constructor name []) = handleDeclaration name /= Nothing

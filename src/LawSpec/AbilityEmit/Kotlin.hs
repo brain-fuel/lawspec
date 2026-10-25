@@ -96,7 +96,7 @@ emit minify bits datas units = do
       methods <- mapM (\(op, ty) -> signature op ty) (C.abilityOperations a)
       pure (kdoc 96 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
         line ("interface " ++ interfaceName a ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
-    codec ty = Native.kotlinCodecDocIn ("SCHEMA", "MACHINE_BITS") (line "symbols") datas ty
+    codec ty = Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (line "symbols") datas ty
     capitalizeFirst (c : cs) = toUpper c : cs
     capitalizeFirst [] = []
     specHandler u h = do

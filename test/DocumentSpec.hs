@@ -10,6 +10,7 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.KotlinLayout as Kotlin
 import qualified LawSpec.ScalaLayout as Scala
 import qualified LawSpec.ElixirCode as Elixir
 import qualified LawSpec.Swift.Code as Swift
@@ -168,6 +169,17 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
     rendered `shouldSatisfy` isInfixOf "| {:present, LawSpec.Data.ALongReplyType.reply(integer())})"
     D.render D.Compact (Elixir.typeDoc body) `shouldBe`
       "%__MODULE__{:read_current_reply => (integer() -> :absent | {:present, LawSpec.Data.ALongReplyType.reply(integer())})}"
+  it "keeps Kotlin receiver arguments structured without interpreting literals" $ do
+    let payload = Kotlin.kotlinString "a(\"b\", [c]).value"
+        receiver = Kotlin.callReceiver "Codecs.recordCodec"
+          [D.multiline (Kotlin.call "nested" [D.text "SCHEMA", payload]), D.text "MACHINE_BITS"]
+        doc = Kotlin.chain receiver [("decode", [D.text "value"])]
+        result = D.render (D.Pretty 44) doc
+    result `shouldSatisfy` isInfixOf (D.render D.Compact payload)
+    result `shouldSatisfy` isInfixOf "nested("
+    result `shouldSatisfy` isInfixOf ".decode(value)"
+    D.render D.Compact doc `shouldBe`
+      "Codecs.recordCodec(nested(SCHEMA, \"a(\\\"b\\\", [c]).value\"), MACHINE_BITS).decode(value)"
   it "keeps Scala receiver arguments structured through multiline chains" $ do
     let literal = Scala.scalaString "commas, brackets [)] and quotes \"stay\""
         argument = D.block 2 (D.text "val value = " <> literal <> D.hardline <> D.text "value")

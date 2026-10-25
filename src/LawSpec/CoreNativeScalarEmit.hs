@@ -492,7 +492,8 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
     ktChecked ty = java . KotlinExpr.checkedIn ktScope dataDeclarations ty
     -- Each codec and native-type maker is applied to the declarations once
     -- per unit, so its registry and names are built once.
-    ktFullCodec = KotlinExpr.codecIn ("SCHEMA", "MACHINE_BITS") dataDeclarations
+    ktFullCodecReceiver = KotlinExpr.codecReceiverIn ("SCHEMA", "MACHINE_BITS") dataDeclarations
+    ktFullCodec = fmap KotlinLayout.receiverDoc . ktFullCodecReceiver
     -- A codec that needs no case's symbols is a value of the test file,
     -- named after its type (textCodec), so a call reads as what it converts.
     ktCodecDoc ty = maybe (ktFullCodec ty) (Right . Doc.text) (lookup (show ty) ktCodecNames)
@@ -515,7 +516,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
     -- receiver; another breaks before its dot.
     ktCodecCall ty method value = case lookup (show ty) ktCodecNames of
       Just n -> KotlinExpr.call (n ++ "." ++ method) [value]
-      Nothing -> KotlinLayout.chain (java (ktFullCodec ty)) [(method, [value])]
+      Nothing -> KotlinLayout.chain (java (ktFullCodecReceiver ty)) [(method, [value])]
     -- The abstract Integer result is tower-polymorphic: adapters may return any
     -- integral Number, and the runtime bridge discharges the logical domain.
     ktNativeResult ty value | towerResult ty = KotlinExpr.call "LawSpecRuntime.fromNative"
@@ -644,7 +645,7 @@ nativeScalarProductWithCompanions companions javaStyle adapterBindings nativeGen
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
         Right (jvmFailingAs (operationFailure op) (\failure native -> ktNativeResult failure (ktCast native)) "{ nativeValue -> "
-          (ktNativeResult (expressionType term) (KotlinLayout.chain (ktHandler (C.operationAbility op)) [(C.operationName op,
+          (ktNativeResult (expressionType term) (KotlinLayout.chain (KotlinLayout.expressionReceiver (ktHandler (C.operationAbility op))) [(C.operationName op,
             [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (_, [body]) | Just (wrapper, _) <- lookup (ability, expressionType term) ktAttemptWrappers ->

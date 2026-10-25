@@ -655,7 +655,6 @@ library
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
-      LawSpec.CallText
       LawSpec.Capabilities
       LawSpec.CapabilityCheck
       LawSpec.CaseFold
