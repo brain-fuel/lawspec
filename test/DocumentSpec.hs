@@ -180,6 +180,13 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
     result `shouldSatisfy` isInfixOf ".decode(value)"
     D.render D.Compact doc `shouldBe`
       "Codecs.recordCodec(nested(SCHEMA, \"a(\\\"b\\\", [c]).value\"), MACHINE_BITS).decode(value)"
+  it "breaks a long Scala nullary result signature before its colon" $ do
+    let resultType = D.text "scala.util.Either[_root_.lawspec.data.Refusal, scala.Long]"
+        doc = Scala.equalsBody (Scala.signature (D.text "override def current") [] resultType) (D.text "result")
+    D.render (D.Pretty 80) doc `shouldBe`
+      "override def current()\n    : scala.util.Either[_root_.lawspec.data.Refusal, scala.Long] = result"
+    D.render D.Compact doc `shouldBe`
+      "override def current(): scala.util.Either[_root_.lawspec.data.Refusal, scala.Long] = result"
   it "keeps Scala receiver arguments structured through multiline chains" $ do
     let literal = Scala.scalaString "commas, brackets [)] and quotes \"stay\""
         argument = D.block 2 (D.text "val value = " <> literal <> D.hardline <> D.text "value")

@@ -178,7 +178,7 @@ emitBindings minify plan testing files = do
               pure (D.text "try " <> D.block 2 (D.text "scala.util.Right(" <> D.block 2 plain <> D.text ")") <>
                 (if null cases then mempty else D.text " catch " <> D.block 2 (D.joinWith D.hardline cases)))
             _ -> pure plain
-          pure (L.parameters (D.text ("override def " ++ S.escaped op)) [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " = " <>
+          pure (L.signature (D.text ("override def " ++ S.escaped op)) [v <> D.text ": " <> t | (t,v) <- zip types values] resultType <> D.text " = " <>
             L.block ([D.text "val symbols = LawSpecScala.symbols()" | "symbols" `isInfixOf` D.render D.Compact body] ++ [body]))
         pure (L.comment 78 ("The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated trait.") <>
           D.text ("class " ++ interfaceName a ++ "Bound extends " ++ interfaceType' a ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
