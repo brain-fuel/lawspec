@@ -4,9 +4,6 @@ decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest:
 decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/data/TestEntry:
   digest: sha256:96353af34fb3dbec
   verdict: pending
-decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/callees:
-  digest: sha256:7828d3e82b8bf510
-  verdict: pending
 decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/dotnetModelsPath:
   digest: sha256:39e9045955d5abbc
   verdict: pending
