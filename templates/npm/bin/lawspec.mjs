@@ -458,7 +458,7 @@ async function runTests(compiler, input, selected, roots, config) {
       // Recorded values are spec data: a changed recording runs its laws again.
       environment: await environmentDigest(root, report_,target.language),
       recorded: await recordedDigest(recordedFolder),
-      project: await projectDigest(root, generated,target.language),
+      project: await projectDigest(root, generated,target.language,{inputRoot:configRoot,inputs:config.inputs??[]}),
       attested,
     });
     const identity = projectKey(root);
@@ -965,7 +965,7 @@ async function main() {
       ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) })));
     if (result.refuted) process.exitCode = 1;
     let evidence = attachNativeEvidence(result.evidence,await readNativeObservations({compiler,input,selected,roots,
-      configRoot,build:await buildDigest(),evidence:result.evidence,attestation:named}));
+      configRoot,config,build:await buildDigest(),evidence:result.evidence,attestation:named}));
     const environments = named ? [result.attestation] : [];
     if (!named) for (const [id, attestation] of attestations) {
       const laws = new Set([...runs].filter(([, run]) => run.environment === id).map(([law]) => law));
@@ -1062,7 +1062,7 @@ async function main() {
     const request = { ...input, view: options.view ?? "eng", ...(positional[0] ? { law: positional[0] } : {}) };
     let explained = diagnostics(await compiler.explain(request));
     const expanded = diagnostics(await compiler.expand(input));
-    const observations = await readNativeObservations({ compiler, input, selected, roots, configRoot,
+    const observations = await readNativeObservations({ compiler, input, selected, roots, configRoot, config,
       build: await buildDigest(), evidence: expanded.evidence, attestation: await readAttestation(config) });
     if (observations.length)
       explained = diagnostics(await compiler.explain({ ...request, evidence: attachNativeEvidence(expanded.evidence, observations) }));

@@ -13,10 +13,10 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {presentationChecks,templates} from "./templates.mjs";
 
-// Folders that hold dependencies, build output or caches, not code under test.
-const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle", "bin", "obj", "TestResults",
-  ".stack-work", "_build", "deps", ".elixir_ls", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode",
-  ".scala-build", ".bsp", ".bloop", ".metals", ".build", ".swiftpm"]);
+import {buildDirectories as skipped,cryptoBuildOutput,isAttestation,fingerprintInputs} from './input-files.mjs';
+export {isAttestation} from './input-files.mjs';
+import {nativeHostIdentity} from './native-host.mjs';
+
 // Build and lock files, which choose the toolchain and dependencies.
 const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "go.mod",
   "go.sum", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
@@ -25,27 +25,9 @@ const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", 
   "global.json", "Directory.Build.props", "Directory.Packages.props", "NuGet.config", "project.scala", "Package.swift", "Package.resolved"];
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
-// The crypto builder owns these outputs. Inputs and other priv/ assets still
-// contribute to the adapter digest; rebuilding the NIF cannot invalidate a pass.
-const cryptoBuildOutput = (file) => /^priv\/lawspec_crypto_native\.(?:so|dll)(?:\.build|\.\d+\.tmp)?$/.test(file);
-
-// An environment attestation records where a run's dependencies were wired
-// and what was observed; it is reporting only, never an input of the
-// project, so one written inside the project is not digested. It is known by
-// its content, whatever its name or whichever tool wrote it.
-// ref:DEC-completed-run-attestation
-export function isAttestation(content) {
-  try {
-    const value = JSON.parse(content);
-    return value !== null && typeof value === "object" && value.format === "environment-attestation";
-  } catch {
-    return false;
-  }
-}
-
 // Every file in a project that LawSpec did not generate, by content, except
 // environment attestations.
-export async function projectDigest(root, generated, language) {
+export async function projectDigest(root, generated, language, {inputRoot=root,inputs=[]} = {}) {
   const readable=language?templates(language):{};
   const compact=language?templates(language,{minify:true}):{};
   const hash = createHash("sha256");
@@ -64,6 +46,16 @@ export async function projectDigest(root, generated, language) {
     }
   }
   await walk("");
+  if(inputs.length) {
+    const owned=new Set([...generated].map(file=>path.resolve(root,file)));
+    // Target files already contribute above, including exact readable/compact
+    // scaffold normalization. Declared parent directories must not hash their
+    // raw bytes a second time and make a layout-only edit stale execution.
+    const outside = file => {const relative=path.relative(path.resolve(root),file);return relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative);};
+    const external = (await fingerprintInputs(inputRoot,inputs,{generated:owned}))
+      .filter(([relative])=>outside(path.resolve(inputRoot,relative)));
+    hash.update("declared-inputs\0").update(JSON.stringify(external)).update("\0");
+  }
   return hash.digest("hex");
 }
 
@@ -71,7 +63,7 @@ export async function environmentDigest(root, report, language) {
   // Coverage locations describe build output; native tools can discover more
   // output directories after the first run. Build configuration is hashed below.
   const {coverage: _coverage, ...toolchain} = report ?? {};
-  const parts = [JSON.stringify(report ? toolchain : null)];
+  const parts = [await nativeHostIdentity(), JSON.stringify(report ? toolchain : null)];
   const names = (await readdir(root)).filter((name) => environmentFiles.includes(name) || name.endsWith(".cabal")).sort();
   const readable=language?templates(language):{};
   const compact=language?templates(language,{minify:true}):{};
