@@ -20,6 +20,7 @@ import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
 import LawSpec.CorePersist ()
+import LawSpec.Core.Identity (Encode, Collect)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Data.Binary (Binary)
@@ -170,6 +171,12 @@ instance Binary IndexedGeneration
 instance Binary PlannedProperty
 instance Binary PlannedUnit
 instance Binary Plan
+instance Encode GeneratorRequirement
+instance Encode IndexedGeneration
+instance Encode PlannedProperty
+instance Collect GeneratorRequirement
+instance Collect IndexedGeneration
+instance Collect PlannedProperty
 
 -- | Plans persist across runs, so lawspec test replans only the laws an edit can
 -- reach. ref:DEC-incremental-compilation

@@ -307,8 +307,8 @@ checkNames target unit = mapM_ collision (M.toList groups)
         Just original <- stripPrefix (C.idText (C.unitId unit) ++ "::") (C.idText (C.declarationId declaration)),
         C.declarationName declaration == original,
         Just suffix <- stripPrefix ("lawspec_" ++ phraseNativeName sourceName ++ "_") original,
-        let (hash,underscores)=span isHexDigit suffix,
-        not (null hash), all (=='_') underscores = take (length original-length underscores) original
+        let hash = dropWhile (=='_') suffix,
+        not (null hash), all isHexDigit hash = "lawspec_" ++ phraseNativeName sourceName ++ "_" ++ hash
       | otherwise = C.declarationName declaration
     collision (native,written) = unless (length written <= 1)
       (Left [Diagnostic "native-name-collision"
@@ -585,7 +585,7 @@ emitPlanFormatted minify target Plan{..} = do
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "python" = PythonDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
       | otherwise = WebDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
-    lawKey law = D.fullKey graph (show planMachineBits) (plannedProperty law)
+    lawKey law = D.fullKey graph (show planMachineBits) law
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
           testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u

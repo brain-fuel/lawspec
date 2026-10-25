@@ -33,6 +33,7 @@ import qualified Data.Text.Encoding as T
 import GHC.Generics
 import LawSpec.Common
 import LawSpec.Core
+import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Core.Machine
 import LawSpec.Core.Policy
 import qualified LawSpec.Core.Program as Scenario
@@ -289,6 +290,7 @@ instance Encode DataDeclaration
 instance Encode DataConstructor
 instance Encode StructuralRecord
 instance Encode Expr
+instance Encode CoreValue.Value
 instance Encode Node
 instance Encode MatchCase
 instance Encode AbilityRef
@@ -398,6 +400,7 @@ instance Collect Type where
 instance Collect Binder where collect b = collect (binderType b)
 instance Collect Index where collect _ = id
 instance Collect Scalar where collect _ = id
+instance Collect CoreValue.Value
 instance Collect Origin where collect _ = id
 instance Collect Location where collect _ = id
 instance Collect Span where collect _ = id

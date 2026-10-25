@@ -12,6 +12,7 @@ import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import LawSpec.CorePersist ()
 import LawSpec.Core.Value (Value(..))
+import LawSpec.Core.Identity (Encode, Collect)
 import LawSpec.Scalar (Scalar(..))
 
 -- | A completed prefix may occur more than once. Alternatives are visited in
@@ -30,6 +31,10 @@ data CaseDomain
 
 instance Binary FiniteCover
 instance Binary CaseDomain
+instance Encode FiniteCover
+instance Encode CaseDomain
+instance Collect FiniteCover
+instance Collect CaseDomain
 
 -- | The planner owns admission and completeness. Compression never adds a
 -- Cartesian combination and only joins adjacent, identical suffixes.
