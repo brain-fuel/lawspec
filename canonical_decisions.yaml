@@ -1031,9 +1031,11 @@ DEC-shared-finite-proof-bodies:
     Reuse the existing checked Core AllElements operation over explicit finite value data, expressing existence through the Boolean dual. The predicate remains one scoped body. Complete covers and bounded constructive candidates keep their separate completeness claims and current budgets. Guarded candidate computations are selected inside the predicate, so rejected or unvisited candidates do not force their computations. Existing totality validation remains mandatory; an unsuccessful constructive search cannot establish nonexistence.
 
     Prior-art study: SPARK separates short-circuit quantified execution from logical obligations and separately checks runtime safety. Why3's list quantifiers relate finite Boolean iteration to membership-restricted logical quantification. Lean 4 implements all/any as structural list traversal with a shared predicate. Idris 2 provides total Foldable Boolean quantifiers and explicit lazy short-circuit variants. Rocq states and proves the connection between forallb/existsb and list membership. LawSpec maps this precedent onto its already integrated AllElements evaluator and totality proof view, rather than adding a solver, proof backend or certificate format. The compiler's lowering, finite-domain construction, evaluator and existing totality checker remain trusted. No Lean, Idris, Rocq or Why3 proof checker is integrated by this change. Unknown, unsupported and incomplete outcomes remain explicit, and optional law verification does not disable definition validation.
+
+    Indexed mixed-candidate selection also shares the Present constructor outside each plain-value subtree, keeping the selected computation inside its original conditional. It never precomputes a table of effectful values. Lean's preprocessing documentation explicitly requires preserving operational behavior when rewriting proof terms; LawSpec checks rejected and unvisited adapter calls independently through its evaluator and native execution. This is a compiler transformation under the same trust boundary, with unchanged candidate order, completeness limits and unknown results.
   opened: 0.31.0
   decided: 0.31.0
-  refs: [spark-quantifier-execution-proof, why3-list-quantifiers, lean-list-quantifiers, idris-list-quantifiers, rocq-list-quantifiers]
+  refs: [spark-quantifier-execution-proof, why3-list-quantifiers, lean-list-quantifiers, idris-list-quantifiers, rocq-list-quantifiers, lean-preprocessing-operational-behavior]
 
 DEC-component-edn:
   status: decided

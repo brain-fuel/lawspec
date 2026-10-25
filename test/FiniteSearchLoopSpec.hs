@@ -8,7 +8,7 @@ import Control.Monad (forM_)
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core as C
 import LawSpec.Core.Validate (validateProgram)
-import LawSpec.Core.Quantification (lowerSearchProof)
+import LawSpec.Core.Quantification (lowerSearchProof, lowerSearchPropositionCandidates)
 import LawSpec.Core.Search (Candidate(..))
 import LawSpec.Core.Eval (evaluate)
 import LawSpec.Scalar (Scalar(..))
@@ -119,5 +119,32 @@ test_finiteSearchHasOneCheckedBody = describe "finite search execution loops" $ 
       Right (C.Equation _ claim _) -> evaluate 64 (\_ _ -> Left "unexpected adapter") [] claim
         `shouldBe` Right (SBool True)
       other -> expectationFailure (show other)
+  it "shares optional selection envelopes while retaining lazy candidate calls and outcome order" $ do
+    let origin = C.GeneratedFrom (C.Id "mixed-selection")
+        byte = C.scalarType "Int8"
+        bool = C.scalarType "Bool"
+        binder = C.Binder (C.Id "candidate") "candidate" byte
+        local = C.Expr byte (C.Local (C.binderId binder)) origin
+        number n = C.Expr byte (C.Constant (SInteger "Int8" n)) origin
+        call name args = C.Expr byte (C.ExternalCall (C.Id name) args) origin
+        poison = call "must-not-run" []
+        rejected = CandidateGuard (C.Expr bool (C.Constant (SBool False)) origin) (Candidate poison)
+        candidates = rejected : [Candidate (call "visit" [number n]) | n <- [0..63]] ++ [Candidate poison]
+        domain _ = Right Nothing
+        search _ _ = Right candidates
+    forM_ [0,31,63] $ \target -> do
+      let proposition = C.Quantified ForSome (C.Quantifier binder [] [])
+            (C.Equation (C.Numeric byte) local (number target))
+          adapter (C.Id "visit") [SInteger "Int8" n]
+            | n <= target = Right (SInteger "Int8" n)
+          adapter _ _ = Left "forced a rejected, out-of-order or unvisited candidate"
+          lowered = [ lowerSearchProof domain search 4096 66 (C.Id "mixed-selection") [] proposition
+                    , lowerSearchPropositionCandidates domain search 4096 66 (C.Id "mixed-selection") [] proposition ]
+      forM_ lowered $ \result -> case result of
+        Right (C.Equation _ claim _) -> do
+          evaluate 64 adapter [] claim `shouldBe` Right (SBool True)
+          let envelopes = [() | C.Expr _ (C.Construct (C.Id "Maybe::Present") _) _ <- descend claim]
+          length envelopes `shouldSatisfy` (< 12)
+        other -> expectationFailure (show other)
   where
     descend expression = expression : concatMap descend (C.children expression)

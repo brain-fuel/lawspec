@@ -327,12 +327,21 @@ candidateSelection origin binder candidates = (index,selected)
     absent = Expr optional (Construct (Id "Maybe::Absent") []) origin
     present value = Expr optional (Construct (Id "Maybe::Present") [value]) origin
     select _ [] = absent
+    select lower choices | Just values <- traverse plain choices = present (selectValue lower values)
     select _ [candidate] = applyCandidate candidate present absent
-    select lower choices = let
+    select lower choices = choose optional select lower choices
+    plain (Candidate value) = Just value
+    plain _ = Nothing
+    -- Share the Maybe envelope, never the candidate computations: each branch
+    -- remains under its original indexed condition. In particular, moving an
+    -- adapter call into an eager value table would change search semantics.
+    selectValue _ [value] = value
+    selectValue lower values = choose (binderType binder) selectValue lower values
+    choose ty descend lower choices = let
       (left,right) = splitAt (length choices `quot` 2) choices
       midpoint = lower + toInteger (length left)
       condition = Expr (scalarType "Bool") (Binary Less (Numeric integer) position (ordinal midpoint)) origin
-      in Expr optional (If condition (select lower left) (select midpoint right)) origin
+      in Expr ty (If condition (descend lower left) (descend midpoint right)) origin
     selected = select 0 candidates
 -- | Keep the candidate body outside its domain. Consecutive constants use the
 -- existing half-open range plus the final value, so a bounded maximum needs
