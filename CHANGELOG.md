@@ -13,6 +13,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The installed npm package declares its own Go module boundary, so a host
   application's `go test ./...` does not collect the bundled example adapters
   before those examples have been generated.
+- Rust groups block-like operands where its statement grammar requires it,
+  including comparisons between record fields lowered to `match` expressions.
+- Persistent layout caches preserve shared document graphs when loading them,
+  avoiding the memory expansion caused by decoding each use as a separate
+  tree. Existing compiler cache entries are recomputed; generated code and
+  semantic identities are unchanged.
 
 ### Changed
 
