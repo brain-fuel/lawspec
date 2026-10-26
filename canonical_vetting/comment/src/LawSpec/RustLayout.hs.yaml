@@ -34,6 +34,9 @@ decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/de
 decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/expr:
   digest: sha256:fb9173a4572c072e
   verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/expressionWithBlock:
+  digest: sha256:8f0694cb9f2a8248
+  verdict: pending
 decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/extendable:
   digest: sha256:84fb9b9e80e4b9bc
   verdict: pending
