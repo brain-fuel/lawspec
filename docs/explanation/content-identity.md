@@ -447,3 +447,28 @@ remain unchanged. Tests cover deep shared alternatives, separately constructed
 trees, layout and literal round trips, truncation, stale versions, malformed
 nodes, forward/cyclic references and real cache-miss recomputation. Kafka
 measurements compare complete responses across cache-cold and cache-warm runs.
+
+On the 25 October 2026 macOS/aarch64 Kafka consumer probe (111 KiB of package
+source, seven targets), the largest recorded process RSS was:
+
+| Layout cache | Requests in a fresh WASM reactor | Result | Largest observed RSS |
+| --- | --- | --- | --- |
+| Tree, empty cache | All seven targets | Completed | 3.41 GB |
+| Tree, populated cache | Rust | RTS out of memory | 4.17 GB |
+| Graph, empty cache | All seven targets | Completed | 1.84 GB |
+| Graph, populated cache | All seven targets | Completed | 2.03 GB |
+
+The heap ceiling remained 3584 MiB. The graph warm run completed in 425.9
+seconds; runs overlapped other release work, so these are diagnostic timings.
+Native Rust cold-cache maximum residency fell from 2.416 GB to 1.045 GB.
+A fresh native process also replayed all seven populated target caches, with
+1.232 GB maximum residency. Overall compilation allocation remains high;
+this comparison establishes the persistence memory improvement.
+
+The 277 Rust function entries shrank from 137,235,027 to 2,905,138 encoded
+bytes. All 277 function entries and all 38 Rust data entries were byte-identical
+between native and WASM, with matching key sets. Complete generated responses
+matched across native, cold WASM and warm WASM for every target, including
+all generated source and the 79 test-manifest entries per target. These checks
+establish generation and cache equivalence; native execution and provider
+conformance have separate evidence.
