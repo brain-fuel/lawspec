@@ -388,7 +388,8 @@ tree. Show-weighted caches therefore inspect at most their existing budget plus
 one structural character, retaining the same weights for ordinary entries.
 Admission happens before persistence. An oversized chunk is returned unchanged
 and recomputed when requested again; it is stored in neither RAM nor the disk
-cache. Admitted chunks retain their existing Binary format and reuse behavior.
+cache. Admitted chunks retain their reuse behavior; structured documents use
+the shared encoding described below.
 
 This is a resource bound, not normalization or verification. It changes no Core
 identity, source bytes, mandatory definition check, proof receipt or execution
@@ -405,3 +406,44 @@ persistent cold/warm processes completed in 35.70/37.44 seconds, respectively;
 all four responses were byte-identical. These are diagnostic measurements,
 not fixture startup budgets or a native/WASM parity receipt. Oversized layout
 chunks deliberately forgo reuse, so a warm request need not be faster.
+
+### Shared layout persistence
+
+Layout alternatives also require sharing when read from disk. The Kafka
+contract exposed a second problem: generic tree serialization wrote 131 MiB
+of Rust function documents, then rebuilt separate copies of every repeated
+alternative on a cache hit. A fresh WASM reactor generated all seven targets
+with an empty cache, while a fresh reactor reading the populated cache failed
+on the Rust request with `rts_schedulerLoop: out of memory`. The 3584 MiB heap
+ceiling was unchanged.
+
+The precedent is GHC's [interface-file deduplication tables](https://github.com/ghc/ghc/blob/master/compiler/GHC/Iface/Binary.hs),
+which serialize repeated values through indices and restore sharing while
+reading. LawSpec uses `Data.Binary` primitives and `containers` for its existing
+`Doc` representation; it does not integrate GHC's interface-file backend.
+The small custom codec is needed because generic `Binary Doc` treats shared
+alternatives as a tree.
+
+An `LSDG` marker and version precede a postorder table. Nodes are interned by
+exact constructor, literal payload and child indices. Alternative order is
+preserved. Every decoded child must precede its parent, so forward references,
+missing references and cycles fail. Counts are checked against remaining bytes
+before lists are allocated; integer and character ranges are checked too.
+Character code points preserve literal contents, including surrogate code
+points in internal target documents. Old or malformed entries are cache
+misses and are recomputed.
+
+The encoder uses [GHC stable names](https://github.com/ghc/ghc/blob/ghc-9.10.3-release/libraries/ghc-internal/src/GHC/Internal/StableName.hs)
+only to avoid revisiting an already evaluated physical subtree. Stable-name
+hash collisions are checked with stable-name equality. Exact structural
+interning decides node equality and deterministic first-encounter numbering;
+runtime addresses never appear in bytes, content hashes or proof identities.
+Separately allocated equal trees encode identically. The decoder restores
+sharing within an entry; it does not promise sharing between separate entries.
+
+This trust boundary is internal cache serialization. Definition admission,
+verification, evidence status, logical content identity and generated source
+remain unchanged. Tests cover deep shared alternatives, separately constructed
+trees, layout and literal round trips, truncation, stale versions, malformed
+nodes, forward/cyclic references and real cache-miss recomputation. Kafka
+measurements compare complete responses across cache-cold and cache-warm runs.

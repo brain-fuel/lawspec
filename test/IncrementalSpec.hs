@@ -12,6 +12,9 @@ import qualified LawSpec.Code.ECMAScript as ECMAScript
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified LawSpec.Code.Doc as Doc
 import qualified Data.Binary as Binary
+import qualified Data.Binary.Put as BinaryPut
+import Data.Either (isLeft)
+import Data.Int (Int64)
 import qualified Control.Monad.State.Strict as State
 import Data.Version (showVersion)
 import Paths_lawspec (version)
@@ -146,6 +149,14 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     run first (Doc.text "cached") `shouldBe` "cached"
     second <- newPersistentTableByShow "document" 256
     run second (error "small structured document was not persisted") `shouldBe` "cached"
+    [scope] <- listDirectory root
+    let folder = root </> scope </> "document"
+    [entry] <- listDirectory folder
+    B.writeFile (folder </> entry) (B.pack [1,0,0,0,0])
+    rebuilt <- newPersistentTableByShow "document" 256
+    run rebuilt (Doc.text "recomputed") `shouldBe` "recomputed"
+    restored <- newPersistentTableByShow "document" 256
+    run restored (error "recomputed document was not persisted") `shouldBe` "recomputed"
     removePathForcibly root
   it "gives each program the same result whatever was compiled before" $ do
     let (one, two) = programs "order"
@@ -205,6 +216,59 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       selected (Surface.ConstructLit "Score" [Surface.Number 1]) [] `shouldContain` ["Score"]
       selected (Surface.Annotate (Surface.Var "input") (Surface.Named "Wide")) [] `shouldContain` ["Wide"]
   describe "structured emission chunks" $ do
+    it "persists deep shared layout alternatives as a bounded deterministic graph" $ do
+      let shared = iterate (\child -> Doc.bestFit [child,child]) (Doc.text "leaf") !! 60
+          document = Doc.bestFit [Doc.text "selected",shared]
+          encoded = Binary.encode document
+          restored = Binary.decode encoded :: Doc.Doc
+      B.length encoded `shouldSatisfy` (< 8192)
+      Binary.encode restored `shouldBe` encoded
+      Doc.render (Doc.Pretty 80) restored `shouldBe` "selected"
+      let separate 0 salt = Doc.text (drop (salt - salt) "leaf")
+          separate n salt = Doc.bestFit [separate (n - 1) (2 * salt),separate (n - 1) (2 * salt + 1)]
+          repeated = iterate (\child -> Doc.bestFit [child,child]) (Doc.text "leaf") !! 12
+      Binary.encode repeated `shouldBe` Binary.encode (separate (12 :: Int) (1 :: Int))
+    it "round-trips every public layout decision and literal without changing rendering" $ do
+      let a = Doc.text "left"
+          b = Doc.utf8Text "右\x0301"
+          c = Doc.text "right"
+          documents = [mempty,a,b,a <> b,Doc.hardline,Doc.softline,Doc.softbreak,
+            Doc.nest 3 a,Doc.group (a <> Doc.softline <> b),Doc.prefixChoice "left" a b,
+            Doc.layoutChoice a b,Doc.multiline a,Doc.flow [a,b],Doc.firstLineWidth 3 a,
+            Doc.hang 2 a b,Doc.whenBroken a,Doc.parens a,Doc.bestFit [a,b],
+            Doc.operation [a,b] ["+"],Doc.prefixed "!" a,Doc.lambdaBody a,
+            Doc.statementValue (Doc.parens a),Doc.delimitTrailing 2 "(" ")" [a,b],
+            Doc.flatReserve 3,Doc.fitsIndented 2 7 a b,Doc.fitsIndentedTwice 7 a b,
+            Doc.narrow 2 a,Doc.fullWidth a,Doc.text ['\xD800','\x10FFFF','\0'],
+            Doc.prefer (Doc.NextLineValue True 2) a b b a,
+            Doc.prefer (Doc.ArmBody False) a b b a,
+            Doc.prefer (Doc.ChainLast Nothing) a b b a,
+            Doc.prefer (Doc.ChainLast (Just 3)) a b b c]
+      forM_ documents $ \document -> do
+        let restored = Binary.decode (Binary.encode document) :: Doc.Doc
+        restored `shouldBe` document
+        forM_ [Doc.Pretty 80,Doc.Pretty 5,Doc.PrettyTabs 16,Doc.PrettyDisplay 8,Doc.PrettyPoints 8,Doc.Compact,Doc.CompactTabs] $ \layout ->
+          Doc.render layout restored `shouldBe` Doc.render layout document
+    it "rejects stale, truncated, cyclic, forward and oversized document cache data" $ do
+      let packet count nodes root = BinaryPut.runPut $ do
+            BinaryPut.putWord32be 0x4c534447
+            BinaryPut.putWord8 1
+            BinaryPut.putWord32be count
+            sequence_ nodes
+            BinaryPut.putWord32be root
+          node tag refs = do
+            BinaryPut.putWord8 tag
+            BinaryPut.putWord32be 0
+            BinaryPut.putWord32be 0
+            BinaryPut.putWord32be (fromIntegral (length refs))
+            mapM_ BinaryPut.putWord32be refs
+          rejected bytes = (Binary.decodeOrFail bytes :: Either (B.ByteString,Int64,String) (B.ByteString,Int64,Doc.Doc)) `shouldSatisfy` isLeft
+          valid = Binary.encode (Doc.text "literal")
+      forM_ [0 .. B.length valid - 1] $ \size -> rejected (B.take size valid)
+      forM_ [B.pack [1,0,0,0,0],B.take 4 valid <> B.singleton 2 <> B.drop 5 valid,packet 1 [node 3 [0,0]] 0,
+        packet 2 [node 3 [1,1],node 0 []] 0,packet 1 [node 3 [42,42]] 0,
+        packet 1 [node 0 []] 1,packet 1 [node 255 []] 0,
+        packet 1 [node 3 []] 0,packet 0 [] 0,packet maxBound [] 0] rejected
     it "keeps helper names distinct when a friendly name equals another type's digest fallback" $ do
       let graph = dependencyGraph [] []
           int = C.Constructor "Int32" []
