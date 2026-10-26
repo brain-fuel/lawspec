@@ -1,6 +1,7 @@
--- | Code layout is independent of syntax, inference, target runtimes, and IO.
+-- | Code layout is independent of syntax, inference and target runtimes.
 -- Emitters supply tokens and legal break points; the renderer never reparses
 -- code or rewrites whitespace inside tokens (including string literals).
+-- Rendering is pure; internal persistence observes sharing only to avoid work.
 module LawSpec.Code.Doc
   ( Doc, Layout(..), text, utf8Text, utf8Length, displayWidth, hardline, softline, softbreak
   , nest, group, multiline, prefixChoice, layoutChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment, mapText
@@ -10,10 +11,18 @@ module LawSpec.Code.Doc
   ) where
 
 import Data.List (intersperse, sort)
-import Data.Binary (Binary)
+import Data.Binary (Binary(..))
+import qualified Data.Binary.Get as BG
+import qualified Data.Binary.Put as BP
 import GHC.Generics (Generic)
 import Data.Char (ord)
 import qualified Data.IntMap.Strict as IM
+import qualified Data.Map.Strict as M
+import qualified Control.Monad.State.Strict as ST
+import Control.Monad (replicateM, when)
+import Control.Exception (evaluate)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName, hashStableName)
 import LawSpec.DisplayWidthData (displayWidthRanges)
 
 -- | Generated code is laid out by the compiler itself, never by an external
@@ -51,7 +60,193 @@ data Doc
   | StopHere
   deriving (Eq, Show, Generic)
 
-instance Binary Doc
+-- Persistence must preserve sharing between layout alternatives. Generic tree
+-- encoding expands the same subtree at every use, and hydration then retains
+-- every copy. The cache instead stores exact structural nodes in postorder.
+-- First-encounter numbering is independent of addresses and runtime sharing.
+-- Stable names only avoid walking a physically shared subtree a second time;
+-- the structural map decides equality, so hash collisions cannot merge nodes.
+-- This internal cache format changes neither proof nor content identities.
+instance Binary Doc where
+  put document = do
+    let (nodes, root) = documentGraph document
+    BP.putWord32be 0x4c534447 -- LSDG
+    BP.putWord8 1
+    putCount nodes
+    mapM_ putDocNode nodes
+    BP.putWord32be (fromIntegral root)
+  get = do
+    marker <- BG.getWord32be
+    version <- BG.getWord8
+    when (marker /= 0x4c534447 || version /= 1) (fail "unsupported document cache encoding")
+    count <- getCount 13
+    when (count == 0) (fail "empty document cache graph")
+    let readNodes index table
+          | index == count = pure table
+          | otherwise = do
+              node@(DocNode _ _ _ refs) <- getDocNode
+              children <- mapM (\ref -> case IM.lookup ref table of
+                Just child -> pure child
+                Nothing -> fail "document cache has a forward, cyclic or missing reference") refs
+              document <- either fail pure (restoreDocNode node children)
+              readNodes (index + 1) (IM.insert index document table)
+    table <- readNodes 0 IM.empty
+    root <- getReference
+    maybe (fail "document cache root is missing") pure (IM.lookup root table)
+
+-- Exact, shallow keys: a constructor, its payload, and earlier child indices.
+-- No rendered source or probabilistic digest participates in interning.
+data DocNode = DocNode !Int [String] [Int] [Int] deriving (Eq, Ord)
+data DocGraph = DocGraph
+  { graphNodes :: [DocNode], graphNext :: !Int, graphStructural :: M.Map DocNode Int
+  , graphPhysical :: IM.IntMap [(StableName Doc, Int)] }
+
+documentGraph :: Doc -> ([DocNode], Int)
+documentGraph document = unsafePerformIO $ do
+  (root, graph) <- ST.runStateT (intern document) (DocGraph [] 0 M.empty IM.empty)
+  pure (reverse (graphNodes graph), root)
+  where
+    intern :: Doc -> ST.StateT DocGraph IO Int
+    intern original = do
+      value <- ST.liftIO (evaluate original)
+      stable <- ST.liftIO (makeStableName value)
+      previous <- ST.gets (lookup stable . IM.findWithDefault [] (hashStableName stable) . graphPhysical)
+      case previous of
+        Just index -> pure index
+        Nothing -> do
+          node <- case value of
+            Empty -> pure (DocNode 0 [] [] [])
+            Text s -> pure (DocNode 1 [s] [] [])
+            Utf8Text s -> pure (DocNode 2 [s] [] [])
+            Append a b -> DocNode 3 [] [] <$> mapM intern [a,b]
+            Break s -> pure (DocNode 4 (maybe [] pure s) [] [])
+            Nest n a -> DocNode 5 [] [n] <$> mapM intern [a]
+            Group a -> DocNode 6 [] [] <$> mapM intern [a]
+            PrefixChoice s a b -> DocNode 7 [s] [] <$> mapM intern [a,b]
+            LayoutChoice a b -> DocNode 8 [] [] <$> mapM intern [a,b]
+            Multiline a -> DocNode 9 [] [] <$> mapM intern [a]
+            Flow xs -> DocNode 10 [] [] <$> mapM intern xs
+            FlowTail xs -> DocNode 11 [] [] <$> mapM intern xs
+            FirstLineWidth n a -> DocNode 12 [] [n] <$> mapM intern [a]
+            Hang n a b -> DocNode 13 [] [n] <$> mapM intern [a,b]
+            WhenBroken a -> DocNode 14 [] [] <$> mapM intern [a]
+            Parens a -> DocNode 15 [] [] <$> mapM intern [a]
+            BestFit xs -> DocNode 16 [] [] <$> mapM intern xs
+            Operation xs ops -> DocNode 17 ops [] <$> mapM intern xs
+            Prefixed s a -> DocNode 18 [s] [] <$> mapM intern [a]
+            ParenthesiseIfFits a -> DocNode 19 [] [] <$> mapM intern [a]
+            Omittable xs s a -> DocNode 20 [s] [] <$> mapM intern (xs ++ [a])
+            FlatReserve n -> pure (DocNode 21 [] [n] [])
+            FitsIndented n m a b -> DocNode 22 [] [n,m] <$> mapM intern [a,b]
+            Prefer p a b c d -> DocNode 23 [] (preferenceNumbers p) <$> mapM intern [a,b,c,d]
+            Narrow n a -> DocNode 24 [] [n] <$> mapM intern [a]
+            FullWidth a -> DocNode 25 [] [] <$> mapM intern [a]
+            FitsIndentedTwice n a b -> DocNode 26 [] [n] <$> mapM intern [a,b]
+            StopHere -> pure (DocNode 27 [] [] [])
+          known <- ST.gets (M.lookup node . graphStructural)
+          index <- case known of
+            Just old -> pure old
+            Nothing -> do
+              next <- ST.gets graphNext
+              ST.modify' (\s -> s { graphNodes = node : graphNodes s, graphNext = next + 1
+                                  , graphStructural = M.insert node next (graphStructural s) })
+              pure next
+          ST.modify' (\s -> s { graphPhysical = IM.insertWith (++) (hashStableName stable) [(stable,index)] (graphPhysical s) })
+          pure index
+{-# NOINLINE documentGraph #-}
+
+preferenceNumbers :: Preference -> [Int]
+preferenceNumbers preference = case preference of
+  NextLineValue chain tried -> [0, if chain then 1 else 0, tried]
+  ArmBody extended -> [1, if extended then 1 else 0]
+  ChainLast Nothing -> [2,0]
+  ChainLast (Just n) -> [2,1,n]
+
+restoreDocNode :: DocNode -> [Doc] -> Either String Doc
+restoreDocNode (DocNode tag strings numbers _) children = case (tag,strings,numbers,children) of
+  (0,[],[],[]) -> pure Empty
+  (1,[s],[],[]) -> pure (Text s)
+  (2,[s],[],[]) -> pure (Utf8Text s)
+  (3,[],[],[a,b]) -> pure (Append a b)
+  (4,[],[],[]) -> pure (Break Nothing)
+  (4,[s],[],[]) -> pure (Break (Just s))
+  (5,[],[n],[a]) -> pure (Nest n a)
+  (6,[],[],[a]) -> pure (Group a)
+  (7,[s],[],[a,b]) -> pure (PrefixChoice s a b)
+  (8,[],[],[a,b]) -> pure (LayoutChoice a b)
+  (9,[],[],[a]) -> pure (Multiline a)
+  (10,[],[],xs) -> pure (Flow xs)
+  (11,[],[],xs) -> pure (FlowTail xs)
+  (12,[],[n],[a]) -> pure (FirstLineWidth n a)
+  (13,[],[n],[a,b]) -> pure (Hang n a b)
+  (14,[],[],[a]) -> pure (WhenBroken a)
+  (15,[],[],[a]) -> pure (Parens a)
+  (16,[],[],xs) -> pure (BestFit xs)
+  (17,ops,[],xs) -> pure (Operation xs ops)
+  (18,[s],[],[a]) -> pure (Prefixed s a)
+  (19,[],[],[a]) -> pure (ParenthesiseIfFits a)
+  (20,[s],[],xs) | a:rest <- reverse xs -> pure (Omittable (reverse rest) s a)
+  (21,[],[n],[]) -> pure (FlatReserve n)
+  (22,[],[n,m],[a,b]) -> pure (FitsIndented n m a b)
+  (23,[],[0,chain,tried],[a,b,c,d]) | chain `elem` [0,1] -> pure (Prefer (NextLineValue (chain == 1) tried) a b c d)
+  (23,[],[1,extended],[a,b,c,d]) | extended `elem` [0,1] -> pure (Prefer (ArmBody (extended == 1)) a b c d)
+  (23,[],[2,0],[a,b,c,d]) -> pure (Prefer (ChainLast Nothing) a b c d)
+  (23,[],[2,1,n],[a,b,c,d]) -> pure (Prefer (ChainLast (Just n)) a b c d)
+  (24,[],[n],[a]) -> pure (Narrow n a)
+  (25,[],[],[a]) -> pure (FullWidth a)
+  (26,[],[n],[a,b]) -> pure (FitsIndentedTwice n a b)
+  (27,[],[],[]) -> pure StopHere
+  _ -> Left "invalid document cache node"
+
+-- Every count is checked against remaining bytes before allocating a list.
+-- Explicit fixed-width fields keep the cache deterministic on native/WASM.
+putCount :: [a] -> BP.Put
+putCount = BP.putWord32be . fromIntegral . length
+
+getCount :: Integer -> BG.Get Int
+getCount minimumBytes = do
+  count <- BG.getWord32be
+  available <- BG.remaining
+  when (toInteger count > toInteger (maxBound :: Int) || toInteger count * minimumBytes > toInteger available)
+    (fail "document cache length exceeds its input")
+  pure (fromIntegral count)
+
+getReference :: BG.Get Int
+getReference = do
+  value <- BG.getWord32be
+  when (toInteger value > toInteger (maxBound :: Int)) (fail "document cache reference exceeds this machine")
+  pure (fromIntegral value)
+
+putDocNode :: DocNode -> BP.Put
+putDocNode (DocNode tag strings numbers refs) = do
+  BP.putWord8 (fromIntegral tag)
+  putCount strings
+  mapM_ (\s -> putCount s >> mapM_ (BP.putWord32be . fromIntegral . ord) s) strings
+  putCount numbers
+  mapM_ (BP.putInt64be . fromIntegral) numbers
+  putCount refs
+  mapM_ (BP.putWord32be . fromIntegral) refs
+
+getDocNode :: BG.Get DocNode
+getDocNode = do
+  tag <- BG.getWord8
+  when (tag > 27) (fail "unknown document cache node")
+  stringCount <- getCount 4
+  strings <- replicateM stringCount $ do
+    count <- getCount 4
+    replicateM count $ do
+      point <- BG.getWord32be
+      when (point > 0x10ffff) (fail "invalid document cache character")
+      pure (toEnum (fromIntegral point))
+  numberCount <- getCount 8
+  numbers <- replicateM numberCount $ do
+    value <- BG.getInt64be
+    when (toInteger value < toInteger (minBound :: Int) || toInteger value > toInteger (maxBound :: Int))
+      (fail "document cache number exceeds this machine")
+    pure (fromIntegral value)
+  refCount <- getCount 4
+  refs <- replicateM refCount getReference
+  pure (DocNode (fromIntegral tag) strings numbers refs)
 
 -- | How rustfmt chooses between a right-hand side on the same line and on
 -- the next: for a let's value, and for a match arm's body (which stays on
