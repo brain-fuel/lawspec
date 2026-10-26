@@ -8,6 +8,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.31.0] - 2026-10-25
 
+### Fixed
+
+- The installed npm package declares its own Go module boundary, so a host
+  application's `go test ./...` does not collect the bundled example adapters
+  before those examples have been generated.
+
 ### Changed
 
 - Complete and bounded scoped searches share one typed candidate body and enumerate

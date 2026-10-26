@@ -37,6 +37,7 @@
              "bin",
              "core.wasm",
              "core_jsffi.js",
+             "go.mod",
              "README.md",
              "CHANGELOG.md",
              "LICENSE",

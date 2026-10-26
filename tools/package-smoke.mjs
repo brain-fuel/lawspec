@@ -76,6 +76,21 @@ try {
   );
   await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
     '--prefix', path.join(root, 'offline-installation'), archive]);
+  // Go must not collect the bundled, ungenerated example adapters from an
+  // enclosing application's ./... scan. Its module boundary is shipped even
+  // when Go itself is unavailable to this smoke run.
+  await readFile(path.join(app, 'node_modules/lawspec/go.mod'), 'utf8');
+  let go;
+  try { go = await exec('go', ['version'], {env}); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (go) {
+    await writeFile(path.join(app, 'go.mod'), 'module example.com/npm-consumer\n\ngo 1.25.0\n');
+    await writeFile(path.join(app, 'consumer.go'), 'package consumer\n');
+    await run('go', ['test', './...'], app);
+    await rm(path.join(app, 'go.mod'));
+    await rm(path.join(app, 'consumer.go'));
+    console.log('Installed npm package is isolated from its Go host module');
+  } else console.log('Go host-module check unavailable: go is not on PATH');
   const cli = path.join(app, "node_modules/lawspec/bin/lawspec.mjs");
   // Init deliberately selects no optional law checks. This smoke run opts in
   // before exercising the generated native tests.
