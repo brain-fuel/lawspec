@@ -103,6 +103,18 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
   it "keeps a definition over Float64 dynamic" $ withProgram $ \p -> do
     let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
     any (`M.member` typedDefinitions plan) (named p "half") `shouldBe` False
+  it "keeps Rust record projections inside their enclosing comparison" $ do
+    source <- readFile "test/fixtures/canonical-block-operands.lawspec"
+    p <- either (fail . show) pure (compileCore 64 defaultGeneration [Source "block-operands.lawspec" source])
+    let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+        selected = named p "wellFormedRange"
+    selected `shouldSatisfy` (not . null)
+    all (`M.member` typedDefinitions plan) selected `shouldBe` True
+    typed <- either fail pure (emitRustTyped (C.programDataDeclarations p) (C.programUnits p))
+    forM_ [D.Compact, D.Pretty 100] $ \layout -> do
+      let rendered = D.render layout (rustTypedModule typed)
+      rendered `shouldSatisfy` isInfixOf "(match &*selection.0"
+      unwords (words rendered) `shouldSatisfy` isInfixOf "}) < match &*selection.0"
   it "types a stateful handler whose state and clauses are typed" $ withProgram $ \p -> do
     let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
     -- The handler, and the importing unit's copy of it.

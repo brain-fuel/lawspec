@@ -66,6 +66,7 @@ cast :: Expr -> String -> Expr
 cast e = Cast (case e of
   Infix {} -> Paren e
   Closure {} -> Paren e
+  _ | expressionWithBlock e -> Paren e
   _ -> e)
 
 -- | An expression as a postfix or prefix operator's operand.
@@ -111,12 +112,17 @@ precedence op = case op of
   _ | op `elem` ["*", "/", "%"] -> 11
   _ -> 12
 
--- | An infixOp expression, parenthesising an operand only where Rust's
--- precedence needs it.
+-- | An infix expression, grouping operands where Rust's precedence or
+-- statement grammar requires it.
 infixOp :: String -> Expr -> Expr -> Expr
-infixOp op a b = Infix p op (wrap (p - 1) a) (wrap p b)
+infixOp op a b = Infix p op (wrap (p - 1) left) (wrap p b)
   where
     p = precedence op
+    -- A leading block-like operand can be read as a complete statement,
+    -- including in a match arm's tail block. This is a grammar restriction,
+    -- independent of operator precedence: statement.expr.restriction-semicolon
+    -- in https://doc.rust-lang.org/reference/statements.html.
+    left = if expressionWithBlock a then Paren a else a
     -- Comparisons do not chain in Rust, so a comparison's operand that is
     -- itself a comparison keeps its parentheses.
     -- A cast is parenthesised too, as `x as T < y` would read < as the
@@ -126,6 +132,16 @@ infixOp op a b = Infix p op (wrap (p - 1) a) (wrap p b)
       Cast {} -> Paren e
       Closure {} -> Paren e
       _ -> e
+
+-- | Rust's ExpressionWithBlock category, represented by this expression AST.
+-- Grouping it as an operand keeps it within the surrounding expression when
+-- that expression occurs where a statement is also permitted.
+expressionWithBlock :: Expr -> Bool
+expressionWithBlock e = case e of
+  Block {} -> True
+  If {} -> True
+  Match {} -> True
+  _ -> False
 
 -- | One line of text, or nothing when the expression always takes several.
 flat :: Expr -> Maybe String
@@ -694,6 +710,10 @@ flatLink l = case l of
 infixDoc :: Expr -> D.Doc
 infixDoc e = case (flat e, e) of
   (Just t, _) -> oneOf ([D.text t] ++ if null closing then [broken] else closing)
+  -- A grouped control-flow operand closes immediately before its operator.
+  -- rustfmt keeps the operator and the next operand's opening on that line.
+  (Nothing, Infix _ op a@(Paren value) b) | expressionWithBlock value ->
+    expr a <> D.text (" " ++ op ++ " ") <> expr b
   -- An operation whose right operand is a block keeps the block's opening
   -- on the operator's line.
   (Nothing, Infix _ op a b@(Block _ _)) | Just l <- oneLine a -> D.text (l ++ " " ++ op ++ " ") <> expr b
