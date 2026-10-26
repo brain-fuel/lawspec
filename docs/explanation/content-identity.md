@@ -448,8 +448,9 @@ trees, layout and literal round trips, truncation, stale versions, malformed
 nodes, forward/cyclic references and real cache-miss recomputation. Kafka
 measurements compare complete responses across cache-cold and cache-warm runs.
 
-On the 25 October 2026 macOS/aarch64 Kafka consumer probe (111 KiB of package
-source, seven targets), the largest recorded process RSS was:
+On the 25 October 2026 macOS/aarch64 Kafka consumer probe (111,001 bytes of
+package source and a 354-byte consumer, seven targets), the largest recorded
+process RSS was:
 
 | Layout cache | Requests in a fresh WASM reactor | Result | Largest observed RSS |
 | --- | --- | --- | --- |
