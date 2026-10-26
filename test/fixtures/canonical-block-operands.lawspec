@@ -1,0 +1,46 @@
+unit authoring.blockOperands
+
+-- Each projection lowers to a match. Inside the Passage arm their
+-- comparison must remain one expression when it starts the arm's block.
+type PassagePlace is a record
+{
+  fromVerse of type Int32
+  toVerse of type Int32
+}
+end type
+
+type ReferenceRange is one of
+  | WholeBook
+  | Passage of type PassagePlace
+end type
+
+function wellFormedRange (reference of type ReferenceRange) -> Bool is
+  first matching case of reference:
+    when WholeBook then true
+    when Passage place then place.fromVerse < place.toVerse
+  end case
+end function
+
+law "|projected bounds form a nonempty passage| is
+  definition:
+    for all
+      (lower of type Int32 where lower >= -3 and lower <= 3)
+      (upper of type Int32 where upper >= -3 and upper <= 3) =>
+      wellFormedRange (Passage (PassagePlace record{fromVerse = lower, toVerse = upper}))
+        must be lower < upper
+    end for all
+  end definition
+
+  expect wellFormedRange (Passage (PassagePlace record{fromVerse = lower, toVerse = upper})) = expected
+  in table (lower, upper, expected):
+    row -2, 1, true
+    row 1, 2, true
+    row 1, 1, false
+    row 2, 1, false
+  end table
+end law
+
+law "|a whole book needs no verse bounds| is
+  definition: wellFormedRange WholeBook must be true end definition
+end law
+end unit

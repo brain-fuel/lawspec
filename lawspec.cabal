@@ -336,6 +336,7 @@ extra-source-files:
     test/fixtures/artifact-antlr-indexed-input.lawspec
     test/fixtures/artifact-antlr-inputs.lawspec
     test/fixtures/artifact-configuration.lawspec
+    test/fixtures/canonical-block-operands.lawspec
     test/fixtures/canonical-bounded-generators.lawspec
     test/fixtures/canonical-branch-admission.lawspec
     test/fixtures/canonical-collection-membership.lawspec

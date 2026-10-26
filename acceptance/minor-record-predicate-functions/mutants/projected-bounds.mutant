@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-block-operands.lawspec
+<<<<<<<
+    when Passage place then place.fromVerse < place.toVerse
+=======
+    when Passage place then place.fromVerse >= place.toVerse
+>>>>>>>

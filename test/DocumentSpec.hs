@@ -3,7 +3,7 @@ module DocumentSpec (test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged) wh
 
 import Test.Hspec
 import Control.Monad (forM_)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf, tails)
 import LawSpec.Common
 import LawSpec.Frontend (compileCore)
 import LawSpec.Testing (planTesting)
@@ -15,6 +15,7 @@ import qualified LawSpec.ScalaLayout as Scala
 import qualified LawSpec.ElixirCode as Elixir
 import qualified LawSpec.Swift.Code as Swift
 import qualified LawSpec.JavaExpr as Java
+import qualified LawSpec.RustLayout as Rust
 import LawSpec.JvmNames (jvmString)
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
@@ -26,6 +27,17 @@ import qualified LawSpec.PortableTestHelpers as Helpers
 -- ref:DEC-readable-output-default ref:REQ-readable-layout
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged :: Spec
 test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated code layout" $ do
+  it "groups Rust block-like operands before operators without changing their evaluation order" $ do
+    let matched = Rust.Match (Rust.atom "value") [Rust.Arm "_" Nothing (Rust.atom "left()")]
+        conditional = Rust.If (Rust.atom "flag") (Rust.atom "left()") (Just (Rust.atom "other()"))
+        scoped = Rust.Block [Rust.Let "value" (Rust.atom "left()")] (Just (Rust.atom "value"))
+    forM_ [matched, conditional, scoped] $ \left -> do
+      forM_ ["==", "!=", "<", "<=", ">", ">=", "&&", "||", "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"] $ \operator -> do
+        let result = D.render D.Compact (Rust.stmts [] (Just (Rust.infixOp operator left (Rust.atom "right()"))))
+        take 1 result `shouldBe` "("
+        unwords (words result) `shouldSatisfy` isInfixOf (") " ++ operator ++ " right()")
+        length (filter (isPrefixOf "left()") (tails result)) `shouldBe` 1
+      D.render D.Compact (Rust.expr (Rust.cast left "i64")) `shouldSatisfy` isInfixOf ") as i64"
   it "bounds unbroken Java labels and escaped payloads without embedding displayed octal escapes" $ do
     let payload = concat (replicate 50 "unbroken\\181\\000 text") ++ replicate 120 '\x1'
         readable = D.render (D.Pretty 100) (D.text "{" <> D.nest 12
