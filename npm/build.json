@@ -835,7 +835,7 @@
     "src/LawSpec/Clojure/Bridge.hs": "9af7dc05eae4adf6a40a64e210afe2b6ae695347a2c438df8a21503796fc730f",
     "src/LawSpec/Clojure/Emit.hs": "6c65577eedc13e2bd5b6fb77b3316da5bd7bc34cd4682cfef4a93ed331713253",
     "src/LawSpec/ClojureSources.hs": "e0549ff361d0db8b8d326ed75e8aaeb6653a4864edf2c57acc761c28230c4475",
-    "src/LawSpec/Code/Doc.hs": "2c40ca1149171064237895a4f84ae53923a855de5e0a1c36778f00c166bd7df7",
+    "src/LawSpec/Code/Doc.hs": "6bc9dd19a3518a7081db896fd037aebcd3c8378d07a6ed4c3adad6e6232b6fe1",
     "src/LawSpec/Code/ECMAScript.hs": "35a5579b5f2072a49ffb2e2b6a0bd650c38c54c5d0a71fd27061e85c55045dae",
     "src/LawSpec/Code/Haskell.hs": "1076c097e28314deeca887e31b1bdb0e3a00d3cb5f9918b8d5d86cb868be2e8d",
     "src/LawSpec/Code/Literal.hs": "5f83ad71a6748032eb4e6208afa9919137b77d038fa58fc18aa14a62105aba07",
@@ -1115,7 +1115,7 @@
     "wasm/cabal.project": "91ad752c055a034fff42bf1815125ce2174630a41859fe8d5c571e9a12e50b7d",
     "wasm/cabal.project.freeze": "e067df77442b8111c97b3f12cc215af5ca69668aa65f95f3ff90110c22933170",
     "wasm/lawspec-wasm.cabal": "2c15eb1728f2e26de232818c633437297d5d218ecac5fd9b694b574282f37a2c",
-    "npm/core.wasm": "f4bc422426975875b185d693e443f3178c2ba31a4da5dd43e82224e33010a748",
+    "npm/core.wasm": "3a869088e465263362697b046d9bc7c17908c568af1a2d0a723d319ae607f801",
     "npm/core_jsffi.js": "8a054ebf8dbac0402fad17c7399e444c22645bf62cc804bba0058cb9b312b6df",
     "npm/api.mjs": "d3928fad743a316a026f5d6658e75a9f390626ac3f28b182591a5e93d7cf9888",
     "npm/index.d.ts": "01f9d73d5eefaf89564e96412b07a769f5625d0f7681b7f49e20889f512fc8b4"
