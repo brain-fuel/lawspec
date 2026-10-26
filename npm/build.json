@@ -560,7 +560,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "59a74f00b3e6941c732a14f56dc0769e1673a5e82ea9a30a4a17a952827e1387",
-    "lawspec.cabal": "9bd04a135be72196747d39ecdce196ece7d83050338cf5d9f5ae849e4c695bee",
+    "lawspec.cabal": "873d8dca2578bb354880c5e7d1436b30aacd47f4ae6ca368ba4bbff8a488d46e",
     "package.yaml": "4b3d8fa10433c36645c66ca94797ed8fd2ecf7314bb5362f833497cdfa26d708",
     "runtime/LawSpecCodecs.hs": "7f5c4b13484aed6074adbe8bcfc190980d7bf517f22e2e3b52a51994a5cc159b",
     "runtime/LawSpecCollectionCodecs.hs": "12a4341bcdaee52434e37332dcd07e2b1806fe93e0cae7306367b0cd4f41e207",
@@ -1023,7 +1023,7 @@
     "src/LawSpec/RustDefinitions.hs": "ff33ff8919c0fa6029df37efea33490cdf938af8ba34c8614461c48976fdd1d5",
     "src/LawSpec/RustEmit.hs": "4c7a17e583473c24a1789e0e50bd60e0986dfb66675881e62102d90d2cd3bff8",
     "src/LawSpec/RustExpr.hs": "c7d96a3030b2a109d9db1c8428b29656dc0691cfe42063f4d5fb28631a01df01",
-    "src/LawSpec/RustLayout.hs": "4f3f9f37f02993be49004b1880659c3787ee88d16aa6b1f5e6ee51bcb4a0ee73",
+    "src/LawSpec/RustLayout.hs": "84041f454de01b88d7872c68013ad8bee328232d0dd80817eddfe32b30dc1a40",
     "src/LawSpec/RustNativeBinding.hs": "bb29f4e43d7dc22e56025288aa5e4e8c1b3d4c7f1cc0e439f70b727cb38f632b",
     "src/LawSpec/RustNativeGenerators.hs": "9b42e2ebdd26b94539b35c2f5e3e97fdca1cccf477dde04722dbc902ba947e25",
     "src/LawSpec/Scaffold.hs": "0909db833f84ecd148d9bb30ee47ceb46bac2cf387595c4a3852ecc46e565a23",
@@ -1115,7 +1115,7 @@
     "wasm/cabal.project": "91ad752c055a034fff42bf1815125ce2174630a41859fe8d5c571e9a12e50b7d",
     "wasm/cabal.project.freeze": "e067df77442b8111c97b3f12cc215af5ca69668aa65f95f3ff90110c22933170",
     "wasm/lawspec-wasm.cabal": "2c15eb1728f2e26de232818c633437297d5d218ecac5fd9b694b574282f37a2c",
-    "npm/core.wasm": "670e5a3c8fa83e1a75674cdf8c56fa3928c2b4a8b01feb985534e0b2fdb30c6c",
+    "npm/core.wasm": "f4bc422426975875b185d693e443f3178c2ba31a4da5dd43e82224e33010a748",
     "npm/core_jsffi.js": "8a054ebf8dbac0402fad17c7399e444c22645bf62cc804bba0058cb9b312b6df",
     "npm/api.mjs": "d3928fad743a316a026f5d6658e75a9f390626ac3f28b182591a5e93d7cf9888",
     "npm/index.d.ts": "01f9d73d5eefaf89564e96412b07a769f5625d0f7681b7f49e20889f512fc8b4"
