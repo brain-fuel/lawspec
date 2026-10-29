@@ -1756,8 +1756,8 @@ canonicalDefinition = do
     quantified = sourceNode "quantifier.forall" (const Nothing) $ blockP "for all" $ do
       try (keyword "for" *> keyword "all")
       ps <- some param
-      void (symbol "=>")
-      body <- defP
+      void (sourceNode "quantifier-separator" (const (Just "for all")) (symbol "=>"))
+      body <- sourceNode "quantifier-body" (const Nothing) defP
       closeP "for all"
       pure (Forall ps body)
     existential = sourceNode "quantifier.exists" (\body -> case body of Not _ -> Just "negative"; _ -> Just "positive") $ blockP "exists" $ do
@@ -1766,16 +1766,16 @@ canonicalDefinition = do
         <|> (keyword "must" *> ((True <$ (keyword "not" *> keyword "exist")) <|> (False <$ keyword "exist")))
         <|> (True <$ (keyword "does" *> keyword "not" *> keyword "exist"))
       ps <- some (optional (try (keyword "a" <|> keyword "an")) *> param)
-      keyword "such"; keyword "that"
-      body <- defP
+      sourceNode "quantifier-separator" (const (Just "exists")) (keyword "such" *> keyword "that")
+      body <- sourceNode "quantifier-body" (const Nothing) defP
       closeP "exists"
       pure ((if negative then Not else id) (Exists ps body))
     given = sourceNode "quantifier.given" (const Nothing) $ blockP "given" $ do
       keyword "given"
       ps <- some param
       guard <- optional (keyword "when" *> canonicalBoolExpr)
-      keyword "then"
-      body <- defP
+      sourceNode "quantifier-separator" (const (Just "given")) (keyword "then")
+      body <- sourceNode "quantifier-body" (const Nothing) defP
       closeP "given"
       pure (Forall ps (maybe body (\c -> Implies c body) guard))
     -- Applying a requirement is explicit, so a law and a function can have

@@ -12,10 +12,13 @@ use proptest::strategy::{Strategy, ValueTree};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-fn quote(text: &str) -> String {
+fn quote(text: &str) -> String
+{
     let mut out = String::from("\"");
-    for c in text.chars() {
-        match c {
+    for c in text.chars()
+    {
+        match c
+        {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
             c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
@@ -26,20 +29,27 @@ fn quote(text: &str) -> String {
     out
 }
 
-pub fn record(name: &str, entry: &[(&str, String)]) {
-    let Ok(directory) = std::env::var("LAWSPEC_STATS") else {
+pub fn record(name: &str, entry: &[(&str, String)])
+{
+    let Ok(directory) = std::env::var("LAWSPEC_STATS")
+    else
+    {
         return;
     };
-    if directory.is_empty() {
+    if directory.is_empty()
+    {
         return;
     }
     let _ = std::fs::create_dir_all(&directory);
     let safe: String = name
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_'
+            {
                 c
-            } else {
+            }
+            else
+            {
                 '_'
             }
         })
@@ -55,32 +65,39 @@ pub fn record(name: &str, entry: &[(&str, String)]) {
 /// The draws of one strategy value: choices from a seed proptest chooses
 /// (and shrinks toward zero), and default values sampled from proptest's
 /// own strategies with that seed.
-pub struct Draws {
+pub struct Draws
+{
     state: u64,
 }
 
-impl Draws {
-    pub fn new(seed: u64) -> Draws {
+impl Draws
+{
+    pub fn new(seed: u64) -> Draws
+    {
         Draws { state: seed }
     }
 
-    fn next(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9E3779B97F4A7C15);
+    fn next(&mut self) -> u64
+    {
+        self.state = self.state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
         z ^ (z >> 31)
     }
 
     /// A choice among n.
-    pub fn choose(&mut self, n: u64) -> u64 {
+    pub fn choose(&mut self, n: u64) -> u64
+    {
         self.next() % n
     }
 
     /// A value of the default strategy.
-    pub fn any(&mut self, strategy: &proptest::strategy::BoxedStrategy<Value>) -> Value {
+    pub fn any(&mut self, strategy: &proptest::strategy::BoxedStrategy<Value>) -> Value
+    {
         let mut bytes = [0u8; 32];
-        for chunk in bytes.chunks_mut(8) {
+        for chunk in bytes.chunks_mut(8)
+        {
             chunk.copy_from_slice(&self.next().to_le_bytes());
         }
         let rng = proptest::test_runner::TestRng::from_seed(
@@ -99,24 +116,28 @@ impl Draws {
 }
 
 /// A strategy's value, or a panic that names the harness's failure.
-pub fn drawn(value: ls::Result<Value>) -> Value {
+pub fn drawn(value: ls::Result<Value>) -> Value
+{
     value.unwrap_or_else(|error| panic!("{error}"))
 }
 
-pub fn outside(strategy: &str, name: &str, value: &Value) -> String {
+pub fn outside(strategy: &str, name: &str, value: &Value) -> String
+{
     format!(
         "the strategy {strategy} produced {value:?} for {name}, which is outside the input's refinement; a strategy may only produce values of its type"
     )
 }
 
-pub fn discarded(strategy: &str, limit: usize) -> String {
+pub fn discarded(strategy: &str, limit: usize) -> String
+{
     format!(
         "the strategy {strategy} discarded more than {limit} values; draw closer to what `such that` keeps, or allow more discards"
     )
 }
 
 #[derive(Default, Clone)]
-struct Stats {
+struct Stats
+{
     cases: usize,
     cover: BTreeMap<String, usize>,
     classes: BTreeMap<String, usize>,
@@ -126,7 +147,8 @@ struct Stats {
 
 static STATISTICS: Mutex<BTreeMap<String, Stats>> = Mutex::new(BTreeMap::new());
 
-fn text(value: &Value) -> String {
+fn text(value: &Value) -> String
+{
     let rendered = format!("{value:?}");
     match rendered
         .strip_prefix("Text(\"")
@@ -138,28 +160,35 @@ fn text(value: &Value) -> String {
 }
 
 /// What one generated case covers, classifies and labels.
-pub fn observe(law: &str, covers: &[(&str, bool)], classes: &[(&str, bool)], labels: &[Value]) {
+pub fn observe(law: &str, covers: &[(&str, bool)], classes: &[(&str, bool)], labels: &[Value])
+{
     let mut table = STATISTICS.lock().unwrap_or_else(|e| e.into_inner());
     let stats = table.entry(law.to_string()).or_default();
     stats.cases += 1;
-    for (label, holds) in covers {
-        if *holds {
+    for (label, holds) in covers
+    {
+        if *holds
+        {
             *stats.cover.entry(label.to_string()).or_default() += 1;
         }
     }
-    for (label, holds) in classes {
-        if *holds {
+    for (label, holds) in classes
+    {
+        if *holds
+        {
             *stats.classes.entry(label.to_string()).or_default() += 1;
         }
     }
-    for value in labels {
+    for value in labels
+    {
         *stats.labels.entry(text(value)).or_default() += 1;
     }
 }
 
 /// target maximize: proptest has no targeted search, so the best score is
 /// reported with the law's statistics.
-pub fn target(score: &Value, law: &str) {
+pub fn target(score: &Value, law: &str)
+{
     let value: f64 = format!("{score:?}")
         .trim_matches(|c: char| !(c.is_ascii_digit() || c == '-' || c == '.'))
         .parse()
@@ -169,7 +198,8 @@ pub fn target(score: &Value, law: &str) {
     stats.best = Some(stats.best.map_or(value, |b| b.max(value)));
 }
 
-fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, Vec<String>) {
+fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, Vec<String>)
+{
     let stats = STATISTICS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -177,16 +207,20 @@ fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, 
         .unwrap_or_default();
     let n = stats.cases;
     let percent = |k: usize| {
-        if n == 0 {
+        if n == 0
+        {
             0.0
-        } else {
+        }
+        else
+        {
             (10000.0 * k as f64 / n as f64).round() / 100.0
         }
     };
     let mut lines = vec![format!("{law}: {n} generated case(s)")];
     let mut results = Vec::new();
     let mut unmet = Vec::new();
-    for (required, label) in covers {
+    for (required, label) in covers
+    {
         let observed = percent(*stats.cover.get(*label).unwrap_or(&0));
         let met = n > 0 && observed >= *required as f64;
         lines.push(format!(
@@ -198,20 +232,24 @@ fn adequacy(law: &str, covers: &[(u32, &str)]) -> (Vec<(&'static str, String)>, 
             "{{\"label\":{},\"required\":{required},\"observed\":{observed},\"met\":{met}}}",
             quote(label)
         ));
-        if !met {
+        if !met
+        {
             unmet.push(format!(
                 "{law}: cover {required}% {} was not met ({observed}% of {n} generated cases)",
                 quote(label)
             ));
         }
     }
-    for (label, count) in &stats.classes {
+    for (label, count) in &stats.classes
+    {
         lines.push(format!("  {label}: {:.1}%", percent(*count)));
     }
-    for (label, count) in &stats.labels {
+    for (label, count) in &stats.labels
+    {
         lines.push(format!("  label {label}: {:.1}%", percent(*count)));
     }
-    if let Some(best) = stats.best {
+    if let Some(best) = stats.best
+    {
         lines.push(format!("  best target score: {best}"));
     }
     println!("{}", lines.join("\n"));
@@ -242,12 +280,17 @@ where
         let outcome = std::panic::catch_unwind(test);
         let _ = sender.send(outcome);
     });
-    let outcome = if timeout == 0 {
+    let outcome = if timeout == 0
+    {
         receiver.recv().map_err(|e| (e.to_string(), true))?
-    } else {
-        match receiver.recv_timeout(std::time::Duration::from_millis(timeout)) {
+    }
+    else
+    {
+        match receiver.recv_timeout(std::time::Duration::from_millis(timeout))
+        {
             Ok(outcome) => outcome,
-            Err(_) => {
+            Err(_) =>
+            {
                 return Err((
                     format!("{law} took longer than its timeout of {timeout} ms"),
                     true,
@@ -255,10 +298,12 @@ where
             }
         }
     };
-    match outcome {
+    match outcome
+    {
         Ok(Ok(())) => Ok(()),
         Ok(Err(error)) => Err((error, false)),
-        Err(panic) => {
+        Err(panic) =>
+        {
             let message = panic
                 .downcast_ref::<String>()
                 .cloned()
@@ -289,10 +334,12 @@ where
     let mut attempts = 0;
     let mut flaky = false;
     let mut report = Vec::new();
-    loop {
+    loop
+    {
         attempts += 1;
         let mut failure = None;
-        for _ in 0..repeat {
+        for _ in 0..repeat
+        {
             STATISTICS
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -300,28 +347,37 @@ where
             if let Err(error) = once(law, timeout, {
                 let test = test.clone();
                 move || test()
-            }) {
+            })
+            {
                 failure = Some(error);
                 break;
             }
-            if observed {
+            if observed
+            {
                 let (r, unmet) = adequacy(law, covers);
                 report = r;
-                if !unmet.is_empty() {
+                if !unmet.is_empty()
+                {
                     failure = Some((unmet.join("; "), true));
                     break;
                 }
             }
         }
-        match failure {
+        match failure
+        {
             None => break,
-            Some((message, harness)) => {
-                let message = if message.contains(law) {
+            Some((message, harness)) =>
+            {
+                let message = if message.contains(law)
+                {
                     message
-                } else {
+                }
+                else
+                {
                     format!("{law}: {message}")
                 };
-                if harness || attempts > retries {
+                if harness || attempts > retries
+                {
                     record(
                         name,
                         &[
@@ -345,7 +401,8 @@ where
     ];
     entry.extend(report);
     record(name, &entry);
-    if flaky {
+    if flaky
+    {
         println!("{law} is flaky: it failed, then passed on attempt {attempts}");
     }
     Ok(())
@@ -358,9 +415,12 @@ pub fn known_discrepancy(
     name: &str,
     reason: &str,
     test: fn() -> ls::Result<()>,
-) -> ls::Result<()> {
-    match once(law, 0, test) {
-        Err((message, _)) => {
+) -> ls::Result<()>
+{
+    match once(law, 0, test)
+    {
+        Err((message, _)) =>
+        {
             record(
                 name,
                 &[
@@ -376,7 +436,8 @@ pub fn known_discrepancy(
             );
             Ok(())
         }
-        Ok(()) => {
+        Ok(()) =>
+        {
             record(
                 name,
                 &[
@@ -394,10 +455,12 @@ pub fn known_discrepancy(
 }
 
 /// Measured, never asserted: the mean and fastest time of body.
-pub fn benchmark(name: &str, mut body: impl FnMut() -> ls::Result<()>) -> ls::Result<()> {
+pub fn benchmark(name: &str, mut body: impl FnMut() -> ls::Result<()>) -> ls::Result<()>
+{
     let started = std::time::Instant::now();
     let mut times = Vec::new();
-    while times.len() < 100000 && (started.elapsed().as_millis() < 200 || times.len() < 3) {
+    while times.len() < 100000 && (started.elapsed().as_millis() < 200 || times.len() < 3)
+    {
         let before = std::time::Instant::now();
         body()?;
         times.push(before.elapsed().as_nanos());
@@ -429,7 +492,8 @@ pub fn benchmark(name: &str, mut body: impl FnMut() -> ls::Result<()>) -> ls::Re
 /// the clock) ranks first runs next, once no other has arrived for a moment.
 pub struct Turn(String);
 
-struct Turns {
+struct Turns
+{
     running: bool,
     waiting: Vec<(u64, usize)>,
     arrived: std::time::Instant,
@@ -438,7 +502,8 @@ struct Turns {
 static TURNS: Mutex<BTreeMap<String, Turns>> = Mutex::new(BTreeMap::new());
 static TURN_FREE: std::sync::Condvar = std::sync::Condvar::new();
 
-fn turn_seed() -> u64 {
+fn turn_seed() -> u64
+{
     static SEED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
     *SEED.get_or_init(|| {
         std::env::var("LAWSPEC_SEED")
@@ -455,12 +520,14 @@ fn turn_seed() -> u64 {
 
 /// With `parallel` too, the tests start in the seeded order and then run at
 /// the same time: a test's turn ends when it starts.
-pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
+pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn
+{
     let rank =
-        ls::SplitMix64::new(turn_seed() ^ (index as u64).wrapping_mul(0x9E3779B97F4A7C15)).next();
+        ls::SplitMix64::new(turn_seed() ^ (index as u64).wrapping_mul(0x9e3779b97f4a7c15)).next();
     let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
     {
-        if !turns.contains_key(unit) {
+        if !turns.contains_key(unit)
+        {
             let seed = turn_seed();
             println!("order random seed {seed} ({unit}): LAWSPEC_SEED={seed} replays this order");
         }
@@ -473,7 +540,8 @@ pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
         entry.arrived = std::time::Instant::now();
     }
     TURN_FREE.notify_all();
-    loop {
+    loop
+    {
         let entry = turns.get_mut(unit).expect("a unit's turns");
         let first = entry.waiting.iter().min().copied();
         if !entry.running
@@ -483,11 +551,16 @@ pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
             entry.waiting.retain(|w| *w != (rank, index));
             entry.running = !parallel;
             TURN_FREE.notify_all();
-            return Turn(if parallel {
-                String::new()
-            } else {
-                unit.to_string()
-            });
+            return Turn(
+                if parallel
+                {
+                    String::new()
+                }
+                else
+                {
+                    unit.to_string()
+                },
+            );
         }
         turns = TURN_FREE
             .wait_timeout(turns, std::time::Duration::from_millis(5))
@@ -496,10 +569,13 @@ pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
     }
 }
 
-impl Drop for Turn {
-    fn drop(&mut self) {
+impl Drop for Turn
+{
+    fn drop(&mut self)
+    {
         let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(entry) = turns.get_mut(&self.0) {
+        if let Some(entry) = turns.get_mut(&self.0)
+        {
             entry.running = false;
         }
         TURN_FREE.notify_all();
@@ -508,10 +584,12 @@ impl Drop for Turn {
 
 /// parallel: how the unit's tests run at the same time. libtest runs them on
 /// its test threads (RUST_TEST_THREADS, else one per processor).
-pub fn parallelism(unit: &str) {
+pub fn parallelism(unit: &str)
+{
     static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
     let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
-    if seen.iter().any(|u| u == unit) {
+    if seen.iter().any(|u| u == unit)
+    {
         return;
     }
     seen.push(unit.to_string());

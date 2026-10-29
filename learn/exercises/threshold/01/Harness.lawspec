@@ -1,0 +1,6 @@
+harness learn.threshold.testing for learn.threshold is
+  strategy numbers :: (n :: Int32 where n >= 0 and n <= 79) is any end strategy
+  for law "|every number from zero to two hundred is below eighty|
+    use numbers for n
+  end for law
+end harness

@@ -49,11 +49,11 @@ import lawspec.runtime.LawSpecRuntime;
  * :lawspec/failure. Coming back, the Java type the model expects directs each conversion.
  * ref:DEC-clojure-over-java
  */
-@SuppressWarnings("unchecked")
-public final class LawSpecClojure
+@SuppressWarnings("unchecked") public final class LawSpecClojure
 {
   private LawSpecClojure()
-  {}
+  {
+  }
 
   public static final Keyword TAG = Keyword.intern("lawspec", "tag");
   public static final Keyword FAILURE = Keyword.intern("lawspec", "failure");
@@ -84,11 +84,8 @@ public final class LawSpecClojure
       {
         boolean afterLower =
             i > 0 && !Character.isUpperCase(name.charAt(i - 1)) && name.charAt(i - 1) != '_';
-        boolean endsAcronym =
-            i > 0
-                && Character.isUpperCase(name.charAt(i - 1))
-                && i + 1 < name.length()
-                && Character.isLowerCase(name.charAt(i + 1));
+        boolean endsAcronym = i > 0 && Character.isUpperCase(name.charAt(i - 1))
+            && i + 1 < name.length() && Character.isLowerCase(name.charAt(i + 1));
         if (afterLower || endsAcronym)
         {
           out.append('-');
@@ -171,15 +168,9 @@ public final class LawSpecClojure
   /** A value of the Java model as Clojure data. */
   public static Object toClojure(Object value)
   {
-    if (value == null
-        || value instanceof String
-        || value instanceof Boolean
-        || value instanceof Character
-        || value instanceof byte[]
-        || value instanceof Long
-        || value instanceof Double
-        || value instanceof BigDecimal
-        || value instanceof Keyword)
+    if (value == null || value instanceof String || value instanceof Boolean
+        || value instanceof Character || value instanceof byte[] || value instanceof Long
+        || value instanceof Double || value instanceof BigDecimal || value instanceof Keyword)
     {
       return value;
     }
@@ -414,10 +405,9 @@ public final class LawSpecClojure
       java.util.Collection<Object> out;
       try
       {
-        out =
-            raw.isInterface()
-                ? new java.util.ArrayDeque<>()
-                : (java.util.Collection<Object>) raw.getDeclaredConstructor().newInstance();
+        out = raw.isInterface()
+            ? new java.util.ArrayDeque<>()
+            : (java.util.Collection<Object>) raw.getDeclaredConstructor().newInstance();
       }
       catch (ReflectiveOperationException e)
       {
@@ -442,15 +432,13 @@ public final class LawSpecClojure
       return out;
     }
     if (value instanceof IPersistentMap map
-        && (raw.isRecord()
-            || raw.isInterface() && raw.isSealed()
+        && (raw.isRecord() || raw.isInterface() && raw.isSealed()
             || raw == Object.class && map.containsKey(TAG)))
     {
       return data(map, raw, arguments, bound);
     }
     // A constructor without fields may be its tag alone: :size/small.
-    if (value instanceof Keyword tag
-        && tag.getNamespace() != null
+    if (value instanceof Keyword tag && tag.getNamespace() != null
         && (raw.isRecord() || raw.isInterface() && raw.isSealed()))
     {
       return data(
@@ -468,11 +456,8 @@ public final class LawSpecClojure
     }
     if (value instanceof Keyword tag && tag.getNamespace() != null)
     {
-      return data(
-          PersistentArrayMap.createAsIfByAssoc(new Object[] {TAG, tag}),
-          Object.class,
-          new Type[0],
-          Map.of());
+      return data(PersistentArrayMap.createAsIfByAssoc(new Object[] {TAG, tag}), Object.class,
+          new Type[0], Map.of());
     }
     if (value instanceof BigInt big)
     {
@@ -488,11 +473,13 @@ public final class LawSpecClojure
     var tag = map.valAt(TAG);
     if (expected.isRecord())
     {
-      record = expected;
+      record
+      = expected;
     }
     else if (tag instanceof Keyword keyword)
     {
-      record = classOfTag(keyword);
+      record
+      = classOfTag(keyword);
       if (!expected.isAssignableFrom(record))
       {
         throw new IllegalArgumentException(keyword + " is not a " + expected.getSimpleName());
@@ -556,11 +543,8 @@ public final class LawSpecClojure
 
   private static Type resolve(Type type, Map<TypeVariable<?>, Type> bound)
   {
-    for (int depth = 0;
-        depth < 32
-            && type instanceof TypeVariable<?> v
-            && bound.containsKey(v)
-            && bound.get(v) != v;
+    for (int depth = 0; depth < 32 && type instanceof TypeVariable<?> v && bound.containsKey(v)
+        && bound.get(v) != v;
         depth++)
     {
       type = bound.get(v);
@@ -717,38 +701,34 @@ public final class LawSpecClojure
   /** A Clojure function, its namespace loaded once. */
   public static IFn var(String namespace, String name)
   {
-    return VARS.computeIfAbsent(
-        namespace + "/" + name,
-        key -> {
-          synchronized (REQUIRE)
-          {
-            REQUIRE.invoke(Clojure.read(namespace));
-          }
-          return Clojure.var(namespace, name);
-        });
+    return VARS.computeIfAbsent(namespace + "/" + name, key -> {
+      synchronized (REQUIRE)
+      {
+        REQUIRE.invoke(Clojure.read(namespace));
+      }
+      return Clojure.var(namespace, name);
+    });
   }
 
   private static Method method(Class<?> owner, String name)
   {
-    return METHODS.computeIfAbsent(
-        List.of(owner, name),
-        key -> {
-          for (Method m : owner.getMethods())
-          {
-            if (m.getName().equals(name))
-            {
-              return m;
-            }
-          }
-          for (Method m : owner.getDeclaredMethods())
-          {
-            if (m.getName().equals(name))
-            {
-              return m;
-            }
-          }
-          throw new IllegalArgumentException("no method " + name + " in " + owner.getName());
-        });
+    return METHODS.computeIfAbsent(List.of(owner, name), key -> {
+      for (Method m : owner.getMethods())
+      {
+        if (m.getName().equals(name))
+        {
+          return m;
+        }
+      }
+      for (Method m : owner.getDeclaredMethods())
+      {
+        if (m.getName().equals(name))
+        {
+          return m;
+        }
+      }
+      throw new IllegalArgumentException("no method " + name + " in " + owner.getName());
+    });
   }
 
   /**
@@ -840,10 +820,8 @@ public final class LawSpecClojure
             payload = messageProduct(product, payload);
           }
           RecordComponent[] components = type.getRecordComponents();
-          Object made =
-              components.length == 0
-                  ? type.getDeclaredConstructor().newInstance()
-                  : messageProduct(type, payload);
+          Object made = components.length == 0 ? type.getDeclaredConstructor().newInstance()
+                                               : messageProduct(type, payload);
           return new LawSpecRuntime.Fail(made);
         }
         catch (ReflectiveOperationException e)
@@ -870,18 +848,14 @@ public final class LawSpecClojure
   private static Map<String, String> types;
 
   // The generated table of the model's data types (LawSpecClojureTypes).
-  @SuppressWarnings("unchecked")
-  private static synchronized Map<String, String> dataTypes()
+  @SuppressWarnings("unchecked") private static synchronized Map<String, String> dataTypes()
   {
     if (types == null)
     {
       try
       {
-        types =
-            (Map<String, String>)
-                Class.forName(
-                        "lawspec.clojure.LawSpecClojureTypes",
-                        true,
+        types = (Map<String, String>) Class
+                    .forName("lawspec.clojure.LawSpecClojureTypes", true,
                         LawSpecClojure.class.getClassLoader())
                     .getField("TYPES")
                     .get(null);
@@ -896,18 +870,14 @@ public final class LawSpecClojure
 
   private static Map<String, String[]> bound;
 
-  @SuppressWarnings("unchecked")
-  private static synchronized Map<String, String[]> boundFailures()
+  @SuppressWarnings("unchecked") private static synchronized Map<String, String[]> boundFailures()
   {
     if (bound == null)
     {
       try
       {
-        bound =
-            (Map<String, String[]>)
-                Class.forName(
-                        "lawspec.clojure.LawSpecClojureFailures",
-                        true,
+        bound = (Map<String, String[]>) Class
+                    .forName("lawspec.clojure.LawSpecClojureFailures", true,
                         LawSpecClojure.class.getClassLoader())
                     .getField("FAILURES")
                     .get(null);

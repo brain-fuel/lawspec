@@ -85,7 +85,8 @@ class _ExecutionStatus(logging.Handler):
                 continue
             if len(matches) != 1:
                 raise pytest.UsageError(
-                    "native case belongs to multiple Prolog slots: " + item.nodeid
+                    "native case belongs to multiple Prolog slots: "
+                    + item.nodeid
                 )
             key = matches[0]
             if item.nodeid in self.collected[key]:
@@ -148,7 +149,11 @@ class _ExecutionStatus(logging.Handler):
         report = result.get_result()
         if item.nodeid in self.incomplete:
             report.user_properties.append(("lawspec.status", "incomplete"))
-        if report.failed or item.nodeid in self.incomplete or None in self.incomplete:
+        if (
+            report.failed
+            or item.nodeid in self.incomplete
+            or None in self.incomplete
+        ):
             self.failed_slots.add(self.node_slots[item.nodeid])
 
 
@@ -156,8 +161,13 @@ def _mark_incomplete(element):
     properties = element.find("properties")
     if properties is None:
         properties = ET.SubElement(element, "properties")
-    if properties.find("property[@name='lawspec.status'][@value='incomplete']") is None:
-        ET.SubElement(properties, "property", name="lawspec.status", value="incomplete")
+    if (
+        properties.find("property[@name='lawspec.status'][@value='incomplete']")
+        is None
+    ):
+        ET.SubElement(
+            properties, "property", name="lawspec.status", value="incomplete"
+        )
     # Standard JUnit consumers must also see an execution error. The property
     # carries the more precise status for LawSpec without reporting a false pass.
     if element.find("error") is None:
@@ -193,7 +203,9 @@ def _run_selected(collect_only=False):
     by_slot = {key: [] for key in selected}
     with TemporaryDirectory(prefix="lawspec-prolog-report-") as scratch:
         report = Path(scratch) / "pytest.xml"
-        files = list(dict.fromkeys(case["hostFile"] for case in selected.values()))
+        files = list(
+            dict.fromkeys(case["hostFile"] for case in selected.values())
+        )
         status = _ExecutionStatus(selected)
         logger = logging.getLogger("lawspec.prolog.incomplete")
         level = logger.level
@@ -230,7 +242,9 @@ def _run_selected(collect_only=False):
                 or any(not nodes for nodes in status.collected.values())
                 and not _exact_cases
             ):
-                raise ValueError("native test collection was empty or incomplete")
+                raise ValueError(
+                    "native test collection was empty or incomplete"
+                )
             return
         if not report.exists():
             for key, case in selected.items():
@@ -242,16 +256,16 @@ def _run_selected(collect_only=False):
         for element in observed:
             slot = element.find("properties/property[@name='lawspec.slot']")
             key = slot.get("value") if slot is not None else None
-            identity = element.find("properties/property[@name='lawspec.nodeid']")
+            identity = element.find(
+                "properties/property[@name='lawspec.nodeid']"
+            )
             node = identity.get("value") if identity is not None else None
             if (
                 key not in selected
                 or node not in status.collected[key]
                 or element.get("name") != status.collected[key][node]
             ):
-                invalid = (
-                    "execution report contains a native case outside the selected slots"
-                )
+                invalid = "execution report contains a native case outside the selected slots"
                 continue
             if node in seen_nodes:
                 invalid = "execution report repeats a collected native case"
@@ -282,7 +296,9 @@ def _run_selected(collect_only=False):
         if invalid is not None:
             _incomplete(key, case, invalid)
         elif not cases or {
-            element.find("properties/property[@name='lawspec.nodeid']").get("value")
+            element.find("properties/property[@name='lawspec.nodeid']").get(
+                "value"
+            )
             for element in cases
         } != set(status.collected[key]):
             _incomplete(
@@ -314,14 +330,19 @@ def case_tests(key):
     """Structured names/options for the normal PLUnit term-expansion hook."""
     if key not in _cases:
         raise ValueError("unknown native group in a PLUnit declaration: " + key)
-    return [(name, status) for name, (_, status) in _native_cases.get(key, {}).items()]
+    return [
+        (name, status)
+        for name, (_, status) in _native_cases.get(key, {}).items()
+    ]
 
 
 def run_native_case(key, node):
     """A PLUnit callback consumes one observed native outcome, exactly once."""
     identity = (key, node)
     if key not in _selected or node not in _native_cases.get(key, {}):
-        raise ValueError("PLUnit called an unselected native case: " + repr(identity))
+        raise ValueError(
+            "PLUnit called an unselected native case: " + repr(identity)
+        )
     if identity in _called:
         return _incomplete(
             key, _cases[key], "PLUnit called a native case more than once"
@@ -349,7 +370,9 @@ def _report(path):
 def main(argv=None):
     sys.modules.setdefault("lawspec_prolog_tests", sys.modules[__name__])
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--select", action="append", default=[], metavar="FILE::NAME")
+    parser.add_argument(
+        "--select", action="append", default=[], metavar="FILE::NAME"
+    )
     parser.add_argument("--junitxml")
     parser.add_argument(
         "--select-case", action="append", default=[], metavar="PYTEST_NODEID"
@@ -388,7 +411,11 @@ def main(argv=None):
         parser.error("unknown Prolog test slot: " + ", ".join(sorted(unknown)))
     selected = list(
         dict.fromkeys(
-            [key for key, case in _cases.items() if case.get("kind") == "support"]
+            [
+                key
+                for key, case in _cases.items()
+                if case.get("kind") == "support"
+            ]
             + selected
         )
     )

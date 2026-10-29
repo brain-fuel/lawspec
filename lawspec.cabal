@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.31.0
+version:        0.31.1
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -374,6 +374,7 @@ extra-source-files:
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
     test/fixtures/definition_contracts.lawspec
+    test/fixtures/dependent-model-arguments.lawspec
     test/fixtures/eq-set-foundation.lawspec
     test/fixtures/eq-set-operations-library.lawspec
     test/fixtures/eq-set-operations.lawspec
@@ -813,6 +814,7 @@ library
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.Model
+      LawSpec.ModelDomains
       LawSpec.ModelLaws
       LawSpec.ModelProof
       LawSpec.ModelTests

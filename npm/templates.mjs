@@ -2,634 +2,583 @@
 // Project scaffolds, test commands and setup advice for each target. The data
 // is LawSpec.Scaffold's, so the npm CLI and the compiler cannot disagree.
 export const targets = [
-                         "java",
-                         "python",
-                         "javascript",
-                         "typescript",
-                         "go",
-                         "haskell",
-                         "kotlin",
-                         "rust",
-                         "erlang",
-                         "elixir",
-                         "gleam",
-                         "fsharp",
-                         "csharp",
-                         "scala",
-                         "groovy",
-                         "clojure",
-                         "swift",
-                         "prolog",
-                         "hcl",
-                         "yaml",
-                         "antlr4",
-                         "make"
-                       ];
+  'java',
+  'python',
+  'javascript',
+  'typescript',
+  'go',
+  'haskell',
+  'kotlin',
+  'rust',
+  'erlang',
+  'elixir',
+  'gleam',
+  'fsharp',
+  'csharp',
+  'scala',
+  'groovy',
+  'clojure',
+  'swift',
+  'prolog',
+  'hcl',
+  'yaml',
+  'antlr4',
+  'make',
+];
 export const programTargets = [
-                                "java",
-                                "python",
-                                "javascript",
-                                "typescript",
-                                "go",
-                                "haskell",
-                                "kotlin",
-                                "rust",
-                                "erlang",
-                                "elixir",
-                                "gleam",
-                                "fsharp",
-                                "csharp",
-                                "scala",
-                                "groovy",
-                                "clojure",
-                                "swift",
-                                "prolog"
-                              ];
-export const artifactTargets = [
-                                 "hcl",
-                                 "yaml",
-                                 "antlr4",
-                                 "make"
-                               ];
+  'java',
+  'python',
+  'javascript',
+  'typescript',
+  'go',
+  'haskell',
+  'kotlin',
+  'rust',
+  'erlang',
+  'elixir',
+  'gleam',
+  'fsharp',
+  'csharp',
+  'scala',
+  'groovy',
+  'clojure',
+  'swift',
+  'prolog',
+];
+export const artifactTargets = ['hcl', 'yaml', 'antlr4', 'make'];
 export const targetLabels = [
-                              [
-                                "java",
-                                "Java"
-                              ],
-                              [
-                                "python",
-                                "Python"
-                              ],
-                              [
-                                "javascript",
-                                "JavaScript"
-                              ],
-                              [
-                                "typescript",
-                                "TypeScript"
-                              ],
-                              [
-                                "go",
-                                "Go"
-                              ],
-                              [
-                                "haskell",
-                                "Haskell"
-                              ],
-                              [
-                                "kotlin",
-                                "Kotlin"
-                              ],
-                              [
-                                "rust",
-                                "Rust"
-                              ],
-                              [
-                                "erlang",
-                                "Erlang"
-                              ],
-                              [
-                                "elixir",
-                                "Elixir"
-                              ],
-                              [
-                                "gleam",
-                                "Gleam"
-                              ],
-                              [
-                                "fsharp",
-                                "F#"
-                              ],
-                              [
-                                "csharp",
-                                "C#"
-                              ],
-                              [
-                                "scala",
-                                "Scala"
-                              ],
-                              [
-                                "groovy",
-                                "Groovy"
-                              ],
-                              [
-                                "clojure",
-                                "Clojure"
-                              ],
-                              [
-                                "swift",
-                                "Swift"
-                              ],
-                              [
-                                "prolog",
-                                "Prolog"
-                              ],
-                              [
-                                "hcl",
-                                "HCL"
-                              ],
-                              [
-                                "yaml",
-                                "YAML"
-                              ],
-                              [
-                                "antlr4",
-                                "ANTLR"
-                              ],
-                              [
-                                "make",
-                                "Make"
-                              ]
-                            ];
+  ['java', 'Java'],
+  ['python', 'Python'],
+  ['javascript', 'JavaScript'],
+  ['typescript', 'TypeScript'],
+  ['go', 'Go'],
+  ['haskell', 'Haskell'],
+  ['kotlin', 'Kotlin'],
+  ['rust', 'Rust'],
+  ['erlang', 'Erlang'],
+  ['elixir', 'Elixir'],
+  ['gleam', 'Gleam'],
+  ['fsharp', 'F#'],
+  ['csharp', 'C#'],
+  ['scala', 'Scala'],
+  ['groovy', 'Groovy'],
+  ['clojure', 'Clojure'],
+  ['swift', 'Swift'],
+  ['prolog', 'Prolog'],
+  ['hcl', 'HCL'],
+  ['yaml', 'YAML'],
+  ['antlr4', 'ANTLR'],
+  ['make', 'Make'],
+];
 
 export const presentationChecks = {
-                                    "java": [
-                                      {
-                                        "command": "mvn",
-                                        "args": [
-                                          "-q",
-                                          "test-compile"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "python": [
-                                      {
-                                        "command": "python3",
-                                        "args": [
-                                          "-B",
-                                          "-c",
-                                          "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]"
-                                        ],
-                                        "suffix": ".py",
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "javascript": [
-                                      {
-                                        "command": "node",
-                                        "args": [
-                                          "--check"
-                                        ],
-                                        "suffix": ".mjs",
-                                        "each": true,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "typescript": [
-                                      {
-                                        "command": "npm",
-                                        "args": [
-                                          "exec",
-                                          "--",
-                                          "tsc",
-                                          "-p",
-                                          "tsconfig.json"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "go": [
-                                      {
-                                        "command": "go",
-                                        "args": [
-                                          "test",
-                                          "./...",
-                                          "-run",
-                                          "^$"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "haskell": [
-                                      {
-                                        "command": "stack",
-                                        "args": [
-                                          "--no-terminal",
-                                          "build",
-                                          "--test",
-                                          "--no-run-tests"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "kotlin": [
-                                      {
-                                        "command": "gradle",
-                                        "args": [
-                                          "testClasses",
-                                          "--console=plain"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "rust": [
-                                      {
-                                        "command": "cargo",
-                                        "args": [
-                                          "test",
-                                          "--no-run"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "erlang": [
-                                      {
-                                        "command": "rebar3",
-                                        "args": [
-                                          "as",
-                                          "test",
-                                          "compile"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "elixir": [
-                                      {
-                                        "command": "mix",
-                                        "args": [
-                                          "compile"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {
-                                          "MIX_ENV": "test"
-                                        }
-                                      }
-                                    ],
-                                    "gleam": [
-                                      {
-                                        "command": "gleam",
-                                        "args": [
-                                          "build"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "fsharp": [
-                                      {
-                                        "command": "dotnet",
-                                        "args": [
-                                          "build"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "csharp": [
-                                      {
-                                        "command": "dotnet",
-                                        "args": [
-                                          "build"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "scala": [
-                                      {
-                                        "command": "scala",
-                                        "args": [
-                                          "compile",
-                                          "--test",
-                                          "."
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "groovy": [
-                                      {
-                                        "command": "gradle",
-                                        "args": [
-                                          "testClasses",
-                                          "--console=plain"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "clojure": [
-                                      {
-                                        "command": "clojure",
-                                        "args": [
-                                          "-M",
-                                          "-e",
-                                          "(require 'lawspec.build) (lawspec.build/compile-java! true) (shutdown-agents)"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "swift": [
-                                      {
-                                        "command": "swift",
-                                        "args": [
-                                          "build",
-                                          "--build-tests"
-                                        ],
-                                        "suffix": null,
-                                        "each": false,
-                                        "environment": {}
-                                      }
-                                    ],
-                                    "prolog": [
-                                      {
-                                        "command": "python3",
-                                        "args": [
-                                          "-B",
-                                          "-c",
-                                          "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]"
-                                        ],
-                                        "suffix": ".py",
-                                        "each": false,
-                                        "environment": {}
-                                      },
-                                      {
-                                        "command": "swipl",
-                                        "args": [
-                                          "-q",
-                                          "-g",
-                                          "halt",
-                                          "-s"
-                                        ],
-                                        "suffix": ".pl",
-                                        "each": true,
-                                        "environment": {}
-                                      }
-                                    ]
-                                  };
+  java: [
+    {
+      command: 'mvn',
+      args: ['-q', 'test-compile'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  python: [
+    {
+      command: 'python3',
+      args: [
+        '-B',
+        '-c',
+        'import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]',
+      ],
+      suffix: '.py',
+      each: false,
+      environment: {},
+    },
+  ],
+  javascript: [
+    {
+      command: 'node',
+      args: ['--check'],
+      suffix: '.mjs',
+      each: true,
+      environment: {},
+    },
+  ],
+  typescript: [
+    {
+      command: 'npm',
+      args: ['exec', '--', 'tsc', '-p', 'tsconfig.json'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  go: [
+    {
+      command: 'go',
+      args: ['test', './...', '-run', '^$'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  haskell: [
+    {
+      command: 'stack',
+      args: ['--no-terminal', 'build', '--test', '--no-run-tests'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  kotlin: [
+    {
+      command: 'gradle',
+      args: ['testClasses', '--console=plain'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  rust: [
+    {
+      command: 'cargo',
+      args: ['test', '--no-run'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  erlang: [
+    {
+      command: 'rebar3',
+      args: ['as', 'test', 'compile'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  elixir: [
+    {
+      command: 'mix',
+      args: ['compile'],
+      suffix: null,
+      each: false,
+      environment: {
+        MIX_ENV: 'test',
+      },
+    },
+  ],
+  gleam: [
+    {
+      command: 'gleam',
+      args: ['build'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  fsharp: [
+    {
+      command: 'dotnet',
+      args: ['build'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  csharp: [
+    {
+      command: 'dotnet',
+      args: ['build'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  scala: [
+    {
+      command: 'scala',
+      args: ['compile', '--test', '.'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  groovy: [
+    {
+      command: 'gradle',
+      args: ['testClasses', '--console=plain'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  clojure: [
+    {
+      command: 'clojure',
+      args: [
+        '-M',
+        '-e',
+        "(require 'lawspec.build) (lawspec.build/compile-java! true) (shutdown-agents)",
+      ],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  swift: [
+    {
+      command: 'swift',
+      args: ['build', '--build-tests'],
+      suffix: null,
+      each: false,
+      environment: {},
+    },
+  ],
+  prolog: [
+    {
+      command: 'python3',
+      args: [
+        '-B',
+        '-c',
+        'import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]',
+      ],
+      suffix: '.py',
+      each: false,
+      environment: {},
+    },
+    {
+      command: 'swipl',
+      args: ['-q', '-g', 'halt', '-s'],
+      suffix: '.pl',
+      each: true,
+      environment: {},
+    },
+  ],
+};
 
 export const commands = {
-                          "java": "mvn test",
-                          "python": "python -m pytest",
-                          "javascript": "node --test test/*.test.mjs",
-                          "typescript": "npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js",
-                          "go": "go test ./...",
-                          "haskell": "stack test",
-                          "kotlin": "gradle test",
-                          "rust": "cargo test",
-                          "erlang": "rebar3 eunit",
-                          "elixir": "mix test",
-                          "gleam": "gleam test",
-                          "fsharp": "dotnet test",
-                          "csharp": "dotnet test",
-                          "scala": "scala test .",
-                          "groovy": "gradle test",
-                          "clojure": "clojure -M:test",
-                          "swift": "swift test",
-                          "prolog": "python lawspec_test.py"
-                        };
+  java: 'mvn test',
+  python: 'python -m pytest',
+  javascript: 'node --test test/*.test.mjs',
+  typescript:
+    'npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js',
+  go: 'go test ./...',
+  haskell: 'stack test',
+  kotlin: 'gradle test',
+  rust: 'cargo test',
+  erlang: 'rebar3 eunit',
+  elixir: 'mix test',
+  gleam: 'gleam test',
+  fsharp: 'dotnet test',
+  csharp: 'dotnet test',
+  scala: 'scala test .',
+  groovy: 'gradle test',
+  clojure: 'clojure -M:test',
+  swift: 'swift test',
+  prolog: 'python lawspec_test.py',
+};
 
 export const setup = {
-                       "java": "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.",
-                       "python": "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and, for a program that imports lawspec.crypto or lawspec.network, cryptography 50: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.",
-                       "javascript": "Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2, and for a program that imports lawspec.crypto or lawspec.network npm install @noble/post-quantum@0.7.1.",
-                       "typescript": "Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4 (and npm install @noble/post-quantum@0.7.1 for a program that imports lawspec.crypto or lawspec.network). Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].",
-                       "go": "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.",
-                       "haskell": "Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
-                       "kotlin": "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
-                       "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.",
-                       "erlang": "Use Erlang/OTP 29, Rebar3 3.27.1 and PropEr 1.5.0 as a Hex dependency in the test profile. Configure {eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}. Run rebar3 as test compile to prepare dependencies, then rebar3 eunit. Custom test directories must be in extra_src_dirs. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
-                       "elixir": "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
-                       "gleam": "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
-                       "fsharp": "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK, LawSpec.Testing runs properties on FsCheck 3.4.0 and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.",
-                       "csharp": "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.",
-                       "scala": "Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test .",
-                       "groovy": "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
-                       "clojure": "Use JDK 25 and the Clojure CLI 1.12 with Clojure 1.12.5 and, for tests, test.check 1.1.3 (the :test alias). The Java model in java/src compiles with the JDK's compiler into target/classes, which lawspec.build does before the tests run (clojure -M:build compiles it alone). A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run clojure -M:test.",
-                       "swift": "Use Swift 6.2 or later (Xcode 26 on macOS 26, where CryptoKit has ML-KEM and ML-DSA) and SwiftPM. The generated runtime and test support are local targets under lawspec/ with no package dependencies; tests run on Swift Testing, from the toolchain, with LawSpec's own property engine. Package.swift declares the targets LawSpecRuntime, LawSpecTesting, App (src) and AppTests (tests), as lawspec init writes it. Run swift build --build-tests.",
-                       "prolog": "Use SWI-Prolog 10.0+ and Python 3.13+ with janus-swi 1.5.3, pytest 8.4.x and Hypothesis 6.x. Install the generated project with python -m pip install -e \".[test]\". Run python lawspec_test.py (PLUnit with the checked Python model), or lawspec test. Set the target python field to the selected interpreter.",
-                       "hcl": "Generate Terraform variables and checked tfvars using lawspec generate. Run tofu init -backend=false, tofu validate and tofu plan -var-file=configuration.tfvars.json. Artifact generation does not execute application laws.",
-                       "yaml": "Generate YAML 1.2 configuration and a JSON Schema 2020-12 schema using lawspec generate. Validate edited YAML with a JSON Schema validator. Artifact generation does not execute application laws.",
-                       "antlr4": "Compile LawSpecData.g4 with ANTLR 4. The grammar checks data syntax; numeric ranges and field predicates require the companion JSON Schema after decoding. Artifact generation does not execute application laws.",
-                       "make": "Run make to check the project, generate its configured targets and execute its program target tests using the installed lawspec CLI."
-                     };
+  java: 'Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.',
+  python:
+    'Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and, for a program that imports lawspec.crypto or lawspec.network, cryptography 50: python -m pip install -e ".[test]". Configure pytest pythonpath=["src"] and testpaths=["tests"]. Set the target python field to the interpreter path if needed.',
+  javascript:
+    'Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2, and for a program that imports lawspec.crypto or lawspec.network npm install @noble/post-quantum@0.7.1.',
+  typescript:
+    'Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4 (and npm install @noble/post-quantum@0.7.1 for a program that imports lawspec.crypto or lawspec.network). Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=["src/**/*.ts","test/**/*.ts"].',
+  go: 'Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.',
+  haskell:
+    'Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.',
+  kotlin:
+    'Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.',
+  rust: 'Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.',
+  erlang:
+    "Use Erlang/OTP 29, Rebar3 3.27.1 and PropEr 1.5.0 as a Hex dependency in the test profile. Configure {eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}. Run rebar3 as test compile to prepare dependencies, then rebar3 eunit. Custom test directories must be in extra_src_dirs. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
+  elixir:
+    "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
+  gleam:
+    'Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, "lawspec_beam_test_run", "gleam_main") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP\'s post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.',
+  fsharp:
+    'Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK, LawSpec.Testing runs properties on FsCheck 3.4.0 and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.',
+  csharp:
+    "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.",
+  scala:
+    'Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test .',
+  groovy:
+    "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
+  clojure:
+    "Use JDK 25 and the Clojure CLI 1.12 with Clojure 1.12.5 and, for tests, test.check 1.1.3 (the :test alias). The Java model in java/src compiles with the JDK's compiler into target/classes, which lawspec.build does before the tests run (clojure -M:build compiles it alone). A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run clojure -M:test.",
+  swift:
+    "Use Swift 6.2 or later (Xcode 26 on macOS 26, where CryptoKit has ML-KEM and ML-DSA) and SwiftPM. The generated runtime and test support are local targets under lawspec/ with no package dependencies; tests run on Swift Testing, from the toolchain, with LawSpec's own property engine. Package.swift declares the targets LawSpecRuntime, LawSpecTesting, App (src) and AppTests (tests), as lawspec init writes it. Run swift build --build-tests.",
+  prolog:
+    'Use SWI-Prolog 10.0+ and Python 3.13+ with janus-swi 1.5.3, pytest 8.4.x and Hypothesis 6.x. Install the generated project with python -m pip install -e ".[test]". Run python lawspec_test.py (PLUnit with the checked Python model), or lawspec test. Set the target python field to the selected interpreter.',
+  hcl: 'Generate Terraform variables and checked tfvars using lawspec generate. Run tofu init -backend=false, tofu validate and tofu plan -var-file=configuration.tfvars.json. Artifact generation does not execute application laws.',
+  yaml: 'Generate YAML 1.2 configuration and a JSON Schema 2020-12 schema using lawspec generate. Validate edited YAML with a JSON Schema validator. Artifact generation does not execute application laws.',
+  antlr4:
+    'Compile LawSpecData.g4 with ANTLR 4. The grammar checks data syntax; numeric ranges and field predicates require the companion JSON Schema after decoding. Artifact generation does not execute application laws.',
+  make: 'Run make to check the project, generate its configured targets and execute its program target tests using the installed lawspec CLI.',
+};
 
 // Each target's build files in the readable and the compact (minified) layout.
 const scaffolds = {
-                    "java": {
-                      "readable": {
-                        "pom.xml": "<project\n  xmlns=\"http://maven.apache.org/POM/4.0.0\"\n  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n  xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>example</groupId>\n  <artifactId>lawspec-example</artifactId>\n  <version>0.1.0</version>\n  <properties>\n    <maven.compiler.release>25</maven.compiler.release>\n    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n  </properties>\n  <dependencies>\n    <dependency>\n      <groupId>org.jetbrains</groupId>\n      <artifactId>jetCheck</artifactId>\n      <version>0.3.0</version>\n      <scope>test</scope>\n    </dependency>\n    <dependency>\n      <groupId>org.junit.jupiter</groupId>\n      <artifactId>junit-jupiter</artifactId>\n      <version>5.14.0</version>\n      <scope>test</scope>\n    </dependency>\n  </dependencies>\n  <build>\n    <plugins>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-compiler-plugin</artifactId>\n        <version>3.14.1</version>\n      </plugin>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-surefire-plugin</artifactId>\n        <version>3.5.4</version>\n      </plugin>\n    </plugins>\n  </build>\n</project>\n"
-                      },
-                      "compact": {
-                        "pom.xml": "<project xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\"><modelVersion>4.0.0</modelVersion><groupId>example</groupId><artifactId>lawspec-example</artifactId><version>0.1.0</version><properties><maven.compiler.release>25</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties><dependencies><dependency><groupId>org.jetbrains</groupId><artifactId>jetCheck</artifactId><version>0.3.0</version><scope>test</scope></dependency><dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.14.0</version><scope>test</scope></dependency></dependencies><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version></plugin><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin></plugins></build></project>\n"
-                      }
-                    },
-                    "python": {
-                      "readable": {
-                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = []\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
-                      },
-                      "compact": {
-                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = []\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
-                      }
-                    },
-                    "javascript": {
-                      "readable": {
-                        "package.json": "{\n  \"name\": \"lawspec-example\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test test/*.test.mjs\"\n  },\n  \"devDependencies\": {\n    \"fast-check\": \"4.10.2\"\n  }\n}\n"
-                      },
-                      "compact": {
-                        "package.json": "{\"name\":\"lawspec-example\",\"version\":\"0.1.0\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test test/*.test.mjs\"},\"devDependencies\":{\"fast-check\":\"4.10.2\"}}\n"
-                      }
-                    },
-                    "typescript": {
-                      "readable": {
-                        "package.json": "{\n  \"name\": \"lawspec-example\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js\"\n  },\n  \"devDependencies\": {\n    \"fast-check\": \"4.10.2\",\n    \"typescript\": \"5.9.3\",\n    \"@types/node\": \"22.20.4\"\n  }\n}\n",
-                        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"NodeNext\",\n    \"rootDir\": \".\",\n    \"outDir\": \"dist\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src/**/*.ts\",\n    \"test/**/*.ts\"\n  ]\n}\n"
-                      },
-                      "compact": {
-                        "package.json": "{\"name\":\"lawspec-example\",\"version\":\"0.1.0\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js\"},\"devDependencies\":{\"fast-check\":\"4.10.2\",\"typescript\":\"5.9.3\",\"@types/node\":\"22.20.4\"}}\n",
-                        "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ES2022\",\"module\":\"NodeNext\",\"rootDir\":\".\",\"outDir\":\"dist\",\"strict\":true,\"esModuleInterop\":true,\"skipLibCheck\":true},\"include\":[\"src/**/*.ts\",\"test/**/*.ts\"]}\n"
-                      }
-                    },
-                    "go": {
-                      "readable": {
-                        "go.mod": "module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire pgregory.net/rapid v1.2.0\n"
-                      },
-                      "compact": {
-                        "go.mod": "module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire pgregory.net/rapid v1.2.0\n"
-                      }
-                    },
-                    "haskell": {
-                      "readable": {
-                        "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network, directory, time]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    ghc-options: [-O0, -threaded, -rtsopts, \"-with-rtsopts=-N\"]\n    build-tools: [hspec-discover]\n",
-                        "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n"
-                      },
-                      "compact": {
-                        "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network, directory, time]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    ghc-options: [-O0, -threaded, -rtsopts, \"-with-rtsopts=-N\"]\n    build-tools: [hspec-discover]\n",
-                        "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n"
-                      }
-                    },
-                    "kotlin": {
-                      "readable": {
-                        "settings.gradle.kts": "rootProject.name = \"lawspec-example\"\n",
-                        "gradle.properties": "kotlin.daemon.jvmargs=-Xmx2g\n",
-                        "build.gradle.kts": "plugins {\n    kotlin(\"jvm\") version \"2.3.21\"\n}\n\nrepositories {\n    mavenCentral()\n}\n\nkotlin {\n    jvmToolchain(25)\n}\n\ndependencies {\n    implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")\n    testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")\n    testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")\n    testImplementation(\"io.kotest:kotest-property:5.9.1\")\n}\n\ntasks.test {\n    useJUnitPlatform()\n}\n"
-                      },
-                      "compact": {
-                        "settings.gradle.kts": "rootProject.name = \"lawspec-example\"\n",
-                        "gradle.properties": "kotlin.daemon.jvmargs=-Xmx2g\n",
-                        "build.gradle.kts": "plugins { kotlin(\"jvm\") version \"2.3.21\" }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(25) }\ndependencies { implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\"); testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\"); testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\"); testImplementation(\"io.kotest:kotest-property:5.9.1\") }\ntasks.test { useJUnitPlatform() }\n"
-                      }
-                    },
-                    "rust": {
-                      "readable": {
-                        "src/lib.rs": "// Application library. LawSpec maintains the included module declarations.\ninclude!(\"lawspec_modules.rs\");\n",
-                        "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
-                      },
-                      "compact": {
-                        "src/lib.rs": "// Application library. LawSpec maintains the included module declarations.\ninclude!(\"lawspec_modules.rs\");\n",
-                        "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
-                      }
-                    },
-                    "erlang": {
-                      "readable": {
-                        "rebar.config": "{erl_opts, [debug_info]}.\n{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
-                        "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
-                      },
-                      "compact": {
-                        "rebar.config": "{erl_opts, [debug_info]}.\n{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
-                        "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
-                      }
-                    },
-                    "elixir": {
-                      "readable": {
-                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
-                        "test/test_helper.exs": "case System.get_env(\"LAWSPEC_SEED\") do\n  nil -> ExUnit.start()\n  seed -> ExUnit.start(seed: String.to_integer(seed))\nend\nif Code.ensure_loaded?(LawSpec.Beam.ExUnitFormatter) do\n  ExUnit.configure(formatters: Enum.uniq(ExUnit.configuration()[:formatters] ++ [LawSpec.Beam.ExUnitFormatter]))\nend\nif Code.ensure_loaded?(:lawspec_beam_resources) do\n  :lawspec_beam_resources.configure_suite(Process.whereis(ExUnit.Server))\n  ExUnit.after_suite(fn _ -> :lawspec_beam_resources.stop_suite() end)\nend\n"
-                      },
-                      "compact": {
-                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
-                        "test/test_helper.exs": "case System.get_env(\"LAWSPEC_SEED\") do\n  nil -> ExUnit.start()\n  seed -> ExUnit.start(seed: String.to_integer(seed))\nend\nif Code.ensure_loaded?(LawSpec.Beam.ExUnitFormatter) do\n  ExUnit.configure(formatters: Enum.uniq(ExUnit.configuration()[:formatters] ++ [LawSpec.Beam.ExUnitFormatter]))\nend\nif Code.ensure_loaded?(:lawspec_beam_resources) do\n  :lawspec_beam_resources.configure_suite(Process.whereis(ExUnit.Server))\n  ExUnit.after_suite(fn _ -> :lawspec_beam_resources.stop_suite() end)\nend\n"
-                      }
-                    },
-                    "gleam": {
-                      "readable": {
-                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\nlawspec_test_support = { path = \"./test-support\" }\n",
-                        "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
-                        "test-support/src/.gitkeep": "",
-                        "test/lawspec_example_test.gleam": "@external(erlang, \"lawspec_beam_test_run\", \"gleam_main\")\npub fn main() -> Nil\n"
-                      },
-                      "compact": {
-                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\nlawspec_test_support = { path = \"./test-support\" }\n",
-                        "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
-                        "test-support/src/.gitkeep": "",
-                        "test/lawspec_example_test.gleam": "@external(erlang, \"lawspec_beam_test_run\", \"gleam_main\")\npub fn main() -> Nil\n"
-                      }
-                    },
-                    "fsharp": {
-                      "readable": {
-                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
-                        "Example.slnx": "<Solution>\n  <Project Path=\"src/Example.fsproj\" />\n  <Project Path=\"tests/Example.Tests.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n</Solution>\n",
-                        "src/Example.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <RootNamespace>Example</RootNamespace>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Sources.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  </ItemGroup>\n</Project>\n",
-                        "tests/Example.Tests.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Exe</OutputType>\n    <IsPackable>false</IsPackable>\n    <IsTestProject>true</IsTestProject>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Tests.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../src/Example.fsproj\" />\n    <ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n  </ItemGroup>\n</Project>\n"
-                      },
-                      "compact": {
-                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
-                        "Example.slnx": "<Solution>\n<Project Path=\"src/Example.fsproj\" />\n<Project Path=\"tests/Example.Tests.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n</Solution>\n",
-                        "src/Example.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n</PropertyGroup>\n<Import Project=\"LawSpec.Sources.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n</ItemGroup>\n</Project>\n",
-                        "tests/Example.Tests.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n</PropertyGroup>\n<Import Project=\"LawSpec.Tests.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../src/Example.fsproj\" />\n<ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n</ItemGroup>\n</Project>\n"
-                      }
-                    },
-                    "csharp": {
-                      "readable": {
-                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
-                        "Example.slnx": "<Solution>\n  <Project Path=\"src/Example.csproj\" />\n  <Project Path=\"tests/Example.Tests.csproj\" />\n  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />\n</Solution>\n",
-                        "src/Example.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <RootNamespace>Example</RootNamespace>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Sources.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  </ItemGroup>\n</Project>\n",
-                        "tests/Example.Tests.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Exe</OutputType>\n    <IsPackable>false</IsPackable>\n    <IsTestProject>true</IsTestProject>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Tests.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../src/Example.csproj\" />\n    <ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n  </ItemGroup>\n</Project>\n"
-                      },
-                      "compact": {
-                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
-                        "Example.slnx": "<Solution>\n<Project Path=\"src/Example.csproj\" />\n<Project Path=\"tests/Example.Tests.csproj\" />\n<Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />\n</Solution>\n",
-                        "src/Example.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project=\"LawSpec.Sources.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n</ItemGroup>\n</Project>\n",
-                        "tests/Example.Tests.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project=\"LawSpec.Tests.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../src/Example.csproj\" />\n<ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n</ItemGroup>\n</Project>\n"
-                      }
-                    },
-                    "scala": {
-                      "readable": {
-                        "project.scala": "// The build, for Scala CLI (the scala command): scala test .\n//> using scala 3.9.0\n//> using options -deprecation -feature\n//> using javaOpt --sun-misc-unsafe-memory-access=allow\n//> using test.dep org.scalacheck::scalacheck:1.20.0\n//> using test.dep org.scalatest::scalatest-funsuite:3.2.20\n"
-                      },
-                      "compact": {
-                        "project.scala": "// The build, for Scala CLI (the scala command): scala test .\n//> using scala 3.9.0\n//> using options -deprecation -feature\n//> using javaOpt --sun-misc-unsafe-memory-access=allow\n//> using test.dep org.scalacheck::scalacheck:1.20.0\n//> using test.dep org.scalatest::scalatest-funsuite:3.2.20\n"
-                      }
-                    },
-                    "groovy": {
-                      "readable": {
-                        "settings.gradle": "rootProject.name = 'lawspec-example'\n",
-                        "build.gradle": "plugins {\n    id 'groovy'\n}\n\nrepositories {\n    mavenCentral()\n}\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(25) }\n}\n\nsourceSets {\n    main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }\n    test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } }\n}\n\ntasks.withType(org.gradle.api.tasks.compile.GroovyCompile).configureEach {\n    groovyOptions.forkOptions.memoryMaximumSize = '2g'\n}\n\ndependencies {\n    implementation 'org.apache.groovy:groovy:5.0.8'\n    testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')\n    testImplementation 'org.spockframework:spock-core'\n    testImplementation 'org.jetbrains:jetCheck:0.3.0'\n    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'\n    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}\n\ntest {\n    useJUnitPlatform()\n}\n"
-                      },
-                      "compact": {
-                        "settings.gradle": "rootProject.name = 'lawspec-example'\n",
-                        "build.gradle": "plugins { id 'groovy' }\nrepositories { mavenCentral() }\njava { toolchain { languageVersion = JavaLanguageVersion.of(25) } }\nsourceSets { main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }; test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } } }\ntasks.withType(org.gradle.api.tasks.compile.GroovyCompile).configureEach { groovyOptions.forkOptions.memoryMaximumSize = '2g' }\ndependencies { implementation 'org.apache.groovy:groovy:5.0.8'; testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0'); testImplementation 'org.spockframework:spock-core'; testImplementation 'org.jetbrains:jetCheck:0.3.0'; testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'; testRuntimeOnly 'org.junit.platform:junit-platform-launcher' }\ntest { useJUnitPlatform() }\n"
-                      }
-                    },
-                    "clojure": {
-                      "readable": {
-                        "deps.edn": "{:paths [\"src\" \"target/classes\"]\n :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}}\n :aliases\n {:test {:extra-paths [\"test\" \"target/test-classes\"]\n         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}\n         :main-opts [\"-m\" \"lawspec.test-runner\"]}\n  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}\n"
-                      },
-                      "compact": {
-                        "deps.edn": "{:paths [\"src\" \"target/classes\"]\n :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}}\n :aliases\n {:test {:extra-paths [\"test\" \"target/test-classes\"]\n         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}\n         :main-opts [\"-m\" \"lawspec.test-runner\"]}\n  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}\n"
-                      }
-                    },
-                    "swift": {
-                      "readable": {
-                        "Package.swift": "// swift-tools-version: 6.2\nimport PackageDescription\n\nlet package = Package(\n  name: \"Example\",\n  platforms: [.macOS(.v26)],\n  targets: [\n    .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),\n    .target(\n      name: \"LawSpecTesting\", dependencies: [\"LawSpecRuntime\"], path: \"lawspec/LawSpecTesting\"),\n    .target(name: \"App\", dependencies: [\"LawSpecRuntime\"], path: \"src\"),\n    .testTarget(\n      name: \"AppTests\", dependencies: [\"App\", \"LawSpecRuntime\", \"LawSpecTesting\"], path: \"tests\"),\n  ]\n)\n"
-                      },
-                      "compact": {
-                        "Package.swift": "// swift-tools-version: 6.2\nimport PackageDescription\nlet package = Package(\n  name: \"Example\",\n  platforms: [.macOS(.v26)],\n  targets: [\n    .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),\n    .target(\n      name: \"LawSpecTesting\", dependencies: [\"LawSpecRuntime\"], path: \"lawspec/LawSpecTesting\"),\n    .target(name: \"App\", dependencies: [\"LawSpecRuntime\"], path: \"src\"),\n    .testTarget(\n      name: \"AppTests\", dependencies: [\"App\", \"LawSpecRuntime\", \"LawSpecTesting\"], path: \"tests\"),\n  ]\n)\n"
-                      }
-                    },
-                    "prolog": {
-                      "readable": {
-                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\"janus-swi==1.5.3\"]\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
-                      },
-                      "compact": {
-                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\"janus-swi==1.5.3\"]\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
-                      }
-                    },
-                    "hcl": {
-                      "readable": {},
-                      "compact": {}
-                    },
-                    "yaml": {
-                      "readable": {},
-                      "compact": {}
-                    },
-                    "antlr4": {
-                      "readable": {},
-                      "compact": {}
-                    },
-                    "make": {
-                      "readable": {},
-                      "compact": {}
-                    }
-                  };
+  java: {
+    readable: {
+      'pom.xml':
+        '<project\n  xmlns="http://maven.apache.org/POM/4.0.0"\n  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>example</groupId>\n  <artifactId>lawspec-example</artifactId>\n  <version>0.1.0</version>\n  <properties>\n    <maven.compiler.release>25</maven.compiler.release>\n    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n  </properties>\n  <dependencies>\n    <dependency>\n      <groupId>org.jetbrains</groupId>\n      <artifactId>jetCheck</artifactId>\n      <version>0.3.0</version>\n      <scope>test</scope>\n    </dependency>\n    <dependency>\n      <groupId>org.junit.jupiter</groupId>\n      <artifactId>junit-jupiter</artifactId>\n      <version>5.14.0</version>\n      <scope>test</scope>\n    </dependency>\n  </dependencies>\n  <build>\n    <plugins>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-compiler-plugin</artifactId>\n        <version>3.14.1</version>\n      </plugin>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-surefire-plugin</artifactId>\n        <version>3.5.4</version>\n      </plugin>\n    </plugins>\n  </build>\n</project>\n',
+    },
+    compact: {
+      'pom.xml':
+        '<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"><modelVersion>4.0.0</modelVersion><groupId>example</groupId><artifactId>lawspec-example</artifactId><version>0.1.0</version><properties><maven.compiler.release>25</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties><dependencies><dependency><groupId>org.jetbrains</groupId><artifactId>jetCheck</artifactId><version>0.3.0</version><scope>test</scope></dependency><dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.14.0</version><scope>test</scope></dependency></dependencies><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version></plugin><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin></plugins></build></project>\n',
+    },
+  },
+  python: {
+    readable: {
+      'pyproject.toml':
+        '[build-system]\nrequires = ["setuptools==80.9.0"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "lawspec-example"\nversion = "0.1.0"\nrequires-python = ">=3.13"\ndependencies = []\n\n[project.optional-dependencies]\ntest = ["pytest==8.4.2", "hypothesis==6.135.26"]\n\n[tool.setuptools.packages.find]\nwhere = ["src"]\n\n[tool.pytest.ini_options]\npythonpath = ["src"]\ntestpaths = ["tests"]\n',
+    },
+    compact: {
+      'pyproject.toml':
+        '[build-system]\nrequires = ["setuptools==80.9.0"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "lawspec-example"\nversion = "0.1.0"\nrequires-python = ">=3.13"\ndependencies = []\n\n[project.optional-dependencies]\ntest = ["pytest==8.4.2", "hypothesis==6.135.26"]\n\n[tool.setuptools.packages.find]\nwhere = ["src"]\n\n[tool.pytest.ini_options]\npythonpath = ["src"]\ntestpaths = ["tests"]\n',
+    },
+  },
+  javascript: {
+    readable: {
+      'package.json':
+        '{\n  "name": "lawspec-example",\n  "version": "0.1.0",\n  "private": true,\n  "type": "module",\n  "scripts": {\n    "test": "node --test test/*.test.mjs"\n  },\n  "devDependencies": {\n    "fast-check": "4.10.2"\n  }\n}\n',
+    },
+    compact: {
+      'package.json':
+        '{"name":"lawspec-example","version":"0.1.0","private":true,"type":"module","scripts":{"test":"node --test test/*.test.mjs"},"devDependencies":{"fast-check":"4.10.2"}}\n',
+    },
+  },
+  typescript: {
+    readable: {
+      'package.json':
+        '{\n  "name": "lawspec-example",\n  "version": "0.1.0",\n  "private": true,\n  "type": "module",\n  "scripts": {\n    "test": "npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js"\n  },\n  "devDependencies": {\n    "fast-check": "4.10.2",\n    "typescript": "5.9.3",\n    "@types/node": "22.20.4"\n  }\n}\n',
+      'tsconfig.json':
+        '{\n  "compilerOptions": {\n    "target": "ES2022",\n    "module": "NodeNext",\n    "rootDir": ".",\n    "outDir": "dist",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true\n  },\n  "include": [\n    "src/**/*.ts",\n    "test/**/*.ts"\n  ]\n}\n',
+    },
+    compact: {
+      'package.json':
+        '{"name":"lawspec-example","version":"0.1.0","private":true,"type":"module","scripts":{"test":"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js"},"devDependencies":{"fast-check":"4.10.2","typescript":"5.9.3","@types/node":"22.20.4"}}\n',
+      'tsconfig.json':
+        '{"compilerOptions":{"target":"ES2022","module":"NodeNext","rootDir":".","outDir":"dist","strict":true,"esModuleInterop":true,"skipLibCheck":true},"include":["src/**/*.ts","test/**/*.ts"]}\n',
+    },
+  },
+  go: {
+    readable: {
+      'go.mod':
+        'module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire pgregory.net/rapid v1.2.0\n',
+    },
+    compact: {
+      'go.mod':
+        'module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire pgregory.net/rapid v1.2.0\n',
+    },
+  },
+  haskell: {
+    readable: {
+      'stack.yaml': 'snapshot: lts-24.58\npackages: [.]\n',
+      'package.yaml':
+        'name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network, directory, time]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    ghc-options: [-O0, -threaded, -rtsopts, "-with-rtsopts=-N"]\n    build-tools: [hspec-discover]\n',
+      'test/Spec.hs': '{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n',
+    },
+    compact: {
+      'stack.yaml': 'snapshot: lts-24.58\npackages: [.]\n',
+      'package.yaml':
+        'name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network, directory, time]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    ghc-options: [-O0, -threaded, -rtsopts, "-with-rtsopts=-N"]\n    build-tools: [hspec-discover]\n',
+      'test/Spec.hs': '{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n',
+    },
+  },
+  kotlin: {
+    readable: {
+      'settings.gradle.kts': 'rootProject.name = "lawspec-example"\n',
+      'gradle.properties': 'kotlin.daemon.jvmargs=-Xmx2g\n',
+      'build.gradle.kts':
+        'plugins {\n    kotlin("jvm") version "2.3.21"\n}\n\nrepositories {\n    mavenCentral()\n}\n\nkotlin {\n    jvmToolchain(25)\n}\n\ndependencies {\n    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")\n    testImplementation("io.kotest:kotest-runner-junit5:5.9.1")\n    testImplementation("io.kotest:kotest-assertions-core:5.9.1")\n    testImplementation("io.kotest:kotest-property:5.9.1")\n}\n\ntasks.test {\n    useJUnitPlatform()\n}\n',
+    },
+    compact: {
+      'settings.gradle.kts': 'rootProject.name = "lawspec-example"\n',
+      'gradle.properties': 'kotlin.daemon.jvmargs=-Xmx2g\n',
+      'build.gradle.kts':
+        'plugins { kotlin("jvm") version "2.3.21" }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(25) }\ndependencies { implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0"); testImplementation("io.kotest:kotest-runner-junit5:5.9.1"); testImplementation("io.kotest:kotest-assertions-core:5.9.1"); testImplementation("io.kotest:kotest-property:5.9.1") }\ntasks.test { useJUnitPlatform() }\n',
+    },
+  },
+  rust: {
+    readable: {
+      'src/lib.rs':
+        '// Application library. LawSpec maintains the included module declarations.\ninclude!("lawspec_modules.rs");\n',
+      'Cargo.toml':
+        '[package]\nname = "lawspec-example"\nversion = "0.1.0"\nedition = "2024"\nrust-version = "1.85"\npublish = false\n\n[dependencies]\nnum-bigint = "=0.4.8"\nnum-rational = "=0.4.2"\nnum-complex = "=0.4.6"\nnum-traits = "=0.2.19"\n\n[dev-dependencies]\nproptest = "=1.11.0"\n',
+    },
+    compact: {
+      'src/lib.rs':
+        '// Application library. LawSpec maintains the included module declarations.\ninclude!("lawspec_modules.rs");\n',
+      'Cargo.toml':
+        '[package]\nname = "lawspec-example"\nversion = "0.1.0"\nedition = "2024"\nrust-version = "1.85"\npublish = false\n\n[dependencies]\nnum-bigint = "=0.4.8"\nnum-rational = "=0.4.2"\nnum-complex = "=0.4.6"\nnum-traits = "=0.2.19"\n\n[dev-dependencies]\nproptest = "=1.11.0"\n',
+    },
+  },
+  erlang: {
+    readable: {
+      'rebar.config':
+        '{erl_opts, [debug_info]}.\n{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}.\n{profiles, [{test, [{deps, [{proper, "1.5.0"}]}]}]}.\n',
+      'src/lawspec_example.app.src':
+        '{application, lawspec_example, [\n    {description, "LawSpec example"},\n    {vsn, "0.1.0"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n',
+    },
+    compact: {
+      'rebar.config':
+        '{erl_opts, [debug_info]}.\n{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}.\n{profiles, [{test, [{deps, [{proper, "1.5.0"}]}]}]}.\n',
+      'src/lawspec_example.app.src':
+        '{application, lawspec_example, [\n    {description, "LawSpec example"},\n    {vsn, "0.1.0"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n',
+    },
+  },
+  elixir: {
+    readable: {
+      'mix.exs':
+        'defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: "0.1.0", elixir: "~> 1.20",\n     erlc_paths: ["src"] ++ test_paths(), elixirc_paths: ["lib"] ++ test_paths(),\n     deps: [{:stream_data, "== 1.4.0", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: ["test/support"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n',
+      'test/test_helper.exs':
+        'case System.get_env("LAWSPEC_SEED") do\n  nil -> ExUnit.start()\n  seed -> ExUnit.start(seed: String.to_integer(seed))\nend\nif Code.ensure_loaded?(LawSpec.Beam.ExUnitFormatter) do\n  ExUnit.configure(formatters: Enum.uniq(ExUnit.configuration()[:formatters] ++ [LawSpec.Beam.ExUnitFormatter]))\nend\nif Code.ensure_loaded?(:lawspec_beam_resources) do\n  :lawspec_beam_resources.configure_suite(Process.whereis(ExUnit.Server))\n  ExUnit.after_suite(fn _ -> :lawspec_beam_resources.stop_suite() end)\nend\n',
+    },
+    compact: {
+      'mix.exs':
+        'defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: "0.1.0", elixir: "~> 1.20",\n     erlc_paths: ["src"] ++ test_paths(), elixirc_paths: ["lib"] ++ test_paths(),\n     deps: [{:stream_data, "== 1.4.0", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: ["test/support"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n',
+      'test/test_helper.exs':
+        'case System.get_env("LAWSPEC_SEED") do\n  nil -> ExUnit.start()\n  seed -> ExUnit.start(seed: String.to_integer(seed))\nend\nif Code.ensure_loaded?(LawSpec.Beam.ExUnitFormatter) do\n  ExUnit.configure(formatters: Enum.uniq(ExUnit.configuration()[:formatters] ++ [LawSpec.Beam.ExUnitFormatter]))\nend\nif Code.ensure_loaded?(:lawspec_beam_resources) do\n  :lawspec_beam_resources.configure_suite(Process.whereis(ExUnit.Server))\n  ExUnit.after_suite(fn _ -> :lawspec_beam_resources.stop_suite() end)\nend\n',
+    },
+  },
+  gleam: {
+    readable: {
+      'gleam.toml':
+        'name = "lawspec_example"\nversion = "0.1.0"\ngleam = ">= 1.18.0"\ntarget = "erlang"\n\n[dependencies]\ngleam_stdlib = "== 1.0.5"\n\n[dev-dependencies]\ngleeunit = "== 1.11.0"\nqcheck = "== 1.0.5"\nlawspec_test_support = { path = "./test-support" }\n',
+      'test-support/gleam.toml':
+        '# Generated test helpers are a development-only dependency.\nname = "lawspec_test_support"\nversion = "0.1.0"\ntarget = "erlang"\n\n[dependencies]\nqcheck = "== 1.0.5"\n',
+      'test-support/src/.gitkeep': '',
+      'test/lawspec_example_test.gleam':
+        '@external(erlang, "lawspec_beam_test_run", "gleam_main")\npub fn main() -> Nil\n',
+    },
+    compact: {
+      'gleam.toml':
+        'name = "lawspec_example"\nversion = "0.1.0"\ngleam = ">= 1.18.0"\ntarget = "erlang"\n\n[dependencies]\ngleam_stdlib = "== 1.0.5"\n\n[dev-dependencies]\ngleeunit = "== 1.11.0"\nqcheck = "== 1.0.5"\nlawspec_test_support = { path = "./test-support" }\n',
+      'test-support/gleam.toml':
+        '# Generated test helpers are a development-only dependency.\nname = "lawspec_test_support"\nversion = "0.1.0"\ntarget = "erlang"\n\n[dependencies]\nqcheck = "== 1.0.5"\n',
+      'test-support/src/.gitkeep': '',
+      'test/lawspec_example_test.gleam':
+        '@external(erlang, "lawspec_beam_test_run", "gleam_main")\npub fn main() -> Nil\n',
+    },
+  },
+  fsharp: {
+    readable: {
+      'global.json': '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n',
+      'Example.slnx':
+        '<Solution>\n  <Project Path="src/Example.fsproj" />\n  <Project Path="tests/Example.Tests.fsproj" />\n  <Project Path="lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n  <Project Path="lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n</Solution>\n',
+      'src/Example.fsproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <RootNamespace>Example</RootNamespace>\n  </PropertyGroup>\n  <Import Project="LawSpec.Sources.props" />\n  <ItemGroup>\n    <ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n  </ItemGroup>\n</Project>\n',
+      'tests/Example.Tests.fsproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Exe</OutputType>\n    <IsPackable>false</IsPackable>\n    <IsTestProject>true</IsTestProject>\n  </PropertyGroup>\n  <Import Project="LawSpec.Tests.props" />\n  <ItemGroup>\n    <ProjectReference Include="../src/Example.fsproj" />\n    <ProjectReference Include="../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n    <PackageReference Include="xunit.v3" Version="4.0.2" />\n  </ItemGroup>\n</Project>\n',
+    },
+    compact: {
+      'global.json': '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n',
+      'Example.slnx':
+        '<Solution>\n<Project Path="src/Example.fsproj" />\n<Project Path="tests/Example.Tests.fsproj" />\n<Project Path="lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n<Project Path="lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n</Solution>\n',
+      'src/Example.fsproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n</PropertyGroup>\n<Import Project="LawSpec.Sources.props" />\n<ItemGroup>\n<ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n</ItemGroup>\n</Project>\n',
+      'tests/Example.Tests.fsproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n</PropertyGroup>\n<Import Project="LawSpec.Tests.props" />\n<ItemGroup>\n<ProjectReference Include="../src/Example.fsproj" />\n<ProjectReference Include="../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n<PackageReference Include="xunit.v3" Version="4.0.2" />\n</ItemGroup>\n</Project>\n',
+    },
+  },
+  csharp: {
+    readable: {
+      'global.json': '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n',
+      'Example.slnx':
+        '<Solution>\n  <Project Path="src/Example.csproj" />\n  <Project Path="tests/Example.Tests.csproj" />\n  <Project Path="lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n  <Project Path="lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n  <Project Path="lawspec/LawSpec.Model/LawSpec.Model.fsproj" />\n</Solution>\n',
+      'src/Example.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <RootNamespace>Example</RootNamespace>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n  <Import Project="LawSpec.Sources.props" />\n  <ItemGroup>\n    <ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n  </ItemGroup>\n</Project>\n',
+      'tests/Example.Tests.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Exe</OutputType>\n    <IsPackable>false</IsPackable>\n    <IsTestProject>true</IsTestProject>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n  <Import Project="LawSpec.Tests.props" />\n  <ItemGroup>\n    <ProjectReference Include="../src/Example.csproj" />\n    <ProjectReference Include="../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n    <PackageReference Include="xunit.v3" Version="4.0.2" />\n  </ItemGroup>\n</Project>\n',
+    },
+    compact: {
+      'global.json': '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n',
+      'Example.slnx':
+        '<Solution>\n<Project Path="src/Example.csproj" />\n<Project Path="tests/Example.Tests.csproj" />\n<Project Path="lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n<Project Path="lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n<Project Path="lawspec/LawSpec.Model/LawSpec.Model.fsproj" />\n</Solution>\n',
+      'src/Example.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project="LawSpec.Sources.props" />\n<ItemGroup>\n<ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj" />\n</ItemGroup>\n</Project>\n',
+      'tests/Example.Tests.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project="LawSpec.Tests.props" />\n<ItemGroup>\n<ProjectReference Include="../src/Example.csproj" />\n<ProjectReference Include="../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj" />\n<PackageReference Include="xunit.v3" Version="4.0.2" />\n</ItemGroup>\n</Project>\n',
+    },
+  },
+  scala: {
+    readable: {
+      'project.scala':
+        '// The build, for Scala CLI (the scala command): scala test .\n//> using scala 3.9.0\n//> using options -deprecation -feature\n//> using javaOpt --sun-misc-unsafe-memory-access=allow\n//> using test.dep org.scalacheck::scalacheck:1.20.0\n//> using test.dep org.scalatest::scalatest-funsuite:3.2.20\n',
+    },
+    compact: {
+      'project.scala':
+        '// The build, for Scala CLI (the scala command): scala test .\n//> using scala 3.9.0\n//> using options -deprecation -feature\n//> using javaOpt --sun-misc-unsafe-memory-access=allow\n//> using test.dep org.scalacheck::scalacheck:1.20.0\n//> using test.dep org.scalatest::scalatest-funsuite:3.2.20\n',
+    },
+  },
+  groovy: {
+    readable: {
+      'settings.gradle': "rootProject.name = 'lawspec-example'\n",
+      'build.gradle':
+        "plugins {\n    id 'groovy'\n}\n\nrepositories {\n    mavenCentral()\n}\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(25) }\n}\n\nsourceSets {\n    main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }\n    test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } }\n}\n\ntasks.withType(org.gradle.api.tasks.compile.GroovyCompile).configureEach {\n    groovyOptions.forkOptions.memoryMaximumSize = '2g'\n}\n\ndependencies {\n    implementation 'org.apache.groovy:groovy:5.0.8'\n    testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')\n    testImplementation 'org.spockframework:spock-core'\n    testImplementation 'org.jetbrains:jetCheck:0.3.0'\n    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'\n    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}\n\ntest {\n    useJUnitPlatform()\n}\n",
+    },
+    compact: {
+      'settings.gradle': "rootProject.name = 'lawspec-example'\n",
+      'build.gradle':
+        "plugins { id 'groovy' }\nrepositories { mavenCentral() }\njava { toolchain { languageVersion = JavaLanguageVersion.of(25) } }\nsourceSets { main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }; test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } } }\ntasks.withType(org.gradle.api.tasks.compile.GroovyCompile).configureEach { groovyOptions.forkOptions.memoryMaximumSize = '2g' }\ndependencies { implementation 'org.apache.groovy:groovy:5.0.8'; testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0'); testImplementation 'org.spockframework:spock-core'; testImplementation 'org.jetbrains:jetCheck:0.3.0'; testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'; testRuntimeOnly 'org.junit.platform:junit-platform-launcher' }\ntest { useJUnitPlatform() }\n",
+    },
+  },
+  clojure: {
+    readable: {
+      'deps.edn':
+        '{:paths ["src" "target/classes"]\n :deps {org.clojure/clojure {:mvn/version "1.12.5"}}\n :aliases\n {:test {:extra-paths ["test" "target/test-classes"]\n         :extra-deps {org.clojure/test.check {:mvn/version "1.1.3"}}\n         :main-opts ["-m" "lawspec.test-runner"]}\n  :build {:main-opts ["-m" "lawspec.build"]}}}\n',
+    },
+    compact: {
+      'deps.edn':
+        '{:paths ["src" "target/classes"]\n :deps {org.clojure/clojure {:mvn/version "1.12.5"}}\n :aliases\n {:test {:extra-paths ["test" "target/test-classes"]\n         :extra-deps {org.clojure/test.check {:mvn/version "1.1.3"}}\n         :main-opts ["-m" "lawspec.test-runner"]}\n  :build {:main-opts ["-m" "lawspec.build"]}}}\n',
+    },
+  },
+  swift: {
+    readable: {
+      'Package.swift':
+        '// swift-tools-version: 6.2\nimport PackageDescription\n\nlet package = Package(\n  name: "Example",\n  platforms: [.macOS(.v26)],\n  targets: [\n    .target(name: "LawSpecRuntime", path: "lawspec/LawSpecRuntime"),\n    .target(\n      name: "LawSpecTesting", dependencies: ["LawSpecRuntime"], path: "lawspec/LawSpecTesting"),\n    .target(name: "App", dependencies: ["LawSpecRuntime"], path: "src"),\n    .testTarget(\n      name: "AppTests", dependencies: ["App", "LawSpecRuntime", "LawSpecTesting"], path: "tests"),\n  ]\n)\n',
+    },
+    compact: {
+      'Package.swift':
+        '// swift-tools-version: 6.2\nimport PackageDescription\nlet package = Package(\n  name: "Example",\n  platforms: [.macOS(.v26)],\n  targets: [\n    .target(name: "LawSpecRuntime", path: "lawspec/LawSpecRuntime"),\n    .target(\n      name: "LawSpecTesting", dependencies: ["LawSpecRuntime"], path: "lawspec/LawSpecTesting"),\n    .target(name: "App", dependencies: ["LawSpecRuntime"], path: "src"),\n    .testTarget(\n      name: "AppTests", dependencies: ["App", "LawSpecRuntime", "LawSpecTesting"], path: "tests"),\n  ]\n)\n',
+    },
+  },
+  prolog: {
+    readable: {
+      'pyproject.toml':
+        '[build-system]\nrequires = ["setuptools==80.9.0"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "lawspec-example"\nversion = "0.1.0"\nrequires-python = ">=3.13"\ndependencies = ["janus-swi==1.5.3"]\n\n[project.optional-dependencies]\ntest = ["pytest==8.4.2", "hypothesis==6.135.26"]\n\n[tool.setuptools.packages.find]\nwhere = ["src"]\n\n[tool.pytest.ini_options]\npythonpath = ["src"]\ntestpaths = ["tests"]\n',
+    },
+    compact: {
+      'pyproject.toml':
+        '[build-system]\nrequires = ["setuptools==80.9.0"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "lawspec-example"\nversion = "0.1.0"\nrequires-python = ">=3.13"\ndependencies = ["janus-swi==1.5.3"]\n\n[project.optional-dependencies]\ntest = ["pytest==8.4.2", "hypothesis==6.135.26"]\n\n[tool.setuptools.packages.find]\nwhere = ["src"]\n\n[tool.pytest.ini_options]\npythonpath = ["src"]\ntestpaths = ["tests"]\n',
+    },
+  },
+  hcl: {
+    readable: {},
+    compact: {},
+  },
+  yaml: {
+    readable: {},
+    compact: {},
+  },
+  antlr4: {
+    readable: {},
+    compact: {},
+  },
+  make: {
+    readable: {},
+    compact: {},
+  },
+};
 
-export function templates(target, { minify = false } = {}) {
-  if (typeof minify !== "boolean") throw new Error("minify must be a boolean");
+export function templates(target, {minify = false} = {})
+{
+  if (typeof minify !== 'boolean') throw new Error('minify must be a boolean');
   if (!targets.includes(target)) throw new Error(`Unknown target: ${target}`);
-  return { ...scaffolds[target][minify ? "compact" : "readable"] };
+  return {...scaffolds[target][minify ? 'compact' : 'readable']};
 }

@@ -426,8 +426,10 @@ prologFromPreparedPython sourceDir testDir bindings plan input = do
       , "            ) from error"
       , "        ty = failures[error.ability]"
       , "        value = _schema_value.validate(ty, error.value, MACHINE_BITS, symbols)"
-      , "        return [\"ability_failure\", error.ability, bridge.pack(value, _schema_value, ty)]"
-      , "    logical = _schema_value.from_native(result_type, result, MACHINE_BITS, symbols)"
+      , pyLine 8 (D.text "return " <> array [q "ability_failure", D.text "error.ability",
+          call "bridge.pack" (map D.text ["value", "_schema_value", "ty"])])
+      , pyLine 4 (D.text "logical = " <> call "_schema_value.from_native"
+          (map D.text ["result_type", "result", "MACHINE_BITS", "symbols"]))
       , "    return [\"ok\", bridge.pack(logical, _schema_value, result_type)]" ]
 
 ------------------------------------------------------------------------------
@@ -458,7 +460,7 @@ q = E.quoted
 number :: Int -> D.Doc
 number = D.text . show
 
--- | A statement at an indentation, laid out at ruff's 88 columns.
+-- | A statement at an indentation, laid out at Google's 80-column Python profile.
 pyLine :: Int -> D.Doc -> String
 pyLine indentation doc = D.render pythonLayout (D.text (replicate indentation ' ') <> D.nest indentation doc)
 

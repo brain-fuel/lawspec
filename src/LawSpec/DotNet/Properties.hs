@@ -77,7 +77,7 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             D.text ("/// <summary>The laws of " ++ C.idText (C.unitId unit) ++ ".</summary>") <> D.hardline <>
             mconcat [D.text a <> D.hardline | a <- unitAttributes] <>
             D.text ("public sealed class " ++ last (splitDots moduleName)) <> D.hardline <>
-            D.block 4 (D.joinWith (D.hardline <> D.hardline) [d | (d, _, _) <- bodies]) <> D.hardline
+            D.block 2 (D.joinWith (D.hardline <> D.hardline) [d | (d, _, _) <- bodies]) <> D.hardline
     pure [Artifact ("tests/LawSpec/" ++ last (splitDots moduleName) ++ extension lang) (D.render layout doc) "generated" "test"]
   where
     bits = planMachineBits plan
@@ -92,7 +92,7 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
     -- Each test of a parallel unit in a nested module (a class of its own).
     nestTest (doc, isTest, testName) = if not isTest then [(doc, isTest, testName)] else case lang of
       FSharp -> [(D.text ("module " ++ capitalFirst testName ++ " =") <> D.nest 4 (D.hardline <> doc), isTest, testName)]
-      CSharp -> [(D.text ("public sealed class " ++ capitalFirst testName ++ "Test") <> D.hardline <> D.block 4 doc, isTest, testName)]
+      CSharp -> [(D.text ("public sealed class " ++ capitalFirst testName ++ "Test") <> D.hardline <> D.block 2 doc, isTest, testName)]
     capitalFirst (c : cs) = toUpper c : cs
     capitalFirst [] = []
     benchmarks unit = do
@@ -648,6 +648,6 @@ emitNativeGenerators lang layout bits declarations bound = do
           D.joinWith D.hardline (map D.text (Definitions.csUsingLines ++ ["using LawSpec.Testing;"])) <> D.hardline <> D.hardline <>
           D.text "/// <summary>The application's generators, bound in lawspec.edn.</summary>" <> D.hardline <>
           D.text "public static class NativeGenerators" <> D.hardline <>
-          D.block 4 (D.text "public static FSharpList<Tuple<string, FSharpFunc<FSharpList<Gen<Value>>, Gen<Value>>>> Factories =>" <> D.nest 4 (D.hardline <>
+          D.block 2 (D.text "public static FSharpList<Tuple<string, FSharpFunc<FSharpList<Gen<Value>>, Gen<Value>>>> Factories =>" <> D.nest 4 (D.hardline <>
             D.text "Fn.List(" <> D.joinWith (D.text "," <> D.hardline <> D.text "    ") (map D.text entries) <> D.text ");")) <> D.hardline
   pure [Artifact ("tests/LawSpec/NativeGenerators" ++ extension lang) (D.render layout doc) "generated" "test"]

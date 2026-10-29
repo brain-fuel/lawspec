@@ -203,6 +203,12 @@
             "path": "how-to/targets/swift.md"
           }
         ]
+      },
+      {
+        "path": "how-to/manage-projects.md"
+      },
+      {
+        "path": "how-to/use-mcp.md"
       }
     ]
   },

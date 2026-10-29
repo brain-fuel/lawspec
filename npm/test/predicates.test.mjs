@@ -1,29 +1,34 @@
 // Generated from templates/npm/test/predicates.test.mjs by lawspec-dev generate. Do not edit.
 // Conformance fixtures use the current grammar.
 import {checkInput, generateInput} from './compiler-input.mjs';
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import path from "node:path";
-import { createCompiler } from "../api.mjs";
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile, mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import path from 'node:path';
+import {createCompiler} from '../api.mjs';
 const compiler = await createCompiler();
-const check = (content) =>
-  checkInput(compiler, { sources: [{ path: "predicates.lawspec", content }] });
+const check = content =>
+  checkInput(compiler, {sources: [{path: 'predicates.lawspec', content}]});
 
-test("port predicates, reusable guards and Bool literals survive the public API", async () => {
+test('port predicates, reusable guards and Bool literals survive the public API', async () =>
+{
   const content = await readFile(
-    new URL("../examples/specs/parse_port.lawspec", import.meta.url),
-    "utf8",
+    new URL('../examples/specs/parse_port.lawspec', import.meta.url),
+    'utf8',
   );
   const result = await check(content);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.laws.length, 2);
-  for (const law of result.laws) {
-    assert.equal(law.assertion.kind, "implies");
-    assert.ok(law.assertion.guard.node.declaration.endsWith("::validPort"));
-    assert.equal(law.assertion.guard.node.arguments[0].node.id, law.inputs[0].id);
+  for (const law of result.laws)
+  {
+    assert.equal(law.assertion.kind, 'implies');
+    assert.ok(law.assertion.guard.node.declaration.endsWith('::validPort'));
+    assert.equal(
+      law.assertion.guard.node.arguments[0].node.id,
+      law.inputs[0].id,
+    );
   }
   assert.match(
     result.expansions[0],
@@ -31,34 +36,35 @@ test("port predicates, reusable guards and Bool literals survive the public API"
   );
   assert.deepEqual(
     result.laws[0].examples[0].expectations[0].right.node.value,
-    {type:"Bool",value:true},
+    {type: 'Bool', value: true},
   );
   assert.deepEqual(
     result.laws[0].examples[3].expectations[0].right.node.value,
-    {type:"Bool",value:false},
+    {type: 'Bool', value: false},
   );
   for (const bad of [
     content.replace(
-      "validPort :: Int32 -> Bool",
-      "validPort :: Int32 -> Int32",
+      'validPort :: Int32 -> Bool',
+      'validPort :: Int32 -> Int32',
     ),
-    content.replace("validPort x implies", "missing x implies"),
-    content.replace("expect validPort x = true", "expect validPort x = 1"),
-    content.replace("x = 443", "x = true"),
-    content.replaceAll("validPort", "implies"),
-    content.replaceAll("validPort", "true"),
-    content.replaceAll("validPort", "false"),
+    content.replace('validPort x implies', 'missing x implies'),
+    content.replace('expect validPort x = true', 'expect validPort x = 1'),
+    content.replace('x = 443', 'x = true'),
+    content.replaceAll('validPort', 'implies'),
+    content.replaceAll('validPort', 'true'),
+    content.replaceAll('validPort', 'false'),
   ])
     assert.ok((await check(bad)).diagnostics.length);
 });
 
-test("Bool equality, predicate laws, nested conditions and generic wrappers type-check", async () => {
+test('Bool equality, predicate laws, nested conditions and generic wrappers type-check', async () =>
+{
   for (const definition of [
     'apply law "|satisfies| f',
     'apply law "|equivalent| f f',
-    "for all (x :: Bool) => f x end for all",
-    "for all (x :: Bool) => x implies f x implies true end for all",
-    "for all (x :: Bool) => true implies f x = false end for all",
+    'for all (x :: Bool) => f x end for all',
+    'for all (x :: Bool) => x implies f x implies true end for all',
+    'for all (x :: Bool) => true implies f x = false end for all',
   ])
     assert.deepEqual(
       (
@@ -86,17 +92,20 @@ end unit
 `,
   );
   assert.deepEqual(nested.diagnostics, []);
-  assert.equal(nested.laws[0].assertion.body.kind, "implies");
+  assert.equal(nested.laws[0].assertion.body.kind, 'implies');
   assert.match(nested.expansions[0], /p \(x\) implies p \(f \(x\)\) implies/);
 });
 
-test("generated implications short-circuit in order, evaluate once, and keep expectations unconditional", async () => {
+test('generated implications short-circuit in order, evaluate once, and keep expectations unconditional', async () =>
+{
   // Under .artifacts, not the repository root, so a generate --check running alongside never sees it;
   // module resolution still walks up to the repository's node_modules.
-  await mkdir(path.join(process.cwd(), ".artifacts"), { recursive: true });
-  const root = await mkdtemp(path.join(process.cwd(), ".artifacts", "lawspec-predicates-"));
+  await mkdir(path.join(process.cwd(), '.artifacts'), {recursive: true});
+  const root = await mkdtemp(
+    path.join(process.cwd(), '.artifacts', 'lawspec-predicates-'),
+  );
   const exec = promisify(execFile);
-  const env = { ...process.env };
+  const env = {...process.env};
   delete env.NODE_TEST_CONTEXT;
   const source = `unit conditions
 
@@ -112,16 +121,18 @@ end law
 
 end unit
 `;
-  async function generate(content) {
+  async function generate(content)
+  {
     const r = await generateInput(compiler, {
-      target: "javascript",
-      sources: [{ path: "conditions.lawspec", content }],
+      target: 'javascript',
+      sources: [{path: 'conditions.lawspec', content}],
     });
     assert.deepEqual(r.diagnostics, []);
-    for (const f of r.files) {
+    for (const f of r.files)
+    {
       const file = path.join(root, f.path);
-      await mkdir(path.dirname(file), { recursive: true });
-      if (f.ownership === "generated") await writeFile(file, f.content);
+      await mkdir(path.dirname(file), {recursive: true});
+      if (f.ownership === 'generated') await writeFile(file, f.content);
     }
   }
   const adapter = `let calls=[];
@@ -129,55 +140,58 @@ export function first(x){calls.push('first'); return x>0;}
 export function second(x){calls.push('second'); if(x<=0)throw Error('second evaluated outside domain'); return x<10;}
 export function result(x){calls.push('result'); if(x<=0||x>=10)throw Error('result evaluated outside domain'); return x;}
 process.on('exit',()=>console.log('CALLS='+calls.join(',')));`;
-  const run = (name) =>
+  const run = name =>
     exec(
       process.execPath,
       [
-        "--test",
-        "--test-name-pattern",
+        '--test',
+        '--test-name-pattern',
         `example:.*${name}`,
-        "test/conditions.lawspec.test.mjs",
+        'test/conditions.lawspec.test.mjs',
       ],
-      { cwd: root, env },
+      {cwd: root, env},
     );
-  try {
+  try
+  {
     await generate(source);
-    await mkdir(path.join(root, "node_modules/fast-check"), {
+    await mkdir(path.join(root, 'node_modules/fast-check'), {
       recursive: true,
     });
     await writeFile(
-      path.join(root, "node_modules/fast-check/package.json"),
-      JSON.stringify({ type: "module", exports: "./index.js" }),
+      path.join(root, 'node_modules/fast-check/package.json'),
+      JSON.stringify({type: 'module', exports: './index.js'}),
     );
     await writeFile(
-      path.join(root, "node_modules/fast-check/index.js"),
-      "export default {integer:()=>null,property:()=>null,assert:()=>{}};",
+      path.join(root, 'node_modules/fast-check/index.js'),
+      'export default {integer:()=>null,property:()=>null,assert:()=>{}};',
     );
-    await writeFile(path.join(root, "src/conditions.mjs"), adapter);
-    assert.match((await run("outer false")).stdout, /CALLS=first,first\s/);
+    await writeFile(path.join(root, 'src/conditions.mjs'), adapter);
+    assert.match((await run('outer false')).stdout, /CALLS=first,first\s/);
     assert.match(
-      (await run("inner false")).stdout,
+      (await run('inner false')).stdout,
       /CALLS=second,first,second\s/,
     );
     assert.match(
-      (await run("both true")).stdout,
+      (await run('both true')).stdout,
       /CALLS=result,first,second,result\s/,
     );
     await generate(
-      source.replace("expect first x = false", "expect result x = -1"),
+      source.replace('expect first x = false', 'expect result x = -1'),
     );
-    await assert.rejects(run("outer false"), (e) =>
+    await assert.rejects(run('outer false'), e =>
       /result evaluated outside domain/.test(e.stdout),
     );
     await generate(source);
     await writeFile(
-      path.join(root, "src/conditions.mjs"),
-      adapter.replace("return x>0;", "throw Error('predicate failed');"),
+      path.join(root, 'src/conditions.mjs'),
+      adapter.replace('return x>0;', "throw Error('predicate failed');"),
     );
-    await assert.rejects(run("both true"), (e) =>
+    await assert.rejects(run('both true'), e =>
       /predicate failed/.test(e.stdout),
     );
-  } finally {
-    await rm(root, { recursive: true, force: true });
+  }
+  finally
+  {
+    await rm(root, {recursive: true, force: true});
   }
 });

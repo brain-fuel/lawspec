@@ -1,0 +1,30 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{py,rs,fs,fsi,fsx,kt,kts,erl}]
+indent_size = 4
+
+[*.go]
+indent_style = tab
+indent_size = tab
+
+[*.cs]
+indent_size = 2
+max_line_length = 100
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+[*.py]
+max_line_length = 80
+
+[*.fs]
+max_line_length = 120

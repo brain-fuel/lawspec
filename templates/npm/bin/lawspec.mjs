@@ -34,7 +34,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--solver", "--proof-timeout", "--proof-memory", "--proof-rlimit", "--proof-seed"].includes(arg)) {
+  if (["--port", "--languages", "--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--solver", "--proof-timeout", "--proof-memory", "--proof-rlimit", "--proof-seed"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -758,7 +758,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -767,8 +767,33 @@ async function main() {
     output(VERSION);
     return;
   }
+  if (verb === "learn") {
+    if (positional.length || Object.keys(options).some(key => key !== "port")) throw new Error("Usage: lawspec learn [--port <port>]");
+    const {serveLearn} = await import("../learn.mjs");
+    return serveLearn(options.port);
+  }
+  if (options.port !== undefined) throw new Error("--port applies to learn");
+  if (verb === "project") {
+    if (positional.length !== 1 || Object.keys(options).some(key => !["project", "config", "json", "languages"].includes(key)))
+      throw new Error("Usage: lawspec project init|adopt|status|validate [--project <directory>] [--json]; add targets with lawspec init --target");
+    const {setupProject, inspectProject, projectExitCode} = await import("../project.mjs");
+    const action = positional[0];
+    if (!["init", "adopt", "status", "validate"].includes(action)) throw new Error("Usage: lawspec project init|adopt|status|validate [--project <directory>]");
+    if (options.config && options.project) throw new Error("Choose --config or --project");
+    const root = options.config ? configRoot : path.resolve(options.project || ".");
+    if (action === "init" || action === "adopt") {
+      const result = await setupProject(root, {adopt: action === "adopt", ...(options.languages ? {languages: options.languages.split(",")} : {})});
+      return output(options.json ? result : `LawSpec ${result.manifest}; Canon ${result.canon} in ${root}. Add an application with lawspec init --target <language>.`);
+    }
+    if (options.languages) throw new Error("--languages applies to project init/adopt");
+    const report = await inspectProject(root, {validate: action === "validate", configFile: options.config ? configFile : path.join(root, "lawspec.edn")});
+    output(options.json ? report : Object.entries(report).filter(([key]) => key !== "root").map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join("\n"));
+    process.exitCode = projectExitCode(report);
+    return;
+  }
+  if (options.languages) throw new Error("--languages applies to project init/adopt");
   if (options.compile && verb !== "fmt") throw new Error("--compile applies to fmt");
-  if (verb !== "fmt" && positional.length > (["explain", "evidence", "update"].includes(verb) ? 1 : 0))
+  if (verb !== "fmt" && positional.length > (["project", "explain", "evidence", "update"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
   if (verb === "examples") {
     if (
@@ -822,6 +847,12 @@ async function main() {
   if (!options.config && verb !== "init" && verb !== "package" && !(verb === "fmt" && positional.length)) {
     configFile = await findManifest();
     configRoot = path.dirname(configFile);
+  }
+  if (verb === "mcp") {
+    if (options.target || options.project || options.output || options.stdio)
+      throw new Error("mcp supports --config only");
+    const { serveLawSpec } = await import("../mcp.mjs");
+    return serveLawSpec(configFile);
   }
   if (verb === "describe") return output(await resolveComponent(configFile, options));
   if (verb === "fetch" || verb === "update") {

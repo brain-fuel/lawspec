@@ -219,6 +219,6 @@ testStrategies = testStrategiesWithSourceRoot "../src"
 -- | Imports in the maintained runtime template use the resolved test root.
 testStrategiesWithSourceRoot :: String -> Bool -> String
 testStrategiesWithSourceRoot sourceRoot ts = (if ts then "// @ts-nocheck\n" else "") ++
-  replace "\"./lawspec_schema.mjs\"" ("\"" ++ sourceRoot ++ "/lawspec_schema." ++ extension ++ "\"")
-    (replace "\"./lawspec_runtime.mjs\"" ("\"" ++ sourceRoot ++ "/lawspec_runtime." ++ extension ++ "\"") (runtimeSource "web-data-strategies"))
+  replace "./lawspec_schema.mjs" (sourceRoot ++ "/lawspec_schema." ++ extension)
+    (replace "./lawspec_runtime.mjs" (sourceRoot ++ "/lawspec_runtime." ++ extension) (runtimeSource "web-data-strategies"))
   where extension = if ts then "js" else "mjs"

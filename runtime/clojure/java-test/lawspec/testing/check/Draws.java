@@ -27,14 +27,12 @@ public final class Draws implements GenerationEnvironment
     this.replayed = replayed;
   }
 
-  @Override
-  public <T> T generate(Generator<T> generator)
+  @Override public <T> T generate(Generator<T> generator)
   {
     return generator.generateValue(this);
   }
 
-  @Override
-  public int getSizeHint()
+  @Override public int getSizeHint()
   {
     return sizeHint;
   }
@@ -43,10 +41,9 @@ public final class Draws implements GenerationEnvironment
   public int draw(int min, int max)
   {
     int position = trace.size();
-    int value =
-        position < replayed.size()
-            ? (int) Math.max(min, Math.min(max, (long) replayed.get(position)))
-            : fresh(min, max);
+    int value = position < replayed.size()
+        ? (int) Math.max(min, Math.min(max, (long) replayed.get(position)))
+        : fresh(min, max);
     trace.add(new int[] {min, max, value});
     return value;
   }
@@ -138,8 +135,7 @@ public final class Draws implements GenerationEnvironment
       }
       for (int index = 0; index < choices.size(); index++)
       {
-        for (int smaller :
-            towardZero(choices.get(index), trace.get(index)[0], trace.get(index)[1]))
+        for (int smaller : towardZero(choices.get(index), trace.get(index)[0], trace.get(index)[1]))
         {
           var candidate = new ArrayList<>(choices);
           candidate.set(index, smaller);
@@ -147,12 +143,10 @@ public final class Draws implements GenerationEnvironment
         }
       }
       Iterator<List<Integer>> pending = candidates.iterator();
-      return new Iterator<>()
-      {
+      return new Iterator<>() {
         private Case<T> next;
 
-        @Override
-        public boolean hasNext()
+        @Override public boolean hasNext()
         {
           while (next == null && pending.hasNext())
           {
@@ -161,8 +155,7 @@ public final class Draws implements GenerationEnvironment
           return next != null;
         }
 
-        @Override
-        public Case<T> next()
+        @Override public Case<T> next()
         {
           if (!hasNext())
           {
@@ -181,9 +174,8 @@ public final class Draws implements GenerationEnvironment
       try
       {
         T replayedValue = generator.generateValue(draws);
-        return smaller(draws.trace, trace)
-            ? new Case<>(generator, size, draws.trace, replayedValue)
-            : null;
+        return smaller(draws.trace, trace) ? new Case<>(generator, size, draws.trace, replayedValue)
+                                           : null;
       }
       catch (RuntimeException rejected)
       {

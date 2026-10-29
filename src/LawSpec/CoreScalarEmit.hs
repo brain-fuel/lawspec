@@ -467,7 +467,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
             (context : text "symbols" : map text assertionNames))
           shown = shownLaw e
           exampleContext example = shown ++ " example " ++ displayLabel (exampleName example)
-          linked context link test = Doc.lineComment 88 "# " (labelled context link) <> test
+          linked context link test = Doc.lineComment 80 "# " (labelled context link) <> test
           lawLink = if null (file (location (original e))) then Nothing else Just (locationLink (location (original e)))
           short = displayLabel (name e)
           examples' = [linked ("example " ++ displayLabel (exampleName example)) (locationLink <$> exampleLocation example) $
@@ -491,7 +491,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
           checkDoc = function coverCheck ["_case_values", "_case_context"]
             (withSymbols e (coverAssignments ++ [bracket e (checkClaim (text "_case_context"))]))
           wrapDoc = function coverRun ["name", "body"] (harnessInvocation label harness (text "body") (text "name") False)
-          registerDoc = statement (text (coverFunctions ++ " = ") <> runtime "register_finite_cases"
+          registerDoc = assign coverFunctions (runtime "register_finite_cases"
             ([invoke "globals" [], quoted coverPrefix, coverExpression, text coverCheck, message shown] ++
              [text coverRun | wrapped]))
           boundariesText = if Cover.coverCount cover == 0 then "" else
@@ -552,7 +552,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
              if Cover.coverCount cover == 0 then array [] else text coverFunctions,
              array [text (prefix ++ suffix) | suffix <- propertySuffixes]] ["+", "+"]
       pure ((if C.harnessSkip harness /= Nothing then "" else renderDocument assertionFunction) ++
-        Doc.render outputLayout (mconcat (map (Doc.lineComment 88 "# ") (lawCommentLines e))) ++ fst searchDocs ++ (++ snd searchDocs) (
+        Doc.render outputLayout (mconcat (map (Doc.lineComment 80 "# ") (lawCommentLines e))) ++ fst searchDocs ++ (++ snd searchDocs) (
         case (C.harnessSkip harness, C.harnessKnownDiscrepancy harness) of
           -- A skipped law runs nothing; it is still an obligation.
           (Just reason, _) -> renderDocument (function (base ++ "__skipped") []

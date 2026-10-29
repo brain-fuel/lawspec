@@ -2877,6 +2877,53 @@ stepModel command symbols args state = do
           SData _ (result : next : _) -> pure (next, result)
           _ -> throwIO (ErrorCall ("expected a product, got " ++ renderValue value))
 
+-- | Narrow an integer descriptor with the current abstract-state indices.
+modelArgument :: [Integer] -> Descriptor -> Descriptor
+modelArgument indices (DescList (DescAtom "dependent" : base : conditions)) =
+  case base of
+    DescList [DescAtom "int", name, low, high] ->
+      let tighten (lo, hi) (DescList [DescAtom op, expression]) =
+            let n = modelBound indices expression
+                lower = n + if op == ">" then 1 else 0
+                upper = n - if op == "<" then 1 else 0
+                l = if op `elem` [">", ">=", "=="] then Just (maybe lower (max lower) lo) else lo
+                h = if op `elem` ["<", "<=", "=="] then Just (maybe upper (min upper) hi) else hi
+             in (l, h)
+          tighten _ _ = error "unsupported model argument condition"
+          bound (DescInteger n) = Just n
+          bound _ = Nothing
+          (lo, hi) = foldl tighten (bound low, bound high) conditions
+       in DescList [DescAtom "int", name, maybe DescNone DescInteger lo, maybe DescNone DescInteger hi]
+    _ -> error "unsupported dependent model argument type"
+modelArgument _ d = d
+
+modelBound :: [Integer] -> Descriptor -> Integer
+modelBound _ (DescInteger n) = n
+modelBound indices (DescList [DescAtom "index", DescInteger k]) = indices !! fromInteger k
+modelBound indices (DescList [DescAtom op, a, b]) =
+  let x = modelBound indices a; y = modelBound indices b
+   in case op of "+" -> x + y; "-" -> x - y; "*" -> x * y; _ -> error "unsupported model argument bound"
+modelBound _ _ = error "unsupported model argument bound"
+
+modelBase :: Descriptor -> Descriptor
+modelBase (DescList (DescAtom "dependent" : base : _)) = base
+modelBase d = d
+
+emptyModelArguments :: [Descriptor] -> Bool
+emptyModelArguments =
+  any
+    ( \d -> case d of
+        DescList [DescAtom "int", _, DescInteger lo, DescInteger hi] -> lo > hi
+        _ -> False
+    )
+
+validModelArguments :: [Descriptor] -> [Scalar] -> Bool
+validModelArguments ds values = and (zipWith valid ds values)
+  where
+    valid (DescList [DescAtom "int", _, lo, hi]) (SInteger _ n) =
+      (case lo of DescInteger l -> n >= l; _ -> True) && (case hi of DescInteger h -> n <= h; _ -> True)
+    valid _ _ = True
+
 -- | Whether the model allows every step of a run.
 simulateRun :: ModelPlan -> ModelRun -> IO Bool
 simulateRun plan run = do
@@ -2899,7 +2946,7 @@ simulateFinal plan symbols (startArgs, steps) = do
               Right next -> go next indices rest
           go state indices ((index, args) : rest) = do
             let command = planCommands plan !! index
-            if not (admits command indices)
+            if not (admits command indices) || not (validModelArguments (map (modelArgument indices) (mcArguments command)) args)
               then pure Nothing
               else do
                 stepped <- try (stepModel command symbols args state)
@@ -2931,7 +2978,7 @@ generateRunWith crashes plan source len size = do
     Right state0 -> do
       let go 0 _ _ acc = pure (reverse acc)
           go n state indices acc = do
-            let allowed = [i | (i, c) <- zip [0 ..] (planCommands plan), admits c indices]
+            let allowed = [i | (i, c) <- zip [0 ..] (planCommands plan), admits c indices, not (emptyModelArguments (map (modelArgument indices) (mcArguments c)))]
             if null allowed
               then pure (reverse acc)
               else do
@@ -2948,10 +2995,16 @@ generateRunWith crashes plan source len size = do
                       Left (_ :: ModelStop) -> go (n - 1) state indices acc
                       Right next -> go (n - 1) next indices ((length (planCommands plan), []) : acc)
                   else do
-                    args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
+                    args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (map (modelArgument indices) (mcArguments command))
                     stepped <- try (stepModel command symbols args state)
                     case stepped of
-                      Left ModelInvalid -> go (n - 1) state indices acc
+                      Left ModelInvalid -> do
+                        let dependent (DescList (DescAtom "dependent" : _)) = True
+                            dependent _ = False
+                        allowed <- maybe (pure True) (\guard -> either (const False) (== SBool True) <$> callModel guard symbols [state]) (mcWhen command)
+                        if any dependent (mcArguments command) && allowed
+                          then throwIO (ErrorCall "incomplete model generation: dependent arguments rejected by the reference (1 attempt)")
+                          else go (n - 1) state indices acc
                       Left (ModelRaised _) -> go (n - 1) state indices acc
                       Right (next, _) -> go (n - 1) next (shifted command indices) ((index, args) : acc)
       steps <- go len state0 (planStartIndices plan) []
@@ -3053,7 +3106,7 @@ runCandidates plan (startArgs, steps) =
     ++ [ (startArgs, take k steps ++ [(index, replace j c args)] ++ drop (k + 1) steps)
        | (k, (index, args)) <- zip [0 ..] steps,
          (j, (d, arg)) <- zip [0 ..] (zip (stepArguments plan index) args),
-         c <- shrinkValue (planTable plan) d arg
+         c <- shrinkValue (planTable plan) (modelBase d) arg
        ]
     ++ [ (replace j c startArgs, steps)
        | (j, (d, arg)) <- zip [0 ..] (zip (planStartArguments plan) startArgs),

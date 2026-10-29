@@ -8,6 +8,7 @@ title: CLI
 ```text
 lawspec fmt [paths...] [--check] [--compile] [--json] [--config <path>]
 lawspec lsp --stdio
+lawspec mcp [--config <path>]
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -25,6 +26,9 @@ lawspec help
 Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 `python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin`, `rust`, `erlang`,
 `elixir`, `gleam`, `fsharp`, `csharp`, `scala`, `groovy`, `clojure` or `swift`.
+
+`mcp` starts the LawSpec MCP server over stdio for the project containing
+`lawspec.edn`. See [Use the MCP server](../how-to/use-mcp.md).
 
 ## Common options
 
@@ -506,3 +510,17 @@ still lists a refuted law under `REFUTED` before it exits with status `1`. `prov
 law is refuted, and status `2` when a selected task remains incomplete or
 unsupported. An `exempted` law-set check does not change the status until its
 exemption expires.
+
+## Project workflow and Learn
+
+`lawspec project init|adopt|status|validate [--project <directory>] [--json]`
+provides target-free setup and adoption, separate Canon/definition/evidence
+reports, and validation of only configured layers ref:DEC-project-workflow.
+`init` and `adopt` accept `--languages folio,javascript` for pinned Rice's Tax
+setup. Existing metadata and application files are preserved. Use the existing
+`lawspec init --target` command to add an application target. A compatible native
+Canon executable may be selected through `CANON` for existing Canon projects.
+
+`lawspec learn [--port <port>]` serves the packaged F#-first coding-course preview on
+`127.0.0.1:8384` by default, without a manifest ref:DEC-learn-course-preview. Port 0 selects an
+available port. See [the project workflow](../how-to/manage-projects.md).

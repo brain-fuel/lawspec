@@ -1,6 +1,7 @@
 -- | JavaScript and TypeScript as a syntax tree, printed exactly as Prettier
--- prints it (default options: width 80, two-space indent, double quotes,
--- semicolons, trailing commas everywhere, arrow parentheses always). The
+-- prints it with Google/gts options: width 80, two-space indentation,
+-- single quotes, compact object braces, semicolons, trailing commas and
+-- optional simple-arrow parentheses. Allman blocks match the pinned brace-style plugin. The
 -- printer is a port of the parts of Prettier 3.9.10's estree printer that
 -- generated code uses (src/language-js/print), over LawSpec.Code.Prettier's
 -- port of its document printer. Emitters build trees; they never write
@@ -22,7 +23,7 @@ import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import LawSpec.Code.Literal (literalFor)
 import LawSpec.Code.Prettier (Doc, text, cat, indent, align, dedent, group, groupBroken, groupWithId
-  , conditionalGroup, fill, ifBreak, ifBreakFor, indentIfBreak, line, softline, hardline
+  , conditionalGroup, fill, ifBreak, ifBreakFor, indentIfBreak, line, softline, hardline, allmanLine
   , breakParent, label, labelOf, join, willBreak, canBreak, removeLines, isEmpty, render, stringWidth)
 import qualified LawSpec.Code.Prettier as P
 
@@ -229,7 +230,7 @@ comment c = Comment [c]
 blank :: Stmt
 blank = Blank
 
--- | A string literal as Prettier writes it: double quotes unless single
+-- | Google/gts string literals prefer single quotes unless double
 -- quotes need fewer escapes (LawSpec.Code.Literal's table for JavaScript).
 javascriptLiteral :: String -> String
 javascriptLiteral = literalFor "javascript"
@@ -328,43 +329,40 @@ statement p s = let here = NS s in case s of
   Return Nothing -> pure (text "return;")
   Return (Just e) -> returnOrThrow "return" e
   Throw e -> returnOrThrow "throw" e
-  IfSingle test consequent -> do
-    condition <- ifCondition test
-    body <- statement ((here, "consequent") : p) consequent
-    pure (group (cat [text "if (", condition, text ")", indent (cat [line, body])]))
+  IfSingle test consequent -> statement p (If test [consequent] Nothing)
   If test consequent alternate -> do
     condition <- ifCondition test
     body <- block ((here, "consequent") : p) consequent False
-    let opening = group (cat [text "if (", condition, text ")", text " ", body])
+    let opening = group (cat [text "if (", condition, text ")", allmanLine, body])
     case alternate of
       Nothing -> pure opening
       Just (Left elseIf) -> do
         d <- statement ((here, "alternate") : p) elseIf
-        pure (cat [opening, text " else", group (cat [text " ", d])])
+        pure (cat [opening, allmanLine, text "else", group (cat [text " ", d])])
       Just (Right stmts) -> do
         d <- block ((here, "alternate") : p) stmts False
-        pure (cat [opening, text " else", group (cat [text " ", d])])
+        pure (cat [opening, allmanLine, text "else", group (cat [allmanLine, d])])
   Try body handler finalizer -> do
     b <- block ((here, "block") : p) body False
     h <- case handler of
       Nothing -> pure mempty
       Just (pat, stmts) -> do
         hb <- block ((here, "handler") : p) stmts (isNothing finalizer)
-        pp <- maybe (pure mempty) (\x -> (\d -> cat [text "(", d, text ") "]) <$> pattern' x) pat
-        pure (cat [text " catch ", pp, hb])
+        pp <- maybe (pure mempty) (\x -> (\d -> cat [text " (", d, text ")"]) <$> pattern' x) pat
+        pure (cat [allmanLine, text "catch", pp, allmanLine, hb])
     f <- case finalizer of
       Nothing -> pure mempty
-      Just stmts -> (\d -> cat [text " finally ", d]) <$> block ((here, "finalizer") : p) stmts False
-    pure (cat [text "try ", b, h, f])
+      Just stmts -> (\d -> cat [allmanLine, text "finally", allmanLine, d]) <$> block ((here, "finalizer") : p) stmts False
+    pure (cat [text "try", allmanLine, b, h, f])
   ForOf kind pat iterable body -> do
     left <- pattern' pat
     right <- expr ((here, "right") : p) noArgs iterable
     b <- block ((here, "body") : p) body False
-    pure (group (cat [text "for (", text kind, text " ", left, text " of ", right, text ")", text " ", b]))
+    pure (group (cat [text "for (", text kind, text " ", left, text " of ", right, text ")", allmanLine, b]))
   For initial test update body -> do
     b <- block ((here, "body") : p) body True
     if isNothing initial && isNothing test && isNothing update
-      then pure (group (cat [text "for (;;)", text " ", b]))
+      then pure (group (cat [text "for (;;)", allmanLine, b]))
       else do
         initDoc <- case initial of
           Nothing -> pure mempty
@@ -375,7 +373,7 @@ statement p s = let here = NS s in case s of
         updateDoc <- maybe (pure mempty) (expr ((here, "update") : p) noArgs) update
         pure (group (cat [text "for (", group (cat [indent (cat [softline, initDoc, text ";", line, testDoc, text ";"
                                                                 , if isJust update then cat [line, updateDoc] else mempty]), softline])
-                         , text ")", text " ", b]))
+                         , text ")", allmanLine, b]))
   Switch discriminant cases -> do
     d <- expr ((here, "discriminant") : p) noArgs discriminant
     printed <- forM cases $ \(test, consequent) -> do
@@ -385,14 +383,14 @@ statement p s = let here = NS s in case s of
       let body = filter (/= Blank) consequent
       cons <- statementSequence ((here, "consequent") : p) consequent
       pure (if null body then label' else case body of
-        [Block _] -> cat [label', text " ", cons]
+        [Block _] -> cat [label', allmanLine, cons]
         _ -> cat [label', indent (cat [hardline, cons])])
-    pure (cat [group (cat [text "switch (", indent (cat [softline, d]), softline, text ")"]), text " {"
+    pure (cat [group (cat [text "switch (", indent (cat [softline, d]), softline, text ")"]), allmanLine, text "{"
               , if null printed then mempty else indent (cat [hardline, join hardline printed]), hardline, text "}"])
   While test body -> do
     condition <- ifCondition test
     b <- block ((here, "body") : p) body True
-    pure (group (cat [text "while (", condition, text ")", text " ", b]))
+    pure (group (cat [text "while (", condition, text ")", allmanLine, b]))
   Block stmts -> block p stmts False
   Break -> pure (text "break;")
   Continue -> pure (text "continue;")
@@ -414,7 +412,7 @@ statement p s = let here = NS s in case s of
   ExportAll source -> pure (text ("export * from " ++ javascriptLiteral source ++ ";"))
   Namespace ex name body -> do
     b <- block ((here, "body") : p) body False
-    pure (exported ex (cat [text "namespace ", text name, text " ", b]))
+    pure (exported ex (cat [text "namespace ", text name, allmanLine, b]))
   where
     exported ex d = if ex then cat [text "export ", d] else d
     returnOrThrow keyword e = do
@@ -435,8 +433,8 @@ statement p s = let here = NS s in case s of
 specifiers :: [(String, Maybe String)] -> Doc
 specifiers names
   | null names = text " {}"
-  | length names > 1 = cat [text " ", group (cat [text "{", indent (cat [line, join (cat [text ",", line]) (map spec names)]), ifBreak (text ",") mempty, line, text "}"])]
-  | otherwise = cat [text " { ", cat (map spec names), text " }"]
+  | length names > 1 = cat [text " ", group (cat [text "{", indent (cat [softline, join (cat [text ",", line]) (map spec names)]), ifBreak (text ",") mempty, softline, text "}"])]
+  | otherwise = cat [text " {", cat (map spec names), text "}"]
   where spec (n, alias) = text (n ++ maybe "" (" as " ++) alias)
 
 importDoc :: Bool -> Import -> String -> Doc
@@ -448,7 +446,7 @@ importDoc typeOnly spec source = cat [text "import", text (if typeOnly then " ty
       ImportNamed names -> cat [specifiers names, text " from"]
       ImportDefaultNamed n names -> cat [text (" " ++ n ++ ","), specifierGroup names, text " from"]
       ImportEffect -> mempty
-    specifierGroup names = cat [text " ", group (cat [text "{", indent (cat [line, join (cat [text ",", line]) [text (n ++ maybe "" (" as " ++) a) | (n, a) <- names]]), ifBreak (text ",") mempty, line, text "}"])]
+    specifierGroup names = cat [text " ", group (cat [text "{", indent (cat [softline, join (cat [text ",", line]) [text (n ++ maybe "" (" as " ++) a) | (n, a) <- names]]), ifBreak (text ",") mempty, softline, text "}"])]
 
 pattern' :: Pattern -> P Doc
 pattern' = patternWith False
@@ -465,7 +463,7 @@ patternWith hugged pat = case pat of
     ds <- mapM (\(k, v) -> case v of
       Nothing -> pure (text k)
       Just x -> (\d -> cat [text k, text ": ", d]) <$> pattern' x) props
-    let content = cat [text "{", indent (cat [line, join (cat [text ",", line]) ds]), ifBreak (text ",") mempty, line, text "}"]
+    let content = cat [text "{", indent (cat [softline, join (cat [text ",", line]) ds]), ifBreak (text ",") mempty, softline, text "}"]
     pure (if null ds then text "{}" else if hugged then content else group content)
 
 declarator :: Path -> Pattern -> Maybe Type -> Maybe Expr -> P Doc
@@ -1211,7 +1209,7 @@ functionDoc p async name tps ps rt body = do
   b <- block p body True
   let grouped = if shouldGroupParameters tps ps rt rtDoc then group paramsDoc else paramsDoc
   pure (cat [ if async then text "async " else mempty, text "function ", maybe mempty text name, typeParameterList tps
-            , group (cat [grouped, rtDoc]), text " ", b ])
+            , group (cat [grouped, rtDoc]), allmanLine, b ])
 
 typeParameterList :: [String] -> Doc
 typeParameterList tps = if null tps then mempty else text ("<" ++ commaJoined tps ++ ">")
@@ -1241,13 +1239,14 @@ arrowWith p args e bodyDoc = case e of
     paramsDoc <- functionParameters p ps expand inTestCall
     rtDoc0 <- returnTypeDoc p rt
     let rtDoc = if expand then group (removeLines rtDoc0) else rtDoc0
-        signature = cat [if async then text "async " else mempty, group (cat [paramsDoc, rtDoc])]
+        signature = cat [if async then text "async " else mempty, group (cat [arrowParameters ps paramsDoc, rtDoc])]
     let shouldPutBodyOnSameLine = case body of
           BlockBody _ -> True
           ExpressionBody b -> mayBreakAfterShortPrefix b || addParensIfNotBreak b
         trailingComma = if expandLastArg args then ifBreak (text ",") mempty else mempty
         trailingSpace = if expandLastArg args then softline else mempty
         printedBody = case body of
+          BlockBody _ -> cat [allmanLine, bodyDoc]
           ExpressionBody b | shouldPutBodyOnSameLine && addParensIfNotBreak b ->
             cat [text " ", group (cat [ifBreak mempty (text "("), indent (cat [softline, bodyDoc]), ifBreak mempty (text ")"), trailingComma, trailingSpace])]
           _ | shouldPutBodyOnSameLine -> cat [text " ", bodyDoc]
@@ -1255,6 +1254,8 @@ arrowWith p args e bodyDoc = case e of
     pure (group (cat [group signature, text " =>", group printedBody]))
   _ -> error "arrow"
   where
+    arrowParameters [Param (PIdent name) Nothing Nothing False] _ = text name
+    arrowParameters _ doc = doc
     mayBreakAfterShortPrefix b = case b of
       Array _ -> True
       Object _ -> True
@@ -1282,7 +1283,7 @@ objectDoc p e props = do
   let here = NE e
   printed <- forM props (propDoc d here)
   if null printed then pure (text "{}") else
-    pure (group (cat [text "{", indent (cat [line, join (cat [text ",", line]) printed]), ifBreak (text ",") mempty, line, text "}"]))
+    pure (group (cat [text "{", indent (cat [softline, join (cat [text ",", line]) printed]), ifBreak (text ",") mempty, softline, text "}"]))
   where
     simpleNumber s = not (null s) && all isDigit s && (s == "0" || take 1 s /= "0")
     propDoc d here prop = case prop of
@@ -1675,8 +1676,8 @@ classDoc p name tps super implements members isInterface' = do
       gid <- fresh
       let nonEmpty = not (null [m | m <- members, not (isLayoutMember m)])
       pure (cat [text keyword, groupWithId gid False (cat [header, indent extendsParts])
-                , if not isInterface' && nonEmpty then ifBreakFor gid hardline (text " ") else text " ", body])
-    else pure (cat [text keyword, header, extendsParts, text " ", body])
+                , if not isInterface' && nonEmpty then ifBreakFor gid hardline allmanLine else allmanLine, body])
+    else pure (cat [text keyword, header, extendsParts, allmanLine, body])
   where
     isLayoutMember m = case m of
       MemberComment _ -> False
@@ -1720,7 +1721,7 @@ memberDoc p m isInterface' = let here = NMember m in case m of
         prefix = cat [if static then text "static " else mempty
                      , if async then text "async " else mempty
                      , if kind `elem` ["get", "set"] then text (kind ++ " ") else mempty]
-    pure (cat [prefix, text name, group (cat [grouped, rtDoc]), text " ", b])
+    pure (cat [prefix, text name, group (cat [grouped, rtDoc]), allmanLine, b])
   Signature name ps rt -> do
     paramsDoc <- functionParameters ((here, "params") : p) ps False False
     rtDoc <- returnTypeDoc ((here, "returnType") : p) rt
@@ -1788,7 +1789,7 @@ typeAt p layout t = let here = NType t in case t of
       d <- typeAt ((here, "members") : p) Nothing ft
       pure (cat [text n, if optional then text "?" else mempty, text ": ", d])
     pure (if null docs then text "{}" else
-      group (cat [text "{", indent (cat [line, join (cat [text ";", line]) docs]), ifBreak (text ";") mempty, line, text "}"]))
+      group (cat [text "{", indent (cat [softline, join (cat [text ";", line]) docs]), ifBreak (text ";") mempty, softline, text "}"]))
   TUnion ts
     | shouldHugUnion t -> join (text " | ") <$> mapM (typeAt ((here, "types") : p) Nothing) ts
     | otherwise -> do

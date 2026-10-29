@@ -10,6 +10,8 @@ import LawSpec.Core.Machine
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model hiding (Expectation)
+import qualified LawSpec.ModelLaws as ML
+import qualified LawSpec.Core.ModelCheck as MC
 
 stack :: String
 stack = unlines
@@ -150,3 +152,20 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
         [ "model counter :: shared Counter by Int64 is"
         , "  start increment ~ 0"
         , "end"  ++ " model"])
+  -- The reference domain changes after each transition; enumerating once
+  -- at the initial state would permanently lose chooseAt. ref:DEC-dependent-model-arguments
+  it "enumerates dependent arguments at zero, after transitions, and after clearing" $ do
+    source <- readFile "test/fixtures/dependent-model-arguments.lawspec"
+    let core = either (error . show) id (compileCore 64 defaultGeneration [Source "dependent.lawspec" source])
+        machine = head [m | u <- C.programUnits core, m <- C.unitMachines u]
+        system = either error id (ML.systemOf core machine)
+        first = head (MC.systemInitial system)
+        steps state = either error id (MC.systemSteps system state)
+        chosen state = [shown | (name,shown,_) <- steps state, name == "chooseAt"]
+        next command state = head [s | (name,_,s) <- steps state, name == command]
+        one = next "push" first
+        two = next "push" one
+    chosen first `shouldBe` []
+    chosen one `shouldBe` ["chooseAt 0"]
+    chosen two `shouldBe` ["chooseAt 0", "chooseAt 1"]
+    chosen (next "clear" two) `shouldBe` []

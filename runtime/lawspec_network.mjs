@@ -14,90 +14,101 @@
 // runtime loads this module when its first secure node is made, and uses
 // its layer (node, identity, trusted) as the node's secure layer; the module
 // imports nothing from the runtime.
-import { createCipheriv, createDecipheriv, createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
-import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
+import {createCipheriv, createDecipheriv, createHash} from 'node:crypto';
+import {existsSync, readFileSync} from 'node:fs';
+import {dirname, join, resolve} from 'node:path';
+import {ml_kem768} from '@noble/post-quantum/ml-kem.js';
+import {ml_dsa65} from '@noble/post-quantum/ml-dsa.js';
 
 const UTF8 = new TextEncoder();
-const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
+const STRICT_UTF8 = new TextDecoder('utf-8', {fatal: true});
 const RECORD = Uint8Array.of(0x4c, 0x53, 0x01);
 const HELLO = 1,
   WELCOME = 2,
   DATA = 3;
-const LABEL_HELLO = UTF8.encode("lawspec-handshake-v1-hello");
-const LABEL_WELCOME = UTF8.encode("lawspec-handshake-v1-welcome");
-const LABEL_KEY = UTF8.encode("lawspec-session-v1");
-const LABEL_FRAME = UTF8.encode("lawspec-frame-v1");
+const LABEL_HELLO = UTF8.encode('lawspec-handshake-v1-hello');
+const LABEL_WELCOME = UTF8.encode('lawspec-handshake-v1-welcome');
+const LABEL_KEY = UTF8.encode('lawspec-session-v1');
+const LABEL_FRAME = UTF8.encode('lawspec-frame-v1');
 const HANDSHAKE_RETRY = 100;
 const HANDSHAKE_DEADLINE = 5000;
 const QUEUE_LIMIT = 4096;
 const NO_CONTEXT = new Uint8Array(0);
 
 /** Bytes that are not a well-formed record. */
-class RecordError extends Error {}
+class RecordError extends Error
+{}
 
-const asBytes = (data) =>
+const asBytes = data =>
   data instanceof Uint8Array && data.constructor === Uint8Array
     ? data
     : new Uint8Array(data);
 
-function concatBytes(...parts) {
+function concatBytes(...parts)
+{
   const total = parts.reduce((n, p) => n + p.length, 0);
   const out = new Uint8Array(total);
   let at = 0;
-  for (const p of parts) {
+  for (const p of parts)
+  {
     out.set(p, at);
     at += p.length;
   }
   return out;
 }
 
-const hex = (bytes) =>
-  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const hex = bytes =>
+  Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
 
-function fromHex(text) {
+function fromHex(text)
+{
   if (text.length % 2 !== 0 || /[^0-9a-fA-F]/.test(text))
-    throw new Error("not hexadecimal: " + text);
+    throw new Error('not hexadecimal: ' + text);
   const out = new Uint8Array(text.length / 2);
   for (let i = 0; i < out.length; i++)
     out[i] = parseInt(text.slice(2 * i, 2 * i + 2), 16);
   return out;
 }
 
-function equalBytes(a, b) {
+function equalBytes(a, b)
+{
   if (a.length !== b.length) return false;
   let difference = 0;
   for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
   return difference === 0;
 }
 
-function sha3(data) {
-  return asBytes(createHash("sha3-256").update(data).digest());
+function sha3(data)
+{
+  return asBytes(createHash('sha3-256').update(data).digest());
 }
 
-function shake(data, length) {
+function shake(data, length)
+{
   return asBytes(
-    createHash("shake256", { outputLength: length }).update(data).digest(),
+    createHash('shake256', {outputLength: length}).update(data).digest(),
   );
 }
 
-function secureRandom(n) {
+function secureRandom(n)
+{
   const out = new Uint8Array(n);
   globalThis.crypto.getRandomValues(out);
   return out;
 }
 
 /** A record field: its length (LEB128, as the wire encoding writes it), then its bytes. */
-function w(data) {
+function w(data)
+{
   const out = [];
   let n = data.length;
-  for (;;) {
+  for (;;)
+  {
     const byte = n & 0x7f;
     n = Math.floor(n / 128);
     if (n) out.push(byte | 0x80);
-    else {
+    else
+    {
       out.push(byte);
       break;
     }
@@ -105,28 +116,32 @@ function w(data) {
   return concatBytes(Uint8Array.from(out), data);
 }
 
-function readVarint(data, pos) {
+function readVarint(data, pos)
+{
   let result = 0,
     scale = 1;
-  for (;;) {
+  for (;;)
+  {
     if (pos >= data.length)
-      throw new RecordError("the record ends in the middle of a length");
+      throw new RecordError('the record ends in the middle of a length');
     const byte = data[pos++];
     result += (byte & 0x7f) * scale;
     if (result > Number.MAX_SAFE_INTEGER)
-      throw new RecordError("a record length is too large");
+      throw new RecordError('a record length is too large');
     if (byte < 0x80) return [result, pos];
     scale *= 128;
   }
 }
 
-function readFields(data, pos, count) {
+function readFields(data, pos, count)
+{
   const fields = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < count; i++)
+  {
     let n;
     [n, pos] = readVarint(data, pos);
     if (pos + n > data.length)
-      throw new RecordError("a record field runs past its end");
+      throw new RecordError('a record field runs past its end');
     fields.push(data.slice(pos, pos + n));
     pos += n;
   }
@@ -134,45 +149,55 @@ function readFields(data, pos, count) {
 }
 
 /** A node's long-term ML-DSA-65 identity, kept as its 32-byte seed. */
-export class NodeIdentity {
+export class NodeIdentity
+{
   seed;
   verifyingKey;
   #secretKey;
-  constructor(seed) {
+  constructor(seed)
+  {
     const bytes = Uint8Array.from(seed);
     if (bytes.length !== 32)
-      throw new Error("a node identity is a 32-byte ML-DSA-65 seed");
+      throw new Error('a node identity is a 32-byte ML-DSA-65 seed');
     this.seed = bytes;
-    const { publicKey, secretKey } = ml_dsa65.keygen(bytes.slice());
+    const {publicKey, secretKey} = ml_dsa65.keygen(bytes.slice());
     this.verifyingKey = publicKey;
     this.#secretKey = secretKey;
   }
-  static generate() {
+  static generate()
+  {
     return new NodeIdentity(secureRandom(32));
   }
   /** The identity lawspec.edn binds (lawspec-network.conf), or a fresh one. */
-  static configured() {
+  static configured()
+  {
     return networkConfig().identity ?? NodeIdentity.generate();
   }
   /** SHA3-256 of the verifying key, in hexadecimal. */
-  get fingerprint() {
+  get fingerprint()
+  {
     return hex(sha3(this.verifyingKey));
   }
-  sign(message) {
+  sign(message)
+  {
     return ml_dsa65.sign(message, this.#secretKey.slice(), {
       context: NO_CONTEXT,
     });
   }
 }
 
-function verifySigned(verifyingKey, message, signature) {
-  try {
+function verifySigned(verifyingKey, message, signature)
+{
+  try
+  {
     return (
       ml_dsa65.verify(signature, message, verifyingKey, {
         context: NO_CONTEXT,
       }) === true
     );
-  } catch {
+  }
+  catch
+  {
     return false;
   }
 }
@@ -185,14 +210,18 @@ function verifySigned(verifyingKey, message, signature) {
  * line), relative to it; `#` begins a comment. Gives {identity, trusted},
  * each null when not given.
  */
-export function networkConfig() {
-  const none = { identity: null, trusted: null };
+export function networkConfig()
+{
+  const none = {identity: null, trusted: null};
   let conf = process.env.LAWSPEC_NETWORK_CONF;
-  if (conf === undefined) {
+  if (conf === undefined)
+  {
     let here = process.cwd();
-    for (;;) {
-      const candidate = join(here, "lawspec-network.conf");
-      if (existsSync(candidate)) {
+    for (;;)
+    {
+      const candidate = join(here, 'lawspec-network.conf');
+      if (existsSync(candidate))
+      {
         conf = candidate;
         break;
       }
@@ -205,27 +234,32 @@ export function networkConfig() {
   const base = dirname(resolve(conf));
   let identity = null,
     trusted = null;
-  for (const line of readFileSync(conf, "utf8").split("\n")) {
+  for (const line of readFileSync(conf, 'utf8').split('\n'))
+  {
     const trimmed = line.trim();
     const at = trimmed.search(/\s/);
-    if (at < 0 || trimmed.startsWith("#")) continue;
+    if (at < 0 || trimmed.startsWith('#')) continue;
     const word = trimmed.slice(0, at),
       target = join(base, trimmed.slice(at).trim());
-    if (word === "identity") {
-      identity = new NodeIdentity(fromHex(readFileSync(target, "utf8").trim()));
-    } else if (word === "trusted") {
+    if (word === 'identity')
+    {
+      identity = new NodeIdentity(fromHex(readFileSync(target, 'utf8').trim()));
+    }
+    else if (word === 'trusted')
+    {
       trusted = new Set(
-        readFileSync(target, "utf8")
+        readFileSync(target, 'utf8')
           .split(/\s+/)
-          .filter((t) => t !== "")
-          .map((t) => t.toLowerCase()),
+          .filter(t => t !== '')
+          .map(t => t.toLowerCase()),
       );
     }
   }
-  return { identity, trusted };
+  return {identity, trusted};
 }
 
-export function helloBody(session, address, verifyingKey, encapsulationKey) {
+export function helloBody(session, address, verifyingKey, encapsulationKey)
+{
   return concatBytes(
     w(session),
     w(UTF8.encode(address)),
@@ -234,7 +268,8 @@ export function helloBody(session, address, verifyingKey, encapsulationKey) {
   );
 }
 
-export function welcomeBody(session, address, verifyingKey, ciphertext, hello) {
+export function welcomeBody(session, address, verifyingKey, ciphertext, hello)
+{
   return concatBytes(
     w(session),
     w(UTF8.encode(address)),
@@ -248,7 +283,8 @@ export function welcomeBody(session, address, verifyingKey, ciphertext, hello) {
  * The AES-256-GCM key: SHAKE256(shared || label || SHA3(hello body) ||
  * SHA3(welcome body)), 32 bytes.
  */
-export function sessionKey(shared, hello, welcome) {
+export function sessionKey(shared, hello, welcome)
+{
   return shake(concatBytes(shared, LABEL_KEY, sha3(hello), sha3(welcome)), 32);
 }
 
@@ -259,8 +295,9 @@ export function sealFrame(
   direction,
   frame,
   nonce = secureRandom(12),
-) {
-  const cipher = createCipheriv("aes-256-gcm", key, nonce);
+)
+{
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
   cipher.setAAD(concatBytes(LABEL_FRAME, session, Uint8Array.of(direction)));
   const body = concatBytes(
     cipher.update(frame),
@@ -277,22 +314,27 @@ export function sealFrame(
 }
 
 /** The frame a data record seals, or null. */
-export function openFrame(key, record) {
+export function openFrame(key, record)
+{
   record = asBytes(record);
   let session, direction, sealed, end;
-  try {
+  try
+  {
     let pos;
     [[session], pos] = readFields(record, 4, 1);
     if (pos >= record.length) return null;
     direction = record[pos];
     [[sealed], end] = readFields(record, pos + 1, 1);
-  } catch {
+  }
+  catch
+  {
     return null;
   }
   if (end !== record.length || sealed.length < 28) return null;
-  try {
+  try
+  {
     const decipher = createDecipheriv(
-      "aes-256-gcm",
+      'aes-256-gcm',
       key,
       sealed.subarray(0, 12),
     );
@@ -304,7 +346,9 @@ export function openFrame(key, record) {
       decipher.update(sealed.subarray(12, sealed.length - 16)),
       decipher.final(),
     );
-  } catch {
+  }
+  catch
+  {
     return null;
   }
 }
@@ -328,7 +372,8 @@ export function handshakeVector(
   welcomeHash,
   key,
   record,
-) {
+)
+{
   const x = fromHex;
   const first = new NodeIdentity(x(initiatorSeed)),
     second = new NodeIdentity(x(responderSeed));
@@ -364,17 +409,20 @@ export function handshakeVector(
 }
 
 /** A one-time token from the operating system's secure generator: 32 bytes as 64 hexadecimal digits. */
-export function secureToken() {
+export function secureToken()
+{
   return hex(secureRandom(32));
 }
 
-class SecureSession {
+class SecureSession
+{
   id;
   peer;
   key;
   direction;
   confirmed;
-  constructor(id, peer, key, direction, confirmed) {
+  constructor(id, peer, key, direction, confirmed)
+  {
     this.id = id;
     this.peer = peer;
     this.key = key;
@@ -391,7 +439,8 @@ class SecureSession {
  * (a promise, rejecting as the transport's first send does) and
  * receive(record), the frame a record carries or null.
  */
-export class SecureLayer {
+export class SecureLayer
+{
   node;
   identity;
   trusted;
@@ -400,7 +449,8 @@ export class SecureLayer {
   pending;
   welcomes;
   known;
-  constructor(node, identity = null, trusted = null) {
+  constructor(node, identity = null, trusted = null)
+  {
     this.node = node;
     const config =
       identity === null || trusted === null ? networkConfig() : null;
@@ -409,7 +459,7 @@ export class SecureLayer {
     this.trusted =
       fingerprints === null
         ? null
-        : new Set([...fingerprints].map((t) => String(t).toLowerCase()));
+        : new Set([...fingerprints].map(t => String(t).toLowerCase()));
     // By session id (hexadecimal).
     this.sessions = new Map();
     // By peer address: the session this node began.
@@ -420,30 +470,38 @@ export class SecureLayer {
     // refused (trust on first use, unless trusted names them).
     this.known = new Map();
   }
-  close() {
-    for (const pending of this.pending.values()) {
+  close()
+  {
+    for (const pending of this.pending.values())
+    {
       pending.done = true;
       clearTimeout(pending.timer);
     }
     this.pending.clear();
   }
-  acceptPeer(address, verifyingKey) {
+  acceptPeer(address, verifyingKey)
+  {
     const fingerprint = hex(sha3(verifyingKey));
     if (this.trusted !== null && !this.trusted.has(fingerprint)) return false;
     if (!this.known.has(address)) this.known.set(address, fingerprint);
     return this.known.get(address) === fingerprint;
   }
-  async send(peer, frame) {
+  async send(peer, frame)
+  {
     let session = this.outbound.get(peer);
-    if (session === undefined) {
-      for (const s of this.sessions.values()) {
-        if (s.peer === peer && s.confirmed) {
+    if (session === undefined)
+    {
+      for (const s of this.sessions.values())
+      {
+        if (s.peer === peer && s.confirmed)
+        {
           session = s;
           break;
         }
       }
     }
-    if (session !== undefined) {
+    if (session !== undefined)
+    {
       await this.node.transport.send(
         peer,
         sealFrame(session.key, session.id, session.direction, frame),
@@ -452,22 +510,27 @@ export class SecureLayer {
     }
     let pending = this.pending.get(peer);
     const start = pending === undefined;
-    if (start) {
+    if (start)
+    {
       pending = this.begin(peer);
       this.pending.set(peer, pending);
     }
     if (pending.queue.length < QUEUE_LIMIT) pending.queue.push(frame);
     if (!start) return;
-    try {
+    try
+    {
       await this.node.transport.send(peer, pending.hello);
-    } catch (error) {
+    }
+    catch (error)
+    {
       if (this.pending.get(peer) === pending) this.pending.delete(peer);
       pending.done = true;
       throw error;
     }
     this.retry(peer, pending);
   }
-  begin(peer) {
+  begin(peer)
+  {
     const session = secureRandom(16);
     const kem = ml_kem768.keygen(secureRandom(64));
     const body = helloBody(
@@ -488,16 +551,20 @@ export class SecureLayer {
     };
   }
   /** Sends the hello again every 100ms until welcomed, for up to 5s. */
-  retry(peer, pending) {
+  retry(peer, pending)
+  {
     const giveUp = Date.now() + HANDSHAKE_DEADLINE;
-    const tick = () => {
+    const tick = () =>
+    {
       if (pending.done) return;
-      if (this.node.closed || Date.now() >= giveUp) {
+      if (this.node.closed || Date.now() >= giveUp)
+      {
         if (this.pending.get(peer) === pending) this.pending.delete(peer);
         pending.done = true;
         return;
       }
-      this.node.transport.send(peer, pending.hello).catch(() => {});
+      this.node.transport.send(peer, pending.hello).catch(() =>
+      {});
       pending.timer = setTimeout(tick, HANDSHAKE_RETRY);
       pending.timer.unref?.();
     };
@@ -509,12 +576,15 @@ export class SecureLayer {
    * The frame a record carries, or null (a handshake record, or one that
    * fails to verify or open).
    */
-  receive(record) {
+  receive(record)
+  {
     record = asBytes(record);
     if (record.length < 4 || !equalBytes(record.subarray(0, 3), RECORD))
       return null;
-    try {
-      switch (record[3]) {
+    try
+    {
+      switch (record[3])
+      {
         case HELLO:
           this.hello(record);
           return null;
@@ -526,11 +596,14 @@ export class SecureLayer {
         default:
           return null;
       }
-    } catch {
+    }
+    catch
+    {
       return null;
     }
   }
-  hello(record) {
+  hello(record)
+  {
     const [[session, address, verifyingKey, encapsulationKey], pos] =
       readFields(record, 4, 4);
     const [[signature], end] = readFields(record, pos, 1);
@@ -539,13 +612,14 @@ export class SecureLayer {
     const from = STRICT_UTF8.decode(address);
     const id = hex(session);
     let answered = this.welcomes.get(id);
-    if (answered === undefined) {
+    if (answered === undefined)
+    {
       if (
         !verifySigned(verifyingKey, concatBytes(LABEL_HELLO, body), signature)
       )
         return;
       if (!this.acceptPeer(from, verifyingKey)) return;
-      const { cipherText, sharedSecret } =
+      const {cipherText, sharedSecret} =
         ml_kem768.encapsulate(encapsulationKey);
       const welcome = welcomeBody(
         session,
@@ -575,9 +649,11 @@ export class SecureLayer {
         ),
       );
     }
-    this.node.transport.send(answered[0], answered[1]).catch(() => {});
+    this.node.transport.send(answered[0], answered[1]).catch(() =>
+    {});
   }
-  welcome(record) {
+  welcome(record)
+  {
     const [[session, address, verifyingKey, ciphertext, helloHash], pos] =
       readFields(record, 4, 5);
     const [[signature], end] = readFields(record, pos, 1);
@@ -608,13 +684,16 @@ export class SecureLayer {
     clearTimeout(pending.timer);
     this.sessions.set(hex(session), established);
     this.outbound.set(from, established);
-    for (const frame of pending.queue) {
+    for (const frame of pending.queue)
+    {
       this.node.transport
         .send(from, sealFrame(key, session, 0, frame))
-        .catch(() => {});
+        .catch(() =>
+        {});
     }
   }
-  data(record) {
+  data(record)
+  {
     const [[session]] = readFields(record, 4, 1);
     const found = this.sessions.get(hex(session));
     if (found === undefined) return null;
@@ -625,6 +704,7 @@ export class SecureLayer {
 }
 
 /** The provider the runtime asks for a node's secure layer. */
-export function layer(node, identity = null, trusted = null) {
+export function layer(node, identity = null, trusted = null)
+{
   return new SecureLayer(node, identity, trusted);
 }

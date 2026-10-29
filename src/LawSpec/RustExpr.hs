@@ -128,7 +128,7 @@ scalarExpr scalar = case scalar of
     pure (L.call ("ls::Value::" ++ variant) [L.call ("ls::" ++ variant ++ "::new") [real, imaginary]])
   SSequence "Text" units -> pure (L.call "ls::Value::Text" [L.method (L.atom (quoted (map toEnum units))) "to_owned" []])
   SSequence ty units -> pure (L.call ("ls::Value::" ++ ty) [L.vecOf (map (L.atom . show) units)])
-  SCharacter "Char" n -> pure (L.call "ls::Value::Char" [L.method (L.call "char::from_u32" [L.atom (show n)]) "unwrap" []])
+  SCharacter "Char" n -> pure (L.call "ls::Value::Char" [L.method (L.call "char::from_u32" [L.atom (show n)]) "expect" [L.atom (show "checked Char")]])
   SCharacter ty n -> pure (L.call ("ls::Value::" ++ ty) [L.atom (show n)])
   SSymbol identity description -> pure (L.call "ls::Value::Symbol"
     [L.method (L.atom "ctx") "symbol" [L.atom (quoted identity), L.atom (quoted description)]])
@@ -145,7 +145,7 @@ scalarExpr scalar = case scalar of
     big n
       | nativeInteger n = L.method (L.atom (if n < 0 then "(" ++ show n ++ "i128)" else show n ++ "i128")) "into" []
       | otherwise = L.Block [L.Let "digits" (L.atom (quoted (show n)))]
-          (Just (L.method (L.call "ls::BigInt::parse_bytes" [L.method (L.atom "digits") "as_bytes" [], L.atom "10"]) "unwrap" []))
+          (Just (L.method (L.call "ls::BigInt::parse_bytes" [L.method (L.atom "digits") "as_bytes" [], L.atom "10"]) "expect" [L.atom (show "checked Integer")]))
 
 -- | Whether an integer is written as a native i128.
 nativeInteger :: Integer -> Bool
@@ -221,7 +221,7 @@ renderWith declarations bits schema typeReference typeKey callees = render
              [L.Let ("mut " ++ tasks ++ ": Vec<Box<dyn FnOnce() -> ls::Result<ls::Value> + Send + '_>>") (L.call "Vec::new" [])] ++
              map task (zip contexts steps) ++
              [L.Let ("mut " ++ results) (L.method (tried (L.call "ls::concurrently" [L.atom tasks])) "into_iter" [])] ++
-             [L.Let local (L.method (L.method (L.atom results) "next" []) "unwrap" []) | local <- locals] ++
+             [L.Let local (L.method (L.method (L.atom results) "next" []) "expect" [L.atom (show "checked expression arity")]) | local <- locals] ++
              [L.Let "result" inner]) (Just (L.atom "result")))
     render names term = case expressionNode term of
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
@@ -398,7 +398,7 @@ renderWith declarations bits schema typeReference typeKey callees = render
           named = boundLocals names binders
       body <- render (zip (map binderId binders) named ++ names) (caseBody matched)
       let locals = [unusedAs name (L.expr body) | name <- named]
-          next = L.method (L.method (L.atom "fields") "next" []) "unwrap" []
+          next = L.method (L.method (L.atom "fields") "next" []) "expect" [L.atom (show "checked expression arity")]
       (patternText,guard,bindings) <- case (idText (caseConstructor matched), locals) of
         ("Maybe::Absent",[]) -> pure ("ls::Value::Maybe(None)",Nothing,[])
         ("Maybe::Present",[field]) -> pure ("ls::Value::Maybe(Some(payload))",Nothing,[L.Let field (L.atom "*payload")])

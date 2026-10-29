@@ -19,9 +19,6 @@ decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/funct
 decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/elaborateModels:
   digest: sha256:7a309d533e52ae24
   verdict: pending
-decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/mentions:
-  digest: sha256:56146e644c58b796
-  verdict: pending
 decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/operation:
   digest: sha256:675417f5ade56b40
   verdict: pending

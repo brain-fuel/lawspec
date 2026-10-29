@@ -385,3 +385,54 @@ The [models example](../../../examples/specs/models.lawspec) has a linear
 stack and a shared counter. The [concurrent collections
 example](../../../examples/specs/concurrent_collections.lawspec) checks a
 queue, a set and a map built from each target's concurrent structures.
+
+## State-dependent argument domains
+
+Linear command argument refinements may refer to the state's index
+ref:DEC-dependent-model-arguments. Bind the indexed state before arguments that
+use its index, as required by ordinary indexed input elaboration:
+
+```lawspec fragment
+chooseAt :: Stack n / Stack n -> (i :: Int8 where i >= 0 && i < n) -> Int8
+```
+
+The existing indexed-family elaborator replaces the implicit `n` with its
+checked structural measure. Model generation instantiates that measure from the
+current abstract run's typestate indices. After each reference transition it
+recomputes the domain; it never reads the native implementation to choose test
+inputs. Reference state values, guards and declared index transitions jointly
+control generation. A reference model must faithfully relate its abstract state
+to those declared indices; testing against that model does not establish its
+fidelity to the product.
+
+At index zero, `0 <= i < n` is provably empty, so `chooseAt` is disabled. At index
+two it admits 0 and 1. Finite model checking enumerates the domain at each
+reachable state. Sampled native model tests draw from that range and retain
+sampled meaning. Shrinking replays the reference and validates every later
+argument against its new domain before executing the candidate.
+
+The implemented fragment is integer bounds using `<`, `<=`, `>`, `>=` and `=`,
+with constants and state indices combined by addition, subtraction and
+multiplication. Ordinary type bounds are intersected with these restrictions.
+Non-interval dependent predicates and dependent algebraic-data generators remain
+explicitly unsupported. Enumeration limits are incomplete. If a generated
+dependent argument is rejected by an otherwise enabled reference command, its
+bounded attempt is incomplete and cannot pass as an empty domain. Shared models
+remain unindexed; no `Fin` primitive or OTP `gen_statem` adapter is added.
+
+### Precedents and trust boundary
+
+| Primary source | Mapping to LawSpec |
+| --- | --- |
+| [PropEr proper_statem](https://proper.hexdocs.pm/proper_statem.html) and [implementation](https://github.com/proper-testing/proper/blob/master/src/proper_statem.erl) | Generate commands from the abstract state, advance the reference, and revalidate shrunk sequences. LawSpec retains its portable seeded generators and runtime callbacks instead of introducing a separate state machine framework. |
+| [Idris Data.Fin](https://idris-lang.org/Idris2/base/docs/Data.Fin.html) and [implementation](https://github.com/idris-lang/Idris2/blob/main/libs/base/Data/Fin.idr) | `Fin n` illustrates a finite domain below a bound, including an uninhabited zero case. Existing integer refinements express that domain here; no primitive is needed. |
+| [SPARK contracts](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html) and [Why3 VC generation](https://why3.org/doc/vcgen.html) | Preconditions define applicability; generating an obligation and discharging it are distinct. Argument generation is not solver discharge. |
+| [Lean verification conditions](https://lean-lang.org/doc/reference/latest/The--mvcgen--tactic/Verification-Conditions/) and [Rocq induction](https://docs.rocq-prover.org/master/refman/proofs/writing-proofs/reasoning-inductives.html) | Proof goals and checked proof terms have separate roles. This work does not integrate either proof kernel or add a proof tier. |
+
+The small descriptor extension translates already elaborated integer comparisons
+and evaluates their bounds against reference indices. That translation, range
+arithmetic, existing reference evaluator and sequence revalidation are trusted
+for generated tests. Explicit-state completeness still requires every finite
+argument tuple and reachable state to be explored. Existing Z3 evidence retains
+its translation-and-solver trust boundary. Mandatory definition validation stays
+independent of every optional law layer.

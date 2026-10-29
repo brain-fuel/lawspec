@@ -6,7 +6,8 @@ mod primitives;
 
 const VECTORS: &str = r#"@@VECTORS@@"#;
 
-fn vectors(kind: &str) -> Vec<Vec<String>> {
+fn vectors(kind: &str) -> Vec<Vec<String>>
+{
     let found: Vec<Vec<String>> = VECTORS
         .lines()
         .map(|line| line.split_whitespace().collect::<Vec<_>>())
@@ -15,9 +16,12 @@ fn vectors(kind: &str) -> Vec<Vec<String>> {
             fields[1..]
                 .iter()
                 .map(|f| {
-                    if *f == "-" {
+                    if *f == "-"
+                    {
                         String::new()
-                    } else {
+                    }
+                    else
+                    {
                         f.to_string()
                     }
                 })
@@ -28,47 +32,63 @@ fn vectors(kind: &str) -> Vec<Vec<String>> {
     found
 }
 
-fn unhex(text: &str) -> Vec<u8> {
+fn unhex(text: &str) -> Vec<u8>
+{
     (0..text.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+        .map(|i| {
+            u8::from_str_radix(&text[i..i + 2], 16)
+                .expect("vector fixture contains valid hexadecimal")
+        })
         .collect()
 }
 
-fn hex(bytes: &[u8]) -> String {
+fn hex(bytes: &[u8]) -> String
+{
     bytes.iter().map(|byte| format!("{:02x}", byte)).collect()
 }
 
-fn sha3(bytes: &[u8]) -> String {
+fn sha3(bytes: &[u8]) -> String
+{
     hex(&primitives::sha3_256(bytes))
 }
 
-fn flipped(bytes: &[u8]) -> Vec<u8> {
+fn flipped(bytes: &[u8]) -> Vec<u8>
+{
     let mut copy = bytes.to_vec();
     copy[0] ^= 1;
     copy
 }
 
 #[test]
-fn sha3_256() {
-    for v in vectors("sha3-256") {
+fn sha3_256()
+{
+    for v in vectors("sha3-256")
+    {
         assert_eq!(hex(&primitives::sha3_256(&unhex(&v[0]))), v[1]);
     }
 }
 
 #[test]
-fn shake256() {
-    for v in vectors("shake256") {
+fn shake256()
+{
+    for v in vectors("shake256")
+    {
         assert_eq!(
-            hex(&primitives::shake256(&unhex(&v[0]), v[1].parse().unwrap())),
+            hex(&primitives::shake256(
+                &unhex(&v[0]),
+                v[1].parse().expect("vector fixture length is an integer")
+            )),
             v[2]
         );
     }
 }
 
 #[test]
-fn aes_256_gcm() {
-    for v in vectors("aes-256-gcm") {
+fn aes_256_gcm()
+{
+    for v in vectors("aes-256-gcm")
+    {
         let sealed = primitives::aes_256_gcm_encrypt(
             &unhex(&v[0]),
             &unhex(&v[1]),
@@ -93,8 +113,10 @@ fn aes_256_gcm() {
 }
 
 #[test]
-fn ml_kem_768_key_generation() {
-    for v in vectors("mlkem768-keygen") {
+fn ml_kem_768_key_generation()
+{
+    for v in vectors("mlkem768-keygen")
+    {
         assert_eq!(
             sha3(&primitives::ml_kem_768_public_key(&unhex(&format!(
                 "{}{}",
@@ -106,8 +128,10 @@ fn ml_kem_768_key_generation() {
 }
 
 #[test]
-fn ml_kem_768_encapsulation() {
-    for v in vectors("mlkem768-encaps") {
+fn ml_kem_768_encapsulation()
+{
+    for v in vectors("mlkem768-encaps")
+    {
         let (ciphertext, secret) =
             primitives::ml_kem_768_encapsulate_with(&unhex(&v[0]), &unhex(&v[1]));
         assert_eq!(
@@ -118,8 +142,10 @@ fn ml_kem_768_encapsulation() {
 }
 
 #[test]
-fn ml_kem_768_decapsulation() {
-    for v in vectors("mlkem768-decaps") {
+fn ml_kem_768_decapsulation()
+{
+    for v in vectors("mlkem768-decaps")
+    {
         assert_eq!(
             hex(&primitives::ml_kem_768_decapsulate_expanded(
                 &unhex(&v[0]),
@@ -128,7 +154,8 @@ fn ml_kem_768_decapsulation() {
             v[2]
         );
     }
-    for v in vectors("mlkem768-decaps-seed") {
+    for v in vectors("mlkem768-decaps-seed")
+    {
         assert_eq!(
             hex(&primitives::ml_kem_768_decapsulate(
                 &unhex(&v[0]),
@@ -140,15 +167,19 @@ fn ml_kem_768_decapsulation() {
 }
 
 #[test]
-fn ml_dsa_65_key_generation() {
-    for v in vectors("mldsa65-keygen") {
+fn ml_dsa_65_key_generation()
+{
+    for v in vectors("mldsa65-keygen")
+    {
         assert_eq!(sha3(&primitives::ml_dsa_65_public_key(&unhex(&v[0]))), v[1]);
     }
 }
 
 #[test]
-fn ml_dsa_65_verification() {
-    for v in vectors("mldsa65-verify") {
+fn ml_dsa_65_verification()
+{
+    for v in vectors("mldsa65-verify")
+    {
         assert_eq!(
             primitives::ml_dsa_65_verify(
                 &unhex(&v[0]),
@@ -162,8 +193,10 @@ fn ml_dsa_65_verification() {
 }
 
 #[test]
-fn ml_dsa_65_deterministic_signature() {
-    for v in vectors("mldsa65-sign-seed") {
+fn ml_dsa_65_deterministic_signature()
+{
+    for v in vectors("mldsa65-sign-seed")
+    {
         assert_eq!(
             hex(&primitives::ml_dsa_65_sign(
                 &unhex(&v[0]),
@@ -190,8 +223,10 @@ fn ml_dsa_65_deterministic_signature() {
 }
 
 #[test]
-fn slh_dsa_shake_128f_key_generation() {
-    for v in vectors("slhdsa128f-keygen") {
+fn slh_dsa_shake_128f_key_generation()
+{
+    for v in vectors("slhdsa128f-keygen")
+    {
         let (public, secret) =
             primitives::slh_dsa_key_pair(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]));
         assert_eq!(hex(&public), v[3]);
@@ -200,8 +235,10 @@ fn slh_dsa_shake_128f_key_generation() {
 }
 
 #[test]
-fn slh_dsa_shake_128f_verification() {
-    for v in vectors("slhdsa128f-verify") {
+fn slh_dsa_shake_128f_verification()
+{
+    for v in vectors("slhdsa128f-verify")
+    {
         assert_eq!(
             primitives::slh_dsa_verify(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[3]), &unhex(&v[2])),
             v[4] == "true"
@@ -216,8 +253,10 @@ fn slh_dsa_shake_128f_verification() {
 }
 
 #[test]
-fn slh_dsa_shake_128f_round_trip() {
-    for v in vectors("slhdsa128f-keygen") {
+fn slh_dsa_shake_128f_round_trip()
+{
+    for v in vectors("slhdsa128f-keygen")
+    {
         let (public, secret) =
             primitives::slh_dsa_key_pair(&unhex(&v[0]), &unhex(&v[1]), &unhex(&v[2]));
         let signature = primitives::slh_dsa_sign(&secret, b"LawSpec", &[]);

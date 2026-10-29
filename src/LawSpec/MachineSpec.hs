@@ -13,6 +13,7 @@ import LawSpec.Core.Machine
 import qualified LawSpec.Core.Program as P
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
 import LawSpec.Bounds (bounds)
+import LawSpec.ModelDomains (dependentRanges, boundText)
 
 -- | The spec of a machine, given the program's data types and the unit's
 -- declarations.
@@ -36,6 +37,7 @@ machineSpec bits datas declarations contracts machine = do
     pure (c, [(args !! i, rangeOf (commandSystem c) i) | i <- commandArguments c])
   -- One table of data types across the start and every command.
   (descriptors, table) <- describeAll (concat (maybe [] snd start : map snd commands))
+  ranges <- mapM (dependentRanges datas contracts . fst) commands
   let (startDescriptors, rest) = splitAt (maybe 0 (length . snd) start) descriptors
       commandDescriptors = splitPlaces (map (length . snd) commands) rest
       startForm = case start of
@@ -63,7 +65,7 @@ machineSpec bits datas declarations contracts machine = do
     ([ "(machine " ++ machineName machine ++ " " ++ (if machineShared machine then "shared" else "linear") ++ ")" ] ++
      map snd (reverse table) ++
      [startForm] ++
-     zipWith commandForm commands commandDescriptors ++
+     zipWith commandForm commands (zipWith3 dependent commands ranges commandDescriptors) ++
      [ "(abstract " ++ bool (machineAbstractRun machine /= Nothing) ++ ")"
      , "(invariants" ++ concatMap ((' ' :) . invariant) (machineInvariants machine) ++ ")"
      , "(perkey " ++ bool (machinePerKey machine) ++ ")"
@@ -77,6 +79,14 @@ machineSpec bits datas declarations contracts machine = do
     shift (To k) = "(to " ++ show k ++ ")"
     splitPlaces [] _ = []
     splitPlaces (n : ns) xs = let (a, b) = splitAt n xs in a : splitPlaces ns b
+    dependent (command, _) ranges ds = zipWith wrap (commandArguments command) ds
+      where
+        wrap position descriptor = case lookup position ranges of
+          Nothing -> descriptor
+          Just comparisons | any (isInfixOf "(index " . boundText . snd) comparisons ->
+            "(dependent " ++ descriptor ++ concatMap condition comparisons ++ ")"
+          _ -> descriptor
+        condition (op, e) = " (" ++ C.binaryName op ++ " " ++ boundText e ++ ")"
 
 -- | An integer descriptor narrowed to a refinement's bounds.
 narrow :: (Maybe Integer, Maybe Integer) -> String -> String

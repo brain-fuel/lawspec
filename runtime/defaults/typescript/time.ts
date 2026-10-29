@@ -2,32 +2,37 @@
 // The default handler of lawspec.time's Clock: the system clock, kept from
 // going back by a monotonic clock. An Instant is microseconds since
 // 1970-01-01T00:00:00Z.
-import * as data from "../lawspec_data.js";
-import * as ls from "../lawspec_runtime.js";
-import type * as abilities from "../lawspec_abilities/lawspec/time.js";
+import * as data from '../lawspec_data.js';
+import * as ls from '../lawspec_runtime.js';
+import type * as abilities from '../lawspec_abilities/lawspec/time.js';
 
 const wall = BigInt(Date.now()) * 1000n;
 const monotonic = process.hrtime.bigint() / 1000n;
 
 /** The wall clock at start, moved on by the monotonic clock since. */
-export function nowMicros(): bigint {
+export function nowMicros(): bigint
+{
   return wall + (process.hrtime.bigint() / 1000n - monotonic);
 }
 
 const blocker = new Int32Array(new SharedArrayBuffer(4));
 
 /** The system clock. now never goes back; sleep blocks this thread. */
-export class ClockHandler implements abilities.Clock {
-  now(): @@Instant@@ {
+export class ClockHandler implements abilities.Clock
+{
+  now(): @@Instant@@
+  {
     return new @@Instant@@(nowMicros());
   }
-  sleep(value0: @@Duration@@): void {
+  sleep(value0: @@Duration@@): void
+  {
     const target = nowMicros() + value0.value;
     for (
       let left = target - nowMicros();
       left > 0n;
       left = target - nowMicros()
-    ) {
+    )
+    {
       Atomics.wait(blocker, 0, 0, Math.max(Number(left) / 1000, 0));
     }
   }
@@ -38,7 +43,8 @@ export class ClockHandler implements abilities.Clock {
  * recording): workflows and mailboxes then wait on the clock a law installs.
  * Only this handler is real time.
  */
-export function registerClock(): void {
+export function registerClock(): void
+{
   ls.registerClockAbility(
     (handler: abilities.Clock): bigint => handler.now().value,
     (handler: abilities.Clock, micros: bigint): void =>

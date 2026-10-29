@@ -35,6 +35,8 @@ def register_clock() -> None:
     installs. Only this handler is real time."""
     ls.register_clock_ability(
         now=lambda handler: handler.now().value,
-        sleep=lambda handler, micros: handler.sleep(ls.timedelta(microseconds=micros)),
+        sleep=lambda handler, micros: handler.sleep(
+            ls.timedelta(microseconds=micros)
+        ),
         real_time=lambda handler: isinstance(handler, ClockHandler),
     )

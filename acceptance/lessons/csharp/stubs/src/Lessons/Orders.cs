@@ -11,9 +11,9 @@ using LawSpec.CSharp;
 
 public static class Orders
 {
-    /// <summary>(lessons.orders::type::Drink -> Int64)</summary>
-    public static long Price(LawSpec.Data.Drink value0)
-    {
-        throw new NotImplementedException("not implemented: lessons.orders::price");
-    }
+  /// <summary>(lessons.orders::type::Drink -> Int64)</summary>
+  public static long Price(LawSpec.Data.Drink value0)
+  {
+    throw new NotImplementedException("not implemented: lessons.orders::price");
+  }
 }

@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 
 /// Registers the secure network handler with the runtime; nodes made after
 /// it are secure. Idempotent.
-pub fn install() {
+pub fn install()
+{
     ls::net::register_secure_network(Arc::new(Provider));
 }
 
@@ -30,7 +31,8 @@ pub fn node(
     transport: Arc<dyn Transport>,
     identity: Option<NodeIdentity>,
     trusted: Option<Vec<String>>,
-) -> ls::Result<Node> {
+) -> ls::Result<Node>
+{
     install();
     let (identity, trusted) = settings(identity, trusted)?;
     Ok(Node::with_secure_layer(transport, move |link| {
@@ -39,20 +41,24 @@ pub fn node(
 }
 
 /// A node's identity; None on the transport made for tests only.
-pub fn identity(node: &Node) -> Option<NodeIdentity> {
+pub fn identity(node: &Node) -> Option<NodeIdentity>
+{
     let layer = node.secure_layer()?.as_any().downcast_ref::<Layer>()?;
     Some(layer.0.identity.clone())
 }
 
 struct Provider;
 
-impl SecureNetwork for Provider {
-    fn layer(&self, node: NodeLink) -> ls::Result<Box<dyn SecureLayer>> {
+impl SecureNetwork for Provider
+{
+    fn layer(&self, node: NodeLink) -> ls::Result<Box<dyn SecureLayer>>
+    {
         let (identity, trusted) = settings(None, None)?;
         Ok(Box::new(Layer::new(node, identity, trusted)) as Box<dyn SecureLayer>)
     }
 
-    fn token(&self) -> String {
+    fn token(&self) -> String
+    {
         hex(&pq::random_bytes(32))
     }
 }
@@ -62,36 +68,46 @@ impl SecureNetwork for Provider {
 fn settings(
     identity: Option<NodeIdentity>,
     trusted: Option<Vec<String>>,
-) -> ls::Result<(NodeIdentity, Option<HashSet<String>>)> {
-    let configured = if identity.is_none() || trusted.is_none() {
+) -> ls::Result<(NodeIdentity, Option<HashSet<String>>)>
+{
+    let configured = if identity.is_none() || trusted.is_none()
+    {
         network_config()?
-    } else {
+    }
+    else
+    {
         (None, None)
     };
     let identity = identity
         .or(configured.0)
         .unwrap_or_else(NodeIdentity::generate);
-    let trusted = match trusted {
+    let trusted = match trusted
+    {
         Some(trusted) => Some(trusted.iter().map(|t| t.to_lowercase()).collect()),
         None => configured.1,
     };
     Ok((identity, trusted))
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T>
+{
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn hex(bytes: &[u8]) -> String {
+fn hex(bytes: &[u8]) -> String
+{
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 // LEB128, as the wire encoding writes lengths.
-fn put_len(out: &mut Vec<u8>, mut n: usize) {
-    loop {
-        let byte = (n & 0x7F) as u8;
+fn put_len(out: &mut Vec<u8>, mut n: usize)
+{
+    loop
+    {
+        let byte = (n & 0x7f) as u8;
         n >>= 7;
-        if n == 0 {
+        if n == 0
+        {
             out.push(byte);
             return;
         }
@@ -99,11 +115,15 @@ fn put_len(out: &mut Vec<u8>, mut n: usize) {
     }
 }
 
-fn get_len(buf: &[u8], pos: &mut usize) -> ls::Result<usize> {
+fn get_len(buf: &[u8], pos: &mut usize) -> ls::Result<usize>
+{
     let mut result = 0usize;
     let mut shift = 0u32;
-    loop {
-        let Some(&byte) = buf.get(*pos) else {
+    loop
+    {
+        let Some(&byte) = buf.get(*pos)
+        else
+        {
             return Err(format!(
                 "{}the bytes end in the middle of a value",
                 ls::net::WIRE
@@ -111,12 +131,13 @@ fn get_len(buf: &[u8], pos: &mut usize) -> ls::Result<usize> {
         };
         *pos += 1;
         if shift >= usize::BITS
-            || (shift > 0 && (usize::from(byte & 0x7F) >> (usize::BITS - shift)) != 0)
+            || (shift > 0 && (usize::from(byte & 0x7f) >> (usize::BITS - shift)) != 0)
         {
             return Err(format!("{}a length too large", ls::net::WIRE));
         }
-        result |= usize::from(byte & 0x7F) << shift;
-        if byte < 0x80 {
+        result |= usize::from(byte & 0x7f) << shift;
+        if byte < 0x80
+        {
             return Ok(result);
         }
         shift += 7;
@@ -147,7 +168,8 @@ const QUEUE_LIMIT: usize = 4096;
 // The primitives, as lawspec.crypto's default handlers use them
 // (crypto_primitives.rs), from the RustCrypto crates and getrandom.
 // Malformed keys and ciphertexts give None rather than panicking.
-mod pq {
+mod pq
+{
     use aes_gcm::aead::{Aead as _, KeyInit as _, Payload};
     #[allow(unused_imports)]
     use ml_dsa::KeyExport as _;
@@ -157,17 +179,20 @@ mod pq {
     use shake::digest::{ExtendableOutput as _, Update as _, XofReader as _};
 
     /// Fresh bytes from the operating system's generator.
-    pub fn random_bytes(n: usize) -> Vec<u8> {
+    pub fn random_bytes(n: usize) -> Vec<u8>
+    {
         let mut out = vec![0u8; n];
         getrandom::fill(&mut out).expect("the operating system's generator failed");
         out
     }
 
-    pub fn sha3_256(message: &[u8]) -> Vec<u8> {
+    pub fn sha3_256(message: &[u8]) -> Vec<u8>
+    {
         sha3::Sha3_256::digest(message).to_vec()
     }
 
-    pub fn shake256(message: &[u8], length: usize) -> Vec<u8> {
+    pub fn shake256(message: &[u8], length: usize) -> Vec<u8>
+    {
         let mut hasher = shake::Shake256::default();
         hasher.update(message);
         let mut out = vec![0u8; length];
@@ -176,12 +201,14 @@ mod pq {
     }
 
     // ML-KEM-768 from its 64-byte seed d || z.
-    fn ml_kem_768_key(seed: &[u8]) -> Option<ml_kem::DecapsulationKey768> {
+    fn ml_kem_768_key(seed: &[u8]) -> Option<ml_kem::DecapsulationKey768>
+    {
         let seed = ml_kem::Seed::try_from(seed).ok()?;
         Some(ml_kem::DecapsulationKey768::from_seed(seed))
     }
 
-    pub fn ml_kem_768_public_key(seed: &[u8]) -> Option<Vec<u8>> {
+    pub fn ml_kem_768_public_key(seed: &[u8]) -> Option<Vec<u8>>
+    {
         Some(
             ml_kem_768_key(seed)?
                 .encapsulation_key()
@@ -191,7 +218,8 @@ mod pq {
     }
 
     /// The ciphertext and the shared secret, with fresh randomness.
-    pub fn ml_kem_768_encapsulate(public_key: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+    pub fn ml_kem_768_encapsulate(public_key: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
+    {
         let key = ml_kem::Key::<ml_kem::EncapsulationKey768>::try_from(public_key).ok()?;
         let key = ml_kem::EncapsulationKey768::new(&key).ok()?;
         let m = random_bytes(32);
@@ -200,7 +228,8 @@ mod pq {
         Some((ciphertext.to_vec(), secret.to_vec()))
     }
 
-    pub fn ml_kem_768_decapsulate(seed: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>> {
+    pub fn ml_kem_768_decapsulate(seed: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>>
+    {
         let key = ml_kem_768_key(seed)?;
         let ciphertext = ml_kem::Ciphertext::<ml_kem::MlKem768>::try_from(ciphertext).ok()?;
         Some(key.decapsulate(&ciphertext).to_vec())
@@ -208,12 +237,14 @@ mod pq {
 
     // ML-DSA-65 from its 32-byte seed xi; pure ML-DSA with an empty
     // context.
-    fn ml_dsa_65_key(seed: &[u8]) -> Option<ml_dsa::SigningKey<ml_dsa::MlDsa65>> {
+    fn ml_dsa_65_key(seed: &[u8]) -> Option<ml_dsa::SigningKey<ml_dsa::MlDsa65>>
+    {
         let seed = ml_dsa::Seed::try_from(seed).ok()?;
         Some(ml_dsa::SigningKey::<ml_dsa::MlDsa65>::from_seed(&seed))
     }
 
-    pub fn ml_dsa_65_public_key(seed: &[u8]) -> Option<Vec<u8>> {
+    pub fn ml_dsa_65_public_key(seed: &[u8]) -> Option<Vec<u8>>
+    {
         Some(
             ml_dsa_65_key(seed)?
                 .expanded_key()
@@ -224,7 +255,8 @@ mod pq {
     }
 
     /// Hedged, with an empty context.
-    pub fn ml_dsa_65_sign(seed: &[u8], message: &[u8]) -> Option<Vec<u8>> {
+    pub fn ml_dsa_65_sign(seed: &[u8], message: &[u8]) -> Option<Vec<u8>>
+    {
         let rnd = random_bytes(32);
         let rnd = ml_dsa::B32::try_from(rnd.as_slice()).ok()?;
         let context: &[u8] = &[];
@@ -238,14 +270,21 @@ mod pq {
         )
     }
 
-    pub fn ml_dsa_65_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
-        let Ok(key) = ml_dsa::EncodedVerifyingKey::<ml_dsa::MlDsa65>::try_from(public_key) else {
+    pub fn ml_dsa_65_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool
+    {
+        let Ok(key) = ml_dsa::EncodedVerifyingKey::<ml_dsa::MlDsa65>::try_from(public_key)
+        else
+        {
             return false;
         };
-        let Ok(signature) = ml_dsa::EncodedSignature::<ml_dsa::MlDsa65>::try_from(signature) else {
+        let Ok(signature) = ml_dsa::EncodedSignature::<ml_dsa::MlDsa65>::try_from(signature)
+        else
+        {
             return false;
         };
-        let Some(signature) = ml_dsa::Signature::<ml_dsa::MlDsa65>::decode(&signature) else {
+        let Some(signature) = ml_dsa::Signature::<ml_dsa::MlDsa65>::decode(&signature)
+        else
+        {
             return false;
         };
         ml_dsa::VerifyingKey::<ml_dsa::MlDsa65>::decode(&key).verify_with_context(
@@ -261,7 +300,8 @@ mod pq {
         nonce: &[u8],
         plaintext: &[u8],
         associated: &[u8],
-    ) -> Option<Vec<u8>> {
+    ) -> Option<Vec<u8>>
+    {
         let cipher = aes_gcm::Aes256Gcm::new_from_slice(key).ok()?;
         let nonce = aes_gcm::Nonce::try_from(nonce).ok()?;
         cipher
@@ -280,7 +320,8 @@ mod pq {
         nonce: &[u8],
         sealed: &[u8],
         associated: &[u8],
-    ) -> Option<Vec<u8>> {
+    ) -> Option<Vec<u8>>
+    {
         let cipher = aes_gcm::Aes256Gcm::new_from_slice(key).ok()?;
         let nonce = aes_gcm::Nonce::try_from(nonce).ok()?;
         cipher
@@ -295,9 +336,11 @@ mod pq {
     }
 }
 
-fn unhex(text: &str) -> Option<Vec<u8>> {
+fn unhex(text: &str) -> Option<Vec<u8>>
+{
     let text = text.as_bytes();
-    if text.len() % 2 != 0 {
+    if text.len() % 2 != 0
+    {
         return None;
     }
     text.chunks(2)
@@ -305,23 +348,28 @@ fn unhex(text: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-fn joined_bytes(parts: &[&[u8]]) -> Vec<u8> {
+fn joined_bytes(parts: &[&[u8]]) -> Vec<u8>
+{
     parts.concat()
 }
 
 // A record field: its length (LEB128), then its bytes.
-fn w(data: &[u8]) -> Vec<u8> {
+fn w(data: &[u8]) -> Vec<u8>
+{
     let mut out = Vec::with_capacity(data.len() + 3);
     put_len(&mut out, data.len());
     out.extend_from_slice(data);
     out
 }
 
-fn read_fields(data: &[u8], mut pos: usize, count: usize) -> ls::Result<(Vec<Vec<u8>>, usize)> {
+fn read_fields(data: &[u8], mut pos: usize, count: usize) -> ls::Result<(Vec<Vec<u8>>, usize)>
+{
     let mut fields = Vec::with_capacity(count);
-    for _ in 0..count {
+    for _ in 0..count
+    {
         let n = get_len(data, &mut pos)?;
-        if n > data.len() - pos.min(data.len()) {
+        if n > data.len() - pos.min(data.len())
+        {
             return Err(format!("{}a record field runs past its end", ls::net::WIRE));
         }
         fields.push(data[pos..pos + n].to_vec());
@@ -333,20 +381,26 @@ fn read_fields(data: &[u8], mut pos: usize, count: usize) -> ls::Result<(Vec<Vec
 /// A node's long-term ML-DSA-65 identity, kept as its 32-byte seed (FIPS
 /// 204's KeyGen_internal xi).
 #[derive(Clone)]
-pub struct NodeIdentity {
+pub struct NodeIdentity
+{
     seed: Vec<u8>,
     verifying_key: Vec<u8>,
 }
 
-impl std::fmt::Debug for NodeIdentity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Debug for NodeIdentity
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
         write!(f, "NodeIdentity({})", self.fingerprint())
     }
 }
 
-impl NodeIdentity {
-    pub fn from_seed(seed: &[u8]) -> ls::Result<NodeIdentity> {
-        match (seed.len(), pq::ml_dsa_65_public_key(seed)) {
+impl NodeIdentity
+{
+    pub fn from_seed(seed: &[u8]) -> ls::Result<NodeIdentity>
+    {
+        match (seed.len(), pq::ml_dsa_65_public_key(seed))
+        {
             (32, Some(verifying_key)) => Ok(NodeIdentity {
                 seed: seed.to_vec(),
                 verifying_key,
@@ -356,31 +410,37 @@ impl NodeIdentity {
     }
 
     /// A fresh identity from the operating system's secure generator.
-    pub fn generate() -> NodeIdentity {
+    pub fn generate() -> NodeIdentity
+    {
         NodeIdentity::from_seed(&pq::random_bytes(32)).expect("a 32-byte seed")
     }
 
     /// The identity lawspec.edn binds (lawspec-network.conf, written by
     /// the compiler), or a fresh one.
-    pub fn configured() -> ls::Result<NodeIdentity> {
+    pub fn configured() -> ls::Result<NodeIdentity>
+    {
         Ok(network_config()?.0.unwrap_or_else(NodeIdentity::generate))
     }
 
-    pub fn seed(&self) -> &[u8] {
+    pub fn seed(&self) -> &[u8]
+    {
         &self.seed
     }
 
-    pub fn verifying_key(&self) -> &[u8] {
+    pub fn verifying_key(&self) -> &[u8]
+    {
         &self.verifying_key
     }
 
     /// SHA3-256 of the verifying key, in hexadecimal.
-    pub fn fingerprint(&self) -> String {
+    pub fn fingerprint(&self) -> String
+    {
         hex(&pq::sha3_256(&self.verifying_key))
     }
 
     /// An ML-DSA-65 signature (hedged, empty context) of message.
-    pub fn sign(&self, message: &[u8]) -> Vec<u8> {
+    pub fn sign(&self, message: &[u8]) -> Vec<u8>
+    {
         pq::ml_dsa_65_sign(&self.seed, message).expect("a 32-byte seed")
     }
 }
@@ -391,26 +451,35 @@ impl NodeIdentity {
 /// `identity <file>` (a hex seed) and `trusted <file>` (hex fingerprints,
 /// one per line), relative to it; `#` begins a comment. Gives the
 /// identity and the trusted fingerprints it names, if any.
-pub fn network_config() -> ls::Result<(Option<NodeIdentity>, Option<HashSet<String>>)> {
+pub fn network_config() -> ls::Result<(Option<NodeIdentity>, Option<HashSet<String>>)>
+{
     use std::path::PathBuf;
-    let path = match std::env::var_os("LAWSPEC_NETWORK_CONF") {
+    let path = match std::env::var_os("LAWSPEC_NETWORK_CONF")
+    {
         Some(path) => PathBuf::from(path),
-        None => {
-            let Ok(mut here) = std::env::current_dir() else {
+        None =>
+        {
+            let Ok(mut here) = std::env::current_dir()
+            else
+            {
                 return Ok((None, None));
             };
-            loop {
+            loop
+            {
                 let candidate = here.join("lawspec-network.conf");
-                if candidate.exists() {
+                if candidate.exists()
+                {
                     break candidate;
                 }
-                if !here.pop() {
+                if !here.pop()
+                {
                     return Ok((None, None));
                 }
             }
         }
     };
-    if !path.exists() {
+    if !path.exists()
+    {
         return Ok((None, None));
     }
     let base = std::path::absolute(&path)
@@ -421,27 +490,35 @@ pub fn network_config() -> ls::Result<(Option<NodeIdentity>, Option<HashSet<Stri
         std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))
     };
     let (mut identity, mut trusted) = (None, None);
-    for line in read(&path)?.lines() {
+    for line in read(&path)?.lines()
+    {
         let line = line.trim();
-        let Some((word, rest)) = line.split_once(char::is_whitespace) else {
+        let Some((word, rest)) = line.split_once(char::is_whitespace)
+        else
+        {
             continue;
         };
         let rest = rest.trim();
-        if rest.is_empty() || word.starts_with('#') {
+        if rest.is_empty() || word.starts_with('#')
+        {
             continue;
         }
         let target = base.join(rest);
         let text = read(&target)?;
-        match word {
-            "identity" => {
+        match word
+        {
+            "identity" =>
+            {
                 let seed = unhex(text.trim())
                     .ok_or_else(|| format!("{}: not a hexadecimal seed", target.display()))?;
                 identity = Some(NodeIdentity::from_seed(&seed)?);
             }
-            "trusted" => {
+            "trusted" =>
+            {
                 trusted = Some(text.split_whitespace().map(|t| t.to_lowercase()).collect())
             }
-            _ => {}
+            _ =>
+            {}
         }
     }
     Ok((identity, trusted))
@@ -452,7 +529,8 @@ pub fn hello_body(
     address: &str,
     verifying_key: &[u8],
     encapsulation_key: &[u8],
-) -> Vec<u8> {
+) -> Vec<u8>
+{
     [
         w(session),
         w(address.as_bytes()),
@@ -468,7 +546,8 @@ pub fn welcome_body(
     verifying_key: &[u8],
     ciphertext: &[u8],
     hello: &[u8],
-) -> Vec<u8> {
+) -> Vec<u8>
+{
     [
         w(session),
         w(address.as_bytes()),
@@ -481,7 +560,8 @@ pub fn welcome_body(
 
 /// The AES-256-GCM key: SHAKE256(shared || label || SHA3(hello body) ||
 /// SHA3(welcome body)), 32 bytes.
-pub fn session_key(shared: &[u8], hello: &[u8], welcome: &[u8]) -> Vec<u8> {
+pub fn session_key(shared: &[u8], hello: &[u8], welcome: &[u8]) -> Vec<u8>
+{
     pq::shake256(
         &joined_bytes(&[
             shared,
@@ -501,7 +581,8 @@ pub fn seal_frame(
     direction: u8,
     frame: &[u8],
     nonce: Option<&[u8]>,
-) -> Vec<u8> {
+) -> Vec<u8>
+{
     let nonce = nonce.map_or_else(|| pq::random_bytes(12), |n| n.to_vec());
     let associated = joined_bytes(&[LABEL_FRAME, session, &[direction]]);
     let body = pq::aes_256_gcm_encrypt(key, &nonce, frame, &associated)
@@ -511,12 +592,14 @@ pub fn seal_frame(
 }
 
 /// The frame a data record seals, or None.
-pub fn open_frame(key: &[u8], record: &[u8]) -> Option<Vec<u8>> {
+pub fn open_frame(key: &[u8], record: &[u8]) -> Option<Vec<u8>>
+{
     let (session, pos) = read_fields(record, 4, 1).ok()?;
     let direction = *record.get(pos)?;
     let (sealed, end) = read_fields(record, pos + 1, 1).ok()?;
     let sealed = &sealed[0];
-    if end != record.len() || sealed.len() < 28 {
+    if end != record.len() || sealed.len() < 28
+    {
         return None;
     }
     let associated = joined_bytes(&[LABEL_FRAME, &session[0], &[direction]]);
@@ -541,14 +624,16 @@ pub fn handshake_vector(
     welcome_hash: &str,
     key: &str,
     record: &str,
-) -> bool {
+) -> bool
+{
     let check = || -> Option<bool> {
         let first = NodeIdentity::from_seed(&unhex(initiator_seed)?).ok()?;
         let second = NodeIdentity::from_seed(&unhex(responder_seed)?).ok()?;
         let (kem_seed, session, ciphertext) =
             (unhex(kem_seed)?, unhex(session)?, unhex(ciphertext)?);
         let (nonce, frame) = (unhex(nonce)?, unhex(frame)?);
-        if nonce.len() != 12 {
+        if nonce.len() != 12
+        {
             return None;
         }
         let hello = hello_body(
@@ -581,7 +666,8 @@ pub fn handshake_vector(
     check().unwrap_or(false)
 }
 
-struct Session {
+struct Session
+{
     peer: String,
     key: Vec<u8>,
     // 0: this node began the handshake; 1: the peer did.
@@ -592,7 +678,8 @@ struct Session {
 }
 
 // A handshake this node began, and the frames waiting for it.
-struct Pending {
+struct Pending
+{
     session: Vec<u8>,
     kem_seed: Vec<u8>,
     body: Vec<u8>,
@@ -602,7 +689,8 @@ struct Pending {
 }
 
 #[derive(Default)]
-struct SecureState {
+struct SecureState
+{
     sessions: HashMap<Vec<u8>, Session>,
     // The session this node began with each peer.
     outbound: HashMap<String, Vec<u8>>,
@@ -618,15 +706,18 @@ struct SecureState {
 // A node's secure layer: handshakes, sessions and sealed frames.
 struct Layer(Arc<LayerInner>);
 
-struct LayerInner {
+struct LayerInner
+{
     node: NodeLink,
     identity: NodeIdentity,
     trusted: Option<HashSet<String>>,
     state: Mutex<SecureState>,
 }
 
-impl Layer {
-    fn new(node: NodeLink, identity: NodeIdentity, trusted: Option<HashSet<String>>) -> Layer {
+impl Layer
+{
+    fn new(node: NodeLink, identity: NodeIdentity, trusted: Option<HashSet<String>>) -> Layer
+    {
         Layer(Arc::new(LayerInner {
             node,
             identity,
@@ -636,22 +727,28 @@ impl Layer {
     }
 }
 
-impl SecureLayer for Layer {
-    fn send(&self, peer: &str, frame: Vec<u8>) -> ls::Result<()> {
+impl SecureLayer for Layer
+{
+    fn send(&self, peer: &str, frame: Vec<u8>) -> ls::Result<()>
+    {
         LayerInner::send(&self.0, peer, frame)
     }
 
-    fn receive(&self, record: &[u8]) -> Option<Vec<u8>> {
+    fn receive(&self, record: &[u8]) -> Option<Vec<u8>>
+    {
         self.0.receive(record)
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn std::any::Any
+    {
         self
     }
 }
 
-impl LayerInner {
-    fn accept_peer(&self, address: &str, verifying_key: &[u8]) -> bool {
+impl LayerInner
+{
+    fn accept_peer(&self, address: &str, verifying_key: &[u8]) -> bool
+    {
         let fingerprint = hex(&pq::sha3_256(verifying_key));
         if self
             .trusted
@@ -668,7 +765,8 @@ impl LayerInner {
             == fingerprint
     }
 
-    fn send(this: &Arc<LayerInner>, peer: &str, frame: Vec<u8>) -> ls::Result<()> {
+    fn send(this: &Arc<LayerInner>, peer: &str, frame: Vec<u8>) -> ls::Result<()>
+    {
         let mut state = lock(&this.state);
         let found = state
             .outbound
@@ -681,22 +779,26 @@ impl LayerInner {
                     .find(|(_, s)| s.peer == peer && s.confirmed)
             })
             .map(|(id, s)| (id.clone(), s.key.clone(), s.direction));
-        if let Some((id, key, direction)) = found {
+        if let Some((id, key, direction)) = found
+        {
             drop(state);
             return this
                 .node
                 .send(peer, seal_frame(&key, &id, direction, &frame, None));
         }
         let start = !state.pending.contains_key(peer);
-        if start {
+        if start
+        {
             let pending = this.begin();
             state.pending.insert(peer.to_string(), pending);
         }
         let pending = state.pending.get_mut(peer).expect("a pending handshake");
-        if pending.queue.len() < QUEUE_LIMIT {
+        if pending.queue.len() < QUEUE_LIMIT
+        {
             pending.queue.push(frame);
         }
-        if !start {
+        if !start
+        {
             return Ok(());
         }
         let (session, hello, done) = (
@@ -705,8 +807,10 @@ impl LayerInner {
             pending.done.clone(),
         );
         drop(state);
-        if let Err(error) = this.node.send(peer, hello.clone()) {
-            if ls::net::is_unreachable(&error) {
+        if let Err(error) = this.node.send(peer, hello.clone())
+        {
+            if ls::net::is_unreachable(&error)
+            {
                 let mut state = lock(&this.state);
                 if state
                     .pending
@@ -723,7 +827,8 @@ impl LayerInner {
         Ok(())
     }
 
-    fn begin(&self) -> Pending {
+    fn begin(&self) -> Pending
+    {
         let session = pq::random_bytes(16);
         let kem_seed = pq::random_bytes(64);
         let encapsulation_key = pq::ml_kem_768_public_key(&kem_seed).expect("a 64-byte seed");
@@ -754,9 +859,11 @@ impl LayerInner {
         session: Vec<u8>,
         hello: Vec<u8>,
         done: Arc<(Mutex<bool>, Condvar)>,
-    ) {
+    )
+    {
         let give_up = Instant::now() + HANDSHAKE_DEADLINE;
-        loop {
+        loop
+        {
             {
                 let (flag, ready) = &*done;
                 let guard = lock(flag);
@@ -764,11 +871,13 @@ impl LayerInner {
                     .wait_timeout_while(guard, HANDSHAKE_RETRY, |finished| !*finished)
                     .unwrap_or_else(|e| e.into_inner())
                     .0;
-                if *guard {
+                if *guard
+                {
                     return;
                 }
             }
-            if self.node.closed() || Instant::now() >= give_up {
+            if self.node.closed() || Instant::now() >= give_up
+            {
                 let mut state = lock(&self.state);
                 if state
                     .pending
@@ -785,11 +894,14 @@ impl LayerInner {
 
     // The frame a record carries, or None (a handshake record, or one that
     // fails to verify or open).
-    fn receive(&self, record: &[u8]) -> Option<Vec<u8>> {
-        if record.len() < 4 || &record[..3] != RECORD {
+    fn receive(&self, record: &[u8]) -> Option<Vec<u8>>
+    {
+        if record.len() < 4 || &record[..3] != RECORD
+        {
             return None;
         }
-        match record[3] {
+        match record[3]
+        {
             HELLO => self.hello(record).and(None),
             WELCOME => self.welcome(record).and(None),
             DATA => self.data(record),
@@ -797,10 +909,12 @@ impl LayerInner {
         }
     }
 
-    fn hello(&self, record: &[u8]) -> Option<()> {
+    fn hello(&self, record: &[u8]) -> Option<()>
+    {
         let (fields, pos) = read_fields(record, 4, 4).ok()?;
         let (signature, end) = read_fields(record, pos, 1).ok()?;
-        if end != record.len() {
+        if end != record.len()
+        {
             return None;
         }
         let [session, address, verifying_key, encapsulation_key] =
@@ -808,17 +922,21 @@ impl LayerInner {
         let body = &record[4..pos];
         let address = String::from_utf8(address).ok()?;
         let answered = lock(&self.state).welcomes.get(&session).cloned();
-        let (to, welcome) = match answered {
+        let (to, welcome) = match answered
+        {
             Some(answered) => answered,
-            None => {
+            None =>
+            {
                 if !pq::ml_dsa_65_verify(
                     &verifying_key,
                     &joined_bytes(&[LABEL_HELLO, body]),
                     &signature[0],
-                ) {
+                )
+                {
                     return None;
                 }
-                if !self.accept_peer(&address, &verifying_key) {
+                if !self.accept_peer(&address, &verifying_key)
+                {
                     return None;
                 }
                 let (ciphertext, shared) = pq::ml_kem_768_encapsulate(&encapsulation_key)?;
@@ -835,7 +953,8 @@ impl LayerInner {
                 let answer = joined_bytes(&[RECORD, &[WELCOME], &welcome, &w(&signature)]);
                 let key = session_key(&shared, body, &welcome);
                 let mut state = lock(&self.state);
-                if !state.welcomes.contains_key(&session) {
+                if !state.welcomes.contains_key(&session)
+                {
                     state
                         .welcomes
                         .insert(session.clone(), (address.clone(), answer));
@@ -856,10 +975,12 @@ impl LayerInner {
         Some(())
     }
 
-    fn welcome(&self, record: &[u8]) -> Option<()> {
+    fn welcome(&self, record: &[u8]) -> Option<()>
+    {
         let (fields, pos) = read_fields(record, 4, 5).ok()?;
         let (signature, end) = read_fields(record, pos, 1).ok()?;
-        if end != record.len() {
+        if end != record.len()
+        {
             return None;
         }
         let [session, address, verifying_key, ciphertext, hello_hash] =
@@ -868,7 +989,8 @@ impl LayerInner {
         let (kem_seed, hello) = {
             let state = lock(&self.state);
             let pending = state.pending.get(&address)?;
-            if pending.session != session || hello_hash != pq::sha3_256(&pending.body) {
+            if pending.session != session || hello_hash != pq::sha3_256(&pending.body)
+            {
                 return None;
             }
             (pending.kem_seed.clone(), pending.body.clone())
@@ -878,10 +1000,12 @@ impl LayerInner {
             &verifying_key,
             &joined_bytes(&[LABEL_WELCOME, body]),
             &signature[0],
-        ) {
+        )
+        {
             return None;
         }
-        if !self.accept_peer(&address, &verifying_key) {
+        if !self.accept_peer(&address, &verifying_key)
+        {
             return None;
         }
         let key = session_key(
@@ -913,7 +1037,8 @@ impl LayerInner {
         };
         *lock(&pending.done.0) = true;
         pending.done.1.notify_all();
-        for frame in pending.queue {
+        for frame in pending.queue
+        {
             let _ = self
                 .node
                 .send(&address, seal_frame(&key, &session, 0, &frame, None));
@@ -921,11 +1046,13 @@ impl LayerInner {
         Some(())
     }
 
-    fn data(&self, record: &[u8]) -> Option<Vec<u8>> {
+    fn data(&self, record: &[u8]) -> Option<Vec<u8>>
+    {
         let (session, _) = read_fields(record, 4, 1).ok()?;
         let key = lock(&self.state).sessions.get(&session[0])?.key.clone();
         let frame = open_frame(&key, record)?;
-        if let Some(found) = lock(&self.state).sessions.get_mut(&session[0]) {
+        if let Some(found) = lock(&self.state).sessions.get_mut(&session[0])
+        {
             found.confirmed = true;
         }
         Some(frame)
@@ -933,17 +1060,20 @@ impl LayerInner {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests
+{
     use super::*;
     use crate::lawspec_runtime::Value;
     use crate::lawspec_runtime::net::MemoryNetwork;
 
-    fn int64() -> ls::Sexp {
+    fn int64() -> ls::Sexp
+    {
         ls::descriptor("(int Int64 _ _)")
     }
 
     #[test]
-    fn handshake_vector_matches_python() {
+    fn handshake_vector_matches_python()
+    {
         // examples/specs/distribution.lawspec's vector (dev/handshake-vector.py).
         assert!(handshake_vector(
             "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -966,15 +1096,20 @@ mod tests {
     }
 
     #[test]
-    fn frames_cross_sealed_unless_insecure_for_tests() {
+    fn frames_cross_sealed_unless_insecure_for_tests()
+    {
         install();
         let marker = b"plain-marker-0123456789".to_vec();
-        for insecure in [false, true] {
+        for insecure in [false, true]
+        {
             let net = MemoryNetwork::reliable().with_recording();
             let make = |name: &str| {
-                if insecure {
+                if insecure
+                {
                     net.insecure_transport_for_tests(name)
-                } else {
+                }
+                else
+                {
                     net.transport(name)
                 }
             };
@@ -982,17 +1117,22 @@ mod tests {
             assert_eq!(identity(&here).is_none(), insecure);
             let box_ = there
                 .mailbox("jobs", ls::descriptor("(text)"), ls::values_table(""))
-                .unwrap();
-            let text = String::from_utf8(marker.clone()).unwrap();
+                .expect("valid secure transport fixture must succeed");
+            let text = String::from_utf8(marker.clone())
+                .expect("valid secure transport fixture must succeed");
             here.remote_mailbox(
                 &format!("{}/jobs", there.address()),
                 ls::descriptor("(text)"),
                 ls::values_table(""),
             )
             .send(&Value::Text(text.clone()))
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
             assert_eq!(
-                ls::render(&box_.receive(Some(Duration::from_secs(5))).unwrap()),
+                ls::render(
+                    &box_
+                        .receive(Some(Duration::from_secs(5)))
+                        .expect("valid secure transport fixture must succeed")
+                ),
                 format!("{text:?}")
             );
             let seen = net
@@ -1006,7 +1146,8 @@ mod tests {
     }
 
     #[test]
-    fn a_trusted_set_refuses_other_peers() {
+    fn a_trusted_set_refuses_other_peers()
+    {
         let net = MemoryNetwork::reliable();
         let stranger = NodeIdentity::generate();
         let here = node(
@@ -1014,11 +1155,12 @@ mod tests {
             None,
             Some(vec![stranger.fingerprint()]),
         )
-        .unwrap();
-        let there = node(net.transport("there"), None, Some(vec!["00".repeat(32)])).unwrap();
+        .expect("valid secure transport fixture must succeed");
+        let there = node(net.transport("there"), None, Some(vec!["00".repeat(32)]))
+            .expect("valid secure transport fixture must succeed");
         let box_ = there
             .mailbox("jobs", int64(), ls::values_table(""))
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
         let sent = here
             .remote_mailbox_within(
                 &format!("{}/jobs", there.address()),
@@ -1034,7 +1176,8 @@ mod tests {
     }
 
     #[test]
-    fn tokens_come_from_the_handler() {
+    fn tokens_come_from_the_handler()
+    {
         install();
         let token = ls::net::secure_token();
         assert_eq!(token.len(), 64);
@@ -1043,7 +1186,8 @@ mod tests {
 
     // Secure nodes over every transport: an actor call, an evaluated
     // definition and a channel.
-    fn exercise(a: Arc<dyn Transport>, b: Arc<dyn Transport>) {
+    fn exercise(a: Arc<dyn Transport>, b: Arc<dyn Transport>)
+    {
         install();
         let (here, there) = (Node::new(a), Node::new(b));
         let counter = ls::actors::Actor::new(ls::BigInt::from(0));
@@ -1062,7 +1206,7 @@ mod tests {
                 vec![("add".into(), vec![int64()], int64(), handler)],
                 ls::values_table(""),
             )
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
         let remote = here.remote_actor(
             &address,
             vec![("add".into(), vec![int64()], int64())],
@@ -1070,7 +1214,13 @@ mod tests {
             Duration::from_secs(5),
         );
         let replies: Vec<String> = (1..=3)
-            .map(|n| ls::render(&remote.call("add", &[Value::Integer(n.into())]).unwrap()))
+            .map(|n| {
+                ls::render(
+                    &remote
+                        .call("add", &[Value::Integer(n.into())])
+                        .expect("valid secure transport fixture must succeed"),
+                )
+            })
             .collect();
         assert_eq!(replies, vec!["1", "3", "6"]);
         let double: Arc<dyn Fn(Vec<Value>) -> ls::Result<Value> + Send + Sync> =
@@ -1081,7 +1231,7 @@ mod tests {
                 ls::values_table(""),
                 "definitions",
             )
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
         let got = here
             .evaluate(
                 &there.address(),
@@ -1093,7 +1243,7 @@ mod tests {
                 Duration::from_secs(5),
                 "definitions",
             )
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
         assert_eq!(ls::render(&got), "42");
         let steps = vec![
             (true, int64()),
@@ -1107,7 +1257,7 @@ mod tests {
                 ls::values_table(""),
                 Duration::from_secs(5),
             )
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
         let dialer = here
             .dial(
                 &format!("{}/chat", there.address()),
@@ -1115,38 +1265,62 @@ mod tests {
                 ls::values_table(""),
                 Duration::from_secs(5),
             )
-            .unwrap();
+            .expect("valid secure transport fixture must succeed");
         let worker = std::thread::spawn(move || {
-            listener.send(&Value::Integer(10.into())).unwrap();
-            let said = listener.receive(Some(Duration::from_secs(5))).unwrap();
-            listener.send(&Value::Integer(20.into())).unwrap();
+            listener
+                .send(&Value::Integer(10.into()))
+                .expect("valid secure transport fixture must succeed");
+            let said = listener
+                .receive(Some(Duration::from_secs(5)))
+                .expect("valid secure transport fixture must succeed");
+            listener
+                .send(&Value::Integer(20.into()))
+                .expect("valid secure transport fixture must succeed");
             said
         });
         assert_eq!(
-            ls::render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()),
+            ls::render(
+                &dialer
+                    .receive(Some(Duration::from_secs(5)))
+                    .expect("valid secure transport fixture must succeed")
+            ),
             "10"
         );
-        dialer.send(&Value::Text("hi".into())).unwrap();
+        dialer
+            .send(&Value::Text("hi".into()))
+            .expect("valid secure transport fixture must succeed");
         assert_eq!(
-            ls::render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()),
+            ls::render(
+                &dialer
+                    .receive(Some(Duration::from_secs(5)))
+                    .expect("valid secure transport fixture must succeed")
+            ),
             "20"
         );
-        assert_eq!(ls::render(&worker.join().unwrap()), "\"hi\"");
+        assert_eq!(
+            ls::render(
+                &worker
+                    .join()
+                    .expect("valid secure transport fixture must succeed")
+            ),
+            "\"hi\""
+        );
         here.close();
         there.close();
     }
 
     #[test]
-    fn secure_nodes_over_memory_tcp_and_http() {
+    fn secure_nodes_over_memory_tcp_and_http()
+    {
         let net = MemoryNetwork::new(3, 0.2, 0.2, Duration::from_millis(10));
         exercise(net.transport("a"), net.transport("b"));
         exercise(
-            ls::net::TcpTransport::local().unwrap(),
-            ls::net::TcpTransport::local().unwrap(),
+            ls::net::TcpTransport::local().expect("valid secure transport fixture must succeed"),
+            ls::net::TcpTransport::local().expect("valid secure transport fixture must succeed"),
         );
         exercise(
-            ls::net::HttpTransport::local().unwrap(),
-            ls::net::HttpTransport::local().unwrap(),
+            ls::net::HttpTransport::local().expect("valid secure transport fixture must succeed"),
+            ls::net::HttpTransport::local().expect("valid secure transport fixture must succeed"),
         );
     }
 }

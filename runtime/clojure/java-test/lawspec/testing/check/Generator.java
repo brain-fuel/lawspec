@@ -14,8 +14,7 @@ import java.util.function.Predicate;
  * and its refinement filters, can make. ref:DEC-clojure-property-library
  */
 @FunctionalInterface
-public interface Generator<T>
-{
+public interface Generator<T> {
   /** One value, from the choices of a draw. */
   T generateValue(Draws draws);
 
@@ -52,24 +51,21 @@ public interface Generator<T>
   /** Any double: zero, the special values, small integers or any bit pattern. */
   static Generator<Double> doubles()
   {
-    return draws ->
-        switch (draws.draw(0, 9))
-        {
-          case 0 -> 0.0;
-          case 1 -> Double.NaN;
-          case 2 -> Double.POSITIVE_INFINITY;
-          case 3 -> Double.NEGATIVE_INFINITY;
-          case 4 -> -0.0;
-          case 5 -> (double) draws.draw(-1000, 1000);
-          default ->
-              Double.longBitsToDouble(
-                  ((long) draws.draw(Integer.MIN_VALUE, Integer.MAX_VALUE) << 32)
-                      | (draws.draw(Integer.MIN_VALUE, Integer.MAX_VALUE) & 0xffffffffL));
-        };
+    return draws -> switch (draws.draw(0, 9))
+    {
+      case 0 -> 0.0;
+      case 1 -> Double.NaN;
+      case 2 -> Double.POSITIVE_INFINITY;
+      case 3 -> Double.NEGATIVE_INFINITY;
+      case 4 -> -0.0;
+      case 5 -> (double) draws.draw(-1000, 1000);
+      default ->
+        Double.longBitsToDouble(((long) draws.draw(Integer.MIN_VALUE, Integer.MAX_VALUE) << 32)
+            | (draws.draw(Integer.MIN_VALUE, Integer.MAX_VALUE) & 0xffffffffL));
+    };
   }
 
-  @SafeVarargs
-  static <T> Generator<T> sampledFrom(T... values)
+  @SafeVarargs static <T> Generator<T> sampledFrom(T... values)
   {
     return sampledFrom(List.of(values));
   }
@@ -84,8 +80,7 @@ public interface Generator<T>
     return draws -> copy.get(draws.draw(0, copy.size() - 1));
   }
 
-  @SafeVarargs
-  static <T> Generator<T> anyOf(Generator<? extends T>... alternatives)
+  @SafeVarargs static <T> Generator<T> anyOf(Generator<? extends T>... alternatives)
   {
     return anyOf(List.of(alternatives));
   }
@@ -125,12 +120,12 @@ public interface Generator<T>
     return items;
   }
 
-  default <V> Generator<V> map(Function<? super T, ? extends V> f)
+  default<V> Generator<V> map(Function<? super T, ? extends V> f)
   {
     return draws -> f.apply(generateValue(draws));
   }
 
-  default <V> Generator<V> flatMap(Function<? super T, ? extends Generator<V>> f)
+  default<V> Generator<V> flatMap(Function<? super T, ? extends Generator<V>> f)
   {
     return draws -> f.apply(generateValue(draws)).generateValue(draws);
   }
@@ -138,7 +133,8 @@ public interface Generator<T>
   /** Values that satisfy a condition, drawn again until one does. */
   default Generator<T> suchThat(Predicate<? super T> condition)
   {
-    return draws -> {
+    return draws ->
+    {
       for (int attempt = 0; attempt < 100; attempt++)
       {
         T value = generateValue(draws);

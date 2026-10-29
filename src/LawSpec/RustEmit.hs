@@ -138,7 +138,7 @@ emitRustSchema bits layout declarations = do
     body <- Expression.renderExpressionWithContext declarations (Doc.text "bits") (Doc.text "_schema") reference key [] names predicate
     pure (Doc.text ("fn " ++ callbackName index) <> Doc.delimitTrailing 4 "(" ")"
       (map Doc.text ["_schema: &ls::Schema", "_types: &[ls::TypeRef]", "_fields: &[ls::Value]",
-        "bits: u32", "ctx: &mut ls::Context"]) <> Doc.text " -> ls::Result<bool> " <>
+        "bits: u32", "ctx: &mut ls::Context"]) <> Doc.text " -> ls::Result<bool>" <> Doc.hardline <>
       Doc.block 4 (Doc.hang 4 (Doc.text "let accepted =") body <> Doc.text ";" <>
         Doc.hardline <> Doc.text "accepted.boolean()"))
   let refined = [c | s <- schemas, c <- Schema.constructors s,
@@ -164,11 +164,11 @@ emitRustSchema bits layout declarations = do
     Doc.hardline <> Doc.text "use crate::lawspec_runtime as ls;" <> Doc.hardline <> Doc.hardline <>
     Doc.joinWith (Doc.hardline <> Doc.hardline) (callbacks ++
       [ Doc.text "/// The program's data schema, built once." <> Doc.hardline <>
-        Doc.text "pub fn schema() -> ls::Result<&'static ls::Schema> " <> Doc.block 4 (Doc.joinWith Doc.hardline
+        Doc.text "pub fn schema() -> ls::Result<&'static ls::Schema>" <> Doc.hardline <> Doc.block 4 (Doc.joinWith Doc.hardline
           [ Doc.text "static SCHEMA: std::sync::OnceLock<ls::Result<ls::Schema>> = std::sync::OnceLock::new();"
           , Doc.text "SCHEMA" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
               (map Doc.text [".get_or_init(build)", ".as_ref()", ".map_err(|error| error.clone())"])) ])
-      , Doc.text "fn build() -> ls::Result<ls::Schema> " <> Doc.block 4 factory ]) <> Doc.hardline))
+      , Doc.text "fn build() -> ls::Result<ls::Schema>" <> Doc.hardline <> Doc.block 4 factory ]) <> Doc.hardline))
   where
     variable (TypeVariable _) = True
     variable (Constructor _ args) = any (\arg -> case arg of TypeArgument ty -> variable ty; _ -> False) args
@@ -256,6 +256,9 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
   pure (files ++ generatorStubs)
   where
     sourcePath file = sourceRoot ++ "/" ++ file
+    nativeImport owner = Doc.group (Doc.text ("use " ++ owner ++ "::lawspec_native::{") <>
+      Doc.nest 4 (Doc.softbreak <> Doc.commaSep (map Doc.text (RB.conversionNames (NR.bindingRepresentations bindings))) <> Doc.whenBroken (Doc.text ",")) <>
+      Doc.softbreak <> Doc.text "};")
     hasNativeTypes = not (null (NB.resolvedTypes (NR.bindingRepresentations bindings)))
     -- An adapter's native binding: a static function, or a handle's method
     -- or constructor.
@@ -295,7 +298,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
       pure (Doc.text ("/// The bound production handler of " ++ abilityName a ++ ", " ++ native ++ ", as the generated trait.") <> Doc.hardline <>
         Doc.text ("pub struct " ++ name ++ " ") <> block (Doc.text ("inner: " ++ native ++ ",")) <> Doc.hardline <> Doc.hardline <>
         RL.function ("pub fn " ++ function) [] name (RL.expr (RL.struct name [("inner", RL.call "Default::default" [])])) <> Doc.hardline <> Doc.hardline <>
-        Doc.text ("impl crate::" ++ Abilities.traitPath allUnits (abilityInstance a) ++ " for " ++ name ++ " ") <>
+        Doc.text ("impl crate::" ++ Abilities.traitPath allUnits (abilityInstance a) ++ " for " ++ name) <> Doc.hardline <>
         block (Doc.joinWith (Doc.hardline <> Doc.hardline) methods))
     allUnits = map plannedUnit plannedUnits
     hasNetwork = Network.usesNetworkUnits allUnits
@@ -449,7 +452,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                     inner <- invoke names (RL.atom "draws") child
                     let drawn = boundName names binder
                     condition <- renderL (names ++ [(binderId binder,drawn)]) predicate
-                    let loop = Doc.text ("for _ in 0..=" ++ show limit ++ " ") <> RL.block
+                    let loop = Doc.text ("for _ in 0..=" ++ show limit) <> Doc.hardline <> RL.block
                           [RL.Let drawn inner, RL.Do (RL.If (RL.try' (RL.method condition "boolean" []))
                             (RL.Block [RL.Semi (RL.infixOp "=" (RL.atom "found") (RL.call "Some" [RL.atom drawn])),
                               RL.Item (Doc.text "break;")] Nothing) Nothing)] Nothing
@@ -555,7 +558,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               [] -> "handler"
             signature = Doc.text ((if declarationAsync d then "pub async fn " else "pub fn ") ++ declarationName d)
               <> Doc.delimitTrailing 4 "(" ")" arguments
-              <> Doc.text (" -> " ++ resultType ++ " ")
+              <> Doc.text (" -> " ++ resultType) <> Doc.hardline
         body <- case nativeCall d of
           Nothing -> pure (invoke "todo!" [string (idText (declarationId d))])
           Just native -> RB.emitCall planMachineBits planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] d native
@@ -589,7 +592,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
           pure $ if usesData t
             then convert (invoke "lawspec_schema::schema()?.native_value_with_context" [value,borrow ref,bits,Doc.text "ctx"] <> Doc.text "?")
             else if typeName t == "CodeUnit16"
-            then Doc.text "match " <> value <> Doc.text " " <> block (statements
+            then Doc.text "match " <> value <> Doc.hardline <> block (statements
               [Doc.text "ls::Value::CodeUnit16(x) => x,",
                Doc.text "_ => return Err(\"expected CodeUnit16\".into()),"])
             else convert (invoke "ls::native_value" [value,string (typeName t)] <> Doc.text "?")
@@ -791,13 +794,13 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               extend = Doc.text "(proptest::strategy::Just(case), s)" <>
                 Doc.nest 4 (Doc.softbreak <> Doc.text ".prop_map(|(mut case, x)| " <>
                   block (statements [if hasFieldContracts
-                    then Doc.text "match x " <> block (statements
+                    then Doc.text "match x" <> Doc.hardline <> block (statements
                       [Doc.text "Ok(value) => case.values.push(value),",Doc.text "Err(error) => case.error = Some(error),"])
                     else Doc.text "case.values.push(x);",Doc.text "case"]) <> Doc.text ")" <>
                   Doc.softbreak <> Doc.text ".boxed()")
-              matched = Doc.text "match candidate " <> block (statements
+              matched = Doc.text "match candidate" <> Doc.hardline <> block (statements
                 [Doc.text "Some(s) => " <> extend <> Doc.text ",",
-                 Doc.text "None => " <> block (statements
+                 Doc.text "None =>" <> Doc.hardline <> block (statements
                   [Doc.text "case.values.clear();",Doc.text "proptest::strategy::Just(case).boxed()"])] )
           pure (binding "strategy" (Doc.text "strategy" <> Doc.nest 4
             (Doc.softbreak <> Doc.text ".prop_flat_map(|mut case| " <> block (statements
@@ -938,7 +941,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                 else if null (turn k) then withStack turned else onStack "ls::on_stack" turned
             testsOf = case (harnessSkip h, harnessKnownDiscrepancy h) of
               (Just reason, _) -> [Doc.text "#[test]" <> Doc.hardline <> Doc.text ("#[ignore = " ++ q (shown ++ ": " ++ reason) ++ "]") <> Doc.hardline <>
-                Doc.text "fn skipped() {}"]
+                Doc.text "fn skipped()" <> Doc.hardline <> Doc.text "{}"]
               (_, Just reason) -> [Doc.text "#[test]" <> Doc.hardline <> function "known_discrepancy" [] "ls::Result<()>"
                 (closureCall "lawspec_harness::known_discrepancy" [string (unitName ++ "::" ++ label), string (moduleName ++ "::known_discrepancy"), string reason]
                   (stackClosure whole))]
@@ -959,13 +962,13 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             observeBody = statements (observations ++ [Doc.text "Ok(())"])
             sourceLinkOf e = fmap locationLink (exampleLocation e)
         pure (mconcat (map (Doc.lineComment 100 "// ") (Presentation.lawCommentLines pp)) <>
-          Doc.text ("mod " ++ moduleName ++ " ") <> block (Doc.joinWith blank items))
+          Doc.text ("mod " ++ moduleName) <> Doc.hardline <> block (Doc.joinWith blank items))
       productions <- if generatedAdapter then boundWrappers unit else mapM (Abilities.productionStub planDataDeclarations unit) (ownAbilities unit)
       let adapterItems = Doc.joinWith blank (stubs ++ productions)
           adapterDoc = statements ([Doc.text (if generatedAdapter then "// " ++ generatedHeader (unitSourceFile unit)
               else "// Scaffolded by LawSpec" ++ maybe "" (" from " ++) (unitSourceFile unit) ++ ". User-owned; never overwritten.")] ++
             -- (in rustfmt's order)
-            [Doc.text "use crate::lawspec_native::*;" | generatedAdapter && hasNativeTypes] ++
+            [nativeImport "crate" | generatedAdapter && hasNativeTypes] ++
             [Doc.text "use crate::lawspec_runtime as ls;" | mentions "ls" adapterItems]) <>
             (if null stubs && null productions then mempty else blank <> adapterItems) <> Doc.hardline
           -- The definitions file calls workflow steps by their crate paths;
@@ -1008,7 +1011,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               [useDoc "lawspec_remote" ("use " ++ library ++ "::lawspec_remote;") | hasRemote] ++
               [useDoc "lawspec_mailboxes" ("use " ++ library ++ "::lawspec_mailboxes;") | hasMailboxes] ++
               [useDoc "lawspec_abilities" ("use " ++ library ++ "::lawspec_abilities;") | hasAbilities] ++
-              [useDoc "lawspec_native" ("use " ++ library ++ "::lawspec_native::*;") | hasNativeTypes] ++
+              [(("lawspec_native",("1","")), nativeImport library) | hasNativeTypes] ++
               [useDoc "lawspec_schema" ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++
               [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
               [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
@@ -1057,10 +1060,10 @@ binding name value = RL.stmt (RL.Let name (RL.Laid value))
 borrow :: Doc.Doc -> Doc.Doc
 borrow value = Doc.text "&" <> value
 conditional :: Doc.Doc -> Doc.Doc -> Doc.Doc
-conditional condition body = Doc.text "if " <> condition <> Doc.text " " <> block body
+conditional condition body = Doc.text "if " <> condition <> Doc.hardline <> block body
 function :: String -> [Doc.Doc] -> String -> Doc.Doc -> Doc.Doc
 function name args result body = Doc.text ("fn " ++ name) <>
-  Doc.delimitTrailing 4 "(" ")" args <> Doc.text (" -> " ++ result ++ " ") <> block body
+  Doc.delimitTrailing 4 "(" ")" args <> Doc.text (" -> " ++ result) <> Doc.hardline <> block body
 
 -- | A cover contains literal factories and inclusive mathematical ranges;
 -- each attempted case materializes its own values and handler context.
@@ -1126,7 +1129,7 @@ rustLiteralPlan values = do
         suffixExpr <- cover plan suffix
         pure (RL.Macro "" "(" ")" [domainExpr, suffixExpr])
       pure (RL.call "ls::FiniteCover::Branches" [RL.vecOf entries])
-    endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "unwrap" []
+    endpoint value = RL.method (RL.method (RL.atom (q (show value))) "parse::<ls::BigInt>" []) "expect" [RL.atom (q "checked endpoint")]
 
 valueLiteral :: V.Value -> Either String Doc.Doc
 valueLiteral value = RL.expr <$> valueExpr value

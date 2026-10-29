@@ -1,187 +1,296 @@
 import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Initializes isolated reference projects; dependency installation is explicit developer tooling.
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { access, readFile, writeFile, mkdir, copyFile, rm } from "node:fs/promises";
-import path from "node:path";
-import { programTargets as targets, templates } from "../npm/templates.mjs";
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {
+  access,
+  readFile,
+  writeFile,
+  mkdir,
+  copyFile,
+  rm,
+} from 'node:fs/promises';
+import path from 'node:path';
+import {programTargets as targets, templates} from '../npm/templates.mjs';
 const exec = promisify(execFile);
-const repo = path.resolve(import.meta.dirname, "..");
-async function run(cmd, args, cwd, environment = {}) {
-  console.log(`${path.basename(cwd)}: ${cmd} ${args.join(" ")}`);
-  try {
+const repo = path.resolve(import.meta.dirname, '..');
+async function run(cmd, args, cwd, environment = {})
+{
+  console.log(`${path.basename(cwd)}: ${cmd} ${args.join(' ')}`);
+  try
+  {
     return await exec(cmd, args, {
       cwd,
-      env: { ...process.env, ...environment },
-      encoding: "utf8",
+      env: {...process.env, ...environment},
+      encoding: 'utf8',
       maxBuffer: 8 * 1024 * 1024,
       timeout: 300000,
     });
-  } catch (e) {
+  }
+  catch (e)
+  {
     throw new Error(`${cmd}: ${e.stdout}\n${e.stderr}`);
   }
 }
-async function setup(target) {
+async function setup(target)
+{
   if (!targets.includes(target)) throw new Error(`Unknown target ${target}`);
-  const root = path.join(repo, ".integration", target);
-  const configPath = path.join(root, "lawspec.edn");
+  const root = path.join(repo, '.integration', target);
+  const configPath = path.join(root, 'lawspec.edn');
   const exists = await access(configPath).then(
     () => true,
     () => false,
   );
-  const oldFixture = await access(path.join(root, 'lawspec.json')).then(() => true, () => false);
-  if (!exists && oldFixture) {
+  const oldFixture = await access(path.join(root, 'lawspec.json')).then(
+    () => true,
+    () => false,
+  );
+  if (!exists && oldFixture)
+  {
     await rm(path.join(root, 'lawspec.json'));
-    await writeFile(configPath, writeManifest({manifestVersion: 1, component: {name: target, version: '0.1.0'},
-      languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ['laws'], targets: [{language: target, root: '.'}]}));
-  } else if (!exists) await run(
+    await writeFile(
+      configPath,
+      writeManifest({
+        manifestVersion: 1,
+        component: {name: target, version: '0.1.0'},
+        languageProfile: '1.0-rc.2',
+        verification: {layers: []},
+        sources: ['laws'],
+        targets: [{language: target, root: '.'}],
+      }),
+    );
+  }
+  else if (!exists)
+    await run(
       process.execPath,
       [
-        path.join(repo, "npm/bin/lawspec.mjs"),
-        "init",
-        "--target",
+        path.join(repo, 'npm/bin/lawspec.mjs'),
+        'init',
+        '--target',
         target,
-        "--config",
+        '--config',
         configPath,
       ],
       repo,
     );
   // An existing project may predate a scaffold file; restore any that are
   // missing without touching files already present.
-  for (const [file, content] of Object.entries(templates(target))) {
+  for (const [file, content] of Object.entries(templates(target)))
+  {
     const destination = path.join(root, file);
-    if (!(await access(destination).then(() => true, () => false))) {
-      await mkdir(path.dirname(destination), { recursive: true });
+    if (
+      !(await access(destination).then(
+        () => true,
+        () => false,
+      ))
+    )
+    {
+      await mkdir(path.dirname(destination), {recursive: true});
       await writeFile(destination, content);
     }
   }
-  const config = parseManifest(await readFile(configPath, "utf8"));
-  if (["javascript", "typescript"].includes(target)) {
-    const lock = path.join(repo, "test/locks", target, "package-lock.json");
+  const config = parseManifest(await readFile(configPath, 'utf8'));
+  if (['javascript', 'typescript'].includes(target))
+  {
+    const lock = path.join(repo, 'test/locks', target, 'package-lock.json');
     if (
       await access(lock).then(
         () => true,
         () => false,
       )
-    ) {
-      await copyFile(lock, path.join(root, "package-lock.json"));
+    )
+    {
+      await copyFile(lock, path.join(root, 'package-lock.json'));
       // The environment serves every suite, including those that import
       // lawspec.crypto or lawspec.network, so it declares the lock's packages,
       // which a project scaffolded without crypto leaves out; npm ci would
       // otherwise skip them.
       // The lock also pins Prettier, which acceptance runs in check mode on
       // generated code.
-      const declared = JSON.parse(await readFile(lock, "utf8")).packages[""];
-      const manifestPath = path.join(root, "package.json");
-      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-      for (const field of ["dependencies", "devDependencies"])
-        if (declared[field]) manifest[field] = { ...manifest[field], ...declared[field] };
-      await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+      const declared = JSON.parse(await readFile(lock, 'utf8')).packages[''];
+      const manifestPath = path.join(root, 'package.json');
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+      for (const field of ['dependencies', 'devDependencies'])
+        if (declared[field])
+          manifest[field] = {...manifest[field], ...declared[field]};
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
       await run(
-        "npm",
-        ["ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+        'npm',
+        ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
         root,
       );
-    } else
+    }
+    else
       await run(
-        "npm",
-        ["install", "--ignore-scripts", "--no-audit", "--no-fund"],
+        'npm',
+        ['install', '--ignore-scripts', '--no-audit', '--no-fund'],
         root,
       );
-  } else if (target === "python" || target === "prolog") {
-    if (target === "prolog") await run("swipl", ["--version"], root);
-    await mkdir(path.join(root, "src"), { recursive: true });
+  }
+  else if (target === 'python' || target === 'prolog')
+  {
+    if (target === 'prolog') await run('swipl', ['--version'], root);
+    await mkdir(path.join(root, 'src'), {recursive: true});
     await run(
-      "uv",
+      'uv',
       [
-        "venv",
-        "--allow-existing",
-        "--python",
-        process.env.LAWSPEC_PYTHON || "3.13",
-        ".venv",
+        'venv',
+        '--allow-existing',
+        '--python',
+        process.env.LAWSPEC_PYTHON || '3.13',
+        '.venv',
       ],
       root,
     );
-    config.targets[0].python = path.join(root, ".venv/bin/python");
+    config.targets[0].python = path.join(root, '.venv/bin/python');
     await run(
-      "uv",
+      'uv',
       [
-        "pip",
-        "install",
-        "--python",
+        'pip',
+        'install',
+        '--python',
         config.targets[0].python,
-        "-c",
-        path.join(repo, "test/locks", target === "prolog" ? "prolog.txt" : "python.txt"),
-        "-e",
-        ".[test]",
+        '-c',
+        path.join(
+          repo,
+          'test/locks',
+          target === 'prolog' ? 'prolog.txt' : 'python.txt',
+        ),
+        '-e',
+        '.[test]',
         // For the suites that import lawspec.crypto or lawspec.network.
-        "cryptography",
+        'cryptography',
         // Acceptance checks generated Python, and Prolog's Python host files, with
         // ruff format (pinned in the lock).
-        "ruff",
+        'ruff',
       ],
       root,
     );
-  } else if (target === "rust") {
-    await run("cargo", ["fetch"], root);
-    // Acceptance checks generated Rust with the pinned toolchain's rustfmt
-    // (acceptance/Toolchain.hs).
-    await run("rustup", ["component", "add", "--toolchain", "1.97.1", "rustfmt"], root);
   }
-  else if (target === "java")
-    await run("mvn", ["-B", "-q", "test-compile"], root);
-  else if (target === "go")
+  else if (target === 'rust')
+  {
+    await run('cargo', ['fetch'], root);
+    // Source compilation stays stable; the separate pinned formatter supports Allman.
+    // Acceptance checks generated Rust with the Google/owner profile using rustfmt
+    // (acceptance/Toolchain.hs).
+    await run(
+      'rustup',
+      [
+        'toolchain',
+        'install',
+        'nightly-2026-10-22',
+        '--profile',
+        'minimal',
+        '--component',
+        'rustfmt',
+      ],
+      root,
+    );
+  }
+  else if (target === 'java')
+    await run('mvn', ['-B', '-q', 'test-compile'], root);
+  else if (target === 'go')
     // circl by version: a project scaffolded without crypto does not require it,
     // but the suites that import lawspec.crypto or lawspec.network do.
-    await run("go", ["mod", "download", "pgregory.net/rapid", "github.com/cloudflare/circl@v1.6.5"], root);
-  else if (target === "haskell") {
-    await mkdir(path.join(root, "src"), { recursive: true });
     await run(
-      "stack",
-      ["--no-terminal", "build", "--test", "--no-run-tests"],
+      'go',
+      [
+        'mod',
+        'download',
+        'pgregory.net/rapid',
+        'github.com/cloudflare/circl@v1.6.5',
+      ],
       root,
     );
-  } else if (target === "fsharp" || target === "csharp") {
+  else if (target === 'haskell')
+  {
+    await mkdir(path.join(root, 'src'), {recursive: true});
+    await run(
+      'stack',
+      ['--no-terminal', 'build', '--test', '--no-run-tests'],
+      root,
+    );
+  }
+  else if (target === 'fsharp' || target === 'csharp')
+  {
     // Acceptance checks generated F# with Fantomas, at the version the tool
     // manifest pins; dotnet format comes with the SDK.
-    const manifest = JSON.parse(await readFile(path.join(repo, "test/locks/dotnet-tools.json"), "utf8"));
-    const tools = path.join(root, "fantomas");
-    const installed = await access(path.join(tools, ".store", "fantomas", manifest.tools.fantomas.version)).then(() => true, () => false);
+    const manifest = JSON.parse(
+      await readFile(path.join(repo, 'test/locks/dotnet-tools.json'), 'utf8'),
+    );
+    const tools = path.join(root, 'fantomas');
+    const installed = await access(
+      path.join(tools, '.store', 'fantomas', manifest.tools.fantomas.version),
+    ).then(
+      () => true,
+      () => false,
+    );
     if (!installed)
-      await run("dotnet", ["tool", "install", "fantomas", "--version", manifest.tools.fantomas.version, "--tool-path", tools], root);
-  } else if (target === "clojure") {
-    await run("clojure", ["-P", "-M:test"], root);
-  } else if (target === "kotlin" || target === "groovy") {
+      await run(
+        'dotnet',
+        [
+          'tool',
+          'install',
+          'fantomas',
+          '--version',
+          manifest.tools.fantomas.version,
+          '--tool-path',
+          tools,
+        ],
+        root,
+      );
+  }
+  else if (target === 'clojure')
+  {
+    await run('clojure', ['-P', '-M:test'], root);
+  }
+  else if (target === 'kotlin' || target === 'groovy')
+  {
     config.targets[0].gradle =
-      process.env.LAWSPEC_GRADLE || config.targets[0].gradle || "gradle";
+      process.env.LAWSPEC_GRADLE || config.targets[0].gradle || 'gradle';
     await run(
       config.targets[0].gradle,
-      ["--no-daemon", "--console=plain", "testClasses"],
+      ['--no-daemon', '--console=plain', 'testClasses'],
       root,
     );
-  } else if (target === "scala") {
-    config.targets[0].scala = process.env.LAWSPEC_SCALA || config.targets[0].scala || "scala";
-    // Fetches Scala, ScalaCheck and ScalaTest, and starts the build server.
-    await run(config.targets[0].scala, ["compile", "--test", "."], root);
-  } else if (["erlang", "elixir", "gleam"].includes(target)) {
-    const lockName = {erlang: "rebar.lock", elixir: "mix.lock", gleam: "manifest.toml"}[target];
-    await copyFile(path.join(repo, "test/locks", target, lockName), path.join(root, lockName));
-    await mkdir(path.join(root, "src"), {recursive: true});
-    if (target === "erlang") await run("rebar3", ["as", "test", "compile"], root);
-    if (target === "elixir") {
-      await run("mix", ["deps.get"], root);
-      await run("mix", ["compile"], root, {MIX_ENV: "test"});
-    }
-    if (target === "gleam") await run("gleam", ["build"], root);
   }
-  await writeFile(configPath, writeManifest(config, null, 2) + "\n");
+  else if (target === 'scala')
+  {
+    config.targets[0].scala =
+      process.env.LAWSPEC_SCALA || config.targets[0].scala || 'scala';
+    // Fetches Scala, ScalaCheck and ScalaTest, and starts the build server.
+    await run(config.targets[0].scala, ['compile', '--test', '.'], root);
+  }
+  else if (['erlang', 'elixir', 'gleam'].includes(target))
+  {
+    const lockName = {
+      erlang: 'rebar.lock',
+      elixir: 'mix.lock',
+      gleam: 'manifest.toml',
+    }[target];
+    await copyFile(
+      path.join(repo, 'test/locks', target, lockName),
+      path.join(root, lockName),
+    );
+    await mkdir(path.join(root, 'src'), {recursive: true});
+    if (target === 'erlang')
+      await run('rebar3', ['as', 'test', 'compile'], root);
+    if (target === 'elixir')
+    {
+      await run('mix', ['deps.get'], root);
+      await run('mix', ['compile'], root, {MIX_ENV: 'test'});
+    }
+    if (target === 'gleam') await run('gleam', ['build'], root);
+  }
+  await writeFile(configPath, writeManifest(config, null, 2) + '\n');
 }
 const chosen = process.argv.slice(2);
 const results = await Promise.allSettled(
   (chosen.length ? chosen : targets).map(setup),
 );
 for (const r of results)
-  if (r.status === "rejected") {
+  if (r.status === 'rejected')
+  {
     console.error(r.reason);
     process.exitCode = 1;
   }

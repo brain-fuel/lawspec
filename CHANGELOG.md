@@ -6,6 +6,48 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-10-29
+
+### Added
+
+- `lawspec learn` serves the packaged F#-first learning track without a project
+  manifest. Six executable lessons pair worked examples with practice in F#,
+  TypeScript or JavaScript, covering examples, property selection, generators,
+  shrinking, replay and kept regression cases. The same artifact replaces the
+  previous coffee-order tutorial on GoForge. Teaching review remains open;
+  later lessons, capstones and the complete API collection remain deferred.
+- The browser workspace includes independent Laws, Solution and Harness tabs,
+  local formatting and execution, progressive hints, complete solutions,
+  autosaved drafts and progress backup/restore. F# executes through Fable and
+  the JavaScript harness with fast-check, separately from native .NET/FsCheck.
+  Samples, mandatory definition checks, missing results and execution failures
+  retain their own meanings; saved progress is not proof.
+- A portable LawSpec tutor skill shares the generated course and executable
+  projects with the browser app.
+- Project helpers (`project init`, `adopt`, `status` and `validate`) coordinate
+  Canon decisions, mandatory definition checks and configured evidence without
+  rewriting application code. The local MCP server exposes read-only compiler
+  checks, listings and explanations.
+- Linear-model command arguments can use the current reference state's indices
+  and refinements. Generation and shrinking recheck the affected sequence;
+  finite model checking enumerates finite dependent domains. Empty domains and
+  incomplete generation remain distinct.
+
+### Changed
+
+- Repository formatters and generated code follow the owner's Allman preference
+  where supported, with established language formatters and pinned browser
+  formatting tools. Public bindings and evidence meanings are preserved.
+
+### Fixed
+
+- Quantified-claim formatting uses parsed header, body and closing boundaries,
+  keeping short arithmetic bodies together and long binders intact. Formatting
+  before a learning run saves and executes the same complete project snapshot.
+- The local Learn server serves JavaScript modules with the correct MIME type,
+  including the compiler's JavaScript glue, and packages all required browser
+  compiler, editor, formatter, runtime and font assets for local execution.
+
 ## [0.31.0] - 2026-10-26
 
 ### Fixed
@@ -2348,7 +2390,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.1...HEAD
+[0.31.1]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...v0.29.2

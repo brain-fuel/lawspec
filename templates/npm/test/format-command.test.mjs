@@ -13,6 +13,32 @@ const input = sources => ({languageProfile:'1.0-rc.2', verification:{layers:[]},
 const run = (root, args) => spawnSync(process.execPath, [cli, ...args], {cwd:root, encoding:'utf8'});
 const text = result => result.stdout + result.stderr;
 
+// ref:REQ-lawspec-quantifier-layout
+test('quantified claims separate their header, arithmetic body and closer in checked and draft formatting', async () => {
+  const compiler = await createCompiler();
+  const content = [
+    '-- ref:DEC-learn-tests-in-lawspec',
+    'unit learn.seats',
+    'seats :: Int32 -> Int32',
+    'law "|every row contributes four seats| is',
+    '  definition:',
+    '    for all (rows :: Int32 where rows >= 0 and rows <= 40) => seats rows = rows',
+    '      * 4 end for all',
+    '  end definition',
+    'end law',
+    'end unit',
+    '',
+  ].join('\n');
+  for (const compile of [false,true]) {
+    const result = await compiler.format({...input([{path:'seats.lawspec',content}]),compile});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.match(result.formattedSources[0].content,
+      /    for all \(rows :: Int32 where rows >= 0 and rows <= 40\) =>\n      seats rows = rows \* 4\n    end for all\n/);
+    assert.deepEqual((await compiler.format({...input(result.formattedSources),compile})).formattedSources,
+      result.formattedSources);
+  }
+});
+
 test('triple-quoted multiline text preserves its exact value and spelling through checked and draft formatting', async () => {
   const compiler = await createCompiler();
   const expected = 'first "quote"  \n-- end unit\n   \nlast 😀';

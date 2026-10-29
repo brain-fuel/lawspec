@@ -10,13 +10,30 @@ import {createCompiler} from '../api.mjs';
 import {programTargets as targets} from '../templates.mjs';
 
 const compiler = await createCompiler();
-const localPython = new URL('../../.integration/python/.venv/bin/python',import.meta.url).pathname;
-const localPrologPython = new URL('../../.integration/prolog/.venv/bin/python',import.meta.url).pathname;
-const prologPython = process.env.LAWSPEC_PYTHON_EXECUTABLE??(existsSync(localPrologPython)?localPrologPython:null);
-const localTsc = new URL('../../.integration/typescript/node_modules/.bin/tsc',import.meta.url).pathname;
-const python = process.env.LAWSPEC_PYTHON_EXECUTABLE??(existsSync(localPython)?localPython:null);
-const tsc = process.env.LAWSPEC_TSC??(existsSync(localTsc)?localTsc:null);
-const options = {schemaVersion:5, languageProfile:'1.0-rc.2', verification:{layers:[]}};
+const localPython = new URL(
+  '../../.integration/python/.venv/bin/python',
+  import.meta.url,
+).pathname;
+const localPrologPython = new URL(
+  '../../.integration/prolog/.venv/bin/python',
+  import.meta.url,
+).pathname;
+const prologPython =
+  process.env.LAWSPEC_PYTHON_EXECUTABLE ??
+  (existsSync(localPrologPython) ? localPrologPython : null);
+const localTsc = new URL(
+  '../../.integration/typescript/node_modules/.bin/tsc',
+  import.meta.url,
+).pathname;
+const python =
+  process.env.LAWSPEC_PYTHON_EXECUTABLE ??
+  (existsSync(localPython) ? localPython : null);
+const tsc = process.env.LAWSPEC_TSC ?? (existsSync(localTsc) ? localTsc : null);
+const options = {
+  schemaVersion: 5,
+  languageProfile: '1.0-rc.2',
+  verification: {layers: []},
+};
 const source = `unit layouts
 
 type Packet (a :: Type) is one of
@@ -29,55 +46,150 @@ copy :: Packet UInt8 -> Packet UInt8
 
 end unit
 `;
-const nativeBindings = {types:[{type:'layouts::type::Packet',native:['application','Packet'],constructors:[
-  {constructor:'Packed',native:['application','Packed'],style:'variant',fields:[
-    {field:'value',path:['first','count'],argument:2,native:'quantity'},
-    {field:'value',path:['last'],argument:0,native:'tail'},
-    {field:'value',path:['first','flag'],argument:1,native:'enabled'},
-  ]},
-]}],functions:[{declaration:'layouts::copy',native:['application','copy']}]};
-const request = target => ({...options,target,sources:[{path:'layouts.lawspec',content:source}],nativeBindings});
-const run = (command,args,options={}) => {
-  const result=spawnSync(command,args,{encoding:'utf8',...options});
-  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
+const nativeBindings = {
+  types: [
+    {
+      type: 'layouts::type::Packet',
+      native: ['application', 'Packet'],
+      constructors: [
+        {
+          constructor: 'Packed',
+          native: ['application', 'Packed'],
+          style: 'variant',
+          fields: [
+            {
+              field: 'value',
+              path: ['first', 'count'],
+              argument: 2,
+              native: 'quantity',
+            },
+            {field: 'value', path: ['last'], argument: 0, native: 'tail'},
+            {
+              field: 'value',
+              path: ['first', 'flag'],
+              argument: 1,
+              native: 'enabled',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  functions: [{declaration: 'layouts::copy', native: ['application', 'copy']}],
+};
+const request = target => ({
+  ...options,
+  target,
+  sources: [{path: 'layouts.lawspec', content: source}],
+  nativeBindings,
+});
+const run = (command, args, options = {}) =>
+{
+  const result = spawnSync(command, args, {encoding: 'utf8', ...options});
+  assert.equal(result.status, 0, result.stdout + '\n' + result.stderr);
   return result.stdout;
 };
 
-test('nested native layouts require complete structural coverage and explicit argument positions',async()=>{
-  const checked=await compiler.check(request('python'));
-  assert.deepEqual(checked.diagnostics,[]);
-  const fields=nativeBindings.types[0].constructors[0].fields;
-  for (const changed of [fields.slice(1),[...fields,fields[0]],fields.map(item=>({...item,argument:0})),
-    fields.map(item=>({...item,argument:item.argument+1})),fields.map(item=>({...item,path:['absent']})),
-    fields.map(item=>{const {argument,...rest}=item;return rest;}),
-    [{field:'value',native:'whole'},...fields]]) {
-    const input=request('python');input.nativeBindings=structuredClone(nativeBindings);
-    input.nativeBindings.types[0].constructors[0].fields=changed;
-    const rejected=await compiler.check(input);
-    assert.ok(rejected.diagnostics.length,JSON.stringify(changed));
+test('nested native layouts require complete structural coverage and explicit argument positions', async () =>
+{
+  const checked = await compiler.check(request('python'));
+  assert.deepEqual(checked.diagnostics, []);
+  const fields = nativeBindings.types[0].constructors[0].fields;
+  for (const changed of [
+    fields.slice(1),
+    [...fields, fields[0]],
+    fields.map(item => ({...item, argument: 0})),
+    fields.map(item => ({...item, argument: item.argument + 1})),
+    fields.map(item => ({...item, path: ['absent']})),
+    fields.map(item =>
+    {
+      const {argument, ...rest} = item;
+      return rest;
+    }),
+    [{field: 'value', native: 'whole'}, ...fields],
+  ])
+  {
+    const input = request('python');
+    input.nativeBindings = structuredClone(nativeBindings);
+    input.nativeBindings.types[0].constructors[0].fields = changed;
+    const rejected = await compiler.check(input);
+    assert.ok(rejected.diagnostics.length, JSON.stringify(changed));
   }
 });
 
-test('unfinished target emitters reject nested native layouts explicitly',async()=>{
-  for (const target of targets.filter(target=>!['python','javascript','typescript','java','kotlin','scala','rust','groovy','go','haskell','fsharp','swift','erlang','elixir','gleam','prolog'].includes(target))) {
-    const result=await compiler.planGeneration(request(target));
-    assert.ok(result.diagnostics.length,target+' silently accepted an unsupported layout');
-    assert.ok(result.diagnostics.some(item=>/nested native field layout|Clojure binds.*not types/.test(item.message)),JSON.stringify(result.diagnostics));
+test('unfinished target emitters reject nested native layouts explicitly', async () =>
+{
+  for (const target of targets.filter(
+    target =>
+      ![
+        'python',
+        'javascript',
+        'typescript',
+        'java',
+        'kotlin',
+        'scala',
+        'rust',
+        'groovy',
+        'go',
+        'haskell',
+        'fsharp',
+        'swift',
+        'erlang',
+        'elixir',
+        'gleam',
+        'prolog',
+      ].includes(target),
+  ))
+  {
+    const result = await compiler.planGeneration(request(target));
+    assert.ok(
+      result.diagnostics.length,
+      target + ' silently accepted an unsupported layout',
+    );
+    assert.ok(
+      result.diagnostics.some(item =>
+        /nested native field layout|Clojure binds.*not types/.test(
+          item.message,
+        ),
+      ),
+      JSON.stringify(result.diagnostics),
+    );
   }
 });
 
-test('Prolog native variants preserve nested generic argument order and reject invalid native results',
-  {skip:prologPython===null&&'Prolog acceptance environment is not installed'},async()=>{
-  for(const machineBits of [32,64])for(const minify of [false,true]){
-    const result=await compiler.planGeneration({...request('prolog'),machineBits,minify});
-    assert.deepEqual(result.diagnostics,[]);
-    const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-prolog-layout-'));
-    try{
-      for(const file of result.files.filter(file=>file.placement==='source')){
-        const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});
-        await writeFile(destination,file.content);
-      }
-      await writeFile(path.join(root,'src/application.pl'),`:- module(application,[copy/2,observed/1,bad/1]).
+test(
+  'Prolog native variants preserve nested generic argument order and reject invalid native results',
+  {
+    skip:
+      prologPython === null && 'Prolog acceptance environment is not installed',
+  },
+  async () =>
+  {
+    for (const machineBits of [32, 64])
+      for (const minify of [false, true])
+      {
+        const result = await compiler.planGeneration({
+          ...request('prolog'),
+          machineBits,
+          minify,
+        });
+        assert.deepEqual(result.diagnostics, []);
+        const root = await mkdtemp(
+          path.join(os.tmpdir(), 'lawspec-prolog-layout-'),
+        );
+        try
+        {
+          for (const file of result.files.filter(
+            file => file.placement === 'source',
+          ))
+          {
+            const destination = path.join(root, file.path);
+            await mkdir(path.dirname(destination), {recursive: true});
+            await writeFile(destination, file.content);
+          }
+          await writeFile(
+            path.join(root, 'src/application.pl'),
+            `:- module(application,[copy/2,observed/1,bad/1]).
 :- dynamic observed/1,bad/1.
 copy(Value,Result) :-
     Value = 'application.Packed'(Tail,Enabled,Quantity),
@@ -87,8 +199,11 @@ copy(Value,Result) :-
     ; bad(boolean) -> Result = 'application.Packed'(7,1,3)
     ; Result = Value
     ).
-`);
-      await writeFile(path.join(root,'check.py'),`import lawspec_data as data
+`,
+          );
+          await writeFile(
+            path.join(root, 'check.py'),
+            `import lawspec_data as data
 from lawspec_schema import Named
 import lawspec_prolog as bridge
 from layouts import copy
@@ -113,11 +228,20 @@ for mode in ['zero','range','boolean']:
     except (ValueError,TypeError,OverflowError): pass
     else: raise AssertionError('invalid native result admitted: '+mode)
 print('Prolog native nested layout execution passed')
-`);
-      run(prologPython,['-B','check.py'],{cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')}});
-    }finally{await rm(root,{recursive:true,force:true});}
-  }
-});
+`,
+          );
+          run(prologPython, ['-B', 'check.py'], {
+            cwd: root,
+            env: {...process.env, PYTHONPATH: path.join(root, 'src')},
+          });
+        }
+        finally
+        {
+          await rm(root, {recursive: true, force: true});
+        }
+      }
+  },
+);
 
 const jsApplication = `export const order=[];
 export class Packed {
@@ -180,40 +304,111 @@ assert order==[(7,True,3)]
 print('native layout execution passed')
 `;
 
-for (const target of ['python','javascript','typescript']) {
-  const unavailable = target==='python'&&python===null ? 'Python 3.13 integration environment is not installed' :
-    target==='typescript'&&tsc===null ? 'TypeScript integration environment is not installed' : false;
-  test(`${target} generated bridges pack nested generic records and enforce refinements`,{skip:unavailable},async()=>{
-    for(const machineBits of [32,64]) for(const minify of [false,true]) {
-      const result=await compiler.planGeneration({...request(target),machineBits,minify});
-      assert.deepEqual(result.diagnostics,[],JSON.stringify(result.diagnostics));
-      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-native-layout-'));
-      try {
-        for(const file of result.files.filter(file=>file.placement==='source')) {
-          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});
-          await writeFile(destination,file.content);
-        }
-        if(target==='python') {
-          await writeFile(path.join(root,'src/application.py'),pyApplication);
-          await writeFile(path.join(root,'check.py'),pyCheck);
-          run(python,['check.py'],{cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')}});
-        } else {
-          const ts=target==='typescript',extension=ts?'ts':'mjs';
-          await writeFile(path.join(root,`src/application.${extension}`),
-            (ts?'// @ts-nocheck\n':'')+jsApplication);
-          await writeFile(path.join(root,'package.json'),'{}');
-          if(ts) {
-            run(tsc,['--target','ES2022','--module','ES2022','--skipLibCheck','--outDir','out',
-              ...result.files.filter(file=>file.placement==='source'&&file.path.endsWith('.ts')).map(file=>file.path),'src/application.ts'],{cwd:root});
-            // tsc places source files directly under out; keep their relative imports together.
-            await writeFile(path.join(root,'out/check.mjs'),jsCheck.replaceAll('./src/','./'));
-            run(process.execPath,['out/check.mjs'],{cwd:root});
-          } else {
-            await writeFile(path.join(root,'check.mjs'),jsCheck.replaceAll('.js\'', '.mjs\''));
-            run(process.execPath,['check.mjs'],{cwd:root});
+for (const target of ['python', 'javascript', 'typescript'])
+{
+  const unavailable =
+    target === 'python' && python === null
+      ? 'Python 3.13 integration environment is not installed'
+      : target === 'typescript' && tsc === null
+        ? 'TypeScript integration environment is not installed'
+        : false;
+  test(
+    `${target} generated bridges pack nested generic records and enforce refinements`,
+    {skip: unavailable},
+    async () =>
+    {
+      for (const machineBits of [32, 64])
+        for (const minify of [false, true])
+        {
+          const result = await compiler.planGeneration({
+            ...request(target),
+            machineBits,
+            minify,
+          });
+          assert.deepEqual(
+            result.diagnostics,
+            [],
+            JSON.stringify(result.diagnostics),
+          );
+          const root = await mkdtemp(
+            path.join(os.tmpdir(), 'lawspec-native-layout-'),
+          );
+          try
+          {
+            for (const file of result.files.filter(
+              file => file.placement === 'source',
+            ))
+            {
+              const destination = path.join(root, file.path);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, file.content);
+            }
+            if (target === 'python')
+            {
+              await writeFile(
+                path.join(root, 'src/application.py'),
+                pyApplication,
+              );
+              await writeFile(path.join(root, 'check.py'), pyCheck);
+              run(python, ['check.py'], {
+                cwd: root,
+                env: {...process.env, PYTHONPATH: path.join(root, 'src')},
+              });
+            }
+            else
+            {
+              const ts = target === 'typescript',
+                extension = ts ? 'ts' : 'mjs';
+              await writeFile(
+                path.join(root, `src/application.${extension}`),
+                (ts ? '// @ts-nocheck\n' : '') + jsApplication,
+              );
+              await writeFile(path.join(root, 'package.json'), '{}');
+              if (ts)
+              {
+                run(
+                  tsc,
+                  [
+                    '--target',
+                    'ES2022',
+                    '--module',
+                    'ES2022',
+                    '--skipLibCheck',
+                    '--outDir',
+                    'out',
+                    ...result.files
+                      .filter(
+                        file =>
+                          file.placement === 'source' &&
+                          file.path.endsWith('.ts'),
+                      )
+                      .map(file => file.path),
+                    'src/application.ts',
+                  ],
+                  {cwd: root},
+                );
+                // tsc places source files directly under out; keep their relative imports together.
+                await writeFile(
+                  path.join(root, 'out/check.mjs'),
+                  jsCheck.replaceAll('./src/', './'),
+                );
+                run(process.execPath, ['out/check.mjs'], {cwd: root});
+              }
+              else
+              {
+                await writeFile(
+                  path.join(root, 'check.mjs'),
+                  jsCheck.replaceAll(".js'", ".mjs'"),
+                );
+                run(process.execPath, ['check.mjs'], {cwd: root});
+              }
+            }
+          }
+          finally
+          {
+            await rm(root, {recursive: true, force: true});
           }
         }
-      } finally {await rm(root,{recursive:true,force:true});}
-    }
-  });
+    },
+  );
 }

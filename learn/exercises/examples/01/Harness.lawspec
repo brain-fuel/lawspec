@@ -1,0 +1,3 @@
+harness learn.seats.testing for learn.seats is
+  -- This step checks concrete inputs; no generator is selected.
+end harness

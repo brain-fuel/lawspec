@@ -6,58 +6,147 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 import {showScalar} from '../scalars.mjs';
-import {checkInput,generateInput,canonicalRequest,nameText} from './compiler-input.mjs';
-const compiler=await createCompiler();
-const catalog=await readFile(new URL('../examples/specs/scalar_catalog.lawspec',import.meta.url),'utf8');
-const source=content=>[{path:'scalar.lawspec',content}];
-test('schema 5 retains every scalar representation without JSON number loss',async()=>{
- const result=await checkInput(compiler,{sources:source(catalog)});
- assert.deepEqual(result.diagnostics,[]);assert.equal(result.schemaVersion,5);assert.equal(result.machineBits,64);
- const values=Object.fromEntries(result.laws.map(l=>[nameText(l.name).split(' representation')[0],l.examples[0].bindings[0].value]));
- assert.equal(Object.keys(values).length,33);
- assert.deepEqual(values.UInt64,{type:'UInt64',value:'18446744073709551615'});
- assert.deepEqual(values.Int64,{type:'Int64',value:'9223372036854775807'});
- assert.deepEqual(values.Rational,{type:'Rational',numerator:'-7',denominator:'11'});
- assert.deepEqual(values.Decimal,{type:'Decimal',coefficient:'1',exponent:'-36'});
- assert.equal(values.Float32.bits,'80000000');assert.equal(values.Float64.bits,'7ff0000000000000');
- assert.deepEqual(values.CodePointText.units,[55296,1114111]);assert.deepEqual(values.Utf16Text.units,[55296,0,65535]);
- assert.deepEqual(values.Bytes.units,[0,128,255]);assert.deepEqual(values['Optional Int8'],{type:'Optional',value:null});
- assert.deepEqual(values['Nullable Int8'],{type:'Nullable',value:{type:'Int8',value:'127'}});
- assert.equal(showScalar(values.UInt64),'18446744073709551615');assert.ok(showScalar(values.Text).includes('😀'));
- for(const law of result.laws)assert.equal(law.assertion.kind,'equal');
+import {
+  checkInput,
+  generateInput,
+  canonicalRequest,
+  nameText,
+} from './compiler-input.mjs';
+const compiler = await createCompiler();
+const catalog = await readFile(
+  new URL('../examples/specs/scalar_catalog.lawspec', import.meta.url),
+  'utf8',
+);
+const source = content => [{path: 'scalar.lawspec', content}];
+test('schema 5 retains every scalar representation without JSON number loss', async () =>
+{
+  const result = await checkInput(compiler, {sources: source(catalog)});
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.schemaVersion, 5);
+  assert.equal(result.machineBits, 64);
+  const values = Object.fromEntries(
+    result.laws.map(l => [
+      nameText(l.name).split(' representation')[0],
+      l.examples[0].bindings[0].value,
+    ]),
+  );
+  assert.equal(Object.keys(values).length, 33);
+  assert.deepEqual(values.UInt64, {
+    type: 'UInt64',
+    value: '18446744073709551615',
+  });
+  assert.deepEqual(values.Int64, {type: 'Int64', value: '9223372036854775807'});
+  assert.deepEqual(values.Rational, {
+    type: 'Rational',
+    numerator: '-7',
+    denominator: '11',
+  });
+  assert.deepEqual(values.Decimal, {
+    type: 'Decimal',
+    coefficient: '1',
+    exponent: '-36',
+  });
+  assert.equal(values.Float32.bits, '80000000');
+  assert.equal(values.Float64.bits, '7ff0000000000000');
+  assert.deepEqual(values.CodePointText.units, [55296, 1114111]);
+  assert.deepEqual(values.Utf16Text.units, [55296, 0, 65535]);
+  assert.deepEqual(values.Bytes.units, [0, 128, 255]);
+  assert.deepEqual(values['Optional Int8'], {type: 'Optional', value: null});
+  assert.deepEqual(values['Nullable Int8'], {
+    type: 'Nullable',
+    value: {type: 'Int8', value: '127'},
+  });
+  assert.equal(showScalar(values.UInt64), '18446744073709551615');
+  assert.ok(showScalar(values.Text).includes('😀'));
+  for (const law of result.laws) assert.equal(law.assertion.kind, 'equal');
 });
-test('machine profile and request schema have explicit diagnostics',async()=>{
- const content=`unit width
+test('machine profile and request schema have explicit diagnostics', async () =>
+{
+  const content = `unit width
 
 f :: IntSize -> IntSize
 law "|law| is definition : apply law "|equivalent| f f end definition example "|wide| : x = 2147483648 expect f x = 2147483648 end example end law
 
 end unit
 `;
- assert.equal((await checkInput(compiler,{sources:source(content),machineBits:32})).diagnostics.length,1);
- assert.deepEqual((await checkInput(compiler,{sources:source(content),machineBits:64})).diagnostics,[]);
- assert.match((await compiler.check({...canonicalRequest,sources:[],machineBits:16})).diagnostics[0].message,/32 or 64/);
- assert.match((await compiler.check({...canonicalRequest,sources:[],schemaVersion:2})).diagnostics[0].message,/schemaVersion 5/);
+  assert.equal(
+    (await checkInput(compiler, {sources: source(content), machineBits: 32}))
+      .diagnostics.length,
+    1,
+  );
+  assert.deepEqual(
+    (await checkInput(compiler, {sources: source(content), machineBits: 64}))
+      .diagnostics,
+    [],
+  );
+  assert.match(
+    (await compiler.check({...canonicalRequest, sources: [], machineBits: 16}))
+      .diagnostics[0].message,
+    /32 or 64/,
+  );
+  assert.match(
+    (await compiler.check({...canonicalRequest, sources: [], schemaVersion: 2}))
+      .diagnostics[0].message,
+    /schemaVersion 5/,
+  );
 });
-test('all targets expose generated runtime source placement independently of ownership',async()=>{
- for(const target of targets){
-  const result=await generateInput(compiler,{sources:source(catalog),target});
-  assert.deepEqual(result.diagnostics,[]);
-  const runtimes=result.files.filter(f=>f.placement==='source'&&f.ownership==='generated');
-  assert.ok(runtimes.length > 0, target);
-  const runtimeNames = {java:'LawSpecRuntime.java',kotlin:'LawSpecRuntime.java',python:'lawspec_runtime.py',prolog:'lawspec_prolog.pl',javascript:'lawspec_runtime.mjs',typescript:'lawspec_runtime.ts',go:'lawspec_runtime.go',haskell:'LawSpecRuntime.hs',rust:'lawspec_runtime.rs',erlang:'lawspec_beam_runtime.erl',elixir:'lawspec_beam_runtime.erl',gleam:'lawspec_beam_runtime.erl',fsharp:'LawSpec.Runtime/Runtime.fs',csharp:'LawSpec.Runtime/Runtime.fs',scala:'LawSpecRuntime.java',groovy:'LawSpecRuntime.java',clojure:'LawSpecRuntime.java',swift:'LawSpecRuntime/Runtime.swift'};
-  assert.ok(runtimes.some(f => f.path.endsWith(runtimeNames[target])), target);
-  assert.equal(propertyFiles(result.files).length,1);
- }
+test('all targets expose generated runtime source placement independently of ownership', async () =>
+{
+  for (const target of targets)
+  {
+    const result = await generateInput(compiler, {
+      sources: source(catalog),
+      target,
+    });
+    assert.deepEqual(result.diagnostics, []);
+    const runtimes = result.files.filter(
+      f => f.placement === 'source' && f.ownership === 'generated',
+    );
+    assert.ok(runtimes.length > 0, target);
+    const runtimeNames = {
+      java: 'LawSpecRuntime.java',
+      kotlin: 'LawSpecRuntime.java',
+      python: 'lawspec_runtime.py',
+      prolog: 'lawspec_prolog.pl',
+      javascript: 'lawspec_runtime.mjs',
+      typescript: 'lawspec_runtime.ts',
+      go: 'lawspec_runtime.go',
+      haskell: 'LawSpecRuntime.hs',
+      rust: 'lawspec_runtime.rs',
+      erlang: 'lawspec_beam_runtime.erl',
+      elixir: 'lawspec_beam_runtime.erl',
+      gleam: 'lawspec_beam_runtime.erl',
+      fsharp: 'LawSpec.Runtime/Runtime.fs',
+      csharp: 'LawSpec.Runtime/Runtime.fs',
+      scala: 'LawSpecRuntime.java',
+      groovy: 'LawSpecRuntime.java',
+      clojure: 'LawSpecRuntime.java',
+      swift: 'LawSpecRuntime/Runtime.swift',
+    };
+    assert.ok(
+      runtimes.some(f => f.path.endsWith(runtimeNames[target])),
+      target,
+    );
+    assert.equal(propertyFiles(result.files).length, 1);
+  }
 });
-test('arithmetic capabilities resolve at specialization and retain safe lexical scope',async()=>{
- const generic=`law "|numeric| (f :: a -> a) requires Integer a is definition : for all (x :: a) => x + 1 = 1 + x end for all end definition end law
+test('arithmetic capabilities resolve at specialization and retain safe lexical scope', async () =>
+{
+  const generic = `law "|numeric| (f :: a -> a) requires Integer a is definition : for all (x :: a) => x + 1 = 1 + x end for all end definition end law
 `;
- for(const [type,valid] of [['Int8',true],['Text',false]]){
-  const content=`unit generic\nf :: ${type} -> ${type}\n${generic}law use is definition: apply law "|numeric| f end definition end law\nend unit`;
-  assert.equal((await checkInput(compiler,{sources:source(content)})).diagnostics.length===0,valid);
- }
- const content=`unit lexical
+  for (const [type, valid] of [
+    ['Int8', true],
+    ['Text', false],
+  ])
+  {
+    const content = `unit generic\nf :: ${type} -> ${type}\n${generic}law use is definition: apply law "|numeric| f end definition end law\nend unit`;
+    assert.equal(
+      (await checkInput(compiler, {sources: source(content)})).diagnostics
+        .length === 0,
+      valid,
+    );
+  }
+  const content = `unit lexical
 
 x :: Int8 -> Integer
 g :: Int8 -> Integer
@@ -65,29 +154,63 @@ law "|law| is definition : apply law "|equivalent| x g end definition example "|
 
 end unit
 `;
- for(const target of targets)assert.deepEqual((await generateInput(compiler,{sources:source(content),target})).diagnostics,[],target);
+  for (const target of targets)
+    assert.deepEqual(
+      (await generateInput(compiler, {sources: source(content), target}))
+        .diagnostics,
+      [],
+      target,
+    );
 });
-test('raw literal validation rejects host integer wraparound',async()=>{
- const content='unit bad\nlaw invalid is definition: for all (x :: CodePoint) => x = x end for all end definition example bad: x = codePoint(18446744073709551616) expect x = codePoint(0) end example end law\nend unit';
- assert.ok((await checkInput(compiler,{sources:source(content)})).diagnostics.length);
+test('raw literal validation rejects host integer wraparound', async () =>
+{
+  const content =
+    'unit bad\nlaw invalid is definition: for all (x :: CodePoint) => x = x end for all end definition example bad: x = codePoint(18446744073709551616) expect x = codePoint(0) end example end law\nend unit';
+  assert.ok(
+    (await checkInput(compiler, {sources: source(content)})).diagnostics.length,
+  );
 });
-test('generated runtime preserves native byte values, identities, and absence contracts',async()=>{
- const result=await generateInput(compiler,{sources:source(catalog),target:'javascript'});
- const code=result.files.find(f=>f.path.endsWith('lawspec_runtime.mjs')).content;
- const runtime=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
- const bytes=new Uint8Array([0,128,255]);
- const argument=runtime.convert(bytes,'Bytes');argument[0]=42;
- assert.deepEqual([...bytes],[0,128,255]);
- const resultBytes=runtime.validate(argument,'Bytes');argument[2]=0;
- assert.deepEqual([...resultBytes],[42,128,255]);
- const nested=runtime.convert(new runtime.Presence('Optional',true,bytes),'Optional Bytes');
- nested.value[0]=10;assert.equal(bytes[0],0);
- assert.equal(runtime.unitResult(undefined),runtime.UNIT);
- assert.throws(()=>runtime.unitResult(42),/Unit/);
- assert.equal(runtime.equal(NaN,NaN,'Float64','Float64'),false);
- assert.equal(runtime.equal(0,-0,'Float64','Float64'),true);
- const symbols=new Map();
- const a=runtime.literal({type:'Symbol',id:'a',description:'same'},symbols);
- const b=runtime.literal({type:'Symbol',id:'b',description:'same'},symbols);
- assert.notEqual(a,b);assert.equal(a,runtime.literal({type:'Symbol',id:'a',description:'same'},symbols));
+test('generated runtime preserves native byte values, identities, and absence contracts', async () =>
+{
+  const result = await generateInput(compiler, {
+    sources: source(catalog),
+    target: 'javascript',
+  });
+  const code = result.files.find(f =>
+    f.path.endsWith('lawspec_runtime.mjs'),
+  ).content;
+  const runtime = await import(
+    'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
+  );
+  const bytes = new Uint8Array([0, 128, 255]);
+  const argument = runtime.convert(bytes, 'Bytes');
+  argument[0] = 42;
+  assert.deepEqual([...bytes], [0, 128, 255]);
+  const resultBytes = runtime.validate(argument, 'Bytes');
+  argument[2] = 0;
+  assert.deepEqual([...resultBytes], [42, 128, 255]);
+  const nested = runtime.convert(
+    new runtime.Presence('Optional', true, bytes),
+    'Optional Bytes',
+  );
+  nested.value[0] = 10;
+  assert.equal(bytes[0], 0);
+  assert.equal(runtime.unitResult(undefined), runtime.UNIT);
+  assert.throws(() => runtime.unitResult(42), /Unit/);
+  assert.equal(runtime.equal(NaN, NaN, 'Float64', 'Float64'), false);
+  assert.equal(runtime.equal(0, -0, 'Float64', 'Float64'), true);
+  const symbols = new Map();
+  const a = runtime.literal(
+    {type: 'Symbol', id: 'a', description: 'same'},
+    symbols,
+  );
+  const b = runtime.literal(
+    {type: 'Symbol', id: 'b', description: 'same'},
+    symbols,
+  );
+  assert.notEqual(a, b);
+  assert.equal(
+    a,
+    runtime.literal({type: 'Symbol', id: 'a', description: 'same'}, symbols),
+  );
 });

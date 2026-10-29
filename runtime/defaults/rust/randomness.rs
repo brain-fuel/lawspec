@@ -6,15 +6,18 @@
 //! (getrandom).
 use crate::lawspec_runtime as ls;
 
-pub fn random_step(state: u64) -> u64 {
+pub fn random_step(state: u64) -> u64
+{
     state
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407)
 }
 
 /// A draw from 0 up to bound, as lawspec.randomness's randomDraw makes it.
-pub fn random_draw(state: u64, bound: i64) -> i64 {
-    if bound < 1 {
+pub fn random_draw(state: u64, bound: i64) -> i64
+{
+    if bound < 1
+    {
         return 0;
     }
     let first = random_step(state);
@@ -22,36 +25,47 @@ pub fn random_draw(state: u64, bound: i64) -> i64 {
     (bits % bound as u64) as i64
 }
 
-pub fn run_seed() -> u64 {
-    match std::env::var("LAWSPEC_SEED") {
+pub fn run_seed() -> u64
+{
+    match std::env::var("LAWSPEC_SEED")
+    {
         Ok(value) => value.parse::<i128>().map(|seed| seed as u64).unwrap_or(0),
         Err(_) => 0,
     }
 }
 
 /// Reproducible draws from the run's seed.
-pub struct RandomHandler {
+pub struct RandomHandler
+{
     state: std::sync::Mutex<u64>,
 }
 
-impl Default for RandomHandler {
-    fn default() -> Self {
+impl Default for RandomHandler
+{
+    fn default() -> Self
+    {
         RandomHandler {
             state: std::sync::Mutex::new(run_seed()),
         }
     }
 }
 
-impl crate::lawspec_abilities::lawspec_randomness::Random for RandomHandler {
-    fn randomBelow(&self, value0: i64) -> i64 {
-        let mut state = self.state.lock().unwrap();
+impl crate::lawspec_abilities::lawspec_randomness::Random for RandomHandler
+{
+    fn randomBelow(&self, value0: i64) -> i64
+    {
+        let mut state = self
+            .state
+            .lock()
+            .expect("random generator state lock is not poisoned");
         let current = *state;
         *state = random_step(random_step(current));
         random_draw(current, value0)
     }
 }
 
-fn secure_u64() -> u64 {
+fn secure_u64() -> u64
+{
     let mut raw = [0u8; 8];
     getrandom::fill(&mut raw).expect("the operating system's generator failed");
     u64::from_be_bytes(raw)
@@ -61,28 +75,35 @@ fn secure_u64() -> u64 {
 #[derive(Default)]
 pub struct SecureRandomHandler;
 
-impl crate::lawspec_abilities::lawspec_randomness::SecureRandom for SecureRandomHandler {
-    fn secureBytes(&self, value0: i32) -> std::vec::Vec<u8> {
+impl crate::lawspec_abilities::lawspec_randomness::SecureRandom for SecureRandomHandler
+{
+    fn secureBytes(&self, value0: i32) -> std::vec::Vec<u8>
+    {
         let mut out = vec![0u8; value0.max(0) as usize];
         getrandom::fill(&mut out).expect("the operating system's generator failed");
         out
     }
 
-    fn secureBelow(&self, value0: i64) -> i64 {
-        if value0 < 1 {
+    fn secureBelow(&self, value0: i64) -> i64
+    {
+        if value0 < 1
+        {
             return 0;
         }
         let bound = value0 as u64;
         let limit = u64::MAX - (u64::MAX % bound + 1) % bound;
-        loop {
+        loop
+        {
             let draw = secure_u64();
-            if draw <= limit {
+            if draw <= limit
+            {
                 return (draw % bound) as i64;
             }
         }
     }
 
-    fn secureToken(&self) -> std::string::String {
+    fn secureToken(&self) -> std::string::String
+    {
         let mut raw = [0u8; 32];
         getrandom::fill(&mut raw).expect("the operating system's generator failed");
         raw.iter().map(|byte| format!("{:02x}", byte)).collect()

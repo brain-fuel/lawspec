@@ -80,7 +80,7 @@ emitGeneratorStubs declarations plan = do
             arguments = [D.text ("_argument_" ++ show i ++ ": proptest::strategy::BoxedStrategy<" ++ parameter ++ ">") |
               (i,(_,parameter)) <- zip [0::Int ..] parameters]
             body = D.text ("pub fn " ++ name) <> generic <> D.delimitTrailing 4 "(" ")" arguments <>
-              D.text (" -> proptest::strategy::BoxedStrategy<" ++ result ++ "> ") <>
+              D.text (" -> proptest::strategy::BoxedStrategy<" ++ result ++ ">") <> D.hardline <>
               D.block 4 (D.text "unimplemented!" <> D.delimit 4 "(" ")"
                 [E.stringLiteral ("Implement generator for " ++ C.idText (resolvedGeneratorType binding))])
         pure (parts,body)
@@ -88,7 +88,7 @@ emitGeneratorStubs declarations plan = do
             modules <- forM (nub [part | (part:_:_,_) <- entries]) $ \name -> do
               rendered <- B.rustReference (NativeRef [name])
               body <- emit [(rest,body) | (part:rest,body) <- entries, part == name]
-              pure (D.text ("pub mod " ++ rendered ++ " ") <> D.block 4 body)
+              pure (D.text ("pub mod " ++ rendered) <> D.hardline <> D.block 4 body)
             pure (D.joinWith (D.hardline <> D.hardline) ([body | ([_],body) <- entries] ++ modules))
       forM roots $ \root -> do
         body <- emit [(rest,body) | (part:rest,body) <- entries, part == root]
@@ -130,7 +130,8 @@ emitGenerators declarations plan roots = do
         converted <- B.convertExpression declarations plan True child (D.text "canonical")
         let checked = D.text "schema.native_value_with_context(value, &ty, bits, &mut context.clone()).unwrap_or_else(|e| panic!(\"native generator argument: {e}\"))"
             decoded = if child == C.scalarType "CodeUnit16"
-              then D.text "match checked { ls::Value::CodeUnit16(value) => value, _ => panic!(\"native generator argument: expected CodeUnit16\") }"
+              then D.text "match checked" <> D.hardline <> D.block 4 (D.joinWith D.hardline
+                [D.text "ls::Value::CodeUnit16(value) => value,", D.text "_ => panic!(\"native generator argument: expected CodeUnit16\"),"])
               else D.text ("<" ++ canonicalChild ++ " as ls::FromValue>::from_value(checked).unwrap_or_else(|e| panic!(\"native generator argument: {e}\"))")
         pure (D.text ("let child" ++ show i ++ ": proptest::strategy::BoxedStrategy<" ++ nativeChild ++ "> = ") <>
           D.block 4 (D.joinWith D.hardline
@@ -148,25 +149,27 @@ emitGenerators declarations plan roots = do
                     else "ls::IntoValue::into_value(value)"
           body = D.joinWith D.hardline
             ([D.text "ls::require_architecture(_bits)?;" | usesMachineRepresentation declarations ty] ++
-             [D.text ("if children.len() != " ++ show (length arguments) ++ " { return Err(\"unexpected native generator arguments\".into()); }"),
-              D.text "let ls::TypeRef::Named(_, arguments) = _ty else { return Err(\"uninstantiated native generator type\".into()); };" ] ++ children ++
+             [D.text ("if children.len() != " ++ show (length arguments)) <> D.hardline <>
+                D.block 4 (D.text "return Err(\"unexpected native generator arguments\".into());"),
+              D.text "let ls::TypeRef::Named(_, arguments) = _ty" <> D.hardline <> D.text "else" <> D.hardline <>
+                D.block 4 (D.text "return Err(\"uninstantiated native generator type\".into());") <> D.text ";" ] ++ children ++
              [D.text ("let strategy: proptest::strategy::BoxedStrategy<" ++ nativeType ++ "> = ") <>
                 call factory [D.text ("child" ++ show i) | i <- [0..length arguments-1]] <> D.text ".boxed();",
               D.text "Ok(strategy.prop_map(|native| " <> D.block 4
                 (D.text ("let value: " ++ canonicalType ++ " = ") <> converted <> D.text ";" <>
                  D.hardline <> D.text encoded) <> D.text ").boxed())"])
-      pure (D.text "_ if _ty == &" <> reference <> D.text " => " <> D.block 4 body <> D.text ",")
+      pure (D.text "_ if _ty == &" <> reference <> D.text " =>" <> D.hardline <> D.block 4 body <> D.text ",")
     pure (D.text ("fn _lawspec_native_generator_" ++ show index) <>
       D.delimitTrailing 4 "(" ")" (map D.text
         ["_schema: &ls::Schema", "_ty: &ls::TypeRef", "_bits: u32", "_context: &ls::Context",
          "mut children: Vec<proptest::strategy::BoxedStrategy<ls::Value>>"]) <>
-      D.text " -> ls::Result<proptest::strategy::BoxedStrategy<ls::Value>> " <>
-      D.block 4 (D.text "match _ty " <> D.block 4 (D.joinWith D.hardline (branches ++
+      D.text " -> ls::Result<proptest::strategy::BoxedStrategy<ls::Value>>" <> D.hardline <>
+      D.block 4 (D.text "match _ty" <> D.hardline <> D.block 4 (D.joinWith D.hardline (branches ++
         [D.text "_ => Err(format!(\"unplanned native generator instantiation: {_ty:?}\")),"]))))
   let entries = [D.text ("(" ++ show (C.idText (resolvedGeneratorType generator)) ++
         ", _lawspec_native_generator_" ++ show index ++ " as ls_gen::NativeFactory)") |
         (index,generator) <- generators]
-      registry = D.text "fn native_generators() -> ls::Result<ls_gen::NativeGenerators> " <>
+      registry = D.text "fn native_generators() -> ls::Result<ls_gen::NativeGenerators>" <> D.hardline <>
         D.block 4 (call "ls_gen::NativeGenerators::new"
           [D.text "vec!" <> D.delimitTrailing 4 "[" "]" entries])
   pure (D.joinWith (D.hardline <> D.hardline) (registry:functions))

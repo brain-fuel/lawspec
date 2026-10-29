@@ -1,0 +1,100 @@
+{
+  "title": "Ask what a passing test really tells you",
+  "audience": "Basic variables, functions and conditionals; no functional programming or property-testing experience required.",
+  "checkpoint": "Teaching preview: six executable stories redesigned with Winston’s Star. Human review remains open; further course expansion awaits that review.",
+  "tracks": [
+    {
+      "id": "shared",
+      "title": "Shared foundations",
+      "status": "preview"
+    },
+    {
+      "id": "booking",
+      "title": "Event booking",
+      "status": "after review",
+      "scope": "Capacity, reservations, cancellation and confirmation."
+    },
+    {
+      "id": "library",
+      "title": "Library lending",
+      "status": "after review",
+      "scope": "Loans, returns, holds and overdue behavior."
+    },
+    {
+      "id": "orders",
+      "title": "Orders and refunds",
+      "status": "after review",
+      "scope": "Monetary types, payment states, refund limits and compensation."
+    }
+  ],
+  "roadmap": [
+    "Properties, property families, generators, shrinking, coverage, replay and reference models.",
+    "Domain types, wrappers, records, alternatives, constrained construction, refinements and explicit states.",
+    "Typed failures, Result, composition, fail-fast pipelines, accumulated errors, exception boundaries and asynchronous workflows.",
+    "Remaining language features, verification layers, dependencies, models, protocols, actors, distribution and tooling."
+  ],
+  "futureAttribution": [
+    {
+      "title": "Scott Wlaschin — Designing with types: Introduction",
+      "url": "https://fsharpforfunandprofit.com/posts/designing-with-types-intro/",
+      "use": "Future domain-type lessons; not authored at this checkpoint."
+    },
+    {
+      "title": "Scott Wlaschin — Railway Oriented Programming",
+      "url": "https://fsharpforfunandprofit.com/rop/",
+      "use": "Future explicit-failure lessons; not authored at this checkpoint."
+    },
+    {
+      "title": "Scott Wlaschin — Against Railway-Oriented Programming",
+      "url": "https://fsharpforfunandprofit.com/posts/against-railway-oriented-programming/",
+      "use": "Teach Result for expected domain failures, not as a replacement for diagnostics, every exception or every function. Avoid forcing a railway into simple code; distinguish accumulated validation from fail-fast binding."
+    }
+  ],
+  "presentationAttribution": [
+    {
+      "title": "Patrick Henry Winston — Make It Clear",
+      "url": "https://mitpress.mit.edu/9780262539388/make-it-clear/"
+    },
+    {
+      "title": "Patrick Henry Winston — How to Speak",
+      "url": "https://ocw.mit.edu/courses/15-371-innovation-teams-fall-2024/Unzc731iCUY_transcript.pdf"
+    }
+  ],
+  "schemaVersion": 5,
+  "version": "preview-4",
+  "lessonOrder": [
+    "wlaschin-add",
+    "wlaschin-sort",
+    "wlaschin-shrink",
+    "examples",
+    "weak-properties",
+    "shrinking"
+  ],
+  "navigation": [
+    {
+      "id": "worked",
+      "title": "Worked examples",
+      "lessons": [
+        "wlaschin-add",
+        "wlaschin-sort",
+        "wlaschin-shrink"
+      ]
+    },
+    {
+      "id": "practice",
+      "title": "Practice",
+      "lessons": [
+        "examples",
+        "weak-properties",
+        "shrinking"
+      ]
+    }
+  ],
+  "harnessExplanation": {
+    "role": "The Laws tab (Tests.lawspec) says what must be true. Solution implements the function. Harness.lawspec describes how to choose inputs for the generated property checks.",
+    "declaration": "The first line names this harness; for names the unit in Laws that it tests. A strategy is a generator: a recipe for drawing inputs. :: introduces its type, where limits its values and any requests generation. for law selects the claim by its full name; use supplies a strategy for one quantified input. A quantified input is a variable introduced by for all.",
+    "scope": "A strategy changes the inputs sampled, not the requirement in Laws. A passing sample says only that the checks passed for the inputs tried. It is not a proof, and changing a generator to avoid a failure does not repair a bug or a false claim.",
+    "execution": "The generated test runner is also called a harness. You edit the LawSpec configuration here; the compiler builds the runner that calls your implementation and records results. Run checks executes the set shown beneath the button: Examples + boundaries selects concrete and boundary checks; Sampled properties selects generated property cases; All checks includes both. Each step selects its teaching mode; Test controls also offers explicitly named alternate runs. Seed repeats generation under the same code, generator and tool versions; Replay failure also uses the recorded path to the failing case. F# runs through Fable and the JavaScript runner with fast-check in this browser, separately from native .NET/FsCheck."
+  },
+  "namingGuide": "English phrase names make claims and descriptive helpers readable. Write \"|adding zero keeps the input| with no closing quote. Reuse the full delimited name in for law or a function call. Keep concise code names where they read naturally: add, sort, xs and numbers. Existing short names remain valid, including names in saved drafts."
+}

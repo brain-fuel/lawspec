@@ -11,9 +11,9 @@ using LawSpec.CSharp;
 
 public static class Pricing
 {
-    /// <summary>(Int32 -> Int64)</summary>
-    public static long PriceInCents(int value0)
-    {
-        throw new NotImplementedException("not implemented: lessons.pricing::priceInCents");
-    }
+  /// <summary>(Int32 -> Int64)</summary>
+  public static long PriceInCents(int value0)
+  {
+    throw new NotImplementedException("not implemented: lessons.pricing::priceInCents");
+  }
 }

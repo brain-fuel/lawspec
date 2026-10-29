@@ -15,7 +15,8 @@ import java.util.function.Predicate;
 public final class PropertyChecker
 {
   private PropertyChecker()
-  {}
+  {
+  }
 
   private static IFn check;
 

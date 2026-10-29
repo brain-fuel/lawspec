@@ -109,7 +109,7 @@ emitRustTyped declarations units = do
         (modulePath ++) <$> M.lookup c functions
   pure RustTyped
     { rustTypedModule = D.text "/// Typed checked definitions: see the runtime's fast module." <> D.hardline <>
-        D.text "pub mod typed " <> D.block 4 body
+        D.text "pub mod typed" <> D.hardline <> D.block 4 body
     , rustTypedFunction = lookupFunction
     , rustTypedType = rustType outside
     , rustTypedValue = \e -> evalStateT (expression outside Nothing [] e) (moduleReserved ++ functionNames)
@@ -190,7 +190,7 @@ dataDoc env d = do
       variants = dataConstructors d
       line = D.text
       header = line ("/// " ++ name ++ " (" ++ idText (dataId d) ++ ").")
-      impl head' items = line (head' ++ " ") <> D.block 4 (D.joinWith D.hardline items)
+      impl head' items = line head' <> D.hardline <> D.block 4 (D.joinWith D.hardline items)
       method' head' params result body = L.function ("fn " ++ head') params result (L.stmts [] (Just body))
       matchOn subject arms = L.Match (L.atom subject) arms
       arm p body = Arm p Nothing body
@@ -204,7 +204,7 @@ dataDoc env d = do
       , method' "from_dyn" ["_: ls::Value"] "ls::Result<Self>" (L.call "Err" [L.method (L.Laid (E.stringLiteral ("no value of " ++ name))) "into" []]) ])
   else if fieldless d then pure (header <> D.hardline <>
     line "#[derive(Clone, Copy, PartialEq, Eq, Debug)]" <> D.hardline <>
-    line ("pub enum " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline [line (variantName c ++ ",") | c <- variants]) <> D.hardline <>
+    line ("pub enum " ++ name) <> D.hardline <> D.block 4 (D.joinWith D.hardline [line (variantName c ++ ",") | c <- variants]) <> D.hardline <>
     impl ("impl " ++ name) [method' "rank" ["&self"] "u32" (matchOn "self" [arm (name ++ "::" ++ variantName c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline <>
     impl ("impl POrd for " ++ name) [method' "pcmp" ["&self", "other: &Self"] "std::cmp::Ordering" (L.method (L.method (L.atom "self") "rank" []) "cmp" [L.prefix "&" (L.method (L.atom "other") "rank" [])])] <> D.hardline <>
     impl ("impl Dyn for " ++ name)
@@ -244,7 +244,7 @@ dataDoc env d = do
       line "#[derive(Clone, PartialEq, Eq, Debug)]" <> D.hardline <>
       line ("pub struct " ++ name ++ generics ++ "(pub std::sync::Arc<" ++ node ++ generics ++ ">);") <> D.hardline <>
       line "#[derive(PartialEq, Eq, Debug)]" <> D.hardline <>
-      line ("pub enum " ++ node ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
+      line ("pub enum " ++ node ++ generics) <> D.hardline <> D.block 4 (D.joinWith D.hardline
         [(if null ts then line (variantName c) else tupleVariant (variantName c) ts) <> line "," | (c, ts) <- zip variants fieldTypes]) <> D.hardline <>
       -- A rank orders different variants, so a single variant has none.
       (if length variants > 1 then impl ("impl" ++ generics ++ " " ++ name ++ generics) [method' "rank" ["&self"] "u32" (matchOn "&*self.0" [arm (wildcard c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline else mempty) <>
@@ -348,7 +348,7 @@ functionDoc env c d = flip evalStateT (moduleReserved ++ map fst (calledNames en
       reassigned l = l `elem` [n | (i, n, _) <- params, i `elem` tailChanged env c (map (\(i', _, _) -> i') params) (definitionBody d)]
       comment = D.text ("/// " ++ labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration)))
       returned = if looping
-        then L.stmts [L.Do (L.Prefix "loop " (L.Block [L.Semi (L.Return (Just (L.call "Ok" [body])))] Nothing))] Nothing
+        then L.stmts [L.Item (D.text "loop" <> D.hardline <> L.block [L.Semi (L.Return (Just (L.call "Ok" [body])))] Nothing)] Nothing
         else L.stmts [] (Just (L.call "Ok" [body]))
   pure (comment <> D.hardline <> L.function ("pub fn " ++ name)
     ([(if E.mentions "ctx" rendered then "ctx" else "_ctx") ++ ": &mut ls::Context" | contextual] ++ [parameter l t | (_, l, t) <- params])
@@ -892,7 +892,7 @@ publicDoc env declarations d = do
         [L.Let l (L.call "ls::fast::Public::from_native" [L.atom l]) | l <- fieldLocals c]
         (typedOf c (map L.atom (fieldLocals c))))
       scrutinee = if null variants then "*self" else if fieldless d then "self" else "&*self.0"
-  pure (line ("impl" ++ bounded ++ " ls::fast::Public for " ++ name ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
+  pure (line ("impl" ++ bounded ++ " ls::fast::Public for " ++ name ++ generics) <> D.hardline <> D.block 4 (D.joinWith D.hardline
     [ line ("type Native = " ++ native ++ ";")
     , L.function "fn to_native" ["&self"] "Self::Native" (L.expr (L.Match (L.atom scrutinee) (map toArm variants)))
     , L.function "fn from_native" ["native: Self::Native"] "Self" (L.expr (L.Match (L.atom "native")

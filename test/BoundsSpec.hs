@@ -34,7 +34,7 @@ test_generationStaysWithinRefinedBoundsOnEveryTarget = describe "refinement boun
   mapM_ (\(target, range) -> it ("narrow generation on " ++ target) $
     fmap (range `isInfixOf`) (tests target) `shouldBe` Right True)
     [ ("python", "st.integers(min_value=1, max_value=1000)")
-    , ("javascript", "{ min: 1n, max: 1000n }")
+    , ("javascript", "{min: 1n, max: 1000n}")
     , ("go", "Range(1, 1000)")
     , ("java", "integers(1, 1000)")
     , ("kotlin", "1..1000")

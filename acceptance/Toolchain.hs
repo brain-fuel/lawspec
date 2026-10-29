@@ -40,7 +40,7 @@ formatter target = do
       python <- maybe (root </> ".integration/python/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
       -- ruff format's default configuration, whatever a project's files say.
       pure (Just (Formatter "ruff format" python
-        (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
+        (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--line-length", "80", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
     "prolog" -> do
       python <- maybe (root </> ".integration/prolog/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
@@ -106,8 +106,8 @@ formatter target = do
     t | t `elem` ["javascript", "typescript"] ->
       pure (Just (Formatter "prettier" "node"
         (\dir -> [root </> ".integration" </> t </> "node_modules/prettier/bin/prettier.cjs",
-          "--check", "--no-config", "--no-editorconfig", "--ignore-path", dir </> ".no-ignore", dir])
-        [".mjs", ".js", ".ts", ".mts"] ["test/locks" </> t </> "package-lock.json"]))
+          "--check", "--no-config", "--no-editorconfig", "--plugin", root </> "learn/node_modules/prettier-plugin-brace-style/dist/index.js", "--brace-style", "allman", "--single-quote", "--no-bracket-spacing", "--arrow-parens", "avoid", "--trailing-comma", "all", "--ignore-path", dir </> ".no-ignore", dir])
+        [".mjs", ".js", ".ts", ".mts"] ["test/locks" </> t </> "package-lock.json", "learn/package-lock.json", ".prettierrc.json"]))
     -- ormolu has no configuration; its version is pinned in
     -- test/locks/haskell/ormolu.txt and checked before it runs.
     "haskell" -> do
@@ -134,7 +134,7 @@ formatter target = do
     -- Files are checked one by one, as cargo fmt would, in a fixed order.
     "rust" -> pure (Just (Formatter ("rustfmt " ++ rustfmtToolchain) "sh"
       (\dir -> ["-c", "find \"$0\" -name '*.rs' | LC_ALL=C sort | xargs rustup run " ++ rustfmtToolchain ++
-        " rustfmt --check --edition 2024 2>&1 || exit 1", dir]) [".rs"] []))
+        " rustfmt --check --edition 2024 --config-path \"" ++ root ++ "/rustfmt.toml\" 2>&1 || exit 1", dir]) [".rs"] ["rustfmt.toml", "test/locks/rustfmt.txt"]))
     -- The JVM targets' formatters, pinned here by their Maven coordinates
     -- and run by Coursier, which fetches each once into its cache.
     -- Java has no canonical formatter: Checkstyle checks LawSpec's profile,
@@ -203,7 +203,7 @@ swiftFormatCheck = unlines
 -- | The Rust toolchain whose rustfmt lays out generated Rust. It is part of
 -- the acceptance cache key, as this file is.
 rustfmtToolchain :: String
-rustfmtToolchain = "1.97.1"
+rustfmtToolchain = "nightly-2026-10-22"
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

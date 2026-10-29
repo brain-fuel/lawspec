@@ -5,13 +5,26 @@ import {test} from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {existsSync} from 'node:fs';
 
-const python=process.env.LAWSPEC_PYTHON ?? fileURLToPath(new URL('../../.integration/python/.venv/bin/python',import.meta.url));
-const missingPython=!process.env.LAWSPEC_PYTHON && !existsSync(python);
-test('large finite Python generation retains every Int8 candidate at both widths and layouts',
-  {timeout:200000,skip:missingPython && 'Python target environment is not bootstrapped'}, () => {
-  const api=new URL('../api.mjs',import.meta.url).href;
-  const fixture=new URL('../../test/fixtures/canonical-smt-arithmetic.lawspec',import.meta.url).href;
-  const script=`
+const python =
+  process.env.LAWSPEC_PYTHON ??
+  fileURLToPath(
+    new URL('../../.integration/python/.venv/bin/python', import.meta.url),
+  );
+const missingPython = !process.env.LAWSPEC_PYTHON && !existsSync(python);
+test(
+  'large finite Python generation retains every Int8 candidate at both widths and layouts',
+  {
+    timeout: 200000,
+    skip: missingPython && 'Python target environment is not bootstrapped',
+  },
+  () =>
+  {
+    const api = new URL('../api.mjs', import.meta.url).href;
+    const fixture = new URL(
+      '../../test/fixtures/canonical-smt-arithmetic.lawspec',
+      import.meta.url,
+    ).href;
+    const script = `
     import assert from 'node:assert/strict';
     import {readFile,mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
     import {spawnSync} from 'node:child_process';
@@ -69,14 +82,34 @@ assert observed == [(expected, expected)], observed
     } finally { await rm(folder,{recursive:true,force:true}); }
     console.log(JSON.stringify(results));
   `;
-  // Isolate the compiler so a regression cannot leave its WASM scheduler
-  // running after the test deadline. The source domain is never reduced.
-  const child=spawnSync(process.execPath,['--input-type=module','-e',script],
-    {encoding:'utf8',timeout:180000,killSignal:'SIGKILL',maxBuffer:2*1024*1024});
-  assert.equal(child.error,undefined,child.error?.message+'\n'+child.stderr);
-  assert.equal(child.status,0,child.stderr+'\n'+child.stdout);
-  const results=JSON.parse(child.stdout);
-  assert.deepEqual(results.map(({machineBits,minify})=>[machineBits,minify]),
-    [[32,false],[32,true],[64,false],[64,true]]);
-  assert.ok(results.every(row=>row.completeCandidateDomain));
-});
+    // Isolate the compiler so a regression cannot leave its WASM scheduler
+    // running after the test deadline. The source domain is never reduced.
+    const child = spawnSync(
+      process.execPath,
+      ['--input-type=module', '-e', script],
+      {
+        encoding: 'utf8',
+        timeout: 180000,
+        killSignal: 'SIGKILL',
+        maxBuffer: 2 * 1024 * 1024,
+      },
+    );
+    assert.equal(
+      child.error,
+      undefined,
+      child.error?.message + '\n' + child.stderr,
+    );
+    assert.equal(child.status, 0, child.stderr + '\n' + child.stdout);
+    const results = JSON.parse(child.stdout);
+    assert.deepEqual(
+      results.map(({machineBits, minify}) => [machineBits, minify]),
+      [
+        [32, false],
+        [32, true],
+        [64, false],
+        [64, true],
+      ],
+    );
+    assert.ok(results.every(row => row.completeCandidateDomain));
+  },
+);

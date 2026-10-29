@@ -283,6 +283,14 @@ distinct e = evalState (go M.empty e) S.empty
 pageWidth :: Int
 pageWidth = 120
 
+blockIndent :: Lang -> Int
+blockIndent FSharp = 4
+blockIndent CSharp = 2
+
+pageWidthFor :: Lang -> Int
+pageWidthFor FSharp = 120
+pageWidthFor CSharp = 100
+
 -- | Lines of code. In an expression's lines the first continues the current
 -- line and the rest carry their own indentation; a block's lines all do.
 type Lines = [String]
@@ -307,10 +315,10 @@ opening s (l : ls) = (s ++ l) : ls
 -- declaration's line while it is under 40 columns; a declaration too wide for its line has a parameter
 -- on each line.
 functionLines :: Lang -> Int -> String -> [(String, Ty)] -> Ty -> Expr -> Lines
-functionLines lang i declaration parameters result e = evalState go (0, pageWidth)
+functionLines lang i declaration parameters result e = evalState go (0, pageWidthFor lang)
   where
     unitBody = result == tUnit
-    body = block lang (i + 4) result (if unitBody then Discard else Return) (distinct e)
+    body = block lang (i + blockIndent lang) result (if unitBody then Discard else Return) (distinct e)
     go = case lang of
       FSharp -> do
         inner <- body
@@ -326,7 +334,7 @@ functionLines lang i declaration parameters result e = evalState go (0, pageWidt
         inner <- body
         let ps = [tyText CSharp t ++ " " ++ p | (p, t) <- parameters]
             header = declaration ++ "(" ++ intercalate ", " ps ++ ")"
-            heading = if i + columns header <= pageWidth || null ps then [pad i header]
+            heading = if i + columns header <= pageWidthFor lang || null ps then [pad i header]
               else (pad i (declaration ++ "(")) : [pad (i + 4) (p ++ (if k == length ps then ")" else ",")) | (k, p) <- zip [1 :: Int ..] ps]
         pure (heading ++ [pad i "{"] ++ inner ++ [pad i "}"])
 
@@ -336,11 +344,11 @@ linesDoc base ls = D.joinWith D.hardline [D.text (drop base l) | l <- ls]
 
 -- | A function body: its statements and its result, at an indentation.
 renderBody :: Lang -> Int -> Ty -> Expr -> D.Doc
-renderBody lang indentation ty e = linesDoc indentation (evalState (block lang indentation ty Return (distinct e)) (0, pageWidth))
+renderBody lang indentation ty e = linesDoc indentation (evalState (block lang indentation ty Return (distinct e)) (0, pageWidthFor lang))
 
 -- | A body run for its effects (a C# void method, an F# unit function).
 renderStatements :: Lang -> Int -> Expr -> D.Doc
-renderStatements lang indentation e = linesDoc indentation (evalState (block lang indentation tUnit Discard (distinct e)) (0, pageWidth))
+renderStatements lang indentation e = linesDoc indentation (evalState (block lang indentation tUnit Discard (distinct e)) (0, pageWidthFor lang))
 
 -- | An expression that is already inline, on one line.
 renderExpr :: Lang -> Expr -> D.Doc
@@ -457,14 +465,14 @@ conditionalLines' _ lang i ty sink pre c' a b = do
         inner <- expr lang (i + 4) (i + 4) 0 c'
         pure ("" : opening (pad (i + 4) "") inner ++ [pad i ""])
     CSharp -> expr lang i (i + 4) 1 c'
-  ad <- block lang (i + 4) ty sink a
+  ad <- block lang (i + blockIndent lang) ty sink a
   rest <- case (lang, b) of
     -- else if: an else branch that is only a conditional continues the chain.
     (FSharp, If c2 t2 a2 b2) | isInline c2 -> do
       chained <- conditionalLines' False lang i t2 sink [] c2 a2 b2
       pure (opening (pad i "else ") (dropIndent chained))
     _ -> do
-      bd <- block lang (i + 4) ty sink b
+      bd <- block lang (i + blockIndent lang) ty sink b
       pure $ case lang of
         FSharp -> pad i "else" : bd
         CSharp -> [pad i "else", pad i "{"] ++ bd ++ [pad i "}"]
@@ -489,7 +497,7 @@ lambdaOpening CSharp ps = "Fn.F" ++ show (length ps) ++ "(" ++ lambdaParameters 
 -- | A lambda whose body spans lines, its opening on the current line.
 lambdaLines :: Lang -> Int -> [(String, Ty)] -> Ty -> Expr -> Fresh Lines
 lambdaLines lang i ps r b = do
-  inner <- block lang (i + 4) r Return b
+  inner <- block lang (i + blockIndent lang) r Return b
   pure $ case lang of
     FSharp -> lambdaOpening FSharp ps : inner
     CSharp -> [lambdaOpening CSharp ps, pad i "{"] ++ inner ++ [pad i "})"]
@@ -649,7 +657,7 @@ brokenAt w CSharp i c e = case e of
       | not (null args), Lambda ps r b <- last args, Just fronts <- mapM (flat CSharp) (init args)
       , let open = name ++ "(" ++ concatMap (++ ", ") fronts ++ lambdaOpening CSharp ps
       , c + columns open <= w = do
-          inner <- block CSharp (i + 4) r Return b
+          inner <- block CSharp (i + 2) r Return b
           pure ([open, pad i "{"] ++ inner ++ [pad i "}))"])
       | otherwise = do
           items <- mapM (\a -> opening (pad (i + 4) "") <$> expr CSharp (i + 4) (i + 4) 1 a) args
@@ -665,7 +673,7 @@ methodLike f = case reverse (takeWhile (/= '.') (reverse f)) of
 -- | A block in an inline position: a function of no arguments, applied.
 fallback :: Lang -> Int -> Expr -> Fresh Lines
 fallback lang i e = do
-  inner <- (if lang == FSharp then narrower else id) (block lang (i + 4) tValue Return e)
+  inner <- (if lang == FSharp then narrower else id) (block lang (i + blockIndent lang) tValue Return e)
   pure $ case lang of
     FSharp -> ["(fun () ->"] ++ closing ") ()" inner
     CSharp -> ["Fn.Run(() =>", pad i "{"] ++ inner ++ [pad i "})"]

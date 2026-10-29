@@ -10,9 +10,12 @@ type LogLevel = @@LogLevel@@;
 #[derive(Default)]
 pub struct LogHandler;
 
-impl crate::lawspec_abilities::lawspec_logging::Log for LogHandler {
-    fn logMessage(&self, value0: LogLevel, value1: std::string::String) -> () {
-        let level = match value0 {
+impl crate::lawspec_abilities::lawspec_logging::Log for LogHandler
+{
+    fn logMessage(&self, value0: LogLevel, value1: std::string::String) -> ()
+    {
+        let level = match value0
+        {
             LogLevel::Debug => "DEBUG",
             LogLevel::Info => "INFO",
             LogLevel::Warning => "WARNING",
@@ -26,8 +29,10 @@ impl crate::lawspec_abilities::lawspec_logging::Log for LogHandler {
 #[derive(Default)]
 pub struct TraceHandler;
 
-impl crate::lawspec_abilities::lawspec_logging::Trace for TraceHandler {
-    fn traceEvent(&self, value0: std::string::String) -> () {
+impl crate::lawspec_abilities::lawspec_logging::Trace for TraceHandler
+{
+    fn traceEvent(&self, value0: std::string::String) -> ()
+    {
         eprintln!("DEBUG: trace: {value0}");
     }
 }

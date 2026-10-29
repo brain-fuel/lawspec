@@ -16,6 +16,7 @@ shows how to do it.
 - [Diagnose your environment with doctor](run-doctor.md)
 - [Generate example artifacts](generate-example-artifacts.md)
 - [Use the JavaScript API](use-the-javascript-api.md)
+- [Use the MCP server](use-mcp.md)
 - [Vet the canonical material](vet.md) with Rice's Tax's review page
 
 ## Writing specifications
@@ -35,3 +36,5 @@ shows how to do it.
 
 - [Target setup guides](targets/index.md): Java, JavaScript, TypeScript,
   Python, Go, Haskell, Kotlin and Rust.
+
+- [Start, adopt, and change a project](manage-projects.md), then learn the concepts locally.

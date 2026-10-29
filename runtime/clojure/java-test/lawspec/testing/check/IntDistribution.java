@@ -3,8 +3,7 @@
 package lawspec.testing.check;
 
 /** A range of lengths, shrinking toward its minimum. */
-public record IntDistribution(int min, int max)
-{
+public record IntDistribution(int min, int max) {
   public IntDistribution
   {
     if (min > max)

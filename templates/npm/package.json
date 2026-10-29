@@ -29,7 +29,7 @@
     }
   },
   "types": "index.d.ts",
-  "dependencies": {"edn-data": "1.2.2", "tar": "7.5.22"},
+  "dependencies": {"ricestax": "0.3.2", "@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
   "files": /*@ package-files @*/,
   "scripts": {
     "prepack": /*@ copy-documents @*/,

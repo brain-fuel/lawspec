@@ -159,8 +159,6 @@ elaborateModel u m = do
           pure (i, ns, ss)
         _ -> context ("must take the state as a flow parameter, as in " ++ family ++ " n / " ++ family ++ " (n + 1)")
     let others = [a | (i, a) <- zip [0 :: Int ..] args, i /= position]
-    forM_ others $ \a -> when (any (`elem` indexVariables) (typeVariablesOf a) || mentions indexVariables a)
-      (context "has an argument whose type depends on the state's index; 0.19 generates arguments independently")
     let unit = isUnitType result
         expected = foldr Arrow (if unit then modelType else Application "Pair" [result, modelType]) (others ++ [modelType])
     reference ("command " ++ name ++ "'s reference") (modelReference c) expected
@@ -313,35 +311,6 @@ shape ty = case unrefinedType ty of
   t@(RefinementApp _ _) | Just (family, _) <- stateHead t -> Named family
   RefinementApp n args -> RefinementApp n [TypeArgument (shape a) | TypeArgument a <- args]
   t -> t
-
-typeVariablesOf :: Type -> [String]
-typeVariablesOf ty = case ty of
-  Variable v -> [v]
-  Arrow a b -> typeVariablesOf a ++ typeVariablesOf b
-  Applied _ t -> typeVariablesOf t
-  Application _ ts -> concatMap typeVariablesOf ts
-  RecordShape fields -> concatMap (typeVariablesOf . recordFieldType) fields
-  Refined _ t _ -> typeVariablesOf t
-  RefinementApp _ args -> concat [typeVariablesOf t | TypeArgument t <- args]
-  Qualified _ t -> typeVariablesOf t
-  CheckedType _ t -> typeVariablesOf t
-  _ -> []
-
--- | Whether a type's index expressions mention any of the variables.
-mentions :: [String] -> Type -> Bool
-mentions vs ty = case unrefinedType ty of
-  RefinementApp _ args -> or ([any (`elem` vs) (exprVariables e) | ValueArgument e <- args] ++ [mentions vs t | TypeArgument t <- args])
-  Arrow a b -> mentions vs a || mentions vs b
-  Applied _ t -> mentions vs t
-  Application _ ts -> any (mentions vs) ts
-  RecordShape fields -> any (mentions vs . recordFieldType) fields
-  _ -> False
-  where
-    exprVariables e = case stripLocation e of
-      Var v -> [v]
-      Binary _ a b -> exprVariables a ++ exprVariables b
-      Apply a b -> exprVariables a ++ exprVariables b
-      _ -> []
 
 capitalize :: String -> String
 capitalize (c : cs) = toUpper c : cs

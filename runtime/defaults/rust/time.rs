@@ -7,7 +7,8 @@ use crate::lawspec_runtime as ls;
 // The built-in unit's data types, as this program names them.
 type Instant = @@Instant@@;
 
-fn start() -> &'static (i64, std::time::Instant) {
+fn start() -> &'static (i64, std::time::Instant)
+{
     static START: std::sync::OnceLock<(i64, std::time::Instant)> = std::sync::OnceLock::new();
     START.get_or_init(|| {
         let wall = std::time::SystemTime::now()
@@ -19,7 +20,8 @@ fn start() -> &'static (i64, std::time::Instant) {
 }
 
 /// The wall clock at start, moved on by the monotonic clock since.
-pub fn now_micros() -> i64 {
+pub fn now_micros() -> i64
+{
     let (wall, monotonic) = start();
     wall + monotonic.elapsed().as_micros() as i64
 }
@@ -29,18 +31,23 @@ pub fn now_micros() -> i64 {
 #[derive(Default)]
 pub struct ClockHandler;
 
-impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler {
-    fn now(&self) -> Instant {
+impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler
+{
+    fn now(&self) -> Instant
+    {
         Instant {
             value: now_micros(),
         }
     }
 
-    fn sleep(&self, value0: std::time::Duration) -> () {
+    fn sleep(&self, value0: std::time::Duration) -> ()
+    {
         let target = now_micros() + value0.as_micros() as i64;
-        loop {
+        loop
+        {
             let left = target - now_micros();
-            if left <= 0 {
+            if left <= 0
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_micros(left as u64));
@@ -54,24 +61,29 @@ impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler {
 /// A Clock handler installed in a context, as the runtime reads it: the
 /// default ClockHandler is real time; any other (the virtual clock, a
 /// recording, a bound one) is virtual.
-struct InstalledClock {
+struct InstalledClock
+{
     clock: std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>,
     real_time: bool,
 }
 
-impl ls::ClockAbility for InstalledClock {
-    fn now_micros(&self) -> i64 {
+impl ls::ClockAbility for InstalledClock
+{
+    fn now_micros(&self) -> i64
+    {
         crate::lawspec_abilities::lawspec_time::Clock::now(&*self.clock).value
     }
 
-    fn sleep_micros(&self, micros: i64) {
+    fn sleep_micros(&self, micros: i64)
+    {
         crate::lawspec_abilities::lawspec_time::Clock::sleep(
             &*self.clock,
             std::time::Duration::from_micros(micros.max(0) as u64),
         )
     }
 
-    fn real_time(&self) -> bool {
+    fn real_time(&self) -> bool
+    {
         self.real_time
     }
 }
@@ -80,7 +92,8 @@ impl ls::ClockAbility for InstalledClock {
 /// lawspec.time::ability::Clock), as the runtime reads it. It is real time
 /// only when it is this module's ClockHandler, installed as the default
 /// handler (ls::installed_native names its type).
-pub fn clock_ability(installed: &ls::Installed) -> Option<std::sync::Arc<dyn ls::ClockAbility>> {
+pub fn clock_ability(installed: &ls::Installed) -> Option<std::sync::Arc<dyn ls::ClockAbility>>
+{
     let clock = installed
         .handler
         .downcast_ref::<std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>>()?
@@ -92,6 +105,7 @@ pub fn clock_ability(installed: &ls::Installed) -> Option<std::sync::Arc<dyn ls:
 /// Lets workflows and mailboxes wait on the Clock handler a law installs
 /// (ls::register_clock_ability). The generated tests of a unit whose laws
 /// install a Clock handler call it before each case.
-pub fn register_clock_ability() {
+pub fn register_clock_ability()
+{
     ls::register_clock_ability(clock_ability);
 }

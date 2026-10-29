@@ -82,13 +82,13 @@ emit minify bits datas units = do
     answered e = L.call "ls::answered" [e]
     locked field = L.call "ls::locked" [L.atom ("&self." ++ field)]
     nativeType ty = Native.rustDataType datas ty
-    impl head' items = line (head' ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) items)
+    impl head' items = line head' <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) items)
     unitModule typed u = do
       traits <- mapM trait (ownAbilities u)
       handlers <- mapM (\h -> if isTypedHandler (rustTypedPlan typed) h then typedHandler typed u h else specHandler u h) (C.unitHandlers u)
       recordings <- mapM recording (ownAbilities u)
       bridges <- concat <$> mapM bridge (ownAbilities u)
-      pure (line ("pub mod " ++ moduleOf u ++ " ") <> D.block 4 (line "use super::ls;" <> D.hardline <> D.hardline <>
+      pure (line ("pub mod " ++ moduleOf u) <> D.hardline <> D.block 4 (line "use super::ls;" <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline) (traits ++ handlers ++ recordings ++ bridges)))
     -- An operation's method: its name, parameters and result type.
     signature op ty = do
@@ -100,7 +100,7 @@ emit minify bits datas units = do
     trait a = do
       methods <- mapM (\(op, ty) -> (\(h, ps, r) -> L.declaration h ps r) <$> signature op ty) (C.abilityOperations a)
       pure (line ("/// The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
-        line ("pub trait " ++ interfaceName a ++ ": Send + Sync ") <> D.block 4 (D.joinWith D.hardline methods))
+        line ("pub trait " ++ interfaceName a ++ ": Send + Sync") <> D.hardline <> D.block 4 (D.joinWith D.hardline methods))
     -- A native result from a logical value, as the definitions' wrappers do.
     toNative ty value = do
       native <- nativeType ty
@@ -142,7 +142,7 @@ emit minify bits datas units = do
       ([line "ctx: std::sync::Mutex<ls::Context>," | keepsContext] ++ [L.fieldDoc "state" ("std::sync::Mutex<" ++ t ++ ">") <> line "," | Just t <- [stateField]])
     structDoc name keepsContext stateField = if not keepsContext && stateField == Nothing
       then line ("pub struct " ++ name ++ ";")
-      else line ("pub struct " ++ name ++ " ") <> D.block 4 (fields keepsContext stateField)
+      else line ("pub struct " ++ name) <> D.hardline <> D.block 4 (fields keepsContext stateField)
     starting = line "/// The handler on its own, outside any law: the embedding entry point." <> D.hardline <>
       L.function "pub fn start" [] "Self" (L.expr (L.call "Self::new" [L.atom "&ls::Context::default()"]))
     implementations name answered' methodBlocks = D.joinWith (D.hardline <> D.hardline)
@@ -289,7 +289,7 @@ emit minify bits datas units = do
           (Just (L.method (L.Field (L.atom "self") "inner") op (map L.atom values))))) (C.abilityOperations a)
       let name = recordingName a
       pure (line ("/// Records each call to a " ++ C.abilityName a ++ " handler, then passes it on.") <> D.hardline <>
-        line ("pub struct " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
+        line ("pub struct " ++ name) <> D.hardline <> D.block 4 (D.joinWith D.hardline
           [line ("pub inner: std::sync::Arc<dyn " ++ interfaceName a ++ ">,"), line "pub calls: ls::Calls,"]) <> D.hardline <> D.hardline <>
         impl ("impl " ++ name) [L.function "pub fn new" ["inner: std::sync::Arc<dyn " ++ interfaceName a ++ ">"] "Self"
           (L.expr (L.struct "Self" [("inner", L.atom "inner"), ("calls", L.call "ls::Calls::default" [])]))] <> D.hardline <> D.hardline <>
@@ -338,15 +338,15 @@ productionStub datas u a = do
     let (args, result) = C.functionType ty
     types <- mapM (Native.rustDataType datas) args
     resultType <- Native.rustDataType datas result
-    pure (D.text ("fn " ++ op ++ "(&self" ++ concat [", value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ") -> " ++ resultType ++ " ") <>
+    pure (D.text ("fn " ++ op ++ "(&self" ++ concat [", value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ") -> " ++ resultType ) <> D.hardline <>
       D.block 4 (D.text ("todo!(" ++ show op ++ ")")))) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T, by new.
   made <- traverse (Native.rustDataType datas) (C.abilityResource a)
   pure (D.text ("/// The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
     (case made of
       Nothing -> D.text "#[derive(Default)]" <> D.hardline <> D.text ("pub struct " ++ productionName a ++ ";") <> D.hardline <> D.hardline
-      Just t -> D.text ("pub struct " ++ productionName a ++ " ") <> D.block 4 (D.text ("pub resource: " ++ t ++ ",")) <> D.hardline <> D.hardline <>
-        D.text ("impl " ++ productionName a ++ " ") <> D.block 4 (D.text ("pub fn new(resource: " ++ t ++ ") -> Self ") <> D.block 4 (D.text "Self { resource }")) <>
+      Just t -> D.text ("pub struct " ++ productionName a) <> D.hardline <> D.block 4 (D.text ("pub resource: " ++ t ++ ",")) <> D.hardline <> D.hardline <>
+        D.text ("impl " ++ productionName a) <> D.hardline <> D.block 4 (D.text ("pub fn new(resource: " ++ t ++ ") -> Self") <> D.hardline <> D.block 4 (D.text "Self { resource }")) <>
         D.hardline <> D.hardline) <>
-    D.text ("impl crate::lawspec_abilities::" ++ moduleOf u ++ "::" ++ interfaceName a ++ " for " ++ productionName a ++ " ") <>
+    D.text ("impl crate::lawspec_abilities::" ++ moduleOf u ++ "::" ++ interfaceName a ++ " for " ++ productionName a  ) <> D.hardline <>
     D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))

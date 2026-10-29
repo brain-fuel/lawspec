@@ -16,6 +16,6 @@ swipl "$root/tools/prolog-layout.pl" -- "$directory" || status=1
 host=$(cd "$directory" && { ls lawspec_test.py 2>/dev/null; find . -name 'lawspec_prolog*.py';
   grep -rl --include='*.py' -e '^# The Prolog bridge for ' . ; } | sort -u)
 if [ -n "$host" ]; then
-  (cd "$directory" && echo "$host" | xargs "$python" -m ruff format --check --diff --isolated --no-cache) || status=1
+  (cd "$directory" && echo "$host" | xargs "$python" -m ruff format --check --diff --isolated --line-length 80 --no-cache) || status=1
 fi
 exit $status

@@ -101,13 +101,22 @@ function wasiImports(memory) {
 
 let compiled;
 
+// Learn packages the same compiler with gzip so static hosts can accept it.
+// A .gz asset has no Content-Encoding header: decompress explicitly before WASM.
+async function fetchCompiler(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Cannot load ${url}: ${response.status}`);
+  return String(url).split('?')[0].endsWith('.gz')
+    ? new Response(response.body.pipeThrough(new DecompressionStream('gzip')), {headers: {'Content-Type': 'application/wasm'}})
+    : response;
+}
+
 // url: where core.wasm is served; defaults to beside this module.
 export async function loadCore(url = new URL("./core.wasm", import.meta.url)) {
   compiled ??= (async () => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Cannot load ${url}: ${response.status}`);
+    const response = await fetchCompiler(url);
     return WebAssembly.compileStreaming
-      ? WebAssembly.compileStreaming(response).catch(async () => WebAssembly.compile(await (await fetch(url)).arrayBuffer()))
+      ? WebAssembly.compileStreaming(response).catch(async () => WebAssembly.compile(await (await fetchCompiler(url)).arrayBuffer()))
       : WebAssembly.compile(await response.arrayBuffer());
   })();
   const module = await compiled;
@@ -127,5 +136,5 @@ export async function createCompiler(url) {
   const call = await loadCore(url);
   const request = (method) => (input) =>
     call({ schemaVersion: input.languageProfile === "1.0-rc.2" ? 5 : input.nativeBindings === undefined ? 3 : 4, ...input, method });
-  return { check: request("check"), expand: request("expand"), planGeneration: request("planGeneration") };
+  return { format: request("format"), check: request("check"), expand: request("expand"), planGeneration: request("planGeneration") };
 }

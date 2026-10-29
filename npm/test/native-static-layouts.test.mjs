@@ -2,7 +2,7 @@
 import {extendUnit} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {mkdtemp,mkdir,writeFile,readdir,rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, writeFile, readdir, rm} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import os from 'node:os';
@@ -10,9 +10,13 @@ import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {templates} from '../templates.mjs';
 
-const compiler=await createCompiler();
-const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};
-const source=`unit layouts
+const compiler = await createCompiler();
+const options = {
+  schemaVersion: 5,
+  languageProfile: '1.0-rc.2',
+  verification: {layers: []},
+};
+const source = `unit layouts
 
 type Packet (a :: Type) is one of Packed of type record{
   last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}
@@ -21,56 +25,132 @@ copy :: Packet UInt8 -> Packet UInt8
 
 end unit
 `;
-const chainSource=extendUnit(source,`
+const chainSource = extendUnit(
+  source,
+  `
 type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
-copyChain :: Chain -> Chain`);
-const bindings={types:[{type:'layouts::type::Packet',native:['application','Packet'],constructors:[
-  {constructor:'Packed',native:['application','Packed'],style:'variant',fields:[
-    {field:'value',path:['first','count'],argument:2,native:'quantity'},
-    {field:'value',path:['last'],argument:0,native:'tail'},
-    {field:'value',path:['first','flag'],argument:1,native:'enabled'},
-  ]},
-]}],functions:[{declaration:'layouts::copy',native:['application','Operations','copy']}]};
-const run=(command,args,options={})=>{
-  const result=spawnSync(command,args,{encoding:'utf8',maxBuffer:32e6,...options});
-  assert.equal(result.status,0,command+' '+args.join(' ')+'\n'+result.stdout+'\n'+result.stderr);
+copyChain :: Chain -> Chain`,
+);
+const bindings = {
+  types: [
+    {
+      type: 'layouts::type::Packet',
+      native: ['application', 'Packet'],
+      constructors: [
+        {
+          constructor: 'Packed',
+          native: ['application', 'Packed'],
+          style: 'variant',
+          fields: [
+            {
+              field: 'value',
+              path: ['first', 'count'],
+              argument: 2,
+              native: 'quantity',
+            },
+            {field: 'value', path: ['last'], argument: 0, native: 'tail'},
+            {
+              field: 'value',
+              path: ['first', 'flag'],
+              argument: 1,
+              native: 'enabled',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  functions: [
+    {
+      declaration: 'layouts::copy',
+      native: ['application', 'Operations', 'copy'],
+    },
+  ],
+};
+const run = (command, args, options = {}) =>
+{
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    maxBuffer: 32e6,
+    ...options,
+  });
+  assert.equal(
+    result.status,
+    0,
+    command +
+      ' ' +
+      args.join(' ') +
+      '\n' +
+      result.stdout +
+      '\n' +
+      result.stderr,
+  );
   return result.stdout;
 };
-const selected=process.env.LAWSPEC_NATIVE_LAYOUT_TARGET;
-const required=target=>selected===target||selected==='all';
-const available=command=>spawnSync(command,command==='erl'?['-noshell','-eval','halt(0).']:command==='go'?['version']:[command==='kotlinc'?'-version':'--version'],{stdio:'ignore'}).status===0;
-async function files(root,extension){
-  const found=[];
-  for(const item of await readdir(root,{withFileTypes:true})){
-    const child=path.join(root,item.name);
-    if(item.isDirectory())found.push(...await files(child,extension));
-    else if(child.endsWith(extension))found.push(child);
+const selected = process.env.LAWSPEC_NATIVE_LAYOUT_TARGET;
+const required = target => selected === target || selected === 'all';
+const available = command =>
+  spawnSync(
+    command,
+    command === 'erl'
+      ? ['-noshell', '-eval', 'halt(0).']
+      : command === 'go'
+        ? ['version']
+        : [command === 'kotlinc' ? '-version' : '--version'],
+    {stdio: 'ignore'},
+  ).status === 0;
+async function files(root, extension)
+{
+  const found = [];
+  for (const item of await readdir(root, {withFileTypes: true}))
+  {
+    const child = path.join(root, item.name);
+    if (item.isDirectory()) found.push(...(await files(child, extension)));
+    else if (child.endsWith(extension)) found.push(child);
   }
   return found;
 }
-const jvmBindings=()=>{
-  const made=structuredClone(bindings);
-  made.types.push({type:'layouts::type::Chain',native:['application','Chain'],constructors:[
-    {constructor:'Stop',native:['application','Chain','STOP'],style:'unit',fields:[]},
-    {constructor:'Link',native:['application','Link'],style:'variant',fields:[
-      {field:'value',path:['next'],argument:0,native:'next'},
-      {field:'value',path:['item'],argument:1,native:'flag'},
-    ]},
-  ]});
-  made.functions.push({declaration:'layouts::copyChain',native:['application','Operations','copyChain']});
+const jvmBindings = () =>
+{
+  const made = structuredClone(bindings);
+  made.types.push({
+    type: 'layouts::type::Chain',
+    native: ['application', 'Chain'],
+    constructors: [
+      {
+        constructor: 'Stop',
+        native: ['application', 'Chain', 'STOP'],
+        style: 'unit',
+        fields: [],
+      },
+      {
+        constructor: 'Link',
+        native: ['application', 'Link'],
+        style: 'variant',
+        fields: [
+          {field: 'value', path: ['next'], argument: 0, native: 'next'},
+          {field: 'value', path: ['item'], argument: 1, native: 'flag'},
+        ],
+      },
+    ],
+  });
+  made.functions.push({
+    declaration: 'layouts::copyChain',
+    native: ['application', 'Operations', 'copyChain'],
+  });
   return made;
 };
-const application={
-  'application/Chain.java':`package application; public interface Chain { Chain STOP=new Chain(){}; }`,
-  'application/Link.java':`package application; public record Link(Chain next,boolean flag) implements Chain {}`,
-  'application/Packet.java':`package application; public interface Packet<T> {}`,
-  'application/Packed.java':`package application;
+const application = {
+  'application/Chain.java': `package application; public interface Chain { Chain STOP=new Chain(){}; }`,
+  'application/Link.java': `package application; public record Link(Chain next,boolean flag) implements Chain {}`,
+  'application/Packet.java': `package application; public interface Packet<T> {}`,
+  'application/Packed.java': `package application;
 public record Packed<T>(T tail, boolean enabled, short quantity) implements Packet<T> {
   public T tail(){Fixture.order.add("tail");return tail;}
   public boolean enabled(){Fixture.order.add("enabled");return enabled;}
   public short quantity(){Fixture.order.add("quantity");return quantity;}
 }`,
-  'application/Operations.java':`package application;
+  'application/Operations.java': `package application;
 public final class Operations {
   public static boolean mutate=false;
   public static Chain copyChain(Chain value){return value;}
@@ -79,7 +159,7 @@ public final class Operations {
     return mutate ? new Packed<>(packed.tail(),packed.enabled(),(short)0) : value;
   }
 }`,
-  'application/Fixture.java':`package application;
+  'application/Fixture.java': `package application;
 import java.util.*; import java.math.BigInteger; import lawspec.runtime.LawSpecRuntime;
 public final class Fixture {
   public static final List<String> order=new ArrayList<>();
@@ -101,7 +181,7 @@ public final class Fixture {
   }
 }`,
 };
-const javaCheck=bits=>`import application.*; import lawspec.runtime.*;
+const javaCheck = bits => `import application.*; import lawspec.runtime.*;
 public class Check {
   public static void main(String[] args){
     var schema=LawSpecDataSchema.create();var symbols=new java.util.HashMap<String,Object>();
@@ -126,7 +206,7 @@ public class Check {
     System.out.println("checked native layout passed");
   }
 }`;
-const kotlinCheck=bits=>`import application.*
+const kotlinCheck = bits => `import application.*
 import lawspec.runtime.*
 fun main(){
   val schema=LawSpecDataSchema.create()
@@ -150,7 +230,7 @@ fun main(){
   Fixture.inspectChain(chainCodec.decode(canonicalChain.encode(Layouts.copyChain(canonicalChain.decode(chain)))))
   println("checked native layout passed")
 }`;
-const scalaCheck=bits=>`import application.*
+const scalaCheck = bits => `import application.*
 import lawspec.runtime.*
 object Check {
   def main(args:Array[String]):Unit = {
@@ -176,46 +256,151 @@ object Check {
     println("checked native layout passed")
   }
 }`;
-for(const target of ['java','kotlin','scala','groovy']){
-  const compilerTool=target==='kotlin'?'kotlinc':target==='scala'?'scala':'javac';
-  test(`${target} native layouts compile and enforce nested boundary refinements`,
-    {skip:!required(target)&&(!available(compilerTool)?`${compilerTool} is not installed`:
-      target==='scala'&&!existsSync(new URL('../../.integration/scala/lawspec.edn',import.meta.url))?'Scala acceptance environment is not installed':false)},async()=>{
-    for(const machineBits of [32,64])for(const minify of [false,true]){
-      const result=await compiler.planGeneration({...options,target,machineBits,minify,
-        sources:[{path:'layouts.lawspec',content:chainSource}],nativeBindings:jvmBindings()});
-      assert.deepEqual(result.diagnostics,[]);
-      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-static-layout-'));
-      try{
-        for(const file of result.files.filter(file=>file.placement==='source')){
-          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+for (const target of ['java', 'kotlin', 'scala', 'groovy'])
+{
+  const compilerTool =
+    target === 'kotlin' ? 'kotlinc' : target === 'scala' ? 'scala' : 'javac';
+  test(
+    `${target} native layouts compile and enforce nested boundary refinements`,
+    {
+      skip:
+        !required(target) &&
+        (!available(compilerTool)
+          ? `${compilerTool} is not installed`
+          : target === 'scala' &&
+              !existsSync(
+                new URL(
+                  '../../.integration/scala/lawspec.edn',
+                  import.meta.url,
+                ),
+              )
+            ? 'Scala acceptance environment is not installed'
+            : false),
+    },
+    async () =>
+    {
+      for (const machineBits of [32, 64])
+        for (const minify of [false, true])
+        {
+          const result = await compiler.planGeneration({
+            ...options,
+            target,
+            machineBits,
+            minify,
+            sources: [{path: 'layouts.lawspec', content: chainSource}],
+            nativeBindings: jvmBindings(),
+          });
+          assert.deepEqual(result.diagnostics, []);
+          const root = await mkdtemp(
+            path.join(os.tmpdir(), 'lawspec-static-layout-'),
+          );
+          try
+          {
+            for (const file of result.files.filter(
+              file => file.placement === 'source',
+            ))
+            {
+              const destination = path.join(root, file.path);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, file.content);
+            }
+            for (const [name, content] of Object.entries(application))
+            {
+              const destination = path.join(root, 'src/main/java', name);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, content);
+            }
+            if (target === 'java' || target === 'groovy')
+            {
+              await writeFile(
+                path.join(root, 'src/main/java/Check.java'),
+                javaCheck(machineBits),
+              );
+              run(
+                'javac',
+                [
+                  '-d',
+                  'out',
+                  ...(await files(path.join(root, 'src'), '.java')),
+                ],
+                {cwd: root},
+              );
+              run('java', ['-cp', 'out', 'Check'], {cwd: root});
+            }
+            else if (target === 'kotlin')
+            {
+              await writeFile(
+                path.join(root, 'Check.kt'),
+                kotlinCheck(machineBits),
+              );
+              run(
+                'javac',
+                [
+                  '-d',
+                  'out',
+                  ...(await files(path.join(root, 'src'), '.java')),
+                ],
+                {cwd: root},
+              );
+              run(
+                'kotlinc',
+                [
+                  '-classpath',
+                  'out',
+                  '-d',
+                  'out',
+                  ...(await files(path.join(root, 'src'), '.kt')),
+                  'Check.kt',
+                ],
+                {cwd: root},
+              );
+              run('kotlin', ['-classpath', 'out', 'CheckKt'], {cwd: root});
+            }
+            else
+            {
+              await writeFile(
+                path.join(root, 'Check.scala'),
+                scalaCheck(machineBits),
+              );
+              // Compile the Java runtime and fixture first; Scala CLI's mixed-source
+              // compilation may only typecheck Java sources when running a main.
+              run(
+                'javac',
+                [
+                  '-d',
+                  'out',
+                  ...(await files(path.join(root, 'src'), '.java')),
+                ],
+                {cwd: root},
+              );
+              run(
+                'scala',
+                [
+                  '--power',
+                  'run',
+                  '--server=false',
+                  '--offline',
+                  '--classpath',
+                  'out',
+                  ...(await files(path.join(root, 'src'), '.scala')),
+                  'Check.scala',
+                  '--main-class',
+                  'Check',
+                ],
+                {cwd: root},
+              );
+            }
+          }
+          finally
+          {
+            await rm(root, {recursive: true, force: true});
+          }
         }
-        for(const [name,content] of Object.entries(application)){
-          const destination=path.join(root,'src/main/java',name);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,content);
-        }
-        if(target==='java'||target==='groovy'){
-          await writeFile(path.join(root,'src/main/java/Check.java'),javaCheck(machineBits));
-          run('javac',['-d','out',...await files(path.join(root,'src'),'.java')],{cwd:root});
-          run('java',['-cp','out','Check'],{cwd:root});
-        }else if(target==='kotlin'){
-          await writeFile(path.join(root,'Check.kt'),kotlinCheck(machineBits));
-          run('javac',['-d','out',...await files(path.join(root,'src'),'.java')],{cwd:root});
-          run('kotlinc',['-classpath','out','-d','out',...await files(path.join(root,'src'),'.kt'),'Check.kt'],{cwd:root});
-          run('kotlin',['-classpath','out','CheckKt'],{cwd:root});
-        }else{
-          await writeFile(path.join(root,'Check.scala'),scalaCheck(machineBits));
-          // Compile the Java runtime and fixture first; Scala CLI's mixed-source
-          // compilation may only typecheck Java sources when running a main.
-          run('javac',['-d','out',...await files(path.join(root,'src'),'.java')],{cwd:root});
-          run('scala',['--power','run','--server=false','--offline','--classpath','out',
-            ...await files(path.join(root,'src'),'.scala'),'Check.scala','--main-class','Check'],{cwd:root});
-        }
-      }finally{await rm(root,{recursive:true,force:true});}
-    }
-  });
+    },
+  );
 }
 
-const rustApplication=`use std::sync::atomic::{AtomicBool,AtomicUsize,Ordering};
+const rustApplication = `use std::sync::atomic::{AtomicBool,AtomicUsize,Ordering};
 pub static MUTATE:AtomicBool=AtomicBool::new(false);
 pub static CALLS:AtomicUsize=AtomicUsize::new(0);
 #[derive(Debug)] pub struct Packed<T>{pub tail:T,pub enabled:bool,pub quantity:u8}
@@ -227,7 +412,7 @@ pub fn copy<T>(mut value:Packet<T>)->Packet<T>{
 #[derive(Debug)] pub enum Chain{Stop,Link{next:Box<Chain>,enabled:bool}}
 pub fn copy_chain(value:Chain)->Chain{value}
 `;
-const rustCheck=`include!("lawspec_modules.rs");
+const rustCheck = `include!("lawspec_modules.rs");
 pub mod application;
 #[cfg(test)] mod tests {
   use super::*;use std::sync::atomic::Ordering;
@@ -260,64 +445,172 @@ pub mod application;
   }
 }
 `;
-test('rust native layouts preserve recursive boxes and reject invalid adapter boundaries',
-  {skip:!required('rust')&&'requires the Rust acceptance environment'},async()=>{
-  const content=extendUnit(source,`
+test(
+  'rust native layouts preserve recursive boxes and reject invalid adapter boundaries',
+  {skip: !required('rust') && 'requires the Rust acceptance environment'},
+  async () =>
+  {
+    const content = extendUnit(
+      source,
+      `
 type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
-copyChain :: Chain -> Chain`);
-  const nativeBindings=structuredClone(bindings);nativeBindings.rustCrate='native_layout_fixture';
-  nativeBindings.types[0].native.unshift('crate');nativeBindings.types[0].constructors[0].native.unshift('crate');
-  nativeBindings.functions[0].native=['crate','application','copy'];
-  nativeBindings.types.push({type:'layouts::type::Chain',native:['crate','application','Chain'],constructors:[
-    {constructor:'Stop',native:['crate','application','Chain','Stop'],style:'unit',fields:[]},
-    {constructor:'Link',native:['crate','application','Chain','Link'],style:'variant',fields:[
-      {field:'value',path:['item'],argument:1,native:'enabled'},
-      {field:'value',path:['next'],argument:0,native:'next'},
-    ]},
-  ]});
-  nativeBindings.functions.push({declaration:'layouts::copyChain',native:['crate','application','copy_chain']});
-  const targetRoot=await mkdtemp(path.join(os.tmpdir(),'lawspec-layout-rust-target-'));
-  try{for(const machineBits of [32,64])for(const minify of [false,true]){
-    const result=await compiler.planGeneration({...options,target:'rust',machineBits,minify,
-      sources:[{path:'layouts.lawspec',content}],nativeBindings});
-    assert.deepEqual(result.diagnostics,[]);
-    const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-layout-rust-'));
-    try{
-      for(const file of result.files.filter(file=>file.placement==='source')){
-        const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
-      }
-      await writeFile(path.join(root,'Cargo.toml'),templates('rust')['Cargo.toml'].replace('name = "lawspec-example"','name = "native_layout_fixture"'));
-      await writeFile(path.join(root,'src/lib.rs'),rustCheck);
-      await writeFile(path.join(root,'src/application.rs'),rustApplication);
-      run('cargo',['test','--offline','--lib'],{cwd:root,env:{...process.env,CARGO_TARGET_DIR:targetRoot}});
-    }finally{await rm(root,{recursive:true,force:true});}
-  }}finally{await rm(targetRoot,{recursive:true,force:true});}
-});
+copyChain :: Chain -> Chain`,
+    );
+    const nativeBindings = structuredClone(bindings);
+    nativeBindings.rustCrate = 'native_layout_fixture';
+    nativeBindings.types[0].native.unshift('crate');
+    nativeBindings.types[0].constructors[0].native.unshift('crate');
+    nativeBindings.functions[0].native = ['crate', 'application', 'copy'];
+    nativeBindings.types.push({
+      type: 'layouts::type::Chain',
+      native: ['crate', 'application', 'Chain'],
+      constructors: [
+        {
+          constructor: 'Stop',
+          native: ['crate', 'application', 'Chain', 'Stop'],
+          style: 'unit',
+          fields: [],
+        },
+        {
+          constructor: 'Link',
+          native: ['crate', 'application', 'Chain', 'Link'],
+          style: 'variant',
+          fields: [
+            {field: 'value', path: ['item'], argument: 1, native: 'enabled'},
+            {field: 'value', path: ['next'], argument: 0, native: 'next'},
+          ],
+        },
+      ],
+    });
+    nativeBindings.functions.push({
+      declaration: 'layouts::copyChain',
+      native: ['crate', 'application', 'copy_chain'],
+    });
+    const targetRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'lawspec-layout-rust-target-'),
+    );
+    try
+    {
+      for (const machineBits of [32, 64])
+        for (const minify of [false, true])
+        {
+          const result = await compiler.planGeneration({
+            ...options,
+            target: 'rust',
+            machineBits,
+            minify,
+            sources: [{path: 'layouts.lawspec', content}],
+            nativeBindings,
+          });
+          assert.deepEqual(result.diagnostics, []);
+          const root = await mkdtemp(
+            path.join(os.tmpdir(), 'lawspec-layout-rust-'),
+          );
+          try
+          {
+            for (const file of result.files.filter(
+              file => file.placement === 'source',
+            ))
+            {
+              const destination = path.join(root, file.path);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, file.content);
+            }
+            await writeFile(
+              path.join(root, 'Cargo.toml'),
+              templates('rust')['Cargo.toml'].replace(
+                'name = "lawspec-example"',
+                'name = "native_layout_fixture"',
+              ),
+            );
+            await writeFile(path.join(root, 'src/lib.rs'), rustCheck);
+            await writeFile(
+              path.join(root, 'src/application.rs'),
+              rustApplication,
+            );
+            run('cargo', ['test', '--offline', '--lib'], {
+              cwd: root,
+              env: {...process.env, CARGO_TARGET_DIR: targetRoot},
+            });
+          }
+          finally
+          {
+            await rm(root, {recursive: true, force: true});
+          }
+        }
+    }
+    finally
+    {
+      await rm(targetRoot, {recursive: true, force: true});
+    }
+  },
+);
 
-const recursiveSource=extendUnit(source,`
+const recursiveSource = extendUnit(
+  source,
+  `
 copyBad :: Packet UInt8 -> Packet UInt8
 type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
-copyChain :: Chain -> Chain`);
-function recursiveBindings(target){
-  const go=target==='go',module=go?'application':'Application';
-  const nativeBindings=structuredClone(bindings);
-  for(const item of nativeBindings.types){item.native[0]=module;for(const constructor of item.constructors){
-    constructor.native[0]=module;
-    if(go)for(const field of constructor.fields)field.native=field.native[0].toUpperCase()+field.native.slice(1);
-  }}
-  nativeBindings.types.push({type:'layouts::type::Chain',native:[module,'Chain'],constructors:[
-    {constructor:'Stop',native:[module,'Stop'],style:'unit',fields:[]},
-    {constructor:'Link',native:[module,'Link'],style:'variant',fields:[
-      {field:'value',path:['item'],argument:1,native:go?'Flag':'flag'},
-      {field:'value',path:['next'],argument:0,native:go?'Next':'next'},
-    ]},
-  ]});
-  nativeBindings.functions=['copy','copyBad','copyChain'].map(name=>({declaration:'layouts::'+name,
-    native:[module,go?name[0].toUpperCase()+name.slice(1):name]}));
-  if(go)nativeBindings.goImports=[{alias:module,path:'native_layout_fixture/application'}];
+copyChain :: Chain -> Chain`,
+);
+function recursiveBindings(target)
+{
+  const go = target === 'go',
+    module = go ? 'application' : 'Application';
+  const nativeBindings = structuredClone(bindings);
+  for (const item of nativeBindings.types)
+  {
+    item.native[0] = module;
+    for (const constructor of item.constructors)
+    {
+      constructor.native[0] = module;
+      if (go)
+        for (const field of constructor.fields)
+          field.native = field.native[0].toUpperCase() + field.native.slice(1);
+    }
+  }
+  nativeBindings.types.push({
+    type: 'layouts::type::Chain',
+    native: [module, 'Chain'],
+    constructors: [
+      {
+        constructor: 'Stop',
+        native: [module, 'Stop'],
+        style: 'unit',
+        fields: [],
+      },
+      {
+        constructor: 'Link',
+        native: [module, 'Link'],
+        style: 'variant',
+        fields: [
+          {
+            field: 'value',
+            path: ['item'],
+            argument: 1,
+            native: go ? 'Flag' : 'flag',
+          },
+          {
+            field: 'value',
+            path: ['next'],
+            argument: 0,
+            native: go ? 'Next' : 'next',
+          },
+        ],
+      },
+    ],
+  });
+  nativeBindings.functions = ['copy', 'copyBad', 'copyChain'].map(name => ({
+    declaration: 'layouts::' + name,
+    native: [module, go ? name[0].toUpperCase() + name.slice(1) : name],
+  }));
+  if (go)
+    nativeBindings.goImports = [
+      {alias: module, path: 'native_layout_fixture/application'},
+    ];
   return nativeBindings;
 }
-const goApplication=`package application
+const goApplication = `package application
 // Deliberately use another native declaration order.
 type Packed[T any] struct{ Quantity uint8; Enabled bool; Tail T }
 type Packet[T any] = Packed[T]
@@ -332,7 +625,7 @@ type Link struct{Flag bool;Next Chain}
 func(Link)chain(){}
 func CopyChain(value Chain) Chain{return value}
 `;
-const goCheck=bits=>`package layouts
+const goCheck = bits => `package layouts
 import("testing";"math/big";"native_layout_fixture/application")
 func TestNativeLayouts(t *testing.T){
   schema:=lawSpecDataSchemaRegistry()
@@ -367,7 +660,7 @@ func TestNativeLayouts(t *testing.T){
   if !link.Flag||link.Next!=application.Stop{t.Fatal("recursive adapter changed branches")}
 }
 `;
-const haskellApplication=`module Application where
+const haskellApplication = `module Application where
 import qualified Prelude as P
 import Data.Word(Word8)
 data Packet a = Packed{quantity :: Word8,enabled :: P.Bool,tail :: a}
@@ -379,11 +672,13 @@ data Chain = Stop | Link{flag :: P.Bool,next :: Chain}
 copyChain :: Chain -> Chain
 copyChain value=value
 `;
-function haskellCheck(bits,result){
+function haskellCheck(bits, result)
+{
   // The fixture's public native names come from the constructor using the
   // outer record and the inner record's fields; Core's digest names stay
   // internal to the compiler.
-  const payload='PackedDetails',details='CountFlag';
+  const payload = 'PackedDetails',
+    details = 'CountFlag';
   return `module Main where
 import qualified Prelude as P
 import Prelude (IO,($),(>>=),(>>),pure,fail,otherwise)
@@ -438,58 +733,165 @@ main=do
   P.putStrLn "checked native layouts passed"
 `;
 }
-for(const target of ['go','haskell']){
-  test(`${target} native layouts preserve recursive records and checked boundaries`,
-    {skip:!required(target)&&(target==='haskell'?'requires the Haskell acceptance environment':!available('go')&&'go is not installed')},async()=>{
-    const stackArguments=['--no-terminal','--stack-yaml',new URL('../../stack.yaml',import.meta.url).pathname,'path'];
-    const ghc=target==='haskell'?(process.env.LAWSPEC_GHC??run('stack',[...stackArguments,'--compiler-exe']).trim()):null;
-    const packageDb=target==='haskell'?run('stack',[...stackArguments,'--snapshot-pkg-db']).trim():null;
-    for(const machineBits of [32,64])for(const minify of [false,true]){
-      const result=await compiler.planGeneration({...options,target,machineBits,minify,
-        sources:[{path:'layouts.lawspec',content:recursiveSource}],nativeBindings:recursiveBindings(target)});
-      assert.deepEqual(result.diagnostics,[]);
-      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-functional-layout-'));
-      try{
-        for(const file of result.files.filter(file=>file.placement==='source')){
-          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+for (const target of ['go', 'haskell'])
+{
+  test(
+    `${target} native layouts preserve recursive records and checked boundaries`,
+    {
+      skip:
+        !required(target) &&
+        (target === 'haskell'
+          ? 'requires the Haskell acceptance environment'
+          : !available('go') && 'go is not installed'),
+    },
+    async () =>
+    {
+      const stackArguments = [
+        '--no-terminal',
+        '--stack-yaml',
+        new URL('../../stack.yaml', import.meta.url).pathname,
+        'path',
+      ];
+      const ghc =
+        target === 'haskell'
+          ? (process.env.LAWSPEC_GHC ??
+            run('stack', [...stackArguments, '--compiler-exe']).trim())
+          : null;
+      const packageDb =
+        target === 'haskell'
+          ? run('stack', [...stackArguments, '--snapshot-pkg-db']).trim()
+          : null;
+      for (const machineBits of [32, 64])
+        for (const minify of [false, true])
+        {
+          const result = await compiler.planGeneration({
+            ...options,
+            target,
+            machineBits,
+            minify,
+            sources: [{path: 'layouts.lawspec', content: recursiveSource}],
+            nativeBindings: recursiveBindings(target),
+          });
+          assert.deepEqual(result.diagnostics, []);
+          const root = await mkdtemp(
+            path.join(os.tmpdir(), 'lawspec-functional-layout-'),
+          );
+          try
+          {
+            for (const file of result.files.filter(
+              file => file.placement === 'source',
+            ))
+            {
+              const destination = path.join(root, file.path);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, file.content);
+            }
+            if (target === 'go')
+            {
+              await mkdir(path.join(root, 'application'));
+              await writeFile(
+                path.join(root, 'application/application.go'),
+                goApplication,
+              );
+              await writeFile(
+                path.join(root, 'layouts/layout_test.go'),
+                goCheck(machineBits),
+              );
+              await writeFile(
+                path.join(root, 'go.mod'),
+                'module native_layout_fixture\n\ngo 1.24\n',
+              );
+              run('go', ['test', './...'], {
+                cwd: root,
+                env: {...process.env, GOPROXY: 'off', GOTOOLCHAIN: 'local'},
+              });
+            }
+            else
+            {
+              await writeFile(
+                path.join(root, 'src/Application.hs'),
+                haskellApplication,
+              );
+              await writeFile(
+                path.join(root, 'Main.hs'),
+                haskellCheck(machineBits, result),
+              );
+              await mkdir(path.join(root, 'build'));
+              run(
+                ghc,
+                [
+                  '-package-db',
+                  packageDb,
+                  '-package',
+                  'network',
+                  '-O0',
+                  '-isrc',
+                  '-odir',
+                  'build',
+                  '-hidir',
+                  'build',
+                  'Main.hs',
+                  '-o',
+                  'check',
+                ],
+                {cwd: root},
+              );
+              run(path.join(root, 'check'), [], {cwd: root});
+            }
+          }
+          finally
+          {
+            await rm(root, {recursive: true, force: true});
+          }
         }
-        if(target==='go'){
-          await mkdir(path.join(root,'application'));
-          await writeFile(path.join(root,'application/application.go'),goApplication);
-          await writeFile(path.join(root,'layouts/layout_test.go'),goCheck(machineBits));
-          await writeFile(path.join(root,'go.mod'),'module native_layout_fixture\n\ngo 1.24\n');
-          run('go',['test','./...'],{cwd:root,env:{...process.env,GOPROXY:'off',GOTOOLCHAIN:'local'}});
-        }else{
-          await writeFile(path.join(root,'src/Application.hs'),haskellApplication);
-          await writeFile(path.join(root,'Main.hs'),haskellCheck(machineBits,result));
-          await mkdir(path.join(root,'build'));
-          run(ghc,['-package-db',packageDb,'-package','network','-O0','-isrc','-odir','build','-hidir','build','Main.hs','-o','check'],{cwd:root});
-          run(path.join(root,'check'),[],{cwd:root});
-        }
-      }finally{await rm(root,{recursive:true,force:true});}
-    }
-  });
+    },
+  );
 }
 
-const dotnetSwiftSource=extendUnit(recursiveSource,`
+const dotnetSwiftSource = extendUnit(
+  recursiveSource,
+  `
 type Crate (a :: Type) is a record{
   payload :: record{last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}}
 } end type
-copyCrate :: Crate UInt8 -> Crate UInt8`);
-function dotnetSwiftBindings(target){
-  const made=recursiveBindings('haskell');
-  const swift=target==='swift';
-  made.types[0].constructors[0].native=swift?['Application','Packet','packed']:['Application','Packed'];
-  for(const constructor of made.types[1].constructors)
-    constructor.native=swift?['Application','Chain',constructor.constructor.toLowerCase()]:['Application',constructor.constructor];
-  made.types.push({type:'layouts::type::Crate',native:['Application','Crate'],constructors:[{
-    constructor:'Crate',native:['Application','Crate'],style:'record',fields:
-      made.types[0].constructors[0].fields.map(field=>({...field,field:'payload',native:swift?field.native:field.native[0].toUpperCase()+field.native.slice(1)})),
-  }]});
-  made.functions.push({declaration:'layouts::copyCrate',native:['Application','copyCrate']});
+copyCrate :: Crate UInt8 -> Crate UInt8`,
+);
+function dotnetSwiftBindings(target)
+{
+  const made = recursiveBindings('haskell');
+  const swift = target === 'swift';
+  made.types[0].constructors[0].native = swift
+    ? ['Application', 'Packet', 'packed']
+    : ['Application', 'Packed'];
+  for (const constructor of made.types[1].constructors)
+    constructor.native = swift
+      ? ['Application', 'Chain', constructor.constructor.toLowerCase()]
+      : ['Application', constructor.constructor];
+  made.types.push({
+    type: 'layouts::type::Crate',
+    native: ['Application', 'Crate'],
+    constructors: [
+      {
+        constructor: 'Crate',
+        native: ['Application', 'Crate'],
+        style: 'record',
+        fields: made.types[0].constructors[0].fields.map(field => ({
+          ...field,
+          field: 'payload',
+          native: swift
+            ? field.native
+            : field.native[0].toUpperCase() + field.native.slice(1),
+        })),
+      },
+    ],
+  });
+  made.functions.push({
+    declaration: 'layouts::copyCrate',
+    native: ['Application', 'copyCrate'],
+  });
   return made;
 }
-const fsharpApplication=`module Application
+const fsharpApplication = `module Application
 [<NoEquality; NoComparison>]
 type Packet<'T> = Packed of tail: 'T * enabled: bool * quantity: byte
 [<NoEquality; NoComparison>]
@@ -505,7 +907,7 @@ let copyCrate (value: Crate<byte>) =
     if value.Quantity = 0uy then failwith "NATIVE_INPUT_REACHED"
     value
 `;
-const fsharpCheck=`module Check
+const fsharpCheck = `module Check
 open LawSpec.Runtime
 let require condition = if not condition then failwith "native layout mismatch"
 let rejected code action =
@@ -539,7 +941,7 @@ let main _ =
     printfn "checked native layout passed"
     0
 `;
-const swiftApplication=`import LawSpecRuntime
+const swiftApplication = `import LawSpecRuntime
 public enum Application {
     public enum Packet<T> { case packed(tail:T, enabled:Bool, quantity:UInt8) }
     public indirect enum Chain: Sendable { case stop; case link(next:Chain, flag:Bool) }
@@ -563,7 +965,7 @@ public enum Application {
     }
 }
 `;
-const swiftCheck=`import LawSpecRuntime
+const swiftCheck = `import LawSpecRuntime
 func require(_ condition:Bool) { precondition(condition,"native layout mismatch") }
 func rejected(_ code:String,_ action:() throws -> Void) {
     do { try action(); preconditionFailure("invalid value admitted") }
@@ -600,51 +1002,132 @@ func rejected(_ code:String,_ action:() throws -> Void) {
     }
 }
 `;
-for(const target of ['fsharp','swift']){
-  const tool=target==='fsharp'?'dotnet':'swift';
-  test(`${target} native layouts compile generic variants, records and recursive types with checked boundaries`,
-    {skip:!required(target)&&!available(tool)&&`${tool} is not installed`},async()=>{
-    for(const machineBits of [32,64])for(const minify of [false,true]){
-      const result=await compiler.planGeneration({...options,target,machineBits,minify,
-        sources:[{path:'layouts.lawspec',content:dotnetSwiftSource}],nativeBindings:dotnetSwiftBindings(target)});
-      assert.deepEqual(result.diagnostics,[]);
-      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-dotnet-swift-layout-'));
-      try{
-        for(const file of result.files.filter(file=>file.placement==='source')){
-          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+for (const target of ['fsharp', 'swift'])
+{
+  const tool = target === 'fsharp' ? 'dotnet' : 'swift';
+  test(
+    `${target} native layouts compile generic variants, records and recursive types with checked boundaries`,
+    {skip: !required(target) && !available(tool) && `${tool} is not installed`},
+    async () =>
+    {
+      for (const machineBits of [32, 64])
+        for (const minify of [false, true])
+        {
+          const result = await compiler.planGeneration({
+            ...options,
+            target,
+            machineBits,
+            minify,
+            sources: [{path: 'layouts.lawspec', content: dotnetSwiftSource}],
+            nativeBindings: dotnetSwiftBindings(target),
+          });
+          assert.deepEqual(result.diagnostics, []);
+          const root = await mkdtemp(
+            path.join(os.tmpdir(), 'lawspec-dotnet-swift-layout-'),
+          );
+          try
+          {
+            for (const file of result.files.filter(
+              file => file.placement === 'source',
+            ))
+            {
+              const destination = path.join(root, file.path);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, file.content);
+            }
+            if (target === 'fsharp')
+            {
+              await mkdir(path.join(root, 'src/Native/Types'), {
+                recursive: true,
+              });
+              await writeFile(
+                path.join(root, 'src/Native/Types/Application.fs'),
+                fsharpApplication,
+              );
+              await writeFile(path.join(root, 'src/Check.fs'), fsharpCheck);
+              await writeFile(
+                path.join(root, 'src/Check.fsproj'),
+                `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><NuGetAudit>false</NuGetAudit></PropertyGroup><Import Project="LawSpec.Sources.props"/><ItemGroup><Compile Include="Check.fs"/><ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj"/></ItemGroup></Project>`,
+              );
+              assert.match(
+                run(
+                  'dotnet',
+                  [
+                    'run',
+                    '--project',
+                    'src/Check.fsproj',
+                    '--verbosity',
+                    'quiet',
+                  ],
+                  {cwd: root},
+                ),
+                /checked native layout passed/,
+              );
+            }
+            else
+            {
+              await writeFile(
+                path.join(root, 'src/Application.swift'),
+                swiftApplication,
+              );
+              await writeFile(path.join(root, 'src/Check.swift'), swiftCheck);
+              await writeFile(
+                path.join(root, 'Package.swift'),
+                `// swift-tools-version: 6.2\nimport PackageDescription\nlet package=Package(name:"NativeLayout",platforms:[.macOS(.v26)],targets:[.target(name:"LawSpecRuntime",path:"lawspec/LawSpecRuntime"),.executableTarget(name:"Check",dependencies:["LawSpecRuntime"],path:"src")])\n`,
+              );
+              assert.match(
+                run('swift', ['run', '--quiet', '-j', '2', 'Check'], {
+                  cwd: root,
+                }),
+                /checked native layout passed/,
+              );
+            }
+          }
+          finally
+          {
+            await rm(root, {recursive: true, force: true});
+          }
         }
-        if(target==='fsharp'){
-          await mkdir(path.join(root,'src/Native/Types'),{recursive:true});
-          await writeFile(path.join(root,'src/Native/Types/Application.fs'),fsharpApplication);
-          await writeFile(path.join(root,'src/Check.fs'),fsharpCheck);
-          await writeFile(path.join(root,'src/Check.fsproj'),`<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><NuGetAudit>false</NuGetAudit></PropertyGroup><Import Project="LawSpec.Sources.props"/><ItemGroup><Compile Include="Check.fs"/><ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj"/></ItemGroup></Project>`);
-          assert.match(run('dotnet',['run','--project','src/Check.fsproj','--verbosity','quiet'],{cwd:root}),/checked native layout passed/);
-        }else{
-          await writeFile(path.join(root,'src/Application.swift'),swiftApplication);
-          await writeFile(path.join(root,'src/Check.swift'),swiftCheck);
-          await writeFile(path.join(root,'Package.swift'),`// swift-tools-version: 6.2\nimport PackageDescription\nlet package=Package(name:"NativeLayout",platforms:[.macOS(.v26)],targets:[.target(name:"LawSpecRuntime",path:"lawspec/LawSpecRuntime"),.executableTarget(name:"Check",dependencies:["LawSpecRuntime"],path:"src")])\n`);
-          assert.match(run('swift',['run','--quiet','-j','2','Check'],{cwd:root}),/checked native layout passed/);
-        }
-      }finally{await rm(root,{recursive:true,force:true});}
-    }
-  });
+    },
+  );
 }
 
-function beamBindings(target){
-  const made=dotnetSwiftBindings('swift'),elixir=target==='elixir';
-  const owner=elixir?'LayoutApplication':'layout_application';
-  for(const type of made.types){
-    type.native=[owner,target==='erlang'?type.type.split('::').at(-1).toLowerCase():type.type.split('::').at(-1)];
-    for(const constructor of type.constructors){
-      constructor.native=target==='erlang'||(elixir&&constructor.constructor==='Stop')?
-        [constructor.constructor.toLowerCase()]:[owner,constructor.constructor];
+function beamBindings(target)
+{
+  const made = dotnetSwiftBindings('swift'),
+    elixir = target === 'elixir';
+  const owner = elixir ? 'LayoutApplication' : 'layout_application';
+  for (const type of made.types)
+  {
+    type.native = [
+      owner,
+      target === 'erlang'
+        ? type.type.split('::').at(-1).toLowerCase()
+        : type.type.split('::').at(-1),
+    ];
+    for (const constructor of type.constructors)
+    {
+      constructor.native =
+        target === 'erlang' || (elixir && constructor.constructor === 'Stop')
+          ? [constructor.constructor.toLowerCase()]
+          : [owner, constructor.constructor];
     }
   }
-  made.functions=made.functions.map(binding=>({...binding,native:[owner,binding.declaration.split('::').at(-1).replace(/[A-Z]/g,c=>'_'+c.toLowerCase())]}));
-  if(target==='erlang')made.erlangIncludes=[{path:'layout_application.hrl'}];
+  made.functions = made.functions.map(binding => ({
+    ...binding,
+    native: [
+      owner,
+      binding.declaration
+        .split('::')
+        .at(-1)
+        .replace(/[A-Z]/g, c => '_' + c.toLowerCase()),
+    ],
+  }));
+  if (target === 'erlang')
+    made.erlangIncludes = [{path: 'layout_application.hrl'}];
   return made;
 }
-const erlangLayoutApplication=`-module(layout_application).
+const erlangLayoutApplication = `-module(layout_application).
 -include("layout_application.hrl").
 -export([copy/1,copy_bad/1,copy_chain/1,copy_crate/1]).
 copy({packed,_,_,0}) -> error(native_input_reached);
@@ -654,7 +1137,7 @@ copy_chain(Value) -> Value.
 copy_crate(#crate{quantity=0}) -> error(native_input_reached);
 copy_crate(Value) -> Value.
 `;
-const elixirLayoutApplication=`defmodule LayoutApplication.Packed do
+const elixirLayoutApplication = `defmodule LayoutApplication.Packed do
   defstruct [:tail, :enabled, :quantity]
 end
 defmodule LayoutApplication.Link do
@@ -672,7 +1155,7 @@ defmodule LayoutApplication do
   def copy_crate(value), do: value
 end
 `;
-const gleamLayoutApplication=`pub type Packet(a) { Packed(quantity: Int, tail: a, enabled: Bool) }
+const gleamLayoutApplication = `pub type Packet(a) { Packed(quantity: Int, tail: a, enabled: Bool) }
 pub type Chain { Stop Link(flag: Bool, next: Chain) }
 pub type Crate(a) { Crate(quantity: Int, enabled: Bool, tail: a) }
 pub fn copy(value: Packet(Int)) -> Packet(Int) {
@@ -684,12 +1167,24 @@ pub fn copy_crate(value: Crate(Int)) -> Crate(Int) {
   case value.quantity { 0 -> panic as "NATIVE_INPUT_REACHED" _ -> value }
 }
 `;
-function beamCheck(target){
-  const packet=(quantity)=>target==='elixir'?`#{'__struct__'=>'Elixir.LayoutApplication.Packed',tail=>7,enabled=>true,quantity=>${quantity}}`:
-    target==='gleam'?`{packed,${quantity},7,true}`:`{packed,7,true,${quantity}}`;
-  const crate=target==='elixir'?`#{'__struct__'=>'Elixir.LayoutApplication.Crate',tail=>7,enabled=>true,quantity=>3}`:'{crate,3,true,7}';
-  const chain=target==='elixir'?`#{'__struct__'=>'Elixir.LayoutApplication.Link',next=>stop,flag=>true}`:
-    target==='gleam'?'{link,true,stop}':'{link,stop,true}';
+function beamCheck(target)
+{
+  const packet = quantity =>
+    target === 'elixir'
+      ? `#{'__struct__'=>'Elixir.LayoutApplication.Packed',tail=>7,enabled=>true,quantity=>${quantity}}`
+      : target === 'gleam'
+        ? `{packed,${quantity},7,true}`
+        : `{packed,7,true,${quantity}}`;
+  const crate =
+    target === 'elixir'
+      ? `#{'__struct__'=>'Elixir.LayoutApplication.Crate',tail=>7,enabled=>true,quantity=>3}`
+      : '{crate,3,true,7}';
+  const chain =
+    target === 'elixir'
+      ? `#{'__struct__'=>'Elixir.LayoutApplication.Link',next=>stop,flag=>true}`
+      : target === 'gleam'
+        ? '{link,true,stop}'
+        : '{link,stop,true}';
   return `-module(layout_check).
 -export([run/0]).
 require(true) -> ok; require(false) -> error(native_layout_mismatch).
@@ -724,40 +1219,141 @@ run() ->
     io:format("checked native layout passed~n").
 `;
 }
-const gleamStdlib=process.env.LAWSPEC_GLEAM_STDLIB??new URL('../../.integration/gleam/build/packages/gleam_stdlib',import.meta.url).pathname;
-for(const target of ['erlang','elixir','gleam']){
-  const tool=target==='erlang'?'erl':target;
-  test(`${target} native layouts compile generic records, variants and recursive values with checked boundaries`,
-    {skip:!required(target)&&(!available(tool)?`${tool} is not installed`:
-      target==='gleam'&&!existsSync(gleamStdlib)?'prepared Gleam standard library is not installed':false)},async()=>{
-    for(const machineBits of [32,64])for(const minify of [false,true]){
-      const result=await compiler.planGeneration({...options,target,machineBits,minify,
-        sources:[{path:'layouts.lawspec',content:dotnetSwiftSource}],nativeBindings:beamBindings(target)});
-      assert.deepEqual(result.diagnostics,[]);
-      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-beam-layout-'));
-      try{
-        for(const file of result.files.filter(file=>file.placement==='source')){
-          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+const gleamStdlib =
+  process.env.LAWSPEC_GLEAM_STDLIB ??
+  new URL(
+    '../../.integration/gleam/build/packages/gleam_stdlib',
+    import.meta.url,
+  ).pathname;
+for (const target of ['erlang', 'elixir', 'gleam'])
+{
+  const tool = target === 'erlang' ? 'erl' : target;
+  test(
+    `${target} native layouts compile generic records, variants and recursive values with checked boundaries`,
+    {
+      skip:
+        !required(target) &&
+        (!available(tool)
+          ? `${tool} is not installed`
+          : target === 'gleam' && !existsSync(gleamStdlib)
+            ? 'prepared Gleam standard library is not installed'
+            : false),
+    },
+    async () =>
+    {
+      for (const machineBits of [32, 64])
+        for (const minify of [false, true])
+        {
+          const result = await compiler.planGeneration({
+            ...options,
+            target,
+            machineBits,
+            minify,
+            sources: [{path: 'layouts.lawspec', content: dotnetSwiftSource}],
+            nativeBindings: beamBindings(target),
+          });
+          assert.deepEqual(result.diagnostics, []);
+          const root = await mkdtemp(
+            path.join(os.tmpdir(), 'lawspec-beam-layout-'),
+          );
+          try
+          {
+            for (const file of result.files.filter(
+              file => file.placement === 'source',
+            ))
+            {
+              const destination = path.join(root, file.path);
+              await mkdir(path.dirname(destination), {recursive: true});
+              await writeFile(destination, file.content);
+            }
+            await mkdir(path.join(root, 'ebin'));
+            await writeFile(
+              path.join(root, 'src/layout_check.erl'),
+              beamCheck(target),
+            );
+            if (target === 'erlang')
+            {
+              await writeFile(
+                path.join(root, 'src/layout_application.hrl'),
+                '-record(crate,{quantity,enabled,tail}).\n',
+              );
+              await writeFile(
+                path.join(root, 'src/layout_application.erl'),
+                erlangLayoutApplication,
+              );
+            }
+            else if (target === 'elixir')
+            {
+              await writeFile(
+                path.join(root, 'src/layout_application.ex'),
+                elixirLayoutApplication,
+              );
+              run(
+                'elixirc',
+                ['-o', 'ebin', ...(await files(path.join(root, 'src'), '.ex'))],
+                {cwd: root},
+              );
+            }
+            else
+            {
+              await writeFile(
+                path.join(root, 'src/layout_application.gleam'),
+                gleamLayoutApplication,
+              );
+              await writeFile(
+                path.join(root, 'gleam.toml'),
+                `name = "native_layout_fixture"\nversion = "0.1.0"\ntarget = "erlang"\n[dependencies]\ngleam_stdlib = { path = ${JSON.stringify(gleamStdlib)} }\n`,
+              );
+              run('gleam', ['build'], {cwd: root});
+            }
+            if (target !== 'gleam')
+              run(
+                'erlc',
+                [
+                  '-Werror',
+                  '-I',
+                  'src',
+                  '-o',
+                  'ebin',
+                  ...(await files(path.join(root, 'src'), '.erl')),
+                ],
+                {cwd: root},
+              );
+            const beamDirectories =
+              target === 'gleam'
+                ? [
+                    ...new Set(
+                      (await files(path.join(root, 'build'), '.beam')).map(
+                        file => path.dirname(file),
+                      ),
+                    ),
+                  ]
+                : [path.join(root, 'ebin')];
+            const output =
+              target === 'elixir'
+                ? run(
+                    'elixir',
+                    ['-pa', ...beamDirectories, '-e', ':layout_check.run()'],
+                    {cwd: root},
+                  )
+                : run(
+                    'erl',
+                    [
+                      '-noshell',
+                      '-pa',
+                      ...beamDirectories,
+                      '-eval',
+                      'layout_check:run(),halt(0).',
+                    ],
+                    {cwd: root},
+                  );
+            assert.match(output, /checked native layout passed/);
+          }
+          finally
+          {
+            await rm(root, {recursive: true, force: true});
+          }
         }
-        await mkdir(path.join(root,'ebin'));
-        await writeFile(path.join(root,'src/layout_check.erl'),beamCheck(target));
-        if(target==='erlang'){
-          await writeFile(path.join(root,'src/layout_application.hrl'),'-record(crate,{quantity,enabled,tail}).\n');
-          await writeFile(path.join(root,'src/layout_application.erl'),erlangLayoutApplication);
-        }else if(target==='elixir'){
-          await writeFile(path.join(root,'src/layout_application.ex'),elixirLayoutApplication);
-          run('elixirc',['-o','ebin',...await files(path.join(root,'src'),'.ex')],{cwd:root});
-        }else{
-          await writeFile(path.join(root,'src/layout_application.gleam'),gleamLayoutApplication);
-          await writeFile(path.join(root,'gleam.toml'),`name = "native_layout_fixture"\nversion = "0.1.0"\ntarget = "erlang"\n[dependencies]\ngleam_stdlib = { path = ${JSON.stringify(gleamStdlib)} }\n`);
-          run('gleam',['build'],{cwd:root});
-        }
-        if(target!=='gleam')run('erlc',['-Werror','-I','src','-o','ebin',...await files(path.join(root,'src'),'.erl')],{cwd:root});
-        const beamDirectories=target==='gleam'?[...new Set((await files(path.join(root,'build'),'.beam')).map(file=>path.dirname(file)))]:[path.join(root,'ebin')];
-        const output=target==='elixir'?run('elixir',['-pa',...beamDirectories,'-e',':layout_check.run()'],{cwd:root}):
-          run('erl',['-noshell','-pa',...beamDirectories,'-eval','layout_check:run(),halt(0).'],{cwd:root});
-        assert.match(output,/checked native layout passed/);
-      }finally{await rm(root,{recursive:true,force:true});}
-    }
-  });
+    },
+  );
 }

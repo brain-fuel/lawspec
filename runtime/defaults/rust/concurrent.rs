@@ -8,24 +8,30 @@ use crate::lawspec_runtime as ls;
 #[derive(Default)]
 pub struct AsyncHandler;
 
-impl AsyncHandler {
+impl AsyncHandler
+{
     /// The runtime's native async, which this handler passes on to.
-    pub fn native(&self) -> &'static ls::NativeAsync {
+    pub fn native(&self) -> &'static ls::NativeAsync
+    {
         &ls::ASYNC
     }
 }
 
 // spawn, wait, wait_future and all, as NativeAsync gives them.
-impl std::ops::Deref for AsyncHandler {
+impl std::ops::Deref for AsyncHandler
+{
     type Target = ls::NativeAsync;
 
-    fn deref(&self) -> &ls::NativeAsync {
+    fn deref(&self) -> &ls::NativeAsync
+    {
         &ls::ASYNC
     }
 }
 
-impl crate::lawspec_abilities::lawspec_concurrent::Async for AsyncHandler {
-    fn pause(&self) -> () {
+impl crate::lawspec_abilities::lawspec_concurrent::Async for AsyncHandler
+{
+    fn pause(&self) -> ()
+    {
         self.native().pause()
     }
 }

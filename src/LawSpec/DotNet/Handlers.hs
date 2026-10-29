@@ -133,12 +133,12 @@ emitHandlers lang layout bits typed declarations units = do
                         else if r == "Unit" && failure == Nothing then [invoke ++ ";"] else [okValue invoke]
                       body = case failure of
                         Just (key, codec) ->
-                          [ D.text "try" <> D.hardline <> D.block 4 (D.joinWith D.hardline (map D.text (filter (not . null) computed)))
+                          [ D.text "try" <> D.hardline <> D.block 2 (D.joinWith D.hardline (map D.text (filter (not . null) computed)))
                           , D.text ("catch (RaisedFailure failure) when (failure.Ability == " ++ show key ++ ")") <> D.hardline <>
-                            D.block 4 (D.text ("return " ++ r ++ ".NewError(" ++ codec ++ ".ToNative.Invoke(failure.Failure));")) ]
+                            D.block 2 (D.text ("return " ++ r ++ ".NewError(" ++ codec ++ ".ToNative.Invoke(failure.Failure));")) ]
                         Nothing -> map D.text (filter (not . null) computed)
                   in D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, map snd ps /= ["Unit"]] ++ ")") <> D.hardline <>
-                     D.block 4 (D.text "lock (gate)" <> D.hardline <> D.block 4 (D.joinWith D.hardline body))
+                     D.block 2 (D.text "lock (gate)" <> D.hardline <> D.block 2 (D.joinWith D.hardline body))
                 [] -> mempty
               members =
                 [ D.text "private readonly object gate = new();" <> D.hardline <>
@@ -148,15 +148,15 @@ emitHandlers lang layout bits typed declarations units = do
                 [ D.text "/// <summary>Outside any law: the program's schema and fresh symbols.</summary>" <> D.hardline <>
                   D.text ("public " ++ cls ++ "() : this(LawSpec.Generated.Program.Schema, new Scalar.SymbolContext()) { }")
                 , D.text ("public " ++ cls ++ "(Schema.Schema schema, Scalar.SymbolContext symbols)") <> D.hardline <>
-                  D.block 4 (D.joinWith D.hardline (map D.text (["this.schema = schema;", "this.symbols = symbols;"] ++ ["state = " ++ start ++ ";" | stateful]))) ] ++
+                  D.block 2 (D.joinWith D.hardline (map D.text (["this.schema = schema;", "this.symbols = symbols;"] ++ ["state = " ++ start ++ ";" | stateful]))) ] ++
                 [ D.text "/// <summary>The handler's state: a snapshot to show or keep, or one to force, reset or restore.</summary>" <> D.hardline <>
                   D.text ("public " ++ t ++ " State") <> D.hardline <>
-                  D.block 4 (D.text "get { lock (gate) return state; }" <> D.hardline <> D.text "set { lock (gate) state = value; }")
+                  D.block 2 (D.text "get { lock (gate) return state; }" <> D.hardline <> D.text "set { lock (gate) state = value; }")
                 | stateful, Just t <- [stateType] ] ++
                 map operation operations
               header = D.text ("/// <summary>" ++ summary ++ " It runs typed: its state is native, and shared, not copied, by a snapshot.</summary>") <> D.hardline <>
                 D.text ("public sealed class " ++ cls ++ " : " ++ intercalate ", " interfaces)
-          in header <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) members)
+          in header <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline) members)
         FSharp ->
           let lets = [ L.binding 4 "let handler" (L.App (owner ++ "." ++ factory) [L.A "schema", L.A "symbols"]) ] ++
                 [ L.binding 4 ("let " ++ field a) (L.App (bridge a) [L.A "schema", L.A "symbols", L.A "handler"]) | a <- answered ]
@@ -188,20 +188,20 @@ emitHandlers lang layout bits typed declarations units = do
                 [ D.text "/// <summary>Outside any law: the program's schema and fresh symbols.</summary>" <> D.hardline <>
                   D.text ("public " ++ cls ++ "() : this(LawSpec.Generated.Program.Schema, new Scalar.SymbolContext()) { }")
                 , D.text ("public " ++ cls ++ "(Schema.Schema schema, Scalar.SymbolContext symbols)") <> D.hardline <>
-                  D.block 4 (D.joinWith D.hardline (
+                  D.block 2 (D.joinWith D.hardline (
                     D.text ("handler = " ++ owner ++ "." ++ pascal factory ++ "(schema, symbols);") :
                     [ D.text (field a ++ " = " ++ bridge a ++ "(schema, symbols, handler);") | a <- answered ]))
                 , D.text "/// <summary>The handler as the runtime runs it.</summary>" <> D.hardline <>
                   D.text "public Effects.Handler Handler => handler;" ] ++
                 [ D.text "/// <summary>The handler's state in native types: a snapshot to show or keep, or one to force, reset or restore.</summary>" <> D.hardline <>
                   D.text ("public " ++ t ++ " State") <> D.hardline <>
-                  D.block 4 (D.text ("get => " ++ c ++ ".ToNative.Invoke(Effects.HandlerState(" ++ field first ++ ").Item2);") <> D.hardline <>
+                  D.block 2 (D.text ("get => " ++ c ++ ".ToNative.Invoke(Effects.HandlerState(" ++ field first ++ ").Item2);") <> D.hardline <>
                     D.text ("set => Effects.SetHandlerState(" ++ field first ++ ", " ++ c ++ ".FromNative.Invoke(value));"))
                 | Just c <- [stateCodec], Just t <- [stateType] ] ++
                 [ D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, map snd ps /= ["Unit"]] ++ ") => " ++
                     field a ++ "." ++ m ++ "(" ++ intercalate ", " [v | (v, _) <- ps, map snd ps /= ["Unit"]] ++ ");")
                 | (a, m, ps, r, _) <- operations ]
-          in header <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) members)
+          in header <> D.hardline <> D.block 2 (D.joinWith (D.hardline <> D.hardline) members)
     fsParameters ps = if map snd ps == ["unit"] then [] else ps
     -- A property's accessor: its body on its line while under 40 columns.
     accessor header body

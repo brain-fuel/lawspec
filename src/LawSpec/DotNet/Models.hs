@@ -117,7 +117,7 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
                   (if null invariants then "FSharpList<FSharpFunc<Tuple<Schema.Schema, Scalar.SymbolContext>, FSharpFunc<FSharpList<Value>, Value>>>.Empty" else list invariants) ++ ")"
                 withContext = "LawSpec.Testing.Model.WithContext(" ++ withRuntime ++ ", " ++ modelExpr ++ ")"
             in D.text ("private static FSharpFunc<Scalar.SymbolContext, " ++ tyText CSharp factoryTy ++ "> " ++ pascal factoriesName ++ "()") <> D.hardline <>
-              D.block 4 (renderBody CSharp 8 (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
+              D.block 2 (renderBody CSharp 8 (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
               D.hardline <> D.hardline <> D.text ("/// <summary>The model " ++ machineName machine ++ ".</summary>") <> D.hardline <>
               D.text ("private static LawSpec.Testing.Model.Model " ++ pascal name ++ "() =>") <> D.nest 4 (D.hardline <>
                 D.text (if machineActor machine then "LawSpec.Testing.Model.WithActors(LawSpec.Testing.ActorHost.Host, " ++ withContext ++ ");" else withContext ++ ";"))
@@ -152,7 +152,7 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
               D.text ("/// <summary>The models of " ++ C.idText (C.unitId unit) ++ ".</summary>") <> D.hardline <>
               D.text "[Collection(\"LawSpec\")]" <> D.hardline <>
               D.text ("public sealed class " ++ last (splitDots moduleName)) <> D.hardline <>
-              D.block 4 (D.joinWith (D.hardline <> D.hardline) (prepared ++ cases)) <> D.hardline
+              D.block 2 (D.joinWith (D.hardline <> D.hardline) (prepared ++ cases)) <> D.hardline
       pure [Artifact ("tests/LawSpec/" ++ last (splitDots moduleName) ++ extension lang) (D.render layout doc) "generated" "test"]
     csUsings =
       [ "using System;", "using System.Collections.Generic;", "using System.Numerics;", "using Microsoft.FSharp.Core;"

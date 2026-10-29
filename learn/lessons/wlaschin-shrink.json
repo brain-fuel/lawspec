@@ -1,0 +1,174 @@
+{
+  "id": "wlaschin-shrink",
+  "title": "Find out why a passing sample misled us",
+  "section": "Wlaschin’s examples",
+  "vision": "Learn how input generation, shrinking and replay explain a false claim about a boundary.",
+  "slogan": "Reach the boundary. Keep the failure.",
+  "symbol": "79 < 80; 80 is not < 80",
+  "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
+  "news": "A generator can only expose failures among inputs it can reach.",
+  "contributions": "A generator that reaches 80, an actual seed/path and shrink trace, a named boundary example, and a corrected classifier requirement. The passing correction retains the implementation and the wider generator.",
+  "star": {
+    "salient": "A generator can only expose failures among inputs it can reach.",
+    "slogan": "Reach the boundary. Keep the failure.",
+    "symbol": "79 < 80; 80 is not < 80",
+    "surprise": "A false claim about 0–200 passes when every generated input is below 80.",
+    "story": "An intentionally overbroad test passes on small inputs. Widening only the generator finds a failure, shrinking isolates 80, and the saved case helps correct the claim."
+  },
+  "attribution": [
+    {
+      "title": "Scott Wlaschin — Understanding FsCheck",
+      "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-1/",
+      "use": "Adapted isSmallerThan80 example. The browser uses a uniform bounded generator and fast-check shrinking; it does not reproduce FsCheck’s distribution, seed or trace."
+    }
+  ],
+  "hints": [
+    "At input 80, separately state the intended answer and the test’s expected answer.",
+    "Check whether the harness can generate 80 before interpreting a passing sample.",
+    "Keep the function’s strict comparison and make the claim describe both true and false answers. Load solution shows the corrected tests."
+  ],
+  "stages": [
+    {
+      "id": "small",
+      "title": "The test claims too much",
+      "story": [
+        "This is a small experiment in understanding a failed test. isSmallerThan80 answers one question: is this integer strictly below 80? At the end, you will be able to separate a false requirement from an implementation bug.",
+        "The function is correct, but “every number from zero to two hundred is below eighty” in Laws claims its answer is true for every integer from 0 through 200. Pause at 80: what answer should the function give, and what answer does this claim demand?",
+        "The harness is the test-data recipe, separate from the claim. Its numbers strategy chooses an integer; use numbers for n passes it to “every number from zero to two hundred is below eighty”. Open Harness: it only supplies 0 through 79.",
+        "Run the sampled property. It passes because every sampled input is below 80. This mode excludes separate example/boundary checks; those may expose the false claim sooner. The pass describes the selected sample, not the whole 0–200 claim.",
+        "A generator is a recipe for test data; LawSpec calls the named recipe a strategy. A sample is the collection of values actually tried in a run. Neither term means that every value in the stated domain was tested."
+      ],
+      "focus": "Harness.lawspec",
+      "project": "exercises/threshold/01",
+      "run": {
+        "mode": "sample",
+        "expect": "passed",
+        "sampled": "passed",
+        "seed": 424242
+      },
+      "action": "Compare the law’s domain with the strategy’s bounds, then run the sampled property. Explain why its pass misses 80.",
+      "reason": "A false claim can survive a test-data recipe that never reaches its counterexamples.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "syntax": "A property must evaluate to true to pass. “every number from zero to two hundred is below eighty” uses the classifier’s Boolean result directly. The law allows 0–200, while this strategy chooses only 0–79.",
+      "editor": "Tests",
+      "harnessNotes": [
+        "numbers draws Int32 values from 0 through 79, including both endpoints. The binding for “every number from zero to two hundred is below eighty” names the claim in Laws, and use numbers for n feeds each draw into its quantified input n.",
+        "The claim allows inputs up to 200, but this strategy never reaches 80. A sampled pass therefore misses the false part of the claim. Predict isSmallerThan80 80 before widening this recipe."
+      ],
+      "symbol": "79 < 80; 80 is not < 80"
+    },
+    {
+      "id": "widen",
+      "title": "Change only the test-data recipe",
+      "story": [
+        "Harness now permits values from 0 through 200. The function and the false claim are unchanged. This one change lets the runner try values at and above 80.",
+        "A counterexample is an input that makes a claim false. Shrinking is the runner’s search for a smaller input that still makes it false. Smaller means simpler for this recipe, not a guarantee of the smallest possible failure in every ordering.",
+        "Run with seed 424242. Inspect the actual failing input and shrink attempts. Shrinking tries smaller candidates and retains candidates that still fail the same claim. This run ends at 80: 79 would pass, so it cannot explain this failure.",
+        "Use Replay failure before editing. The recorded seed and path reproduce this failing case under the same source, generator and tool versions. The displayed trace comes from this browser run, not from Wlaschin’s FsCheck trace.",
+        "A seed selects a repeatable sequence of generated choices. The replay path records the choices leading to the failing case. Keep the same source and generator when replaying; changing them creates a different experiment."
+      ],
+      "focus": "Harness.lawspec",
+      "project": "exercises/threshold/02",
+      "run": {
+        "mode": "sample",
+        "expect": "failed",
+        "sampled": "failed",
+        "counterexample": [
+          80
+        ],
+        "minShrinks": 1,
+        "seed": 424242
+      },
+      "action": "Run the wider sample, inspect its shrink trace and replay the failure. Explain why 80 fails and 79 does not.",
+      "reason": "A small counterexample makes the disagreement between requirement and behavior easier to inspect.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "regression": {
+        "input": 80,
+        "expected": true
+      },
+      "editor": "Tests",
+      "syntax": "The strategy’s upper bound changed to 200. It changes which inputs can be tried; it does not change the Boolean expression in the law.",
+      "harnessNotes": [
+        "numbers draws Int32 values from 0 through 200, including both endpoints. The binding for “every number from zero to two hundred is below eighty” names the claim in Laws, and use numbers for n feeds each draw into its quantified input n.",
+        "The wider recipe can reach 80 and values above it. Shrinking retries smaller candidates against the same law and keeps a candidate only when it still fails. In this seeded example, 80 is the final failing input; the generator alone does not decide what counts as a failure."
+      ]
+    },
+    {
+      "id": "regression",
+      "title": "Write down the disagreement",
+      "story": [
+        "A regression case is a previously discovered failure kept as an ordinary example. It helps catch the same disagreement again without waiting for random generation. Save regression writes that example into Laws, and progress backups include it.",
+        "Laws now records 80 as “eighty should be below eighty”. It asks the same question as the old claim: isSmallerThan80 80 should be true.",
+        "Use Run checks with Examples + boundaries. The named check fails without depending on random generation. Read the function and the test side by side: the function correctly answers false. Here the test’s expected answer is the mistake.",
+        "Saving a counterexample preserves the disagreement. It does not tell us which side is right; we still have to interpret the intended requirement."
+      ],
+      "focus": "Tests",
+      "project": "exercises/threshold/03",
+      "run": {
+        "mode": "examples",
+        "expect": "failed",
+        "failedTests": [
+          "learn.threshold::|eighty should be below eighty| boundary 1"
+        ],
+        "seed": 424242
+      },
+      "action": "Use Run checks with Examples + boundaries and locate “eighty should be below eighty”. State which answer the function should give before choosing what to repair.",
+      "reason": "A failure is a disagreement to investigate, not an automatic instruction to change the implementation.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "“eighty should be below eighty” is a concrete claim at one input. It no longer needs a generator to reproduce the mismatch.",
+      "harnessNotes": [
+        "numbers draws Int32 values from 0 through 200, including both endpoints. The binding for “every number from zero to two hundred is below eighty” names the claim in Laws, and use numbers for n feeds each draw into its quantified input n.",
+        "The wider recipe can reach 80 and values above it. Shrinking retries smaller candidates against the same law and keeps a candidate only when it still fails. In this seeded example, 80 is the final failing input; the generator alone does not decide what counts as a failure."
+      ]
+    },
+    {
+      "id": "correct-claim",
+      "title": "Repair the claim and keep the wider inputs",
+      "story": [
+        "The function is unchanged. “the answer agrees with being below eighty” now requires its answer to agree with n < 80. The named examples expect true at 79 and false at 80.",
+        "Use Run checks with All checks. The corrected claim passes while the generator still reaches both sides of the boundary. We did not make the test green by excluding inconvenient inputs.",
+        "Your challenge: change the function’s comparison from < to <= and rerun. Explain why the example at 80 rejects that edit, then restore <. You have now used a failure to repair a claim, and used the corrected claim to catch an implementation bug."
+      ],
+      "focus": "Tests",
+      "project": "exercises/threshold/solution",
+      "run": {
+        "mode": "all",
+        "expect": "passed",
+        "sampled": "passed",
+        "seed": 424242
+      },
+      "action": "Run the corrected suite, try the <= mistake and explain its failure at 80, then restore the correct comparison.",
+      "reason": "Reach the boundary. Keep the failure. Preserve the lesson learned when you repair the test.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "challenge": true,
+      "editor": "Solution",
+      "syntax": "n < 80 is a Boolean expression. The corrected property compares that expected answer with the function’s actual answer instead of assuming every answer is true.",
+      "harnessNotes": [
+        "numbers draws Int32 values from 0 through 200, including both endpoints. The binding for “the answer agrees with being below eighty” names the claim in Laws, and use numbers for n feeds each draw into its quantified input n.",
+        "This keeps the wider recipe and binds it to the corrected “the answer agrees with being below eighty” claim. Inputs above 79 still occur; the corrected law now checks that the classifier agrees with n < 80."
+      ]
+    }
+  ],
+  "solutionProject": "exercises/threshold/solution",
+  "coverage": {
+    "browserExecution": [
+      "fsharp",
+      "typescript",
+      "javascript"
+    ],
+    "definitionChecking": true,
+    "nativeExecution": "deferred",
+    "apiCollectionCredit": "deferred: this story is not a complete public API collection"
+  },
+  "implementationSyntax": {
+    "fsharp": "In F#, bool is the true/false type. The comparison n < 80 produces a Boolean directly, without an if expression around it.",
+    "typescript": "In TypeScript, boolean is the true/false type. return n < 80 returns the result of the comparison.",
+    "javascript": "In JavaScript, return n < 80 returns the true/false result of the comparison."
+  },
+  "naming": "Use English phrase names for readable claims and descriptive LawSpec helpers. Keep short code names such as add, sort, xs and numbers when they make calls and recipes easier to follow. A phrase starts with \"| and ends with |, without a closing quote. A law label identifies the claim; renaming it does not change what the definition checks. The compiler generates target-appropriate names."
+}

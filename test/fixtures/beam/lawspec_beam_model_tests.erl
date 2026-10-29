@@ -214,3 +214,25 @@ vectors(Path) ->
         ?assertEqual(Shrinks, [lawspec_beam_model:describe(Model, R) || R <- lawspec_beam_model:candidates(Model, Run)])
     end, Cases),
     io:format("~B BEAM model sequences and shrinks match the portable runtime.~n", [length(Cases)]).
+
+%% Replaying a changed prefix must reject now-out-of-range arguments before
+%% executing a shrink candidate. ref:DEC-dependent-model-arguments
+dependent_argument_domains_test() ->
+    Start = fun(_, [ls_unit]) -> 0 end,
+    Push = {fun(_, [N]) -> flow(N + 1) end, fun(_, [N]) -> N + 1 end, none},
+    Choose = {fun(_, [N, I]) -> true = (I >= 0 andalso I < N), pair(I, N) end,
+        fun(_, [I, N]) -> pair(I, N) end, none},
+    Clear = {fun(_, [_]) -> flow(0) end, fun(_, [_]) -> 0 end, none},
+    M = model(<<"linear">>, false, <<"(unit)">>, <<"0">>, [
+        command(<<"push">>, <<>>, 0, true, <<"(atleast 0)">>, <<"(by 1)">>, false, Push),
+        command(<<"choose">>, <<"(dependent (int Int8 0 127) (>= 0) (< (index 0)))">>, 0, false, <<"(atleast 0)">>, <<"(by 0)">>, false, Choose),
+        command(<<"clear">>, <<>>, 0, true, <<"(atleast 0)">>, <<"(to 0)">>, false, Clear)],
+        {Start, Start}, none, []),
+    ?assertEqual(invalid, lawspec_beam_model:simulate(M, {[ls_unit], [{1, [0]}]})),
+    ?assertEqual({ok, [0, 1, 2, 2]}, lawspec_beam_model:simulate(M, {[ls_unit], [{0, []}, {0, []}, {1, [1]}]})),
+    ?assertEqual(invalid, lawspec_beam_model:simulate(M, {[ls_unit], [{0, []}, {1, [1]}]})),
+    ?assertEqual(invalid, lawspec_beam_model:simulate(M, {[ls_unit], [{0, []}, {2, []}, {1, [0]}]})),
+    ?assertEqual(ok, lawspec_beam_model:check(M, #{seed => 12})),
+    {Run, Seed} = lawspec_beam_model:generate(M, 12, 100, 5, false),
+    ?assertEqual({Run, Seed}, lawspec_beam_model:generate(M, 12, 100, 5, false)),
+    ?assertMatch({ok, _}, lawspec_beam_model:simulate(M, Run)).

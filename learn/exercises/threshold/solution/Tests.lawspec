@@ -1,0 +1,31 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.threshold
+isSmallerThan80 :: Int32 -> Bool
+
+law "|seventy five is below eighty| is
+  definition:
+    isSmallerThan80 75 = true
+  end definition
+end law
+
+law "|seventy nine is below eighty| is
+  definition:
+    isSmallerThan80 79 = true
+  end definition
+end law
+
+law "|eighty is not below eighty| is
+  definition:
+    isSmallerThan80 80 = false
+  end definition
+end law
+
+law "|the answer agrees with being below eighty| is
+  definition:
+    for all (n :: Int32 where n >= 0 and n <= 200) =>
+      isSmallerThan80 n = (n < 80)
+    end for all
+  end definition
+end law
+
+end unit

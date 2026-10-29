@@ -183,7 +183,7 @@ emitRustData layout declarations = do
           phantom = [n | (v,n) <- parameters, not (any (any (independent v . C.binderType) . C.constructorFields) variants)]
           markerType = "std::marker::PhantomData<" ++ tupleType phantom ++ ">"
           generic = applied name parameterNames
-          implHead bound = "impl" ++ (if null parameters then "" else "<" ++ intercalate ", " [n ++ ": ls::" ++ bound | n <- parameterNames] ++ ">") ++ " ls::" ++ bound ++ " for " ++ generic ++ " "
+          implHead bound = "impl" ++ (if null parameters then "" else "<" ++ intercalate ", " [n ++ ": ls::" ++ bound | n <- parameterNames] ++ ">") ++ " ls::" ++ bound ++ " for " ++ generic
           existentials = concatMap C.constructorExistentials variants
           mentionsExistential ty = case ty of
             C.TypeVariable v -> v `elem` existentials
@@ -220,8 +220,8 @@ emitRustData layout declarations = do
             record limit prefix fs = D.text prefix <> (if null fs then mempty else if length (intercalate ", " fs) > limit then D.text " " <> D.block 4 (D.joinWith D.hardline [D.text (f ++ ",") | f <- fs]) else D.text " " <>
               D.group (D.text "{" <> D.nest 4 (D.softline <> D.commaSep (map D.text fs) <> D.whenBroken (D.text ",")) <> D.softline <> D.text "}"))
             variantDoc = if null recordFields then D.text (tag ++ ",") else
-              (if expandedVariants then D.text (tag ++ " ") <> D.block 4 (D.joinWith D.hardline [D.text (f ++ ": " ++ t ++ ",") | (f,t) <- recordFields])
-              else record 35 tag [f ++ ": " ++ t | (f,t) <- recordFields]) <> D.text ","
+              D.text tag <> D.hardline <> D.block 4
+                (D.joinWith D.hardline [D.text (f ++ ": " ++ t ++ ",") | (f,t) <- recordFields]) <> D.text ","
             call function arguments = D.text function <>
               (if length (intercalate ", " (map (D.render D.Compact) arguments)) > 60
               then D.text "(" <> D.nest 4 (D.hardline <> D.joinWith D.hardline [a <> D.text "," | a <- arguments]) <> D.hardline <> D.text ")"
@@ -232,7 +232,7 @@ emitRustData layout declarations = do
                 (Just (L.call "ls::Value::Data" [L.method (L.atom (show (C.idText (C.constructorId variant)))) "into" [], L.atom "fields"]))
             encode = if product
               then (if null patternFields then mempty else D.text "let " <> encodePattern <> D.text " = self;" <> D.hardline) <> encodeBody
-              else encodePattern <> D.text " => " <> D.block 4 encodeBody
+              else encodePattern <> D.text " =>" <> D.hardline <> D.block 4 encodeBody
             -- Each field is read into a local of its own name, unless that
             -- name is one the decoder uses.
             locals = fst (claimAll (scopeWith ["fields"]) [if all (\c -> not (isUpper c)) f then f else nativeIdentifier "rust" ValueName f | (f,_) <- fields])
@@ -243,7 +243,7 @@ emitRustData layout declarations = do
             decode = L.armDoc (L.ArmOf (L.atom (show (C.idText (C.constructorId variant))))
               (Just (L.infixOp "==" (L.method (L.atom "fields") "len" []) (L.atom (show (length fields)))))
               (L.letIn ([L.Let "mut fields" (L.method (L.atom "fields") "into_iter" []) | not (null fields)] ++
-                        [L.Let (local ++ ": " ++ t) (L.try' (L.call "ls::FromValue::from_value" [L.method (L.method (L.atom "fields") "next" []) "unwrap" []]))
+                        [L.Let (local ++ ": " ++ t) (L.try' (L.call "ls::FromValue::from_value" [L.method (L.method (L.atom "fields") "next" []) "expect" [L.atom (show "constructor arity checked before consuming fields")]]))
                         | (local,(_,t)) <- zip locals fields])
                 (L.call "Ok" [resultValue])))
             resultValue = L.struct (path tag) ([(f, L.atom local) | ((f,_), local) <- zip fields locals] ++
@@ -256,21 +256,21 @@ emitRustData layout declarations = do
           declarationDoc = (if camelFields then D.text "#[allow(non_snake_case)]" <> D.hardline else mempty) <>
             D.text (if ordered then "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]" else "#[derive(Clone, Debug)]") <> D.hardline <>
             if product then (if null structFields then D.text ("pub struct " ++ generic ++ ";")
-              else D.text ("pub struct " ++ generic ++ " ") <> D.block 4 (D.joinWith D.hardline structFields)) else
-            D.text ((if null variants then "pub struct " else "pub enum ") ++ generic ++ " ") <>
+              else D.text ("pub struct " ++ generic) <> D.hardline <> D.block 4 (D.joinWith D.hardline structFields)) else
+            D.text ((if null variants then "pub struct " else "pub enum ") ++ generic) <> D.hardline <>
             D.block 4 (if null variants then D.text "_never: std::convert::Infallible," <>
               (if null parameters then mempty else D.hardline <> D.text ("_marker: std::marker::PhantomData<" ++ tupleType parameterNames ++ ">,"))
               else D.joinWith D.hardline [a | (a,_,_,_) <- rendered])
-          encodeDoc = D.text (implHead "IntoValue") <> D.block 4
-            (D.text "fn into_value(self) -> ls::Value " <> D.block 4
+          encodeDoc = D.text (implHead "IntoValue") <> D.hardline <> D.block 4
+            (D.text "fn into_value(self) -> ls::Value" <> D.hardline <> D.block 4
               (if null variants then D.text "match self._never {}" else
                 if product then D.joinWith D.hardline [a | (_,a,_,_) <- rendered] else
-                D.text "match self " <> D.block 4 (D.joinWith D.hardline [a | (_,a,_,_) <- rendered])))
-          decodeDoc = D.text (implHead "FromValue") <> D.block 4
-            (D.text "fn from_value(value: ls::Value) -> ls::Result<Self> " <> D.block 4
-              (D.text "let ls::Value::Data(tag, fields) = value else {" <> D.nest 4
+                D.text "match self" <> D.hardline <> D.block 4 (D.joinWith D.hardline [a | (_,a,_,_) <- rendered])))
+          decodeDoc = D.text (implHead "FromValue") <> D.hardline <> D.block 4
+            (D.text "fn from_value(value: ls::Value) -> ls::Result<Self>" <> D.hardline <> D.block 4
+              (D.text "let ls::Value::Data(tag, fields) = value" <> D.hardline <> D.text "else" <> D.hardline <> D.text "{" <> D.nest 4
                 (D.hardline <> L.stmt (L.Semi (L.Return (Just (L.call "Err" [L.method (L.atom (show ("expected " ++ owner))) "into" []]))))) <> D.hardline <> D.text "};" <> D.hardline <>
-                D.text "match tag.as_str() " <> D.block 4 (D.joinWith D.hardline
+                D.text "match tag.as_str()" <> D.hardline <> D.block 4 (D.joinWith D.hardline
                   ([a | (_,_,a,_) <- rendered] ++ [L.armDoc (L.Arm "_" Nothing (L.Block
                     [L.Let "message" (L.atom (show ("invalid constructor or fields for " ++ owner)))]
                     (Just (L.call "Err" [L.method (L.atom "message") "into" []]))))]))))

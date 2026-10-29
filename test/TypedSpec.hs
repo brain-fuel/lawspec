@@ -244,8 +244,8 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       p <- compiled ["examples/specs/abilities.lawspec"]
       let declarations = C.programDataDeclarations p
           units = C.programUnits p
-      either expectationFailure (\typed -> pyTypedModule typed `shouldSatisfy` isInfixOf "ls.handler(symbols, ") (emitPythonTyped 64 declarations units)
-      either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "ls.handler(symbols, ") (emitWebTyped True 64 declarations units)
+      either expectationFailure (\typed -> filter (not . isSpace) (pyTypedModule typed) `shouldSatisfy` isInfixOf "ls.handler(symbols,") (emitPythonTyped 64 declarations units)
+      either expectationFailure (\typed -> filter (not . isSpace) (webTypedModule typed) `shouldSatisfy` isInfixOf "ls.handler(symbols,") (emitWebTyped True 64 declarations units)
       either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LS.handlerOf symbols") (emitHaskellTyped declarations units)
       either expectationFailure (\typed -> D.render D.Compact (rustTypedModule typed) `shouldSatisfy` isInfixOf "(&mut *ctx, vec![") (emitRustTyped declarations units)
       either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform") (emitJvmTyped JavaStyle declarations units)

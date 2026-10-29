@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "Fantomas.Core": {
+        "type": "Direct",
+        "requested": "[8.1.0, )",
+        "resolved": "8.1.0",
+        "contentHash": "5SP8hSMfLm1eF8686SGNxXiRJXhoZk9DYHI+WX/qBAIkm1cyjmDc6ZbM3nFDG9hoO7FJDpWzsxdaqtxywFrong==",
+        "dependencies": {
+          "FSharp.Core": "10.0.100",
+          "Fantomas.FCS": "8.1.0"
+        }
+      },
+      "Microsoft.NET.Sdk.WebAssembly.Pack": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "MIeBVeWkbKdggl3kmmIUnx8ZNEgjD2m1gTN/0W+TDRn6zcL1WZdq5hXhGQ0wjuSlw/8tvwwCg79PemfkJ3+5JA=="
+      },
+      "Fantomas.FCS": {
+        "type": "Transitive",
+        "resolved": "8.1.0",
+        "contentHash": "Yla69yDb6A7JDHPKxzosjaS2ngbJGZunp0MNCJnB8UJ5BwRzUwmW/ul5ToG9+3PDzeYhbs5lhkLge3emIdyJQQ==",
+        "dependencies": {
+          "FSharp.Core": "10.0.100"
+        }
+      },
+      "FSharp.Core": {
+        "type": "Transitive",
+        "resolved": "10.0.100",
+        "contentHash": "c/r6T/HE9MWL0O0OispLtaKhVwDsiYQlLS249LoxSo1HNH/wfc0f5DE4pI6WpTXkCEdeXa66K5f9FmKLr/0cmw=="
+      }
+    },
+    "net10.0/browser-wasm": {}
+  }
+}

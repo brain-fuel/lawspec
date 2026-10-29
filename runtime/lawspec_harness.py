@@ -29,7 +29,9 @@ def _record(name, entry):
         return
     os.makedirs(directory, exist_ok=True)
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
-    with open(os.path.join(directory, safe + ".json"), "w", encoding="utf-8") as out:
+    with open(
+        os.path.join(directory, safe + ".json"), "w", encoding="utf-8"
+    ) as out:
         json.dump(entry, out, sort_keys=True)
 
 
@@ -107,7 +109,9 @@ def observe(law, covers=(), classes=(), labels=()):
     )
     stats["cases"] += 1
     for label, holds in covers:
-        stats["cover"][label] = stats["cover"].get(label, 0) + (1 if holds else 0)
+        stats["cover"][label] = stats["cover"].get(label, 0) + (
+            1 if holds else 0
+        )
     for label, holds in classes:
         if holds:
             stats["classes"][label] = stats["classes"].get(label, 0) + 1
@@ -149,7 +153,9 @@ def _adequacy(law, covers):
     for label, count in sorted(stats["classes"].items()):
         lines.append(f"  {label}: {100.0 * count / cases if cases else 0:.1f}%")
     for label, count in sorted(stats["labels"].items(), key=lambda kv: -kv[1]):
-        lines.append(f"  label {label}: {100.0 * count / cases if cases else 0:.1f}%")
+        lines.append(
+            f"  label {label}: {100.0 * count / cases if cases else 0:.1f}%"
+        )
     if len(lines) > 1:
         print("\n".join(lines))
     return report
@@ -174,16 +180,29 @@ def _with_timeout(test, milliseconds, law):
     worker.start()
     worker.join(milliseconds / 1000)
     if worker.is_alive():
-        raise HarnessError(f"{law} took longer than its timeout of {milliseconds} ms")
+        raise HarnessError(
+            f"{law} took longer than its timeout of {milliseconds} ms"
+        )
     if "error" in outcome:
         raise outcome["error"]
 
 
-def run(law, name, test, timeout=None, repeat=1, retries=0, covers=(), observed=False):
+def run(
+    law,
+    name,
+    test,
+    timeout=None,
+    repeat=1,
+    retries=0,
+    covers=(),
+    observed=False,
+):
     """Run one generated test of a law under its harness settings."""
     token = _run.set(name)
     try:
-        _run_settled(law, name, test, timeout, repeat, retries, covers, observed)
+        _run_settled(
+            law, name, test, timeout, repeat, retries, covers, observed
+        )
     finally:
         _run.reset(token)
 
@@ -201,7 +220,9 @@ def _run_settled(law, name, test, timeout, repeat, retries, covers, observed):
                 if report is not None:
                     unmet = [r for r in report["cover"] if not r["met"]]
                     if unmet:
-                        _record(name, {**report, "test": name, "outcome": "failed"})
+                        _record(
+                            name, {**report, "test": name, "outcome": "failed"}
+                        )
                         raise HarnessError(
                             "; ".join(
                                 f'{law}: cover {r["required"]}% "{r["label"]}" was not met '
@@ -235,7 +256,9 @@ def _run_settled(law, name, test, timeout, repeat, retries, covers, observed):
         entry.update(report)
     _record(name, entry)
     if flaky:
-        warnings.warn(f"{law} is flaky: it failed, then passed on attempt {attempts}")
+        warnings.warn(
+            f"{law} is flaky: it failed, then passed on attempt {attempts}"
+        )
 
 
 def skip(law, reason):
@@ -331,7 +354,9 @@ def pytest_collection_modifyitems(session, config, items):
     )
     if _xdist(config):
         for module in parallel:
-            _parallelism(module, "processes (pytest-xdist)", config.option.numprocesses)
+            _parallelism(
+                module, "processes (pytest-xdist)", config.option.numprocesses
+            )
         return
     for item in items:
         if _module_flag(item, "_LAWSPEC_PARALLEL"):
@@ -346,7 +371,8 @@ def _xdist(config):
 
 def _parallelism(module, mode, workers):
     _record(
-        "parallel " + module, {"parallel": module, "mode": mode, "workers": workers}
+        "parallel " + module,
+        {"parallel": module, "mode": mode, "workers": workers},
     )
     print(f"{module} runs in parallel: {mode}, {workers} worker(s)")
 
@@ -357,7 +383,11 @@ def pytest_pyfunc_call(pyfuncitem):
     each test then waits for its own result. Threads run truly in parallel
     on free-threaded CPython (3.13t and later); otherwise they interleave
     (sleeps and I/O overlap, computation takes turns)."""
-    module = pyfuncitem.module.__name__ if getattr(pyfuncitem, "module", None) else None
+    module = (
+        pyfuncitem.module.__name__
+        if getattr(pyfuncitem, "module", None)
+        else None
+    )
     group = _parallel_items.get(module)
     if not group or pyfuncitem not in group:
         return None

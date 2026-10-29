@@ -284,9 +284,11 @@ rustModelTestsWithNetwork network bits datas calls u = (++ supervision) <$> mapM
     supervision =
       [ unlines $
           [ "#[test]"
-          , "fn supervision() {" ] ++
+          , "fn supervision()"
+          , "{" ] ++
           ["    lawspec_network::install();" | network] ++
-          [ "    if let Err(message) = ls::actors::check_supervision() {"
+          [ "    if let Err(message) = ls::actors::check_supervision()"
+          , "    {"
           , "        panic!(\"{}\", message);"
           , "    }"
           , "}" ]

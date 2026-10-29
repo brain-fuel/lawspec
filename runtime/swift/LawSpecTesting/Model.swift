@@ -347,6 +347,83 @@ public enum Model {
     }
   }
 
+  // Bounds use the abstract run's indices, never implementation state.
+  private static func modelBound(_ e: Descriptors.Descriptor, _ indices: [BigInt]) throws -> BigInt
+  {
+    switch e {
+    case .number(let n): return n
+    case .forms(let f) where f.count == 2 && f[0] == .atom("index"):
+      guard case .number(let k) = f[1] else { throw fail("UnsupportedModelArgumentBound") }
+      return indices[k.exactly(Int.self)!]
+    case .forms(let f) where f.count == 3:
+      let a = try modelBound(f[1], indices)
+      let b = try modelBound(f[2], indices)
+      switch try atom(f[0]) {
+      case "+": return a + b
+      case "-": return a - b
+      case "*": return a * b
+      default: throw fail("UnsupportedModelArgumentBound")
+      }
+    default: throw fail("UnsupportedModelArgumentBound")
+    }
+  }
+  private static func modelBase(_ d: Descriptors.Descriptor) -> Descriptors.Descriptor {
+    if case .forms(let f) = d, f.count >= 2, f[0] == .atom("dependent") { return f[1] }
+    return d
+  }
+  private static func modelArgument(_ d: Descriptors.Descriptor, _ indices: [BigInt]) throws
+    -> Descriptors.Descriptor
+  {
+    guard case .forms(let f) = d, f.first == .atom("dependent") else { return d }
+    guard case .forms(let base) = f[1], base.count == 4, base[0] == .atom("int") else {
+      throw fail("UnsupportedModelArgumentType")
+    }
+    var lo: BigInt? = nil
+    var hi: BigInt? = nil
+    if case .number(let n) = base[2] { lo = n }
+    if case .number(let n) = base[3] { hi = n }
+    for condition in f.dropFirst(2) {
+      guard case .forms(let pair) = condition, pair.count == 2 else {
+        throw fail("UnsupportedModelArgumentBound")
+      }
+      let op = try atom(pair[0])
+      let n = try modelBound(pair[1], indices)
+      if [">", ">=", "=="].contains(op) {
+        let low = n + (op == ">" ? BigInt(1) : BigInt(0))
+        lo = lo.map { Swift.max($0, low) } ?? low
+      }
+      if ["<", "<=", "=="].contains(op) {
+        let high = n - (op == "<" ? BigInt(1) : BigInt(0))
+        hi = hi.map { Swift.min($0, high) } ?? high
+      }
+    }
+    return .forms([
+      base[0], base[1], lo.map { .number($0) } ?? .hole, hi.map { .number($0) } ?? .hole,
+    ])
+  }
+  private static func modelArguments(_ c: Step, _ indices: [BigInt]) throws -> [Descriptors
+    .Descriptor]
+  { try c.arguments.map { try modelArgument($0, indices) } }
+  private static func emptyModelArguments(_ ds: [Descriptors.Descriptor]) -> Bool {
+    ds.contains { d in
+      if case .forms(let f) = d, f.count == 4, f[0] == .atom("int"), case .number(let lo) = f[2],
+        case .number(let hi) = f[3]
+      {
+        return lo > hi
+      }
+      return false
+    }
+  }
+  private static func validModelArguments(_ ds: [Descriptors.Descriptor], _ args: [Value]) -> Bool {
+    zip(ds, args).allSatisfy { d, value in
+      if case .forms(let f) = d, f.count == 4, f[0] == .atom("int"), case .int(let n) = value {
+        if case .number(let lo) = f[2], n < lo { return false }
+        if case .number(let hi) = f[3], n > hi { return false }
+      }
+      return true
+    }
+  }
+
   /// The model states a run passes through, or nil when the reference
   /// rejects it.
   public static func simulate(_ model: Machine, _ run: Run) -> [Value]? {
@@ -358,7 +435,8 @@ public enum Model {
         var states = [state]
         for (i, args) in steps {
           let c = try command(model, i)
-          if !admits(c, indices) { return nil }
+          let domains = try modelArguments(c, indices)
+          if !admits(c, indices) || !validModelArguments(domains, args) { return nil }
           guard let (next, _) = step(c, context, args, state) else { return nil }
           indices = shifted(c, indices)
           state = next
@@ -394,7 +472,10 @@ public enum Model {
       var state = started
       var steps = [(Int, [Value])]()
       while remaining != 0 {
-        let allowed = model.commands.indices.filter { admits(model.commands[$0], indices) }
+        let allowed = try model.commands.indices.filter { i in
+          let ds = try modelArguments(model.commands[i], indices)
+          return admits(model.commands[i], indices) && !emptyModelArguments(ds)
+        }
         if allowed.isEmpty { break }
         let (choice, next1) = Random.below(BigInt(allowed.count), random)
         var index = allowed[choice.exactly(Int.self)!]
@@ -405,13 +486,25 @@ public enum Model {
           next2 = r
         }
         let c = try command(model, index)
-        let (args, next3) = try arguments(model, c.arguments, next2, size)
+        let (args, next3) = try arguments(model, modelArguments(c, indices), next2, size)
         random = next3
         remaining -= 1
         if let (after, _) = step(c, context, args, state) {
           indices = shifted(c, indices)
           state = after
           steps.append((index, args))
+        } else {
+          let dependent = c.arguments.contains { d in
+            if case .forms(let f) = d { return f.first == .atom("dependent") }
+            return false
+          }
+          let allowed =
+            try c.when.map { Scalar.equal(try callback($0, context, [state]), .bool(true)) } ?? true
+          if dependent && allowed {
+            throw fail(
+              "IncompleteModelGeneration",
+              "dependent arguments rejected by the reference (1 attempt)")
+          }
         }
       }
       return ((startArgs, steps), random)
@@ -600,7 +693,7 @@ public enum Model {
   {
     var result = [[Value]]()
     for (i, (d, arg)) in zip(ds, args).enumerated() {
-      for v in try Descriptors.shrink(d, arg, model.table) {
+      for v in try Descriptors.shrink(modelBase(d), arg, model.table) {
         var copy = args
         copy[i] = v
         result.append(copy)

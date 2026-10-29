@@ -1133,6 +1133,68 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     formatSource formatted `shouldBe` formatted
     significant (LawSpec.Model.content formatted) `shouldBe` significant raw
     parseSourceCanonical formatted `shouldSatisfy` isRight
+  -- ref:REQ-lawspec-quantifier-layout
+  it "formats quantified claims as blocks and rejoins a short arithmetic body" $ do
+    let input = source $ unlines
+          [ "seats :: Int32 -> Int32"
+          , "law \"|every row contributes four seats| is"
+          , "  definition:"
+          , "    for all (rows :: Int32 where rows >= 0 and rows <= 40) => seats rows = rows"
+          , "      * 4 end for all"
+          , "  end definition"
+          , "end law" ]
+        formatted = formatSource input
+        significant value = [(tokenKind token,tokenText token) |
+          token <- sourceTokens (content value),tokenKind token /= TriviaToken]
+    content formatted `shouldSatisfy` isInfixOf (unlines
+      [ "  definition:"
+      , "    for all (rows :: Int32 where rows >= 0 and rows <= 40) =>"
+      , "      seats rows = rows * 4"
+      , "    end for all"
+      , "  end definition"
+      , "end law" ])
+    significant formatted `shouldBe` significant input
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "keeps long quantifier binders whole and aligns their separator" $ do
+    let input = source $ unlines
+          [ "law \"|swapping inputs keeps the sum| is definition:"
+          , "for all (first :: Int32 where first >= -10 and first <= 10) (second :: Int32 where second >= -10 and second <= 10) => first + second = second + first end for all end definition end law" ]
+        formatted = formatSource input
+    content formatted `shouldSatisfy` isInfixOf (unlines
+      [ "    for all"
+      , "      (first :: Int32 where first >= -10 and first <= 10)"
+      , "      (second :: Int32 where second >= -10 and second <= 10)"
+      , "    =>"
+      , "      first + second = second + first"
+      , "    end for all"
+      , "  end definition"
+      , "end law" ])
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "formats nested quantifiers and given scopes without moving comments or literal text" $ do
+    let input = source $ unlines
+          [ "function text (flag :: Bool) -> Text is \"for all => end for all\" end function"
+          , "law nested is definition: given (flag :: Bool) then for all (other :: Bool) => there exists (answer :: Bool) such that"
+          , "-- Keep this explanation."
+          , "answer = other end exists end for all end given end definition end law" ]
+        formatted = formatSource input
+        significant value = [(tokenKind token,tokenText token) |
+          token <- sourceTokens (content value),tokenKind token /= TriviaToken]
+    content formatted `shouldSatisfy` isInfixOf (unlines
+      [ "    given (flag :: Bool) then"
+      , "      for all (other :: Bool) =>"
+      , "        there exists (answer :: Bool) such that"
+      , "          -- Keep this explanation."
+      , "          answer = other"
+      , "        end exists"
+      , "      end for all"
+      , "    end given"
+      , "  end definition"
+      , "end law" ])
+    significant formatted `shouldBe` significant input
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "formats record types with separate braces and two-space fields, including short and nested records" $ do
     let input = source $ unlines
           [ "type TimePoint is a record { year :: Int32 month :: Maybe Int32 day :: Maybe Int32 } end type"

@@ -1,0 +1,161 @@
+{
+  "id": "weak-properties",
+  "title": "Practice: keep every library request",
+  "section": "Apply the ideas",
+  "vision": "Apply ordering and preservation to a library queue where equal priorities still represent different requests.",
+  "slogan": "Same priority, separate requests.",
+  "symbol": "[3, 1, 1] → [1, 1, 3]: both 1s stay",
+  "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
+  "news": "Equal priority values can represent separate requests that must both survive.",
+  "contributions": "A library queue sorter with ordering and occurrence preservation. Duplicate requests survive; replacing requests with zeros fails even when the output length is right.",
+  "star": {
+    "salient": "Equal priority values can represent separate requests that must both survive.",
+    "slogan": "Same priority, separate requests.",
+    "symbol": "[3, 1, 1] → [1, 1, 3]: both 1s stay",
+    "surprise": "A queue can have the right length and be ordered while every priority has been replaced.",
+    "story": "The library needs requests ordered by priority. Empty output, deduplication and invented zero priorities all lose the meaning of the queue; a correct sort preserves every request’s rank."
+  },
+  "attribution": [
+    {
+      "title": "Scott Wlaschin — Choosing properties in practice, part 1",
+      "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-3/",
+      "use": "Original library application after the sorting examples."
+    }
+  ],
+  "hints": [
+    "Each integer is one request’s rank. How many requests share rank 1 in the failing example?",
+    "Removing equal values removes requests. Count them before considering order.",
+    "Sort the original ranks without discarding or replacing them. Load solution reveals the full repair."
+  ],
+  "stages": [
+    {
+      "id": "empty",
+      "title": "What does one number in the queue mean?",
+      "story": [
+        "A library serves requests by priority. For this exercise, each integer represents one request’s priority rank; a lower rank comes first. Two requests can have the same rank. They are still two requests.",
+        "The task is to reorder these ranks without dropping or inventing a request. By the end, you will have applied both parts of the sorting contract to that practical meaning.",
+        "The current implementation returns an empty queue, and Laws asks only whether its output is ordered. Predict whether that check rejects it, then run checks with All checks. An empty result has no out-of-order pair, but nobody remains in the queue."
+      ],
+      "focus": "Solution",
+      "project": "exercises/weak-properties/01",
+      "run": {
+        "mode": "all",
+        "expect": "passed",
+        "seed": 424242
+      },
+      "action": "Run the ordering-only suite. Explain what each of the two 1s represents and why [] fails the library’s task.",
+      "reason": "Priority is the sorting key, not a request identity. Equal keys do not authorize deleting a request.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "the ordering helper checks the rank sequence. It cannot count whether the original requests survived.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “the result is in ascending order” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ],
+      "symbol": "[3, 1, 1] → [1, 1, 3]: both 1s stay"
+    },
+    {
+      "id": "duplicates",
+      "title": "Two requests with one priority must both stay",
+      "story": [
+        "Laws now requires sameItems as well as ordered. The concrete “requests with equal priority both stay” check contains two requests with rank 1 and one with rank 3.",
+        "Solution removes repeated values before sorting. That treats the two rank-1 requests as if they were the same request. Use Run checks with All checks: the result is ordered, but one request has disappeared.",
+        "This is preservation: every input occurrence has a matching output occurrence. It is different from merely checking whether each distinct value appears somewhere."
+      ],
+      "focus": "Tests",
+      "project": "exercises/weak-properties/02",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Use Run checks with All checks and count rank-1 requests in the input, expected result and actual result.",
+      "reason": "Same priority, separate requests. Sorting a queue must preserve the count at each rank.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "sameItems compares occurrence counts. The two occurrences of 1 in “requests with equal priority both stay” are both required.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "substitute",
+      "title": "Invented priorities are not preservation",
+      "story": [
+        "This implementation returns a zero for every input item. It keeps the number of positions, and those zeros are ordered.",
+        "The requests’ priority ranks have been replaced. Run the unchanged suite and inspect which counts disagree. The sameItems requirement catches this without adding a special rule against zero."
+      ],
+      "focus": "Solution",
+      "project": "exercises/weak-properties/03",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Run the suite and explain why matching the queue length does not preserve its requests’ ranks.",
+      "reason": "Preserving a queue means retaining its values and their counts, as well as its length.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "sameItems rules out substitution as well as deletion. Zero is an ordinary integer here; the problem is replacing input values with it.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "repair",
+      "title": "Deliver the ordered queue",
+      "story": [
+        "The starter returns the ranks unchanged. It retains every request but leaves an out-of-order queue out of order. Run it to see the remaining failure.",
+        "Implement a sort that satisfies both requirements, then rerun checks with All checks. Keep the two rank-1 requests in the named example.",
+        "As your own challenge, write a case with three requests sharing one rank and another request at a different rank. Predict the result and check both counts and order. You will have tests that distinguish equal priority from duplicate identity."
+      ],
+      "focus": "Solution",
+      "project": "exercises/weak-properties/04",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Observe the ordering failure, implement a correct queue sort and add your own repeated-priority example.",
+      "reason": "The output must serve the library’s purpose: correct order with every request retained.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "challenge": true,
+      "editor": "Tests",
+      "syntax": "The property joins the ordering helper and sameItems with and. Returning the original list satisfies preservation but can fail ordering.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    }
+  ],
+  "solutionProject": "exercises/weak-properties/solution",
+  "coverage": {
+    "browserExecution": [
+      "fsharp",
+      "typescript",
+      "javascript"
+    ],
+    "definitionChecking": true,
+    "nativeExecution": "deferred",
+    "apiCollectionCredit": "deferred: this story is not a complete public API collection"
+  },
+  "implementationSyntax": {
+    "fsharp": "In F#, List.sort orders ranks; List.distinct removes equal values, which loses separate requests at the same rank.",
+    "typescript": "In TypeScript, number[] holds the ranks. A numeric comparator orders them; new Set removes equal values, losing requests at the same rank.",
+    "javascript": "In JavaScript, the array holds the ranks. A numeric comparator orders them; new Set removes equal values, losing requests at the same rank."
+  },
+  "naming": "Use English phrase names for readable claims and descriptive LawSpec helpers. Keep short code names such as add, sort, xs and numbers when they make calls and recipes easier to follow. A phrase starts with \"| and ends with |, without a closing quote. A law label identifies the claim; renaming it does not change what the definition checks. The compiler generates target-appropriate names."
+}

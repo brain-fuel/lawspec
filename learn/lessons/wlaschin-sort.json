@@ -1,0 +1,197 @@
+{
+  "id": "wlaschin-sort",
+  "title": "Can an empty answer pass a sorting test?",
+  "section": "Wlaschin’s examples",
+  "vision": "Learn to specify a sort that orders values while keeping every occurrence.",
+  "slogan": "Order it. Keep it.",
+  "symbol": "[3, 1, 1] → []: ordered, but lost",
+  "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
+  "news": "Sorting must preserve occurrences as well as order values.",
+  "contributions": "A sort, an adjacent-order check and an occurrence-count preservation check. The same suite rejects empty output, lost duplicates, substituted values and unchanged unsorted input, and accepts a correct sort.",
+  "star": {
+    "salient": "Sorting must preserve occurrences as well as order values.",
+    "slogan": "Order it. Keep it.",
+    "symbol": "[3, 1, 1] → []: ordered, but lost",
+    "surprise": "An empty list passes an adjacent-order check because there is no out-of-order pair.",
+    "story": "A sorter discards everything and passes ordering. Preservation exposes it, duplicate loss and substitution; keeping the input exposes the remaining need for ordering."
+  },
+  "attribution": [
+    {
+      "title": "Scott Wlaschin — Choosing properties in practice, part 1",
+      "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-3/",
+      "use": "Adapted ordered-output and preservation examples, expressed with an adjacent-order helper and LawSpec’s sameItems operation. Preservation does not call a reference sort."
+    }
+  ],
+  "hints": [
+    "Count occurrences in the concrete failing example.",
+    "If preservation passes, look for an adjacent pair in the wrong order.",
+    "Keep both requirements and sort the original values. Load solution reveals the complete implementation."
+  ],
+  "stages": [
+    {
+      "id": "empty",
+      "title": "An empty answer looks ordered",
+      "story": [
+        "We want a function that puts integers in ascending order. If the input contains the same value twice, both occurrences must remain. For example, sorting three values must still return those three values. By the end, you will have two complementary requirements that distinguish sorting from losing or replacing values.",
+        "An occurrence means one appearance of a value. If a list contains 1 twice, it has two occurrences of 1. Sorting changes positions; it should not change those counts.",
+        "Our current property checks only ordered: every adjacent pair in the result is in ascending order. Solution returns an empty list for every input. Before running, decide whether an empty list contains an out-of-order pair.",
+        "Use Run checks with All checks. The pass is real: an empty list has no bad pair. It still fails our purpose because it loses every input value.",
+        "Open Harness to see how xs is chosen. number draws integers; bind draws a, b and c; one of builds lists of zero through three items. use lists for xs supplies “the result is in ascending order”. These are small teaching inputs, not all possible lists."
+      ],
+      "focus": "Solution",
+      "project": "exercises/sorting/01",
+      "run": {
+        "mode": "all",
+        "expect": "passed",
+        "seed": 424242
+      },
+      "action": "Run the current suite. Explain why ordered accepts [] and what useful behavior the property omits.",
+      "reason": "The unexpected pass tells us which part of sorting we have not specified.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "syntax": "The helper \"|is in ascending order| returns true or false. Nil is an empty list; Cons separates a first item from the remaining list. The helper checks an adjacent pair and calls itself on the remaining list until it reaches the end. Its descriptive phrase becomes an ordinary function name in generated code.",
+      "editor": "Tests",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “the result is in ascending order” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ],
+      "symbol": "[3, 1, 1] → []: ordered, but lost"
+    },
+    {
+      "id": "preserve",
+      "title": "Require the same values, with the same counts",
+      "story": [
+        "Laws adds sameItems to “sorting orders values and keeps every occurrence”. It requires each value to occur just as many times in the result as in the input. Ordering remains required too.",
+        "Solution still returns []. The concrete “sorting keeps repeated values” law now expects the sorted form of [3, 1, 1]. Use Run checks with All checks: preservation rejects the lost values.",
+        "This is stronger than asking whether values merely appear somewhere in the result. Two occurrences of 1 must remain two occurrences.",
+        "Read the whole new claim name: “sorting orders values and keeps every occurrence”. and joins the two requirements. The harness refers to this same name so its generated lists reach the strengthened claim."
+      ],
+      "focus": "Tests",
+      "project": "exercises/sorting/02",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "failedTests": [
+          "learn.sorting::|sorting keeps repeated values| boundary 1"
+        ],
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Use Run checks with All checks. Read “sorting keeps repeated values” and explain which input occurrences are absent from the actual result.",
+      "reason": "A useful sorting contract must account for every occurrence.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "sameItems compares occurrence counts while ignoring order. and requires both ordering and preservation to hold.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "duplicates",
+      "title": "Removing duplicates also loses occurrences",
+      "story": [
+        "This version removes duplicate values and then sorts. The result of the concrete check contains one 1 instead of two.",
+        "The result is ordered, but its occurrence counts are wrong. Run the unchanged suite. We do not need a special property for this new shortcut: sameItems already rejects it."
+      ],
+      "focus": "Solution",
+      "project": "exercises/sorting/03",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "failedTests": [
+          "learn.sorting::|sorting keeps repeated values| boundary 1"
+        ],
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Run the suite and count the 1s on both sides of “sorting keeps repeated values”.",
+      "reason": "Distinct values and all original occurrences answer different questions.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "The sameItems requirement checks repeated occurrences. A membership-only check would not distinguish one 1 from two 1s.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "substitute",
+      "title": "Keeping the length can still replace the values",
+      "story": [
+        "This implementation returns one zero for each input item. It keeps the length and its zeros are ordered.",
+        "Run the same suite. Whenever the input contains another value, the occurrence counts disagree. Keeping three positions is not enough if we replace the things in them."
+      ],
+      "focus": "Solution",
+      "project": "exercises/sorting/04",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Use Run checks with All checks. Identify a value whose count changed despite the correct output length.",
+      "reason": "Order it. Keep it. Preservation covers replacement as well as removal.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "sameItems checks which values occur and how often. Equal list lengths alone cannot establish that.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "repair",
+      "title": "Satisfy both halves of sorting",
+      "story": [
+        "The starter now returns its input unchanged. Every occurrence survives, but an unsorted input remains unsorted.",
+        "Run this version to see the ordering failure. Then implement an ascending sort in Solution and rerun both requirements. Keep the named example and sameItems.",
+        "You will have a sorter checked against both obligations. As your own challenge, add a concrete example with a negative value and a repeated value. Explain why returning the input and removing duplicates each break it."
+      ],
+      "focus": "Solution",
+      "project": "exercises/sorting/05",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Observe the ordering failure, implement a correct sort and rerun. Add an example that exercises both requirements.",
+      "reason": "Neither ordering nor preservation is sufficient by itself.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "challenge": true,
+      "editor": "Tests",
+      "syntax": "ordering and sameItems are joined by and. A correct result must satisfy both; weakening either one reopens an escape route.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “sorting orders values and keeps every occurrence” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    }
+  ],
+  "solutionProject": "exercises/sorting/solution",
+  "coverage": {
+    "browserExecution": [
+      "fsharp",
+      "typescript",
+      "javascript"
+    ],
+    "definitionChecking": true,
+    "nativeExecution": "deferred",
+    "apiCollectionCredit": "deferred: this story is not a complete public API collection"
+  },
+  "implementationSyntax": {
+    "fsharp": "In F#, int list is a list of integers; [] is empty. List.sort orders values; List.distinct removes repeated values. These are different operations.",
+    "typescript": "In TypeScript, number[] is an array of numbers. A numeric sort needs a numeric comparator; new Set removes repeated values instead.",
+    "javascript": "In JavaScript, [] is an empty array. A numeric sort needs a numeric comparator; new Set removes repeated values instead."
+  },
+  "naming": "Use English phrase names for readable claims and descriptive LawSpec helpers. Keep short code names such as add, sort, xs and numbers when they make calls and recipes easier to follow. A phrase starts with \"| and ends with |, without a closing quote. A law label identifies the claim; renaming it does not change what the definition checks. The compiler generates target-appropriate names."
+}

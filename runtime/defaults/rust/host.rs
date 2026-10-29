@@ -7,39 +7,50 @@ use crate::lawspec_runtime as ls;
 #[derive(Default)]
 pub struct FileSystemHandler;
 
-impl crate::lawspec_abilities::lawspec_host::FileSystem for FileSystemHandler {
-    fn readBytes(&self, value0: std::string::String) -> std::option::Option<std::vec::Vec<u8>> {
+impl crate::lawspec_abilities::lawspec_host::FileSystem for FileSystemHandler
+{
+    fn readBytes(&self, value0: std::string::String) -> std::option::Option<std::vec::Vec<u8>>
+    {
         std::fs::read(&value0).ok()
     }
 
-    fn writeBytes(&self, value0: std::string::String, value1: std::vec::Vec<u8>) -> () {
+    fn writeBytes(&self, value0: std::string::String, value1: std::vec::Vec<u8>) -> ()
+    {
         std::fs::write(&value0, &value1).expect("writing the file failed");
     }
 
-    fn pathExists(&self, value0: std::string::String) -> bool {
+    fn pathExists(&self, value0: std::string::String) -> bool
+    {
         std::fs::symlink_metadata(&value0).is_ok()
     }
 
-    fn removePath(&self, value0: std::string::String) -> () {
-        match std::fs::symlink_metadata(&value0) {
-            Ok(metadata) if metadata.is_dir() => {
+    fn removePath(&self, value0: std::string::String) -> ()
+    {
+        match std::fs::symlink_metadata(&value0)
+        {
+            Ok(metadata) if metadata.is_dir() =>
+            {
                 std::fs::remove_dir_all(&value0).expect("removing the directory failed")
             }
             Ok(_) => std::fs::remove_file(&value0).expect("removing the file failed"),
-            Err(_) => {}
+            Err(_) =>
+            {}
         }
     }
 
-    fn temporaryDirectory(&self, value0: std::string::String) -> std::string::String {
+    fn temporaryDirectory(&self, value0: std::string::String) -> std::string::String
+    {
         ls::acquire_resource("temporaryDirectory").expect("making a temporary directory failed")
     }
 
-    fn temporaryFile(&self, value0: std::string::String) -> std::string::String {
+    fn temporaryFile(&self, value0: std::string::String) -> std::string::String
+    {
         ls::acquire_resource("temporaryFile").expect("making a temporary file failed")
     }
 }
 
-pub fn valid_name(name: &str) -> bool {
+pub fn valid_name(name: &str) -> bool
+{
     !name.is_empty() && !name.contains('=') && !name.contains('\0')
 }
 
@@ -47,23 +58,30 @@ pub fn valid_name(name: &str) -> bool {
 #[derive(Default)]
 pub struct EnvironmentHandler;
 
-impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler {
+impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler
+{
     fn environmentVariable(
         &self,
         value0: std::string::String,
-    ) -> std::option::Option<std::string::String> {
-        if valid_name(&value0) {
+    ) -> std::option::Option<std::string::String>
+    {
+        if valid_name(&value0)
+        {
             std::env::var(&value0).ok()
-        } else {
+        }
+        else
+        {
             None
         }
     }
 
-    fn environmentSnapshot(&self) -> std::string::String {
+    fn environmentSnapshot(&self) -> std::string::String
+    {
         ls::acquire_resource("environment").expect("saving the environment failed")
     }
 
-    fn restoreEnvironment(&self, value0: std::string::String) -> () {
+    fn restoreEnvironment(&self, value0: std::string::String) -> ()
+    {
         ls::release_resource("environment", &value0).expect("restoring the environment failed");
     }
 }
@@ -72,8 +90,10 @@ impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler 
 #[derive(Default)]
 pub struct PortsHandler;
 
-impl crate::lawspec_abilities::lawspec_host::Ports for PortsHandler {
-    fn freePort(&self) -> i32 {
+impl crate::lawspec_abilities::lawspec_host::Ports for PortsHandler
+{
+    fn freePort(&self) -> i32
+    {
         let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("binding a free port failed");
         probe
             .local_addr()

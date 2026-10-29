@@ -39,7 +39,9 @@ def test_shake256():
 
 
 def test_aes_256_gcm():
-    for key, iv, plaintext, associated, ciphertext, tag in vectors("aes-256-gcm"):
+    for key, iv, plaintext, associated, ciphertext, tag in vectors(
+        "aes-256-gcm"
+    ):
         sealed = crypto.aes_256_gcm_encrypt(
             unhex(key), unhex(iv), unhex(plaintext), unhex(associated)
         )
@@ -58,12 +60,17 @@ def test_aes_256_gcm():
 
 def test_ml_kem_768_key_generation():
     for d, z, public_digest, secret_digest in vectors("mlkem768-keygen"):
-        public, secret = crypto.ml_kem_768_key_pair_from_seed(unhex(d) + unhex(z))
+        public, secret = crypto.ml_kem_768_key_pair_from_seed(
+            unhex(d) + unhex(z)
+        )
         assert sha3(public) == public_digest
         assert secret == unhex(d) + unhex(z)
-        expected_public, expanded = reference.ml_kem_768_key_pair(unhex(d), unhex(z))
+        expected_public, expanded = reference.ml_kem_768_key_pair(
+            unhex(d), unhex(z)
+        )
         assert (
-            sha3(expected_public) == public_digest and sha3(expanded) == secret_digest
+            sha3(expected_public) == public_digest
+            and sha3(expanded) == secret_digest
         )
 
 
@@ -82,7 +89,9 @@ def test_ml_kem_768_encapsulation():
 def test_ml_kem_768_decapsulation():
     for expanded, ciphertext, secret in vectors("mlkem768-decaps"):
         assert (
-            reference.ml_kem_768_decapsulate(unhex(expanded), unhex(ciphertext)).hex()
+            reference.ml_kem_768_decapsulate(
+                unhex(expanded), unhex(ciphertext)
+            ).hex()
             == secret
         )
     for seed, ciphertext, secret in vectors("mlkem768-decaps-seed"):
@@ -97,7 +106,9 @@ def test_ml_kem_768_round_trip():
         public, secret = crypto.ml_kem_768_key_pair_from_seed(unhex(seed))
         ciphertext, shared = crypto.ml_kem_768_encapsulate(public)
         assert crypto.ml_kem_768_decapsulate(secret, ciphertext) == shared
-        _, expanded = reference.ml_kem_768_key_pair(unhex(seed)[:32], unhex(seed)[32:])
+        _, expanded = reference.ml_kem_768_key_pair(
+            unhex(seed)[:32], unhex(seed)[32:]
+        )
         assert reference.ml_kem_768_decapsulate(expanded, ciphertext) == shared
 
 
@@ -109,7 +120,9 @@ def test_ml_dsa_65_key_generation():
 
 
 def test_ml_dsa_65_verification():
-    for public, message, context, signature, passed in vectors("mldsa65-verify"):
+    for public, message, context, signature, passed in vectors(
+        "mldsa65-verify"
+    ):
         assert crypto.ml_dsa_65_verify(
             unhex(public), unhex(message), unhex(signature), unhex(context)
         ) == (passed == "true")
@@ -121,7 +134,9 @@ def test_ml_dsa_65_signature_from_a_seed():
     for seed, message, signature in vectors("mldsa65-sign-seed"):
         _, expanded = reference.ml_dsa_65_key_pair(unhex(seed))
         assert (
-            reference.ml_dsa_65_sign_deterministic(expanded, unhex(message)).hex()
+            reference.ml_dsa_65_sign_deterministic(
+                expanded, unhex(message)
+            ).hex()
             == signature
         )
         public = crypto.ml_dsa_65_public_key(unhex(seed))
@@ -130,12 +145,16 @@ def test_ml_dsa_65_signature_from_a_seed():
             public, unhex(message) + b"\0", unhex(signature)
         )
         assert crypto.ml_dsa_65_verify(
-            public, unhex(message), crypto.ml_dsa_65_sign(unhex(seed), unhex(message))
+            public,
+            unhex(message),
+            crypto.ml_dsa_65_sign(unhex(seed), unhex(message)),
         )
 
 
 def test_slh_dsa_shake_128f_key_generation():
-    for sk_seed, sk_prf, pk_seed, public, secret_digest in vectors("slhdsa128f-keygen"):
+    for sk_seed, sk_prf, pk_seed, public, secret_digest in vectors(
+        "slhdsa128f-keygen"
+    ):
         made_public, made_secret = crypto.slh_dsa_key_pair(
             unhex(sk_seed), unhex(sk_prf), unhex(pk_seed)
         )
@@ -144,7 +163,9 @@ def test_slh_dsa_shake_128f_key_generation():
 
 
 def test_slh_dsa_shake_128f_verification():
-    for public, message, context, signature, passed in vectors("slhdsa128f-verify"):
+    for public, message, context, signature, passed in vectors(
+        "slhdsa128f-verify"
+    ):
         assert crypto.slh_dsa_verify(
             unhex(public), unhex(message), unhex(signature), unhex(context)
         ) == (passed == "true")

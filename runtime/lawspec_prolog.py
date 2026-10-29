@@ -49,7 +49,8 @@ def _query_once(goal, arguments):
         return janus.query_once(goal, arguments)
     except janus.PrologError as error:
         incomplete = janus.query_once(
-            "Error=lawspec_incomplete(Reason), string(Reason)", {"Error": error.term}
+            "Error=lawspec_incomplete(Reason), string(Reason)",
+            {"Error": error.term},
         )
         if incomplete["truth"] is True:
             raise Incomplete(incomplete["Reason"]) from error
@@ -63,7 +64,8 @@ def load_module(path):
     SWI load_files/2's empty import list preserves their module identities.
     """
     answer = _query_once(
-        "load_files(File,[imports([]),must_be_module(true)])", {"File": str(path)}
+        "load_files(File,[imports([]),must_be_module(true)])",
+        {"File": str(path)},
     )
     if answer["truth"] is not True:
         raise Incomplete("Prolog module loading did not complete")
@@ -90,7 +92,9 @@ def generator_factory(module, predicate, children):
     from hypothesis.strategies import SearchStrategy
 
     if not all(isinstance(child, SearchStrategy) for child in children):
-        raise TypeError("Prolog generator parameters must be Hypothesis strategies")
+        raise TypeError(
+            "Prolog generator parameters must be Hypothesis strategies"
+        )
     answer = _query_once(
         "lawspec_prolog:strategy(Module,Predicate,Children,Strategy)",
         {"Module": module, "Predicate": predicate, "Children": children},
@@ -119,7 +123,9 @@ class Handler:
 
     def invoke(self, operation, packed):
         if operation not in self.operations:
-            raise ValueError("operation outside declared Prolog ability: " + operation)
+            raise ValueError(
+                "operation outside declared Prolog ability: " + operation
+            )
         types, result_type, failing = self.operations[operation]
         if len(types) != len(packed):
             raise TypeError("wrong Prolog ability operation arity")
@@ -134,20 +140,28 @@ class Handler:
             return ["incomplete", list(map(ord, str(error)))]
         except (ls.Fail, ls.Failure) as error:
             if failing is None:
-                raise ValueError("operation raised an undeclared failure") from error
+                raise ValueError(
+                    "operation raised an undeclared failure"
+                ) from error
             ability, ty = failing
             if isinstance(error, ls.Failure):
                 if error.ability != ability:
                     raise ValueError(
                         "operation raised a different failure ability"
                     ) from error
-                value = self.schema.validate(ty, error.value, self.bits, symbols)
+                value = self.schema.validate(
+                    ty, error.value, self.bits, symbols
+                )
             else:
-                value = self.schema.from_native(ty, error.value, self.bits, symbols)
+                value = self.schema.from_native(
+                    ty, error.value, self.bits, symbols
+                )
             return ["ability_failure", ability, pack(value, self.schema, ty)]
         if result_type.name == "Unit":
             value = ls.unit_result(value)
-        logical = self.schema.from_native(result_type, value, self.bits, symbols)
+        logical = self.schema.from_native(
+            result_type, value, self.bits, symbols
+        )
         return ["ok", pack(logical, self.schema, result_type)]
 
 
@@ -184,9 +198,9 @@ def _intern_native_handle(identity, term):
             value = reference()
             if (
                 value is not None
-                and _query_once("Left==Right", {"Left": value.term, "Right": term})[
-                    "truth"
-                ]
+                and _query_once(
+                    "Left==Right", {"Left": value.term, "Right": term}
+                )["truth"]
                 is True
             ):
                 return value
@@ -305,7 +319,9 @@ class Production:
                     result_type, value, self._bits, self._symbols
                 )
                 pack(value, self._schema, result_type, self._bindings)
-            return self._schema.to_native(result_type, value, self._bits, self._symbols)
+            return self._schema.to_native(
+                result_type, value, self._bits, self._symbols
+            )
 
         return operation
 
@@ -330,11 +346,15 @@ def pack(value, schema=None, reference=None, bindings=None):
             if wanted is not None and (
                 not isinstance(value, _NativeHandle) or value.identity != wanted
             ):
-                raise TypeError("wrong native Prolog handle type: " + reference.name)
+                raise TypeError(
+                    "wrong native Prolog handle type: " + reference.name
+                )
         return ["prolog_state", value.term]
     if schema is not None and schema.is_handle(reference):
         if bindings and reference.name in dict(bindings[1]):
-            raise TypeError("expected a bound native Prolog handle: " + reference.name)
+            raise TypeError(
+                "expected a bound native Prolog handle: " + reference.name
+            )
         return ["opaque", _Opaque(value)]
 
     def child(item, ty=None):
@@ -352,7 +372,11 @@ def pack(value, schema=None, reference=None, bindings=None):
             elif reference.name == "Maybe":
                 types = reference.arguments if value.fields else ()
             elif reference.name == "Either":
-                types = (reference.arguments[0 if value.tag == "Either::Left" else 1],)
+                types = (
+                    reference.arguments[
+                        0 if value.tag == "Either::Left" else 1
+                    ],
+                )
         return [
             "value",
             value.tag,
@@ -463,7 +487,9 @@ def unpack(packed):
         return parts[0].value if isinstance(parts[0], _Opaque) else parts[0]
     if kind == "handler":
         if not isinstance(parts[0], Handler):
-            raise TypeError("Prolog handler requires declared operation metadata")
+            raise TypeError(
+                "Prolog handler requires declared operation metadata"
+            )
         return parts[0]
     if kind == "value":
         return ls.DataValue(parts[0], tuple(map(unpack, parts[1])))
@@ -471,7 +497,12 @@ def unpack(packed):
 
 
 def invoke(
-    module, predicate, arguments, schema=None, argument_types=None, bindings=None
+    module,
+    predicate,
+    arguments,
+    schema=None,
+    argument_types=None,
+    bindings=None,
 ):
     """Run one functional predicate, preserving SWI's structured exceptions."""
     if argument_types is not None and len(argument_types) != len(arguments):
@@ -550,7 +581,9 @@ def call(
         schema.from_native(ty, value, bits, symbols)
         for ty, value in zip(argument_types, arguments)
     ]
-    order = list(range(len(logical))) if argument_order is None else argument_order
+    order = (
+        list(range(len(logical))) if argument_order is None else argument_order
+    )
     try:
         result = invoke(
             module,
@@ -562,7 +595,9 @@ def call(
         )
     except NativeFailure as error:
         if failure_type is None:
-            raise ValueError("Prolog adapter raised an undeclared failure") from error
+            raise ValueError(
+                "Prolog adapter raised an undeclared failure"
+            ) from error
         raise ls.Fail(
             schema.to_native(failure_type, error.value, bits, symbols)
         ) from error

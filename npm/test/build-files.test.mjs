@@ -14,25 +14,40 @@ import {planWrites, applyWrites} from '../files.mjs';
 import {templates, programTargets as targets} from '../templates.mjs';
 
 const compiler = await createCompiler();
-const sources = await Promise.all(['atoi_codec', 'algebra', 'currying', 'slug'].map(async name => ({
-  path: `${name}.lawspec`,
-  content: await readFile(new URL(`../examples/specs/${name}.lawspec`, import.meta.url), 'utf8'),
-})));
+const sources = await Promise.all(
+  ['atoi_codec', 'algebra', 'currying', 'slug'].map(async name => ({
+    path: `${name}.lawspec`,
+    content: await readFile(
+      new URL(`../examples/specs/${name}.lawspec`, import.meta.url),
+      'utf8',
+    ),
+  })),
+);
 
-for (const target of targets) {
-  test(`${target}: generation preserves scaffold build files and is idempotent`, async t => {
-    const root = await mkdtemp(path.join(os.tmpdir(), `lawspec-build-files-${target}-`));
+for (const target of targets)
+{
+  test(`${target}: generation preserves scaffold build files and is idempotent`, async t =>
+  {
+    const root = await mkdtemp(
+      path.join(os.tmpdir(), `lawspec-build-files-${target}-`),
+    );
     t.after(() => rm(root, {recursive: true, force: true}));
     const scaffold = Object.entries(templates(target));
-    for (const [file, content] of scaffold) {
+    for (const [file, content] of scaffold)
+    {
       await mkdir(path.dirname(path.join(root, file)), {recursive: true});
       await writeFile(path.join(root, file), content);
     }
     const result = await generateInput(compiler, {sources, target});
     assert.deepEqual(result.diagnostics, []);
     await applyWrites([await planWrites(root, result.files)]);
-    for (const [file, content] of scaffold) {
-      assert.equal(await readFile(path.join(root, file), 'utf8'), content, `${file} changed`);
+    for (const [file, content] of scaffold)
+    {
+      assert.equal(
+        await readFile(path.join(root, file), 'utf8'),
+        content,
+        `${file} changed`,
+      );
     }
     assert.equal((await planWrites(root, result.files)).changes.length, 0);
   });

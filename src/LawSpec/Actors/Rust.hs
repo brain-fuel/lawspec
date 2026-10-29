@@ -178,7 +178,7 @@ comment ls item = mconcat [D.text ("/// " ++ l) <> D.hardline | l <- ls] <> item
 
 -- | An impl block with blank lines between its items.
 impl :: String -> [D.Doc] -> D.Doc
-impl head' items = D.text (head' ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) items)
+impl head' items = D.text head' <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) items)
 
 -- | A supervisor's struct: start() makes the runtime supervisor and starts
 -- each child under it, in order; each child is a public field.
@@ -187,7 +187,8 @@ supervisorStruct s = D.joinWith D.hardline (map D.text
   ([ "/// Supervisor " ++ supervisionName s ++ ": " ++ strategyText ++ ", at most " ++
        show (supervisionRestarts s) ++ " restarts in " ++ show (supervisionPeriod s) ++ " microseconds."
    , "#[derive(Clone)]"
-   , "pub struct " ++ cls ++ " {"
+   , "pub struct " ++ cls
+   , "{"
    , "    supervisor: ls::actors::Supervisor," ] ++
    [ "    pub " ++ field name ++ ": " ++ childClass child ++ "," | (_, name, child) <- supervisionChildren s ] ++
    [ "}", "" ]) ++
@@ -203,7 +204,7 @@ supervisorStruct s = D.joinWith D.hardline (map D.text
              , L.call "std::time::Duration::from_micros" [L.atom (show (supervisionPeriod s))] ]) ] ++
          [ L.Let (field name) (L.call (childClass child ++ "::start_under") [L.atom "&own", L.atom ("ls::actors::Lifetime::" ++ lifetime l)])
          | (l, name, child) <- supervisionChildren s ] ++
-         [ L.Item (D.text "if let Some((parent, lifetime)) = parent " <> D.block 4 (L.stmts [L.Semi (L.method (L.atom "parent") "supervise" [L.method (L.atom "own") "clone" [], L.atom "lifetime"])] Nothing)) ])
+         [ L.Item (D.text "if let Some((parent, lifetime)) = parent" <> D.hardline <> D.block 4 (L.stmts [L.Semi (L.method (L.atom "parent") "supervise" [L.method (L.atom "own") "clone" [], L.atom "lifetime"])] Nothing)) ])
         (Just (L.struct cls (("supervisor", L.atom "own") : [(field name, L.atom (field name)) | (_, name, _) <- supervisionChildren s]))))
     , comment ["The runtime supervisor, to supervise more children."]
         (L.function "pub fn supervisor" ["&self"] "&ls::actors::Supervisor" (D.text "&self.supervisor"))

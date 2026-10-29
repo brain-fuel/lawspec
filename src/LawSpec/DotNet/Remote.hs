@@ -34,7 +34,7 @@ emitRemote CSharp layout units plan
       D.text "using Value = LawSpec.Runtime.Value;" <> D.hardline <> D.hardline <>
       D.text "/// <summary>How each remotely evaluable definition runs: its checked entry.</summary>" <> D.hardline <>
       D.text "public static class RemoteInvoke" <> D.hardline <>
-      D.block 4 (D.text "public static FSharpList<Tuple<string, FSharpFunc<FSharpList<Value>, Value>>> Invokers =>" <> D.nest 4 (D.hardline <>
+      D.block 2 (D.text "public static FSharpList<Tuple<string, FSharpFunc<FSharpList<Value>, Value>>> Invokers =>" <> D.nest 4 (D.hardline <>
         D.text "Fn.List(" <> D.joinWith (D.text "," <> D.hardline <> D.text "    ")
           [ D.text ("Fn.Tuple(" ++ stringLiteral CSharp (remoteName r) ++ ", Fn.F1((FSharpList<Value> arguments) => " ++ entryModule e ++ "." ++ entryCs e ++
               "(" ++ intercalate ", " (["LawSpec.Generated.Program.Schema", "new Scalar.SymbolContext()"] ++

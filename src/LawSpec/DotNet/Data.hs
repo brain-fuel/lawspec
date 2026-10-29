@@ -593,9 +593,9 @@ emitSchema lang layout bits crypto declarations = do
           D.text "using System;" <> D.hardline <> D.hardline <>
           D.text "namespace LawSpec.Generated;" <> D.hardline <> D.hardline <>
           D.text "/// <summary>The program's data, as the runtime checks it.</summary>" <> D.hardline <>
-          D.text "public static class Program" <> D.hardline <> D.block 4
+          D.text "public static class Program" <> D.hardline <> D.block 2
             (D.text "public static readonly Schema.Schema Schema = Build();" <> D.hardline <> D.hardline <>
-             D.text "private static Schema.Schema Build()" <> D.hardline <> D.block 4 body) <> D.hardline
+             D.text "private static Schema.Schema Build()" <> D.hardline <> D.block 2 body) <> D.hardline
   pure (Artifact ("src/LawSpec/Program" ++ extension lang) (D.render layout doc) "generated" "source")
   where
     refKey (S.Parameter i) = "$" ++ show i

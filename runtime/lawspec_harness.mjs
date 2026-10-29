@@ -6,24 +6,27 @@
 //
 // Statistics go to standard output, and, when LAWSPEC_STATS names a
 // directory, to one JSON file per test there, which lawspec test reads.
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { AsyncLocalStorage } from "node:async_hooks";
+import {mkdirSync, writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {AsyncLocalStorage} from 'node:async_hooks';
 
-export class HarnessError extends Error {}
+export class HarnessError extends Error
+{}
 
-function record(name, entry) {
+function record(name, entry)
+{
   const directory = globalThis.process?.env?.LAWSPEC_STATS;
   if (!directory) return;
-  mkdirSync(directory, { recursive: true });
-  const safe = name.replace(/[^A-Za-z0-9_-]/g, "_");
+  mkdirSync(directory, {recursive: true});
+  const safe = name.replace(/[^A-Za-z0-9_-]/g, '_');
   writeFileSync(join(directory, `${safe}.json`), JSON.stringify(entry));
 }
 
 // Strategies are composed into fast-check arbitraries by the generated test.
 // A drawn value must satisfy its input's refinements: a strategy may only
 // produce values the law is about.
-export function checkDrawn(strategy, name, holds, value) {
+export function checkDrawn(strategy, name, holds, value)
+{
   if (!holds(value))
     throw new HarnessError(
       `the strategy ${strategy} produced ${show(value)} for ${name}, ` +
@@ -32,14 +35,18 @@ export function checkDrawn(strategy, name, holds, value) {
   return value;
 }
 
-const show = (value) => {
-  try {
+const show = value =>
+{
+  try
+  {
     return (
       JSON.stringify(value, (_, v) =>
-        typeof v === "bigint" ? v.toString() : v,
+        typeof v === 'bigint' ? v.toString() : v,
       ) ?? String(value)
     );
-  } catch {
+  }
+  catch
+  {
     return String(value);
   }
 };
@@ -51,12 +58,14 @@ const best = new Map();
 // property and search tests may run at once, and one must never reset or
 // count into another's.
 const runs = new AsyncLocalStorage();
-const key = (law) => {
+const key = law =>
+{
   const run = runs.getStore();
   return run === undefined ? law : `${law}\u0000${run}`;
 };
 
-export function observe(law, { covers = [], classes = [], labels = [] } = {}) {
+export function observe(law, {covers = [], classes = [], labels = []} = {})
+{
   const stats = cases.get(key(law)) ?? {
     cases: 0,
     cover: {},
@@ -75,13 +84,15 @@ export function observe(law, { covers = [], classes = [], labels = [] } = {}) {
 
 // target maximize: fast-check has no targeted search, so the best score is
 // reported with the law's statistics.
-export function target(score, law) {
+export function target(score, law)
+{
   const value = Number(score);
   if (!best.has(key(law)) || value > best.get(key(law)))
     best.set(key(law), value);
 }
 
-function adequacy(law, covers) {
+function adequacy(law, covers)
+{
   const stats = cases.get(key(law)) ?? {
     cases: 0,
     cover: {},
@@ -90,7 +101,8 @@ function adequacy(law, covers) {
   };
   cases.delete(key(law));
   const n = stats.cases;
-  const results = covers.map(([percent, label]) => {
+  const results = covers.map(([percent, label]) =>
+  {
     const observed = n
       ? Math.round((10000 * (stats.cover[label] ?? 0)) / n) / 100
       : 0;
@@ -107,13 +119,13 @@ function adequacy(law, covers) {
     cover: results,
     classes: stats.classes,
     labels: stats.labels,
-    ...(best.has(key(law)) ? { best: best.get(key(law)) } : {}),
+    ...(best.has(key(law)) ? {best: best.get(key(law))} : {}),
   };
   best.delete(key(law));
   const lines = [`${law}: ${n} generated case(s)`];
   for (const r of results)
     lines.push(
-      `  cover ${r.required}% "${r.label}": ${r.observed}%${r.met ? "" : " (not met)"}`,
+      `  cover ${r.required}% "${r.label}": ${r.observed}%${r.met ? '' : ' (not met)'}`,
     );
   for (const [label, count] of Object.entries(stats.classes))
     lines.push(`  ${label}: ${((100 * count) / (n || 1)).toFixed(1)}%`);
@@ -121,14 +133,16 @@ function adequacy(law, covers) {
     lines.push(`  label ${label}: ${((100 * count) / (n || 1)).toFixed(1)}%`);
   if (report.best !== undefined)
     lines.push(`  best target score: ${report.best}`);
-  if (lines.length > 1) console.log(lines.join("\n"));
+  if (lines.length > 1) console.log(lines.join('\n'));
   return report;
 }
 
-async function withTimeout(test, milliseconds, law) {
+async function withTimeout(test, milliseconds, law)
+{
   if (milliseconds === undefined) return test();
   let timer;
-  const timeout = new Promise((_, reject) => {
+  const timeout = new Promise((_, reject) =>
+  {
     timer = setTimeout(
       () =>
         reject(
@@ -139,15 +153,19 @@ async function withTimeout(test, milliseconds, law) {
       milliseconds,
     );
   });
-  try {
+  try
+  {
     return await Promise.race([Promise.resolve().then(test), timeout]);
-  } finally {
+  }
+  finally
+  {
     clearTimeout(timer);
   }
 }
 
 // Run one generated test of a law under its harness settings.
-export async function run(law, name, test, options = {}) {
+export async function run(law, name, test, options = {})
+{
   return runs.run(name, () => runSettled(law, name, test, options));
 }
 
@@ -155,36 +173,44 @@ async function runSettled(
   law,
   name,
   test,
-  { timeout, repeat = 1, retries = 0, covers = [], observed = false } = {},
-) {
+  {timeout, repeat = 1, retries = 0, covers = [], observed = false} = {},
+)
+{
   let attempts = 0;
   let flaky = false;
   let report = null;
-  for (;;) {
+  for (;;)
+  {
     attempts += 1;
-    try {
-      for (let i = 0; i < repeat; i++) {
+    try
+    {
+      for (let i = 0; i < repeat; i++)
+      {
         cases.delete(key(law));
         await withTimeout(test, timeout, law);
         report = observed ? adequacy(law, covers) : null;
-        const unmet = report ? report.cover.filter((r) => !r.met) : [];
-        if (unmet.length) {
-          record(name, { ...report, test: name, outcome: "failed" });
+        const unmet = report ? report.cover.filter(r => !r.met) : [];
+        if (unmet.length)
+        {
+          record(name, {...report, test: name, outcome: 'failed'});
           throw new HarnessError(
             unmet
               .map(
-                (r) =>
+                r =>
                   `${law}: cover ${r.required}% "${r.label}" was not met (${r.observed}% of ${report.cases} generated cases)`,
               )
-              .join("; "),
+              .join('; '),
           );
         }
       }
       break;
-    } catch (error) {
-      if (error instanceof HarnessError || attempts > retries) {
+    }
+    catch (error)
+    {
+      if (error instanceof HarnessError || attempts > retries)
+      {
         if (!(error instanceof HarnessError))
-          record(name, { law, test: name, outcome: "failed", attempts });
+          record(name, {law, test: name, outcome: 'failed', attempts});
         throw error;
       }
       flaky = true;
@@ -193,7 +219,7 @@ async function runSettled(
   record(name, {
     law,
     test: name,
-    outcome: flaky ? "flaky" : "passed",
+    outcome: flaky ? 'flaky' : 'passed',
     attempts,
     ...(report ?? {}),
   });
@@ -203,20 +229,26 @@ async function runSettled(
     );
 }
 
-export function skip(law, reason) {
-  record(law, { law, outcome: "skipped", reason });
+export function skip(law, reason)
+{
+  record(law, {law, outcome: 'skipped', reason});
 }
 
 // A known discrepancy must reproduce. A passing run requires human review; the
 // harness requires human review of the specification and implementation.
-export async function knownDiscrepancy(law, name, reason, tests) {
-  for (const test of tests) {
-    try {
+export async function knownDiscrepancy(law, name, reason, tests)
+{
+  for (const test of tests)
+  {
+    try
+    {
       await test();
-    } catch (error) {
-      record(name, { law, test: name, outcome: "known-discrepancy", reason });
+    }
+    catch (error)
+    {
+      record(name, {law, test: name, outcome: 'known-discrepancy', reason});
       console.log(
-        `${law} has a known discrepancy (${reason}): ${error?.message?.split("\n")[0] ?? error}`,
+        `${law} has a known discrepancy (${reason}): ${error?.message?.split('\n')[0] ?? error}`,
       );
       return;
     }
@@ -224,7 +256,7 @@ export async function knownDiscrepancy(law, name, reason, tests) {
   record(name, {
     law,
     test: name,
-    outcome: "known-discrepancy-passed",
+    outcome: 'known-discrepancy-passed',
     reason,
   });
   throw new HarnessError(
@@ -234,7 +266,8 @@ export async function knownDiscrepancy(law, name, reason, tests) {
 
 // order random: the tests in an order chosen by the run's seed
 // (LAWSPEC_SEED, or one chosen here), printed so the order can be replayed.
-export function shuffled(items, unit = "the unit") {
+export function shuffled(items, unit = 'the unit')
+{
   const given = globalThis.process?.env?.LAWSPEC_SEED;
   const seed =
     given === undefined
@@ -244,14 +277,16 @@ export function shuffled(items, unit = "the unit") {
     `order random seed ${seed} (${unit}): LAWSPEC_SEED=${seed} replays this order`,
   );
   let state = seed;
-  const next = () => {
+  const next = () =>
+  {
     state = (state + 0x6d2b79f5) | 0;
     let t = Math.imul(state ^ (state >>> 15), 1 | state);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   const result = [...items];
-  for (let i = result.length - 1; i > 0; i--) {
+  for (let i = result.length - 1; i > 0; i--)
+  {
     const j = Math.floor(next() * (i + 1));
     [result[i], result[j]] = [result[j], result[i]];
   }
@@ -261,22 +296,25 @@ export function shuffled(items, unit = "the unit") {
 // parallel: how the unit's tests ran at the same time. node:test runs them
 // concurrently in one process: async laws overlap, synchronous ones take
 // turns on the event loop.
-export function parallelism(unit) {
+export function parallelism(unit)
+{
   const workers = globalThis.navigator?.hardwareConcurrency ?? 1;
   const mode =
-    "in-process concurrency (async laws overlap; synchronous laws take turns)";
-  record(`parallel ${unit}`, { parallel: unit, mode, workers });
+    'in-process concurrency (async laws overlap; synchronous laws take turns)';
+  record(`parallel ${unit}`, {parallel: unit, mode, workers});
   console.log(`${unit} runs in parallel: ${mode}`);
 }
 
 // Measured, never asserted: the mean and fastest time of body.
-export async function benchmark(name, body, budget = 200, limit = 100000) {
+export async function benchmark(name, body, budget = 200, limit = 100000)
+{
   const times = [];
   const started = performance.now();
   while (
     times.length < limit &&
     (performance.now() - started < budget || times.length < 3)
-  ) {
+  )
+  {
     const before = performance.now();
     await body();
     times.push(performance.now() - before);

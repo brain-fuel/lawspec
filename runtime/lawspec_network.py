@@ -188,7 +188,9 @@ def seal_frame(key, session, direction, frame, nonce=None):
     nonce = _secure_random(12) if nonce is None else nonce
     associated = _LABEL_FRAME + session + bytes([direction])
     sealed = nonce + _pq()[2](key).encrypt(nonce, frame, associated)
-    return _RECORD + bytes([_DATA]) + _w(session) + bytes([direction]) + _w(sealed)
+    return (
+        _RECORD + bytes([_DATA]) + _w(session) + bytes([direction]) + _w(sealed)
+    )
 
 
 def open_frame(key, record):
@@ -204,7 +206,9 @@ def open_frame(key, record):
         return None
     try:
         return AESGCM(key).decrypt(
-            sealed[:12], sealed[12:], _LABEL_FRAME + session + bytes([direction])
+            sealed[:12],
+            sealed[12:],
+            _LABEL_FRAME + session + bytes([direction]),
         )
     except invalid:
         return None
@@ -229,10 +233,16 @@ def handshake_vector(
     session key and a sealed frame, as every target must compute them."""
     mlkem = _pq()[0]
     x = bytes.fromhex
-    first, second = NodeIdentity(x(initiator_seed)), NodeIdentity(x(responder_seed))
+    first, second = (
+        NodeIdentity(x(initiator_seed)),
+        NodeIdentity(x(responder_seed)),
+    )
     kem = mlkem.MLKEM768PrivateKey.from_seed_bytes(x(kem_seed))
     hello = hello_body(
-        x(session), initiator, first.verifying_key, kem.public_key().public_bytes_raw()
+        x(session),
+        initiator,
+        first.verifying_key,
+        kem.public_key().public_bytes_raw(),
     )
     welcome = welcome_body(
         x(session), responder, second.verifying_key, x(ciphertext), hello
@@ -263,7 +273,9 @@ class _SecureLayer:
 
     def __init__(self, node, identity, trusted):
         self.node = node
-        self.identity = identity if identity is not None else NodeIdentity.configured()
+        self.identity = (
+            identity if identity is not None else NodeIdentity.configured()
+        )
         if trusted is None:
             trusted = _network_config()[1]
         self.trusted = None if trusted is None else {t.lower() for t in trusted}
@@ -301,7 +313,8 @@ class _SecureLayer:
                     pending["queue"].append(frame)
         if session is not None:
             self.node.transport.send(
-                peer, seal_frame(session.key, session.id, session.direction, frame)
+                peer,
+                seal_frame(session.key, session.id, session.direction, frame),
             )
             return
         if start:
@@ -368,8 +381,8 @@ class _SecureLayer:
         return None
 
     def _hello(self, record):
-        (session, address, verifying_key, encapsulation_key), pos = _read_fields(
-            record, 4, 4
+        (session, address, verifying_key, encapsulation_key), pos = (
+            _read_fields(record, 4, 4)
         )
         (signature,), end = _read_fields(record, pos, 1)
         if end != len(record):
@@ -405,7 +418,11 @@ class _SecureLayer:
                 if session not in self.welcomes:
                     self.welcomes[session] = answered
                     self.sessions[session] = _Session(
-                        session, address, session_key(shared, body, welcome), 1, False
+                        session,
+                        address,
+                        session_key(shared, body, welcome),
+                        1,
+                        False,
                     )
                 answered = self.welcomes[session]
         try:
@@ -414,8 +431,8 @@ class _SecureLayer:
             pass
 
     def _welcome(self, record):
-        (session, address, verifying_key, ciphertext, hello_hash), pos = _read_fields(
-            record, 4, 5
+        (session, address, verifying_key, ciphertext, hello_hash), pos = (
+            _read_fields(record, 4, 5)
         )
         (signature,), end = _read_fields(record, pos, 1)
         if end != len(record):
@@ -434,7 +451,9 @@ class _SecureLayer:
             return
         if not self._accept_peer(address, verifying_key):
             return
-        key = session_key(pending["kem"].decapsulate(ciphertext), pending["body"], body)
+        key = session_key(
+            pending["kem"].decapsulate(ciphertext), pending["body"], body
+        )
         established = _Session(session, address, key, 0, True)
         with self.lock:
             if self.pending.get(address) is not pending:
@@ -446,7 +465,9 @@ class _SecureLayer:
         pending["done"].set()
         for frame in queue:
             try:
-                self.node.transport.send(address, seal_frame(key, session, 0, frame))
+                self.node.transport.send(
+                    address, seal_frame(key, session, 0, frame)
+                )
             except Unreachable:
                 pass
 

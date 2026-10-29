@@ -12,7 +12,9 @@ _MODULUS = 1 << 64
 
 
 def random_step(state: int) -> int:
-    return (6364136223846793005 * (state % _MODULUS) + 1442695040888963407) % _MODULUS
+    return (
+        6364136223846793005 * (state % _MODULUS) + 1442695040888963407
+    ) % _MODULUS
 
 
 def random_draw(state: int, bound: int) -> int:

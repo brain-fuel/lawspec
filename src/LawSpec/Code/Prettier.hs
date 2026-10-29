@@ -7,7 +7,7 @@
 -- ref:DEC-readable-output-default ref:prettier
 module LawSpec.Code.Prettier
   ( Doc, GroupId, text, cat, indent, align, dedent, group, groupBroken, groupWithId, conditionalGroup
-  , fill, ifBreak, ifBreakFor, indentIfBreak, line, softline, hardline, hardlineWithoutBreakParent
+  , fill, ifBreak, ifBreakFor, indentIfBreak, line, softline, hardline, hardlineWithoutBreakParent, allmanLine
   , literalline, breakParent, label, labelOf, join, willBreak, canBreak, removeLines, isEmpty, isGroup
   , render, stringWidth
   ) where
@@ -31,6 +31,7 @@ data Doc
   | Fill [Doc]
   | IfBreak Doc Doc (Maybe GroupId)
   | IndentIfBreak Doc GroupId Bool
+  | AllmanLine
   | Line LineKind
   | BreakParent
   | Label String Doc
@@ -95,6 +96,14 @@ hardline = Cat [Line Hard, BreakParent]
 hardlineWithoutBreakParent = Line Hard
 literalline = Cat [Line Literal, BreakParent]
 breakParent = BreakParent
+
+-- | The brace-style plugin lays out with Prettier first, then moves braces.
+-- Measure its original space, but print a newline without propagating a break
+-- or changing the logical column used for subsequent layout choices. Syntax
+-- nodes choose this delimiter; no generated source is reparsed or rewritten.
+-- ref:DEC-google-style-allman
+allmanLine :: Doc
+allmanLine = AllmanLine
 
 label :: String -> Doc -> Doc
 label = Label
@@ -275,6 +284,10 @@ render width tabWidth root = reverse (go IM.empty False (Output "" 0) [([], Brea
               Just Flat -> [(ind, mode, if negate' then Indent contents else contents)]
               Nothing -> []
         in go modes remeasure out (next ++ rest)
+      AllmanLine ->
+        let trimmed = dropWhile (`elem` (" \t" :: String)) (outText out)
+            spaces = replicate (indentLength ind) ' '
+        in go modes remeasure (Output (reverse spaces ++ '\n' : trimmed) (outPosition out + 1)) rest
       Line kind -> case (mode, kind) of
         (Flat, Plain) -> go modes remeasure (write " " out) rest
         (Flat, Soft) -> go modes remeasure out rest
@@ -321,6 +334,7 @@ render width tabWidth root = reverse (go IM.empty False (Output "" 0) [([], Brea
                   let groupMode = maybe mode (\i -> IM.findWithDefault Flat i modes) gid
                       chosen = if groupMode == Break then broken else flat
                   in loop remaining pending ((mode, chosen) : more) rest'
+                AllmanLine -> loop (remaining - 1) pending more rest'
                 Line kind
                   | mode == Break || kind == Hard || kind == Literal -> True
                   | kind == Soft -> loop remaining pending more rest'

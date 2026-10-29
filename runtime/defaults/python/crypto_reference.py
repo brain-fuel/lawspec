@@ -129,7 +129,9 @@ def _decompress(y, d):
 
 
 def _kem_matrix(rho):
-    return [[_sample_ntt(rho + bytes([j, i])) for j in range(_K)] for i in range(_K)]
+    return [
+        [_sample_ntt(rho + bytes([j, i])) for j in range(_K)] for i in range(_K)
+    ]
 
 
 def _pke_keygen(d):
@@ -158,9 +160,13 @@ def _pke_encrypt(ek, m, r):
     t = [_unpack(ek[384 * i : 384 * (i + 1)], 12, 256) for i in range(_K)]
     a = _kem_matrix(ek[384 * _K :])
     y = [
-        _kem_ntt(_cbd(_shake256(r + bytes([i]), 64 * _ETA1), _ETA1)) for i in range(_K)
+        _kem_ntt(_cbd(_shake256(r + bytes([i]), 64 * _ETA1), _ETA1))
+        for i in range(_K)
     ]
-    e1 = [_cbd(_shake256(r + bytes([_K + i]), 64 * _ETA2), _ETA2) for i in range(_K)]
+    e1 = [
+        _cbd(_shake256(r + bytes([_K + i]), 64 * _ETA2), _ETA2)
+        for i in range(_K)
+    ]
     e2 = _cbd(_shake256(r + bytes([2 * _K]), 64 * _ETA2), _ETA2)
     u = []
     for i in range(_K):
@@ -179,7 +185,10 @@ def _pke_encrypt(ek, m, r):
 
 def _pke_decrypt(dk, c):
     u = [
-        [_decompress(x, _DU) for x in _unpack(c[320 * i : 320 * (i + 1)], _DU, 256)]
+        [
+            _decompress(x, _DU)
+            for x in _unpack(c[320 * i : 320 * (i + 1)], _DU, 256)
+        ]
         for i in range(_K)
     ]
     v = [_decompress(x, _DV) for x in _unpack(c[320 * _K :], _DV, 256)]
@@ -285,7 +294,9 @@ def _expand_a(rho):
                 if at + 3 > len(stream):
                     stream = _shake128(rho + bytes([s, r]), len(stream) * 2)
                 value = (
-                    stream[at] + 256 * stream[at + 1] + 65536 * (stream[at + 2] & 0x7F)
+                    stream[at]
+                    + 256 * stream[at + 1]
+                    + 65536 * (stream[at + 2] & 0x7F)
                 )
                 at += 3
                 if value < _Q:
@@ -344,7 +355,10 @@ def ml_dsa_65_key_pair(xi):
     rho, rho_prime, key = h[:32], h[32:96], h[96:]
     a = _expand_a(rho)
     s1 = [_bounded(rho_prime + r.to_bytes(2, "little")) for r in range(_DL)]
-    s2 = [_bounded(rho_prime + (r + _DL).to_bytes(2, "little")) for r in range(_DK)]
+    s2 = [
+        _bounded(rho_prime + (r + _DL).to_bytes(2, "little"))
+        for r in range(_DK)
+    ]
     t = [
         _add(_intt(p), e, _Q)
         for p, e in zip(_matrix_vector(a, [_ntt(s) for s in s1]), s2)
@@ -394,11 +408,17 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
     at += 128 * _DK
     t0 = [
         _bitunpack(
-            sk[at + 416 * i : at + 416 * (i + 1)], (1 << (_D - 1)) - 1, 1 << (_D - 1)
+            sk[at + 416 * i : at + 416 * (i + 1)],
+            (1 << (_D - 1)) - 1,
+            1 << (_D - 1),
         )
         for i in range(_DK)
     ]
-    s1h, s2h, t0h = [_ntt(p) for p in s1], [_ntt(p) for p in s2], [_ntt(p) for p in t0]
+    s1h, s2h, t0h = (
+        [_ntt(p) for p in s1],
+        [_ntt(p) for p in s2],
+        [_ntt(p) for p in t0],
+    )
     a = _expand_a(rho)
     mu = _shake256(tr + message, 64)
     rho2 = _shake256(key + rnd + mu, 64)
@@ -406,13 +426,17 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
     while True:
         y = [
             _bitunpack(
-                _shake256(rho2 + (kappa + r).to_bytes(2, "little"), 640), _G1 - 1, _G1
+                _shake256(rho2 + (kappa + r).to_bytes(2, "little"), 640),
+                _G1 - 1,
+                _G1,
             )
             for r in range(_DL)
         ]
         w = [_intt(p) for p in _matrix_vector(a, [_ntt(p) for p in y])]
         w1 = [[_decompose(x)[0] for x in p] for p in w]
-        c_tilde = _shake256(mu + b"".join(_pack(p, 4) for p in w1), _LAMBDA // 4)
+        c_tilde = _shake256(
+            mu + b"".join(_pack(p, 4) for p in w1), _LAMBDA // 4
+        )
         ch = _ntt(_sample_in_ball(c_tilde))
         cs1 = [_intt(_mul(ch, p)) for p in s1h]
         cs2 = [_intt(_mul(ch, p)) for p in s2h]
@@ -433,7 +457,9 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
             row = []
             for c0, wv, c2 in zip(p_ct0, p_w, p_cs2):
                 r = (wv - c2 + c0) % _Q
-                row.append(1 if _decompose(r)[0] != _decompose(r - c0)[0] else 0)
+                row.append(
+                    1 if _decompose(r)[0] != _decompose(r - c0)[0] else 0
+                )
             hints.append(row)
         if _infinity(ct0) >= _G2 or sum(map(sum, hints)) > _OMEGA:
             continue
@@ -444,7 +470,11 @@ def ml_dsa_65_sign_internal(sk, message, rnd):
                     packed[index] = j
                     index += 1
             packed[_OMEGA + i] = index
-        return c_tilde + b"".join(_bitpack(p, _G1 - 1, _G1) for p in z) + bytes(packed)
+        return (
+            c_tilde
+            + b"".join(_bitpack(p, _G1 - 1, _G1) for p in z)
+            + bytes(packed)
+        )
 
 
 def ml_dsa_65_sign_deterministic(sk, message, context=b""):

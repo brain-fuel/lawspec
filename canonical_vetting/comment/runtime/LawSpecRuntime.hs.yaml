@@ -424,6 +424,9 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/localC
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/mailboxReceive:
   digest: sha256:5519b123c7a25695
   verdict: pending
+decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/modelArgument:
+  digest: sha256:effc0d8261d6cc86
+  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/monitorActor:
   digest: sha256:fdbb81e806e10476
   verdict: pending

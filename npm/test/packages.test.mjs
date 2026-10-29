@@ -14,45 +14,64 @@ const run = promisify(execFile);
 const cli = new URL('../bin/lawspec.mjs', import.meta.url).pathname;
 const example = new URL('../examples/packages/', import.meta.url).pathname;
 
-async function copyExample(t) {
+async function copyExample(t)
+{
   const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-packages-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   await cp(example, root, {recursive: true});
   return root;
 }
 
-async function lawspec(cwd, ...args) {
-  try {
-    const {stdout} = await run(process.execPath, [cli, ...args, '--json'], {cwd});
+async function lawspec(cwd, ...args)
+{
+  try
+  {
+    const {stdout} = await run(process.execPath, [cli, ...args, '--json'], {
+      cwd,
+    });
     return JSON.parse(stdout);
-  } catch (error) {
+  }
+  catch (error)
+  {
     return JSON.parse(error.stdout);
   }
 }
 
-test('a project checks against a package dependency', async t => {
+test('a project checks against a package dependency', async t =>
+{
   const root = await copyExample(t);
   const result = await lawspec(path.join(root, 'orders'), 'check');
   assert.deepEqual(result.diagnostics, []);
-  assert.deepEqual(result.packages.map(p => [p.name, p.version, p.units]), [
-    ['shop.domain', '1.2.0', ['shop.domain']],
-    ['shop.tax', '1.0.0', ['shop.tax.v1x0x0.api', 'shop.tax.v1x0x0.rates']],
-    ['shop.tax', '2.0.0', ['shop.tax.v2x0x0.api', 'shop.tax.v2x0x0.rates']],
-  ]);
+  assert.deepEqual(
+    result.packages.map(p => [p.name, p.version, p.units]),
+    [
+      ['shop.domain', '1.2.0', ['shop.domain']],
+      ['shop.tax', '1.0.0', ['shop.tax.v1x0x0.api', 'shop.tax.v1x0x0.rates']],
+      ['shop.tax', '2.0.0', ['shop.tax.v2x0x0.api', 'shop.tax.v2x0x0.rates']],
+    ],
+  );
   assert.ok(result.laws.some(l => l.owner === 'shop.orders'));
   assert.ok(result.laws.some(l => l.owner === 'shop.domain'));
 });
 
-test('an unsatisfied version range is rejected', async t => {
+test('an unsatisfied version range is rejected', async t =>
+{
   const root = await copyExample(t);
   const config = path.join(root, 'orders', 'lawspec.edn');
   const settings = parseManifest(await readFile(config, 'utf8'));
-  await writeFile(config, configEDN({...settings, dependencies: {'shop.domain': '^2.0.0'}}));
+  await writeFile(
+    config,
+    configEDN({...settings, dependencies: {'shop.domain': '^2.0.0'}}),
+  );
   const result = await lawspec(path.join(root, 'orders'), 'check');
-  assert.match(result.diagnostics[0].message, /requires shop\.domain \^2\.0\.0, but version 1\.2\.0 is supplied/);
+  assert.match(
+    result.diagnostics[0].message,
+    /requires shop\.domain \^2\.0\.0, but version 1\.2\.0 is supplied/,
+  );
 });
 
-test('lawspec package summarizes a package', async t => {
+test('lawspec package summarizes a package', async t =>
+{
   const root = await copyExample(t);
   const summary = await lawspec(root, 'package', '--project', 'shop-domain');
   assert.equal(summary.name, 'shop.domain');
@@ -61,32 +80,59 @@ test('lawspec package summarizes a package', async t => {
   assert.equal(summary.laws.length, 2);
 });
 
-test('a package unit outside its namespace is rejected', async t => {
+test('a package unit outside its namespace is rejected', async t =>
+{
   const root = await copyExample(t);
   const source = path.join(root, 'shop-domain', 'src', 'domain.lawspec');
-  await writeFile(source, (await readFile(source, 'utf8')).replace('unit shop.domain', 'unit elsewhere.domain'));
+  await writeFile(
+    source,
+    (await readFile(source, 'utf8')).replace(
+      'unit shop.domain',
+      'unit elsewhere.domain',
+    ),
+  );
   const result = await lawspec(root, 'package', '--project', 'shop-domain');
-  assert.match(result.diagnostics[0].message, /must be named shop\.domain or shop\.domain\.<name>/);
+  assert.match(
+    result.diagnostics[0].message,
+    /must be named shop\.domain or shop\.domain\.<name>/,
+  );
 });
 
-
-test('each selected package version keeps its own checked rate, including after independent mutations',async t=>{
-  const root=await copyExample(t),orders=path.join(root,'orders');
-  for(const [version,correct,mutant] of [['1','20','21'],['2','25','26']]){
-    const file=path.join(root,`shop-tax-${version}`,'src','rates.lawspec');
-    const original=await readFile(file,'utf8');
+test('each selected package version keeps its own checked rate, including after independent mutations', async t =>
+{
+  const root = await copyExample(t),
+    orders = path.join(root, 'orders');
+  for (const [version, correct, mutant] of [
+    ['1', '20', '21'],
+    ['2', '25', '26'],
+  ])
+  {
+    const file = path.join(root, `shop-tax-${version}`, 'src', 'rates.lawspec');
+    const original = await readFile(file, 'utf8');
     assert.ok(original.includes(correct));
-    await writeFile(file,original.replace(correct,mutant));
-    const result=await lawspec(orders,'check');
-    assert.ok(result.diagnostics.some(item=>item.code==='refuted'),JSON.stringify(result.diagnostics));
-    await writeFile(file,original);
-    const restored=await lawspec(orders,'check');
-    assert.deepEqual(restored.diagnostics,[]);
-    for(const wording of ['shop.domain keeps version 1','this project sees version 2']){
-      const law=restored.laws.find(item=>item.name.includes(wording));
-      assert.ok(law,wording);
-      const status=restored.evidence.find(item=>item.declaration===law.id&&item.stage==='law').status;
-      assert.ok(['proved','exhaustively-checked'].includes(status),`${wording}: ${status}`);
+    await writeFile(file, original.replace(correct, mutant));
+    const result = await lawspec(orders, 'check');
+    assert.ok(
+      result.diagnostics.some(item => item.code === 'refuted'),
+      JSON.stringify(result.diagnostics),
+    );
+    await writeFile(file, original);
+    const restored = await lawspec(orders, 'check');
+    assert.deepEqual(restored.diagnostics, []);
+    for (const wording of [
+      'shop.domain keeps version 1',
+      'this project sees version 2',
+    ])
+    {
+      const law = restored.laws.find(item => item.name.includes(wording));
+      assert.ok(law, wording);
+      const status = restored.evidence.find(
+        item => item.declaration === law.id && item.stage === 'law',
+      ).status;
+      assert.ok(
+        ['proved', 'exhaustively-checked'].includes(status),
+        `${wording}: ${status}`,
+      );
     }
   }
 });

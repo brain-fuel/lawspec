@@ -17,13 +17,15 @@ import lawspec.runtime.LawSpecRuntime.Transport;
  * them, and the format is the same on every target. ML-KEM, ML-DSA, SHA3-256 and AES-GCM come from
  * the JDK; SHAKE256 from Bouncy Castle (bcprov-jdk18on).
  *
- * <p>Its static initializer registers it with the runtime (LawSpecRuntime.registerSecureNetwork),
+ * <p>
+ * Its static initializer registers it with the runtime (LawSpecRuntime.registerSecureNetwork),
  * which loads this class when the first node is made.
  */
 public final class LawSpecNetwork
 {
   private LawSpecNetwork()
-  {}
+  {
+  }
 
   static
   {
@@ -35,8 +37,8 @@ public final class LawSpecNetwork
    * A node on transport with this identity (null: the configured one, or a fresh one) and trusted
    * peers (null: any).
    */
-  public static Node node(
-      Transport transport, NodeIdentity identity, java.util.Collection<String> trusted)
+  public static Node node(Transport transport, NodeIdentity identity,
+      java.util.Collection<String> trusted)
   {
     return new Node(transport, identity, trusted);
   }
@@ -76,7 +78,7 @@ public final class LawSpecNetwork
     int length()
     {
       long result = 0;
-      for (int shift = 0; ; shift += 7)
+      for (int shift = 0;; shift += 7)
       {
         int b = next();
         if (shift > 28)
@@ -120,7 +122,8 @@ public final class LawSpecNetwork
   private static final class SecureCrypto
   {
     private SecureCrypto()
-    {}
+    {
+    }
 
     static final byte[] LABEL_HELLO = utf8("lawspec-handshake-v1-hello");
     static final byte[] LABEL_WELCOME = utf8("lawspec-handshake-v1-welcome");
@@ -147,7 +150,7 @@ public final class LawSpecNetwork
     {
       var out = new java.io.ByteArrayOutputStream();
       // LEB128.
-      for (long n = data.length; ; n >>>= 7)
+      for (long n = data.length;; n >>>= 7)
       {
         if (n < 0x80)
         {
@@ -208,8 +211,8 @@ public final class LawSpecNetwork
       }
     }
 
-    static java.security.KeyPair keyPair(
-        String algorithm, java.security.spec.NamedParameterSpec parameters, byte[] seed)
+    static java.security.KeyPair keyPair(String algorithm,
+        java.security.spec.NamedParameterSpec parameters, byte[] seed)
     {
       try
       {
@@ -251,26 +254,16 @@ public final class LawSpecNetwork
     static byte[][] encapsulate(byte[] encapsulationKey)
         throws java.security.GeneralSecurityException
     {
-      var encapsulated =
-          javax
-              .crypto
-              .KEM
-              .getInstance("ML-KEM")
-              .newEncapsulator(
-                  publicKey("ML-KEM", ML_KEM_768_SPKI, encapsulationKey), secureRandom())
-              .encapsulate();
+      var encapsulated = javax.crypto.KEM.getInstance("ML-KEM")
+          .newEncapsulator(publicKey("ML-KEM", ML_KEM_768_SPKI, encapsulationKey), secureRandom())
+          .encapsulate();
       return new byte[][] {encapsulated.encapsulation(), encapsulated.key().getEncoded()};
     }
 
     static byte[] decapsulate(java.security.PrivateKey key, byte[] ciphertext)
         throws java.security.GeneralSecurityException
     {
-      return javax
-          .crypto
-          .KEM
-          .getInstance("ML-KEM")
-          .newDecapsulator(key)
-          .decapsulate(ciphertext)
+      return javax.crypto.KEM.getInstance("ML-KEM").newDecapsulator(key).decapsulate(ciphertext)
           .getEncoded();
     }
 
@@ -293,9 +286,7 @@ public final class LawSpecNetwork
         throws java.security.GeneralSecurityException
     {
       var cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
-      cipher.init(
-          mode,
-          new javax.crypto.spec.SecretKeySpec(key, "AES"),
+      cipher.init(mode, new javax.crypto.spec.SecretKeySpec(key, "AES"),
           new javax.crypto.spec.GCMParameterSpec(128, nonce));
       cipher.updateAAD(associated);
       return cipher.doFinal(input);
@@ -306,7 +297,8 @@ public final class LawSpecNetwork
   private static final class Shake
   {
     private Shake()
-    {}
+    {
+    }
 
     static byte[] digest(byte[] data, int length)
     {
@@ -349,9 +341,8 @@ public final class LawSpecNetwork
         throw new IllegalArgumentException("a node identity is a 32-byte ML-DSA-65 seed");
       }
       this.seed = seed.clone();
-      var pair =
-          SecureCrypto.keyPair(
-              "ML-DSA-65", java.security.spec.NamedParameterSpec.ML_DSA_65, this.seed);
+      var pair = SecureCrypto.keyPair("ML-DSA-65", java.security.spec.NamedParameterSpec.ML_DSA_65,
+          this.seed);
       this.key = pair.getPrivate();
       this.verifyingKey = SecureCrypto.rawPublic(pair.getPublic(), 1952);
     }
@@ -409,7 +400,8 @@ public final class LawSpecNetwork
    * named.
    */
   private record NetworkConfig(NodeIdentity identity, java.util.Set<String> trusted)
-  {}
+  {
+  }
 
   /**
    * lawspec-network.conf, which the compiler writes from lawspec.edn's network binding: the file
@@ -428,9 +420,8 @@ public final class LawSpecNetwork
     else
     {
       path = null;
-      for (var here = java.nio.file.Path.of(System.getProperty("user.dir")).toAbsolutePath();
-          here != null;
-          here = here.getParent())
+      for (var here = java.nio.file.Path.of(System.getProperty("user.dir"))
+          .toAbsolutePath(); here != null; here = here.getParent())
       {
         var candidate = here.resolve("lawspec-network.conf");
         if (java.nio.file.Files.exists(candidate))
@@ -453,17 +444,16 @@ public final class LawSpecNetwork
     java.util.Set<String> trusted = null;
     try
     {
-      for (var line :
-          java.nio.file.Files.readAllLines(path, java.nio.charset.StandardCharsets.UTF_8))
+      for (var line : java.nio.file.Files.readAllLines(path,
+          java.nio.charset.StandardCharsets.UTF_8))
       {
         var words = line.strip().split("\\s+", 2);
         if (words.length != 2 || words[0].startsWith("#"))
         {
           continue;
         }
-        var text =
-            java.nio.file.Files.readString(
-                base.resolve(words[1].strip()), java.nio.charset.StandardCharsets.UTF_8);
+        var text = java.nio.file.Files.readString(base.resolve(words[1].strip()),
+            java.nio.charset.StandardCharsets.UTF_8);
         if (words[0].equals("identity"))
         {
           identity = new NodeIdentity(java.util.HexFormat.of().parseHex(text.strip()));
@@ -489,26 +479,22 @@ public final class LawSpecNetwork
   }
 
   /** A hello's body: session, address, verifying key, encapsulation key. */
-  public static byte[] helloBody(
-      byte[] session, String address, byte[] verifyingKey, byte[] encapsulationKey)
+  public static byte[] helloBody(byte[] session, String address, byte[] verifyingKey,
+      byte[] encapsulationKey)
   {
-    return SecureCrypto.concat(
-        SecureCrypto.lengthPrefixed(session),
-        SecureCrypto.lengthPrefixed(utf8(address)),
-        SecureCrypto.lengthPrefixed(verifyingKey),
+    return SecureCrypto.concat(SecureCrypto.lengthPrefixed(session),
+        SecureCrypto.lengthPrefixed(utf8(address)), SecureCrypto.lengthPrefixed(verifyingKey),
         SecureCrypto.lengthPrefixed(encapsulationKey));
   }
 
   /**
    * A welcome's body: session, address, verifying key, ciphertext, SHA3-256 of the hello's body.
    */
-  public static byte[] welcomeBody(
-      byte[] session, String address, byte[] verifyingKey, byte[] ciphertext, byte[] hello)
+  public static byte[] welcomeBody(byte[] session, String address, byte[] verifyingKey,
+      byte[] ciphertext, byte[] hello)
   {
-    return SecureCrypto.concat(
-        SecureCrypto.lengthPrefixed(session),
-        SecureCrypto.lengthPrefixed(utf8(address)),
-        SecureCrypto.lengthPrefixed(verifyingKey),
+    return SecureCrypto.concat(SecureCrypto.lengthPrefixed(session),
+        SecureCrypto.lengthPrefixed(utf8(address)), SecureCrypto.lengthPrefixed(verifyingKey),
         SecureCrypto.lengthPrefixed(ciphertext),
         SecureCrypto.lengthPrefixed(SecureCrypto.sha3(hello)));
   }
@@ -519,15 +505,13 @@ public final class LawSpecNetwork
    */
   public static byte[] sessionKey(byte[] shared, byte[] hello, byte[] welcome)
   {
-    return SecureCrypto.shake256(
-        SecureCrypto.concat(
-            shared, SecureCrypto.LABEL_KEY, SecureCrypto.sha3(hello), SecureCrypto.sha3(welcome)),
-        32);
+    return SecureCrypto.shake256(SecureCrypto.concat(shared, SecureCrypto.LABEL_KEY,
+        SecureCrypto.sha3(hello), SecureCrypto.sha3(welcome)), 32);
   }
 
   /** A data record sealing frame; a fresh nonce when nonce is null. */
-  public static byte[] sealFrame(
-      byte[] key, byte[] session, int direction, byte[] frame, byte[] nonce)
+  public static byte[] sealFrame(byte[] key, byte[] session, int direction, byte[] frame,
+      byte[] nonce)
   {
     if (nonce == null)
     {
@@ -538,20 +522,15 @@ public final class LawSpecNetwork
     byte[] sealed;
     try
     {
-      sealed =
-          SecureCrypto.concat(
-              nonce,
-              SecureCrypto.aesGcm(javax.crypto.Cipher.ENCRYPT_MODE, key, nonce, frame, associated));
+      sealed = SecureCrypto.concat(nonce,
+          SecureCrypto.aesGcm(javax.crypto.Cipher.ENCRYPT_MODE, key, nonce, frame, associated));
     }
     catch (java.security.GeneralSecurityException failed)
     {
       throw new IllegalStateException(failed);
     }
-    return SecureCrypto.concat(
-        SECURE_RECORD,
-        new byte[] {(byte) SECURE_DATA},
-        SecureCrypto.lengthPrefixed(session),
-        new byte[] {(byte) direction},
+    return SecureCrypto.concat(SECURE_RECORD, new byte[] {(byte) SECURE_DATA},
+        SecureCrypto.lengthPrefixed(session), new byte[] {(byte) direction},
         SecureCrypto.lengthPrefixed(sealed));
   }
 
@@ -570,12 +549,8 @@ public final class LawSpecNetwork
       }
       byte[] associated =
           SecureCrypto.concat(SecureCrypto.LABEL_FRAME, session, new byte[] {(byte) direction});
-      return SecureCrypto.aesGcm(
-          javax.crypto.Cipher.DECRYPT_MODE,
-          key,
-          Arrays.copyOf(sealed, 12),
-          Arrays.copyOfRange(sealed, 12, sealed.length),
-          associated);
+      return SecureCrypto.aesGcm(javax.crypto.Cipher.DECRYPT_MODE, key, Arrays.copyOf(sealed, 12),
+          Arrays.copyOfRange(sealed, 12, sealed.length), associated);
     }
     catch (java.security.GeneralSecurityException | RuntimeException failed)
     {
@@ -587,37 +562,23 @@ public final class LawSpecNetwork
    * Checks a handshake vector (hex fields, the addresses as text): the bodies' hashes, the session
    * key and a sealed frame, as every target must compute them.
    */
-  public static boolean handshakeVector(
-      String initiatorSeed,
-      String responderSeed,
-      String kemSeed,
-      String session,
-      String initiator,
-      String responder,
-      String ciphertext,
-      String nonce,
-      String frame,
-      String helloHash,
-      String welcomeHash,
-      String key,
-      String record)
+  public static boolean handshakeVector(String initiatorSeed, String responderSeed, String kemSeed,
+      String session, String initiator, String responder, String ciphertext, String nonce,
+      String frame, String helloHash, String welcomeHash, String key, String record)
   {
     var hex = java.util.HexFormat.of();
     var first = new NodeIdentity(hex.parseHex(initiatorSeed));
     var second = new NodeIdentity(hex.parseHex(responderSeed));
     var kem = SecureCrypto.kemKeyPair(hex.parseHex(kemSeed));
-    byte[] hello =
-        helloBody(
-            hex.parseHex(session), initiator, first.verifyingKey, SecureCrypto.kemPublic(kem));
-    byte[] welcome =
-        welcomeBody(
-            hex.parseHex(session), responder, second.verifyingKey, hex.parseHex(ciphertext), hello);
+    byte[] hello = helloBody(hex.parseHex(session), initiator, first.verifyingKey,
+        SecureCrypto.kemPublic(kem));
+    byte[] welcome = welcomeBody(hex.parseHex(session), responder, second.verifyingKey,
+        hex.parseHex(ciphertext), hello);
     byte[] derived;
     try
     {
-      derived =
-          sessionKey(
-              SecureCrypto.decapsulate(kem.getPrivate(), hex.parseHex(ciphertext)), hello, welcome);
+      derived = sessionKey(SecureCrypto.decapsulate(kem.getPrivate(), hex.parseHex(ciphertext)),
+          hello, welcome);
     }
     catch (java.security.GeneralSecurityException failed)
     {
@@ -627,8 +588,7 @@ public final class LawSpecNetwork
         sealFrame(derived, hex.parseHex(session), 0, hex.parseHex(frame), hex.parseHex(nonce));
     return hex.formatHex(SecureCrypto.sha3(hello)).equals(helloHash)
         && hex.formatHex(SecureCrypto.sha3(welcome)).equals(welcomeHash)
-        && hex.formatHex(derived).equals(key)
-        && hex.formatHex(sealed).equals(record)
+        && hex.formatHex(derived).equals(key) && hex.formatHex(sealed).equals(record)
         && Arrays.equals(openFrame(derived, sealed), hex.parseHex(frame));
   }
 
@@ -677,7 +637,8 @@ public final class LawSpecNetwork
    * A welcome already sent for a session: its address and record, sent again for a repeated hello.
    */
   private record Answered(String address, byte[] record)
-  {}
+  {
+  }
 
   /** Handshakes, sessions and sealed frames for one node. */
   private static final class Layer implements LawSpecRuntime.SecureLayer
@@ -775,8 +736,8 @@ public final class LawSpecNetwork
       }
       if (session != null)
       {
-        node.transport.send(
-            peer, sealFrame(session.key, session.id, session.direction, frame, null));
+        node.transport.send(peer,
+            sealFrame(session.key, session.id, session.direction, frame, null));
         return;
       }
       if (start)
@@ -805,12 +766,8 @@ public final class LawSpecNetwork
       byte[] body =
           helloBody(session, node.address, identity.verifyingKey, SecureCrypto.kemPublic(kem));
       byte[] signature = identity.sign(SecureCrypto.concat(SecureCrypto.LABEL_HELLO, body));
-      byte[] hello =
-          SecureCrypto.concat(
-              SECURE_RECORD,
-              new byte[] {(byte) SECURE_HELLO},
-              body,
-              SecureCrypto.lengthPrefixed(signature));
+      byte[] hello = SecureCrypto.concat(SECURE_RECORD, new byte[] {(byte) SECURE_HELLO}, body,
+          SecureCrypto.lengthPrefixed(signature));
       return new PendingHandshake(session, kem.getPrivate(), body, hello);
     }
 
@@ -822,8 +779,8 @@ public final class LawSpecNetwork
       {
         try
         {
-          if (handshake.done.await(
-              HANDSHAKE_RETRY_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS))
+          if (handshake.done.await(HANDSHAKE_RETRY_MILLIS,
+              java.util.concurrent.TimeUnit.MILLISECONDS))
           {
             return;
           }
@@ -859,9 +816,7 @@ public final class LawSpecNetwork
     @Override
     public byte[] receive(byte[] record)
     {
-      if (record.length < 4
-          || record[0] != SECURE_RECORD[0]
-          || record[1] != SECURE_RECORD[1]
+      if (record.length < 4 || record[0] != SECURE_RECORD[0] || record[1] != SECURE_RECORD[1]
           || record[2] != SECURE_RECORD[2])
       {
         return null;
@@ -875,7 +830,8 @@ public final class LawSpecNetwork
           case SECURE_DATA -> {
             return data(record);
           }
-          default -> {}
+          default -> {
+          }
         }
       }
       catch (java.security.GeneralSecurityException | RuntimeException dropped)
@@ -889,12 +845,10 @@ public final class LawSpecNetwork
     {
       try
       {
-        return java.nio.charset.StandardCharsets.UTF_8
-            .newDecoder()
+        return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
             .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
             .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-            .decode(java.nio.ByteBuffer.wrap(raw))
-            .toString();
+            .decode(java.nio.ByteBuffer.wrap(raw)).toString();
       }
       catch (java.nio.charset.CharacterCodingException e)
       {
@@ -924,8 +878,8 @@ public final class LawSpecNetwork
       }
       if (answered == null)
       {
-        if (!SecureCrypto.verify(
-            verifyingKey, SecureCrypto.concat(SecureCrypto.LABEL_HELLO, body), signature))
+        if (!SecureCrypto.verify(verifyingKey, SecureCrypto.concat(SecureCrypto.LABEL_HELLO, body),
+            signature))
         {
           return;
         }
@@ -936,15 +890,10 @@ public final class LawSpecNetwork
         byte[][] encapsulated = SecureCrypto.encapsulate(encapsulationKey);
         byte[] welcome =
             welcomeBody(session, node.address, identity.verifyingKey, encapsulated[0], body);
-        var made =
-            new Answered(
-                address,
-                SecureCrypto.concat(
-                    SECURE_RECORD,
-                    new byte[] {(byte) SECURE_WELCOME},
-                    welcome,
-                    SecureCrypto.lengthPrefixed(
-                        identity.sign(SecureCrypto.concat(SecureCrypto.LABEL_WELCOME, welcome)))));
+        var made = new Answered(address,
+            SecureCrypto.concat(SECURE_RECORD, new byte[] {(byte) SECURE_WELCOME}, welcome,
+                SecureCrypto.lengthPrefixed(
+                    identity.sign(SecureCrypto.concat(SecureCrypto.LABEL_WELCOME, welcome)))));
         byte[] derived = sessionKey(encapsulated[1], body, welcome);
         synchronized (this)
         {
@@ -985,15 +934,14 @@ public final class LawSpecNetwork
       {
         handshake = pending.get(address);
       }
-      if (handshake == null
-          || !Arrays.equals(handshake.session, session)
+      if (handshake == null || !Arrays.equals(handshake.session, session)
           || !Arrays.equals(helloHash, SecureCrypto.sha3(handshake.body)))
       {
         return;
       }
       byte[] body = Arrays.copyOfRange(record, 4, pos);
-      if (!SecureCrypto.verify(
-          verifyingKey, SecureCrypto.concat(SecureCrypto.LABEL_WELCOME, body), signature))
+      if (!SecureCrypto.verify(verifyingKey, SecureCrypto.concat(SecureCrypto.LABEL_WELCOME, body),
+          signature))
       {
         return;
       }

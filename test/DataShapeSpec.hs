@@ -75,14 +75,14 @@ test_dataTypesBecomeEachTargetsIdiomaticShape = describe "native data shapes" $ 
     shows' "go" ["type Drink struct", "type SizeSmall struct", "type Size interface"]
     lacks "go" ["DrinkDrink", "type Drink interface"]
   it "Rust: a product is a struct and a sum an enum" $ do
-    shows' "rust" ["pub struct Drink {", "pub size: Size,", "pub struct Token;", "pub enum Size {"]
+    shows' "rust" ["pub struct Drink\n{", "pub size: Size,", "pub struct Token;", "pub enum Size\n{"]
     lacks "rust" ["Self::Drink", "pub enum Drink"]
   it "Python, JavaScript, TypeScript and Haskell name a product after its type" $ do
     shows' "python" ["class Drink:", "class SizeSmall(Size):"]
     lacks "python" ["DrinkDrink"]
-    shows' "typescript" ["export class Drink ", "export type Size = SizeSmall | SizeLarge;"]
+    shows' "typescript" ["export class Drink\n", "export type Size = SizeSmall | SizeLarge;"]
     lacks "typescript" ["DrinkDrink", "export type Drink "]
-    shows' "javascript" ["export class Drink "]
+    shows' "javascript" ["export class Drink\n"]
     lacks "javascript" ["DrinkDrink"]
     shows' "haskell" ["Drink"]
     lacks "haskell" ["DrinkDrink"]

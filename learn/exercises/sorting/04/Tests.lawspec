@@ -1,0 +1,36 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.sorting
+sort :: List Int32 -> List Int32
+
+function "|is in ascending order| (xs :: List Int32) -> Bool is
+  first matching case of xs :
+    when Nil then true
+    when Cons h t then
+      (first matching case of t :
+        when Nil then true
+        when Cons next rest then h <= next and "|is in ascending order| t
+      end case)
+  end case
+end function
+
+law "|an empty input stays empty| is
+  definition:
+    sort [] = []
+  end definition
+end law
+
+law "|sorting keeps repeated values| is
+  definition:
+    sort [3, 1, 1] = [1, 1, 3]
+  end definition
+end law
+
+law "|sorting orders values and keeps every occurrence| is
+  definition:
+    for all (xs :: List Int32) =>
+      "|is in ascending order| (sort xs) = true and sameItems (sort xs) xs
+    end for all
+  end definition
+end law
+
+end unit

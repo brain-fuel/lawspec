@@ -61,6 +61,9 @@ ledger/DEC-content-identity:
 ledger/DEC-csharp-over-fsharp:
   digest: sha256:87a4fa72b2aaa520
   verdict: pending
+ledger/DEC-dependent-model-arguments:
+  digest: sha256:21d1d554bc5db406
+  verdict: pending
 ledger/DEC-diataxis-docs:
   digest: sha256:5052a32a1ba049eb
   verdict: pending
@@ -157,6 +160,12 @@ ledger/DEC-known-discrepancy:
 ledger/DEC-law-set-analysis:
   digest: sha256:7b2190bf82b9eded
   verdict: pending
+ledger/DEC-learn:
+  digest: sha256:d6c4393ef8195b34
+  verdict: pending
+ledger/DEC-learn-one-tutorial:
+  digest: sha256:65c0a701ca5762a9
+  verdict: pending
 ledger/DEC-local-ci-only:
   digest: sha256:8811b9061f2fe0db
   verdict: pending
@@ -213,6 +222,9 @@ ledger/DEC-portable-total-order-collections:
   verdict: pending
 ledger/DEC-priorities-beyond-trees:
   digest: sha256:aa0b04a0949fdb46
+  verdict: pending
+ledger/DEC-project-workflow:
+  digest: sha256:f10ae9b63993c996
   verdict: pending
 ledger/DEC-prolog-janus:
   digest: sha256:69d5a82822118f8c

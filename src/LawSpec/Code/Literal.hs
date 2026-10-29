@@ -87,7 +87,7 @@ stringSyntax target = case target of
   "python" -> StringSyntax (FewerEscapes '"' '\'') (`lookup` common)
     (\n -> if n < 0x100 then "\\x" ++ hex 2 n else if n < 0x10000 then "\\u" ++ hex 4 n else "\\U" ++ hex 8 n)
     (const Nothing)
-  -- Prettier: double quotes unless single quotes need fewer escapes.
+  -- Google/gts: single quotes unless double quotes need fewer escapes.
   "javascript" -> web
   "typescript" -> web
   -- gofmt leaves literals alone; Go's \u and \U.
@@ -119,6 +119,6 @@ stringSyntax target = case target of
     (\c -> if c `elem` ("$%" :: String) then Just [c, c] else Nothing)
   _ -> StringSyntax (FixedQuote '"') (`lookup` common) utf16Escape (const Nothing)
   where
-    web = StringSyntax (FewerEscapes '"' '\'') (`lookup` (common ++ [('\x2028', "\\u2028"), ('\x2029', "\\u2029")]))
+    web = StringSyntax (FewerEscapes '\'' '"') (`lookup` (common ++ [('\x2028', "\\u2028"), ('\x2029', "\\u2029")]))
       utf16Escape (const Nothing)
     jvm = StringSyntax (FixedQuote '"') (`lookup` common) utf16Escape

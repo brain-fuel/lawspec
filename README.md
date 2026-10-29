@@ -9,10 +9,8 @@ Haskell, Kotlin, Rust, C#, F#, Swift, Erlang, Elixir, Gleam, Clojure, Groovy and
 Scala. The compiler is written in Haskell and distributed on npm as prebuilt
 WebAssembly, with a Node CLI and a typed JavaScript API.
 
-The canonical authoring examples below target 0.25.0, the minor in preparation
-on `main`.
-Install the development checkout as shown below. For released 0.24.0, use the
-[0.24.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
+The examples below use the current canonical authoring profile. The npm package
+includes the compiler and learning track; no Haskell installation is needed.
 
 ## Features
 
@@ -35,6 +33,17 @@ Install the development checkout as shown below. For released 0.24.0, use the
 
 Node 22+ and the selected target's build tools are required. No Haskell
 toolchain is needed. The reference platforms are macOS and Linux.
+
+To open the learning track locally:
+
+```sh
+npm install --global lawspec@0.31.1
+lawspec learn
+```
+
+Open the printed loopback URL, or use [Learn on GoForge](https://goforge.dev/lawspec/learn/).
+Six lessons pair worked examples with practice in F#, TypeScript or JavaScript.
+The course is a teaching preview; later lessons and capstones remain deferred.
 
 The checkout includes the development WASM package. To try it in a **new, empty
 directory**, initialize before installing, so that LawSpec can create
@@ -66,6 +75,21 @@ In an existing project, install the checkout's `npm` directory first, then run
 `npx lawspec init --target javascript`. Existing build files are preserved;
 apply the printed setup instructions before generating. See
 [Install LawSpec and create a project](docs/how-to/install-and-init.md).
+
+## MCP server
+
+LawSpec can expose a project's compiler through a local MCP server. From the
+project directory, run `npx lawspec mcp`; a host can also launch that command
+as a child process. To inspect it interactively, run:
+
+```sh
+npx @modelcontextprotocol/inspector npx lawspec mcp
+```
+
+The server provides `lawspec_check`, `lawspec_list_laws`, and
+`lawspec_explain`. It reads the project's `lawspec.edn`, validates definitions,
+and reports the configured law verification and its evidence statuses. See the
+[MCP server guide](docs/how-to/use-mcp.md) for host setup and details.
 
 ## Example
 
@@ -142,3 +166,8 @@ Syntax highlighting is available as a [VS Code extension](editors/vscode/README.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Start or adopt a project without choosing a language with `lawspec project init`
+or `lawspec project adopt`. `lawspec project status` separates Canon decisions
+from LawSpec evidence; `lawspec project validate` checks definitions and the
+configured verification layers. [Project workflow](docs/how-to/manage-projects.md).

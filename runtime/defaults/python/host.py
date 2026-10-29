@@ -15,14 +15,18 @@ import tempfile as _tempfile
 class FileSystemHandler:
     """Files by path; a relative path is from the working directory."""
 
-    def readBytes(self, value0: _builtins.str) -> _schema.Maybe[_builtins.bytes]:
+    def readBytes(
+        self, value0: _builtins.str
+    ) -> _schema.Maybe[_builtins.bytes]:
         try:
             with open(value0, "rb") as file:
                 return _schema.Present(file.read())
         except (OSError, ValueError):
             return _schema.Absent()
 
-    def writeBytes(self, value0: _builtins.str, value1: _builtins.bytes) -> None:
+    def writeBytes(
+        self, value0: _builtins.str, value1: _builtins.bytes
+    ) -> None:
         with open(value0, "wb") as file:
             file.write(value1)
 

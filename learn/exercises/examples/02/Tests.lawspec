@@ -1,0 +1,23 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.seats
+seats :: Int32 -> Int32
+
+law "|one row has four seats| is
+  definition:
+    seats 1 = 4
+  end definition
+end law
+
+law "|two rows have eight seats| is
+  definition:
+    seats 2 = 8
+  end definition
+end law
+
+law "|three rows have twelve seats| is
+  definition:
+    seats 3 = 12
+  end definition
+end law
+
+end unit

@@ -5,40 +5,64 @@ import {templates, commands, setup} from './templates.mjs';
 import {safePath, planWrites, applyWrites} from './files.mjs';
 import {parseManifest, writeManifest} from './component.mjs';
 
-async function projectFiles(directory, prefix = '') {
+async function projectFiles(directory, prefix = '')
+{
   const files = {};
-  for (const entry of await readdir(directory, {withFileTypes: true})) {
+  for (const entry of await readdir(directory, {withFileTypes: true}))
+  {
     const name = prefix + entry.name;
-    const location = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory);
-    if (entry.isDirectory()) Object.assign(files, await projectFiles(location, name + '/'));
+    const location = new URL(
+      entry.name + (entry.isDirectory() ? '/' : ''),
+      directory,
+    );
+    if (entry.isDirectory())
+      Object.assign(files, await projectFiles(location, name + '/'));
     else if (entry.isFile()) files[name] = await readFile(location, 'utf8');
     else throw new Error(`Unsupported bundled example entry: ${name}`);
   }
   return files;
 }
 
-export async function exportNativePayments(options, selected) {
-  const root = await safePath(process.cwd(), options.output || 'native_payments');
+export async function exportNativePayments(options, selected)
+{
+  const root = await safePath(
+    process.cwd(),
+    options.output || 'native_payments',
+  );
   await mkdir(root, {recursive: true});
-  const law = await readFile(new URL('./examples/rc1/native-payments.lawspec', import.meta.url), 'utf8');
+  const law = await readFile(
+    new URL('./examples/rc1/native-payments.lawspec', import.meta.url),
+    'utf8',
+  );
   const plans = [];
   const results = [];
-  for (const target of selected) {
+  for (const target of selected)
+  {
     const directory = await safePath(root, target);
     await mkdir(directory, {recursive: true});
     const files = {
       ...templates(target, {minify: options.minify === true}),
-      ...await projectFiles(new URL(`./examples/native-payments/${target}/`, import.meta.url)),
+      ...(await projectFiles(
+        new URL(`./examples/native-payments/${target}/`, import.meta.url),
+      )),
       'laws/payments.lawspec': law,
     };
     const config = parseManifest(files['lawspec.edn']);
-    if(config.manifestVersion!==1||config.languageProfile!=='1.0-rc.2')
-      throw new Error(`Bundled native payments configuration for ${target} must use lawspec.edn and languageProfile 1.0-rc.2`);
+    if (config.manifestVersion !== 1 || config.languageProfile !== '1.0-rc.2')
+      throw new Error(
+        `Bundled native payments configuration for ${target} must use lawspec.edn and languageProfile 1.0-rc.2`,
+      );
     config.machineBits = options.machineBits ?? 64;
-    files['lawspec.edn'] = writeManifest(config, {compact: options.minify === true});
-    const instructions = target === 'gleam' ? setup[target].replace(
-      'Prepare dependencies with gleam build, then run gleam test.',
-      'Prepare dependencies with node prepare.mjs before generation, then run gleam test.') : setup[target];
+    files['lawspec.edn'] = writeManifest(config, {
+      compact: options.minify === true,
+    });
+    const instructions =
+      target === 'gleam'
+        ? setup[target].replace(
+            'Prepare dependencies with gleam build, then run gleam test.',
+            'Prepare dependencies with node prepare.mjs before generation, then run gleam test.',
+          )
+        : setup[target];
     files['README.md'] = `# Native payments: ${target}
 
 This project checks application-owned payment types against the shared LawSpec
@@ -84,11 +108,24 @@ All exported project files are user-owned. Re-exporting preserves your edits;
 it reports changed bundled versions for review. Compiler-generated files use a
 separate ownership manifest and remain protected against accidental overwrites.
 `;
-    const artifacts = Object.entries(files).map(([path, content]) => ({path, content, ownership: 'user'}));
-    const plan = await planWrites(directory, artifacts, {manifest: '.lawspec/example.json'});
+    const artifacts = Object.entries(files).map(([path, content]) => ({
+      path,
+      content,
+      ownership: 'user',
+    }));
+    const plan = await planWrites(directory, artifacts, {
+      manifest: '.lawspec/example.json',
+    });
     plans.push(plan);
-    results.push({target, directory, example: 'payments', files: artifacts.map(({path, ownership}) => ({path, ownership})),
-      changes: plan.changes.length, preservedAdapters: plan.preserved, adapterUpdates: plan.adapterUpdates});
+    results.push({
+      target,
+      directory,
+      example: 'payments',
+      files: artifacts.map(({path, ownership}) => ({path, ownership})),
+      changes: plan.changes.length,
+      preservedAdapters: plan.preserved,
+      adapterUpdates: plan.adapterUpdates,
+    });
   }
   await applyWrites(plans);
   return results;

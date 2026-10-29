@@ -1,6 +1,6 @@
 -- | Native conversion stays at adapter boundaries; Core expressions keep their
 -- canonical representation and schema validation still surrounds every call.
-module LawSpec.RustNativeBinding (emitConversions, emitCall, rustReference, nativeTypeFor, nativeTypeWithParameters, convertExpression) where
+module LawSpec.RustNativeBinding (emitConversions, emitCall, rustReference, nativeTypeFor, nativeTypeWithParameters, convertExpression, conversionNames) where
 
 import Control.Monad (forM, unless)
 import Data.List (find, intercalate, sortOn)
@@ -35,6 +35,10 @@ rustReference (NativeRef parts) = intercalate "::" <$> mapM part (zip [0::Int ..
 
 findBinding :: Environment -> String -> Maybe (Int,ResolvedTypeBinding)
 findBinding (_,bindings) name = find ((== C.Id name) . C.dataId . resolvedDeclaration . snd) bindings
+
+-- | Import exactly the checked boundary helpers, never a wildcard module.
+conversionNames :: ResolvedBindings -> [String]
+conversionNames representations = sortOn id [helper outward index | (index, _) <- zip [0 :: Int ..] (resolvedTypes representations), outward <- [False, True]]
 
 helper :: Bool -> Int -> String
 helper outward index = (if outward then "_lawspec_to_native_" else "_lawspec_from_native_") ++ show index
@@ -77,14 +81,14 @@ convert env@(declarations,_) parameters owner outward ty value
         body <- convert env parameters owner outward child (D.text "_item")
         let scope = "ls::" ++ name ++ "::"
             absent = scope ++ if name == "Nullable" then "Null" else "Undefined"
-        pure (D.text "match " <> value <> D.text " " <> D.block 4
+        pure (D.text "match " <> value <> D.hardline <> D.block 4
           (D.text (absent ++ " => " ++ absent ++ ",") <> D.hardline <>
            D.text (scope ++ "Present(_item) => ") <> call (scope ++ "Present") [body] <> D.text ","))
       C.Constructor "Either" [C.TypeArgument left,C.TypeArgument right] -> do
         branches <- forM [("Left",left),("Right",right)] $ \(tag,child) -> do
           body <- convert env parameters owner outward child (D.text "_item")
           pure (D.text ("ls::Either::" ++ tag ++ "(_item) => ") <> call ("ls::Either::" ++ tag) [body] <> D.text ",")
-        pure (D.text "match " <> value <> D.text " " <> D.block 4 (D.joinWith D.hardline branches))
+        pure (D.text "match " <> value <> D.hardline <> D.block 4 (D.joinWith D.hardline branches))
       C.Constructor _ arguments -> do
         unless (not (any boundArgument arguments))
           (Left ("native mapping required for applied type: " ++ show ty))
@@ -160,7 +164,7 @@ emitConversions declarations plan = do
             (if outward then nativeParameter else canonicalParameter) |
             (_, (canonicalParameter,nativeParameter,converter)) <- parameters]
       body <- case resolvedCodec binding of
-        Nothing -> pure (D.text "match value " <> D.block 4 (D.joinWith D.hardline branches))
+        Nothing -> pure (D.text "match value" <> D.hardline <> D.block 4 (D.joinWith D.hardline branches))
         Just hook -> do
           function <- rustReference (if outward then codecToNative hook else codecFromNative hook)
           let arguments = D.text "value" : [D.text converter | (_,(_,_,converter)) <- parameters]
@@ -171,7 +175,7 @@ emitConversions declarations plan = do
       pure (D.text ("pub fn " ++ helper outward index ++ generic) <>
         D.delimitTrailing 4 "(" ")" (map D.text
           (("value: " ++ (if outward then canonical else native)):callbacks)) <>
-        D.text (" -> " ++ (if outward then native else canonical) ++ " ") <>
+        D.text (" -> " ++ (if outward then native else canonical)) <> D.hardline <>
         D.block 4 body)
     pure (D.joinWith (D.hardline <> D.hardline) functions)
   pure (D.joinWith (D.hardline <> D.hardline) definitions)
@@ -235,7 +239,7 @@ emitLayoutBranch env@(declarations,_) parameters declaration binding outward can
   opened<-if outward then unpack owner "_logical" tree else pure []
   values<-pack owner tree
   let canonicalValue=structure canonicalTag (zip canonicalLabels values)
-  pure ((if outward then canonicalPattern else nativePattern)<>D.text " => "<>
+  pure ((if outward then canonicalPattern else nativePattern)<>D.text " =>"<>D.hardline<>
     D.block 4 (D.joinWith D.hardline (opened++converted++[if outward then nativeValue else canonicalValue])))
 
 -- | A bound adapter calls the user's function directly, converting arguments in

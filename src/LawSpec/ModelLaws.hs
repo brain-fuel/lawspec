@@ -17,7 +17,8 @@ import qualified LawSpec.Core.LawAnalysis as A
 import LawSpec.Core.Machine (Machine(..), MachineStart(..), Command(..), admits, shifted)
 import LawSpec.Core.ModelCheck
 import LawSpec.Core.Value (Value(..), listItems)
-import LawSpec.Scalar (Scalar(..))
+import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
+import LawSpec.ModelDomains (dependentRanges, resolveBound)
 import qualified LawSpec.Model as S
 
 -- | A model law's result.
@@ -73,7 +74,8 @@ modelLawEvidence ran units program = fmap concat $ forM units $ \u -> do
                 search stateLimit timed fairness (FUntil FTrue (FAtom lateAtom))
           assumed = if null fairness then "" else " under " ++ intercalate " and " [if strong then "strong fairness for " ++ c else "fairness for " ++ c | (strong, c) <- S.modelLawFairness law]
       pure $ case checked of
-        Left why -> obligation Unsupported why
+        Left why | take 11 why == "incomplete:" -> obligation Incomplete (drop 11 why)
+                 | otherwise -> obligation Unsupported why
         Right (Bounded n why) -> obligation Incomplete ("no counterexample in the first " ++ show n ++ " states; " ++ why)
         Right (NoRun n)
           | S.modelLawEvery law -> obligation Proved ("every run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored")
@@ -222,13 +224,30 @@ systemOf program machine = do
     guard' <- traverse definition (commandWhen c)
     let arguments = init (C.definitionArguments ref)
     when (null (C.definitionArguments ref)) (Left ("the reference of " ++ commandName c ++ " takes no model state"))
-    argumentTuples <- tuples arguments
-    pure (c, ref, guard', argumentTuples)
-  let steps (state, indices) = fmap concat $ forM references $ \(c, ref, guard', argumentTuples) -> do
+    ranges <- dependentRanges (C.programDataDeclarations program) (concatMap C.unitContracts (C.programUnits program)) c
+    pure (c, ref, guard', arguments, ranges)
+  let tuplesAt c arguments ranges indices = do
+        domains <- forM (zip (commandArguments c) arguments) $ \(position, binder) ->
+          case (C.binderType binder, lookup position ranges) of
+            (C.Constructor name [], Just comparisons) | isInteger name -> do
+              values <- mapM (\(op,e) -> (,) op <$> resolveBound indices e) comparisons
+              let original = integerBounds (C.programMachineBits program) name
+                  lowers = [n + if op == C.Greater then 1 else 0 | (op,n) <- values, op `elem` [C.Greater,C.GreaterEqual,C.Equal]] ++ maybe [] (pure . fst) original ++ [0 | name == "BigUInt"]
+                  uppers = [n - if op == C.Less then 1 else 0 | (op,n) <- values, op `elem` [C.Less,C.LessEqual,C.Equal]] ++ maybe [] (pure . snd) original
+              if null lowers || null uppers then Left "not finite: model command argument has no finite bounds" else do
+                let lo = maximum lowers; hi = minimum uppers
+                if hi - lo + 1 > toInteger argumentLimit then Left "incomplete: model command argument domain exceeds enumeration limit"
+                  else Right [ScalarValue (SInteger name n) | n <- [lo..hi], all (\(op,k) -> op /= C.NotEqual || n /= k) values]
+            _ -> map (snd . head) <$> A.enumerateFrom ctx argumentLimit [] [C.Quantifier binder [] []]
+        let productSize = product (map (toInteger . length) domains)
+        if productSize > toInteger argumentLimit then Left "incomplete: model command argument tuples exceed enumeration limit"
+          else Right (sequence domains)
+      steps (state, indices) = fmap concat $ forM references $ \(c, ref, guard', arguments, ranges) -> do
         allowed <- case guard' of
           Nothing -> Right True
           Just g -> (== ScalarValue (SBool True)) <$> call g [state]
-        if not allowed || (indicesNeeded && not (admits c indices)) then Right [] else
+        if not allowed || (indicesNeeded && not (admits c indices)) then Right [] else do
+          argumentTuples <- tuplesAt c arguments ranges indices
           forM argumentTuples $ \values -> do
             result <- call ref (values ++ [state])
             next <- if commandReturnsUnit c then Right result else case result of

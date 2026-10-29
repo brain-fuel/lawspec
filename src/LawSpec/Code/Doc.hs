@@ -300,21 +300,20 @@ data Style = Style
   , styleImportOrder :: ImportOrder
   } deriving (Eq, Show)
 
--- | Every target's profile. Widths and indents are the formatters' defaults:
--- gofmt tabs, rustfmt 100, ruff and black 88, Prettier 80, ktfmt 100,
--- Google Java 100, ormolu 80 (by convention), mix format 98, gleam format 80,
--- erlfmt 100, scalafmt 80, swift-format 100, Fantomas 120, dotnet format 120,
--- cljfmt 80 (by convention) and tofu fmt.
+-- | The owner's Allman override precedes Google language guidance, followed
+-- by the established formatter's layout where Allman is unsupported. Compiler
+-- printing stays pure and native/WASM identical; acceptance checks pinned tools.
+-- ref:DEC-google-style-allman
 styleFor :: String -> Style
 styleFor target = case target of
-  "python" -> profile "ruff format" KAndR 4 False 88 DisplayColumns True 2 1 GroupedImports
+  "python" -> profile "ruff format (Google, 80 columns)" KAndR 4 False 80 DisplayColumns True 2 1 GroupedImports
   "go" -> profile "gofmt" KAndR 8 True 100 CodePoints True 1 1 GroupedImports
-  "rust" -> profile "rustfmt" KAndR 4 False 100 DisplayColumns True 1 1 SortedImports
-  "javascript" -> profile "prettier" KAndR 2 False 80 DisplayColumns True 1 1 WrittenImports
-  "typescript" -> profile "prettier" KAndR 2 False 80 DisplayColumns True 1 1 WrittenImports
+  "rust" -> profile "rustfmt (Google, Allman)" Allman 4 False 100 DisplayColumns True 1 1 SortedImports
+  "javascript" -> profile "Prettier (Google/gts, Allman plugin)" Allman 2 False 80 DisplayColumns True 1 1 WrittenImports
+  "typescript" -> profile "Prettier (Google/gts, Allman plugin)" Allman 2 False 80 DisplayColumns True 1 1 WrittenImports
   "kotlin" -> profile "ktfmt (kotlinlang)" KAndR 4 False 100 CodePoints True 1 1 SortedImports
-  "java" -> profile "checkstyle (Allman, Google)" Allman 4 False 100 CodePoints False 1 1 SortedImports
-  "groovy" -> profile "checkstyle (Allman, Google)" Allman 4 False 100 CodePoints False 1 1 SortedImports
+  "java" -> profile "checkstyle (Allman, Google)" Allman 2 False 100 CodePoints False 1 1 SortedImports
+  "groovy" -> profile "CodeNarc (Groovy, Allman)" Allman 4 False 100 CodePoints False 1 1 SortedImports
   "scala" -> profile "scalafmt" KAndR 2 False 80 CodePoints False 1 1 SortedImports
   "clojure" -> profile "cljfmt" KAndR 2 False 80 CodePoints False 1 1 SortedImports
   "haskell" -> profile "ormolu" KAndR 2 False 80 CodePoints False 1 1 SortedImports
@@ -322,7 +321,7 @@ styleFor target = case target of
   "elixir" -> profile "mix format" KAndR 2 False 98 CodePoints False 1 1 WrittenImports
   "gleam" -> profile "gleam format" KAndR 2 False 80 CodePoints True 1 1 SortedImports
   "fsharp" -> profile "fantomas" KAndR 4 False 120 CodePoints False 1 1 WrittenImports
-  "csharp" -> profile "dotnet format" Allman 4 False 120 CodePoints True 1 1 SortedImports
+  "csharp" -> profile "dotnet format (Google, Allman)" Allman 2 False 100 CodePoints True 1 1 SortedImports
   "swift" -> profile "swift-format" KAndR 2 False 100 CodePoints True 1 1 SortedImports
   "hcl" -> profile "tofu fmt" KAndR 2 False 100 CodePoints False 1 1 WrittenImports
   _ -> profile "" KAndR 2 False 100 CodePoints False 1 1 WrittenImports

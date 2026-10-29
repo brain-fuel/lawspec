@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/ModelDomains.hs/module/LawSpec.ModelDomains:
+  digest: sha256:d5666df9a314efe5
+  verdict: pending
+decision/haskell/src/LawSpec/ModelDomains.hs/module/LawSpec.ModelDomains/function/boundText:
+  digest: sha256:6c94cfef07893c00
+  verdict: pending
+decision/haskell/src/LawSpec/ModelDomains.hs/module/LawSpec.ModelDomains/function/dependentRanges:
+  digest: sha256:62dd9ff6fe199ce4
+  verdict: pending
+decision/haskell/src/LawSpec/ModelDomains.hs/module/LawSpec.ModelDomains/function/resolveBound:
+  digest: sha256:4d4782b6519793c3
+  verdict: pending

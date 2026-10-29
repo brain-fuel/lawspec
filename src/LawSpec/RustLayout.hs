@@ -253,7 +253,7 @@ overflowable count e = case e of
   -- (rustfmt keeps an overflowing match's or if's head on one line)
   -- (or a block's opening)
   Match scrutinee _ -> count == 1 && (isJust (oneLine scrutinee) || blocky scrutinee)
-  If c _ _ -> count == 1 && isJust (oneLine c)
+  If {} -> False
   Try a -> overflowable count a
   Prefix _ a -> overflowable count a
   Cast a _ -> overflowable count a
@@ -394,12 +394,7 @@ expr e = case e of
   -- characters that fits by width puts its brace on the next line.
   -- (its brace goes on the next line when a scrutinee on one line leaves
   -- no room for it)
-  Match scrutinee arms
-    | Just t <- oneLine scrutinee ->
-        oneOf [ D.utf8Text ("match " ++ t ++ " ") <> armsDoc arms
-              , D.text ("match " ++ t) <> D.hardline <> armsDoc arms
-              , D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms ]
-    | otherwise -> D.text "match " <> expr scrutinee <> D.text " " <> armsDoc arms
+  Match scrutinee arms -> D.text "match " <> expr scrutinee <> D.hardline <> armsDoc arms
   -- A closure's body that is not a block, match or struct literal is on
   -- the closure's line or in a block of its own (rustfmt vetoes breaking
   -- it there).
@@ -802,34 +797,21 @@ ifDoc = ifDocOf False
 -- if it started the line, then puts the brace on the next line when the
 -- else's line has no room for it.
 ifDocOf :: Bool -> Expr -> Expr -> Maybe Expr -> D.Doc
-ifDocOf elseIf c a b = case (flat (If c a b), b) of
+ifDocOf _elseIf c a b = case (flat (If c a b), b) of
   (Just t, Just _) | width t <= 50 -> oneOf [D.text t, broken]
   _ -> broken
   where
     -- A condition that breaks puts the block's brace on a line of its own.
     -- (A condition whose last line only closes brackets keeps it there.)
-    closer = if endsOpen c then D.hardline <> D.text "{" else D.text " {"
-    endsOpen x = case x of
-      Infix _ _ _ (Block _ _) -> False
-      Infix {} -> True
-      Method {} -> True
-      Field {} -> True
-      Try a -> endsOpen a
-      Prefix _ a -> endsOpen a
-      _ -> False
-    brokenCondition = D.text "if " <> (if isChain c then brokenChain' c else expr c) <> closer
-    opened = case oneLine c of
-      Just t | elseIf -> D.fitsIndented 0 (width ("if " ++ t ++ " {"))
-        (oneOf [D.text ("if " ++ t ++ " {"), D.text ("if " ++ t) <> D.hardline <> D.text "{", brokenCondition]) brokenCondition
-      Just t -> oneOf [D.text ("if " ++ t ++ " {"), brokenCondition]
-      Nothing -> D.text "if " <> expr c <> closer
+    closer = D.hardline <> D.text "{"
+    opened = D.text "if " <> expr c <> closer
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
       _ -> D.text "}"
     broken = opened <> thenBlock <> case b of
       Nothing -> mempty
-      Just (If c' a' b') -> D.text " else " <> ifDocOf True c' a' b'
-      Just other -> D.text " else " <> expr (asBlock other)
+      Just (If c' a' b') -> D.hardline <> D.text "else " <> ifDocOf True c' a' b'
+      Just other -> D.hardline <> D.text "else" <> D.hardline <> expr (asBlock other)
 
 -- | Struct literal fields: on one line within 18 columns, else one a line.
 structDoc :: String -> [(String, Expr)] -> D.Doc
@@ -869,18 +851,18 @@ armDoc (ArmOf pat (Just guard) body@(Block _ _))
   -- A guarded arm whose head does not fit breaks before its guard, and
   -- its block opens on a line of its own.
   | Just p <- flat pat, Just g <- oneLine guard, Block ss tailExpr <- body =
-      oneOf [ D.text (p ++ " if " ++ g ++ " => ") <> blockDoc ss tailExpr
+      oneOf [ D.text (p ++ " if " ++ g ++ " =>") <> D.hardline <> blockDoc ss tailExpr
             , D.text p <> D.nest 4 (D.hardline <> D.narrow 5 (D.text "if " <> expr guard) <> D.text " =>") <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
   -- A block opens on the next line when the arm's line has no room for it.
-  Block ss tailExpr -> headDoc <> oneOf [D.text " " <> blockDoc ss tailExpr, D.hardline <> blockDoc ss tailExpr]
+  Block ss tailExpr -> headDoc <> D.hardline <> blockDoc ss tailExpr
   inner ->
-    let blocked = headDoc <> D.text " {" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}"
+    let blocked = headDoc <> D.hardline <> D.text "{" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}"
         sameLine = headDoc <> D.text " " <> expr inner <> (if endsInBlock inner then mempty else D.text ",")
         extend = extendable inner
     in if shallow inner
       then headDoc <> D.prefer (D.ArmBody extend) (D.text " " <> expr inner <> comma inner) (D.nest 4 (D.hardline <> expr inner))
-        (D.text " " <> expr inner <> comma inner) (D.text " {" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}")
+        (D.text " " <> expr inner <> comma inner) (D.hardline <> D.text "{" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}")
       else if extend then sameLine else blocked
   where
     -- (a pattern that fits with its arrow and a brace stays on one line)
@@ -901,7 +883,7 @@ armDoc (ArmOf pat guard body) = case unblocked body of
 -- | A function: its signature on one line when it fits, else one
 -- parameter a line; then its body.
 function :: String -> [String] -> String -> D.Doc -> D.Doc
-function head' parameters result body = signatureDoc head' parameters result " {" <>
+function head' parameters result body = signatureDoc head' parameters result "" <> D.hardline <> D.text "{" <>
   D.nest 4 (D.hardline <> body) <> D.hardline <> D.text "}"
 
 -- | A function's declaration without a body (a trait's method).
@@ -909,8 +891,12 @@ declaration :: String -> [String] -> String -> D.Doc
 declaration head' parameters result = signatureDoc head' parameters result ";"
 
 signatureDoc :: String -> [String] -> String -> String -> D.Doc
-signatureDoc head' parameters result end = oneOf [D.text (head' ++ "(" ++ intercalate ", " parameters ++ ")" ++ result' ++ end), broken]
+signatureDoc head' parameters result end = oneOf
+  ([D.narrow (if null end then 2 else 0) (D.text (parametersHead ++ result' ++ end))] ++
+   [D.fitsIndented 0 (width (parametersHead ++ result'))
+      (D.text parametersHead <> D.hardline <> D.text ("-> " ++ result)) broken | null end, not (null result)] ++ [broken])
   where
+    parametersHead = head' ++ "(" ++ intercalate ", " parameters ++ ")"
     result' = if null result then "" else " -> " ++ result
     params = D.nest 4 (mconcat [D.hardline <> parameterDoc p <> D.text "," | p <- parameters])
     -- rustfmt puts the brace on a line of its own when the closing line,
@@ -918,13 +904,12 @@ signatureDoc head' parameters result end = oneOf [D.text (head' ++ "(" ++ interc
     broken
       | null parameters = D.text (head' ++ "()" ++ result' ++ end)
       | otherwise = D.text (head' ++ "(") <> params <> D.hardline <>
-          if end /= " {" then D.text (")" ++ result' ++ end) else
-          D.fitsIndentedTwice (width (")" ++ result') + 2) (D.text (")" ++ result' ++ " {"))
-            (D.fitsIndented 0 (width (")" ++ result')) (D.text (")" ++ result') <> D.hardline <> D.text "{") genericResult)
+          D.fitsIndented 0 (width (")" ++ result' ++ end))
+            (D.text (")" ++ result' ++ end)) genericResult
     -- A result type too long for its line breaks inside its outer brackets.
     genericResult = case parseType result of
-      Just t@(Type _ (_ : _)) -> D.text ") -> " <> typeBroken t <> D.text " {"
-      _ -> D.text (")" ++ result') <> D.hardline <> D.text "{"
+      Just t@(Type _ (_ : _)) -> D.text ") -> " <> typeBroken t <> D.text end
+      _ -> D.text (")" ++ result' ++ end)
 
 -- | A parameter, name: type, its type breaking as rustfmt breaks it.
 parameterDoc :: String -> D.Doc

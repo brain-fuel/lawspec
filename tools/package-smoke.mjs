@@ -1,167 +1,205 @@
 // Generated from templates/tools/package-smoke.mjs by lawspec-dev generate. Do not edit.
 import {parseManifest, writeManifest} from '../npm/component.mjs';
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { programTargets as targets } from "../npm/templates.mjs";
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {programTargets as targets} from '../npm/templates.mjs';
 const exec = promisify(execFile);
-const repo = path.resolve(import.meta.dirname, "..");
-const env = {...process.env, npm_config_cache: path.join(repo, '.artifacts/npm-cache')};
-const output = process.env.LAWSPEC_PACKAGE_DIR ??
-  path.join(repo, ".artifacts/package-smoke");
-await mkdir(output, { recursive: true });
+const repo = path.resolve(import.meta.dirname, '..');
+const env = {
+  ...process.env,
+  npm_config_cache: path.join(repo, '.artifacts/npm-cache'),
+};
+const output =
+  process.env.LAWSPEC_PACKAGE_DIR ??
+  path.join(repo, '.artifacts/package-smoke');
+await mkdir(output, {recursive: true});
 const packed = JSON.parse(
   (
     await exec(
-      "npm",
-      ["pack", "./npm", "--pack-destination", output, "--json"],
-      { cwd: repo, env, encoding: "utf8" },
+      'npm',
+      ['pack', './npm', '--pack-destination', output, '--json'],
+      {cwd: repo, env, encoding: 'utf8'},
     )
   ).stdout,
 );
 const archive = path.join(output, packed[0].filename);
-const root = await mkdtemp(path.join(os.tmpdir(), "lawspec-package-"));
-async function run(cmd, args, cwd = root, {timeout = 1800000} = {}) {
+const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-package-'));
+async function run(cmd, args, cwd = root, {timeout = 1800000} = {})
+{
   const started = Date.now();
   console.log(`[package-smoke] ${JSON.stringify([cmd, ...args])}`);
-  try {
+  try
+  {
     const result = await exec(cmd, args, {
       cwd,
       env,
-      encoding: "utf8",
+      encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
       timeout,
     });
-    console.log(`[package-smoke] completed in ${(Date.now() - started) / 1000}s`);
+    console.log(
+      `[package-smoke] completed in ${(Date.now() - started) / 1000}s`,
+    );
     return result;
-  } catch (e) {
+  }
+  catch (e)
+  {
     throw new Error(
       `${JSON.stringify([cmd, ...args])} failed after ${(Date.now() - started) / 1000}s ` +
-      `(code=${e.code}, signal=${e.signal}, killed=${e.killed}): ${e.stdout}\n${e.stderr}`,
+        `(code=${e.code}, signal=${e.signal}, killed=${e.killed}): ${e.stdout}\n${e.stderr}`,
       {cause: e},
     );
   }
 }
-try {
-  const app = path.join(root, "app");
+try
+{
+  const app = path.join(root, 'app');
   await mkdir(app);
   // Follow the README quickstart using the exact release archive before publication.
   await run(
-    "npm",
+    'npm',
     [
-      "exec",
-      "--yes",
+      'exec',
+      '--yes',
       `--package=${archive}`,
-      "--",
-      "lawspec",
-      "init",
-      "--target",
-      "javascript",
+      '--',
+      'lawspec',
+      'init',
+      '--target',
+      'javascript',
     ],
     app,
   );
   await run(
-    "npm",
+    'npm',
     [
-      "install",
-      "--save-dev",
-      "--ignore-scripts",
-      "--no-audit",
-      "--no-fund",
+      'install',
+      '--save-dev',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
       archive,
     ],
     app,
   );
-  await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
-    '--prefix', path.join(root, 'offline-installation'), archive]);
+  await run('npm', [
+    'install',
+    '--offline',
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+    '--prefix',
+    path.join(root, 'offline-installation'),
+    archive,
+  ]);
   // Go must not collect the bundled, ungenerated example adapters from an
   // enclosing application's ./... scan. Its module boundary is shipped even
   // when Go itself is unavailable to this smoke run.
   await readFile(path.join(app, 'node_modules/lawspec/go.mod'), 'utf8');
   let go;
-  try { go = await exec('go', ['version'], {env}); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (go) {
-    await writeFile(path.join(app, 'go.mod'), 'module example.com/npm-consumer\n\ngo 1.25.0\n');
+  try
+  {
+    go = await exec('go', ['version'], {env});
+  }
+  catch (error)
+  {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if (go)
+  {
+    await writeFile(
+      path.join(app, 'go.mod'),
+      'module example.com/npm-consumer\n\ngo 1.25.0\n',
+    );
     await writeFile(path.join(app, 'consumer.go'), 'package consumer\n');
     await run('go', ['test', './...'], app);
     await rm(path.join(app, 'go.mod'));
     await rm(path.join(app, 'consumer.go'));
     console.log('Installed npm package is isolated from its Go host module');
-  } else console.log('Go host-module check unavailable: go is not on PATH');
-  const cli = path.join(app, "node_modules/lawspec/bin/lawspec.mjs");
+  }
+  else console.log('Go host-module check unavailable: go is not on PATH');
+  const cli = path.join(app, 'node_modules/lawspec/bin/lawspec.mjs');
   // Init deliberately selects no optional law checks. This smoke run opts in
   // before exercising the generated native tests.
-  const configPath = path.join(app, "lawspec.edn");
-  const config = parseManifest(await readFile(configPath, "utf8"));
-  if (config.manifestVersion !== 1 || config.languageProfile !== "1.0-rc.2" ||
-      config.verification.layers.length !== 0)
-    throw new Error("Init did not create the canonical profile with no selected checks");
-  config.verification = {layers: ["property", "examples"]};
-  await writeFile(configPath, writeManifest(config, null, 2) + "\n");
-  await run("npm", ["exec", "--no", "--", "lawspec", "check"], app);
+  const configPath = path.join(app, 'lawspec.edn');
+  const config = parseManifest(await readFile(configPath, 'utf8'));
+  if (
+    config.manifestVersion !== 1 ||
+    config.languageProfile !== '1.0-rc.2' ||
+    config.verification.layers.length !== 0
+  )
+    throw new Error(
+      'Init did not create the canonical profile with no selected checks',
+    );
+  config.verification = {layers: ['property', 'examples']};
+  await writeFile(configPath, writeManifest(config, null, 2) + '\n');
+  await run('npm', ['exec', '--no', '--', 'lawspec', 'check'], app);
   const explanation = await run(
-    "npm",
+    'npm',
     [
-      "exec",
-      "--no",
-      "--",
-      "lawspec",
-      "explain",
-      "example.codec::codec",
-      "--view",
-      "dev",
+      'exec',
+      '--no',
+      '--',
+      'lawspec',
+      'explain',
+      'example.codec::codec',
+      '--view',
+      'dev',
     ],
     app,
   );
   if (
-    !explanation.stdout.includes("expect itoa") ||
+    !explanation.stdout.includes('expect itoa') ||
     !explanation.stdout.includes('"-42"')
   )
-    throw new Error("explain omitted expected results");
-  await run("npm", ["exec", "--no", "--", "lawspec", "doctor"], app);
-  await run("npm", ["exec", "--no", "--", "lawspec", "generate"], app);
+    throw new Error('explain omitted expected results');
+  await run('npm', ['exec', '--no', '--', 'lawspec', 'doctor'], app);
+  await run('npm', ['exec', '--no', '--', 'lawspec', 'generate'], app);
   await writeFile(
-    path.join(app, "src/example/codec.mjs"),
-    "export const itoa = String;\nexport const atoi = Number;\n",
+    path.join(app, 'src/example/codec.mjs'),
+    'export const itoa = String;\nexport const atoi = Number;\n',
   );
-  await run("npm", ["test"], app);
-  await run(process.execPath, [cli, "generate", "--check"], app);
+  await run('npm', ['test'], app);
+  await run(process.execPath, [cli, 'generate', '--check'], app);
   // Exporting the expanded corpus, including the portable Unicode tables,
   // reached the old thirty-minute guard. Retain every export and assertion
   // while allowing an hour for this operation; other commands keep their limit.
-  await run("npm", ["exec", "--no", "--", "lawspec", "examples"], app,
-    {timeout: 3600000});
+  await run('npm', ['exec', '--no', '--', 'lawspec', 'examples'], app, {
+    timeout: 3600000,
+  });
   const textTest = await readFile(
     path.join(
       app,
-      "example_artifacts/java/src/test/java/example/SlugLawSpecTest.java",
+      'example_artifacts/java/src/test/java/example/SlugLawSpecTest.java',
     ),
-    "utf8",
+    'utf8',
   );
   if (
-    !textTest.includes('LawSpecRuntime.sample("Text"') || !textTest.includes("PropertyChecker")
+    !textTest.includes('LawSpecRuntime.sample("Text"') ||
+    !textTest.includes('PropertyChecker')
   )
-    throw new Error("Installed examples command omitted Text generation");
+    throw new Error('Installed examples command omitted Text generation');
   const portTest = await readFile(
     path.join(
       app,
-      "example_artifacts/java/src/test/java/example/ParsePortLawSpecTest.java",
+      'example_artifacts/java/src/test/java/example/ParsePortLawSpecTest.java',
     ),
-    "utf8",
+    'utf8',
   );
   if (
-    !portTest.includes("if (") || !portTest.includes("ParsePort.validPort(") ||
-    !portTest.includes("ordinary port")
+    !portTest.includes('if (') ||
+    !portTest.includes('ParsePort.validPort(') ||
+    !portTest.includes('ordinary port')
   )
-    throw new Error("Installed examples omitted predicate checks");
+    throw new Error('Installed examples omitted predicate checks');
   const api = await run(
     process.execPath,
     [
-      "--input-type=module",
-      "-e",
+      '--input-type=module',
+      '-e',
       `import {createCompiler} from 'lawspec';
        import {readFileSync} from 'node:fs';
        const c=await createCompiler();
@@ -183,7 +221,12 @@ try {
     app,
   );
   console.log(api.stdout.trim());
-  const structures = await run(process.execPath, ['--input-type=module', '-e', `
+  const structures = await run(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     import assert from 'node:assert/strict';
     import {readFileSync} from 'node:fs';
     import {createCompiler} from 'lawspec';
@@ -218,30 +261,45 @@ try {
       }
     }
     console.log('Installed structural API: all ${targets.length} targets, widths and layouts');
-  `], app);
+  `,
+    ],
+    app,
+  );
   console.log(structures.stdout.trim());
   for (const document of [
-                           "README.md",
-                           "CHANGELOG.md",
-                           "LICENSE",
-                           "UNICODE-LICENSE.txt",
-                           "NORMALIZATION-LICENSES.txt"
-                         ])
-    if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
-  const rust=path.join(root,'rust');
+    'README.md',
+    'CHANGELOG.md',
+    'LICENSE',
+    'UNICODE-LICENSE.txt',
+    'NORMALIZATION-LICENSES.txt',
+  ])
+    if (
+      !(
+        await readFile(path.join(app, 'node_modules/lawspec', document), 'utf8')
+      ).length
+    )
+      throw new Error('Missing packaged ' + document);
+  const rust = path.join(root, 'rust');
   await mkdir(rust);
-  await run(process.execPath,[cli,'init','--target','rust'],rust);
+  await run(process.execPath, [cli, 'init', '--target', 'rust'], rust);
   const rustConfigPath = path.join(rust, 'lawspec.edn');
   const rustConfig = parseManifest(await readFile(rustConfigPath, 'utf8'));
   rustConfig.verification = {layers: ['property', 'examples']};
   await writeFile(rustConfigPath, writeManifest(rustConfig, null, 2) + '\n');
-  await run(process.execPath,[cli,'doctor'],rust);
-  await run(process.execPath,[cli,'generate'],rust);
-  await writeFile(path.join(rust,'src/example/codec.rs'),'pub fn itoa(value:i32)->String {value.to_string()}\npub fn atoi(value:String)->i32 {value.parse().unwrap()}\n');
-  await run('cargo',['test'],rust);
-  await run(process.execPath,[cli,'generate','--check'],rust);
-  console.log('Installed Rust scaffold, doctor, adapters, tests and regeneration passed');
+  await run(process.execPath, [cli, 'doctor'], rust);
+  await run(process.execPath, [cli, 'generate'], rust);
+  await writeFile(
+    path.join(rust, 'src/example/codec.rs'),
+    'pub fn itoa(value:i32)->String {value.to_string()}\npub fn atoi(value:String)->i32 {value.parse().unwrap()}\n',
+  );
+  await run('cargo', ['test'], rust);
+  await run(process.execPath, [cli, 'generate', '--check'], rust);
+  console.log(
+    'Installed Rust scaffold, doctor, adapters, tests and regeneration passed',
+  );
   console.log(`Packed npm CLI/API smoke test passed: ${archive}`);
-} finally {
-  await rm(root, { recursive: true, force: true });
+}
+finally
+{
+  await rm(root, {recursive: true, force: true});
 }

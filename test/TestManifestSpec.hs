@@ -11,6 +11,7 @@ import qualified Data.Vector as V
 import System.Directory (listDirectory)
 import Test.Hspec
 import LawSpec.Code.ECMAScript (javascriptLiteral)
+import LawSpec.Code.Literal (literalFor)
 import LawSpec.Api (dispatch)
 import LawSpec.Targets (programTargets)
 
@@ -45,7 +46,7 @@ named target name = case target of
   "prolog" -> "::" ++ name
   "go" -> "func " ++ name ++ "_"
   -- A Rust law is a module of tests (law_<words>::<test>).
-  "rust" -> "mod " ++ takeWhile (/= ':') name ++ " {"
+  "rust" -> "mod " ++ takeWhile (/= ':') name ++ "\n{"
   "haskell" -> "\"" ++ name ++ "_"
   "kotlin" -> "\"" ++ name ++ "_"
   _ -> name ++ "_"
@@ -120,7 +121,7 @@ test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $
                 -- property/example functions retain ordinary declarations.
                 let registered source = named target name `isInfixOf` source ||
                       ("ls.register_finite_cases" `isInfixOf` source &&
-                       javascriptLiteral (name ++ "_") `isInfixOf` source)
+                       literalFor "python" (name ++ "_") `isInfixOf` source)
                 in if registered content then pure () else expectationFailure
                   ("Python manifest entry has no function or registered prefix: " ++ name ++ " in " ++ file)
             -- Haskell and Kotlin split long string literals into pieces.

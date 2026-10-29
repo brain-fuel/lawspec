@@ -253,6 +253,6 @@ emitActorHandlersCs layout bits datas units
               "using Microsoft.FSharp.Collections;", "using LawSpec.CSharp;"]) <> D.hardline <> D.hardline <>
             D.text "/// <summary>Each actor's handlers record, made from the adapters.</summary>" <> D.hardline <>
             D.text "public static class ActorHandlers" <> D.hardline <>
-            D.block 4 (D.joinWith (D.hardline <> D.hardline) properties) <> D.hardline
+            D.block 2 (D.joinWith (D.hardline <> D.hardline) properties) <> D.hardline
       pure [Artifact "src/LawSpec/ActorHandlers.cs" (D.render layout doc) "generated" "source"]
   where actors = concatMap actorsOf units

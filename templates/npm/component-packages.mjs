@@ -310,7 +310,8 @@ export async function resolveDependencies(file, manifest, options = {}) {
   const lock = {format: 'lawspec-lock', version: 1, roots, selections, packages: [...entries.values()].sort((a,b) => a.id.localeCompare(b.id))};
   if (entries.size || previous) {
     if (locked && canonical(lock) !== canonical(previous)) throw new Error('Lockfile is out of date; run lawspec fetch');
-    if (!locked && canonical(lock) !== canonical(previous)) await atomicWrite(path.join(root, lockName), writeManifest(lock));
+    if (!locked && options.writeLock !== false && canonical(lock) !== canonical(previous))
+      await atomicWrite(path.join(root, lockName), writeManifest(lock));
   }
   const semantic = new Map();
   const closure = id => {

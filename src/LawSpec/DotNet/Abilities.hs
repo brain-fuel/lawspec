@@ -77,12 +77,12 @@ emitInterfaces lang layout bits declarations units
             FSharp -> D.text ("/// " ++ doc) <> D.hardline <> D.text ("type " ++ name ++ " =") <>
               D.nest 4 (D.hardline <> joinMembers members)
             CSharp -> D.text ("/// <summary>" ++ doc ++ "</summary>") <> D.hardline <> D.text ("public interface " ++ name) <>
-              D.hardline <> D.block 4 (D.joinWith D.hardline (map snd members))
+              D.hardline <> D.block 2 (D.joinWith D.hardline (map snd members))
         pure $ case lang of
           FSharp -> D.text ("namespace " ++ Effects.abilityNamespace (C.unitId u)) <> D.hardline <> D.hardline <>
             D.joinWith (D.hardline <> D.hardline) types
           CSharp -> D.text ("namespace " ++ Effects.abilityNamespace (C.unitId u)) <> D.hardline <>
-            D.block 4 (D.joinWith (D.hardline <> D.hardline) types)
+            D.block 2 (D.joinWith (D.hardline <> D.hardline) types)
       let doc = D.text ("// " ++ generatedHeader Nothing) <> D.hardline <>
             (if lang == CSharp then D.text "using System.Collections.Generic;" <> D.hardline <> D.text "using LawSpec.Runtime;" <> D.hardline else mempty) <>
             D.joinWith (D.hardline <> D.hardline) groups <> D.hardline
@@ -249,7 +249,7 @@ unitFactories lang bits declarations units unit = do
         D.nest 4 (D.hardline <> renderBody lang 4 (Ty "Effects.Handler" "Effects.Handler") made)
       CSharp -> D.text ("/// <summary>The spec handler " ++ C.handlerName h ++ ".</summary>") <> D.hardline <>
         D.text ("public static Effects.Handler " ++ pascal name ++ "(Schema.Schema schema, Scalar.SymbolContext symbols)") <> D.hardline <>
-        D.block 4 (renderBody lang 8 (Ty "Effects.Handler" "Effects.Handler") made)
+        D.block 2 (renderBody lang 8 (Ty "Effects.Handler" "Effects.Handler") made)
   pure (productions ++ specs)
 
 -- | The native handler factories a unit's adapter implements.
@@ -270,7 +270,7 @@ productionStubs CSharp bits declarations unit = do
     pure [ D.text ("/// <summary>The native handler of " ++ N.displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".</summary>") <> D.hardline <>
            D.text ("public static " ++ interface ++ " " ++ name ++ "(" ++ maybe "" (++ " resource") resource ++ ") => new " ++ cls ++ "();")
          , D.text ("private sealed class " ++ cls ++ " : " ++ interface) <> D.hardline <>
-           D.block 4 (D.joinWith (D.hardline <> D.hardline) members) ]
+           D.block 2 (D.joinWith (D.hardline <> D.hardline) members) ]
 productionStubs lang bits declarations unit = do
   names <- dataNames declarations
   forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do

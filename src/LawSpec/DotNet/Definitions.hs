@@ -115,7 +115,7 @@ emitEntriesWithLayouts bindings lang layout bits calls typedCall declarations un
             D.text ("namespace " ++ namespaceOf moduleName ++ ";") <> D.hardline <> D.hardline <> csUsings <> D.hardline <>
             D.text ("/// <summary>The entries of " ++ C.idText (C.unitId u) ++ ", on portable values.</summary>") <> D.hardline <>
             D.text ("public static class " ++ lastOf moduleName) <> D.hardline <>
-            D.block 4 (D.joinWith (D.hardline <> D.hardline) functions) <> D.hardline
+            D.block 2 (D.joinWith (D.hardline <> D.hardline) functions) <> D.hardline
     pure (Artifact ("src/LawSpec/Generated/" ++ lastOf moduleName ++ extension lang) (D.render layout doc) "generated" "source")
   where
     definitions = [(C.declarationId (C.definitionDeclaration d), d) | u <- units, d <- C.unitDefinitions u]
@@ -328,12 +328,12 @@ emitApi CSharp layout bits declarations units = do
             | otherwise = ["return " ++ scoped checked ++ ";"]
           setup = ["var schema = LawSpec.Generated.Program.Schema;", "var symbols = new Scalar.SymbolContext();"]
           bodyLines
-            | C.declarationAsync d && isVoid = ["return Task.Run(() =>", "{"] ++ map ("    " ++) (setup ++ statements) ++ ["});"]
-            | C.declarationAsync d = ["return Task.Run(() =>", "{"] ++ map ("    " ++) (setup ++ statements) ++ ["});"]
+            | C.declarationAsync d && isVoid = ["return Task.Run(() =>", "{"] ++ map ("  " ++) (setup ++ statements) ++ ["});"]
+            | C.declarationAsync d = ["return Task.Run(() =>", "{"] ++ map ("  " ++) (setup ++ statements) ++ ["});"]
             | otherwise = setup ++ statements
       pure (D.text ("/// <summary>" ++ xmlComment (definitionLabel d) ++ "</summary>") <> D.hardline <>
         D.text ("public static " ++ r ++ " " ++ functionName CSharp d ++ "(" ++ intercalate ", " [t ++ " " ++ n | (n, t) <- params] ++ ")") <> D.hardline <>
-        D.block 4 (D.joinWith D.hardline (map D.text bodyLines)))
+        D.block 2 (D.joinWith D.hardline (map D.text bodyLines)))
     -- One flat class per unit, so a unit and a unit inside it never make a
     -- class and a namespace of the same name.
     let moduleName = apiModule (C.unitId u)
@@ -342,7 +342,7 @@ emitApi CSharp layout bits declarations units = do
           csUsings <> D.hardline <>
           D.text ("/// <summary>The checked definitions of " ++ C.idText (C.unitId u) ++ ", on native values.</summary>") <> D.hardline <>
           D.text ("public static class " ++ last (splitDots moduleName)) <> D.hardline <>
-          D.block 4 (D.joinWith (D.hardline <> D.hardline) methods) <> D.hardline
+          D.block 2 (D.joinWith (D.hardline <> D.hardline) methods) <> D.hardline
     pure [Artifact ("src/LawSpec/Definitions/" ++ concatMap pascal (splitDots (C.idText (C.unitId u))) ++ ".cs") (D.render layout doc) "generated" "source"]
 
 -- | A C# file's usings, written after its namespace so the aliases for the
@@ -380,7 +380,7 @@ emitAdapters lang layout bits calls declarations units = do
             (L.App "failwith" [L.A (stringLiteral FSharp message)]))
         CSharp -> D.text ("/// <summary>" ++ showType (C.declarationType d) ++ "</summary>") <> D.hardline <>
           D.text ("public static " ++ r ++ " " ++ name ++ "(" ++ intercalate ", " [t ++ " " ++ p | (p, t) <- parameters] ++ ")") <>
-          D.hardline <> D.block 4 (D.text ("throw new NotImplementedException(" ++ stringLiteral CSharp message ++ ");"))
+          D.hardline <> D.block 2 (D.text ("throw new NotImplementedException(" ++ stringLiteral CSharp message ++ ");"))
     let header = case lang of
           FSharp -> D.text "// User-owned LawSpec adapter. Implement these functions." <> D.hardline <>
             D.text ("module " ++ unitQualified (C.unitId u)) <> D.hardline <> D.hardline <>
@@ -389,7 +389,7 @@ emitAdapters lang layout bits calls declarations units = do
             D.text ("namespace " ++ unitNamespace (C.unitId u) ++ ";") <> D.hardline <> D.hardline <>
             D.joinWith D.hardline (map D.text adapterUsingLines) <> D.hardline <> D.hardline <>
             D.text ("public static class " ++ unitModule (C.unitId u)) <> D.hardline <>
-            D.block 4 (D.joinWith (D.hardline <> D.hardline) functions) <> D.hardline
+            D.block 2 (D.joinWith (D.hardline <> D.hardline) functions) <> D.hardline
         path = adapterPath lang (C.unitId u)
     pure (AdapterArtifact path (D.render layout header) "user" "source" (D.render (D.Pretty 100) header))
   where

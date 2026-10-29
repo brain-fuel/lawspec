@@ -54,13 +54,71 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
       ["record-type-opener","record-type-field","record-type-closer"] ||
       (syntaxKind node == "closer" && syntaxName node == Just "type" &&
         inRecordDeclaration (offset (spanStart (syntaxSpan node))))
-    lineBreaks = Set.fromList [offset (spanStart (syntaxSpan node)) | node <- nodes,recordBoundary node]
+    nodeRange node = (offset (spanStart (syntaxSpan node)),offset (spanEnd (syntaxSpan node)))
+    quantifierKinds = ["for all","exists","given"]
+    quantifierKind node = case syntaxKind node of
+      "quantifier.forall" -> Just "for all"
+      "quantifier.exists" -> Just "exists"
+      "quantifier.given" -> Just "given"
+      _ -> Nothing
+    -- ref:DEC-lawspec-quantifier-layout
+    quantifierBoundary node = syntaxKind node == "quantifier-body" ||
+      (syntaxKind node == "block-opener" && syntaxName node `elem` map Just quantifierKinds) ||
+      (syntaxKind node == "closer" && syntaxName node `elem`
+        map Just (quantifierKinds ++ ["definition","law","unit"]))
+    originalLexed = sourceTokens original
+    overlaps (begin,end) token = tokenOffset token < end &&
+      begin < tokenOffset token + length (tokenText token)
+    hasComment range = any (\token -> tokenKind token == CommentToken && overlaps range token) originalLexed
+    -- Join only parser-owned flat bodies. Nested blocks, line-scoped syntax,
+    -- comments and multiline literals retain their authored line boundaries.
+    flatBody range@(begin,end) = not (hasComment range) &&
+      not (any (\node -> let at = offset (spanStart (syntaxSpan node)) in
+        begin <= at && at < end && syntaxKind node `elem` ["block-opener","line-expression"]) nodes) &&
+      not (any (\token -> overlaps range token && tokenKind token `elem` [LiteralToken,PhraseToken] &&
+        '\n' `elem` tokenText token) originalLexed)
+    flatBodies = [range | node <- nodes,syntaxKind node == "quantifier-body",
+      let range = nodeRange node,flatBody range]
+    -- Long headers break between complete binders, never in a short range
+    -- constraint. The separator gets its own aligned line in this layout.
+    headers = [(begin,finish,separator) | node <- nodes,syntaxKind node == "quantifier-separator",
+      let (separator,finish) = nodeRange node,
+      let owners = [start | owner <- nodes,quantifierKind owner == syntaxName node,
+            let (start,end) = nodeRange owner,start < separator && separator < end],
+      not (null owners),let begin = maximum owners,
+      not (hasComment (begin,finish)),
+      not (any (\child -> let at = offset (spanStart (syntaxSpan child)) in
+        syntaxKind child == "block-opener" && begin < at && at < separator) nodes)]
+    headerDepth begin = length [kind | kind <- foldl step []
+        [value | (index,value) <- Map.toAscList events,
+          index < Map.findWithDefault 0 begin indices],kind /= UnitBlock]
+      where step stack (True,kind) = kind:stack
+            step stack (False,_) = drop 1 stack
+    headerText (begin,finish,_) = restoreSource [token{tokenText = if tokenKind token == TriviaToken then " " else tokenText token} |
+      token <- originalLexed,begin <= tokenOffset token && tokenOffset token < finish]
+    longHeaders = [header | header@(begin,_,_) <- headers,
+      2 * headerDepth begin + length (headerText header) > 80]
+    headerBinders = [nodeRange node | (begin,_,separator) <- longHeaders,
+      node <- nodes,syntaxKind node == "parameter",let range@(start,end) = nodeRange node,
+      begin < start && end <= separator,
+      not (any (\outer -> syntaxKind outer == "parameter" && nodeRange outer /= range &&
+        let (a,b) = nodeRange outer in begin < a && a <= start && end <= b && b <= separator) nodes)]
+    flatRanges = flatBodies ++ [(begin,finish) | (begin,finish,_) <- headers]
+    flattened = Set.fromList [tokenOffset token + index | token <- originalLexed,
+      tokenKind token == TriviaToken,
+      (tokenOffset token + length (tokenText token)) `Set.notMember` lineBreaks,
+      any (\(begin,end) -> begin <= tokenOffset token && tokenOffset token < end) flatRanges,
+      (index,character) <- zip [0..] (tokenText token),character `elem` ['\n','\r']]
+    lineBreaks = Set.fromList ([offset (spanStart (syntaxSpan node)) | node <- nodes,
+      recordBoundary node || quantifierBoundary node] ++ map fst headerBinders ++
+      [separator | (_,_,separator) <- longHeaders])
     -- Break only at parser-owned token boundaries, never inside trivia or
     -- literals. Existing line comments stay attached to their original line.
     rewritten = concat [
       (if index `Set.member` lineBreaks && any (not . isSpace)
         (takeWhile (/='\n') (reverse (take index original))) then "\n" else "") ++
-      (if index `Set.member` separators && character == ',' then " " else [character]) |
+      (if (index `Set.member` separators && character == ',') || index `Set.member` flattened
+        then " " else [character]) |
       (index,character) <- zip [0..] original]
     significant text = [token | token <- sourceTokens text,
       tokenKind token `notElem` [TriviaToken,CommentToken]]
@@ -82,6 +140,8 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
       tokenOffset token `Set.member` separators]
     rebased = Map.fromList [(index-length (filter (<index) removed),value)
       | (index,value) <- Map.toList events]
+    headerSeparators = Set.fromList [index-length (filter (<index) removed) |
+      (_,_,separator) <- longHeaders,Just index <- [Map.lookup separator indices]]
     -- Layout changes physical offsets on each stabilization pass. Match the
     -- parser's line-scoped expressions by token identity, as for block events.
     lineExpressions = Set.fromList [index-length (filter (<index) removed) |
@@ -157,7 +217,8 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
                 not (any (\(index,_) -> case Map.lookup index rebased of
                   Just (True,_) -> True
                   _ -> False) local)
-              depth | continuation && (afterEquals || not (Map.null active)) =
+              depth | maybe False (\(index,_) -> index `Set.member` headerSeparators) first = baseDepth-1
+                    | continuation && (afterEquals || not (Map.null active)) =
                         1 + maximum (baseDepth : map snd (Map.elems active))
                     | otherwise = baseDepth
               branchStack = if branch then markBranch stack else stack

@@ -239,7 +239,23 @@ test_modelChecking = describe "model checking" $ do
       `shouldSatisfy` any (isInfixOf "the model has no command jump")
     diagnostics (check (toggle "law \"|x| in model box is\n  definition: every run holds always isThree end definition\nend law\n"))
       `shouldSatisfy` any (isInfixOf "no property or predicate isThree")
+  -- Per-state domains must retain finite completeness and explicit limits.
+  -- ref:DEC-dependent-model-arguments
+  describe "dependent model domains" $ do
+    source <- runIO (readFile "test/fixtures/dependent-model-arguments.lawspec")
+    it "proves a finite model with state-dependent command arguments" $ do
+      diagnostics (check source) `shouldBe` []
+      row "bounded runs" (check source) `shouldBe` Just ("proved", "every run holds it: all 3 states explored")
+    it "keeps an oversized dependent enumeration incomplete" $ do
+      let wide = replace "i < n" "i < n + 10000" (replaceAll "Int8" "UInt16" source)
+      fmap fst (row "bounded runs" (check wide)) `shouldBe` Just "incomplete"
+    it "reports an unsupported dependent refinement without inventing an empty domain" $ do
+      let unsupported = replace "i < n" "i != n" source
+      fmap fst (row "bounded runs" (check unsupported)) `shouldBe` Just "unsupported"
   where
+    replaceAll old new text = case breakOn old text of
+      Just (before, after) -> before ++ new ++ replaceAll old new (drop (length old) after)
+      Nothing -> text
     replace old new text = case breakOn old text of
       Just (before, after) -> before ++ new ++ drop (length old) after
       Nothing -> text

@@ -14,24 +14,26 @@ import {
   createDecipheriv,
   createHash,
   randomBytes,
-} from "node:crypto";
-import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
-import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
-import { slh_dsa_shake_128f } from "@noble/post-quantum/slh-dsa.js";
-import * as data from "../lawspec_data.js";
-import type * as abilities from "../lawspec_abilities/lawspec/crypto.js";
+} from 'node:crypto';
+import {ml_kem768} from '@noble/post-quantum/ml-kem.js';
+import {ml_dsa65} from '@noble/post-quantum/ml-dsa.js';
+import {slh_dsa_shake_128f} from '@noble/post-quantum/slh-dsa.js';
+import * as data from '../lawspec_data.js';
+import type * as abilities from '../lawspec_abilities/lawspec/crypto.js';
 
 const bytes = (buffer: Uint8Array): Uint8Array => new Uint8Array(buffer);
 const empty = new Uint8Array(0);
 
 // FIPS 202.
-export function sha3_256(message: Uint8Array): Uint8Array {
-  return bytes(createHash("sha3-256").update(message).digest());
+export function sha3_256(message: Uint8Array): Uint8Array
+{
+  return bytes(createHash('sha3-256').update(message).digest());
 }
 
-export function shake256(message: Uint8Array, length: number): Uint8Array {
+export function shake256(message: Uint8Array, length: number): Uint8Array
+{
   return bytes(
-    createHash("shake256", { outputLength: Math.max(length, 0) })
+    createHash('shake256', {outputLength: Math.max(length, 0)})
       .update(message)
       .digest(),
   );
@@ -41,7 +43,8 @@ export function shake256(message: Uint8Array, length: number): Uint8Array {
 export function mlKem768KeyPairFromSeed(seed: Uint8Array): {
   publicKey: Uint8Array;
   secretKey: Uint8Array;
-} {
+}
+{
   return {
     publicKey: ml_kem768.keygen(seed).publicKey,
     secretKey: bytes(seed),
@@ -51,30 +54,31 @@ export function mlKem768KeyPairFromSeed(seed: Uint8Array): {
 export function mlKem768Encapsulate(
   publicKey: Uint8Array,
   message?: Uint8Array,
-): { ciphertext: Uint8Array; secret: Uint8Array } {
-  const { cipherText, sharedSecret } = ml_kem768.encapsulate(
-    publicKey,
-    message,
-  );
-  return { ciphertext: cipherText, secret: sharedSecret };
+): {ciphertext: Uint8Array; secret: Uint8Array}
+{
+  const {cipherText, sharedSecret} = ml_kem768.encapsulate(publicKey, message);
+  return {ciphertext: cipherText, secret: sharedSecret};
 }
 
 export function mlKem768DecapsulateExpanded(
   secretKey: Uint8Array,
   ciphertext: Uint8Array,
-): Uint8Array {
+): Uint8Array
+{
   return ml_kem768.decapsulate(ciphertext, secretKey);
 }
 
 export function mlKem768Decapsulate(
   seed: Uint8Array,
   ciphertext: Uint8Array,
-): Uint8Array {
+): Uint8Array
+{
   return ml_kem768.decapsulate(ciphertext, ml_kem768.keygen(seed).secretKey);
 }
 
 // FIPS 204: ML-DSA-65. A secret key is the seed xi.
-export function mlDsa65PublicKey(seed: Uint8Array): Uint8Array {
+export function mlDsa65PublicKey(seed: Uint8Array): Uint8Array
+{
   return ml_dsa65.keygen(seed).publicKey;
 }
 
@@ -83,12 +87,13 @@ export function mlDsa65Sign(
   message: Uint8Array,
   context: Uint8Array = empty,
   deterministic = false,
-): Uint8Array {
-  const { secretKey } = ml_dsa65.keygen(seed);
+): Uint8Array
+{
+  const {secretKey} = ml_dsa65.keygen(seed);
   return ml_dsa65.sign(
     message,
     secretKey,
-    deterministic ? { context, extraEntropy: false } : { context },
+    deterministic ? {context, extraEntropy: false} : {context},
   );
 }
 
@@ -97,10 +102,14 @@ export function mlDsa65Verify(
   message: Uint8Array,
   signature: Uint8Array,
   context: Uint8Array = empty,
-): boolean {
-  try {
-    return ml_dsa65.verify(signature, message, publicKey, { context });
-  } catch {
+): boolean
+{
+  try
+  {
+    return ml_dsa65.verify(signature, message, publicKey, {context});
+  }
+  catch
+  {
     return false;
   }
 }
@@ -111,7 +120,8 @@ export function slhDsaKeyPair(
   skSeed: Uint8Array,
   skPrf: Uint8Array,
   pkSeed: Uint8Array,
-): { publicKey: Uint8Array; secretKey: Uint8Array } {
+): {publicKey: Uint8Array; secretKey: Uint8Array}
+{
   const seed = new Uint8Array([...skSeed, ...skPrf, ...pkSeed]);
   return slh_dsa_shake_128f.keygen(seed);
 }
@@ -120,8 +130,9 @@ export function slhDsaSign(
   secretKey: Uint8Array,
   message: Uint8Array,
   context: Uint8Array = empty,
-): Uint8Array {
-  return slh_dsa_shake_128f.sign(message, secretKey, { context });
+): Uint8Array
+{
+  return slh_dsa_shake_128f.sign(message, secretKey, {context});
 }
 
 export function slhDsaVerify(
@@ -129,12 +140,16 @@ export function slhDsaVerify(
   message: Uint8Array,
   signature: Uint8Array,
   context: Uint8Array = empty,
-): boolean {
-  try {
+): boolean
+{
+  try
+  {
     return slh_dsa_shake_128f.verify(signature, message, publicKey, {
       context,
     });
-  } catch {
+  }
+  catch
+  {
     return false;
   }
 }
@@ -146,8 +161,9 @@ export function aes256GcmEncrypt(
   nonce: Uint8Array,
   plaintext: Uint8Array,
   associated: Uint8Array,
-): Uint8Array {
-  const cipher = createCipheriv("aes-256-gcm", key, nonce);
+): Uint8Array
+{
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
   cipher.setAAD(associated);
   const body = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return bytes(Buffer.concat([body, cipher.getAuthTag()]));
@@ -158,11 +174,13 @@ export function aes256GcmDecrypt(
   nonce: Uint8Array,
   sealed: Uint8Array,
   associated: Uint8Array,
-): Uint8Array | undefined {
+): Uint8Array | undefined
+{
   if (key.length !== 32 || nonce.length !== 12 || sealed.length < 16)
     return undefined;
-  try {
-    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+  try
+  {
+    const decipher = createDecipheriv('aes-256-gcm', key, nonce);
     decipher.setAAD(associated);
     decipher.setAuthTag(sealed.subarray(sealed.length - 16));
     return bytes(
@@ -171,25 +189,32 @@ export function aes256GcmDecrypt(
         decipher.final(),
       ]),
     );
-  } catch {
+  }
+  catch
+  {
     return undefined;
   }
 }
 
 /** SHA3-256 and SHAKE256. */
-export class HashHandler implements abilities.Hash {
-  sha3(value0: Uint8Array): @@Digest@@ {
+export class HashHandler implements abilities.Hash
+{
+  sha3(value0: Uint8Array): @@Digest@@
+  {
     return new @@Digest@@(sha3_256(value0));
   }
-  shake(value0: Uint8Array, value1: number): Uint8Array {
+  shake(value0: Uint8Array, value1: number): Uint8Array
+  {
     return shake256(value0, value1);
   }
 }
 
 /** ML-KEM-768. */
-export class KeyExchangeHandler implements abilities.KeyExchange {
-  exchangeKeyPair(): @@ExchangeKeyPair@@ {
-    const { publicKey, secretKey } = mlKem768KeyPairFromSeed(
+export class KeyExchangeHandler implements abilities.KeyExchange
+{
+  exchangeKeyPair(): @@ExchangeKeyPair@@
+  {
+    const {publicKey, secretKey} = mlKem768KeyPairFromSeed(
       bytes(randomBytes(64)),
     );
     return new @@ExchangeKeyPair@@(
@@ -197,8 +222,11 @@ export class KeyExchangeHandler implements abilities.KeyExchange {
       new @@ExchangeSecretKey@@(secretKey),
     );
   }
-  encapsulate(value0: @@ExchangePublicKey@@): @@Encapsulated@@ {
-    const { ciphertext, secret } = mlKem768Encapsulate(value0.value);
+  encapsulate(
+    value0: @@ExchangePublicKey@@,
+  ): @@Encapsulated@@
+  {
+    const {ciphertext, secret} = mlKem768Encapsulate(value0.value);
     return new @@Encapsulated@@(
       new @@Ciphertext@@(ciphertext),
       new @@SharedSecret@@(secret),
@@ -207,7 +235,8 @@ export class KeyExchangeHandler implements abilities.KeyExchange {
   decapsulate(
     value0: @@ExchangeSecretKey@@,
     value1: @@Ciphertext@@,
-  ): @@SharedSecret@@ {
+  ): @@SharedSecret@@
+  {
     return new @@SharedSecret@@(
       mlKem768Decapsulate(value0.value, value1.value),
     );
@@ -215,22 +244,31 @@ export class KeyExchangeHandler implements abilities.KeyExchange {
 }
 
 /** ML-DSA-65, hedged. */
-export class SignatureHandler implements abilities.Signature {
-  signingKeyPair(): @@SigningKeyPair@@ {
+export class SignatureHandler implements abilities.Signature
+{
+  signingKeyPair(): @@SigningKeyPair@@
+  {
     const seed = bytes(randomBytes(32));
     return new @@SigningKeyPair@@(
       new @@VerifyingKey@@(mlDsa65PublicKey(seed)),
       new @@SigningKey@@(seed),
     );
   }
-  sign(value0: @@SigningKey@@, value1: Uint8Array): @@SignatureBytes@@ {
-    return new @@SignatureBytes@@(mlDsa65Sign(value0.value, value1));
+  sign(
+    value0: @@SigningKey@@,
+    value1: Uint8Array,
+  ): @@SignatureBytes@@
+  {
+    return new @@SignatureBytes@@(
+      mlDsa65Sign(value0.value, value1),
+    );
   }
   verify(
     value0: @@VerifyingKey@@,
     value1: Uint8Array,
     value2: @@SignatureBytes@@,
-  ): boolean {
+  ): boolean
+  {
     return mlDsa65Verify(value0.value, value1, value2.value);
   }
 }
@@ -240,9 +278,11 @@ export class SignatureHandler implements abilities.Signature {
  * lawspec.edn: {:ability "lawspec.crypto::Signature" :native ["lawspec",
  * "crypto", "SlhDsaSignatureHandler"]}.
  */
-export class SlhDsaSignatureHandler implements abilities.Signature {
-  signingKeyPair(): @@SigningKeyPair@@ {
-    const { publicKey, secretKey } = slhDsaKeyPair(
+export class SlhDsaSignatureHandler implements abilities.Signature
+{
+  signingKeyPair(): @@SigningKeyPair@@
+  {
+    const {publicKey, secretKey} = slhDsaKeyPair(
       bytes(randomBytes(16)),
       bytes(randomBytes(16)),
       bytes(randomBytes(16)),
@@ -252,24 +292,37 @@ export class SlhDsaSignatureHandler implements abilities.Signature {
       new @@SigningKey@@(secretKey),
     );
   }
-  sign(value0: @@SigningKey@@, value1: Uint8Array): @@SignatureBytes@@ {
-    return new @@SignatureBytes@@(slhDsaSign(value0.value, value1));
+  sign(
+    value0: @@SigningKey@@,
+    value1: Uint8Array,
+  ): @@SignatureBytes@@
+  {
+    return new @@SignatureBytes@@(
+      slhDsaSign(value0.value, value1),
+    );
   }
   verify(
     value0: @@VerifyingKey@@,
     value1: Uint8Array,
     value2: @@SignatureBytes@@,
-  ): boolean {
+  ): boolean
+  {
     return slhDsaVerify(value0.value, value1, value2.value);
   }
 }
 
 /** AES-256-GCM, a fresh random nonce per message. */
-export class AeadHandler implements abilities.Aead {
-  aeadKey(): @@AeadKey@@ {
+export class AeadHandler implements abilities.Aead
+{
+  aeadKey(): @@AeadKey@@
+  {
     return new @@AeadKey@@(bytes(randomBytes(32)));
   }
-  deriveAeadKey(value0: @@SharedSecret@@, value1: Uint8Array): @@AeadKey@@ {
+  deriveAeadKey(
+    value0: @@SharedSecret@@,
+    value1: Uint8Array,
+  ): @@AeadKey@@
+  {
     return new @@AeadKey@@(
       shake256(new Uint8Array([...value0.value, ...value1]), 32),
     );
@@ -278,7 +331,8 @@ export class AeadHandler implements abilities.Aead {
     value0: @@AeadKey@@,
     value1: Uint8Array,
     value2: Uint8Array,
-  ): @@Sealed@@ {
+  ): @@Sealed@@
+  {
     const nonce = bytes(randomBytes(12));
     return new @@Sealed@@(
       new Uint8Array([
@@ -291,7 +345,8 @@ export class AeadHandler implements abilities.Aead {
     value0: @@AeadKey@@,
     value1: @@Sealed@@,
     value2: Uint8Array,
-  ): data.Maybe<Uint8Array> {
+  ): data.Maybe<Uint8Array>
+  {
     const opened = aes256GcmDecrypt(
       value0.value,
       value1.value.subarray(0, 12),

@@ -9,7 +9,8 @@ import java.util.function.Supplier;
 public final class Assertions
 {
   private Assertions()
-  {}
+  {
+  }
 
   public static void assertTrue(boolean condition, Supplier<String> message)
   {

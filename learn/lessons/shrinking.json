@@ -1,0 +1,183 @@
+{
+  "id": "shrinking",
+  "title": "Practice: keep the freezing temperature",
+  "section": "Apply the ideas",
+  "vision": "Find and repair a temperature summary that mistakes a real 0 °C reading for missing data.",
+  "slogan": "Zero is a reading.",
+  "symbol": "0 °C is a measurement",
+  "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
+  "news": "Input generation must include meaningful boundary values such as a real zero reading.",
+  "contributions": "A distinct-temperature summary, an input strategy that includes freezing and negative values, the actual shrunk failure [0], seed/path replay and a saved freezing regression. The repaired function retains zero while removing repeats; evidence is scoped to these examples and short generated lists.",
+  "star": {
+    "salient": "Input generation must include meaningful boundary values such as a real zero reading.",
+    "slogan": "Zero is a reading.",
+    "symbol": "0 °C is a measurement",
+    "surprise": "The summary passes every positive sample while silently deleting the freezing temperature.",
+    "story": "A weather station needs a list of distinct temperatures it recorded. Positive samples hide a zero-removal bug; a wider recipe finds it, shrinking isolates [0], and a saved example protects the repair."
+  },
+  "attribution": [
+    {
+      "title": "Scott Wlaschin — Understanding FsCheck",
+      "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-1/",
+      "use": "Original application exercise using the generation/shrinking ideas after the threshold example."
+    }
+  ],
+  "hints": [
+    "A list containing only 0 records one real temperature. Should its summary be empty?",
+    "Trace the zero-removal operation separately from removing duplicates. Which one violates the summary’s purpose?",
+    "Keep the distinct-value operation and remove the filter that discards zero. Load solution shows the complete repair."
+  ],
+  "stages": [
+    {
+      "id": "positive",
+      "title": "Which temperatures did the station record?",
+      "story": [
+        "A weather station records temperatures as whole degrees Celsius. We want a summary of which temperatures occurred, with one copy of each value. The summary’s order does not matter. Repeated readings of 2 °C should produce one 2; a reading of 0 °C must still appear. Negative temperatures are valid too. You will use a small generated failure to locate a mistake and keep it as a regression.",
+        "This differs from the library queue: equal ranks represented separate requests there. Here we deliberately summarize distinct values rather than preserve how many times each temperature occurred. The original readings are the input; this function returns a summary.",
+        "unique in Solution first removes zeros, then removes duplicate values. The first operation treats 0 as if it meant missing data, but our integer list has no missing-data marker. Zero means a measured 0 °C.",
+        "Harness currently generates only temperatures from 1 through 20. Run the sampled property. It passes because every generated value avoids the faulty zero filter. Follow the same function on a list containing only 0: what should the summary contain, and what does it return? Other check modes can expose zero sooner; this step isolates the positive-only recipe.",
+        "Read the claim “the summary keeps each recorded temperature once”. Once means one occurrence of each different value. The property compares against the distinct input values; it does not require a particular output order."
+      ],
+      "focus": "Solution",
+      "project": "exercises/shrinking/01",
+      "run": {
+        "mode": "sample",
+        "expect": "passed",
+        "sampled": "passed",
+        "seed": 424242
+      },
+      "action": "Run the positive-only sample. Then trace unique on a single 0 °C reading and compare the intended summary with the actual result.",
+      "reason": "Zero is a reading. A generator that only makes positive temperatures cannot reveal its loss.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "unique takes a list of integers and returns a list. sameItems compares its output with toList (setOf xs): one occurrence of each input value, rather than the original occurrence counts.",
+      "harnessNotes": [
+        "number draws integers from 1 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “the summary keeps each recorded temperature once” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer.",
+        "Every drawn temperature is positive, so this recipe cannot reveal the bug that drops the 0 °C reading. The next step widens number while retaining the property and implementation."
+      ],
+      "symbol": "0 °C is a measurement"
+    },
+    {
+      "id": "widen",
+      "title": "Let the generator reach freezing and below",
+      "story": [
+        "Harness now draws temperatures from -20 through 20. The list recipe still makes zero through three readings. The implementation and property are unchanged; only the possible test data widened.",
+        "Run with seed 424242 and inspect the actual failure and shrink attempts. This run shrinks to a list containing just 0. Its expected summary contains 0, but the filter returns an empty list. No duplicates are needed to reproduce the bug.",
+        "Use Replay failure before editing. Then use Save regression to add this observed input to Laws. Shrinking explains the failure; the saved example gives us a short way to keep checking it.",
+        "The visible failing input comes from this run. Open How the failure was reduced to inspect the actual attempts; no fixed sequence is being presented as your run’s trace."
+      ],
+      "focus": "Harness.lawspec",
+      "project": "exercises/shrinking/02",
+      "run": {
+        "mode": "sample",
+        "expect": "failed",
+        "sampled": "failed",
+        "counterexample": [
+          [
+            0
+          ]
+        ],
+        "minShrinks": 1,
+        "seed": 424242
+      },
+      "action": "Run the wider sample, inspect the final [0] counterexample, replay it and save it as a regression.",
+      "reason": "The smallest surviving case isolates loss of a valid value from the separate task of removing repeats.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "regression": {
+        "input": [
+          0
+        ],
+        "expected": [
+          0
+        ]
+      },
+      "editor": "Tests",
+      "syntax": "The number strategy now includes zero and negatives. bind draws values and one of builds short lists. Shrinking retries candidates against “the summary keeps each recorded temperature once”; it does not invent an expected output.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “the summary keeps each recorded temperature once” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "saved",
+      "title": "Keep the freezing case as a named test",
+      "story": [
+        "This step supplies the saved case in Laws as “a freezing reading is kept”. It requires the summary of a single 0 °C reading to contain that reading.",
+        "Use Run checks with Examples + boundaries. The function still removes zero, so the named check fails without needing random generation. Look at the two operations in Solution: removing repeated values is useful; removing a measured zero breaks our requirement.",
+        "In the earlier threshold experiment, the requirement was false. Here the requirement follows the task: report the recorded temperatures, including freezing. The implementation needs the repair."
+      ],
+      "focus": "Tests",
+      "project": "exercises/shrinking/03",
+      "run": {
+        "mode": "examples",
+        "expect": "failed",
+        "failedTests": [
+          "learn.unique::|a freezing reading is kept| boundary 1"
+        ],
+        "seed": 424242
+      },
+      "action": "Use Run checks with Examples + boundaries, locate “a freezing reading is kept” and identify which operation discards the freezing reading.",
+      "reason": "The concrete regression preserves the discovered mistake as an ordinary executable claim.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "unique [0] = [0] is a concrete LawSpec equality. [] would mean no recorded temperature, which is different from the recorded value 0.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “the summary keeps each recorded temperature once” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    },
+    {
+      "id": "repair",
+      "title": "Remove repeats without removing a measurement",
+      "story": [
+        "The faulty starter is still present so you can first observe the full run fail. Repair unique to keep one copy of every recorded temperature, including zero, while removing repeated copies.",
+        "Use Run checks with All checks after your edit. The positive example, saved freezing example and wider generated property must pass together. Keep the wider generator; restricting it back to positive values would hide the bug again.",
+        "Your own challenge: add a named case containing a repeated negative temperature and a freezing reading. Predict its distinct values and rerun. You will have a repaired summary, an actual replayable failure and an executable regression that explains why zero must stay."
+      ],
+      "focus": "Solution",
+      "project": "exercises/shrinking/04",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Observe the starter fail, repair the summary and rerun the unchanged checks. Add your own negative-and-freezing example.",
+      "reason": "Zero is a reading. The repair keeps the measurement and removes only repeated copies.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "challenge": true,
+      "editor": "Tests",
+      "syntax": "“the summary keeps each recorded temperature once” compares against the distinct values of the input. The saved example covers the specific freezing loss; generated cases exercise the same rule on other short lists.",
+      "harnessNotes": [
+        "number draws integers from -20 through 20. The short-list strategy draws a, b and c from number using nested bind expressions: each bind makes its drawn value available inside the following expression.",
+        "one of chooses between [], [a], [a, b] and [a, b, c]. These are lists of zero through three items; repeated values are possible. This recipe does not generate arbitrary-length lists. Shrinking can try smaller choices and smaller elements, keeping only candidates that still fail.",
+        "The binding for “the summary keeps each recorded temperature once” selects the claim in Laws; use lists for xs supplies its list input xs. The implementation returns a result, and the law checks it. The generator does not provide the expected answer."
+      ]
+    }
+  ],
+  "solutionProject": "exercises/shrinking/solution",
+  "coverage": {
+    "browserExecution": [
+      "fsharp",
+      "typescript",
+      "javascript"
+    ],
+    "definitionChecking": true,
+    "nativeExecution": "deferred",
+    "apiCollectionCredit": "deferred: this story is not a complete public API collection"
+  },
+  "implementationSyntax": {
+    "fsharp": "In F#, |> passes a value to the next operation. List.filter keeps values whose predicate is true; <> means not equal, so x <> 0 discards zero. List.distinct keeps the first copy of each value.",
+    "typescript": "In TypeScript, filter(x => x !== 0) keeps only nonzero values. new Set keeps one copy of each value; [...] spreads those values back into an array.",
+    "javascript": "In JavaScript, filter(x => x !== 0) keeps only nonzero values. new Set keeps one copy of each value; [...] spreads those values back into an array."
+  },
+  "naming": "Use English phrase names for readable claims and descriptive LawSpec helpers. Keep short code names such as add, sort, xs and numbers when they make calls and recipes easier to follow. A phrase starts with \"| and ends with |, without a closing quote. A law label identifies the claim; renaming it does not change what the definition checks. The compiler generates target-appropriate names."
+}

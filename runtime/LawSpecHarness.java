@@ -29,7 +29,8 @@ import lawspec.runtime.LawSpecRuntime.Value;
 public final class LawSpecHarness
 {
   private LawSpecHarness()
-  {}
+  {
+  }
 
   /** A harness requirement failed: a strategy or an adequacy check. */
   public static final class HarnessError extends AssertionError
@@ -48,7 +49,8 @@ public final class LawSpecHarness
   }
 
   public record Weighted(int weight, Supplier<Value> draw)
-  {}
+  {
+  }
 
   // Statistics.
 
@@ -109,10 +111,8 @@ public final class LawSpecHarness
     try
     {
       Files.createDirectories(Path.of(directory));
-      Files.writeString(
-          Path.of(directory, name.replaceAll("[^A-Za-z0-9_-]", "_") + ".json"),
-          json(entry),
-          StandardCharsets.UTF_8);
+      Files.writeString(Path.of(directory, name.replaceAll("[^A-Za-z0-9_-]", "_") + ".json"),
+          json(entry), StandardCharsets.UTF_8);
     }
     catch (Exception ignored)
     {
@@ -148,14 +148,8 @@ public final class LawSpecHarness
   {
     var out = new ArrayList<T>(items);
     java.util.Collections.shuffle(out, new java.util.Random(ORDER_SEED ^ unit.hashCode()));
-    System.out.println(
-        "order random seed "
-            + ORDER_SEED
-            + " ("
-            + unit
-            + "): LAWSPEC_SEED="
-            + ORDER_SEED
-            + " replays this order");
+    System.out.println("order random seed " + ORDER_SEED + " (" + unit + "): LAWSPEC_SEED="
+        + ORDER_SEED + " replays this order");
     return out;
   }
 
@@ -174,8 +168,8 @@ public final class LawSpecHarness
   // Kotlin through Kotest's random source. Neither library is needed here.
 
   /** choose(n) draws a whole number below n: through JetCheck in Java, Kotest in Kotlin. */
-  public static Value frequency(
-      java.util.function.IntUnaryOperator choose, List<Weighted> alternatives)
+  public static Value frequency(java.util.function.IntUnaryOperator choose,
+      List<Weighted> alternatives)
   {
     int total = 0;
     for (var a : alternatives)
@@ -194,14 +188,14 @@ public final class LawSpecHarness
     return alternatives.get(alternatives.size() - 1).draw().get();
   }
 
-  public static Value oneOf(
-      java.util.function.IntUnaryOperator choose, List<Supplier<Value>> values)
+  public static Value oneOf(java.util.function.IntUnaryOperator choose,
+      List<Supplier<Value>> values)
   {
     return values.get(choose.applyAsInt(values.size())).get();
   }
 
-  public static Value suchThat(
-      Supplier<Value> draw, Predicate<Value> predicate, int limit, String strategy)
+  public static Value suchThat(Supplier<Value> draw, Predicate<Value> predicate, int limit,
+      String strategy)
   {
     for (int i = 0; i <= limit; i++)
     {
@@ -211,12 +205,8 @@ public final class LawSpecHarness
         return value;
       }
     }
-    throw new HarnessError(
-        "the strategy "
-            + strategy
-            + " discarded more than "
-            + limit
-            + " values; draw closer to what `such that` keeps, or allow more discards");
+    throw new HarnessError("the strategy " + strategy + " discarded more than " + limit
+        + " values; draw closer to what `such that` keeps, or allow more discards");
   }
 
   /** A drawn value must satisfy its input's refinements. */
@@ -224,15 +214,9 @@ public final class LawSpecHarness
   {
     if (!holds)
     {
-      throw new HarnessError(
-          "the strategy "
-              + strategy
-              + " produced "
-              + value
-              + " for "
-              + name
-              + ", which is outside the input's refinement; a strategy may only produce values of"
-              + " its type");
+      throw new HarnessError("the strategy " + strategy + " produced " + value + " for " + name
+          + ", which is outside the input's refinement; a strategy may only produce values of"
+          + " its type");
     }
   }
 
@@ -270,13 +254,8 @@ public final class LawSpecHarness
     return CASES.computeIfAbsent(key(law), k -> new Stats());
   }
 
-  public static synchronized void observe(
-      String law,
-      String[] coverLabels,
-      boolean[] covers,
-      String[] classLabels,
-      boolean[] classes,
-      Value[] labels)
+  public static synchronized void observe(String law, String[] coverLabels, boolean[] covers,
+      String[] classLabels, boolean[] classes, Value[] labels)
   {
     var s = stats(law);
     s.cases++;
@@ -311,8 +290,8 @@ public final class LawSpecHarness
     }
   }
 
-  private static synchronized Map<String, Object> adequacy(
-      String law, int[] percents, String[] labels)
+  private static synchronized Map<String, Object> adequacy(String law, int[] percents,
+      String[] labels)
   {
     var s = CASES.remove(key(law));
     if (s == null)
@@ -324,10 +303,8 @@ public final class LawSpecHarness
     lines.add(law + ": " + s.cases + " generated case(s)");
     for (int i = 0; i < percents.length; i++)
     {
-      double observed =
-          s.cases == 0
-              ? 0
-              : Math.round(10000.0 * s.cover.getOrDefault(labels[i], 0) / s.cases) / 100.0;
+      double observed = s.cases == 0 ? 0
+          : Math.round(10000.0 * s.cover.getOrDefault(labels[i], 0) / s.cases) / 100.0;
       boolean met = s.cases > 0 && observed >= percents[i];
       var r = new LinkedHashMap<String, Object>();
       r.put("label", labels[i]);
@@ -335,15 +312,8 @@ public final class LawSpecHarness
       r.put("observed", observed);
       r.put("met", met);
       results.add(r);
-      lines.add(
-          "  cover "
-              + percents[i]
-              + "% \""
-              + labels[i]
-              + "\": "
-              + observed
-              + "%"
-              + (met ? "" : " (not met)"));
+      lines.add("  cover " + percents[i] + "% \"" + labels[i] + "\": " + observed + "%"
+          + (met ? "" : " (not met)"));
     }
     for (var e : s.classes.entrySet())
     {
@@ -352,9 +322,8 @@ public final class LawSpecHarness
     }
     for (var e : s.labels.entrySet())
     {
-      lines.add(
-          String.format(
-              "  label %s: %.1f%%", e.getKey(), 100.0 * e.getValue() / Math.max(1, s.cases)));
+      lines.add(String.format("  label %s: %.1f%%", e.getKey(),
+          100.0 * e.getValue() / Math.max(1, s.cases)));
     }
     if (s.best != null)
     {
@@ -381,30 +350,26 @@ public final class LawSpecHarness
       test.run();
       return;
     }
-    var executor =
-        Executors.newSingleThreadExecutor(
-            r -> {
-              var t = new Thread(r);
-              t.setDaemon(true);
-              return t;
-            });
+    var executor = Executors.newSingleThreadExecutor(r -> {
+      var t = new Thread(r);
+      t.setDaemon(true);
+      return t;
+    });
     try
     {
       var run = RUN.get();
-      var future =
-          executor.submit(
-              () -> {
-                RUN.set(run);
-                try
-                {
-                  test.run();
-                }
-                catch (Throwable t)
-                {
-                  throw new ExecutionException(t);
-                }
-                return null;
-              });
+      var future = executor.submit(() -> {
+        RUN.set(run);
+        try
+        {
+          test.run();
+        }
+        catch (Throwable t)
+        {
+          throw new ExecutionException(t);
+        }
+        return null;
+      });
       future.get(timeout, TimeUnit.MILLISECONDS);
     }
     catch (TimeoutException e)
@@ -424,17 +389,8 @@ public final class LawSpecHarness
   }
 
   /** Run one generated test of a law under its harness settings. */
-  public static void run(
-      String law,
-      String name,
-      long timeout,
-      int repeat,
-      int retries,
-      int[] percents,
-      String[] labels,
-      boolean observed,
-      Body test)
-      throws Throwable
+  public static void run(String law, String name, long timeout, int repeat, int retries,
+      int[] percents, String[] labels, boolean observed, Body test) throws Throwable
   {
     var outer = RUN.get();
     RUN.set(name);
@@ -455,17 +411,8 @@ public final class LawSpecHarness
     }
   }
 
-  private static void runSettled(
-      String law,
-      String name,
-      long timeout,
-      int repeat,
-      int retries,
-      int[] percents,
-      String[] labels,
-      boolean observed,
-      Body test)
-      throws Throwable
+  private static void runSettled(String law, String name, long timeout, int repeat, int retries,
+      int[] percents, String[] labels, boolean observed, Body test) throws Throwable
   {
     int attempts = 0;
     boolean flaky = false;
@@ -491,17 +438,9 @@ public final class LawSpecHarness
               var m = (Map<?, ?>) r;
               if (!(Boolean) m.get("met"))
               {
-                unmet.add(
-                    law
-                        + ": cover "
-                        + m.get("required")
-                        + "% \""
-                        + m.get("label")
-                        + "\" was not met ("
-                        + m.get("observed")
-                        + "% of "
-                        + report.get("cases")
-                        + " generated cases)");
+                unmet.add(law + ": cover " + m.get("required") + "% \"" + m.get("label")
+                    + "\" was not met (" + m.get("observed") + "% of " + report.get("cases")
+                    + " generated cases)");
               }
             }
             if (!unmet.isEmpty())
@@ -560,23 +499,16 @@ public final class LawSpecHarness
       {
         entry.put("outcome", "known-discrepancy");
         record(name, entry);
-        System.out.println(
-            law
-                + " has a known discrepancy ("
-                + reason
-                + "): "
-                + String.valueOf(error.getMessage()).lines().findFirst().orElse(""));
+        System.out.println(law + " has a known discrepancy (" + reason + "): "
+            + String.valueOf(error.getMessage()).lines().findFirst().orElse(""));
         return;
       }
     }
     entry.put("outcome", "known-discrepancy-passed");
     record(name, entry);
-    throw new HarnessError(
-        law
-            + " is marked known discrepancy ("
-            + reason
-            + "), but it passes; review the specification and implementation before removing "
-            + "`known discrepancy` from its harness");
+    throw new HarnessError(law + " is marked known discrepancy (" + reason
+        + "), but it passes; review the specification and implementation before removing "
+        + "`known discrepancy` from its harness");
   }
 
   /** Measured, never asserted: the mean and fastest time of body. */
@@ -599,9 +531,8 @@ public final class LawSpecHarness
       fastest = Math.min(fastest, t);
     }
     long mean = sum / times.size();
-    System.out.printf(
-        "benchmark %s: %d iteration(s), mean %.2f us, fastest %.2f us%n",
-        name, times.size(), mean / 1000.0, fastest / 1000.0);
+    System.out.printf("benchmark %s: %d iteration(s), mean %.2f us, fastest %.2f us%n", name,
+        times.size(), mean / 1000.0, fastest / 1000.0);
     var entry = new LinkedHashMap<String, Object>();
     entry.put("benchmark", name);
     entry.put("iterations", times.size());
