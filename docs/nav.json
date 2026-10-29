@@ -203,6 +203,9 @@
             "path": "how-to/targets/swift.md"
           }
         ]
+      },
+      {
+        "path": "how-to/learn.md"
       }
     ]
   },

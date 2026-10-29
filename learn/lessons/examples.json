@@ -1,0 +1,130 @@
+{
+  "id": "examples",
+  "title": "Practice: estimate seats for any hall size",
+  "section": "Apply the ideas",
+  "vision": "Use the calculator lesson’s method to repair a hall seating estimate.",
+  "slogan": "Four seats for every row.",
+  "symbol": "1 row → 4 seats; 3 rows → 12 seats",
+  "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
+  "news": "A rule about every allowed row count can reject a lookup table of familiar answers.",
+  "contributions": "A seating function, the failing third-row example, and the LawSpec relationship seats rows = rows * 4 for rows 0–40. The repaired function must pass the unchanged named and generated checks.",
+  "star": {
+    "salient": "A rule about every allowed row count can reject a lookup table of familiar answers.",
+    "slogan": "Four seats for every row.",
+    "symbol": "1 row → 4 seats; 3 rows → 12 seats",
+    "surprise": "The estimator passes its familiar halls but reports zero seats for a three-row hall.",
+    "story": "An organizer’s two familiar halls pass. A new hall exposes the lookup table; the row-to-seat rule then guides a general repair."
+  },
+  "attribution": [
+    {
+      "title": "Scott Wlaschin — The Enterprise Developer from Hell",
+      "url": "https://fsharpforfunandprofit.com/posts/property-based-testing/",
+      "use": "Original application exercise following the licensed addition examples."
+    }
+  ],
+  "hints": [
+    "For three rows, what branch runs and what total is needed?",
+    "Use the number of seats in one row to express the total for any allowed row count.",
+    "Keep the 0–40 domain and the tests while repairing Solution. Load solution gives the complete estimator."
+  ],
+  "stages": [
+    {
+      "id": "familiar",
+      "title": "The organizer has two familiar halls",
+      "story": [
+        "An event organizer needs a seating estimate. Each row has four seats, and this exercise allows 0 through 40 rows. The function takes a row count and should return the total number of seats. You will turn familiar examples into a rule that handles unfamiliar hall sizes too.",
+        "Solution recognizes only one-row and two-row halls, returning 0 for any other size. Laws currently asks only for those familiar halls.",
+        "Run the examples, then predict what a three-row request would receive. You are applying the calculator lesson: distinguish remembering two answers from implementing the rule.",
+        "The English claim names describe the hall requests. seats stays a short function name because the input and output already tell us how to read a call."
+      ],
+      "focus": "Solution",
+      "project": "exercises/examples/01",
+      "run": {
+        "mode": "examples",
+        "expect": "passed",
+        "seed": 424242
+      },
+      "action": "Run the familiar examples and predict the result for three rows by tracing Solution.",
+      "reason": "The useful requirement is a relationship between rows and seats, not a list of familiar hall sizes.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "seats takes one integer input and returns an integer. A concrete law calls it with a row count and compares the result with an expected total.",
+      "harnessNotes": [
+        "This harness has no strategy yet: this step runs the concrete claims in Laws on their written inputs. An empty harness is not an empty test suite. Later, a quantified law will need generated inputs."
+      ],
+      "symbol": "1 row → 4 seats; 3 rows → 12 seats"
+    },
+    {
+      "id": "third-row",
+      "title": "A three-row hall exposes the shortcut",
+      "story": [
+        "The organizer asks for three rows. Laws adds “three rows have twelve seats”, expecting 12 seats. Solution is unchanged.",
+        "Use Run checks with Examples + boundaries. The original answers still pass, but “three rows have twelve seats” fails because the remaining branch returns 0. This is a concrete demonstration of the missing behavior."
+      ],
+      "focus": "Tests",
+      "project": "exercises/examples/02",
+      "run": {
+        "mode": "examples",
+        "expect": "failed",
+        "failedTests": [
+          "learn.seats::|three rows have twelve seats| boundary 1"
+        ],
+        "seed": 424242
+      },
+      "action": "Use Run checks with Examples + boundaries, locate “three rows have twelve seats” and explain why the existing branches miss this hall.",
+      "reason": "A new request reveals the limits of the passing examples.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "“three rows have twelve seats” is a named concrete law. Its result reports this particular request independently of the earlier ones.",
+      "harnessNotes": [
+        "This harness has no strategy yet: this step runs the concrete claims in Laws on their written inputs. An empty harness is not an empty test suite. Later, a quantified law will need generated inputs."
+      ]
+    },
+    {
+      "id": "repair",
+      "title": "Implement the row-to-seat rule",
+      "story": [
+        "“every row contributes four seats” in Laws states the relationship for row counts 0 through 40: the answer is four times the count. Harness supplies rows from that domain. The lookup-table implementation remains so you can observe its failure first.",
+        "Use Run checks with All checks, then repair Solution using the relationship. Rerun without replacing the rule with a list of special cases.",
+        "Your own checks should include an empty hall and the largest allowed hall. Predict their totals, write named laws for them and run again. You will have an estimator tested on familiar examples, boundary examples and sampled row counts."
+      ],
+      "focus": "Tests",
+      "project": "exercises/examples/03",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Observe the shortcut fail, implement the general estimate, and add named checks for 0 and 40 rows.",
+      "reason": "Four seats for every row. One relationship covers the hall sizes that the lookup table forgot.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "challenge": true,
+      "editor": "Solution",
+      "syntax": "for all introduces rows within the stated bounds. The law computes an expected total from rows and compares it with seats rows.",
+      "harnessNotes": [
+        "numbers draws row counts from 0 through 40, including the endpoints. The binding for “every row contributes four seats” selects the requirement in Laws; use numbers for rows supplies its rows input. The law calls the actual seats function and checks its output."
+      ]
+    }
+  ],
+  "solutionProject": "exercises/examples/solution",
+  "coverage": {
+    "browserExecution": [
+      "fsharp",
+      "typescript",
+      "javascript"
+    ],
+    "definitionChecking": true,
+    "nativeExecution": "deferred",
+    "apiCollectionCredit": "deferred: this story is not a complete public API collection"
+  },
+  "implementationSyntax": {
+    "fsharp": "In F#, rows: int annotates the input. rows * 4 is an integer expression and can be the function’s result without a return keyword.",
+    "typescript": "In TypeScript, rows: number annotates the input. return rows * 4 computes the total from the row count.",
+    "javascript": "In JavaScript, rows names the input. return rows * 4 computes the total from that count."
+  },
+  "naming": "Use English phrase names for readable claims and descriptive LawSpec helpers. Keep short code names such as add, sort, xs and numbers when they make calls and recipes easier to follow. A phrase starts with \"| and ends with |, without a closing quote. A law label identifies the claim; renaming it does not change what the definition checks. The compiler generates target-appropriate names."
+}

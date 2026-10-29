@@ -1,0 +1,36 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.addition
+add :: Int32 -> Int32 -> Int32
+
+law "|one plus two is three| is
+  definition:
+    add 1 2 = 3
+  end definition
+end law
+
+law "|two plus two is four| is
+  definition:
+    add 2 2 = 4
+  end definition
+end law
+
+law "|swapping the inputs keeps the answer| is
+  definition:
+    for all
+      (x :: Int32 where x >= -10 and x <= 10)
+      (y :: Int32 where y >= -10 and y <= 10)
+    =>
+      add x y = add y x
+    end for all
+  end definition
+end law
+
+law "|adding one twice agrees with adding two| is
+  definition:
+    for all (x :: Int32 where x >= -10 and x <= 10) =>
+      add 1 (add 1 x) = add 2 x
+    end for all
+  end definition
+end law
+
+end unit

@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; script-src 'sha256-NE2/nqP5Oz55rEL9REefoYkq2EFGWl8HJj0j4i0vq4w=' blob:; worker-src blob:"><title>Isolated execution</title><script>(function frameMain()
+{
+  addEventListener(
+    'message',
+    ({source, data}) =>
+    {
+      if (source !== parent || typeof data.code !== 'string')
+      {
+        return;
+      }
+      const url = URL.createObjectURL(
+        new Blob([data.code], {type: 'text/javascript'}),
+      );
+      const worker = new Worker(url);
+      worker.onmessage = event =>
+      {
+        parent.postMessage(event.data, '*');
+        worker.terminate();
+        URL.revokeObjectURL(url);
+      };
+      worker.onerror = event =>
+      {
+        parent.postMessage(
+          {error: event.message || 'Learner execution failed'},
+          '*',
+        );
+        worker.terminate();
+        URL.revokeObjectURL(url);
+      };
+    },
+    {once: true},
+  );
+  parent.postMessage({ready: true}, '*');
+})()</script>

@@ -1,0 +1,16 @@
+{
+  "printWidth": 80,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "bracketSpacing": false,
+  "trailingComma": "all",
+  "arrowParens": "avoid",
+  "endOfLine": "lf",
+  "embeddedLanguageFormatting": "off",
+  "plugins": [
+    "./learn/node_modules/prettier-plugin-brace-style/dist/index.js"
+  ],
+  "braceStyle": "allman"
+}

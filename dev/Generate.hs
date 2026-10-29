@@ -19,7 +19,7 @@ import Control.Monad (forM, forM_, unless, when)
 import Data.Char (isDigit)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, sort, sortOn, (\\))
 import System.Directory
-import System.Exit (die, exitFailure)
+import System.Exit (ExitCode(..), die, exitFailure)
 import System.FilePath ((</>), takeDirectory, takeExtension)
 import System.IO (readFile')
 import System.Process (readProcessWithExitCode)
@@ -37,6 +37,27 @@ import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
 import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
+import qualified LawSpec.PreludeNames as PreludeNames
+import qualified LawSpec.Scalar as Scalar
+import qualified LawSpec.Collections as Collections
+import qualified LawSpec.Matchers as Matchers
+import qualified LawSpec.Time as Time
+import qualified LawSpec.Builtins as Builtins
+import qualified LawSpec.Prelude as Prelude
+import qualified LawSpec.Railway as Railway
+import qualified LawSpec.Resilience as Resilience
+import qualified LawSpec.Resources as Resources
+import qualified LawSpec.CaseFold as CaseFold
+import qualified LawSpec.Network as Network
+import qualified LawSpec.Common as Common
+import qualified LawSpec.Core as Core
+import qualified LawSpec.Core.Types as CoreTypes
+import Text.Read (readMaybe)
+import qualified Data.Aeson as Aeson
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Map.Strict as M
 
 data Output = Output { outputPath :: FilePath, outputContent :: String, outputExecutable :: Bool }
 
@@ -105,6 +126,19 @@ planOutputs = do
   displayWidths <- displayWidthData
   unicodeLicense <- readFile' "vendor/unicode/LICENSE.txt"
   normalizationLicenses <- readFile' "vendor/unicode/NORMALIZATION-LICENSES.txt"
+  browserSource <- readFile' "templates/site/lawspec-core.mjs"
+  (browser, _) <- either die pure (fillTemplate "templates/site/lawspec-core.mjs" fills browserSource)
+  tutorialShims <- forM ["node-test.mjs", "assert.mjs"] $ \file -> do
+    content <- readFile' ("templates/site" </> file)
+    pure (Output ("npm/learn" </> file) content False)
+  codeStyle <- readFile' ".prettierrc.json"
+  courseFiles <- walkFiles "learn/browser"
+  course <- forM (filter (not . ("editor.mjs" `isSuffixOf`)) courseFiles) $ \file -> do
+    content <- readFile' file
+    pure (Output ("npm/learn" </> drop (length "learn/browser/") file) content False)
+  (courseStatus, curriculum, courseError) <- readProcessWithExitCode "node" ["learn/build-course.mjs", "--stdout"] ""
+  unless (courseStatus == ExitSuccess) (die courseError)
+  inventory <- learnInventory
   let whole = [ Output "runtime/LawSpecDataStrategies.java" javaStrategies False, Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
               , Output "src/LawSpec/GroovySources.hs" groovy False
@@ -113,9 +147,81 @@ planOutputs = do
               , Output "src/LawSpec/CaseFoldData.hs" unicode False
               , Output "src/LawSpec/DisplayWidthData.hs" displayWidths False
               , Output "npm/UNICODE-LICENSE.txt" unicodeLicense False
-              , Output "npm/NORMALIZATION-LICENSES.txt" normalizationLicenses False ] ++
+              , Output "npm/NORMALIZATION-LICENSES.txt" normalizationLicenses False
+              , Output "npm/learn/lawspec-core.mjs" (replace "./core.wasm" "./core.wasm.gz" browser) False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
-  pure (sortOn outputPath (whole ++ map fst rendered))
+  formatRepositoryOutputs (sortOn outputPath (whole ++ tutorialShims ++ course ++
+    [Output "npm/learn/style-options.json" codeStyle False,
+     Output "learn/curriculum.json" curriculum False,
+     Output "npm/learn/curriculum.json" curriculum False,
+     Output "npm/learn/coverage.json" inventory False] ++ map fst rendered))
+
+-- | Repository scripts share the browser's pinned style tools. Target emission
+-- remains pure and independent of Node or external formatter processes.
+-- ref:DEC-google-style-allman
+formatRepositoryOutputs :: [Output] -> IO [Output]
+formatRepositoryOutputs outputs = do
+  let sources = [o | o <- outputs, "npm/learn/" `isPrefixOf` outputPath o,
+        takeExtension (outputPath o) `elem` [".js", ".mjs", ".cjs", ".ts", ".css", ".html"]]
+      payload = json (Array [Array [String (outputPath o), String (outputContent o)] | o <- sources])
+  (status, formatted, problem) <- readProcessWithExitCode "node" ["templates/tools/code-style.mjs", "--render"] payload
+  unless (status == ExitSuccess) (die ("Repository formatting failed: " ++ problem))
+  pairs <- either die pure (Aeson.eitherDecode (BL.fromStrict (TE.encodeUtf8 (T.pack formatted))) :: Either String [(FilePath, String)])
+  let contents = M.fromList pairs
+  unless (M.keysSet contents == M.keysSet (M.fromList [(outputPath o, ()) | o <- sources]))
+    (die "Formatter returned an incomplete repository output set")
+  pure [o {outputContent = M.findWithDefault (outputContent o) (outputPath o) contents} | o <- outputs]
+
+-- | Inventory names come from compiler registries and checked declarations;
+-- documentation headings keep idioms visible without claiming checked examples.
+-- The three-lesson preview intentionally leaves the API collection deferred.
+-- ref:DEC-learn-course-preview
+learnInventory :: IO String
+learnInventory = do
+  registry <- readFile' "src/LawSpec/PreludeNames.hs"
+  references <- walkFiles "docs/reference"
+  headings <- fmap concat $ forM (filter (".md" `isSuffixOf`) references) $ \file -> do
+    text <- readFile' file
+    pure [("reference", file ++ ":" ++ show line ++ ":" ++ dropWhile (== '#') heading, file)
+         | (line,heading) <- zip [1 :: Int ..] (lines text), "##" `isPrefixOf` heading]
+  let strings text = case lex text of
+        [(token,rest)] | not (null token) -> maybe [] pure (readMaybe token :: Maybe String) ++ strings rest
+        _ -> []
+      preludeNames = nub $ filter PreludeNames.preludeValueName (strings registry ++ map Scalar.primitiveName Scalar.primitives) ++
+        map fst Collections.canonicalCollectionOperations ++ map fst Matchers.matcherOperations ++
+        map fst Time.timeOperations ++ Railway.railwayNames
+      providers = [("lawspec.collections",Collections.collectionsSource (Collections.collectionTypes ++ ["EqSet",Collections.boundedArithmeticBlock])),
+                   ("lawspec.matchers",Matchers.matchersSource),
+                   ("lawspec.time",Time.timeSource ++ Builtins.clockSource),
+                   (Resilience.resilienceUnit,Resilience.resilienceSource),
+                   (Resources.resourcesUnit,Resources.resourcesSource),
+                   (Network.networkUnit,Network.networkSource),
+                   (CaseFold.caseFoldUnit,unlines [line | line <- lines CaseFold.caseFoldSource,
+                     "function":name:_ <- [words line],
+                     name `elem` [definition | public <- preludeNames, Just definition <- [CaseFold.caseFoldOperation public]]])] ++
+                  [(unit,Builtins.builtinSource unit) | unit <- Builtins.builtinUnits]
+      declaration unit line = case words line of
+        kind:name:_ | kind `elem` ["function","procedure","type","wrapper","ability","handler","resource"] ->
+          [("builtin",unit ++ "::" ++ name,"checked built-in declaration: " ++ unit)]
+        name:"::":_ -> [("builtin",unit ++ "::" ++ name,"checked built-in operation: " ++ unit)]
+        _ -> []
+      laws = [("prelude-law",line,"src/LawSpec/Prelude.hs") | line <- lines (Common.content Prelude.preludeSource), "law " `isPrefixOf` line]
+      rows = nub $ [("prelude",name,"src/LawSpec/PreludeNames.hs") | name <- preludeNames] ++
+        [("primitive",Scalar.primitiveName p,"src/LawSpec/Scalar.hs") | p <- Scalar.primitives] ++
+        [("builtin-type",Core.dataName d,"src/LawSpec/Core/Types.hs") | d <- CoreTypes.builtinDataDeclarations] ++
+        [("constructor",Core.idText (Core.constructorId c),"src/LawSpec/Core/Types.hs") |
+          d <- CoreTypes.builtinDataDeclarations, c <- Core.dataConstructors d] ++
+        [("canonical-type",name,"src/LawSpec/Parser.hs") | name <- ["Whole","Nat"] ++ map fst Collections.canonicalCollectionTypes] ++
+        [("syntax",blockLabel kind,"src/LawSpec/Blocks.hs") | kind <- blockKinds] ++
+        [("builtin-unit",unit,"src/LawSpec/Compile.hs") | (unit,_) <- providers] ++
+        concat [concatMap (declaration unit) (lines text) | (unit,text) <- providers] ++ laws ++ headings ++
+        [("target",target,"src/LawSpec/Targets.hs") | target <- Targets.targets ++ ["folio"]]
+      entry (kind,name,source) = Object
+        [("id",String (kind ++ ":" ++ name)),("kind",String kind),("name",String name),("source",String source),
+         ("exampleStatus",String "deferred"),("checkedExample",Null),
+         ("execution",String (if kind == "target" && name == "folio" then "documentary" else "deferred"))]
+  pure $ json (Object [("schemaVersion",Number 1),("checkpoint",String "Teaching review: complete API collection is deferred; no coverage acceptance claimed"),
+    ("entries",Array (map entry (sort rows)))]) ++ "\n"
 
 -- | Every script in the repository is a generated output, a template, or one of
 -- these: code users own (acceptance adapters, examples and fixtures), the
@@ -124,7 +230,7 @@ strayScripts :: [FilePath] -> IO [FilePath]
 strayScripts outputs = do
   (_, listing, _) <- readProcessWithExitCode "git" ["ls-files", "--cached", "--others", "--exclude-standard"] ""
   let scripts = [f | f <- lines listing, any (`isSuffixOf` f) [".mjs", ".js", ".cjs", ".ts"]]
-      exempt f = any (`isPrefixOf` f) ["templates/", "runtime/", "acceptance/", "bench/", "examples/", "npm/examples/", "test/fixtures/"]
+      exempt f = any (`isPrefixOf` f) ["learn/", "plugins/", "templates/", "runtime/", "acceptance/", "bench/", "examples/", "npm/examples/", "test/fixtures/"]
         || f == "npm/core_jsffi.js"
         || f == "test/finite-cases.mjs"  -- Independent black-box checks of the embedded JS runtime.
   exists <- mapM doesFileExist scripts
@@ -134,6 +240,7 @@ strayScripts outputs = do
 withHeader :: FilePath -> FilePath -> String -> String
 withHeader template target content
   | takeExtension target `elem` [".json", ".html", ".md"] = content
+  | takeExtension target == ".css" = "/* Generated from " ++ template ++ ". Do not edit. */\n" ++ content
   | otherwise = case lines content of
       first : rest | "#!" `isPrefixOf` first -> unlines (first : header : rest)
       _ -> header ++ "\n" ++ content
@@ -170,7 +277,7 @@ factFills version =
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples"]
+shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

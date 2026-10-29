@@ -1,0 +1,10 @@
+harness learn.addition.testing for learn.addition is
+  strategy numbers :: (n :: Int32 where n >= -2 and n <= 2) is any end strategy
+  for law "|swapping the inputs keeps the answer|
+    use numbers for x
+    use numbers for y
+  end for law
+  for law "|adding one twice agrees with adding two|
+    use numbers for x
+  end for law
+end harness

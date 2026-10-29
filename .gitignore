@@ -78,3 +78,8 @@ htmlcov/
 .stack-work-prof/
 runtime/dotnet/**/bin/
 runtime/dotnet/**/obj/
+
+# Reproducible Learn vendor assets (npm ci --prefix learn; npm run build --prefix learn)
+/npm/learn/vendor/
+/learn/formatter/bin/
+/learn/formatter/obj/

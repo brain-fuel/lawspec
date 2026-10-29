@@ -1,0 +1,3 @@
+harness learn.addition.testing for learn.addition is
+  -- This step checks concrete inputs; no generator is selected.
+end harness

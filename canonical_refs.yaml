@@ -722,3 +722,84 @@ spark-quantifier-execution-proof:
   kind: article
   title: "SPARK User's Guide: quantified expressions, execution and proof"
   locator: https://docs.adacore.com/spark2014-docs/html/ug/en/source/specification_features.html#execution-vs-proof
+
+REQ-learn-local-execution:
+  kind: requirement
+  title: Browser lessons execute edited code locally with mandatory definition admission, explicit outcomes, shrinking, replay, cancellation and timeouts.
+  locator: docs/how-to/learn.md#open-the-learning-track
+REQ-learn-progress-portability:
+  kind: requirement
+  title: Course drafts remain separate by version, lesson, notebook and language and survive reload and validated project export/import.
+  locator: docs/how-to/learn.md#open-the-learning-track
+REQ-learn-visible-workspace:
+  kind: requirement
+  title: The course uses the requested packaged typefaces and visible lesson, step and source-tab navigation.
+  locator: learn/REVIEW.md#workspace-review-feedback
+REQ-learn-tutor:
+  kind: requirement
+  title: The portable tutor uses the authoritative course, gives progressive hints and requested complete solutions, and does not invent execution evidence.
+  locator: docs/how-to/learn.md#open-the-learning-track
+REQ-learn-generated-boundaries:
+  kind: requirement
+  title: A comprehensive one-to-one browser binding set is generated from authoritative declarations and target metadata; missing entries fail completeness and repeated generation is byte identical.
+  locator: learn/REVIEW.md#generated-boundaries
+REQ-learn-theme:
+  kind: requirement
+  title: Visible Auto, Light and Dark choices persist locally, follow system changes in Auto, and theme the whole workspace without changing drafts or execution results.
+  locator: learn/REVIEW.md#workspace-review-feedback
+REQ-learn-executable-story:
+  kind: requirement
+  title: Each teaching step tells a story about the exact source project it loads; generated excerpts and actual compilation/execution validate every stated pass, failure and counterexample.
+  locator: learn/REVIEW.md#executable-story-revision
+REQ-learn-workspace-focus:
+  kind: requirement
+  title: Step-specific illustrations, fixed step navigation and viewport-based reading/coding panes keep code and results accessible while preserving the learner's place on compact screens.
+  locator: learn/REVIEW.md#workspace-review-feedback
+REQ-learn-tests-in-lawspec:
+  kind: requirement
+  title: Every learner-authored example, property and strategy is LawSpec source; generated checks execute the selected implementation without language-specific test files or JSON generators and retain real shrink/replay evidence.
+  locator: learn/REVIEW.md#lawspec-only-tests
+REQ-learn-course-hierarchy:
+  kind: requirement
+  title: A fresh UI review informs one grouped course outline, secondary explained progress backup/restore, course-status and roadmap disclosures, and compact accessible editor tabs with visible execution results.
+  locator: learn/REVIEW.md#course-hierarchy
+REQ-learn-english-names:
+  kind: requirement
+  title: English law and checked-helper names are taught, parsed, formatted and emitted idiomatically while concise code names and existing edited drafts remain valid.
+  locator: learn/REVIEW.md#first-time-learner-review
+REQ-learn-novice-results:
+  kind: requirement
+  title: First-use terminology, English result labels, actual calls and trial counts, explainable failures, inspectable traces and immediate source-replacement undo support new property-testing learners.
+  locator: learn/REVIEW.md#first-time-learner-review
+REQ-learn-regression-progress:
+  kind: requirement
+  title: Kept regression laws survive autosave, reload and progress backup/restore; failed persistence cannot silently export an older snapshot missing current work.
+  locator: learn/REVIEW.md#course-hierarchy
+REQ-learn-run-action:
+  kind: requirement
+  title: The primary action is always Run checks, with an accessible visible scope caption matching the selected check set and honest execution results.
+  locator: learn/REVIEW.md#workspace-review-feedback
+REQ-learn-source-selection:
+  kind: requirement
+  title: Laws, Solution and Harness tabs retain their source selection across language switching, with corresponding implementation files, independent drafts and keyboard/compact navigation.
+  locator: learn/REVIEW.md#workspace-review-feedback
+REQ-learn-winston-story-revision:
+  kind: requirement
+  title: All six lessons establish their premise and follow a source-matched Winston Star story, replacing unexplained ticket zero with a meaningful distinct-temperature summary and retaining real execution evidence.
+  locator: learn/REVIEW.md#lesson-decisions-to-review
+REQ-learn-harness-explanation:
+  kind: requirement
+  title: Learners encounter a source-matched introduction to harness input recipes, law bindings, sampling limits and the generated execution runner, with a walkthrough beside each Harness file.
+  locator: learn/REVIEW.md#harness-explanation
+REQ-google-style-allman:
+  kind: requirement
+  title: First-party and emitted code uses owner-preferred Allman braces where supported by the established formatter, Google language guidance otherwise, and established language conventions when no Google guide exists.
+  locator: docs/reference/formatting.md
+REQ-learn-format-before-run:
+  kind: requirement
+  title: Run formats all current lesson files locally, displays and saves the complete formatted snapshot before execution, and stops visibly on formatting failure.
+  locator: learn/REVIEW.md#format-before-run
+REQ-lawspec-quantifier-layout:
+  kind: requirement
+  title: Quantified claims have separate headers, indented bodies and aligned closers, preserve source meaning and comments, and format identically on repeat in native and browser tooling.
+  locator: docs/reference/formatting.md

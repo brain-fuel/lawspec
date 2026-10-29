@@ -1,6 +1,6 @@
 {
   "name": "lawspec",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "description": "State the law once. Check it everywhere.",
   "license": "MIT",
   "repository": {
@@ -45,7 +45,8 @@
              "NORMALIZATION-LICENSES.txt",
              "starter.lawspec",
              "starter-rc1.lawspec",
-             "examples"
+             "examples",
+             "learn"
            ],
   "scripts": {
     "prepack": "for f in README.md CHANGELOG.md; do cmp -s ../$f $f || { cp ../$f .$f.$$ && mv -f .$f.$$ $f; }; done",

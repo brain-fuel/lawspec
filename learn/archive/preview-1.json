@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 3,
+  "version": "preview-1",
+  "title": "Learn LawSpec by writing code",
+  "audience": "Basic variables, functions and conditionals; no functional programming or property-testing experience required.",
+  "checkpoint": "Three-lesson teaching preview. Further lessons, capstones and API examples await owner review.",
+  "tracks": [
+    {
+      "id": "shared",
+      "title": "Shared foundations",
+      "status": "preview"
+    },
+    {
+      "id": "booking",
+      "title": "Event booking",
+      "status": "after review",
+      "scope": "Capacity, reservations, cancellation and confirmation."
+    },
+    {
+      "id": "library",
+      "title": "Library lending",
+      "status": "after review",
+      "scope": "Loans, returns, holds and overdue behavior."
+    },
+    {
+      "id": "orders",
+      "title": "Orders and refunds",
+      "status": "after review",
+      "scope": "Monetary types, payment states, refund limits and compensation."
+    }
+  ],
+  "roadmap": [
+    "Properties, property families, generators, shrinking, coverage, replay and reference models.",
+    "Domain types, wrappers, records, alternatives, constrained construction, refinements and explicit states.",
+    "Typed failures, Result, composition, fail-fast pipelines, accumulated errors, exception boundaries and asynchronous workflows.",
+    "Remaining language features, verification layers, dependencies, models, protocols, actors, distribution and tooling."
+  ],
+  "futureAttribution": [
+    {
+      "title": "Scott Wlaschin \u2014 Designing with types: Introduction",
+      "url": "https://fsharpforfunandprofit.com/posts/designing-with-types-intro/",
+      "use": "Future domain-type lessons; not authored at this checkpoint."
+    },
+    {
+      "title": "Scott Wlaschin \u2014 Railway Oriented Programming",
+      "url": "https://fsharpforfunandprofit.com/rop/",
+      "use": "Future explicit-failure lessons; not authored at this checkpoint."
+    },
+    {
+      "title": "Scott Wlaschin \u2014 Against Railway-Oriented Programming",
+      "url": "https://fsharpforfunandprofit.com/posts/against-railway-oriented-programming/",
+      "use": "Teach Result for expected domain failures, not as a replacement for diagnostics, every exception or every function. Avoid forcing a railway into simple code; distinguish accumulated validation from fail-fast binding."
+    }
+  ],
+  "presentationAttribution": [
+    {
+      "title": "Patrick Henry Winston \u2014 Make It Clear",
+      "url": "https://mitpress.mit.edu/9780262539388/make-it-clear/"
+    },
+    {
+      "title": "Patrick Henry Winston \u2014 How to Speak",
+      "url": "https://ocw.mit.edu/courses/15-371-innovation-teams-fall-2024/Unzc731iCUY_transcript.pdf"
+    }
+  ],
+  "lessons": [
+    {
+      "id": "examples",
+      "title": "Examples can miss a bug",
+      "slogan": "A few answers are not a rule.",
+      "symbol": "1 \u2192 4    2 \u2192 8    3 \u2192 ?",
+      "vision": "Arrange four seats in every row of a small event hall. You will turn a couple of examples into a rule for every row count in a stated domain.",
+      "explanation": "In F#, let names a value or function. In seats (rows: int) : int, rows is an integer input and the final int is the result type. Indentation groups the branches. The = in a test compares values; it does not change them. A LawSpec arrow describes input and output types. Its for all introduces a rule over the stated inputs. In Tests.fs, [| ... |] builds an array of checks. A comma pairs a name such as \"one row\" with a true/false observation. The () in examples () means the function needs no input. module groups a file's names; open Solution makes seats available in Tests.fs.",
+      "news": "The supplied code memorizes two examples. A property describes a relationship between inputs and outputs, so new inputs can expose that shortcut.",
+      "contributions": "Your seat function, an extra example and an unchanged general property. Passing runs support the checked row counts 0\u201340, under the browser adapter; they do not prove all integer arithmetic.",
+      "star": {
+        "salient": "A function can agree with examples while violating the intended rule.",
+        "slogan": "A few answers are not a rule.",
+        "symbol": "The visible table leaves a question mark at row 3; executing that row fills the gap.",
+        "surprise": "Both original tests pass even though almost every other row count is wrong.",
+        "story": "An event organizer adds a third row; the memorized estimate collapses; a rule repairs the estimate."
+      },
+      "attribution": [
+        {
+          "title": "Scott Wlaschin \u2014 The Enterprise Developer from Hell",
+          "url": "https://fsharpforfunandprofit.com/posts/property-based-testing/",
+          "use": "Inspiration for testing an implementation tailored to examples; the seating exercise and text are original."
+        }
+      ],
+      "projects": {
+        "fsharp": {
+          "Solution.fs": "module Solution\n\n// One row has four seats. This implementation knows only our examples.\nlet seats (rows: int) : int =\n    if rows = 1 then 4\n    elif rows = 2 then 8\n    else 0\n",
+          "Tests.fs": "module Tests\nopen Solution\n\n// Each pair gives a name and a Boolean observation.\nlet examples () : (string * bool) array =\n    [| \"one row\", seats 1 = 4\n       \"two rows\", seats 2 = 8 |]\n\n// A generated row count must obey the same rule.\nlet property (rows: int) : bool = seats rows = rows * 4\n\nlet regressions : (string * bool) array = [||]\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.seats\nseats :: Int32 -> Int32\n\nlaw seatsRule is\n  definition:\n    for all (rows :: Int32 where rows >= 0 && rows <= 40) => seats rows = rows * 4\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"rows\",\n  \"min\": 0,\n  \"max\": 40,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "javascript": {
+          "Solution.js": "export function seats(rows) {\n  return rows === 1 ? 4 : rows === 2 ? 8 : 0;\n}\n",
+          "Tests.js": "import { seats } from \"./Solution.js\";\nexport const examples = () => [[\"one row\", seats(1) === 4], [\"two rows\", seats(2) === 8]];\nexport const property = rows => seats(rows) === rows * 4;\n\nexport const regressions = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.seats\nseats :: Int32 -> Int32\n\nlaw seatsRule is\n  definition:\n    for all (rows :: Int32 where rows >= 0 && rows <= 40) => seats rows = rows * 4\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"rows\",\n  \"min\": 0,\n  \"max\": 40,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "typescript": {
+          "Solution.ts": "export function seats(rows: number): number {\n  return rows === 1 ? 4 : rows === 2 ? 8 : 0;\n}\n",
+          "Tests.ts": "import { seats } from \"./Solution.ts\";\nexport const examples = () => [[\"one row\", seats(1) === 4], [\"two rows\", seats(2) === 8]];\nexport const property = (rows: number) => seats(rows) === rows * 4;\n\nexport const regressions: [string, boolean][] = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.seats\nseats :: Int32 -> Int32\n\nlaw seatsRule is\n  definition:\n    for all (rows :: Int32 where rows >= 0 && rows <= 40) => seats rows = rows * 4\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"rows\",\n  \"min\": 0,\n  \"max\": 40,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        }
+      },
+      "hints": [
+        "Run authored examples first. Which row counts are absent?",
+        "Add a named example for three rows; it should expect twelve seats.",
+        "Replace the branches with multiplication by four. Keep the property unchanged."
+      ],
+      "stages": [
+        {
+          "title": "Observe two passing examples",
+          "action": "Run examples. Predict seats 3, then add a third example to Tests. Run again.",
+          "reason": "Two familiar examples make the shortcut tempting. A new example checks whether the implementation follows the intended relationship.",
+          "expect": "The starter examples pass. A third-row example fails with the supplied implementation.",
+          "recovery": "Check that your new pair has a name and compares seats 3 with 12. F# array items are separated by newlines or semicolons.",
+          "changes": {}
+        },
+        {
+          "title": "Introduce a general property",
+          "action": "Run all checks and read Contract.lawspec. Repair Solution, then run the same checks.",
+          "reason": "for all binds rows. The refinement limits the input domain to 0\u201340, avoiding overflow in this first exercise. The generated harness calls the implementation you edited.",
+          "expect": "The faulty function fails for a row count beyond the memorized cases. Multiplication by four passes.",
+          "recovery": "Read the first failing input and compare its result with four times the input. Do not weaken the rule to fit the faulty code.",
+          "changes": {}
+        },
+        {
+          "title": "Try it independently",
+          "action": "Add examples for an empty hall and the largest stated hall. Explain why this is still scoped evidence. Mark your milestone after a passing run.",
+          "reason": "Boundary examples document intent; the general rule supplies checks between them.",
+          "expect": "0 rows gives 0 seats; 40 rows gives 160. The milestone is separate from proof.",
+          "recovery": "If a boundary fails, check both the implementation and the expected value before editing the property.",
+          "changes": {}
+        }
+      ],
+      "solutions": {
+        "fsharp": {
+          "Solution.fs": "module Solution\nlet seats (rows: int) : int = rows * 4\n"
+        },
+        "javascript": {
+          "Solution.js": "export function seats(rows) { return rows * 4; }\n"
+        },
+        "typescript": {
+          "Solution.ts": "export function seats(rows: number): number { return rows * 4; }\n"
+        }
+      },
+      "coverage": {
+        "browserExecution": [
+          "fsharp",
+          "typescript",
+          "javascript"
+        ],
+        "definitionChecking": true,
+        "nativeExecution": "deferred",
+        "publicNames": [],
+        "features": [
+          "adapter signatures",
+          "universal laws",
+          "mandatory definition validation",
+          "sampled execution"
+        ],
+        "apiCollectionCredit": "deferred: the lesson is not a dedicated checked example for each referenced operation"
+      }
+    },
+    {
+      "id": "weak-properties",
+      "title": "A passing property can be too weak",
+      "slogan": "Keep the items, not just their order.",
+      "symbol": "[3, 1, 1] \u2192 []   \u2713 ordered   \u2717 preserved",
+      "vision": "Sort a library waiting list without losing requests. You will learn to challenge a property with deliberately unhelpful implementations.",
+      "explanation": "An F# list uses square brackets and semicolons: [3; 1; 1]. Empty brackets mean an empty list. The |> operator passes a value to the function on its right. List.pairwise forms neighboring pairs, and List.forall asks whether every pair satisfies the condition. With no pairs, that condition is true. && requires both conditions to hold. The expression fun (a, b) -> a <= b is an anonymous function: it names the two values in a pair and compares them. A comma groups the pair; a semicolon separates list items.",
+      "news": "Ordering alone says nothing about keeping requests. Preservation must count duplicates as well as values: a set comparison alone can lose repeated requests.",
+      "contributions": "A sorting implementation plus ordering and multiplicity preservation checks. You will reject empty output, a duplicate-dropping sort, and a same-length list of substituted values.",
+      "star": {
+        "salient": "Properties need to exclude plausible wrong behaviors.",
+        "slogan": "Keep the items, not just their order.",
+        "symbol": "The list-to-empty arrow displays an ordering pass beside a preservation failure.",
+        "surprise": "Returning nothing passes every ordering check.",
+        "story": "A waiting list looks perfectly sorted because every patron disappeared; preserving each request closes the loophole."
+      },
+      "attribution": [
+        {
+          "title": "Scott Wlaschin \u2014 Choosing properties for property-based testing",
+          "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-2/",
+          "use": "Property families and malicious compliance motivate the exercise."
+        },
+        {
+          "title": "Scott Wlaschin \u2014 Choosing properties in practice, part 1",
+          "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-3/",
+          "use": "List properties motivate combining order with preservation; original library scenario."
+        }
+      ],
+      "projects": {
+        "fsharp": {
+          "Solution.fs": "module Solution\n\nlet sort (xs: int list) : int list = []\n",
+          "Tests.fs": "module Tests\nopen Solution\n\nlet ordered xs =\n    xs |> List.pairwise |> List.forall (fun (a, b) -> a <= b)\n\nlet examples () : (string * bool) array =\n    [| \"empty input\", sort [] = [] |]\n\nlet property (xs: int list) : bool = ordered (sort xs)\n\nlet regressions : (string * bool) array = [||]\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "javascript": {
+          "Solution.js": "export function sort(xs) { return []; }\n",
+          "Tests.js": "import { sort } from \"./Solution.js\";\nconst ordered = xs => xs.every((x, i) => i === 0 || xs[i-1] <= x);\nexport const examples = () => [[\"empty input\", sort([]).length === 0]];\nexport const property = xs => ordered(sort(xs));\n\nexport const regressions = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "typescript": {
+          "Solution.ts": "export function sort(xs: number[]): number[] { return []; }\n",
+          "Tests.ts": "import { sort } from \"./Solution.ts\";\nconst ordered = (xs: number[]) => xs.every((x, i) => i === 0 || xs[i-1] <= x);\nexport const examples = () => [[\"empty input\", sort([]).length === 0]];\nexport const property = (xs: number[]) => ordered(sort(xs));\n\nexport const regressions: [string, boolean][] = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        }
+      },
+      "hints": [
+        "There are no out-of-order pairs in an empty list.",
+        "Compare how often each value occurs before and after sorting. sameItems checks multiplicity.",
+        "List.sort preserves items. List.distinct intentionally removes duplicates and cannot repair a sorting function."
+      ],
+      "stages": [
+        {
+          "title": "A suspicious pass",
+          "action": "Run all checks with the empty-result implementation. Predict whether [3; 1; 1] is preserved.",
+          "reason": "No neighboring output pair violates ordering. The property has permitted an implementation that discards every request.",
+          "expect": "The ordering property passes; this is a real run of a weak property.",
+          "recovery": "Inspect sort in Solution. A passing result does not mean the waiting list was kept.",
+          "changes": {}
+        },
+        {
+          "title": "Add preservation",
+          "action": "Load this stage to add sameItems to LawSpec and preservation to authored tests. Run, then repair sort.",
+          "reason": "sameItems requires each original value as many times in the result. It rejects lost duplicates and substituted values. A length check alone cannot do that.",
+          "expect": "The empty implementation fails. A correct sort passes both properties.",
+          "recovery": "Keep the original ordering condition. Preservation alone also permits an unchanged unsorted list.",
+          "changes": {
+            "fsharp": {
+              "Tests.fs": "module Tests\nopen Solution\n\nlet ordered xs =\n    xs |> List.pairwise |> List.forall (fun (a, b) -> a <= b)\n\nlet examples () : (string * bool) array =\n    [| \"empty input\", sort [] = [] |]\n\nlet property (xs: int list) : bool = ordered (sort xs) && (List.sort (sort xs) = List.sort xs)\n\nlet regressions : (string * bool) array = [||]\n",
+              "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true and sameItems (sort xs) xs\n    end for all\n  end definition\nend law\nend unit\n"
+            },
+            "javascript": {
+              "Tests.js": "import { sort } from \"./Solution.js\";\nconst ordered = xs => xs.every((x, i) => i === 0 || xs[i-1] <= x);\nexport const examples = () => [[\"empty input\", sort([]).length === 0]];\nexport const property = xs => ordered(sort(xs)) && JSON.stringify([...sort(xs)].sort((a,b)=>a-b)) === JSON.stringify([...xs].sort((a,b)=>a-b));\n\nexport const regressions = [];\n",
+              "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true and sameItems (sort xs) xs\n    end for all\n  end definition\nend law\nend unit\n"
+            },
+            "typescript": {
+              "Tests.ts": "import { sort } from \"./Solution.ts\";\nconst ordered = (xs: number[]) => xs.every((x, i) => i === 0 || xs[i-1] <= x);\nexport const examples = () => [[\"empty input\", sort([]).length === 0]];\nexport const property = (xs: number[]) => ordered(sort(xs)) && JSON.stringify([...sort(xs)].sort((a,b)=>a-b)) === JSON.stringify([...xs].sort((a,b)=>a-b));\n\nexport const regressions: [string, boolean][] = [];\n",
+              "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true and sameItems (sort xs) xs\n    end for all\n  end definition\nend law\nend unit\n"
+            }
+          }
+        },
+        {
+          "title": "Challenge your property",
+          "action": "Try List.distinct followed by sorting, then a sorted list of zeros of the same length. Restore a correct implementation.",
+          "reason": "These mutants distinguish membership, multiplicity and length. Explain which property rejects each one.",
+          "expect": "Both mutants fail preservation; a correct sort is accepted, including duplicate values.",
+          "recovery": "Use [3; 1; 1] to inspect lost duplicates and [3; 1] to inspect substitutions. Run all checks after each edit.",
+          "changes": {}
+        }
+      ],
+      "solutions": {
+        "fsharp": {
+          "Solution.fs": "module Solution\nlet sort (xs: int list) : int list = List.sort xs\n",
+          "Tests.fs": "module Tests\nopen Solution\n\nlet ordered xs =\n    xs |> List.pairwise |> List.forall (fun (a, b) -> a <= b)\n\nlet examples () : (string * bool) array =\n    [| \"empty input\", sort [] = [] |]\n\nlet property (xs: int list) : bool = ordered (sort xs) && (List.sort (sort xs) = List.sort xs)\n\nlet regressions : (string * bool) array = [||]\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true and sameItems (sort xs) xs\n    end for all\n  end definition\nend law\nend unit\n"
+        },
+        "javascript": {
+          "Solution.js": "export function sort(xs) { return [...xs].sort((a,b) => a-b); }\n",
+          "Tests.js": "import { sort } from \"./Solution.js\";\nconst ordered = xs => xs.every((x, i) => i === 0 || xs[i-1] <= x);\nexport const examples = () => [[\"empty input\", sort([]).length === 0]];\nexport const property = xs => ordered(sort(xs)) && JSON.stringify([...sort(xs)].sort((a,b)=>a-b)) === JSON.stringify([...xs].sort((a,b)=>a-b));\n\nexport const regressions = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true and sameItems (sort xs) xs\n    end for all\n  end definition\nend law\nend unit\n"
+        },
+        "typescript": {
+          "Solution.ts": "export function sort(xs: number[]): number[] { return [...xs].sort((a,b) => a-b); }\n",
+          "Tests.ts": "import { sort } from \"./Solution.ts\";\nconst ordered = (xs: number[]) => xs.every((x, i) => i === 0 || xs[i-1] <= x);\nexport const examples = () => [[\"empty input\", sort([]).length === 0]];\nexport const property = (xs: number[]) => ordered(sort(xs)) && JSON.stringify([...sort(xs)].sort((a,b)=>a-b)) === JSON.stringify([...xs].sort((a,b)=>a-b));\n\nexport const regressions: [string, boolean][] = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.sorting\nsort :: List Int32 -> List Int32\nfunction ordered (xs :: List Int32) -> Bool is\n  first matching case of xs :\n    when Nil then true\n    when Cons h t then\n      (first matching case of t :\n        when Nil then true\n        when Cons next rest then h <= next and ordered t\n      end case)\n  end case\nend function\n\nlaw sortingRule is\n  definition:\n    for all (xs :: List Int32) => ordered (sort xs) = true and sameItems (sort xs) xs\n    end for all\n  end definition\nend law\nend unit\n"
+        }
+      },
+      "coverage": {
+        "browserExecution": [
+          "fsharp",
+          "typescript",
+          "javascript"
+        ],
+        "definitionChecking": true,
+        "nativeExecution": "deferred",
+        "publicNames": [
+          "sameItems",
+          "length"
+        ],
+        "features": [
+          "adapter signatures",
+          "universal laws",
+          "mandatory definition validation",
+          "sampled execution"
+        ],
+        "apiCollectionCredit": "deferred: the lesson is not a dedicated checked example for each referenced operation"
+      }
+    },
+    {
+      "id": "shrinking",
+      "title": "Make a failure understandable",
+      "slogan": "Find it large. Explain it small.",
+      "symbol": "generated list \u2192 smaller failing lists \u2192 [0]",
+      "vision": "Remove repeated ticket numbers while retaining ticket zero. You will improve a generator, shrink a failure, replay it and keep it as a regression example.",
+      "explanation": "List.filter keeps only elements satisfying its function. fun x -> x <> 0 is an anonymous function: it returns true for anything except zero. List.distinct keeps the first occurrence of each value. A seed chooses a repeatable generated sequence. Shrinking tries smaller inputs after a failure; the path records the route to the final failing input.",
+      "news": "A generator that never includes zero cannot reveal a zero-specific bug. Shrinking simplifies an observed failure; it does not search for every bug or guarantee a globally smallest input.",
+      "contributions": "A generator including zero, a seeded run with a real shrink trace, a replay, a named regression example and repaired deduplication. The replay is meaningful only for the same code, property, generator and tool versions.",
+      "star": {
+        "salient": "Useful failures depend on both relevant generation and simplification.",
+        "slogan": "Find it large. Explain it small.",
+        "symbol": "The execution panel displays actual failed shrink candidates ending at [0].",
+        "surprise": "Hundreds of positive ticket numbers miss the bug; a one-item list explains it.",
+        "story": "A ticket import loses ticket zero. The learner widens the data, reduces the failure, records it and removes the accidental filter."
+      },
+      "attribution": [
+        {
+          "title": "Scott Wlaschin \u2014 Understanding FsCheck",
+          "url": "https://fsharpforfunandprofit.com/posts/property-based-testing-1/",
+          "use": "Generator and shrinker concepts; this browser exercise uses fast-check rather than native FsCheck."
+        }
+      ],
+      "projects": {
+        "fsharp": {
+          "Solution.fs": "module Solution\n\nlet unique (xs: int list) : int list =\n    xs |> List.filter (fun x -> x <> 0) |> List.distinct\n",
+          "Tests.fs": "module Tests\nopen Solution\n\nlet examples () : (string * bool) array =\n    [| \"repeated ticket\", unique [2; 2; 3] = [2; 3] |]\n\nlet property (xs: int list) : bool =\n    List.sort (unique xs) = List.sort (List.distinct xs)\n\nlet regressions : (string * bool) array = [||]\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.unique\nunique :: List Int32 -> List Int32\n\nlaw uniqueRule is\n  definition:\n    for all (xs :: List Int32) => sameItems (unique xs) (toList (setOf xs))\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": 1,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "javascript": {
+          "Solution.js": "export function unique(xs) { return [...new Set(xs.filter(x => x !== 0))]; }\n",
+          "Tests.js": "import { unique } from \"./Solution.js\";\nexport const examples = () => [[\"repeated ticket\", JSON.stringify(unique([2,2,3])) === \"[2,3]\"]];\nexport const property = xs => JSON.stringify([...unique(xs)].sort((a,b)=>a-b)) === JSON.stringify([...new Set(xs)].sort((a,b)=>a-b));\n\nexport const regressions = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.unique\nunique :: List Int32 -> List Int32\n\nlaw uniqueRule is\n  definition:\n    for all (xs :: List Int32) => sameItems (unique xs) (toList (setOf xs))\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": 1,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "typescript": {
+          "Solution.ts": "export function unique(xs: number[]): number[] { return [...new Set(xs.filter(x => x !== 0))]; }\n",
+          "Tests.ts": "import { unique } from \"./Solution.ts\";\nexport const examples = () => [[\"repeated ticket\", JSON.stringify(unique([2,2,3])) === \"[2,3]\"]];\nexport const property = (xs: number[]) => JSON.stringify([...unique(xs)].sort((a,b)=>a-b)) === JSON.stringify([...new Set(xs)].sort((a,b)=>a-b));\n\nexport const regressions: [string, boolean][] = [];\n",
+          "Contract.lawspec": "-- ref:DEC-learn-course-preview\nunit learn.unique\nunique :: List Int32 -> List Int32\n\nlaw uniqueRule is\n  definition:\n    for all (xs :: List Int32) => sameItems (unique xs) (toList (setOf xs))\n    end for all\n  end definition\nend law\nend unit\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": 1,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        }
+      },
+      "hints": [
+        "Inspect generator.json. Does its minimum permit ticket zero?",
+        "Change min to -20 and rerun with seed 424242. Inspect the first failure and shrunk input.",
+        "Save the counterexample, replay it before editing, then remove the filter that drops zero."
+      ],
+      "stages": [
+        {
+          "title": "Notice the blind spot",
+          "action": "Run authored examples and the sampled property. Inspect generator.json. Predict unique [0].",
+          "reason": "The generator starts at 1. Passing samples cannot establish what happens to ticket zero. Run all checks also includes the independent LawSpec generator, which may reveal the blind spot sooner.",
+          "expect": "Authored samples pass. A direct zero example disagrees.",
+          "recovery": "Use Run sampled property to inspect this generator independently of LawSpec checks.",
+          "changes": {}
+        },
+        {
+          "title": "Generate and shrink",
+          "action": "Load this stage to include zero and negative values. Run sampled property at seed 424242. Inspect the first failure, failed shrink candidates and final input. Replay before editing.",
+          "reason": "We expand the input domain before simplifying the failure. The seed/path belongs to the actual fast-check execution, not a simulated animation.",
+          "expect": "The supplied code fails and shrinks to [0]. Replay reaches the same counterexample.",
+          "recovery": "If you edited the generator, reset the seed and clear the replay path for a fresh run. A changed generator needs a fresh replay record.",
+          "changes": {
+            "fsharp": {
+              "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+            },
+            "javascript": {
+              "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+            },
+            "typescript": {
+              "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+            }
+          }
+        },
+        {
+          "title": "Save and repair",
+          "action": "Save the counterexample as a named example in Tests. Run examples to see it fail. Repair unique, then run examples and all checks.",
+          "reason": "The saved example makes this particular mistake easy to recognize later. Keep the general property to search beyond it.",
+          "expect": "The regression fails before repair. Removing the zero filter passes the same rerun.",
+          "recovery": "Save before repairing. In F#, [0] is a list of one integer; (=) checks its expected result.",
+          "changes": {}
+        }
+      ],
+      "solutions": {
+        "fsharp": {
+          "Solution.fs": "module Solution\nlet unique (xs: int list) : int list = List.distinct xs\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "javascript": {
+          "Solution.js": "export function unique(xs) { return [...new Set(xs)]; }\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        },
+        "typescript": {
+          "Solution.ts": "export function unique(xs: number[]): number[] { return [...new Set(xs)]; }\n",
+          "generator.json": "{\n  \"kind\": \"lists\",\n  \"min\": -20,\n  \"max\": 20,\n  \"maxLength\": 12,\n  \"numRuns\": 100\n}\n"
+        }
+      },
+      "coverage": {
+        "browserExecution": [
+          "fsharp",
+          "typescript",
+          "javascript"
+        ],
+        "definitionChecking": true,
+        "nativeExecution": "deferred",
+        "publicNames": [
+          "sameItems",
+          "setOf",
+          "toList"
+        ],
+        "features": [
+          "adapter signatures",
+          "universal laws",
+          "mandatory definition validation",
+          "sampled execution"
+        ],
+        "apiCollectionCredit": "deferred: the lesson is not a dedicated checked example for each referenced operation"
+      }
+    }
+  ]
+}

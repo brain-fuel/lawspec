@@ -1044,3 +1044,175 @@ DEC-component-edn:
     The owner chose lawspec.edn as the immediate replacement for lawspec.json and lawspec-package.json, without a migration layer. LawSpec checks one component or contract package and resolves local paths, immutable Git revisions selected by tags or revision, and integrity-checked HTTPS archives with lawspec.lock.edn. Ironframe consumes the checked public descriptor, owns CALM topology, bindings, optional deployment and fresh integration execution, and never parses EDN or scrapes generated source. A CALM node may provide and consume contracts. Atlas keeps distinct Rust and F# components and tests the production HTTP boundary. LawTwin emits EDN manifests and remains the fixture owner. This adds execution and package infrastructure, not a proof backend; existing mandatory definition validation and explicit unsupported or incomplete results remain in force.
   opened: 0.31.0
   decided: 0.31.0
+
+DEC-learn:
+  status: superseded
+  by: DEC-learn-course-preview
+  question: How do product readers and programmers learn the same LawSpec concepts locally and on GoForge?
+  answer: |
+    One maintained curriculum at templates/npm/learn/curriculum.json feeds paired product/programmer views and the lawspec-project skill. lawspec learn serves packaged static assets on 127.0.0.1:8384 without a project manifest; the same artifact is packaged for the GoForge LawSpec learn route. The browser compiler is reused for finite reference examples, with its bytes gzip-compressed to fit static asset limits and decompressed explicitly in the browser. Wlaschin's PBT series, follow-up and talk/slides inform property selection, malicious compliance, generators, shrinking and reference models without adding syntax aliases. Automated checks do not replace the deferred human readership gate.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-one-tutorial:
+  status: superseded
+  by: DEC-learn-course-preview
+  question: What should lawspec learn teach and what belongs in the GoForge integration?
+  answer: |
+    Owner direction 2026-10-26 supersedes DEC-learn's concept catalog and paired-view application. Serve only the guided tutorial "Make the coffee shop charge correctly", aimed first at a reader without programming experience. Following Diataxis tutorials, each of six steps has an action, expected observation and recovery: price two coffees at $3 each; run a deliberately faulty calculation; check the price-list rule for quantities 1 through 5; include quantity in the calculation; rerun the same generated checks; identify the scope of the evidence. The JavaScript calculations actually execute in an opaque browser frame. LawSpec's existing finite test generator and runtime produce and execute five price-list checks plus five input/output contract checks; results remain distinct. No result is simulated as a green badge. The price is fixed and discounts, tax and quantities outside 1 through 5 are outside this tutorial's evidence. Keep its content in templates/npm/learn/curriculum.json, serve it locally through lawspec learn and publish the exact packaged artifact at GoForge /lawspec/learn/, with the landing page and ecosystem catalog describing this one tutorial. Retain the prior decision as superseded history. Human readership validation remains open.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-course-preview:
+  status: decided
+  question: How should Learn teach relatively new coders to develop and assess useful LawSpec properties?
+  answer: |
+    This supersedes DEC-learn-one-tutorial, which itself replaced DEC-learn; both earlier answers remain history. The owner authorized an F#-first coding course with shared foundations, three distinct application tracks, advanced labs and a complete public API example collection. Authoritative prose, projects, hints, solutions, attribution and mappings live under learn/. Deliver only the first three interactive lessons before the teaching review checkpoint: examples miss bugs, passing properties can be weak, and generation/shrinking/replay make failures understandable. Every worked example has specific Vision, Steps, News and Contributions and substantive Winston Star presentation decisions. Wlaschin's articles are attributed individually, including his cautions about railway overuse. Monaco editors support LawSpec highlighting. Pinned Fable emits through PrintTargetAst, TypeScript checks types, and esbuild resolves virtual modules. Compilation runs in a worker; learner JavaScript runs in a network-disabled opaque-frame worker with cancellation and timeouts. F# uses explicit typed lesson adapters and the existing JavaScript harness with fast-check, never mislabeled native .NET/FsCheck evidence. Mandatory definition validation remains independent; original evidence statuses and missing, unknown, unsupported and incomplete outcomes stay visible. IndexedDB separates drafts by course, lesson, track and language; edits invalidate execution results. The manifest-free loopback CLI and GoForge use the same static artifact. A portable versioned plugin packages lawspec-learn and lawspec-project, with tutor references generated from the curriculum and no browser AI calls or source uploads. The coverage inventory derives from public compiler registries, checked built-ins, targets and reference headings; unimplemented examples and targets stay deferred. Stop after the three-lesson review preview; automated checks do not supply human teaching approval. Existing readership and external 1.0 gates and human-review debt remain open.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-workspace-navigation:
+  status: superseded
+  by: DEC-learn-course-hierarchy
+  question: How should a learner read the course and move between its sources?
+  answer: |
+    Owner feedback during the three-lesson preview selects Overpass for headings, Atkinson Hyperlegible for text, and Atkinson Hyperlegible Mono for code. Package the fonts locally with their licenses. Keep lesson, practice-step and application-notebook choices visible instead of drop-down menus. For every executable language, expose LawSpec, Tests and Solution tabs in that order, with an additional Generator tab for generator editing. Preserve drafts when switching files and languages. Apply the local UI reference's hierarchy, readable type, spacing and selectable-card guidance. This refines the preview workspace without approving the teaching checkpoint or expanding the curriculum.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-generated-boundaries:
+  status: superseded
+  by: DEC-learn-complete-browser-bindings
+  question: What determines the browser exercise adapters and generated harness wiring?
+  answer: |
+    Owner review requires deterministic generation. Use the compiler's admitted declaration types and actual planned user-module paths as the boundary source, rather than lesson identifiers or separately maintained signatures. The preview supports one implementation declaration with Int32 or List Int32 inputs/results; unsupported shapes and graphs are explicit. Emit the F# bridge, JavaScript boundary and read-only binding descriptor from that checked data, and verify repeat generation byte for byte with the pinned compiler and libraries. Learner implementations and authored tests remain user-owned. Fable execution is still JavaScript execution through the existing JS harness. Direct reuse of the native F# harness is not implemented: probes reject native reflection/process/random APIs and FsCheck's ordinary DLL does not supply Fable source. A future shared portable F# core and browser host requires its own compatibility and differential evidence; these experiments do not constitute such a backend.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-complete-browser-bindings:
+  status: decided
+  question: Is deterministic generation of the three lesson adapters sufficient for the browser binding layer?
+  answer: |
+    No. Owner feedback requires a comprehensive one-to-one binding set generated deterministically from authoritative declarations and target metadata, with no silently omitted public members or independently maintained signatures. Account for every public entry in the selected boundary, fail completeness on missing, ambiguous or unsupported bindings, and verify repeated byte-identical generation plus conversion and behavior checks. A complete inventory of deferred bindings is not an implemented complete binding set. The current Int32/list single-function preview is explicitly incomplete against this requirement. Keep the three lessons usable while defining and implementing the complete boundary; do not mistake the teaching review checkpoint for acceptance of a permanently restricted adapter architecture. Preserve mandatory definition admission and distinct browser versus native evidence. Native host capabilities and FsCheck compatibility require explicit decisions and evidence rather than guessed semantic equivalence.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-theme:
+  status: decided
+  question: How should the learning workspace choose its color theme?
+  answer: |
+    Owner feedback requests visible Auto, Light and Dark choices. Auto follows the system color scheme, including changes while the workspace is open. Explicit Light and Dark choices override the system until changed and persist locally across reloads. Apply the resolved appearance before the workspace renders and keep Monaco, syntax highlighting, generated output, diagnostics, results and navigation in the same theme. Switching appearance preserves drafts, selection and execution results. Package the same behavior for loopback and static deployment, retaining the requested fonts and visible navigation. This is workspace feedback, not teaching-review approval or acceptance of incomplete binding coverage.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-executable-story:
+  status: decided
+  question: What governs the story, source and expected observations in a teaching step?
+  answer: |
+    Owner review rejected prose that described code other than the current executable project. Begin with Wlaschin's addition, sorting and smaller-than-80 examples, then apply the ideas to the existing seating, library and ticket exercises. Author original narrative around licensed code with article-level attribution. Exercise source files are the code authority; build the browser/tutor curriculum and displayed excerpts from those files. Every step selects a complete project and a specific check mode. Selecting a step loads its own saved draft or exact source snapshot and opens the file discussed; it must not merely replace prose while leaving another step's code active. Keep drafts independent by step as well as course, lesson, track and language. Code edits update the excerpt, invalidate old results and visibly distinguish the learner version from the supplied scene. Execute every scene to verify its required pass or failure, named checks, actual shrinking and replay. A wrong property may be the bug; distinguish repairing a false claim from repairing an implementation. Explicit browser/native evidence and the comprehensive generated-binding requirement remain unchanged. This revision remains a teaching-review preview; automated scene checks do not supply pedagogical approval.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-workspace-focus:
+  status: decided
+  question: Should the opening prediction repeat throughout a lesson, and how does the workspace avoid repeated scrolling between story, code and results?
+  answer: |
+    Owner feedback rejects a lesson-wide prediction repeated after it has ceased to describe the current step. A prediction callout belongs to an explicitly authored step only; code excerpts and actual execution results remain the explanatory visuals elsewhere. Keep Previous/Next outside the scrolling article and begin each newly selected step at its heading. Desktop reading and coding panes share the viewport; scrolling the story must leave the editor, Run controls and results visible. Results scroll within their own panel. Compact screens use visible Course, Read and Code/results tabs, preserving each pane's position, draft and results when toggling. Language switching preserves the chosen view; opening a source excerpt goes directly to its editor. Retain the requested typefaces, color themes, source tabs, step-owned projects and honest evidence. Verify viewport geometry and scroll/view transitions in real browsers, not only screenshots or the absence of horizontal overflow.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-tests-in-lawspec:
+  status: decided
+  question: Can the lessons use LawSpec as the sole authored test language?
+  answer: |
+    Owner direction requests the conversion, not only a feasibility assessment. Author every learner-facing concrete example, general property and generation strategy in Tests.lawspec and Harness.lawspec. Keep only implementation code in F#, TypeScript or JavaScript. Execute the compiler-generated JavaScript checks against the typed Fable/JS implementation boundary, without reimplementing properties in another language or maintaining generator.json. Preserve the introduction from concrete claims to quantified properties and the demonstrated passing/failing outcomes. Explicit LawSpec strategies must preserve understandable native input shrinking and replay; record the actual law input, seed/path and implementation observations. Saving a regression writes a concrete LawSpec claim. Keep browser/compiler/adapter infrastructure checks in their host test tools. The browser host supplies bounded in-memory statistics and sequential context storage to the unchanged generated harness; native IO and parallel suites remain explicitly unsupported. Preserve admission, compiler evidence statuses, isolation, step-owned projects and the unresolved comprehensive binding coverage requirement.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-course-hierarchy:
+  status: decided
+  question: How should the learning workspace distinguish the current learning task from progress tools and future material?
+  answer: |
+    Owner direction applies a fresh-context review grounded in ../ui before revising the interface. Keep a single course outline grouped into Worked examples and Practice, with steps beneath only the active lesson and fixed Previous/Next in the reader. Remove the duplicate story-step grid and unavailable capstone navigation. Keep Teaching Preview inside About this course and future capstones, topics and attribution inside its Roadmap. Replace Export/Import Project with secondary Back up progress and Restore progress actions in Your progress. Explain that backups contain all saved current-version drafts across steps, languages and notebooks plus milestones and code attribution; restore replaces matching drafts and preserves other drafts, without restoring execution evidence or theme settings. Preserve old notebook URLs, draft namespaces and backup compatibility without presenting unbuilt capstones as selectable lessons. Use two editor header rows: accessible language tabs with Run/Cancel, followed by source tabs and save status. Put seed, replay and alternate checks in Test controls, opening it for a real replayable failure; keep execution details in diagnostics and Load solution by the reader's reset/recovery actions. Preserve Overpass, Atkinson Hyperlegible and Atkinson Hyperlegible Mono, Auto/Light/Dark, source-driven prose, on-device execution and honest evidence. Verify desktop, laptop, phone and short-window geometry, including failure controls and busy cancellation, rather than gaining space by shrinking readable text. This refines workspace navigation without approving the teaching checkpoint or claiming comprehensive binding completion.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-english-names:
+  status: decided
+  question: When should tutorial code use English phrase names rather than camel case?
+  answer: |
+    Owner direction prefers readable English names wherever they clarify purpose, using the existing phrase syntax rather than arbitrarily compressing claims into camel case. Use sentence labels for learner-facing laws and phrase names for descriptive checked helpers; retain concise implementation, input and strategy names where they help call sites. Teach the real delimiter grammar and matching references, and verify native identifier generation through the authoritative compiler. The current strategy declaration grammar requires lowercase bare names; use lists and numbers without adding grammar aliases. Adjust Monaco phrase auto-closing so it does not add an invalid trailing quote. Keep the current course version and prior draft identities. Refresh starter Laws/Harness files together only when both still equal their archived supplied versions; preserve user implementations, edits, milestones and kept regression cases. Previous source snapshots support compatibility, not a second active curriculum. Preserve parser validation, actual execution/replay and the separately recorded browser binding limitations.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-novice-results:
+  status: decided
+  question: How should a learner new to property-based testing read the course and recover from experiments?
+  answer: |
+    Owner direction requests a whole-experience novice review. Introduce examples, properties, generators, counterexamples, shrinking and regressions before first use. Show English claim labels from compiler metadata, keep native check identities and errors available in diagnostics, and distinguish actual named properties from generated trial counts and accepted shrinking steps. Observe concrete implementation calls without replacing generated assertions. Keep the failing input visible and put the actual trace and coverage counts behind explanatory disclosures. Expected teaching failures remain failed checks, with qualified guidance only when the supplied project ran as authored. Preserve explicit errors, unsupported and incomplete results and mandatory admission. Offer one immediate Undo reset / solution for source replacement in the open step; discard it on manual editing or navigation and require rerun for execution evidence. Keep the existing font/theme/navigation and consistent Run checks action. This is a refinement of the six-lesson teaching preview, not teaching approval or expansion beyond its checkpoint.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-regression-progress:
+  status: decided
+  question: Does saved progress include the regression cases a learner chose to keep?
+  answer: |
+    Owner feedback explicitly requires kept regression cases in saved progress. Save regression inserts an ordinary named law into the draft's Laws source, so autosave and current-version backup/restore must retain that code alongside other source edits across saved lesson, step, language and notebook drafts. Clarify this in the backup description. Require the current draft to save successfully before exporting stored drafts; a write failure must report Backup failed rather than download an older snapshot that could omit the latest kept case. Verify the full path from a real generated counterexample through save, reload, backup, removal, restore and fresh execution of the restored law. Restored source is not restored execution evidence; rerun checks to obtain current outcomes. Preserve existing backup identities and unrelated drafts.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-run-action:
+  status: decided
+  question: Should the primary Run button change its name between lesson steps?
+  answer: |
+    Owner feedback requests a consistent action name. Use Run checks throughout, including while disabled during execution, and show the scope immediately beneath it as Examples + boundaries, Sampled properties or All checks. Keep each step's authored mode because sampling-only runs teach different evidence from full runs. Associate the caption with the button for accessibility; during an alternate run show that actual scope and afterward restore the primary action's scope. Preserve explicitly named alternate runs under Test controls, actual named/property outcomes and busy/cancellation feedback. Update lesson and tutor instructions and verify that the fixed label and visible scope agree with what executes, including compact layout with Cancel visible.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-source-selection:
+  status: decided
+  question: What happens to source selection when the learner switches implementation language?
+  answer: |
+    Owner feedback requests Laws, Solution and Harness as the visible source tabs, replacing the Tests label. Laws opens the existing Tests.lawspec file; preserve file identities, saved drafts and backup compatibility. Language switching keeps the selected source kind, maps Solution to the new language's implementation file, and retains independent drafts and the selected compact workspace view. Keyboard language navigation follows the same behavior. Lesson and step changes still open their authored source focus. Apply the new tab name consistently in course prose, tutor material and accessibility labels, and verify selection and draft isolation in all three browser engines. This refines navigation without changing lesson claims or execution evidence.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-winston-story-revision:
+  status: decided
+  question: How should the preview respond when the learner cannot understand a lesson's premise or progression?
+  answer: |
+    Owner feedback rejects the missing-ticket-zero premise and requests Winston's Star across all lessons. Revisit the primary account and redesign visible prose around one salient idea, slogan, explanatory symbol, earned surprise and coherent story; populated metadata is insufficient. Establish the useful task and meaning of inputs/outputs before presenting bugs. Replace the ticket exercise with a distinct-temperature summary: freezing and negative measurements are meaningful values, while repeated measurements deliberately become one summary value. Explicitly contrast that purpose with library priority ranks, where equal values represent separate requests. Keep the Wlaschin examples first, followed by their three applications; identify what changes in each step, ask concrete predictions, explain source-matched syntax and actual observations, and finish with a contribution and independent example. Preserve executable source authority, LawSpec-only tests, actual shrinking/replay and evidence labels. Archive preview-3 and use preview-4 drafts so old ticket work cannot silently load under the new premise; preserve old stored work. Generate browser and tutor material from the same revised source. Teaching review remains open and further curriculum expansion still awaits it.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-harness-explanation:
+  status: decided
+  question: How should a new learner understand the Harness source tab and its relationship to tests and execution?
+  answer: |
+    Owner feedback identifies a missing explanation. Introduce the three source files in the opening story and explain the harness before the first generated property. Teach strategies as input recipes, law bindings, quantified inputs, domain bounds and the difference between a sampled pass and the whole claim. Explain constructive list generation when it first appears. Provide a compact disclosure beside the selected Harness editor with an authored walkthrough of that step's supplied source, while explicitly distinguishing edited drafts. Distinguish the editable LawSpec harness configuration from the generated execution runner, including example/sample/all modes, shrinking and seed/path replay, and browser Fable/JavaScript versus native .NET evidence. Keep these explanations in the authoritative curriculum shared with the tutor; preserve source-derived excerpts and actual passing/failing observations. This repairs the preview without approving its teaching quality or expanding the course beyond the review checkpoint.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-google-style-allman:
+  status: decided
+  question: Which style governs first-party LawSpec, Learn and MCP code and generated output?
+  answer: |
+    Owner direction requires Google's current language style guide before language-specific defaults, with the owner's subsequent explicit Allman-brace preference taking precedence where the established formatter supports it. In a subsequent clarification, keep the standard layout when the formatter cannot support Allman rather than adding a custom formatter; Go retains its grammatical brace placement. Apply this to compiler/runtime output, repository scripts, scaffolds, lesson projects and browser code, MCP and project tooling, and their authoritative templates. Use existing language formatters and parsers, with pinned settings and checks; style compliance includes naming, imports and implementation choices, not just whitespace. Keep generation deterministic and native/WASM compiler output identical. Compiler target printing stays pure; repository build tools and on-device lesson formatting may use pinned formatters. Preserve source-defined public identities, ABI and behavior, mandatory definition validation and evidence states. Do not rewrite third-party code or unlabelled machine bundles as if they were authored examples; explicitly requested compact output remains an explicit separate mode. Review the new Google Rust guide including its generated-code and ontology exceptions, imports, expect/pattern matching and narrow panic-boundary exception rather than equating rustfmt with conformance. LawSpec's own formatter remains the source-style authority where there is no external language guide. This supersedes the default-configuration clauses of DEC-readable-output-default and DEC-web-prettier-printer while preserving their history, pure compiler printing and formatter-fixed-point checks. The owner identified prettier-plugin-brace-style; pin 0.10.4 with Prettier 3.9.10 and braceStyle allman, using Google's gts settings, for the shared Node/browser web profile. The current Rust typed-failure panic ABI is a recorded incompatibility with Google's no-panic-control-flow rule; do not claim full Rust-guide compliance or silently change its semantics as a style edit. Java authoring uses Eclipse JDT 3.47.0 with the archived Google profile and explicit Allman/current-record settings; acceptance still checks the current Google/owner Checkstyle rules. Do not use clang-format as a substitute for the Java profile.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-learn-format-before-run:
+  status: decided
+  question: Should clicking Run format the lesson code before executing it?
+  answer: |
+    Owner direction requires formatting before every Run mode, including examples, properties and replay. Format LawSpec sources with the compiler's syntax formatter, F# with pinned Fantomas running locally on .NET WebAssembly, and JavaScript/TypeScript with the shared Google-default/Allman-override formatter. Perform formatting in a cancellable worker, never a remote service. Apply the complete successful formatting result to the visible draft and save it before compiling and executing that exact snapshot. Formatting errors remain visible and prevent execution; do not partially rewrite a project on failure. Definition admission and language type checks still run after syntax formatting. Formatting does not execute F# or change the Fable/JavaScript evidence boundary. Keep authoritative supplied projects formatted too, so their prose, shown source and expected observations continue to agree, and verify idempotence, preservation of source values, cancellation and run ordering.
+  opened: 0.31.0
+  decided: 0.31.0
+
+DEC-lawspec-quantifier-layout:
+  status: decided
+  question: How should source formatting make quantified claims readable?
+  answer: |
+    Owner feedback rejects a seats property whose header and body share a line while multiplication and the closing clause spill onto the next. Format quantified headers, indented claims and matching closers as separate structural lines using the authoritative parser inventory. Rejoin short arithmetic claims within their own width; break long headers between complete binders and align the separator with the opening keyword. Apply the same rule to universal, existential and given scopes, including nested claims. Preserve comments, literal contents, source tokens and definition semantics; repeated formatting must be stable. Regenerate supplied lesson projects with the actual compiler and rebuild the browser WASM formatter so formatting before Run produces the same layout. Keep current progress identities and learner edits, including kept regression cases. This is a formatting correction, not teaching-review approval or new verification evidence.
+  opened: 0.31.0
+  decided: 0.31.0

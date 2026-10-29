@@ -9,10 +9,7 @@ Haskell, Kotlin, Rust, C#, F#, Swift, Erlang, Elixir, Gleam, Clojure, Groovy and
 Scala. The compiler is written in Haskell and distributed on npm as prebuilt
 WebAssembly, with a Node CLI and a typed JavaScript API.
 
-The canonical authoring examples below target 0.25.0, the minor in preparation
-on `main`.
-Install the development checkout as shown below. For released 0.24.0, use the
-[0.24.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
+The npm package includes the compiler and learning track; no Haskell installation is needed.
 
 ## Features
 
@@ -142,3 +139,12 @@ Syntax highlighting is available as a [VS Code extension](editors/vscode/README.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Learn LawSpec
+
+```sh
+npm install --global lawspec@0.31.1
+lawspec learn
+```
+
+Open the printed loopback URL, or use [Learn on GoForge](https://goforge.dev/lawspec/learn/). Six lessons pair worked examples with practice in F#, TypeScript or JavaScript. The course is a teaching preview; later lessons, capstones and the complete API collection remain deferred. See [Learn LawSpec](docs/how-to/learn.md).

@@ -1,0 +1,6 @@
+harness learn.seats.testing for learn.seats is
+  strategy numbers :: (n :: Int32 where n >= 0 and n <= 40) is any end strategy
+  for law "|every row contributes four seats|
+    use numbers for rows
+  end for law
+end harness

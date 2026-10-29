@@ -506,3 +506,9 @@ still lists a refuted law under `REFUTED` before it exits with status `1`. `prov
 law is refuted, and status `2` when a selected task remains incomplete or
 unsupported. An `exempted` law-set check does not change the status until its
 exemption expires.
+
+## `learn`
+
+`lawspec learn [--port <port>]` serves the packaged F#-first coding-course preview on
+`127.0.0.1:8384` by default, without a manifest ref:DEC-learn-course-preview. Port 0 selects an
+available port. See [Learn LawSpec](../how-to/learn.md).

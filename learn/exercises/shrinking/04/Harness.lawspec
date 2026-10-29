@@ -1,0 +1,16 @@
+harness learn.unique.testing for learn.unique is
+  strategy number :: (n :: Int32 where n >= -20 and n <= 20) is any end strategy
+
+  -- Draw up to three items constructively; shrinking follows these choices.
+  strategy lists :: List Int32 is
+    bind a :: Int32 from number in
+      bind b :: Int32 from number in
+        bind c :: Int32 from number in
+          one of [], [a], [a, b], [a, b, c]
+        end bind end bind end bind
+  end strategy
+
+  for law "|the summary keeps each recorded temperature once|
+    use lists for xs
+  end for law
+end harness

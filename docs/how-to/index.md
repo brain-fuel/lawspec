@@ -35,3 +35,5 @@ shows how to do it.
 
 - [Target setup guides](targets/index.md): Java, JavaScript, TypeScript,
   Python, Go, Haskell, Kotlin and Rust.
+
+- [Learn LawSpec](learn.md): run the interactive learning track locally or on GoForge.

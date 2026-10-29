@@ -1,0 +1,7 @@
+{
+  "name": "lawspec",
+  "version": "0.31.1-preview.4",
+  "description": "LawSpec F#-first coding-course tutor.",
+  "skills": "./skills/",
+  "license": "MIT"
+}

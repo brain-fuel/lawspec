@@ -1,0 +1,17 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.addition
+add :: Int32 -> Int32 -> Int32
+
+law "|one plus two is three| is
+  definition:
+    add 1 2 = 3
+  end definition
+end law
+
+law "|two plus two is four| is
+  definition:
+    add 2 2 = 4
+  end definition
+end law
+
+end unit

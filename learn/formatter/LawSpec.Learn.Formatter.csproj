@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <RuntimeFrameworkVersion>10.0.12</RuntimeFrameworkVersion>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <WasmEnableHotReload>false</WasmEnableHotReload>
+    <PublishTrimmed>false</PublishTrimmed>
+    <WasmMainJSPath>main.mjs</WasmMainJSPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Fantomas.Core" Version="8.1.0" />
+  </ItemGroup>
+</Project>

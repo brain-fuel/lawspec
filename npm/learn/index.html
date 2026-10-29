@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en" data-workspace-view="read">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
+    />
+    <script src="./theme.js"></script>
+    <link
+      rel="preload"
+      href="./vendor/fonts/overpass-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="./vendor/fonts/atkinson-hyperlegible-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="./vendor/fonts/atkinson-hyperlegible-mono-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <title>Learn LawSpec · Coding foundations</title>
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./vendor/editor.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./"
+        >L<span>LawSpec <b>Learn</b></span></a
+      >
+      <fieldset id="theme-picker">
+        <legend class="sr-only">Color theme</legend>
+        <label
+          ><input type="radio" name="color-theme" value="auto" checked /><span
+            >Auto</span
+          ></label
+        ><label
+          ><input type="radio" name="color-theme" value="light" /><span
+            >Light</span
+          ></label
+        ><label
+          ><input type="radio" name="color-theme" value="dark" /><span
+            >Dark</span
+          ></label
+        >
+      </fieldset>
+    </header>
+    <nav id="workspace-views" role="tablist" aria-label="Workspace view">
+      <button
+        type="button"
+        role="tab"
+        data-view="course"
+        aria-controls="course-panel"
+        aria-selected="false"
+        tabindex="-1"
+      >
+        Course</button
+      ><button
+        type="button"
+        role="tab"
+        data-view="read"
+        aria-controls="lesson-panel"
+        aria-selected="true"
+      >
+        Read</button
+      ><button
+        type="button"
+        role="tab"
+        data-view="code"
+        aria-controls="code-panel"
+        aria-selected="false"
+        tabindex="-1"
+      >
+        Code & results
+      </button>
+    </nav>
+    <div class="layout">
+      <aside id="course-panel">
+        <h2 class="course-heading">Course outline</h2>
+        <nav id="lessons" aria-label="Course outline"></nav>
+        <div class="course-utilities">
+          <details id="progress-panel">
+            <summary>Your progress</summary>
+            <p>Code and milestones save automatically on this device.</p>
+            <p id="backup-help">
+              Back up all saved lessons, steps, languages and notebooks for this
+              course version as a JSON file, including kept regression cases in
+              Laws. Nothing is uploaded. Theme preferences, run seeds and
+              execution results are excluded.
+            </p>
+            <div class="progress-actions">
+              <button id="export" aria-describedby="backup-help">
+                Back up progress</button
+              ><button id="restore" aria-describedby="restore-help">
+                Restore progress</button
+              ><input
+                id="import"
+                type="file"
+                accept="application/json"
+                hidden
+              />
+            </div>
+            <p id="restore-help">
+              Restore a backup from the same course version. Matching drafts are
+              replaced; other drafts stay saved. Rerun checks after restoring.
+            </p>
+            <p id="saved-notebook" hidden></p>
+            <p id="progress-status" role="status"></p>
+          </details>
+          <details id="about-course">
+            <summary>About this course</summary>
+            <p id="course-status"></p>
+            <p>
+              F# comes first; TypeScript and JavaScript are also available.
+              Everything runs on your device, with no source uploads or
+              automatic AI calls.
+            </p>
+            <p>
+              F# executes through Fable and the JavaScript testing harness.
+              Native .NET/FsCheck evidence is separate.
+            </p>
+            <details id="roadmap-panel">
+              <summary>Roadmap</summary>
+              <ol id="roadmap"></ol>
+              <h3>Future capstones</h3>
+              <ul id="planned-tracks"></ul>
+              <div id="future-attribution"></div>
+            </details>
+            <a href="./coverage.json" target="_blank" rel="noopener"
+              >Public API coverage inventory</a
+            >
+            <p>Missing examples remain deferred.</p>
+          </details>
+        </div>
+      </aside>
+      <main>
+        <section class="lesson" id="lesson-panel">
+          <div class="lesson-heading">
+            <h1 id="title"></h1>
+            <nav class="scene-navigation" aria-label="Step navigation">
+              <button id="previous-scene">← Previous</button
+              ><span class="eyebrow" id="lesson-number"></span
+              ><button id="next-scene">Next →</button>
+            </nav>
+          </div>
+          <div
+            class="lesson-reader"
+            id="lesson-reader"
+            tabindex="0"
+            aria-label="Lesson text"
+          >
+            <h2 id="stage-title" tabindex="-1"></h2>
+            <div id="story"></div>
+            <pre class="symbol" id="symbol" hidden></pre>
+            <div class="story-source">
+              <button id="story-file" type="button"></button
+              ><span id="story-state" role="status"></span>
+              <pre id="story-code" class="monaco-colorized"></pre>
+            </div>
+            <p id="reason"></p>
+            <p id="action"></p>
+            <p class="expected">
+              <b>In the supplied scene: </b><span id="expect"></span>
+            </p>
+            <details>
+              <summary>Syntax in this step</summary>
+              <p id="explanation"></p>
+              <p id="naming-guide"></p>
+            </details>
+            <div class="scene-actions">
+              <button id="load-stage">Reset this step</button
+              ><button id="solution">Load solution</button>
+              <button
+                id="undo-replacement"
+                hidden
+                title="Restore the previous files in this open step"
+              >
+                Undo reset / solution
+              </button>
+            </div>
+            <details>
+              <summary>Stuck? Recover here</summary>
+              <p id="recovery"></p>
+              <button id="hint">Show next hint</button>
+              <p id="hint-text"></p>
+            </details>
+            <details>
+              <summary>About this lesson</summary>
+              <p class="slogan" id="slogan"></p>
+              <p id="vision"></p>
+              <p id="news"></p>
+              <p id="contributions"></p>
+            </details>
+            <details>
+              <summary>Attribution & further reading</summary>
+              <div id="attribution"></div>
+            </details>
+            <button id="complete">Mark learning milestone</button
+            ><span id="completion"></span>
+          </div>
+        </section>
+        <section
+          class="workspace"
+          id="code-panel"
+          aria-label="Coding workspace"
+        >
+          <p id="code-step" class="mobile-context"></p>
+          <div class="workspace-toolbar">
+            <div
+              id="languages"
+              role="tablist"
+              aria-label="Implementation language"
+            ></div>
+            <div class="runbar">
+              <div class="run-action">
+                <button id="run" class="primary" aria-describedby="run-scope">
+                  Run checks
+                </button>
+                <span id="run-scope">Examples + boundaries</span>
+              </div>
+              <button id="cancel" disabled hidden>Cancel</button>
+            </div>
+          </div>
+          <div class="filebar">
+            <div
+              id="files"
+              class="file-tabs"
+              role="tablist"
+              aria-label="Project files"
+            ></div>
+            <span id="save-status" role="status">Loading drafts…</span
+            ><span id="current-file" class="sr-only"></span>
+          </div>
+          <div
+            id="editor"
+            role="tabpanel"
+            aria-label="Source editor"
+            aria-describedby="current-file"
+          ></div>
+          <details id="harness-help" hidden>
+            <summary>Harness explained: where test inputs come from</summary>
+            <div id="harness-explanation"></div>
+          </details>
+          <details id="run-options">
+            <summary>Test controls<span id="replay-hint"></span></summary>
+            <div class="test-controls">
+              <div class="alternate-runs">
+                <button id="examples">Run examples + boundaries</button
+                ><button id="sample">Run sampled properties</button>
+              </div>
+              <div class="replaybar">
+                <label
+                  >Seed
+                  <input
+                    id="seed"
+                    type="number"
+                    value="424242"
+                    step="1" /></label
+                ><button id="replay" disabled>Replay failure</button
+                ><button id="regression" disabled>Save regression</button>
+              </div>
+            </div>
+          </details>
+          <section class="results" tabindex="0" aria-label="Execution results">
+            <h2>Results <span id="result-status">Ready</span></h2>
+            <p id="message" role="status">
+              Run examples first. Predict an unfamiliar input before running all
+              checks.
+            </p>
+            <p id="teaching-feedback" role="status" hidden></p>
+            <div id="outcomes"></div>
+            <details>
+              <summary>How to read these results</summary>
+              <p>
+                A passed check held for the inputs tried. A failed check found a
+                disagreement. A generated trial tries an input against a
+                property; shrinking tries simpler inputs that still fail.
+                Incomplete or unsupported checks need attention before you can
+                draw a conclusion.
+              </p>
+              <p>
+                Specific inputs are written examples. Boundary inputs try edges
+                or special cases in a stated domain. A property is a claim about
+                many inputs; generated trials test individual inputs against it.
+                Save regression keeps a discovered failure as a named example in
+                Laws.
+              </p>
+            </details>
+            <details id="diagnostic-panel">
+              <summary>Diagnostics & evidence</summary>
+              <p id="execution-label" class="muted">
+                F# → Fable → JavaScript · LawSpec JS harness + fast-check
+              </p>
+              <pre id="diagnostics"></pre>
+              <p>
+                Mandatory definition validation checks the files independently
+                of optional law verification. Compiler evidence retains its
+                original statuses.
+              </p>
+            </details>
+            <details>
+              <summary>Generated output (read only)</summary>
+              <nav id="generated-files" aria-label="Generated files"></nav>
+              <pre id="generated" class="monaco-colorized"></pre>
+            </details>
+            <p class="muted">
+              Files are checked before execution. Passing tests describe the
+              inputs tried; they do not prove every possible input correct.
+            </p>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>

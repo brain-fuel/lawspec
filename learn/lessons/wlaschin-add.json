@@ -1,0 +1,272 @@
+{
+  "id": "wlaschin-add",
+  "title": "Can tests catch a cheating calculator?",
+  "section": "Wlaschin’s examples",
+  "vision": "Learn to turn a few calculator examples into requirements that expose different wrong implementations.",
+  "slogan": "Which shortcut can still pass?",
+  "symbol": "(1, 2) → 3; (2, 2) → ?",
+  "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
+  "news": "A property is useful when it rules out a plausible wrong implementation.",
+  "contributions": "An addition implementation, two named examples, and separate input-order, repeated-addition and zero-identity requirements. Runs exercise the stated bounded inputs through the browser adapter; they do not prove addition for all integers.",
+  "star": {
+    "salient": "A property is useful when it rules out a plausible wrong implementation.",
+    "slogan": "Which shortcut can still pass?",
+    "symbol": "(1, 2) → 3; (2, 2) → ?",
+    "surprise": "Multiplication and constant zero can pass relationships that sound like addition.",
+    "story": "A calculator keeps memorizing our examples. We try relationships instead, watch new shortcuts pass, then retain the examples and a family of complementary properties."
+  },
+  "attribution": [
+    {
+      "title": "Scott Wlaschin — The Enterprise Developer from Hell",
+      "url": "https://fsharpforfunandprofit.com/posts/property-based-testing/",
+      "use": "Adapted executable addition examples, with original explanatory prose. Browser runs use Fable and fast-check, not the article’s native test framework."
+    }
+  ],
+  "hints": [
+    "Trace add with the named failing inputs before changing it.",
+    "Ask which wrong implementation each property excludes. Keep the concrete examples when adding relationships.",
+    "The repair must compute a sum for unfamiliar pairs. Load solution reveals the complete implementation."
+  ],
+  "stages": [
+    {
+      "id": "one-promise",
+      "title": "The calculator knows one answer",
+      "story": [
+        "We want a calculator that adds two integers. By the end of this lesson, you will be able to explain why a passing test can leave a wrong calculator undetected, and strengthen its checks.",
+        "An example is one specified call with an expected answer. A check runs that call and compares the actual answer with the expected one. A passing check means those answers agreed; it does not mean the whole function is correct.",
+        "Our first promise is just 1 + 2 = 3. In Solution, add recognizes that pair and returns 3. Every other pair returns 0. Predict what happens on 2 and 2, but keep the test unchanged for this first run.",
+        "There are three tabs: Laws states the promises, Solution contains the function, and Harness configures generated test inputs. For now the harness has no strategy: the concrete test already supplies 1 and 2. You can open Harness at any point and expand its explanation below the editor.",
+        "Run the example. It checks the one promise we wrote. Ask what evidence we have for the other branch of the function.",
+        "The claim’s English name tells us its purpose. Phrase names start with a double quote followed by a pipe (\"|) and finish at the next pipe (|), with no closing quote. add stays short because we call that function repeatedly; the longer claim name should read like a sentence."
+      ],
+      "focus": "Solution",
+      "project": "exercises/addition/01",
+      "run": {
+        "mode": "examples",
+        "expect": "passed",
+        "seed": 424242
+      },
+      "action": "Run the example. Explain why the function can pass it while still returning 0 on 2 and 2.",
+      "reason": "One successful call establishes one observed answer. Our goal is a function that also handles unfamiliar inputs.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "syntax": "In Laws, add :: Int32 -> Int32 -> Int32 declares two integer inputs and an integer result. add 1 2 calls the function; = 3 compares the answer with 3. law \"|one plus two is three| names the claim. definition contains the true/false expression to check. A law is a named claim, not an automatically established proof.",
+      "editor": "Tests",
+      "harnessNotes": [
+        "This harness has no strategy yet: this step runs the concrete claims in Laws on their written inputs. An empty harness is not an empty test suite. Later, a quantified law will need generated inputs."
+      ],
+      "symbol": "(1, 2) → 3; (2, 2) → ?"
+    },
+    {
+      "id": "second-promise",
+      "title": "Ask for an unfamiliar answer",
+      "story": [
+        "We now ask the same calculator for 2 + 2. Laws has one new law, “two plus two is four”, expecting 4. Solution is unchanged.",
+        "Trace the condition in Solution before running: the pair is not 1 and 2, so the function returns 0. Run both examples. “one plus two is three” should pass and “two plus two is four” should fail. The named failure tells us exactly which promise was broken.",
+        "Try giving this claim another English phrase name, leaving its definition unchanged. Rerun: a clearer name changes how you find the failure, not the answer the function returns. Reset this step restores the supplied names and code."
+      ],
+      "focus": "Tests",
+      "project": "exercises/addition/02",
+      "run": {
+        "mode": "examples",
+        "expect": "failed",
+        "failedTests": [
+          "learn.addition::|two plus two is four| boundary 1"
+        ],
+        "seed": 424242
+      },
+      "action": "Run both examples and find “two plus two is four” in Results. Locate the branch that returned its wrong answer.",
+      "reason": "The new test exposes behavior that the first example never exercised.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "Two named laws produce separate results. Adding “two plus two is four” changes the test suite; it does not change add.",
+      "harnessNotes": [
+        "This harness has no strategy yet: this step runs the concrete claims in Laws on their written inputs. An empty harness is not an empty test suite. Later, a quantified law will need generated inputs."
+      ]
+    },
+    {
+      "id": "second-shortcut",
+      "title": "The calculator memorizes another answer",
+      "story": [
+        "Solution now has another branch: it recognizes 2 and 2 and returns 4. Our two examples stay unchanged.",
+        "Run them. Both pass, but the final branch still returns 0 for unfamiliar pairs. Imagine asking for 2 + 1: it reaches that branch. Adding answers one at a time has not forced the calculator to add.",
+        "Next we will compare two calls whose answers should agree, instead of supplying another answer to memorize."
+      ],
+      "focus": "Solution",
+      "project": "exercises/addition/03",
+      "run": {
+        "mode": "examples",
+        "expect": "passed",
+        "seed": 424242
+      },
+      "action": "Run the unchanged examples. Then explain why passing them has not repaired the final branch.",
+      "reason": "The suite must reject the behavior we care about, rather than merely accumulate successful examples.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "Read each condition in Solution as a choice between branches. The tests cover the two recognized pairs; other pairs take the remaining branch.",
+      "harnessNotes": [
+        "This harness has no strategy yet: this step runs the concrete claims in Laws on their written inputs. An empty harness is not an empty test suite. Later, a quantified law will need generated inputs."
+      ]
+    },
+    {
+      "id": "swap",
+      "title": "Compare a call with its reversed call",
+      "story": [
+        "An example supplies one particular input. A property states a rule for a range of inputs. Property-based testing generates inputs and checks that rule on each one. Here we will compare two calls instead of listing the expected sum for each pair.",
+        "For addition, swapping the two inputs should leave the answer unchanged. Laws names this relationship “swapping the inputs keeps the answer”: it compares add x y with add y x.",
+        "Where do x and y come from? Open Harness. A harness connects a law to a strategy: a recipe for test data. Here numbers chooses integers from -2 through 2. The two use lines feed separate draws into x and y of “swapping the inputs keeps the answer”. Laws supplies the comparison; the harness supplies its inputs.",
+        "Our calculator remembers 1 + 2 but not 2 + 1. Use Run checks with All checks and inspect the sampled failure. A relationship has exposed an answer we never listed as a concrete test."
+      ],
+      "focus": "Tests",
+      "project": "exercises/addition/04",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Use Run checks with All checks. Use the reported inputs to trace both calls to add, and explain why their results differ.",
+      "reason": "This property can reject an implementation that memorizes particular input orders.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "syntax": "for all states the inputs covered by the claim. The harness’s for law reference repeats the same phrase name from Laws, including its \"| and | delimiters. use supplies a strategy for each input. :: introduces its type, where gives bounds and any requests generated values. This recipe samples -2 through 2 even though the law’s stated domain is -10 through 10.",
+      "editor": "Solution",
+      "harnessNotes": [
+        "numbers draws Int32 integers from -2 through 2, including both endpoints. The variable n describes each candidate value inside the strategy; it is not a separate input to add.",
+        "The binding for “swapping the inputs keeps the answer” selects the claim in Laws. use numbers for x and use numbers for y draw the two inputs separately from that recipe. The law permits -10 through 10; this strategy samples a smaller region, so a passing sample cannot establish the whole claim."
+      ]
+    },
+    {
+      "id": "multiply",
+      "title": "Multiplication finds an escape route",
+      "story": [
+        "The new calculator multiplies its two inputs. Predict whether reversing the inputs changes its answer.",
+        "This step runs only the sampled property. Multiplication passes “swapping the inputs keeps the answer” because x times y equals y times x. The addition examples would reject this implementation; they are still in Laws but are not selected by this run.",
+        "A property can be true of the wrong operation. Keep the examples and look for another relationship that distinguishes addition from multiplication.",
+        "The scope caption under Run checks says Sampled properties. In Results, generated trials counts the inputs tried for each property; it is different from the number of named properties. Open Test controls if you want a separate run of the concrete examples."
+      ],
+      "focus": "Solution",
+      "project": "exercises/addition/05",
+      "run": {
+        "mode": "sample",
+        "expect": "passed",
+        "sampled": "passed",
+        "seed": 424242
+      },
+      "action": "Run the sampled property. Explain why its pass is compatible with a wrong answer for 1 + 2.",
+      "reason": "The meaning of a pass depends on the requirement checked and the checks selected.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "“swapping the inputs keeps the answer” compares two results; it never states an expected sum. The Sampled property mode omits the named concrete examples.",
+      "harnessNotes": [
+        "numbers draws Int32 integers from -2 through 2, including both endpoints. The variable n describes each candidate value inside the strategy; it is not a separate input to add.",
+        "The binding for “swapping the inputs keeps the answer” selects the claim in Laws. use numbers for x and use numbers for y draw the two inputs separately from that recipe. The law permits -10 through 10; this strategy samples a smaller region, so a passing sample cannot establish the whole claim."
+      ]
+    },
+    {
+      "id": "repeat",
+      "title": "Add one twice, or add two once",
+      "story": [
+        "For addition, adding one and then one again should agree with adding two once. The new “adding one twice agrees with adding two” law states that relationship. “swapping the inputs keeps the answer” remains.",
+        "Solution still multiplies. Trace the new law with x equal to 2: multiplying by one twice leaves 2, while multiplying by two produces 4. Run the sampled properties and inspect which law fails."
+      ],
+      "focus": "Tests",
+      "project": "exercises/addition/06",
+      "run": {
+        "mode": "sample",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Run the sampled properties. Explain why “adding one twice agrees with adding two” rejects multiplication even though “swapping the inputs keeps the answer” accepts it.",
+      "reason": "Each retained property should rule out a different escape route.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Solution",
+      "syntax": "add 1 (add 1 x) evaluates the inner call first, then passes its result to the outer call. add 2 x is the other path. The harness supplies x; the constants 1 and 2 are written in the law.",
+      "harnessNotes": [
+        "numbers draws Int32 integers from -2 through 2, including both endpoints. The variable n describes each candidate value inside the strategy; it is not a separate input to add.",
+        "The binding for “swapping the inputs keeps the answer” selects the claim in Laws. use numbers for x and use numbers for y draw the two inputs separately from that recipe. The law permits -10 through 10; this strategy samples a smaller region, so a passing sample cannot establish the whole claim.",
+        "The “adding one twice agrees with adding two” binding supplies x from numbers as well. The constants one and two are written in the law; they do not need their own strategies."
+      ]
+    },
+    {
+      "id": "zero",
+      "title": "An always-zero answer passes both",
+      "story": [
+        "The calculator now returns 0 for every input. On each side of “swapping the inputs keeps the answer” the result is 0. On each side of “adding one twice agrees with adding two” it is also 0.",
+        "Run the sampled properties. Both pass. Generating more inputs cannot rescue these particular claims: neither requires the output to retain anything about its input. The concrete addition examples would still fail in a full run.",
+        "We need one more relationship that connects an answer to the input we supplied."
+      ],
+      "focus": "Solution",
+      "project": "exercises/addition/07",
+      "run": {
+        "mode": "sample",
+        "expect": "passed",
+        "sampled": "passed",
+        "seed": 424242
+      },
+      "action": "Run the sampled properties and trace both equalities with an always-zero function. Identify the connection they are missing.",
+      "reason": "Several weak properties can share the same blind spot.",
+      "expect": "The supplied code compiles and the selected checks pass. Read which checks actually ran before interpreting this result.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "editor": "Tests",
+      "syntax": "An equality succeeds whenever its two sides agree, even when both results are wrong for the intended operation.",
+      "harnessNotes": [
+        "numbers draws Int32 integers from -2 through 2, including both endpoints. The variable n describes each candidate value inside the strategy; it is not a separate input to add.",
+        "The binding for “swapping the inputs keeps the answer” selects the claim in Laws. use numbers for x and use numbers for y draw the two inputs separately from that recipe. The law permits -10 through 10; this strategy samples a smaller region, so a passing sample cannot establish the whole claim.",
+        "The “adding one twice agrees with adding two” binding supplies x from numbers as well. The constants one and two are written in the law; they do not need their own strategies."
+      ]
+    },
+    {
+      "id": "repair",
+      "title": "Make adding zero preserve the input",
+      "story": [
+        "Adding zero should leave the other input unchanged. “adding zero keeps the input” now states that connection. Solution still always returns 0.",
+        "Use Run checks with All checks first. A nonzero input contradicts “adding zero keeps the input”; the named examples also reject the constant answer. Then implement addition in Solution and rerun without weakening any checks.",
+        "After the repair, you will have examples and three relationships that reject the shortcuts we tried. These bounded browser checks are evidence for those runs, not a proof of addition for every integer. As your own challenge, add a named example involving a negative input and explain which shortcut it rejects."
+      ],
+      "focus": "Tests",
+      "project": "exercises/addition/08",
+      "run": {
+        "mode": "all",
+        "expect": "failed",
+        "sampled": "failed",
+        "seed": 424242
+      },
+      "action": "Observe the failure, implement addition, then rerun the unchanged suite. Add your own negative-input example.",
+      "reason": "Which shortcut can still pass? Keep asking that question when you choose properties.",
+      "expect": "The supplied code compiles, then the selected checks fail. A compiler error is a different problem; inspect diagnostics if execution did not start.",
+      "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
+      "challenge": true,
+      "syntax": "“adding zero keeps the input” compares add 0 x with x itself. Unlike the earlier relationships, one side preserves an input directly. Load solution supplies a complete repair on request.",
+      "editor": "Solution",
+      "harnessNotes": [
+        "numbers draws Int32 integers from -2 through 2, including both endpoints. The variable n describes each candidate value inside the strategy; it is not a separate input to add.",
+        "The binding for “swapping the inputs keeps the answer” selects the claim in Laws. use numbers for x and use numbers for y draw the two inputs separately from that recipe. The law permits -10 through 10; this strategy samples a smaller region, so a passing sample cannot establish the whole claim.",
+        "The “adding one twice agrees with adding two” binding supplies x from numbers as well. The constants one and two are written in the law; they do not need their own strategies.",
+        "The “adding zero keeps the input” binding also supplies x. Its zero is a constant in Laws. All three bindings choose data; their corresponding laws decide whether each result passes."
+      ]
+    }
+  ],
+  "solutionProject": "exercises/addition/solution",
+  "coverage": {
+    "browserExecution": [
+      "fsharp",
+      "typescript",
+      "javascript"
+    ],
+    "definitionChecking": true,
+    "nativeExecution": "deferred",
+    "apiCollectionCredit": "deferred: this story is not a complete public API collection"
+  },
+  "implementationSyntax": {
+    "fsharp": "In F#, let add (x: int) (y: int) : int = declares two integer inputs and an integer result. Calls use spaces, as in add x y. if … then … else chooses a result.",
+    "typescript": "In TypeScript, add(x: number, y: number): number names typed inputs and a result type. Calls use add(x, y); return supplies the result.",
+    "javascript": "In JavaScript, add(x, y) names two inputs. Calls use add(x, y); return supplies the result. Source type annotations are absent."
+  },
+  "naming": "Use English phrase names for readable claims and descriptive LawSpec helpers. Keep short code names such as add, sort, xs and numbers when they make calls and recipes easier to follow. A phrase starts with \"| and ends with |, without a closing quote. A law label identifies the claim; renaming it does not change what the definition checks. The compiler generates target-appropriate names."
+}

@@ -1,0 +1,19 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.unique
+unique :: List Int32 -> List Int32
+
+law "|repeated readings appear once| is
+  definition:
+    sameItems (unique [2, 2, 3]) [2, 3]
+  end definition
+end law
+
+law "|the summary keeps each recorded temperature once| is
+  definition:
+    for all (xs :: List Int32) =>
+      sameItems (unique xs) (toList (setOf xs))
+    end for all
+  end definition
+end law
+
+end unit
