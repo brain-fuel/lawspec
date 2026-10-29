@@ -10,6 +10,12 @@ decision/haskell/dev/Generate.hs/module/Generate/function/copyDocuments:
 decision/haskell/dev/Generate.hs/module/Generate/function/factFills:
   digest: sha256:3f0806045f83f5e0
   verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/formatRepositoryOutputs:
+  digest: sha256:7cd43447ce2fef0e
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/learnInventory:
+  digest: sha256:1e008a0f310263b0
+  verdict: pending
 decision/haskell/dev/Generate.hs/module/Generate/function/shippedFiles:
   digest: sha256:d43d34deb0372011
   verdict: pending

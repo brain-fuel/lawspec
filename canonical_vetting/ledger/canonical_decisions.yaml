@@ -118,6 +118,9 @@ ledger/DEC-generated-files-not-checked:
 ledger/DEC-generated-javascript:
   digest: sha256:57cb229826c9a2aa
   verdict: pending
+ledger/DEC-google-style-allman:
+  digest: sha256:990cc5e4d605cbe5
+  verdict: pending
 ledger/DEC-groovy-over-java:
   digest: sha256:08c9541b83a0cff1
   verdict: pending
@@ -156,6 +159,66 @@ ledger/DEC-known-discrepancy:
   verdict: pending
 ledger/DEC-law-set-analysis:
   digest: sha256:7b2190bf82b9eded
+  verdict: pending
+ledger/DEC-lawspec-quantifier-layout:
+  digest: sha256:585be81e253c678b
+  verdict: pending
+ledger/DEC-learn:
+  digest: sha256:cc87b0d670b7889a
+  verdict: pending
+ledger/DEC-learn-complete-browser-bindings:
+  digest: sha256:c1ce42131f39e7c8
+  verdict: pending
+ledger/DEC-learn-course-hierarchy:
+  digest: sha256:e473e73f131052d3
+  verdict: pending
+ledger/DEC-learn-course-preview:
+  digest: sha256:35a39926f61e1928
+  verdict: pending
+ledger/DEC-learn-english-names:
+  digest: sha256:bba98733b21a83f2
+  verdict: pending
+ledger/DEC-learn-executable-story:
+  digest: sha256:56ed8de033a2a80b
+  verdict: pending
+ledger/DEC-learn-format-before-run:
+  digest: sha256:4b7e99a9f6ee608a
+  verdict: pending
+ledger/DEC-learn-generated-boundaries:
+  digest: sha256:4d97ad71c15e324f
+  verdict: pending
+ledger/DEC-learn-harness-explanation:
+  digest: sha256:22a94f83ad758b10
+  verdict: pending
+ledger/DEC-learn-novice-results:
+  digest: sha256:345f4be7d5e80d55
+  verdict: pending
+ledger/DEC-learn-one-tutorial:
+  digest: sha256:c3999c3cb1dd771a
+  verdict: pending
+ledger/DEC-learn-regression-progress:
+  digest: sha256:820bdbf54cd0ccfd
+  verdict: pending
+ledger/DEC-learn-run-action:
+  digest: sha256:b6b763fac6ed9d0e
+  verdict: pending
+ledger/DEC-learn-source-selection:
+  digest: sha256:555e7971242a9274
+  verdict: pending
+ledger/DEC-learn-tests-in-lawspec:
+  digest: sha256:e70977763d647f19
+  verdict: pending
+ledger/DEC-learn-theme:
+  digest: sha256:4c4a86790ebab71a
+  verdict: pending
+ledger/DEC-learn-winston-story-revision:
+  digest: sha256:fe458e3b508e45a1
+  verdict: pending
+ledger/DEC-learn-workspace-focus:
+  digest: sha256:60457abe5071617d
+  verdict: pending
+ledger/DEC-learn-workspace-navigation:
+  digest: sha256:b3933bdfd21cab2d
   verdict: pending
 ledger/DEC-local-ci-only:
   digest: sha256:8811b9061f2fe0db

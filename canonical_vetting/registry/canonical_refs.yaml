@@ -58,6 +58,9 @@ registry/REQ-gadts:
 registry/REQ-generic-specialization:
   digest: sha256:e51bc526bd8238e5
   verdict: pending
+registry/REQ-google-style-allman:
+  digest: sha256:22082e63ad6b71dc
+  verdict: pending
 registry/REQ-harness-units:
   digest: sha256:f0e5545392f19cda
   verdict: pending
@@ -78,6 +81,63 @@ registry/REQ-language-gaps:
   verdict: pending
 registry/REQ-law-primitives:
   digest: sha256:175b5534675168fa
+  verdict: pending
+registry/REQ-lawspec-quantifier-layout:
+  digest: sha256:e7ceab3059efd164
+  verdict: pending
+registry/REQ-learn-course-hierarchy:
+  digest: sha256:c09cd2605f6956a8
+  verdict: pending
+registry/REQ-learn-english-names:
+  digest: sha256:a7178e4f3df4bd4b
+  verdict: pending
+registry/REQ-learn-executable-story:
+  digest: sha256:0e0a730df1587a1d
+  verdict: pending
+registry/REQ-learn-format-before-run:
+  digest: sha256:cd0c095772efebb8
+  verdict: pending
+registry/REQ-learn-generated-boundaries:
+  digest: sha256:1588cec3d92f98a2
+  verdict: pending
+registry/REQ-learn-harness-explanation:
+  digest: sha256:502adffeffb1a515
+  verdict: pending
+registry/REQ-learn-local-execution:
+  digest: sha256:c0af83972b320f54
+  verdict: pending
+registry/REQ-learn-novice-results:
+  digest: sha256:cbfddf477d51c088
+  verdict: pending
+registry/REQ-learn-progress-portability:
+  digest: sha256:c18edeb671b03df9
+  verdict: pending
+registry/REQ-learn-regression-progress:
+  digest: sha256:46c0d5cefc0141b7
+  verdict: pending
+registry/REQ-learn-run-action:
+  digest: sha256:6cc92fda1e43b8b3
+  verdict: pending
+registry/REQ-learn-source-selection:
+  digest: sha256:f958897c6e6c9dfe
+  verdict: pending
+registry/REQ-learn-tests-in-lawspec:
+  digest: sha256:fa1ea7804c6432f7
+  verdict: pending
+registry/REQ-learn-theme:
+  digest: sha256:bda91879f53d0b47
+  verdict: pending
+registry/REQ-learn-tutor:
+  digest: sha256:7278e6bc5fbdf94d
+  verdict: pending
+registry/REQ-learn-visible-workspace:
+  digest: sha256:19ae37bfd776c19c
+  verdict: pending
+registry/REQ-learn-winston-story-revision:
+  digest: sha256:4ba4bce92d4de67c
+  verdict: pending
+registry/REQ-learn-workspace-focus:
+  digest: sha256:d46bc8d5c83f6911
   verdict: pending
 registry/REQ-native-binding-requests:
   digest: sha256:da49885cf18cf092

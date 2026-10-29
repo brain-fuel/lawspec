@@ -27,6 +27,8 @@ ignore:
   - src/LawSpec/SwiftSources.hs
   - runtime/dotnet/*/bin/
   - runtime/dotnet/*/obj/
+  - learn/formatter/bin/
+  - learn/formatter/obj/
   - runtime/defaults/
 languages:
   folio:

@@ -1,0 +1,12 @@
+decision/javascript/learn/browser/adapters.mjs/function/adapterSource:
+  digest: sha256:a429e774ee817f37
+  verdict: pending
+decision/javascript/learn/browser/adapters.mjs/function/fsharpAdapter:
+  digest: sha256:66ee3619dd5e480f
+  verdict: pending
+decision/javascript/learn/browser/adapters.mjs/function/harnessModule:
+  digest: sha256:763b17e9af0512ae
+  verdict: pending
+decision/javascript/learn/browser/adapters.mjs/function/implementationBinding:
+  digest: sha256:6af532c7d6f56957
+  verdict: pending

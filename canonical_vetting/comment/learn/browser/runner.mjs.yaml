@@ -1,0 +1,9 @@
+decision/javascript/learn/browser/runner.mjs/function/runnerEntry:
+  digest: sha256:6b36263f761edff7
+  verdict: pending
+decision/javascript/learn/browser/runner.mjs/variable/nodeTestSource:
+  digest: sha256:dd64b15e6056de6c
+  verdict: pending
+decision/javascript/learn/browser/runner.mjs/variable/supportSource:
+  digest: sha256:38adfb2160ce9858
+  verdict: pending
