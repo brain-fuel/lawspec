@@ -768,12 +768,16 @@ async function main() {
     output(VERSION);
     return;
   }
-  if (verb === "learn") {
-    if (positional.length || Object.keys(options).some(key => key !== "port")) throw new Error("learn supports --port only");
-    const { serveLearn } = await import("../learn.mjs");
-    return serveLearn(options.port ?? "8384");
+  if (verb === 'learn')
+  {
+    if (positional.length || Object.keys(options).some(key => key !== 'port'))
+    {
+      throw new Error('learn supports --port only');
+    }
+    const {serveLearn} = await import('../learn.mjs');
+    return serveLearn(options.port ?? '8384');
   }
-  if (options.port) throw new Error("--port applies to learn");
+  if (options.port) throw new Error('--port applies to learn');
   if (options.compile && verb !== "fmt") throw new Error("--compile applies to fmt");
   if (verb !== "fmt" && positional.length > (["explain", "evidence", "update"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
