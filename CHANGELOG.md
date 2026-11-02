@@ -33,6 +33,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Python's 80-column output and Rust's Allman output remain stable for long
   calls, enum variants, bound handlers, match guards and grouped imports.
   Recorded adapter stubs reflect the same interfaces in the selected style.
+- Rust native bindings import only emitted conversion helpers: opaque handles
+  convert inline, and mixed handle/data bindings retain their helper indices.
 - C# crypto-vector fixtures and shared Erlang model support follow their pinned
   formatter layouts.
 - Quantified record headers retain the same layout after record braces expand;

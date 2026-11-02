@@ -38,7 +38,16 @@ findBinding (_,bindings) name = find ((== C.Id name) . C.dataId . resolvedDeclar
 
 -- | Import exactly the checked boundary helpers, never a wildcard module.
 conversionNames :: ResolvedBindings -> [String]
-conversionNames representations = sortOn id [helper outward index | (index, _) <- zip [0 :: Int ..] (resolvedTypes representations), outward <- [False, True]]
+conversionNames representations = sortOn id
+  [ helper outward index
+  | (index, _) <- conversionBindings numbered
+  , outward <- [False, True] ]
+  where numbered = zip [0 :: Int ..] (resolvedTypes representations)
+
+-- | Imports and exports share this set; handle conversions stay inline.
+-- ref:DEC-native-bindings-typed-identity
+conversionBindings :: [(Int,ResolvedTypeBinding)] -> [(Int,ResolvedTypeBinding)]
+conversionBindings = filter (not . C.dataHandle . resolvedDeclaration . snd)
 
 helper :: Bool -> Int -> String
 helper outward index = (if outward then "_lawspec_to_native_" else "_lawspec_from_native_") ++ show index
@@ -121,7 +130,7 @@ emitConversions :: [C.DataDeclaration] -> BindingPlan -> Either String D.Doc
 emitConversions declarations plan = do
   let env@(_,allBindings) = environment declarations plan
       -- A handle needs no helpers: conversions wrap or open it in place.
-      bindings = [b | b@(_,binding) <- allBindings, not (C.dataHandle (resolvedDeclaration binding))]
+      bindings = conversionBindings allBindings
   definitions <- forM bindings $ \(index,binding) -> do
     let declaration = resolvedDeclaration binding
         parameters = [(identity,("_T" ++ show i,"_N" ++ show i,"_convert" ++ show i)) |

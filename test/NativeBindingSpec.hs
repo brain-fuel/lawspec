@@ -1,14 +1,17 @@
 -- | Resolution of native type and function bindings.
 module NativeBindingSpec (test_nativeBindingsResolveToOneUnambiguousIdentity) where
 
+import Control.Monad (forM_)
 import Test.Hspec
 import Data.Either (isLeft)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, sort)
 import qualified LawSpec.HaskellData as Haskell
 import qualified LawSpec.Code.Doc as Doc
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Frontend (compileCore,compileCoreCanonical)
+import qualified LawSpec.NativeRequest as Request
+import qualified LawSpec.RustNativeBinding as Rust
 import LawSpec.NativeBinding
 
 source :: String
@@ -59,6 +62,38 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
             output `shouldSatisfy` isInfixOf "Domain.unit = field1"
             output `shouldSatisfy` isInfixOf "import qualified Domain"
         mapped ["Domain.major"] `shouldSatisfy` isLeft
+  it "imports only emitted Rust converters and preserves mixed handle indices" $ do
+    let input = unlines
+          [ "unit handles"
+          , "handle Shelf"
+          , "type Count is a record { value :: Int32 } end type"
+          , "end unit" ]
+        shelf = TypeBinding (C.Id "handles::type::Shelf") (ref "Shelf")
+          [] Nothing Nothing
+        count = TypeBinding (C.Id "handles::type::Count") (ref "Count")
+          [ConstructorBinding "Count" (ref "Count") RecordConstructor
+            [FieldBinding "value" "value"]] Nothing Nothing
+        names index = ["_lawspec_from_native_" ++ show index,
+          "_lawspec_to_native_" ++ show index]
+        cases = [([shelf], []), ([shelf,count], names (1 :: Int)),
+          ([count,shelf], names (0 :: Int))]
+    case compileCore 64 defaultGeneration [Source "handles" input] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> forM_ cases $ \(bindings, expected) -> do
+        let declarations = C.programDataDeclarations program
+        case resolveBindings declarations (Bindings bindings []) of
+          Left message -> expectationFailure message
+          Right bound -> do
+            Rust.conversionNames bound `shouldBe` expected
+            case Rust.emitConversions declarations
+              Request.emptyBindingPlan { Request.bindingRepresentations = bound } of
+              Left message -> expectationFailure message
+              Right output -> do
+                let exports =
+                      [ takeWhile (/= '(') name
+                      | line <- lines (Doc.render (Doc.Pretty 100) output)
+                      , "pub" : "fn" : name : _ <- [words line] ]
+                sort exports `shouldBe` expected
   it "resolves codec hooks in place of constructor mappings" $ do
     let hook = CodecBinding (ref "decodePrice") (ref "encodePrice")
         binding = money {boundConstructors = [], boundCodec = Just hook}
