@@ -164,6 +164,15 @@ the JavaScript harness, separately from native .NET/FsCheck evidence. The course
 sends no source to a formatting service. See `learn/REVIEW.md#format-before-run`
 for the browser checks and measured loading costs.
 
+Browser dependencies publish into an empty staging directory. This prevents old
+content-hashed formatter assemblies from accumulating in later packages. Release
+builds of the small C# formatter host omit debug symbols and SourceLink metadata,
+and omit the Git revision from their informational version. F# diagnostic file
+names and ranges come from the F# compiler service and remain available.
+Bundling uses the repository root explicitly, so invocation from the root or
+`learn/` produces the same paths and bytes. These packaging choices change
+neither the pinned formatter nor the learner's execution evidence.
+
 Generated scaffolds are readable too: `init` expands Maven POMs and Gradle
 blocks, and writes indented JSON.
 
