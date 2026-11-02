@@ -174,32 +174,82 @@ step(#{reference := Ref, 'when' := When, unit := Unit}, Context, Args, State) ->
     end.
 
 model_bound(N, _) when is_integer(N) -> N;
-model_bound([<<"index">>, I], Indices) -> lists:nth(I + 1, Indices);
+model_bound([<<"index">>, I], Indices) ->
+    lists:nth(I + 1, Indices);
 model_bound([Op, A, B], Indices) ->
-    X = model_bound(A, Indices), Y = model_bound(B, Indices),
-    case Op of <<"+">> -> X + Y; <<"-">> -> X - Y; <<"*">> -> X * Y end.
+    X = model_bound(A, Indices),
+    Y = model_bound(B, Indices),
+    case Op of
+        <<"+">> -> X + Y;
+        <<"-">> -> X - Y;
+        <<"*">> -> X * Y
+    end.
 model_base([<<"dependent">>, Base | _]) -> Base;
 model_base(D) -> D.
 model_argument([<<"dependent">>, [<<"int">>, Name, Lo, Hi] | Conditions], Indices) ->
-    {L, H} = lists:foldl(fun([Op, E], {Low, High}) ->
-        N = model_bound(E, Indices),
-        Min = N + case Op of <<">">> -> 1; _ -> 0 end,
-        Max = N - case Op of <<"<">> -> 1; _ -> 0 end,
-        NextLow = case lists:member(Op, [<<">">>, <<">=">>, <<"==">>]) of true -> case Low of none -> Min; _ -> max(Low, Min) end; false -> Low end,
-        NextHigh = case lists:member(Op, [<<"<">>, <<"<=">>, <<"==">>]) of true -> case High of none -> Max; _ -> min(High, Max) end; false -> High end,
-        {NextLow, NextHigh}
-    end, {Lo, Hi}, Conditions),
+    {L, H} = lists:foldl(
+        fun([Op, E], {Low, High}) ->
+            N = model_bound(E, Indices),
+            Min =
+                N +
+                    case Op of
+                        <<">">> -> 1;
+                        _ -> 0
+                    end,
+            Max =
+                N -
+                    case Op of
+                        <<"<">> -> 1;
+                        _ -> 0
+                    end,
+            NextLow =
+                case lists:member(Op, [<<">">>, <<">=">>, <<"==">>]) of
+                    true ->
+                        case Low of
+                            none -> Min;
+                            _ -> max(Low, Min)
+                        end;
+                    false ->
+                        Low
+                end,
+            NextHigh =
+                case lists:member(Op, [<<"<">>, <<"<=">>, <<"==">>]) of
+                    true ->
+                        case High of
+                            none -> Max;
+                            _ -> min(High, Max)
+                        end;
+                    false ->
+                        High
+                end,
+            {NextLow, NextHigh}
+        end,
+        {Lo, Hi},
+        Conditions
+    ),
     [<<"int">>, Name, L, H];
-model_argument(D, _) -> D.
-model_arguments(Command, Indices) -> [model_argument(D, Indices) || D <- maps:get(arguments, Command)].
-empty_arguments(Ds) -> lists:any(fun
-    ([<<"int">>, _, Lo, Hi]) when is_integer(Lo), is_integer(Hi) -> Lo > Hi;
-    (_) -> false
-end, Ds).
-valid_arguments(Command, Indices, Args) -> lists:all(fun
-    ({[<<"int">>, _, Lo, Hi], N}) -> (Lo =:= none orelse N >= Lo) andalso (Hi =:= none orelse N =< Hi);
-    (_) -> true
-end, lists:zip(model_arguments(Command, Indices), Args)).
+model_argument(D, _) ->
+    D.
+model_arguments(Command, Indices) ->
+    [model_argument(D, Indices) || D <- maps:get(arguments, Command)].
+empty_arguments(Ds) ->
+    lists:any(
+        fun
+            ([<<"int">>, _, Lo, Hi]) when is_integer(Lo), is_integer(Hi) -> Lo > Hi;
+            (_) -> false
+        end,
+        Ds
+    ).
+valid_arguments(Command, Indices, Args) ->
+    lists:all(
+        fun
+            ({[<<"int">>, _, Lo, Hi], N}) ->
+                (Lo =:= none orelse N >= Lo) andalso (Hi =:= none orelse N =< Hi);
+            (_) ->
+                true
+        end,
+        lists:zip(model_arguments(Command, Indices), Args)
+    ).
 
 simulate(Model, {StartArgs, Steps}) ->
     with_context(Model, StartArgs, fun(Context) ->
@@ -264,7 +314,9 @@ generate_steps(_, _, Random, 0, _, _, _, _, Steps) ->
 generate_steps(Model, Context, Random, Remaining, Size, Crashes, Indices, State, Steps) ->
     Allowed = [
         I - 1
-     || {I, C} <- lists:enumerate(tuple_to_list(maps:get(commands, Model))), admits(C, Indices), not empty_arguments(model_arguments(C, Indices))
+     || {I, C} <- lists:enumerate(tuple_to_list(maps:get(commands, Model))),
+        admits(C, Indices),
+        not empty_arguments(model_arguments(C, Indices))
     ],
     case Allowed of
         [] ->
@@ -289,11 +341,36 @@ generate_steps(Model, Context, Random, Remaining, Size, Crashes, Indices, State,
             {Args, R3} = arguments(Model, model_arguments(Command, Indices), R2, Size),
             case step(Command, Context, Args, State) of
                 invalid ->
-                    Dependent = lists:any(fun([<<"dependent">> | _]) -> true; (_) -> false end, maps:get(arguments, Command)),
-                    AllowedNow = case maps:get('when', Command, none) of none -> true; Guard -> callback(Guard, Context, [State]) end,
+                    Dependent = lists:any(
+                        fun
+                            ([<<"dependent">> | _]) -> true;
+                            (_) -> false
+                        end,
+                        maps:get(arguments, Command)
+                    ),
+                    AllowedNow =
+                        case maps:get('when', Command, none) of
+                            none -> true;
+                            Guard -> callback(Guard, Context, [State])
+                        end,
                     case Dependent andalso AllowedNow of
-                        true -> erlang:error({incomplete_model_generation, dependent_arguments_rejected, attempts, 1});
-                        false -> generate_steps(Model, Context, R3, Remaining - 1, Size, Crashes, Indices, State, Steps)
+                        true ->
+                            erlang:error(
+                                {incomplete_model_generation, dependent_arguments_rejected,
+                                    attempts, 1}
+                            );
+                        false ->
+                            generate_steps(
+                                Model,
+                                Context,
+                                R3,
+                                Remaining - 1,
+                                Size,
+                                Crashes,
+                                Indices,
+                                State,
+                                Steps
+                            )
                     end;
                 {ok, Next, _} ->
                     generate_steps(

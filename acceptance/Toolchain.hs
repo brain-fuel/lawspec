@@ -295,8 +295,12 @@ xmlReports dir = do
   concat <$> mapM (readFile' . (dir </>)) names
 
 -- | Stop at the first counterexample: a mutant only has to fail once.
+-- Gradle must recompile mutated adapters and execute their tests, rather than
+-- returning UP-TO-DATE reports from the baseline. ref:DEC-acceptance-with-mutants
 mutantArguments :: String -> [String] -> [String]
 mutantArguments "python" args = args ++ ["-x"]
+mutantArguments target args
+  | target `elem` ["kotlin", "groovy"] = args ++ ["--rerun-tasks"]
 mutantArguments _ args = args
 
 -- | A mutant must fail its laws, not the build. These markers identify build and
