@@ -4701,36 +4701,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/formatting.md:130: Rust design review",
+      "id": "reference:docs/reference/formatting.md:102: Readable output",
       "kind": "reference",
-      "name": "docs/reference/formatting.md:130: Rust design review",
+      "name": "docs/reference/formatting.md:102: Readable output",
       "source": "docs/reference/formatting.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/formatting.md:151: Format before running a lesson",
+      "id": "reference:docs/reference/formatting.md:134: Rust design review",
       "kind": "reference",
-      "name": "docs/reference/formatting.md:151: Format before running a lesson",
+      "name": "docs/reference/formatting.md:134: Rust design review",
       "source": "docs/reference/formatting.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/formatting.md:174: Compact output",
+      "id": "reference:docs/reference/formatting.md:155: Format before running a lesson",
       "kind": "reference",
-      "name": "docs/reference/formatting.md:174: Compact output",
+      "name": "docs/reference/formatting.md:155: Format before running a lesson",
       "source": "docs/reference/formatting.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/formatting.md:189: Placement",
+      "id": "reference:docs/reference/formatting.md:187: Compact output",
       "kind": "reference",
-      "name": "docs/reference/formatting.md:189: Placement",
+      "name": "docs/reference/formatting.md:187: Compact output",
+      "source": "docs/reference/formatting.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/formatting.md:202: Placement",
+      "kind": "reference",
+      "name": "docs/reference/formatting.md:202: Placement",
       "source": "docs/reference/formatting.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4746,18 +4755,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/formatting.md:86: Source highlighting",
+      "id": "reference:docs/reference/formatting.md:90: Source highlighting",
       "kind": "reference",
-      "name": "docs/reference/formatting.md:86: Source highlighting",
-      "source": "docs/reference/formatting.md",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "reference:docs/reference/formatting.md:98: Readable output",
-      "kind": "reference",
-      "name": "docs/reference/formatting.md:98: Readable output",
+      "name": "docs/reference/formatting.md:90: Source highlighting",
       "source": "docs/reference/formatting.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
