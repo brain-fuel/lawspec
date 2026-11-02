@@ -8,6 +8,7 @@ import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
+import Data.Char (isSpace)
 import Data.List (isInfixOf, isSuffixOf)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -138,7 +139,8 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
             diagnostics result `shouldBe` []
             case library of
               Nothing -> generated `shouldSatisfy` isInfixOf (root ++ "/lawspec_runtime.rs")
-              Just name -> generated `shouldSatisfy` isInfixOf ("use " ++ name ++ "::lawspec_runtime;")
+              Just name -> filter (not . isSpace) generated `shouldSatisfy`
+                isInfixOf ("use" ++ name ++ "::{lawspec_runtime,rust_exampleasadapter};")
             generated `shouldSatisfy` isInfixOf "support/lawspec_strategies.rs"
 
     it "rejects generator module names that collide with mounted network support" $ do
@@ -221,8 +223,8 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
       text (field "ownership" adapter) `shouldBe` "generated"
       content adapter `shouldNotSatisfy` isInfixOf "todo!"
       let tests = content (fileWhere ("_lawspec.rs" `isSuffixOf`) result)
-      tests `shouldSatisfy` isInfixOf "use lawspec_example::lawspec_runtime;"
-      tests `shouldSatisfy` isInfixOf "use lawspec_example::example_payments as adapter;"
+      filter (not . isSpace) tests `shouldSatisfy` isInfixOf
+        "uselawspec_example::{example_paymentsasadapter,lawspec_data,lawspec_runtime,lawspec_schema};"
 
   describe "generator scaffolds" $ do
     let stub = source "stub.lawspec" "unit stub\nend unit\n"

@@ -4,6 +4,7 @@ module DistributionSpec (test_distributionIsSecureByDefaultAndContentAddressed) 
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LC
 import Data.Aeson (eitherDecode)
+import Data.Char (isSpace)
 import Data.Either (isLeft)
 import LawSpec.Common (Artifact(..))
 import LawSpec.NativeRequest (NativeRequest, networkArtifacts)
@@ -119,7 +120,8 @@ test_distributionIsSecureByDefaultAndContentAddressed = describe "distribution" 
         length (filter (isInfixOf "lawspec_network::install();") (lines body)) `shouldSatisfy` (>= 2)
         case library of
           Nothing -> body `shouldSatisfy` isInfixOf "../src/lawspec/network.rs"
-          Just name -> body `shouldSatisfy` isInfixOf ("use " ++ name ++ "::lawspec_network;")
+          Just name -> filter (not . isSpace) body `shouldSatisfy`
+            isInfixOf ("use" ++ name ++ "::{app_startupasadapter,lawspec_network,lawspec_runtime};")
     it "retains structured Haskell network startup when native bindings regenerate a spec" $ do
       let source = unlines
             [ "unit app.startup", "import lawspec.network", "opaque :: Bool -> Bool"
