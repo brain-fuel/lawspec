@@ -117,16 +117,25 @@ else
       /\/\*@\s*([\w-]+)\s*@\*\/|@@[^@\n]+@@/g,
       original =>
       {
-        const token =
-          'LAWSPEC_TEMPLATE_HOLE_' +
-          String(holes.length).padStart(8, '0') +
-          '_';
+        // Keep a hole's width so protection does not introduce line breaks.
+        let candidate = holes.length;
+        let token;
+        do
+        {
+          token = 'H' + String(candidate++).padStart(original.length - 1, '0');
+        } while (
+          source.includes(token) ||
+          holes.some(([used]) => used === token)
+        );
         holes.push([token, original]);
         return token;
       },
     );
     let formatted = await formatContent(file, protectedSource);
-    for (const [token, original] of holes)
+    // Restore longer tokens first because a shorter identifier can prefix one.
+    for (const [token, original] of holes.sort(
+      (a, b) => b[0].length - a[0].length,
+    ))
     {
       formatted = formatted.replaceAll(token, original);
     }

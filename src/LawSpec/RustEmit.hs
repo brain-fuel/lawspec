@@ -939,7 +939,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                 else if null (turn k) then withStack turned else onStack "ls::on_stack" turned
             testsOf = case (harnessSkip h, harnessKnownDiscrepancy h) of
               (Just reason, _) -> [Doc.text "#[test]" <> Doc.hardline <> Doc.text ("#[ignore = " ++ q (shown ++ ": " ++ reason) ++ "]") <> Doc.hardline <>
-                Doc.text "fn skipped()" <> Doc.hardline <> Doc.text "{}"]
+                Doc.text "fn skipped() {}"]
               (_, Just reason) -> [Doc.text "#[test]" <> Doc.hardline <> function "known_discrepancy" [] "ls::Result<()>"
                 (closureCall "lawspec_harness::known_discrepancy" [string (unitName ++ "::" ++ label), string (moduleName ++ "::known_discrepancy"), string reason]
                   (stackClosure whole))]
@@ -1011,7 +1011,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               [crateUse library "lawspec_remote" "lawspec_remote" | hasRemote] ++
               [crateUse library "lawspec_mailboxes" "lawspec_mailboxes" | hasMailboxes] ++
               [crateUse library "lawspec_abilities" "lawspec_abilities" | hasAbilities] ++
-              [(("lawspec_native",("1","")), nativeImport library) | hasNativeTypes] ++
+              [(("lawspec_native",("1","use " ++ library ++ "::lawspec_native")), nativeImport library) | hasNativeTypes] ++
               [crateUse library "lawspec_schema" "lawspec_schema" | hasSchema] ++
               [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
               [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
@@ -1033,7 +1033,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               let members = sortOn id [item | ((_,(kind,item)),_) <- imports, kind == "1-crate"]
                   grouped = importGroup library members
               in [entry | entry@((_,(kind,_)),_) <- imports, kind /= "1-crate"] ++
-                [(("crate_members",("1-crate","")),grouped) | not (null members)]
+                [(("crate_members",("1","use " ++ library ++ "::{")),grouped) | not (null members)]
           ordered = sortOn (snd . fst) (presentationImports ++ generatorImports) ++ runtimeUses
           testDoc = statements ([Doc.text ("// " ++ generatedHeader (unitSourceFile unit))] ++ map snd ordered) <>
             (if mentions "ValueStrategy" content then blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") else mempty) <>
@@ -1082,7 +1082,7 @@ importGroup owner members = case sortOn id members of
   items -> Doc.bestFit
     [ Doc.text ("use " ++ owner ++ "::{" ++ intercalate ", " items ++ "};")
     , Doc.text ("use " ++ owner ++ "::{") <>
-        Doc.nest 4 (Doc.hardline <> Doc.flow [Doc.text (item ++ ",") | item <- items]) <>
+        Doc.nest 4 (Doc.hardline <> Doc.narrow 1 (Doc.flow [Doc.text (item ++ ",") | item <- items])) <>
         Doc.hardline <> Doc.text "};"
     ]
 

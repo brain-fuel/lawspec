@@ -41,8 +41,7 @@ export function registerClock()
 {
   ls.registerClockAbility(
     handler => handler.now().value,
-    (handler, micros) =>
-      handler.sleep(new @@Duration@@(micros)),
+    (handler, micros) => handler.sleep(new @@Duration@@(micros)),
     handler => handler instanceof ClockHandler,
   );
 }

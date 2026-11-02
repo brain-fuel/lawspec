@@ -192,9 +192,8 @@ export class SignatureHandler
   }
   sign(value0, value1)
   {
-    return new @@SignatureBytes@@(
-      mlDsa65Sign(value0.value, value1),
-    );
+    const signature = mlDsa65Sign(value0.value, value1);
+    return new @@SignatureBytes@@(signature);
   }
   verify(value0, value1, value2)
   {
@@ -222,9 +221,8 @@ export class SlhDsaSignatureHandler
   }
   sign(value0, value1)
   {
-    return new @@SignatureBytes@@(
-      slhDsaSign(value0.value, value1),
-    );
+    const signature = slhDsaSign(value0.value, value1);
+    return new @@SignatureBytes@@(signature);
   }
   verify(value0, value1, value2)
   {

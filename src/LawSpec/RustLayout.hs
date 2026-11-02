@@ -394,6 +394,7 @@ expr e = case e of
   -- characters that fits by width puts its brace on the next line.
   -- (its brace goes on the next line when a scrutinee on one line leaves
   -- no room for it)
+  Match scrutinee [] -> D.text "match " <> expr scrutinee <> D.text " {}"
   Match scrutinee arms -> D.text "match " <> expr scrutinee <> D.hardline <> armsDoc arms
   -- A closure's body that is not a block, match or struct literal is on
   -- the closure's line or in a block of its own (rustfmt vetoes breaking
@@ -463,6 +464,7 @@ arguments callee cap open close limit args =
     -- (a macro's single match overflows however its head breaks)
     macroMatch = case (args, lastArg) of
       ([_], Match {}) -> take 1 (reverse callee) == "!"
+      ([_], If {}) -> take 1 (reverse callee) == "!"
       _ -> False
     overflowLast = (overflowable (length args) lastArg || macroMatch) && all (isJust . oneLine) initial &&
       (isNothing cap || not (isInfix lastArg)) && (width callee < 4 || not (brokenChain lastArg || forcedChain lastArg))
@@ -626,7 +628,10 @@ chainWith :: [Either Expr Link] -> [Link] -> Expr -> D.Doc
 chainWith = chainWithOf True
 
 chainWithOf :: Bool -> [Either Expr Link] -> [Link] -> Expr -> D.Doc
-chainWithOf oneLineAllowed root' links' e = case (if oneLineAllowed then chainOneLine else Nothing) of
+chainWithOf = chainWithRoot expr
+
+chainWithRoot :: (Expr -> D.Doc) -> Bool -> [Either Expr Link] -> [Link] -> Expr -> D.Doc
+chainWithRoot rootExpression oneLineAllowed root' links' e = case (if oneLineAllowed then chainOneLine else Nothing) of
   Just t -> oneOf [D.text t, broken]
   _ -> broken
   where
@@ -637,7 +642,7 @@ chainWithOf oneLineAllowed root' links' e = case (if oneLineAllowed then chainOn
     -- (each ? is a child of the chain too)
     children = length links' + length [() | LinkCall _ _ True <- links'] + length [() | Left (Try _) <- root'] +
       length [() | Right _ <- root']
-    rootDoc = mconcat (map (either expr linkDoc) root')
+    rootDoc = mconcat (map (either rootExpression linkDoc) root')
     -- After a block-like root (if, match, a block), links do not indent.
     -- (so does a root that cannot be on one line: its last line closes it)
     blockRoot = case root' of
@@ -653,7 +658,7 @@ chainWithOf oneLineAllowed root' links' e = case (if oneLineAllowed then chainOn
     -- A call root that breaks closes on its own line, and the links follow
     -- it unindented.
     eachLine = case root' of
-      [Left r] | callRoot r, not blockRoot, Just t <- oneLine r -> oneOf [D.text t <> D.nest 4 linkLines, expr r <> linkLines]
+      [Left r] | callRoot r, not blockRoot, Just t <- oneLine r -> oneOf [D.text t <> D.nest 4 linkLines, rootExpression r <> linkLines]
       _ -> rootDoc <> (if blockRoot then id else D.nest 4) linkLines
     prefixText = concat <$> mapM (either oneLine flatLink) (root' ++ map Right (init links'))
     -- rustfmt's choice for the last call (format_last_child): on the
@@ -774,7 +779,9 @@ stmt s = case s of
 letDoc :: String -> Expr -> D.Doc
 letDoc binding e =
     let head' = D.text (binding ++ " =")
-        value = expr e <> D.text ";"
+        value = (case e of
+          If c a b -> ifDocOf 0 c a b
+          _ -> expr e) <> D.text ";"
         sameValue = D.text " " <> value
         -- (an if moved to the next line leaves room for the semicolon)
         nextValue = D.nest 4 (D.hardline <> (case e of
@@ -784,34 +791,55 @@ letDoc binding e =
         -- next line when its scrutinee is on one line there)
         matched = case e of
           Match {} -> True
-          If {} -> True
+          If c _ _ -> isJust (oneLine e) || blockCondition c
           _ -> False
     in if shallow e || matched
       then head' <> D.prefer (D.NextLineValue (isChain e) (if triedChain e then 2 else 0)) sameValue nextValue sameValue nextValue
       else head' <> sameValue
+  where
+    blockCondition value = case value of
+      If {} -> True
+      Match {} -> True
+      Block {} -> True
+      Try a -> blockCondition a
+      Method a _ _ -> blockCondition a
+      Field a _ -> blockCondition a
+      Prefix _ a -> blockCondition a
+      Paren a -> blockCondition a
+      _ -> False
 
 ifDoc :: Expr -> Expr -> Maybe Expr -> D.Doc
-ifDoc = ifDocOf False
+ifDoc = ifDocOf 2
 
--- | An if, or (elseIf) an else's if: rustfmt fits that one's condition as
--- if it started the line, then puts the brace on the next line when the
--- else's line has no room for it.
-ifDocOf :: Bool -> Expr -> Expr -> Maybe Expr -> D.Doc
-ifDocOf _elseIf c a b = case (flat (If c a b), b) of
+-- | Conditions reserve the brace's width, except a let's conditional value.
+ifDocOf :: Int -> Expr -> Expr -> Maybe Expr -> D.Doc
+ifDocOf reserved c a b = D.fullWidth $ case (flat (If c a b), b) of
   (Just t, Just _) | width t <= 50 -> oneOf [D.text t, broken]
   _ -> broken
   where
     -- A condition that breaks puts the block's brace on a line of its own.
     -- (A condition whose last line only closes brackets keeps it there.)
     closer = D.hardline <> D.text "{"
-    opened = D.text "if " <> expr c <> closer
+    opened = D.narrow reserved (D.text "if " <> conditionDoc c) <> closer
     thenBlock = case asBlock a of
       Block ss t -> D.nest 4 (D.hardline <> stmts ss t) <> D.hardline <> D.text "}"
       _ -> D.text "}"
     broken = opened <> thenBlock <> case b of
       Nothing -> mempty
-      Just (If c' a' b') -> D.hardline <> D.text "else " <> ifDocOf True c' a' b'
+      Just (If c' a' b') -> D.hardline <> D.text "else " <> ifDocOf 2 c' a' b'
       Just other -> D.hardline <> D.text "else" <> D.hardline <> expr (asBlock other)
+
+-- | A conditional receiver uses the condition's budget, without reserving
+-- the enclosing condition's brace width a second time.
+conditionDoc :: Expr -> D.Doc
+conditionDoc value = case value of
+  If c a b -> ifDocOf 0 c a b
+  _ | isChain value -> let (root, links) = unchain value in
+    chainWithRoot conditionDoc True root links value
+  Try a -> conditionDoc a <> D.text "?"
+  Prefix op a -> D.text op <> conditionDoc a
+  Paren a -> D.text "(" <> conditionDoc a <> D.text ")"
+  _ -> expr value
 
 -- | Struct literal fields: on one line within 18 columns, else one a line.
 structDoc :: String -> [(String, Expr)] -> D.Doc

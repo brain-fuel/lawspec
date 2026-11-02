@@ -113,7 +113,8 @@ protocol datas sessions wire session = do
     , "" ] ++ first ++ [""] ++ second ++
     [ ""
     , "    @staticmethod"
-    , "    def open() -> tuple[" ++ firstStart ++ ", " ++ secondStart ++ "]:"
+    , pyLine 4 (D.text "def open() -> " <>
+        D.delimitTrailing 4 "tuple[" "]" (map D.text [firstStart, secondStart]) <> D.text ":")
     , "        \"\"\"Makes a channel; returns its first end and its second end.\"\"\""
     , "        channel = ls.Channel()"
     , pyLine 8 (D.text "first = " <> E.call firstStart [D.text "channel", D.text "0"])
@@ -130,7 +131,7 @@ protocol datas sessions wire session = do
            , "    def _wire():"
            , "        \"\"\"Each step's wire descriptor and conversion, from the first end.\"\"\""
            , pyLine 8 (D.text "return " <> D.delimitTrailing 4 "(" ")"
-               [ E.array [D.text ("(" ++ (if s then "True" else "False") ++ ", _d(" ++ literalFor "python" d ++ "))") | (s, d, _) <- steps]
+               [ E.array [E.tuple [D.text (if s then "True" else "False"), E.call "_d" [E.quoted d]] | (s, d, _) <- steps]
                , E.array (map (D.text . part) steps) ])
            , ""
            , "    @staticmethod"
@@ -139,7 +140,8 @@ protocol datas sessions wire session = do
            , "        dials at <node address>/name. An end sent over it to another node"
            , "        moves there (a local end stays and is relayed by this node).\"\"\""
            , "        steps, parts = " ++ name ++ "._wire()"
-           , "        channel = ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA)"
+           , pyLine 8 (D.text "channel = " <> E.call "ls.NativeChannel"
+               [E.call "node.listen" (map D.text ["name", "steps", "_TYPES"]), D.text "parts", D.text "_SCHEMA"])
            , pyLine 8 (D.text "return " <> E.call firstStart [D.text "channel", D.text "0"])
            , ""
            , "    @staticmethod"
@@ -147,7 +149,8 @@ protocol datas sessions wire session = do
            , "        \"\"\"The second end of the channel listening at address on another node.\"\"\""
            , "        steps, parts = " ++ name ++ "._wire()"
            , "        reverse = [(not s, d) for s, d in steps]"
-           , "        channel = ls.NativeChannel(node.dial(address, reverse, _TYPES), parts, _SCHEMA)"
+           , pyLine 8 (D.text "channel = " <> E.call "ls.NativeChannel"
+               [E.call "node.dial" (map D.text ["address", "reverse", "_TYPES"]), D.text "parts", D.text "_SCHEMA"])
            , pyLine 8 (D.text "return " <> E.call secondStart [D.text "channel", D.text "1"]) ]
   where
     reference ty = if requiresSchema datas ty then either (const "None") (D.render (D.Pretty 1000)) (pythonTypeReferenceDoc ty) else "None"

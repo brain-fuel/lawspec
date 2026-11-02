@@ -119,7 +119,8 @@ python bits datas boxes = do
       , "    \"\"\"Mailbox " ++ C.mailboxName b ++ ": messages of " ++ native ++ " from any number of senders,"
       , "    taken by one receiver.\"\"\""
       , ""
-      , "    def __init__(self, mailbox: ls.Mailbox | None = None, logical: bool = False):"
+      , pyLine 4 (D.text "def __init__" <> params
+          ["self", "mailbox: ls.Mailbox | None = None", "logical: bool = False"] <> D.text ":")
       , "        self._mailbox = ls.Mailbox() if mailbox is None else mailbox"
       , "        self._logical = logical"
       , ""
@@ -486,7 +487,7 @@ rust bits datas boxes = do
     self0 = L.Field (L.atom "self") "0"
     lines' = D.joinWith D.hardline . map D.text
     comment ls' item = mconcat [D.text ("/// " ++ l) <> D.hardline | l <- ls'] <> item
-    impl head' items = D.text (head' ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) items)
+    impl head' items = D.text head' <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) items)
     struct b native wire = D.joinWith D.hardline
       ([ lines'
           ([ "/// Mailbox " ++ C.mailboxName b ++ ": messages of " ++ native ++ " from any number of"
@@ -495,13 +496,16 @@ rust bits datas boxes = do
            , "pub struct " ++ name ++ "(" ++ inner ++ ");"
            , ""
            , "#[derive(Clone)]"
-           , "enum " ++ inner ++ " {"
+           , "enum " ++ inner
+           , "{"
            , "    Local(ls::actors::Mailbox<" ++ native ++ ">)," ] ++
            [ "    Served(ls::actors::Mailbox<ls::Value>)," | served ] ++
            [ "}"
            , ""
-           , "impl Default for " ++ name ++ " {"
-           , "    fn default() -> Self {"
+           , "impl Default for " ++ name
+           , "{"
+           , "    fn default() -> Self"
+           , "    {"
            , "        Self::new()"
            , "    }"
            , "}"

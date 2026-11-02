@@ -8,12 +8,21 @@ export class LogHandler
   logMessage(value0, value1)
   {
     if (value0 instanceof @@LogLevel/Debug@@)
+    {
       console.debug(value1);
+    }
     else if (value0 instanceof @@LogLevel/Warning@@)
+    {
       console.warn(value1);
+    }
     else if (value0 instanceof @@LogLevel/Error@@)
+    {
       console.error(value1);
-    else console.info(value1);
+    }
+    else
+    {
+      console.info(value1);
+    }
   }
 }
 /** Trace events, at debug level. */

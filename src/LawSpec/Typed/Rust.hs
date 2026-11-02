@@ -470,7 +470,7 @@ expression env selfCall scope e = case expressionNode e of
         -- A collection that breaks over lines puts the loop's brace on a
         -- line of its own, as rustfmt does.
         loopDoc = case L.oneLine iterated of
-          Just t -> D.bestFit [D.text ("for " ++ item ++ " in " ++ t ++ " ") <> body, D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body]
+          Just t -> D.bestFit [D.narrow 2 (D.text ("for " ++ item ++ " in " ++ t)) <> D.hardline <> body, D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body]
           Nothing -> D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body
     pure (L.Block [L.Let ("mut " ++ ok) (L.atom "true"), L.Item loopDoc] (Just (L.atom ok)))
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.

@@ -336,7 +336,7 @@ functionDoc env c d = do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l), b) <- zip params (definitionArguments d)]
       pure [D.text "return " <> x]
     Nothing -> cstmt env selfCall scope Return (definitionBody d)
-  pure (D.lineComment 88 "# " (labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration))) <>
+  pure (D.lineComment 80 "# " (labelled (sourceDefinitionName (declarationName declaration)) (sourceLink (declarationOrigin declaration))) <>
     blockD (D.text ("def " ++ name) <> D.delimitTrailing 4 "(" ")" (map D.text (["symbols" | contextual] ++ map snd params)))
       (if looping then [block "while True" body] else body))
 
@@ -599,7 +599,9 @@ convert env scope target value = do
       in if inside then pure (s, x) else do
         v <- fresh "narrowed"
         pure (s ++ [ D.text (v ++ " = ") <> D.statementValue x
-                   , block ("if " ++ v ++ " < " ++ showInt lo ++ " or " ++ v ++ " > " ++ showInt hi) [D.text ("lsf_outside(" ++ quote t ++ ")")] ], D.text v)
+                   , blockD (D.text "if " <> D.unparen (D.operation
+                       [D.text (v ++ " < " ++ showInt lo), D.text (v ++ " > " ++ showInt hi)] ["or"]))
+                       [D.text ("lsf_outside(" ++ quote t ++ ")")] ], D.text v)
     _ -> pure (s, x)
   where showInt n = if n < 0 then "(" ++ show n ++ ")" else show n
 

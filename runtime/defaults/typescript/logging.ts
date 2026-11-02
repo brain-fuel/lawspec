@@ -10,12 +10,21 @@ export class LogHandler implements abilities.Log
   logMessage(value0: @@LogLevel@@, value1: string): void
   {
     if (value0 instanceof @@LogLevel/Debug@@)
+    {
       console.debug(value1);
+    }
     else if (value0 instanceof @@LogLevel/Warning@@)
+    {
       console.warn(value1);
+    }
     else if (value0 instanceof @@LogLevel/Error@@)
+    {
       console.error(value1);
-    else console.info(value1);
+    }
+    else
+    {
+      console.info(value1);
+    }
   }
 }
 

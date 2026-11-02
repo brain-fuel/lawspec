@@ -222,9 +222,7 @@ export class KeyExchangeHandler implements abilities.KeyExchange
       new @@ExchangeSecretKey@@(secretKey),
     );
   }
-  encapsulate(
-    value0: @@ExchangePublicKey@@,
-  ): @@Encapsulated@@
+  encapsulate(value0: @@ExchangePublicKey@@): @@Encapsulated@@
   {
     const {ciphertext, secret} = mlKem768Encapsulate(value0.value);
     return new @@Encapsulated@@(
@@ -254,14 +252,10 @@ export class SignatureHandler implements abilities.Signature
       new @@SigningKey@@(seed),
     );
   }
-  sign(
-    value0: @@SigningKey@@,
-    value1: Uint8Array,
-  ): @@SignatureBytes@@
+  sign(value0: @@SigningKey@@, value1: Uint8Array): @@SignatureBytes@@
   {
-    return new @@SignatureBytes@@(
-      mlDsa65Sign(value0.value, value1),
-    );
+    const signature = mlDsa65Sign(value0.value, value1);
+    return new @@SignatureBytes@@(signature);
   }
   verify(
     value0: @@VerifyingKey@@,
@@ -292,14 +286,10 @@ export class SlhDsaSignatureHandler implements abilities.Signature
       new @@SigningKey@@(secretKey),
     );
   }
-  sign(
-    value0: @@SigningKey@@,
-    value1: Uint8Array,
-  ): @@SignatureBytes@@
+  sign(value0: @@SigningKey@@, value1: Uint8Array): @@SignatureBytes@@
   {
-    return new @@SignatureBytes@@(
-      slhDsaSign(value0.value, value1),
-    );
+    const signature = slhDsaSign(value0.value, value1);
+    return new @@SignatureBytes@@(signature);
   }
   verify(
     value0: @@VerifyingKey@@,
@@ -318,10 +308,7 @@ export class AeadHandler implements abilities.Aead
   {
     return new @@AeadKey@@(bytes(randomBytes(32)));
   }
-  deriveAeadKey(
-    value0: @@SharedSecret@@,
-    value1: Uint8Array,
-  ): @@AeadKey@@
+  deriveAeadKey(value0: @@SharedSecret@@, value1: Uint8Array): @@AeadKey@@
   {
     return new @@AeadKey@@(
       shake256(new Uint8Array([...value0.value, ...value1]), 32),
