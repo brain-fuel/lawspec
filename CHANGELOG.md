@@ -34,7 +34,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repeated formatting remains stable.
 - Browser formatter assets are published into an empty staging directory, so
   obsolete content-hashed assemblies cannot accumulate in the package. Formatter
-  assembly metadata is independent of unrelated Git commits.
+  assembly metadata is independent of unrelated Git commits, and bundle paths
+  are anchored to the repository root regardless of the invocation directory.
 - Release instructions, package versions and hosted Learn references identify
   the same release while preserving the course's `preview-4` progress identity.
 

@@ -84,6 +84,7 @@ try
   await rm(formatterPublish, {recursive: true, force: true});
   await mkdir(path.join(output, 'prettier'), {recursive: true});
   await build({
+    absWorkingDir: root,
     entryPoints: [modulePath('prettier-plugin-brace-style/dist/index.js')],
     bundle: true,
     format: 'esm',
@@ -130,6 +131,7 @@ try
     JSON.stringify(libraries),
   );
   await build({
+    absWorkingDir: root,
     entryPoints: [modulePath('esbuild-wasm/esm/browser.js')],
     bundle: true,
     format: 'esm',
@@ -142,6 +144,7 @@ try
   ])
   {
     await build({
+      absWorkingDir: root,
       stdin: {
         contents: `import value from ${JSON.stringify(entry)};export default value;export * from ${JSON.stringify(entry)};`,
         resolveDir: path.join(root, 'learn'),
@@ -179,6 +182,7 @@ try
     }
   }
   await build({
+    absWorkingDir: root,
     define: {__LAWSPEC_RULES__: JSON.stringify(patterns)},
     entryPoints: [path.join(root, 'learn/browser/editor.mjs')],
     bundle: true,
@@ -189,6 +193,7 @@ try
     minify: true,
   });
   await build({
+    absWorkingDir: root,
     entryPoints: [modulePath('monaco-editor/esm/vs/editor/editor.worker.js')],
     bundle: true,
     format: 'iife',
