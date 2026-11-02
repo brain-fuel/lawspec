@@ -6,6 +6,7 @@
 pub fn convert(
     value0: crate::lawspec_data::ShopDomainCurrency,
     value1: crate::lawspec_data::Money,
-) -> crate::lawspec_data::Money {
+) -> crate::lawspec_data::Money
+{
     todo!("shop.domain::convert")
 }

@@ -727,12 +727,14 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Parens a -> layoutWork column ((indentation, mode, margin, parenthesised a):rest)
       Operation operands operators -> layoutWork column ((indentation, mode, margin, parenthesised (operationBody operands operators)):rest)
       Prefixed operator operand -> layoutWork column ((indentation, mode, margin, text (operator ++ " ") <> operand):rest)
-      -- ruff's best fit for a statement's value: as it is when its first
-      -- line fits; parenthesised when that makes its first line fit;
-      -- otherwise as it is.
+      -- Ruff's parenthesised alternative must fit every line. An opaque
+      -- literal that still overflows makes the unparenthesised form preferable.
       ParenthesiseIfFits a ->
         let asIs = mode == Flat || fits column ((indentation, Broken, margin, a):rest)
-            inside = fits (indentation + 4) [(indentation + 4, Broken, margin, a)]
+            inner = layoutWork (indentation + 4)
+              [(indentation + 4, Broken, margin, a), (indentation + 4, Broken, margin, StopHere)]
+            inside = and [ (if index == (0 :: Int) then indentation + 4 else 0) + measure line <= margin
+                         | (index, line) <- zip [0 ..] (lines inner) ]
             chosen = case layout of
               Compact -> a
               CompactTabs -> a

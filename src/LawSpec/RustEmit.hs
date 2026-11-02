@@ -256,9 +256,8 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
   pure (files ++ generatorStubs)
   where
     sourcePath file = sourceRoot ++ "/" ++ file
-    nativeImport owner = Doc.group (Doc.text ("use " ++ owner ++ "::lawspec_native::{") <>
-      Doc.nest 4 (Doc.softbreak <> Doc.commaSep (map Doc.text (RB.conversionNames (NR.bindingRepresentations bindings))) <> Doc.whenBroken (Doc.text ",")) <>
-      Doc.softbreak <> Doc.text "};")
+    nativeImport owner = importGroup (owner ++ "::lawspec_native")
+      (RB.conversionNames (NR.bindingRepresentations bindings))
     hasNativeTypes = not (null (NB.resolvedTypes (NR.bindingRepresentations bindings)))
     -- An adapter's native binding: a static function, or a handle's method
     -- or constructor.
@@ -293,10 +292,11 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
         resultType <- NativeData.rustDataType planDataDeclarations result
         converted <- sequence [RB.convertExpression planDataDeclarations bindings True t (Doc.text ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
         back <- RB.convertExpression planDataDeclarations bindings False result (Doc.text "native_result")
-        pure (Doc.text ("fn " ++ op ++ "(&self" ++ concat [", value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ") -> " ++ resultType ++ " ") <>
-          block (statements [Doc.text "let native_result = self.inner." <> Doc.text op <> Doc.delimitTrailing 4 "(" ")" converted <> Doc.text ";", back]))
+        pure (RL.function ("fn " ++ op)
+          ("&self" : ["value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types]) resultType
+          (statements [Doc.text "let native_result = self.inner." <> Doc.text op <> Doc.delimitTrailing 4 "(" ")" converted <> Doc.text ";", back]))
       pure (Doc.text ("/// The bound production handler of " ++ abilityName a ++ ", " ++ native ++ ", as the generated trait.") <> Doc.hardline <>
-        Doc.text ("pub struct " ++ name ++ " ") <> block (Doc.text ("inner: " ++ native ++ ",")) <> Doc.hardline <> Doc.hardline <>
+        Doc.text ("pub struct " ++ name) <> Doc.hardline <> block (Doc.text ("inner: " ++ native ++ ",")) <> Doc.hardline <> Doc.hardline <>
         RL.function ("pub fn " ++ function) [] name (RL.expr (RL.struct name [("inner", RL.call "Default::default" [])])) <> Doc.hardline <> Doc.hardline <>
         Doc.text ("impl crate::" ++ Abilities.traitPath allUnits (abilityInstance a) ++ " for " ++ name) <> Doc.hardline <>
         block (Doc.joinWith (Doc.hardline <> Doc.hardline) methods))
@@ -556,9 +556,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             handlerName ability = case [interfaceName a | Just (_, a) <- [findAbility allUnits ability]] of
               n : _ -> nativeIdentifier "rust" ValueName n
               [] -> "handler"
-            signature = Doc.text ((if declarationAsync d then "pub async fn " else "pub fn ") ++ declarationName d)
-              <> Doc.delimitTrailing 4 "(" ")" arguments
-              <> Doc.text (" -> " ++ resultType) <> Doc.hardline
+            signature = (if declarationAsync d then "pub async fn " else "pub fn ") ++ declarationName d
         body <- case nativeCall d of
           Nothing -> pure (invoke "todo!" [string (idText (declarationId d))])
           Just native -> RB.emitCall planMachineBits planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] d native
@@ -567,7 +565,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
         pure (Doc.lineComment 100 "// " (labelled (declarationName d) (sourceLink (declarationOrigin d))) <>
           Doc.lineComment 100 "// " ("LawSpec type: " ++ outerless (Presentation.prettyType (declarationType d))) <>
           (if any isUpper (declarationName d) then Doc.text "#[allow(non_snake_case)]" <> Doc.hardline else mempty) <>
-          signature <> block body)
+          RL.function signature (map (Doc.render Doc.Compact) arguments) resultType body)
       wrappers <- forM adapters $ \d -> do
         let (args,result) = functionType (declarationType d)
             fn = maybe "missing" id (lookup (declarationId d) declarationNames)
@@ -848,7 +846,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                      Doc.text "failure_persistence: ls_gen::failure_persistence(),",
                      Doc.text "..Default::default()"]) ))
                 , binding "check" (Doc.text "|mut case: ls_gen::Case| " <>
-                    block (statements ([Doc.text "if let Some(error) = case.error " <> block
+                    block (statements ([Doc.text "if let Some(error) = case.error" <> Doc.hardline <> block
                       (Doc.text "return Err(proptest::test_runner::TestCaseError::fail(error));") | hasFieldContracts] ++
                       -- What the case covers, classifies and labels.
                       [RL.stmt (RL.Semi (RL.try' (RL.method (RL.call "observe" (RL.atom "&mut case.context" : map RL.Laid tupleArgs))
@@ -974,6 +972,8 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
           -- The definitions file calls workflow steps by their crate paths;
           -- this unit's own module is already mounted as adapter.
           useDoc name value = ((name,("1",value)),Doc.text value)
+          crateUse library name item = ((name,("1-crate",item)),
+            Doc.text ("use " ++ library ++ "::" ++ item ++ ";"))
           workflowModules mount = [if owner == unitId unit then useDoc (ident (idText owner)) ("use adapter as " ++ ident (idText owner) ++ ";") else mount owner
             | owner <- nub ([o | hasDefinitions, o <- Definitions.workflowAdapterUnits (map LawSpec.Testing.plannedUnit plannedUnits)] ++
                 map Id (Abilities.foreignOwners unit))]
@@ -1000,19 +1000,19 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           imports = case NR.bindingRustCrate bindings of
             Nothing -> localImports
-            Just library -> [useDoc "adapter" ("use " ++ library ++ "::" ++ testName ++ " as adapter;")] ++
-              [useDoc "lawspec_data" ("use " ++ library ++ "::lawspec_data;") | not (null planDataDeclarations)] ++
+            Just library -> [crateUse library "adapter" (testName ++ " as adapter")] ++
+              [crateUse library "lawspec_data" "lawspec_data" | not (null planDataDeclarations)] ++
               [moduleDoc (sourcePath "lawspec_definitions.rs") "lawspec_definitions" | hasDefinitions] ++
-              workflowModules (\owner -> useDoc (ident (idText owner)) ("use " ++ library ++ "::" ++ ident (idText owner) ++ ";")) ++
-              networkImports (useDoc "lawspec_network" ("use " ++ library ++ "::lawspec_network;")) ++
-              [useDoc "lawspec_runtime" ("use " ++ library ++ "::lawspec_runtime;")] ++
-              [useDoc "lawspec_sessions" ("use " ++ library ++ "::lawspec_sessions;") | hasSessions] ++
-              [useDoc "lawspec_actors" ("use " ++ library ++ "::lawspec_actors;") | hasActors] ++
-              [useDoc "lawspec_remote" ("use " ++ library ++ "::lawspec_remote;") | hasRemote] ++
-              [useDoc "lawspec_mailboxes" ("use " ++ library ++ "::lawspec_mailboxes;") | hasMailboxes] ++
-              [useDoc "lawspec_abilities" ("use " ++ library ++ "::lawspec_abilities;") | hasAbilities] ++
+              workflowModules (\owner -> crateUse library (ident (idText owner)) (ident (idText owner))) ++
+              networkImports (crateUse library "lawspec_network" "lawspec_network") ++
+              [crateUse library "lawspec_runtime" "lawspec_runtime"] ++
+              [crateUse library "lawspec_sessions" "lawspec_sessions" | hasSessions] ++
+              [crateUse library "lawspec_actors" "lawspec_actors" | hasActors] ++
+              [crateUse library "lawspec_remote" "lawspec_remote" | hasRemote] ++
+              [crateUse library "lawspec_mailboxes" "lawspec_mailboxes" | hasMailboxes] ++
+              [crateUse library "lawspec_abilities" "lawspec_abilities" | hasAbilities] ++
               [(("lawspec_native",("1","")), nativeImport library) | hasNativeTypes] ++
-              [useDoc "lawspec_schema" ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++
+              [crateUse library "lawspec_schema" "lawspec_schema" | hasSchema] ++
               [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
               [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           content = Doc.joinWith blank (filter (not . null . Doc.render Doc.Compact) (wrappers ++ tests ++ benchmarks ++ map Doc.text modelTests))
@@ -1025,7 +1025,16 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
           generatorImports = [((name,("0",name)),doc) | (name,doc) <- generatorModules]
           namespace = [name | ((name,_),_) <- imports ++ generatorImports ++ runtimeUses] ++
             ["ValueStrategy" | mentions "ValueStrategy" content]
-          ordered = sortOn (snd . fst) (imports ++ generatorImports) ++ runtimeUses
+          -- Group checked crate members without inspecting rendered imports;
+          -- namespace validation still sees each imported name separately.
+          presentationImports = case NR.bindingRustCrate bindings of
+            Nothing -> imports
+            Just library ->
+              let members = sortOn id [item | ((_,(kind,item)),_) <- imports, kind == "1-crate"]
+                  grouped = importGroup library members
+              in [entry | entry@((_,(kind,_)),_) <- imports, kind /= "1-crate"] ++
+                [(("crate_members",("1-crate","")),grouped) | not (null members)]
+          ordered = sortOn (snd . fst) (presentationImports ++ generatorImports) ++ runtimeUses
           testDoc = statements ([Doc.text ("// " ++ generatedHeader (unitSourceFile unit))] ++ map snd ordered) <>
             (if mentions "ValueStrategy" content then blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") else mempty) <>
             (if hasNativeGenerators then blank <> generatorSupport else mempty) <>
@@ -1062,8 +1071,20 @@ borrow value = Doc.text "&" <> value
 conditional :: Doc.Doc -> Doc.Doc -> Doc.Doc
 conditional condition body = Doc.text "if " <> condition <> Doc.hardline <> block body
 function :: String -> [Doc.Doc] -> String -> Doc.Doc -> Doc.Doc
-function name args result body = Doc.text ("fn " ++ name) <>
-  Doc.delimitTrailing 4 "(" ")" args <> Doc.text (" -> " ++ result) <> Doc.hardline <> block body
+function name args result body = RL.function ("fn " ++ name)
+  (map (Doc.render Doc.Compact) args) result body
+
+-- | rustfmt's module imports pack complete checked members on each line.
+importGroup :: String -> [String] -> Doc.Doc
+importGroup owner members = case sortOn id members of
+  [] -> mempty
+  [item] -> Doc.text ("use " ++ owner ++ "::" ++ item ++ ";")
+  items -> Doc.bestFit
+    [ Doc.text ("use " ++ owner ++ "::{" ++ intercalate ", " items ++ "};")
+    , Doc.text ("use " ++ owner ++ "::{") <>
+        Doc.nest 4 (Doc.hardline <> Doc.flow [Doc.text (item ++ ",") | item <- items]) <>
+        Doc.hardline <> Doc.text "};"
+    ]
 
 -- | A cover contains literal factories and inclusive mathematical ranges;
 -- each attempted case materializes its own values and handler context.

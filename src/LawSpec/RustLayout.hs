@@ -851,7 +851,7 @@ armDoc (ArmOf pat (Just guard) body@(Block _ _))
   -- A guarded arm whose head does not fit breaks before its guard, and
   -- its block opens on a line of its own.
   | Just p <- flat pat, Just g <- oneLine guard, Block ss tailExpr <- body =
-      oneOf [ D.text (p ++ " if " ++ g ++ " =>") <> D.hardline <> blockDoc ss tailExpr
+      oneOf [ D.narrow 2 (D.text (p ++ " if " ++ g ++ " =>")) <> D.hardline <> blockDoc ss tailExpr
             , D.text p <> D.nest 4 (D.hardline <> D.narrow 5 (D.text "if " <> expr guard) <> D.text " =>") <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
   -- A block opens on the next line when the arm's line has no room for it.

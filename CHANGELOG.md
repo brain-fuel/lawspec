@@ -30,6 +30,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Python's 80-column output and Rust's Allman output remain stable for long
+  calls, enum variants, bound handlers, match guards and grouped imports.
+  Recorded adapter stubs reflect the same interfaces in the selected style.
 - Quantified record headers retain the same layout after record braces expand;
   repeated formatting remains stable.
 - Browser formatter assets are published into an empty staging directory, so

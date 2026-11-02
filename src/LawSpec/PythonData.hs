@@ -99,7 +99,8 @@ emitPythonDataWithProfile bits layout declarations = do
             (D.text "__slots__ = ()" <> D.hardline <> D.hardline <>
              suite (D.text "def __new__(cls, *args, **kwargs)")
               (suite (D.text ("if cls is " ++ name))
-                (D.text "raise _builtins.TypeError(" <> D.text (q ("construct a variant of " ++ C.dataName declaration)) <> D.text ")") <>
+                (D.text "raise " <> invoke "_builtins.TypeError"
+                  [D.text (q ("construct a variant of " ++ C.dataName declaration))]) <>
                D.hardline <> D.text "return _builtins.object.__new__(cls)"))
       variants <- forM (C.dataConstructors declaration) $ \constructor -> do
         native <- lookupName names (C.constructorId constructor)

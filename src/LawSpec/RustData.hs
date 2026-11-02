@@ -199,10 +199,8 @@ emitRustData layout declarations = do
               children <- forM args $ \a -> case a of C.TypeArgument t -> fieldType t; _ -> Left "indexed Rust field"
               pure (applied (if n == "Maybe" then "std::option::Option" else "ls::" ++ n) children)
             _ -> typeTextScoped "" names parameters ty
-      allFieldTypes <- mapM (mapM (fieldType . C.binderType) . C.constructorFields) variants
-      let expandedVariants = any (> 35)
-            [length (intercalate ", " [C.binderName f ++ ": " ++ t | (f,t) <- zip (C.constructorFields v) ts])
-            | (v,ts) <- zip variants allFieldTypes] || not (null phantom)
+      let hasUnitVariant = null phantom && any (\variant -> null (C.constructorFields variant) &&
+            null (freeExistentials declaration variant)) variants
       rendered <- forM variants $ \variant -> do
         tag <- identifier (C.constructorName variant)
         declaredFields <- forM (C.constructorFields variant) $ \field -> do
@@ -219,9 +217,11 @@ emitRustData layout declarations = do
             patternFields = [if local == f then f else f ++ ": " ++ local | ((f,_), local) <- zip fields locals] ++ ["_lawspec_marker: _" | not (null phantom)]
             record limit prefix fs = D.text prefix <> (if null fs then mempty else if length (intercalate ", " fs) > limit then D.text " " <> D.block 4 (D.joinWith D.hardline [D.text (f ++ ",") | f <- fs]) else D.text " " <>
               D.group (D.text "{" <> D.nest 4 (D.softline <> D.commaSep (map D.text fs) <> D.whenBroken (D.text ",")) <> D.softline <> D.text "}"))
+            flatFields = intercalate ", " [f ++ ": " ++ t | (f,t) <- recordFields]
             variantDoc = if null recordFields then D.text (tag ++ ",") else
               D.text tag <> D.hardline <> D.block 4
-                (D.joinWith D.hardline [D.text (f ++ ": " ++ t ++ ",") | (f,t) <- recordFields]) <> D.text ","
+                (if not hasUnitVariant && D.displayWidth flatFields <= 35 then D.text flatFields else
+                  D.joinWith D.hardline [L.fieldDoc f t <> D.text "," | (f,t) <- recordFields]) <> D.text ","
             call function arguments = D.text function <>
               (if length (intercalate ", " (map (D.render D.Compact) arguments)) > 60
               then D.text "(" <> D.nest 4 (D.hardline <> D.joinWith D.hardline [a <> D.text "," | a <- arguments]) <> D.hardline <> D.text ")"
