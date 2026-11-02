@@ -6,6 +6,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-11-01
+
+### Added
+
+- Project helpers (`project init`, `adopt`, `status` and `validate`) coordinate
+  Canon decisions, mandatory definition checks and configured evidence without
+  rewriting application code. The local MCP server exposes read-only compiler
+  checks, listings and explanations.
+- Linear-model command arguments can use the current reference state's indices
+  and refinements. Generation and shrinking recheck the affected sequence;
+  finite model checking enumerates finite dependent domains. Empty domains and
+  incomplete generation remain distinct.
+- The portable plugin includes the project-workflow skill alongside the tutor.
+
+### Changed
+
+- Repository formatters and generated code follow the owner's Allman preference
+  where supported, with established language formatters and pinned browser
+  formatting tools. Public bindings and evidence meanings are preserved.
+- Learn comments retain pending human-review verdicts under the same pre-1.0
+  deferral as compiler/runtime comments. Teaching review remains open.
+
+### Fixed
+
+- Quantified record headers retain the same layout after record braces expand;
+  repeated formatting remains stable.
+- Browser formatter assets are published into an empty staging directory, so
+  obsolete content-hashed assemblies cannot accumulate in the package. Formatter
+  assembly metadata is independent of unrelated Git commits.
+- Release instructions, package versions and hosted Learn references identify
+  the same release while preserving the course's `preview-4` progress identity.
+
 ## [0.31.1] - 2026-10-29
 
 ### Added
@@ -24,21 +56,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   retain their own meanings; saved progress is not proof.
 - A portable LawSpec tutor skill shares the generated course and executable
   projects with the browser app.
-- Project helpers (`project init`, `adopt`, `status` and `validate`) coordinate
-  Canon decisions, mandatory definition checks and configured evidence without
-  rewriting application code. The local MCP server exposes read-only compiler
-  checks, listings and explanations.
-- Linear-model command arguments can use the current reference state's indices
-  and refinements. Generation and shrinking recheck the affected sequence;
-  finite model checking enumerates finite dependent domains. Empty domains and
-  incomplete generation remain distinct.
-
-### Changed
-
-- Repository formatters and generated code follow the owner's Allman preference
-  where supported, with established language formatters and pinned browser
-  formatting tools. Public bindings and evidence meanings are preserved.
-
 ### Fixed
 
 - Quantified-claim formatting uses parsed header, body and closing boundaries,
@@ -2390,8 +2407,9 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.1...HEAD
-[0.31.1]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.1
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...HEAD
+[0.31.2]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.2
+[0.31.1]: https://www.npmjs.com/package/lawspec/v/0.31.1
 [0.31.0]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...v0.30.0
 [0.29.2]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...v0.29.2

@@ -37,7 +37,7 @@ toolchain is needed. The reference platforms are macOS and Linux.
 To open the learning track locally:
 
 ```sh
-npm install --global lawspec@0.31.1
+npm install --global lawspec@0.31.2
 lawspec learn
 ```
 

@@ -48,3 +48,18 @@ test('virtual imports cannot turn source text into an asset request or filesyste
   }
   assert.deepEqual(requests, ['fable-library/List.js']);
 });
+test('the formatter packages one current main assembly and its loader references it', async () =>
+{
+  const root = new URL('../../npm/learn/vendor/', import.meta.url);
+  const manifest = JSON.parse(await readFile(new URL('manifest.json', root)));
+  const assemblies = Object.keys(manifest.assets).filter(name =>
+    /^fantomas\/LawSpec\.Learn\.Formatter\.[^.]+\.wasm$/.test(name),
+  );
+  assert.equal(
+    assemblies.length,
+    1,
+    'obsolete hashed formatter assemblies must not ship',
+  );
+  const loader = await readFile(new URL('fantomas/dotnet.js', root), 'utf8');
+  assert.ok(loader.includes(assemblies[0].slice('fantomas/'.length)));
+});

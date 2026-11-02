@@ -1156,6 +1156,13 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     significant formatted `shouldBe` significant input
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "keeps quantified record-header layout stable after expanding record braces" $ do
+    raw <- readFile "test/fixtures/canonical-empty-record-patterns.lawspec"
+    let first = formatSource (Source "empty-patterns.lawspec" raw)
+        second = formatSource first
+    second `shouldBe` first
+    formatSource second `shouldBe` second
+    compileCoreCanonical 64 defaultGeneration [first] `shouldSatisfy` isRight
   it "keeps long quantifier binders whole and aligns their separator" $ do
     let input = source $ unlines
           [ "law \"|swapping inputs keeps the sum| is definition:"

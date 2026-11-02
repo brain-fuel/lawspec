@@ -1,3 +1,7 @@
+/learn/:
+  kinds: [comment]
+  reason: "Learn comments remain pending human review, alongside the compiler and runtime comments deferred to 1.0; this does not approve the teaching preview or change evidence requirements. ref:DEC-learn-review-deferral"
+  revisit: 1.0.0
 /src/:
   kinds: [comment]
   reason: "The compiler's comments were ingested pending in 0.20.1 and its exported units still owe a Why; vetting every verdict and writing the rest is the work at 1.0, once 1.0 feature parity is reached"

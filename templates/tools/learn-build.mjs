@@ -52,6 +52,9 @@ try
     path.join(output, 'esbuild.wasm'),
   );
   // Fantomas runs locally on .NET WebAssembly; no formatting service receives code.
+  // Publish into an empty directory so older content-hashed assemblies cannot
+  // become packaged dependencies of a later build. ref:REQ-learn-generated-boundaries
+  const formatterPublish = path.join(output, '.formatter-publish');
   execFileSync(
     'dotnet',
     [
@@ -61,14 +64,13 @@ try
       'Release',
       '--nologo',
       '-p:RestoreLockedMode=true',
+      '--output',
+      formatterPublish,
     ],
     {stdio: 'pipe', cwd: path.join(root, 'learn/formatter')},
   );
   await cp(
-    path.join(
-      root,
-      'learn/formatter/bin/Release/net10.0/publish/wwwroot/_framework',
-    ),
+    path.join(formatterPublish, 'wwwroot/_framework'),
     path.join(output, 'fantomas'),
     {
       recursive: true,
@@ -78,6 +80,7 @@ try
         !file.endsWith('.pdb'),
     },
   );
+  await rm(formatterPublish, {recursive: true, force: true});
   await mkdir(path.join(output, 'prettier'), {recursive: true});
   await build({
     entryPoints: [modulePath('prettier-plugin-brace-style/dist/index.js')],

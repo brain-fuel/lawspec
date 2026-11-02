@@ -1232,3 +1232,11 @@ DEC-lawspec-quantifier-layout:
     Owner feedback rejects a seats property whose header and body share a line while multiplication and the closing clause spill onto the next. Format quantified headers, indented claims and matching closers as separate structural lines using the authoritative parser inventory. Rejoin short arithmetic claims within their own width; break long headers between complete binders and align the separator with the opening keyword. Apply the same rule to universal, existential and given scopes, including nested claims. Preserve comments, literal contents, source tokens and definition semantics; repeated formatting must be stable. Regenerate supplied lesson projects with the actual compiler and rebuild the browser WASM formatter so formatting before Run produces the same layout. Keep current progress identities and learner edits, including kept regression cases. This is a formatting correction, not teaching-review approval or new verification evidence.
   opened: 0.31.0
   decided: 0.31.0
+
+DEC-learn-review-deferral:
+  status: decided
+  question: When are Learn's canonical comments due for human vetting?
+  answer: |
+    The owner authorizes the existing pre-1.0 deferral policy for Learn comments as well as compiler and runtime comments. Keep every unreviewed verdict pending and record the work as due at 1.0.0. This changes the due version for that review; it does not manufacture approval, close the teaching checkpoint, weaken definition validation or establish verification evidence. Preserve all existing review debt and the 1.0 readership and external gates.
+  opened: 0.31.2
+  decided: 0.31.2

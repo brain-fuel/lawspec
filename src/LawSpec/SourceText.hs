@@ -94,8 +94,12 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
           index < Map.findWithDefault 0 begin indices],kind /= UnitBlock]
       where step stack (True,kind) = kind:stack
             step stack (False,_) = drop 1 stack
-    headerText (begin,finish,_) = restoreSource [token{tokenText = if tokenKind token == TriviaToken then " " else tokenText token} |
-      token <- originalLexed,begin <= tokenOffset token && tokenOffset token < finish]
+    -- Measure token content independently of authored spacing. Record layout
+    -- introduces whitespace around braces and removes field commas; neither
+    -- change may alter the header's layout decision on the next format pass.
+    headerText (begin,finish,_) = unwords [tokenText token |
+      token <- originalLexed,begin <= tokenOffset token && tokenOffset token < finish,
+      tokenKind token /= TriviaToken,tokenOffset token `Set.notMember` separators]
     longHeaders = [header | header@(begin,_,_) <- headers,
       2 * headerDepth begin + length (headerText header) > 80]
     headerBinders = [nodeRange node | (begin,_,separator) <- longHeaders,
