@@ -1,3 +1,6 @@
 decision/javascript/learn/test/course.test.mjs:
   digest: sha256:39eefd8e51986823
   verdict: pending
+decision/javascript/learn/test/course.test.mjs/function/verifyDeterministicGeneration:
+  digest: sha256:e9ecb8586f940f2d
+  verdict: pending

@@ -1,3 +1,9 @@
 decision/javascript/learn/test/story.test.mjs:
   digest: sha256:b141e207cae0467a
   verdict: pending
+decision/javascript/learn/test/story.test.mjs/function/verifyCurriculumSources:
+  digest: sha256:da93f40a046fbe0d
+  verdict: pending
+decision/javascript/learn/test/story.test.mjs/function/verifyStoryScenes:
+  digest: sha256:4f03ac53e2eac3ae
+  verdict: pending

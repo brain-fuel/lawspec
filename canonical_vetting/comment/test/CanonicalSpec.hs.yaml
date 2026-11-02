@@ -1,3 +1,6 @@
 decision/haskell/test/CanonicalSpec.hs/module/CanonicalSpec:
   digest: sha256:ca93da3cc7085ff6
   verdict: pending
+decision/haskell/test/CanonicalSpec.hs/module/CanonicalSpec/function/test_canonicalAuthoringPreservesIntrinsicGuarantees:
+  digest: sha256:a30ef07316bafd86
+  verdict: pending
