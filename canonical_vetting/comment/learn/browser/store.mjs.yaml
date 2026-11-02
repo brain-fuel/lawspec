@@ -1,0 +1,15 @@
+decision/javascript/learn/browser/store.mjs/function/draftKey:
+  digest: sha256:3a223424efdd0be7
+  verdict: pending
+decision/javascript/learn/browser/store.mjs/function/openStore:
+  digest: sha256:53d075467de0a410
+  verdict: pending
+decision/javascript/learn/browser/store.mjs/function/refreshProvidedLaws:
+  digest: sha256:5238e90e8cbcbdd2
+  verdict: pending
+decision/javascript/learn/browser/store.mjs/function/validateImport:
+  digest: sha256:5821d05ad84c6ab3
+  verdict: pending
+decision/javascript/learn/browser/store.mjs/variable/courseVersion:
+  digest: sha256:9c85863bc3950693
+  verdict: pending

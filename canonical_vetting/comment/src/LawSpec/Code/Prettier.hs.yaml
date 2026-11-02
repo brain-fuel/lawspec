@@ -4,6 +4,9 @@ decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier:
 decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/align:
   digest: sha256:7d455f0059bfaf1e
   verdict: pending
+decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/allmanLine:
+  digest: sha256:6967799203124a7c
+  verdict: pending
 decision/haskell/src/LawSpec/Code/Prettier.hs/module/LawSpec.Code.Prettier/function/canBreak:
   digest: sha256:663338098160084a
   verdict: pending

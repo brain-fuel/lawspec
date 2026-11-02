@@ -1,6 +1,9 @@
 decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding:
   digest: sha256:2be4c84383fc3dcd
   verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/conversionNames:
+  digest: sha256:dc9e9086748c7d12
+  verdict: pending
 decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/convertExpression:
   digest: sha256:07f29511f7c7dd94
   verdict: pending

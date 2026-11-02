@@ -1,0 +1,39 @@
+decision/javascript/learn/test/helpers.mjs/function/compile:
+  digest: sha256:88be7ea48ce64b67
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/function/execute:
+  digest: sha256:42c421e01fddbcc2
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/function/fsharp:
+  digest: sha256:f7c9ee3bd0035fca
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/core:
+  digest: sha256:19042ba9db17f5b1
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/course:
+  digest: sha256:f43a4fa385fd988b
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/fs:
+  digest: sha256:66dafe446d3ad009
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services:
+  digest: sha256:47cb372456e3062a
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services/property/browserRuntime:
+  digest: sha256:dac55c7ec286bba3
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services/property/esbuild:
+  digest: sha256:4e068b377300d062
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services/property/fsharp:
+  digest: sha256:d1c515aa6ec8b347
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services/property/lawspec:
+  digest: sha256:4ba76375873687e9
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services/property/readAsset:
+  digest: sha256:c1e75d7f40855fcf
+  verdict: pending
+decision/javascript/learn/test/helpers.mjs/variable/services/property/typescript:
+  digest: sha256:799782809270ca19
+  verdict: pending

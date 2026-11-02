@@ -1,0 +1,9 @@
+decision/javascript/learn/browser/app.mjs/function/renderOutline:
+  digest: sha256:08eeb7cb732b4a60
+  verdict: pending
+decision/javascript/learn/browser/app.mjs/function/requestWorker:
+  digest: sha256:15fe9f9552da2cec
+  verdict: pending
+decision/javascript/learn/browser/app.mjs/function/setWorkspaceView:
+  digest: sha256:19d8ca2e0435958e
+  verdict: pending

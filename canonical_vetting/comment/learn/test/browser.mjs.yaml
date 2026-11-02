@@ -1,0 +1,15 @@
+decision/javascript/learn/test/browser.mjs/function/launch:
+  digest: sha256:df5847dc3cee6fca
+  verdict: pending
+decision/javascript/learn/test/browser.mjs/variable/base:
+  digest: sha256:410211c14757a110
+  verdict: pending
+decision/javascript/learn/test/browser.mjs/variable/output:
+  digest: sha256:a9a60b5245a727bd
+  verdict: pending
+decision/javascript/learn/test/browser.mjs/variable/receipts:
+  digest: sha256:9094cacf55236785
+  verdict: pending
+decision/javascript/learn/test/browser.mjs/variable/server:
+  digest: sha256:80504be60979e2cd
+  verdict: pending
