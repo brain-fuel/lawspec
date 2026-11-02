@@ -45,6 +45,9 @@ lines. A short arithmetic body stays together rather than wrapping against the
 header's width:
 
 ```lawspec
+unit formatting.seats
+seats :: Int32 -> Int32
+
 law "|every row contributes four seats| is
   definition:
     for all (rows :: Int32 where rows >= 0 and rows <= 40) =>
@@ -52,6 +55,7 @@ law "|every row contributes four seats| is
     end for all
   end definition
 end law
+end unit
 ```
 
 The same layout applies to existential claims and `given` scopes, including

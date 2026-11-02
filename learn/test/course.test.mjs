@@ -372,7 +372,10 @@ test('Fable integer/list bridges round-trip the supported shapes before using th
     assert.deepEqual(observed.values, inputs, shape);
   }
 });
-test('adapters, generated files and bundles repeat byte for byte for the same checked project and pins', async () =>
+/** Compare actual checked bindings, generated files, and executable bundles.
+ * ref:REQ-learn-generated-boundaries
+ */
+async function verifyDeterministicGeneration()
 {
   const {createHash} = await import('node:crypto');
   const hash = text => createHash('sha256').update(text).digest('hex');
@@ -403,7 +406,11 @@ test('adapters, generated files and bundles repeat byte for byte for the same ch
       );
     }
   }
-});
+}
+test(
+  'adapters, generated files and bundles repeat byte for byte for the same checked project and pins',
+  verifyDeterministicGeneration,
+);
 test('checked unit, function and value shapes drive wiring independently of lesson identifiers', async () =>
 {
   const original = seat;

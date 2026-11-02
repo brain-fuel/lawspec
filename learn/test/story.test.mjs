@@ -5,7 +5,10 @@ import {readFile, writeFile} from 'node:fs/promises';
 import {course, compile, execute} from './helpers.mjs';
 import {buildCourse} from '../build-course.mjs';
 import {expectationProblems} from '../browser/story.mjs';
-test('the served curriculum and displayed code are generated from the exercise source files', async () =>
+/** Check complete scene projects against their actual authored source files.
+ * ref:REQ-learn-executable-story
+ */
+async function verifyCurriculumSources()
 {
   assert.deepEqual(await buildCourse(), course);
   for (const lesson of course.lessons)
@@ -35,10 +38,19 @@ test('the served curriculum and displayed code are generated from the exercise s
       }
     }
   }
-});
+}
+test(
+  'the served curriculum and displayed code are generated from the exercise source files',
+  verifyCurriculumSources,
+);
 for (const language of ['fsharp', 'typescript', 'javascript'])
 {
-  test(`${language}: every story scene compiles and exhibits its stated passing or failing observations`, async t =>
+  /** Execute LawSpec-only claims and compare their real outcomes with each scene.
+   * These checks establish coherence; human teaching review remains separate.
+   * ref:REQ-learn-executable-story ref:REQ-learn-tests-in-lawspec
+   * ref:REQ-learn-winston-story-revision
+   */
+  async function verifyStoryScenes(t)
   {
     const receipts = [];
     for (const lesson of course.lessons)
@@ -101,5 +113,9 @@ for (const language of ['fsharp', 'typescript', 'javascript'])
       ),
       JSON.stringify(receipts, null, 2) + '\n',
     );
-  });
+  }
+  test(
+    `${language}: every story scene compiles and exhibits its stated passing or failing observations`,
+    verifyStoryScenes,
+  );
 }

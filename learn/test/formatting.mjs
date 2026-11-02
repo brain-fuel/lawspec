@@ -39,6 +39,9 @@ export async function observeWorkers(page)
   });
 }
 
+/** Verify real formatter output, Allman braces, persistence, and run ordering.
+ * ref:REQ-learn-format-before-run ref:REQ-google-style-allman
+ */
 export async function verifyFormatting(page)
 {
   const edit = async (file, text) =>

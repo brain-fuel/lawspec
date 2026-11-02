@@ -39,6 +39,8 @@ source body = Source "canonical.lawspec" ("unit example.canonical\n\n" ++ body +
 core :: String -> Either [Diagnostic] C.Program
 core body = compileCoreCanonical 64 defaultGeneration [source body]
 
+-- | Check canonical authoring, mandatory admission, and stable quantified layouts.
+-- ref:REQ-lawspec-quantifier-layout
 -- ref:DEC-total-definitions
 -- ref:DEC-readable-notation
 test_canonicalAuthoringPreservesIntrinsicGuarantees :: Spec

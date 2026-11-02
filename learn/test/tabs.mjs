@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {course} from './helpers.mjs';
 
-/** Preserve source selection across languages without mixing independent drafts. ref:REQ-learn-source-selection */
+/** Preserve source selection and drafts, and check consistent Run labels/scopes.
+ * ref:REQ-learn-source-selection ref:REQ-learn-run-action
+ */
 export async function verifySourceTabs(browser, base)
 {
   const context = await browser.newContext({

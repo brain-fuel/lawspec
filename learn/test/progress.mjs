@@ -1,7 +1,10 @@
 /** @file Exercise backups against real drafts and kept regression laws. ref:REQ-learn-course-hierarchy ref:REQ-learn-regression-progress */
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-/** Restore matching drafts atomically while retaining later work and appearance. ref:REQ-learn-course-hierarchy */
+/** Restore matching drafts and kept regressions atomically, retaining later work.
+ * ref:REQ-learn-course-hierarchy ref:REQ-learn-progress-portability
+ * ref:REQ-learn-regression-progress
+ */
 export async function verifyProgress(page, course)
 {
   const legacy = await page.context().newPage(),
