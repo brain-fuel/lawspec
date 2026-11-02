@@ -28,6 +28,9 @@ decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/ch
 decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/chainPrefix:
   digest: sha256:d7f3ca767a7f19d4
   verdict: pending
+decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/conditionDoc:
+  digest: sha256:df860739b34bbfe1
+  verdict: pending
 decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/declaration:
   digest: sha256:ba04a7e48f0259a9
   verdict: pending
