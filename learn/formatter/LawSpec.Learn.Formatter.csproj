@@ -12,6 +12,10 @@
     <PublishTrimmed>false</PublishTrimmed>
     <WasmMainJSPath>main.mjs</WasmMainJSPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Fantomas.Core" Version="8.1.0" />
   </ItemGroup>
