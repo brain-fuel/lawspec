@@ -101,6 +101,9 @@
     "path": "how-to/index.md",
     "children": [
       {
+        "path": "how-to/authoring.md"
+      },
+      {
         "path": "how-to/install-and-init.md"
       },
       {

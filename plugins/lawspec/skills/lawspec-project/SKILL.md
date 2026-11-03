@@ -92,3 +92,15 @@ trust boundary. Preserve not-verified, unknown, unsupported, incomplete, pending
 and known-discrepancy outcomes. Do not present a research prototype as an
 integrated backend. MCP is read-only check/list/explain; decisions are ordinary
 reviewable file edits, with no feature CRUD or decision-writing MCP tools.
+
+## Authoring and reuse
+
+For specification or adapter edits, read [the shared authoring guide](references/authoring.md).
+Check `lawspec --version` against `references/version.json`, search the bundled
+[compiler inventory](references/library.json) and [library reference](references/library.md),
+and inspect actual generated interfaces before implementing native code.
+Prefer prelude operations, reusable laws, generated models and checked definitions.
+Migrate corresponding application types within scope; retaining them is an explicit
+native-binding or codec choice. Custom domain semantics, independent reference
+models and identified teaching exercises remain legitimate. Ordinary authoring can
+use `lawspec-author` when available; these references also work standalone.

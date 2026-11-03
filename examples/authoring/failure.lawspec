@@ -1,0 +1,21 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.failure
+
+type Problem is one of Rejected end type
+function positive (x :: Integer) -> Either Problem Integer is
+  if x > 0 then Right x else Left Rejected end if
+end function
+function twice (x :: Integer) -> Either Problem Integer is Right (x + x)
+end function
+function pipeline (x :: Integer) -> Either Problem Integer is
+  prelude.bind (positive x) twice
+end function
+law "|failure propagates| is
+  definition: pipeline 0 = Left Rejected
+  end definition
+end law
+law "|success continues| is
+  definition: pipeline 2 = Right 4
+  end definition
+end law
+end unit

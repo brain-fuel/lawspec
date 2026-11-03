@@ -1,0 +1,19 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.migration
+
+type Money is a record
+{
+  amount :: Decimal
+}
+end type
+addFee :: Money -> Money
+function feeModel (money :: Money) -> Money is
+  first matching case of money:
+    when Money record{amount = value} then Money record{amount = value + 0.2}
+  end case
+end function
+law "|adapter agrees with the checked model| is
+  definition: apply law "|equivalent| addFee feeModel
+  end definition
+end law
+end unit

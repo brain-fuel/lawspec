@@ -1,3 +1,11 @@
+DEC-prelude-first-authoring:
+  status: decided
+  question: How should authors reuse the prelude and generated application models?
+  answer: |
+    Inspect the installed compiler's matching library reference and actual generated interfaces before adding helpers or native models. Prefer existing prelude operations, reusable laws, checked definitions and runtime support when their semantics match. Migrate corresponding application types within scope; retaining them is an explicit native-binding or codec choice. Domain-specific semantics, missing functionality, independent reference models and identified teaching exercises justify custom work. One authoring guide and executable examples feed standalone author/project/learn skill references generated from compiler inventories. The skill/plugin package is independently versioned and usable with existing check, generate, test and planGeneration commands. Advisory analysis is a separate deliverable with no implication of proof or native equivalence. Teaching review remains pending.
+  opened: 0.31.2
+  decided: 0.31.2
+
 DEC-prolog-janus:
   status: decided
   question: How should the Prolog backend reuse established execution and proof infrastructure without conflating Prolog failure with a typed result?

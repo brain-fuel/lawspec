@@ -1,0 +1,5 @@
+unit authoring.bad
+type A is a record {x :: Integer} end type
+type B is a record {x :: Integer} end type
+function copied (x :: A) -> B is x end function
+end unit
