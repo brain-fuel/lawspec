@@ -170,6 +170,7 @@ authoringOutputs version inventory curriculum = do
      "docs/reference/native-bindings.md", "docs/how-to/bind-native-types.md",
      "docs/how-to/custom-codecs-and-generators.md", "docs/how-to/embed-a-generated-model.md"]
   plugin <- readFile' "learn/plugin.json"
+  license <- readFile' "LICENSE"
   skills <- fmap concat $ forM ["lawspec-author", "lawspec-project", "lawspec-learn"] $ \name -> do
     let source = if name == "lawspec-learn" then "learn/skills" else ".agents/skills"
     body <- readFile' (source </> name </> "SKILL.md")
@@ -184,7 +185,9 @@ authoringOutputs version inventory curriculum = do
             folder /= source </> name] ++
           [Output (folder </> "references" </> file) content False |
             folder <- roots, (file,content) <- refs])
-  pure (Output "plugins/lawspec/.codex-plugin/plugin.json" plugin False : skills)
+  pure ([Output ("plugins/lawspec" </> host </> "plugin.json") plugin False |
+    host <- [".codex-plugin", ".claude-plugin"]] ++
+    [Output "plugins/lawspec/LICENSE" license False] ++ skills)
   where
     portable file = do
       source <- readFile' file

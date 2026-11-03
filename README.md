@@ -37,7 +37,7 @@ toolchain is needed. The reference platforms are macOS and Linux.
 To open the learning track locally:
 
 ```sh
-npm install --global lawspec@0.31.2
+npm install --global lawspec@0.31.3
 lawspec learn
 ```
 
@@ -75,6 +75,59 @@ In an existing project, install the checkout's `npm` directory first, then run
 `npx lawspec init --target javascript`. Existing build files are preserved;
 apply the printed setup instructions before generating. See
 [Install LawSpec and create a project](docs/how-to/install-and-init.md).
+
+## Codex and Claude Code plugin
+
+The Git-backed `brain-fuel` marketplace includes the LawSpec plugin with three
+skills: `lawspec-author` for specifications and adapters, `lawspec-project` for
+project discovery and changes, and `lawspec-learn` for tutoring. Each includes
+its references, so installation does not require a compiler repository checkout.
+Install the LawSpec CLI separately with Node 22+:
+
+```sh
+npm install --global lawspec@0.31.3
+```
+
+For **Codex**, run these commands in your terminal:
+
+```sh
+codex plugin marketplace add brain-fuel/lawspec \
+  --sparse .agents/plugins --sparse plugins/lawspec
+codex plugin add lawspec@brain-fuel
+```
+
+For **Claude Code**, run:
+
+```sh
+claude plugin marketplace add brain-fuel/lawspec \
+  --sparse .claude-plugin plugins/lawspec
+claude plugin install lawspec@brain-fuel
+```
+
+Alternatively, inside Claude Code use `/plugin marketplace add brain-fuel/lawspec`
+and `/plugin install lawspec@brain-fuel`. Start a new session after installation.
+Ask Codex to use `lawspec-author`, or invoke `/lawspec:lawspec-author` in Claude
+Code; the project and tutor skills follow the same naming pattern.
+
+The terminal commands use sparse checkouts for the marketplace and plugin
+directories. For a local checkout, omit `--sparse` and its paths and replace
+`brain-fuel/lawspec` with the checkout's absolute path. To pin a release in Codex, append
+`--ref v0.31.3` to its marketplace-add command. In Claude Code, use
+`https://github.com/brain-fuel/lawspec.git#v0.31.3` as the marketplace source.
+Private repository installations require your existing GitHub access.
+
+To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or
+`claude plugin marketplace update brain-fuel`; in Claude Code then run
+`claude plugin update lawspec@brain-fuel`. In Codex, reinstall with
+`codex plugin add lawspec@brain-fuel` to select the refreshed package. Restart
+the host to load updated skills.
+
+This is a repository marketplace, not a listing in either host's curated public
+directory. The plugin has its own version in `learn/plugin.json`; the course
+remains a teaching preview. Maintainers regenerate both host manifests from that
+file with `make generate`. See the official
+[Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+and [Claude Code marketplace documentation](https://code.claude.com/docs/en/plugin-marketplaces).
 
 ## MCP server
 

@@ -27,6 +27,33 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mark copied starter specifications as user-owned. Refresh manifest examples
   and document the boundaries of compact Go output.
 
+## [0.31.3] - 2026-11-03
+
+### Added
+
+- Prelude-first authoring skill and twelve checked worked cases cover library
+  selection, generated-model ownership, migration and explicit native bindings.
+  All three skills include portable compiler references and shared examples.
+- Git-backed marketplaces install the same LawSpec plugin in Codex and Claude
+  Code. The README includes installation, release pinning and update commands.
+- Read-only `prelude`, `inspect` and `advise` commands expose library discovery,
+  generated interfaces and bounded authoring findings through the CLI, SDK and
+  MCP. Native analysis includes bundled offline parsers for all 18 program
+  targets; strict advice rejects unresolved findings and incomplete checks.
+
+### Changed
+
+- Ordinary checks and generation show nonblocking authoring advice, with
+  `--no-advice` to disable it. Advice remains separate from semantic diagnostics
+  and law evidence and never rewrites application files.
+- The learning course explains reuse and generated-model migration without
+  changing saved progress identities or its pending teaching-review status.
+
+### Fixed
+
+- Read-only inspection and advice do not repair dependency caches, unpack Git
+  dependencies or create lock files.
+
 ## [0.31.2] - 2026-11-01
 
 ### Added
@@ -2436,7 +2463,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...HEAD
+[0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3
 [0.31.2]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.2
 [0.31.1]: https://www.npmjs.com/package/lawspec/v/0.31.1
 [0.31.0]: https://github.com/brain-fuel/lawspec/compare/v0.30.0...v0.31.0

@@ -1,0 +1,20 @@
+{
+  "name": "brain-fuel",
+  "plugins": [
+    {
+      "name": "lawspec",
+      "source": {
+        "source": "local",
+        "path": "./plugins/lawspec"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "interface": {
+        "displayName": "LawSpec",
+        "shortDescription": "Author specifications, adopt projects and learn LawSpec."
+      }
+    }
+  ]
+}
