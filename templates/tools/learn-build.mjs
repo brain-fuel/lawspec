@@ -320,14 +320,17 @@ try
   console.log(
     `Packaged ${Object.keys(manifest.assets).length} local assets (${Object.values(manifest.assets).reduce((n, row) => n + row.bytes, 0)} bytes).`,
   );
-  // Both distributed skills use the same curriculum, never a separately authored
-  // lesson transcript. The directory is a portable versioned Codex plugin.
+  // Distributed skills share the curriculum and references across both hosts.
   const plugin = path.join(root, 'plugins/lawspec');
-  await mkdir(path.join(plugin, '.codex-plugin'), {recursive: true});
-  await cp(
-    path.join(root, 'learn/plugin.json'),
-    path.join(plugin, '.codex-plugin/plugin.json'),
-  );
+  for (const host of ['.codex-plugin', '.claude-plugin'])
+  {
+    await mkdir(path.join(plugin, host), {recursive: true});
+    await cp(
+      path.join(root, 'learn/plugin.json'),
+      path.join(plugin, host, 'plugin.json'),
+    );
+  }
+  await cp(path.join(root, 'LICENSE'), path.join(plugin, 'LICENSE'));
   await mkdir(path.join(root, 'learn/skills/lawspec-learn/references'), {
     recursive: true,
   });

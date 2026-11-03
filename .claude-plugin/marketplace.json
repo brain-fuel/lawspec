@@ -1,0 +1,14 @@
+{
+  "name": "brain-fuel",
+  "description": "LawSpec specification authoring, project workflow and tutoring skills.",
+  "owner": {
+    "name": "Brain Fuel"
+  },
+  "plugins": [
+    {
+      "name": "lawspec",
+      "source": "./plugins/lawspec",
+      "description": "Prelude-first LawSpec authoring, project workflow and F#-first course tutoring."
+    }
+  ]
+}
