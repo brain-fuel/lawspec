@@ -286,8 +286,10 @@ export async function resolveDependencies(file, manifest, options = {})
         'packages',
       ),
   );
+  const readOnly = !!options.readOnly;
   const locked = !!options.locked,
-    offline = !!options.offline || process.env.LAWSPEC_OFFLINE === '1';
+    offline =
+      readOnly || !!options.offline || process.env.LAWSPEC_OFFLINE === '1';
   const previousText = await optional(path.join(root, lockName));
   const previous =
     previousText === null
@@ -411,7 +413,7 @@ export async function resolveDependencies(file, manifest, options = {})
           throw new Error(
             `Cached contract content changed: ${known?.name ?? source.url}`,
           );
-        await atomicWrite(marker, expected + '\n');
+        if (!readOnly) await atomicWrite(marker, expected + '\n');
         return {directory, source};
       }
       if (offline)
@@ -419,6 +421,10 @@ export async function resolveDependencies(file, manifest, options = {})
           `Offline: cached contract integrity is unavailable for ${source.url}`,
         );
     }
+    if (readOnly)
+      throw new Error(
+        `Read-only dependency resolution requires a verified unpacked cache for ${source.url}; run lawspec fetch separately`,
+      );
     if (offline && source.kind === 'archive')
       throw new Error(`Offline: ${source.url} is not cached`);
     let bytes;
@@ -737,6 +743,7 @@ export async function resolveDependencies(file, manifest, options = {})
       throw new Error('Lockfile is out of date; run lawspec fetch');
     if (
       !locked &&
+      !readOnly &&
       options.writeLock !== false &&
       canonical(lock) !== canonical(previous)
     )

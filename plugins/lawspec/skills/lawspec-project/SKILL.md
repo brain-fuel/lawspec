@@ -90,7 +90,7 @@ solver execution, and proof checking. Sampled testing is sample evidence; finite
 exhaustive checks are scoped to their model and domain; solver results name their
 trust boundary. Preserve not-verified, unknown, unsupported, incomplete, pending,
 and known-discrepancy outcomes. Do not present a research prototype as an
-integrated backend. MCP is read-only check/list/explain; decisions are ordinary
+integrated backend. MCP provides read-only checking, explanation, discovery and inspection; decisions are ordinary
 reviewable file edits, with no feature CRUD or decision-writing MCP tools.
 
 ## Authoring and reuse

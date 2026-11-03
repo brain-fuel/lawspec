@@ -1,5 +1,5 @@
 -- | Native declarations and bridges consume resolved Core, never surface syntax.
-module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
+module LawSpec.RustData (namesFor, emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Memo (newPersistentTableByShow, Table, memoized)

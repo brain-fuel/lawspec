@@ -1,3 +1,7 @@
+tree-sitter-web:
+  kind: article
+  title: "Tree-sitter WebAssembly bindings: initialization, language loading and parsing"
+  locator: https://github.com/tree-sitter/tree-sitter/blob/master/lib/binding_web/README.md
 megaparsec-error-recovery:
   kind: article
   title: "Megaparsec: withRecovery, registerParseError and StateT rollback"

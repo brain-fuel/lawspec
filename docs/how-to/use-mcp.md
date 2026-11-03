@@ -45,7 +45,12 @@ npx @modelcontextprotocol/inspector npx lawspec mcp
 - `lawspec_explain` explains a law in `eng`, `math`, or `dev` form. Supply an
   identity such as `example.codec::round trip`; the default view is `eng`.
 
-Each tool reads the current manifest and sources when called. The server does
+Project-dependent tools read the current manifest and sources when called. The server does
 not write project files. Definition validation remains mandatory. Optional law
 verification follows `verification.layers`, and evidence outcomes such as
 `pending`, `unsupported`, and `incomplete` retain their distinct meanings.
+
+Prelude discovery also works before project initialization through
+`lawspec_prelude`. `lawspec_inspect` and `lawspec_advise` take a configured
+target and return read-only interfaces or advisory findings and analysis limits.
+See [authoring advisories](../reference/authoring-advisories.md).

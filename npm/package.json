@@ -29,7 +29,7 @@
     }
   },
   "types": "index.d.ts",
-  "dependencies": {"ricestax": "0.3.2", "@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
+  "dependencies": {"web-tree-sitter": "0.25.10", "ricestax": "0.3.2", "@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
   "files": [
              "*.mjs",
              "*.json",
@@ -46,7 +46,8 @@
              "starter.lawspec",
              "starter-rc1.lawspec",
              "examples",
-             "learn"
+             "learn",
+             "native-parsers"
            ],
   "scripts": {
     "prepack": "for f in README.md CHANGELOG.md; do cmp -s ../$f $f || { cp ../$f .$f.$$ && mv -f .$f.$$ $f; }; done",

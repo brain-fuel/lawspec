@@ -55,6 +55,7 @@ export interface ComponentManifest
   provides?: ContractRequirement[];
   requires?: Record<string, ContractRequirement>;
   verification?: import('./index.js').Verification;
+  authoringExceptions?: import('./index.js').AdviceException[];
   generation?: Partial<import('./index.js').Generation>;
   machineBits?: 32 | 64;
   cache?: boolean;

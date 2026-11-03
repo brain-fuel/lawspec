@@ -8,7 +8,7 @@ import qualified LawSpec.Targets as Targets
 
 -- | Each compiler method, its request and its response.
 methods :: [(String, String, String)]
-methods = [("format", "FormatRequest", "Result"), ("check", "CheckRequest", "Result"), ("expand", "CheckRequest", "Result"),
+methods = [("prelude", "PreludeRequest", "PreludeResult"), ("inspect", "GenerationRequest", "Result"), ("advise", "AdviceRequest", "Result"), ("format", "FormatRequest", "Result"), ("check", "CheckRequest", "Result"), ("expand", "CheckRequest", "Result"),
   ("explain", "ExplainRequest", "ExplainResult"), ("proofTasks", "CheckRequest", "Result"), ("planGeneration", "GenerationRequest", "Result")]
 
 apiSources :: Layout -> [(FilePath, String)]
@@ -59,13 +59,27 @@ api = text "import {loadCore} from './launcher.mjs';" <> softbreak <> softbreak 
     (text "const call = await loadCore();" <> softbreak <>
      text "return " <> object [method name | (name, _, _) <- methods] <> text ";")
   where
+    method "advise" = text "advise: async input =>" <> nest 4 (softline <> text "(await import('./authoring.mjs')).advise(call, input)")
     method name = group (text (name ++ ": (input) =>") <>
       nest 4 (softline <> text "call" <>
         delimit 4 "(" ")" [group (object [text "schemaVersion: 5", text "...input", text "method: " <> quoted name])]))
 
 declarations :: Doc
 declarations = joinWith (softbreak <> softbreak)
-  [ alias "Target" (map quoted Targets.targets)
+  [ interface "PreludeRequest" (fields [("query?","string")])
+  , interface "PreludeEntry" (fields [("kind","string"),("name","string"),("qualifiedName?","string"),("source?","string"),("definition?","string | null")])
+  , interface "NativeAdapter" (fields [("path","string"),("ownership","string"),("requiredSource","string")])
+  , interface "NativeConstructor" (fields [("declaration","string"),("allocatedName","string | null"),("schemaIdentity","string"),("nativeBinding","NativeReference[]")])
+  , interface "NativeData" (fields [("declaration","string"),("nativeName","string | null"),("generatedName","string | null"),("ownership","'generated' | 'bound'"),("nativeBinding","NativeReference[]"),("constructors","NativeConstructor[]")])
+  , interface "NativeArtifactDigest" (fields [("path","string"),("sha256","string[]")])
+  , interface "NativeInterface" (fields [("target","Target"),("nativeAnalysis","'applicable' | 'not-applicable'"),("data","NativeData[]"),("artifacts","Artifact[]"),("generatedDigests","NativeArtifactDigest[]"),("adapters","NativeAdapter[]"),("construction","string")])
+  , interface "PreludeResult" (fields [("schemaVersion","5"),("entries","PreludeEntry[]"),("lawSource","string"),("diagnostics","Diagnostic[]")])
+  , interface "AdviceFinding" (fields [("severity","'warning'"),("rule","string"),("declaration","string"),("message","string"),("suggestion","string"),("status","'unresolved' | 'excepted'"),("target?","Target"),("path?","string"),("line?","number"),("reason?","string")])
+  , interface "AdviceCheck" (fields [("declaration?","string"),("rule","string"),("status","string"),("scope?","string"),("reason?","string"),("target?","Target"),("path?","string")])
+  , interface "AdviceReport" (fields [("findings","AdviceFinding[]"),("checks","AdviceCheck[]"),("ok?","boolean"),("meaning?","string")])
+  , interface "AdviceException" (fields [("rule","string"),("declaration","string"),("reason","string")])
+  , interface "AdviceRequest extends CheckRequest" (fields [("target?","Target"),("nativeSources?","Source[]"),("sourceDir?","string"),("testDir?","string"),("exceptions?","AdviceException[]")])
+  , alias "Target" (map quoted Targets.targets)
   , interface "Source" (fields [("path", "string"), ("content", "string")])
   , interface "Location" (fields [("file", "string"), ("line", "number"), ("column", "number")])
   , interface "Span" (fields [("start", "Location"), ("end", "Location")])
@@ -247,7 +261,7 @@ declarations = joinWith (softbreak <> softbreak)
       [("layers",text "VerificationLayer[]"),("selection",union (map quoted ["no-selected-checks","selected-checks"])),
        ("intrinsicDefinitionChecks",text "true")]
   , interface "CheckRequest"
-      [("languageProfile", quoted "1.0-rc.2"), ("verification?", text "Verification"), ("warnMatches?",text "boolean"),
+      [("advice?",text "boolean"), ("languageProfile", quoted "1.0-rc.2"), ("verification?", text "Verification"), ("warnMatches?",text "boolean"),
        ("sources", text "Source[]"), ("schemaVersion?", text "5"),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
@@ -354,7 +368,7 @@ declarations = joinWith (softbreak <> softbreak)
        ("tags","string[]"),("skip","string | null"),("knownDiscrepancy","string | null"),
        ("parallel","boolean"),("kind?","'model'"),("scope?","string"),("obligations?","NativeEvidenceTarget[]"),("coverage","NativeCheckCoverage")])
   , interface "Result"
-      ([("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++
+      ([("advice?",text "AdviceReport"), ("interface?",text "NativeInterface"), ("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.2\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++

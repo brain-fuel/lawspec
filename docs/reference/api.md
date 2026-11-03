@@ -43,9 +43,16 @@ The compiler exposes the following methods through `createCompiler()` in the `la
 package. Each takes a JSON request and returns a JSON result. The TypeScript
 declarations in `index.d.ts` describe the protocol exactly; this page explains
 it. For usage, see [Use the JavaScript API](../how-to/use-the-javascript-api.md).
+Prelude discovery accepts only an optional query and needs no source project.
+Inspection and advice retain mandatory definition validation. See
+[authoring discovery and advisories](authoring-advisories.md) for bounded native
+checks, explicit incomplete results, and their separation from law evidence.
 
 ```ts
 interface Compiler {
+  prelude(input: PreludeRequest): Promise<PreludeResult>;
+  inspect(input: GenerationRequest): Promise<Result>;
+  advise(input: AdviceRequest): Promise<Result>;
   format(input: FormatRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;

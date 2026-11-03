@@ -2,6 +2,7 @@
 import { readFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import {collectNativeSources, settleAdvice} from "../authoring.mjs";
 import { createCompiler } from "../api.mjs";
 import {readManifest, writeManifest, findManifest, dependencyRanges, resolveComponent} from "../component.mjs";
 import {resolveDependencies, packComponent} from "../component-packages.mjs";
@@ -43,7 +44,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches", "--compile", "--locked", "--offline"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches", "--no-advice", "--strict", "--compile", "--locked", "--offline"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -105,7 +106,7 @@ async function lawspecFiles(root,entries){return collectSources(root,entries,con
 async function packageInput(owner, root, optional = false) {
   try {
     const resolved = await resolveDependencies(path.join(root, "lawspec.edn"), owner,
-      {locked: !!options.locked, offline: optional || !!options.offline});
+      {locked: !!options.locked, readOnly: ["inspect", "advise"].includes(verb), writeLock: !["inspect", "advise"].includes(verb), offline: optional || ["inspect", "advise"].includes(verb) || !!options.offline});
     return {packages: resolved.packages, dependencies: dependencyRanges(owner), ...(owner.package ? {package: owner.package} : {})};
   } catch (error) {
     if (optional && (error.code === "ENOENT" || /Offline:/.test(error.message))) return {};
@@ -758,7 +759,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -767,6 +768,13 @@ async function main() {
     output(VERSION);
     return;
   }
+  if (verb === "prelude") {
+    if (positional.length > 1 || Object.keys(options).some(key => key !== "json")) throw new Error("Usage: lawspec prelude [query] [--json]");
+    const result = diagnostics(await (await createCompiler()).prelude({query: positional[0] ?? ""}));
+    return output(options.json ? result : result.entries.map(entry => `${entry.kind}: ${entry.name}${entry.definition ? ` — ${entry.definition}` : ""}`).join("\n"));
+  }
+  if (options.strict && verb !== "advise") throw new Error("--strict applies to advise");
+  if (options["no-advice"] && !["check", "generate"].includes(verb)) throw new Error("--no-advice applies to check and generate");
   if (verb === "learn") {
     if (positional.length || Object.keys(options).some(key => key !== "port")) throw new Error("Usage: lawspec learn [--port <port>]");
     const {serveLearn} = await import("../learn.mjs");
@@ -844,7 +852,7 @@ async function main() {
     if (!options.stdio) throw new Error("lsp requires --stdio");
     return serveLanguage();
   }
-  if (!options.config && verb !== "init" && verb !== "package" && !(verb === "fmt" && positional.length)) {
+  if (!options.config && verb !== "init" && verb !== "package" && verb !== "mcp" && !(verb === "fmt" && positional.length)) {
     configFile = await findManifest();
     configRoot = path.dirname(configFile);
   }
@@ -852,7 +860,7 @@ async function main() {
     if (options.target || options.project || options.output || options.stdio)
       throw new Error("mcp supports --config only");
     const { serveLawSpec } = await import("../mcp.mjs");
-    return serveLawSpec(configFile);
+    return serveLawSpec(options.config ? configFile : undefined);
   }
   if (verb === "describe") return output(await resolveComponent(configFile, options));
   if (verb === "fetch" || verb === "update") {
@@ -863,17 +871,19 @@ async function main() {
   if (verb === "fmt") return formatCommand();
   if (verb === "init") return init();
   if (verb === "package") return packageCommand();
-  if (!["check", "doctor", "evidence", "explain", "generate", "test", "prove"].includes(verb))
+  if (!["check", "doctor", "evidence", "explain", "generate", "test", "prove", "inspect", "advise"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
   const config = await readManifest(configFile);
   config.targets ??= [];
+  if (verb === "inspect" && !options.target) throw new Error("inspect requires --target <target>");
+  if (options.target && !config.targets.some(t => t.language === options.target)) throw new Error("No matching configured target");
   if (verb === "test" && artifactTargets.includes(options.target))
     throw new Error(`${options.target} is an artifact target and cannot execute application laws`);
   const selected = config.targets.filter(
     (t) => (!options.target || t.language === options.target) &&
       (verb !== "test" || !artifactTargets.includes(t.language)),
   );
-  if (["doctor", "generate", "test"].includes(verb) && !selected.length &&
+  if (["doctor", "generate", "test", "inspect"].includes(verb) && !selected.length &&
       !(verb === "test" && !options.benchmarks && config.manifestVersion === 1 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))))
     throw new Error("No matching configured target");
   const roots = selected.map((t) => path.resolve(configRoot, t.root));
@@ -900,9 +910,10 @@ async function main() {
   if (config.cache !== undefined && typeof config.cache !== "boolean") throw new Error("cache must be true or false");
   if (config.attestation !== undefined && typeof config.attestation !== "string")
     throw new Error("attestation must be the path of an environment attestation");
-  const cache = await cacheDirectory(config);
+  const cache = ["inspect", "advise"].includes(verb) ? undefined : await cacheDirectory(config);
   const input = {
     ...(cache === undefined ? {} : { cacheDirectory: cache }),
+    advice: !options["no-advice"],
     sources: await sources(config),
     languageProfile: config.languageProfile, verification: config.verification ?? { layers: [] },
     ...(await packageInput(config, configRoot)),
@@ -914,6 +925,38 @@ async function main() {
     now: new Date().toISOString(),
   };
   const compiler = await createCompiler();
+  async function authoringReport() {
+    const reports = [];
+    for (const [i, target] of selected.entries()) {
+      let nativeSources;
+      try { nativeSources = await collectNativeSources(roots[i]); }
+      catch (error) { reports.push({findings: [], checks: [{rule: "native-sources", status: "incomplete", target: target.language, reason: error.message}], ok: false}); continue; }
+      const advised = await compiler.advise({...input, cacheDirectory: undefined,
+        target: target.language, sourceDir: target.sourceDir, testDir: target.testDir,
+        nativeBindings: target.nativeBindings, nativeSources, exceptions: config.authoringExceptions ?? []});
+      if (advised.diagnostics?.length) reports.push({findings: [], checks: [{rule: "native-interface", target: target.language, status: "incomplete", reason: advised.diagnostics.map(d => d.message).join("; ")}], ok: false});
+      else reports.push(advised.advice);
+    }
+    if (!selected.length) reports.push(diagnostics(await compiler.advise({...input, exceptions: config.authoringExceptions ?? []})).advice);
+    const unique = rows => [...new Map(rows.map(row => [JSON.stringify(row), row])).values()];
+    return settleAdvice({findings: unique(reports.flatMap(r => r.findings)), checks: unique(reports.flatMap(r => r.checks))}, config.authoringExceptions ?? []);
+  }
+  function printAdvice(report) {
+    for (const finding of report.findings.filter(f => f.status === "unresolved")) console.error(`warning ${finding.rule}: ${finding.declaration}: ${finding.message}`);
+    for (const check of report.checks.filter(c => !["complete", "not-applicable"].includes(c.status))) console.error(`advice ${check.status}: ${check.declaration ?? check.path ?? check.target ?? "source"}: ${check.reason}`);
+  }
+  if (verb === "inspect") {
+    const target = selected[0];
+    const result = diagnostics(await compiler.inspect({...input, target: target.language, sourceDir: target.sourceDir, testDir: target.testDir, nativeBindings: target.nativeBindings}));
+    return output(options.json ? result : result.interface);
+  }
+  if (verb === "advise") {
+    diagnostics(await compiler.check({...input, advice: false}));
+    const report = await authoringReport();
+    if (options.json) output(report); else { printAdvice(report); output(report.ok ? "Selected authoring checks complete; no unresolved findings." : "Authoring review required; see findings and analysis limits."); }
+    if (options.strict && !report.ok) process.exitCode = 1;
+    return;
+  }
   if (verb === "prove") {
     const result = diagnostics(await proveWithZ3(compiler, input, {
       ...(options.solver !== undefined ? {binary: options.solver} : {}),
@@ -968,6 +1011,7 @@ async function main() {
   const obligationName = (item) => item.declaration.replace("::law::", "::");
   if (verb === "check") {
     const result = diagnostics(await compiler.check({...input, ...(options["warn-matches"] ? {warnMatches:true} : {})}));
+    if (!options["no-advice"]) { result.advice = await authoringReport(); if (!options.json) printAdvice(result.advice); }
     if (!options.json) for (const warning of result.warnings ?? [])
       console.error(`${warning.at ? `${warning.at.file}:${warning.at.line}:${warning.at.column}: ` : ""}warning ${warning.code}: ${warning.message}`);
     for (const target of selected) {
@@ -1109,6 +1153,8 @@ async function main() {
   if (verb === "test") return runTests(compiler, input, selected, roots, config);
   if (options["dry-run"] && options.check)
     throw new Error("--dry-run and --check are mutually exclusive");
+  const advisory = options["no-advice"] ? undefined : await authoringReport();
+  if (advisory && !options.json) printAdvice(advisory);
   const artifacts = [];
   for (const target of selected)
     artifacts.push(
@@ -1139,6 +1185,7 @@ async function main() {
   if (!options["dry-run"] && !options.check) await applyWrites(plans);
   const summary = plans.map((plan, i) => ({
     target: selected[i].language,
+    ...(advisory ? {advice: advisory} : {}),
     changes: plan.changes.map((c) => ({ action: c.action, path: c.relative })),
     preservedAdapters: plan.preserved,
     adapterUpdates: plan.adapterUpdates,

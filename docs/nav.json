@@ -366,6 +366,9 @@
       },
       {
         "path": "reference/formatting.md"
+      },
+      {
+        "path": "reference/authoring-advisories.md"
       }
     ]
   },

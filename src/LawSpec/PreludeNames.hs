@@ -2,7 +2,7 @@
 -- definitions remain authoritative for types, effects and contracts.
 -- Internal execution helpers are not public source names.
 module LawSpec.PreludeNames
-  ( simplePreludeHelpers, sequencePreludeHelpers, preludeValueName
+  ( simplePreludeHelpers, sequencePreludeHelpers, preludeValueName, publicPreludeNames
   , preludeDiscoveryText, preludeDependencyText, preludeDefinition, preludeDefinitionTarget ) where
 
 import qualified LawSpec.Core as C
@@ -53,9 +53,10 @@ sequencePreludeHelpers =
   [("octets",C.Octets),("bytesOf",C.BytesOf),("utf8",C.Utf8),("textOf",C.TextOf),("join",C.Join)]
 
 preludeValueName :: String -> Bool
-preludeValueName name = isNumeric name || name `elem` publicNames
-  where
-    publicNames = map fst simplePreludeHelpers ++ map fst sequencePreludeHelpers ++
+preludeValueName name = isNumeric name || name `elem` publicPreludeNames
+
+publicPreludeNames :: [String]
+publicPreludeNames = map fst simplePreludeHelpers ++ map fst sequencePreludeHelpers ++
       map fst canonicalCollectionOperations ++ map fst matcherOperations ++ map fst timeOperations ++ railwayNames ++
       ["any","member","contains","startsWith","endsWith","regexMatches","within","messageContains","recorded","caseFold","textContains"
       ,"toList","size","isEmpty","quot","rem","pow","wrapping","saturating","bounded"

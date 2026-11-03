@@ -1,3 +1,12 @@
+DEC-authoring-advisories:
+  status: decided
+  question: How should authoring discovery and bounded reuse suggestions remain separate from compiler correctness and proof?
+  answer: |
+    Expose prelude discovery without a manifest, actual generated/bound API inspection, and read-only authoring advice through CLI, SDK and MCP. Reuse resolved Core for supported helper/law patterns and emitter name allocation and canonical artifacts for native interfaces. Suggestions are separate from semantic diagnostics and verification evidence. Ordinary warnings do not change success; strict advice rejects unresolved findings and incomplete selected checks. Prefer migration to generated models, explicit checked native bindings/codecs, or declaration-scoped reasoned exceptions. Reuse pinned bundled Tree-sitter WASM grammars rather than replacement language parsers. Native shape/name matches are review candidates, never proofs of semantic equivalence. Parse errors, unsupported syntax, unresolved imports, missing sources/assets and resource limits remain explicit. Artifact native analysis is not applicable. The program-target inventory drives the common parser/rule suite. No obligation generator, solver execution, proof checker or new verification backend is introduced. The independently versioned authoring skills use existing commands and do not depend on these advisories.
+  opened: 0.31.2
+  decided: 0.31.2
+  refs: [tree-sitter-web]
+
 DEC-prelude-first-authoring:
   status: decided
   question: How should authors reuse the prelude and generated application models?
