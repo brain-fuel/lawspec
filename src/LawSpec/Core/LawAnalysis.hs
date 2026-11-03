@@ -36,6 +36,8 @@ import LawSpec.Core.Types (TypeRegistry, makeRegistry)
 import LawSpec.Core.Value (Value(..), equalValues)
 import LawSpec.Scalar (Scalar(..), prettyScalar)
 import LawSpec.Testing (finiteValuesWithRegistry)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierCandidates)
+import LawSpec.Core.Search (applyCandidate)
 
 data Check = Completeness | Overlap | Conflict | Vacuity deriving (Eq, Ord, Show, Enum, Bounded)
 
@@ -349,7 +351,9 @@ coveredBy c point = foldr (Quantified ForSome) body (clauseInputs c)
 
 -- | Every input of a list of quantifiers, each in its type and refinements,
 -- or Left when one is not finite within the limit. The product is cut off
--- before refinements are evaluated, so a large domain costs nothing.
+-- before residual refinements are evaluated. The shared domain planner can
+-- establish a small complete cover from mandatory integer bounds, including
+-- affine bounds on preceding inputs; sampled values never establish coverage.
 enumerate :: Context -> Int -> [Quantifier] -> Either String [[(Id, Value)]]
 enumerate ctx limit = enumerateFrom ctx limit []
 
@@ -360,20 +364,41 @@ enumerateFrom ctx limit known = go [known]
     go envs [] = Right envs
     go envs (q : rest) = do
       let binder = quantifiedBinder q
-      values <- finiteValuesWithRegistry (contextRegistry ctx) (contextBits ctx) limit (binderType binder) >>= maybe (Left "not finite") Right
-      if length envs * length values > limit then Left "too large" else do
-        extended <- fmap concat $ mapM (\env -> fmap concat $ mapM (\v -> do
-          let env' = env ++ [(binderId binder, v)]
-          keep <- allM (truthIn ctx env') (quantifiedPredicates q)
-          pure [env' | keep]) values) envs
+      candidates <- finiteQuantifierCandidates (contextBits ctx) limit
+        (finiteValuesWithRegistry (contextRegistry ctx) (contextBits ctx) limit) q
+        >>= maybe (Left "not finite") Right
+      if length envs * length candidates > limit then Left "too large" else do
+        extended <- fmap concat $ mapM (\env -> fmap concat $ mapM (\candidate -> do
+          let ty = Constructor "Maybe" [TypeArgument (binderType binder)]
+              origin = GeneratedFrom (binderId binder)
+              accepted value = Expr ty (Construct (Id "Maybe::Present") [value]) origin
+              rejected = Expr ty (Construct (Id "Maybe::Absent") []) origin
+          selected <- contextEvaluate ctx env (applyCandidate candidate accepted rejected)
+          case selected of
+            DataValue _ (Id "Maybe::Absent") [] -> pure []
+            DataValue _ (Id "Maybe::Present") [value] -> do
+              let env' = env ++ [(binderId binder, value)]
+              keep <- allM (truthIn ctx env') (quantifiedPredicates q)
+              pure [env' | keep]
+            _ -> Left "finite law-set candidate returned an invalid optional value") candidates) envs
         go extended rest
 
 -- | f's inputs: its arguments' types, then its preconditions.
 domain :: Context -> Int -> Program -> Id -> Either String [[(Id, Value)]]
 domain ctx limit program f = do
   binders <- maybe (Left "f has no arguments to enumerate") Right (arguments program f)
-  points <- enumerate ctx limit [Quantifier b [] [] | b <- binders]
   let contracts = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c == f]
+      conditions = [foldl (\body (before,after) -> renameLocal (binderId before) (binderId after) body)
+          condition (zip (contractArguments contract) binders)
+        | contract <- contracts, condition <- contractPreconditions contract]
+      locals expression = case expressionNode expression of
+        Local identity -> [identity]
+        _ -> concatMap locals (children expression)
+      quantifiers = [Quantifier binder
+        [condition | condition <- conditions, all (`elem` map binderId prefix) (locals condition)] []
+        | (index,binder) <- zip [1..] binders, let prefix = take index binders]
+  points <- enumerate ctx limit quantifiers
+  let
       admitted env = allM id' [ truthIn ctx (zip (map binderId (contractArguments c)) (map snd env)) p
                               | c <- contracts, p <- contractPreconditions c ]
       id' = id

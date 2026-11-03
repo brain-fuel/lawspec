@@ -8,7 +8,7 @@ import {createCompiler} from './api.mjs';
 import {readManifest, findManifest, dependencyRanges} from './component.mjs';
 import {resolveDependencies} from './component-packages.mjs';
 import {collectSources} from './files.mjs';
-const VERSION = '0.31.0';
+const VERSION = '0.31.2';
 function diagnostics(result)
 {
   if (result.diagnostics?.length)
@@ -64,6 +64,7 @@ export async function serveLawSpec(configFile)
       description:
         'Validate the current LawSpec project and run only the law checks selected by lawspec.edn. Returns compiler diagnostics, verification selection, and explicit evidence statuses.',
       inputSchema: z.object({}),
+      annotations: {readOnlyHint: true},
     },
     async () =>
     {
@@ -94,6 +95,7 @@ export async function serveLawSpec(configFile)
       description:
         'List the laws declared in the current LawSpec project after validating its definitions. This does not imply that laws have been proved or tested.',
       inputSchema: z.object({}),
+      annotations: {readOnlyHint: true},
     },
     async () =>
     {
@@ -105,12 +107,18 @@ export async function serveLawSpec(configFile)
             verification: {layers: []},
           }),
         );
-        const laws = result.laws.map(law => ({
+        const laws = [
+          ...(result.laws ?? []),
+          ...(result.temporalLaws ?? []),
+        ].map(law => ({
           id: `${law.owner}::${law.name}`,
           owner: law.owner,
           name: law.name,
           description: law.description,
           location: law.location,
+          kind: law.kind ?? 'property',
+          declaration: law.id,
+          ...(law.scope ? {scope: law.scope} : {}),
         }));
         return {
           content: [{type: 'text', text: JSON.stringify({laws}, null, 2)}],
@@ -136,6 +144,7 @@ export async function serveLawSpec(configFile)
           .default('eng')
           .describe('Explanation style'),
       }),
+      annotations: {readOnlyHint: true},
     },
     async ({law, view}) =>
     {

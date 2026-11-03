@@ -37,7 +37,12 @@ Use `--config <path>` with any command to select a configuration file other than
 
 ```edn
 {
-  :version 1
+  :manifest-version 1
+  :component {
+    :name "shop.application"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
   :sources ["laws"]
   :targets [
     {
@@ -108,7 +113,12 @@ Hpack; `doctor` reads that description without rewriting it.
 
 ```edn
 {
-  :version 1
+  :manifest-version 1
+  :component {
+    :name "shop.application"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
   :sources ["laws"]
   :machine-bits 32
   :generation {
@@ -124,10 +134,10 @@ Hpack; `doctor` reads that description without rewriting it.
 }
 ```
 
-- `machineBits` is `32` or `64` (the default). It sets the range of `IntSize`,
+- `machine-bits` is `32` or `64` (the default). It sets the range of `IntSize`,
   `UIntSize` and `UIntPtr`. See [32-bit and compact profiles](use-32-bit-and-compact-profiles.md).
 - `generation` sets property-test limits. Any field you omit keeps its default:
-  `cases` 100, `maxAttempts` 10000, `maxShrinks` 1000, `exhaustiveLimit` 4096.
+  `cases` 100, `max-attempts` 10000, `max-shrinks` 1000, `exhaustive-limit` 4096.
   See the [configuration reference](../reference/configuration.md#generation).
 
 ## Depend on packages
@@ -137,7 +147,12 @@ package directories to load, each containing a `lawspec.edn`:
 
 ```edn
 {
-  :version 1
+  :manifest-version 1
+  :component {
+    :name "shop.application"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
   :sources ["orders.lawspec"]
   :dependencies {
     "shop.domain" "^1.0.0"
@@ -156,7 +171,7 @@ See [Use imports and packages](use-imports-and-packages.md).
 
 ## Bind existing application code
 
-A target's `nativeBindings` connects LawSpec types and adapters to types and
+A target's `native-bindings` connects LawSpec types and adapters to types and
 functions your application already has. See
 [Bind native types and functions](bind-native-types.md).
 

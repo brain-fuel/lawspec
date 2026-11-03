@@ -138,7 +138,13 @@ Schema validation checks represented data; it is not a law proof.
 `variables.tf` declares Terraform/OpenTofu input variables, in spec order and
 laid out as `tofu fmt` lays them out. A variable has its declaration's name in
 snake case (`settings`); a monomorphic named type without a corresponding entry
-becomes `type_` and the type's name (`type_settings`). Terraform's reserved
+becomes `type_` and the type's name (`type_settings`) when the unit has no
+configuration entries. When entries exist, only their transitive type closure
+must be expressible in HCL; unrelated library types are listed in the artifact
+manifest's `omittedTypes`, with a reason. An unsupported type reached through
+an entry or one of its fields still fails generation. All definitions and
+constructor restrictions remain subject to mandatory validation, including
+declarations outside the exported closure. Terraform's reserved
 variable names and clashes take `_2`; the artifact manifest gives each name.
 Object types list one attribute per line. Each restriction is its own
 validation block with its own message: a nested value must be set, an integer

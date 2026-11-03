@@ -12,11 +12,16 @@ generated code is laid out.
 ## Select a 32-bit machine profile
 
 `IntSize`, `UIntSize` and `UIntPtr` are 64-bit by default. To specify a 32-bit
-platform, set `machineBits` in `lawspec.edn`:
+platform, set `machine-bits` in `lawspec.edn`:
 
 ```edn
 {
-  :version 1
+  :manifest-version 1
+  :component {
+    :name "shop.application"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
   :sources ["laws"]
   :machine-bits 32
   :targets [
@@ -63,8 +68,10 @@ npx lawspec examples --minify
 npx lawspec init --target kotlin --minify
 ```
 
-- For `generate` and `examples`, it compacts runtime sources, declarations,
-  definitions, adapter stubs and tests.
+- For `generate` and `examples`, it selects compact layouts for generated files.
+  Fixed runtime text and required hard line breaks remain. Small Go declarations
+  can therefore be byte-identical; wider declarations use fewer optional breaks.
+  The flag does not promise fewer lines or a smaller file for every input.
 - For `init`, it compacts newly created build scaffolds and the EDN
   configuration.
 

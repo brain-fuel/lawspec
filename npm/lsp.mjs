@@ -124,7 +124,7 @@ export async function serveLanguage(
       const file = fileURLToPath(uri);
       const diagnostics = [
         ...(result.diagnostics ?? []),
-        ...(warnMatches ? (result.warnings ?? []) : []),
+        ...(result.warnings ?? []),
       ]
         .filter(d => !d.at || d.at.file === file)
         .map(d =>
@@ -189,7 +189,7 @@ export async function serveLanguage(
             id: d.id,
             name: d.name,
             kind: 12,
-            detail: JSON.stringify(d.type),
+            detail: d.typeText ?? 'Type information unavailable',
             ...origin,
           });
       }
@@ -205,7 +205,10 @@ export async function serveLanguage(
           ...origin,
         });
     }
-    for (const law of result.laws ?? [])
+    for (const law of [
+      ...(result.laws ?? []),
+      ...(result.temporalLaws ?? []),
+    ])
     {
       const origin = location(law.location);
       if (origin)
@@ -320,7 +323,7 @@ export async function serveLanguage(
             definitionProvider: true,
             referencesProvider: true,
           },
-          serverInfo: {name: 'LawSpec', version: '1.0-rc.2'},
+          serverInfo: {name: 'LawSpec', version: '0.31.2'},
         };
         break;
       case 'initialized':

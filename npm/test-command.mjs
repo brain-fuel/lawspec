@@ -1712,6 +1712,9 @@ export async function executedTests(report, output, root, since)
                 name: event.Test,
                 classname: event.Package,
                 status: event.Action === 'pass' ? 'passed' : 'failed',
+                ...(Number.isFinite(event.Elapsed) && event.Elapsed >= 0
+                  ? {time: event.Elapsed}
+                  : {}),
               },
             ]
           : [];

@@ -578,7 +578,7 @@ export function attachNativeEvidence(evidence, observations)
     const current = rows.filter(row => row.freshness === 'matching-inputs');
     const failed = current.filter(row => row.outcome === 'failed');
     const combinedFailure = failed.some(
-      row => (row.attempt?.check.nativeGroup?.length ?? 0) > 1,
+      row => (row.attempt?.check?.nativeGroup?.length ?? 0) > 1,
     );
     const status = failed.length
       ? combinedFailure
@@ -611,6 +611,24 @@ export function attachNativeEvidence(evidence, observations)
           row.coverage?.kind === 'finite-inputs' &&
           row.coverage.scopedQuantifiers === false,
       );
+    const measurements =
+      item.executionKind === 'measurement'
+        ? current.flatMap(row =>
+            (row.attempt?.tests ?? []).flatMap(test =>
+              Number.isFinite(test.time) && test.time >= 0
+                ? [
+                    {
+                      kind: 'native-check-duration',
+                      target: row.target,
+                      root: row.root,
+                      test: test.name,
+                      seconds: test.time,
+                    },
+                  ]
+                : [],
+            ),
+          )
+        : [];
     const nativeEvidence = {
       kind: 'native-conformance',
       status,
@@ -618,6 +636,13 @@ export function attachNativeEvidence(evidence, observations)
         ? 'complete-finite-inputs'
         : 'not-established',
       observations: rows,
+      ...(item.executionKind === 'measurement'
+        ? {
+            measurements,
+            measurementScope:
+              'Reported durations cover the native check, including harness overhead; exact operation timings are not exported by these runners.',
+          }
+        : {}),
     };
     const adequacy = current.flatMap(row => row.harness?.adequacy ?? []);
     const enriched = {
@@ -633,14 +658,19 @@ export function attachNativeEvidence(evidence, observations)
         plannedEvidence: {status: item.status, reason: item.reason},
         status: flaky
           ? 'flaky'
-          : completeFinite
-            ? 'exhaustively-checked'
-            : 'property-tested',
+          : item.executionKind === 'measurement'
+            ? 'measured'
+            : completeFinite
+              ? 'exhaustively-checked'
+              : 'property-tested',
         reason:
           `Recorded native checks completed for ${new Set(rows.map(row => row.target + '\0' + row.root)).size} requested target(s); ` +
-          (completeFinite
-            ? 'every finite input was checked.'
-            : 'this is scoped native execution evidence, not a universal model or search proof.') +
+          (item.executionKind === 'measurement'
+            ? 'the performance budget was checked against the real clock. This is measurement evidence, not proof. ' +
+              nativeEvidence.measurementScope
+            : completeFinite
+              ? 'every finite input was checked.'
+              : 'this is scoped native execution evidence, not a universal model or search proof.') +
           (flaky ? ' Its last run failed, then passed on a retry.' : ''),
       };
     if (['failed', 'incomplete'].includes(status))
@@ -665,6 +695,11 @@ export function nativeEvidenceText(item)
   const summary = item.nativeEvidence;
   return [
     `Native conformance: ${summary.status}; search completeness: ${summary.searchCompleteness}`,
+    ...(summary.measurements ?? []).map(
+      item =>
+        `Native check duration: ${item.test} [${item.target}] ${item.seconds} s`,
+    ),
+    ...(summary.measurementScope ? [summary.measurementScope] : []),
     ...summary.observations.map(
       row =>
         `${row.target} (${row.root}): ${row.outcome}; ${row.freshness}` +
@@ -680,7 +715,7 @@ export function nativeEvidenceText(item)
         ),
     ),
     ...summary.observations
-      .filter(row => row.attempt?.invocation.output)
+      .filter(row => row.attempt?.invocation?.output)
       .map(
         row =>
           'Native invocation output (scoped to that invocation):\n' +

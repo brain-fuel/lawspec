@@ -1,0 +1,50 @@
+{
+  "method": "planGeneration",
+  "schemaVersion": 5,
+  "languageProfile": "1.0-rc.2",
+  "verification": {
+    "layers": [
+      "property"
+    ]
+  },
+  "target": "go",
+  "sources": [
+    {
+      "path": "undo.lawspec",
+      "content": "unit issue.undo\nimport lawspec.time\ntype PageError is one of NothingToUndo of type Text end type\nundo :: List Int32 -> Unit fails with PageError\nfast :: Unit -> Unit\nlaw emptyFails is definition: undo [] fails with NothingToUndo _ end definition end law\nlaw quick is definition: fast () takes at most 50 ms end definition end law\nend unit"
+    }
+  ],
+  "nativeBindings": {
+    "goImports": [
+      {
+        "alias": "domain",
+        "path": "example.com/app/domain"
+      }
+    ],
+    "functions": [
+      {
+        "declaration": "issue.undo::undo",
+        "native": [
+          "domain",
+          "UndoLast"
+        ]
+      },
+      {
+        "declaration": "issue.undo::fast",
+        "native": [
+          "domain",
+          "Fast"
+        ]
+      }
+    ],
+    "failures": [
+      {
+        "native": [
+          "domain",
+          "NothingToUndo"
+        ],
+        "failure": "issue.undo::PageError::NothingToUndo"
+      }
+    ]
+  }
+}

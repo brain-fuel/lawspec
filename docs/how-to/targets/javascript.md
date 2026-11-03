@@ -13,7 +13,7 @@ title: Set up JavaScript
 
 ## Create the project
 
-Use the development checkout for the unpublished 0.25.0 authoring profile:
+Use a checkout matching the `1.0-rc.2` authoring profile:
 
 ```sh
 git clone https://github.com/brain-fuel/lawspec.git lawspec

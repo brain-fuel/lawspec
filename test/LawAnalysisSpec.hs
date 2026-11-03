@@ -3,6 +3,7 @@
 -- claims and excuses checks, until a version or a UTC date-time.
 module LawAnalysisSpec (test_lawSetsAreCheckedTogether) where
 
+import Control.Monad (forM_)
 import Data.Aeson (Value(..), object, (.=), decode, encode)
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as K
@@ -153,6 +154,43 @@ test_lawSetsAreCheckedTogether = describe "law sets" $ do
       let source = orders (block ["partial until 2026-03-01T00:00Z because \"cancelled orders come later\""])
       status (row "completeness" (check ["now" .= ("2026-02-28T23:59:59.000Z" :: String)] source)) `shouldBe` Just "exempted"
       status (row "completeness" (check ["now" .= ("2026-03-01T00:00:00.000Z" :: String)] source)) `shouldBe` Just "refuted"
+    it "decides expired exemptions over refined scalar and dependent domains without Z3" $ do
+      let source dependent = unlines
+            [ "unit claims.orders"
+            , "function next (n :: Int64 where n >= 0 and n <= 2) " ++
+                (if dependent then "(m :: Int64 where m >= n and m <= n + 1) " else "") ++
+                "-> Int64 is n end function"
+            , "law atZero is definition: for all (n :: Int64 where n = 0) => next n " ++
+                (if dependent then "n " else "") ++ "= 0 end for all end definition end law"
+            , "laws for next are partial until 1.2.0 because \"other inputs come later\" end laws"
+            , "end unit"
+            ]
+      forM_ [False,True] $ \dependent -> forM_ ["exhaustive","proof"] $ \layer -> do
+        let settings version = ["projectVersion" .= (version :: String),
+              "verification" .= object ["layers" .= [layer :: String]]]
+        status (row "completeness" (check (settings "1.1.4") (source dependent))) `shouldBe` Just "exempted"
+        let expired = check (settings "1.2.0") (source dependent)
+        row "completeness" expired `shouldSatisfy` maybe False
+          (\(state,why) -> state == "refuted" && "not covered" `isInfixOf` why && "expired" `isInfixOf` why)
+        diagnostics expired `shouldSatisfy` any ((== "refuted") . fst)
+    it "warns about an expired exemption even when its infinite obligation awaits a solver" $ do
+      let source = unlines
+            [ "unit claims.orders"
+            , "function next (n :: Integer) -> Integer is n end function"
+            , "law atZero is definition: for all (n :: Integer where n = 0) => next n = 0 end for all end definition end law"
+            , "laws for next are partial until 1.2.0 because \"other inputs come later\" end laws"
+            , "end unit"
+            ]
+          response = check ["projectVersion" .= ("1.2.0" :: String),
+            "verification" .= object ["layers" .= ["proof" :: String]]] source
+      diagnostics response `shouldBe` []
+      status (row "completeness" response) `shouldBe` Just "planned"
+      case response of
+        Just (Object result) | Just (Array warnings) <- K.lookup "warnings" result ->
+          toList warnings `shouldSatisfy` any (\warning -> case warning of
+            Object value -> K.lookup "code" value == Just (String "exemption-expired")
+            _ -> False)
+        _ -> expectationFailure "an expired exemption was silently left planned"
   describe "portfolio 13.6 with Z3" $ do
     let portfolio = readFile "test/fixtures/law-sets.lawspec"
     -- Z3 runs the portfolio once; each check reads its rows.

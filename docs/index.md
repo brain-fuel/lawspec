@@ -18,10 +18,9 @@ The compiler is written in Haskell. It ships in the `lawspec` npm package as
 prebuilt WebAssembly, with a Node command-line interface and a typed JavaScript
 API. You do not need a Haskell toolchain to use it.
 
-These canonical authoring examples describe the unreleased minor on `main`.
-[Install the development checkout](how-to/install-and-init.md) to use this
-profile. For released 0.24.0, use its
-[tagged documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
+These examples use the `1.0-rc.2` language profile.
+[Install from a checkout](how-to/install-and-init.md) matching the version you
+are evaluating. Tagged releases retain their own documentation.
 
 ```lawspec
 unit example.addition

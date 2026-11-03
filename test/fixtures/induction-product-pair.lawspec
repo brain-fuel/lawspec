@@ -1,0 +1,43 @@
+unit induction.pair
+
+type Drawable is one of
+  | Blank
+  | Draw of type Pair Int64 Drawable
+end type
+
+function drawSeq (first :: Drawable) (second :: Drawable) -> Drawable is
+  first matching case of second:
+    when Blank then first
+    when Draw (Pair mark rest) then Draw (Pair mark (drawSeq first rest))
+  end case
+end function
+
+law associative is
+  definition:
+    for all (a :: Drawable) (b :: Drawable) (c :: Drawable) =>
+      drawSeq (drawSeq a b) c = drawSeq a (drawSeq b c)
+    end for all
+  end definition
+end law
+
+law leftIdentity is
+  definition: for all (a :: Drawable) => drawSeq Blank a = a end for all end definition
+end law
+
+law falseIdempotence is
+  definition: for all (a :: Drawable) => drawSeq a a = a end for all end definition
+end law
+
+laws for drawSeq are
+  partial because "algebraic properties do not enumerate every input pair"
+  overlap allowed because "algebraic properties share the empty boundary"
+end laws
+
+harness induction.pair.proofs for induction.pair is
+  for law associative
+    prove by induction on c
+  end for law
+end harness
+
+end unit
+

@@ -5,6 +5,7 @@ module LawSpec.Core.Eval
   , evaluateValue, evaluateValuePure, evaluateValueProposition, validateValueWithContracts
   ) where
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Common (Location(..), Span(..))
 import LawSpec.Core
 import LawSpec.Scalar
 import LawSpec.Core.Semantics
@@ -216,8 +217,14 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
     Nothing -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Absent") []
   context origin result = case result of
     Left msg | "quantifier-search-incomplete:" `isPrefixOf` msg -> Left msg
-    Left msg -> Left (show origin ++ ": " ++ msg)
+    Left msg -> Left (originText origin ++ ": " ++ msg)
     Right v -> Right v
+
+-- Internal constructors are never a user-facing source location.
+originText :: Origin -> String
+originText (SourceSpan range) = let at = spanStart range in
+  file at ++ ":" ++ show (line at) ++ ":" ++ show (column at)
+originText (GeneratedFrom identity) = "in " ++ idText identity
 
 valueBoolean :: Value -> Either String Bool
 valueBoolean (ScalarValue (SBool b)) = Right b

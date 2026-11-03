@@ -37,13 +37,19 @@ elaborateDataDeclarationsWithProfile bits units = fst <$> elaborateDataDeclarati
 elaborateDataDeclarationsWithContext :: Int -> [S.Unit] -> Either [Diagnostic] ([C.DataDeclaration],Source.SourceContext)
 elaborateDataDeclarationsWithContext bits units = do
   (headers,context) <- dataDeclarationHeaders units
+  -- A header retains family kinds, but its anonymous payloads are still Unit
+  -- placeholders. Index paths belong to the completed payload, so they cannot
+  -- be validated while lowering a different field's refinement. Restore every
+  -- constructor table from the original header before mandatory admission.
+  let typingHeaders = [header {C.dataIndex = fmap (\family -> family
+        {familyIndexConstructors = []}) (C.dataIndex header)} | header <- headers]
   completed <- forM headers $ \header -> do
     constructors <- forM (C.dataConstructors header) $ \constructor -> case M.lookup (C.constructorId constructor) (Source.constructorSources context) of
       Nothing -> pure (constructor,[])
       Just source -> contextualOrigin (C.constructorOrigin constructor) $ do
-        fields <- mapM (coreTypeWithSourceRecords context headers bits) (Source.sourceFields source)
+        fields <- mapM (coreTypeWithSourceRecords context typingHeaders bits) (Source.sourceFields source)
         equations <- mapM (\(name,ty) -> do
-          (value,records) <- coreTypeWithSourceRecords context headers bits ty
+          (value,records) <- coreTypeWithSourceRecords context typingHeaders bits ty
           pure ((name,value),records)) (Source.sourceEquations source)
         pure (constructor {C.constructorFields=zipWith (\field (ty,_) -> field{C.binderType=ty}) (C.constructorFields constructor) fields,
           C.constructorEquations=map fst equations},concatMap snd fields ++ concatMap snd equations)

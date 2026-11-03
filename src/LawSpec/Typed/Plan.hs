@@ -12,7 +12,7 @@
 -- operations are intrinsics, which each target implements over its
 -- persistent maps. ref:DEC-typed-native-definitions
 module LawSpec.Typed.Plan
-  ( TypedPlan(..), Intrinsic(..), typedPlan, typedPlanWith, typedPlanPerforming, supportedType, isTypedHandler
+  ( TypedPlan(..), Intrinsic(..), typedPlan, typedPlanWith, typedPlanPerforming, supportedType, isTypedHandler, handlerFallbackReasons
   , isContextual, performedFailure
   , typedFallbacks, failedWith, sequenceBuiltins
   , collectionArguments, scalarTypes, constructorRanks, definitionClass, sharedDefinitions, firstOf
@@ -394,10 +394,22 @@ definitionClass plan identity = M.lookup identity (typedClass plan)
 -- | A stateful or stateless spec handler runs typed when its state has a
 -- typed form and every clause is typed.
 isTypedHandler :: TypedPlan -> Handler -> Bool
-isTypedHandler plan h =
-  all ((`M.member` typedDefinitions plan) . snd) (handlerClauses h) &&
-  maybe True (\(t, start) -> supportedType plan t && startTyped start) (handlerState h)
+isTypedHandler plan = null . handlerFallbackReasons plan
+
+-- The same eligibility decision drives emission and its public explanation.
+-- A dynamic handler still runs through the checked evaluator; it does not
+-- acquire unchecked native state setters merely to offer an embedding API.
+handlerFallbackReasons :: TypedPlan -> Handler -> [String]
+handlerFallbackReasons plan h =
+  ["operation " ++ operation ++ ": " ++ reason identity |
+    (operation,identity) <- handlerClauses h, identity `M.notMember` typedDefinitions plan] ++
+  ["state has no typed native representation" | Just (t,_) <- [handlerState h], not (supportedType plan t)] ++
+  ["initial state requires dynamic evaluation" | Just (_,start) <- [handlerState h], not (startTyped start)]
   where
+    reason identity = case [why | (definition,why) <- typedFallbackReasons plan,
+                                 declarationId (definitionDeclaration definition) == identity] of
+      why:_ -> why
+      [] -> "clause has no typed native definition"
     startTyped e = case expressionNode e of
       -- A computed start: a call of a typed definition.
       ExternalCall i args -> i `M.member` typedDefinitions plan && all startTyped args

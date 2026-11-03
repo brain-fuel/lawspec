@@ -18,6 +18,14 @@ strongest to weakest:
 | `DEFAULT HANDLER` | `default-handler` | The default handlers of built-in abilities (see [built-in abilities](builtins.md)) | Reviewed runtime code, its ability's laws property-tested, cryptography checked against NIST vectors |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |
 
+Native budget checks retain `MEASURED` when imported from a passing native test
+report, including finite-domain checks. A stale, missing or failed report cannot
+supply that status. Where a runner reports durations, `nativeEvidence.measurements`
+contains `native-check-duration` values in seconds. Those values include harness
+overhead and are **not** the exact operation timing used inside the budget
+assertion. The generated assertion still checks the operation against the real
+clock; current runners do not export its individual clock readings.
+
 ## Refuted laws
 
 `REFUTED` (`refuted`) is not evidence for a law. It says a confirmed

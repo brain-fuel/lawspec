@@ -21,7 +21,7 @@ mandatory definition validation. It needs no target build tools. New projects
 select no optional law checks: their laws remain `not-verified` even when
 intrinsic definition checks pass.
 
-Choose the checks you want in the project's version-2 `lawspec.edn`. For
+Choose the checks you want in the project's `lawspec.edn` (`:manifest-version 1`). For
 generated property tests and authored examples, set:
 
 ```json

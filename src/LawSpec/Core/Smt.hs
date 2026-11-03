@@ -1218,8 +1218,27 @@ structuralInputs program law =
   where
     types = catalog program
     recursiveType ty = case declarationOf types ty of
-      Right (declaration, table) -> or [instantiate table (binderType f) == ty | c <- dataConstructors declaration, f <- constructorFields c]
+      Right (declaration, table) -> or
+        [not (null (structuralSubterms types ty (instantiate table (binderType f)) "field"))
+        | c <- dataConstructors declaration, f <- constructorFields c]
       Left _ -> False
+
+-- Records and other single-constructor products preserve strict subterms.
+-- Why3 encodes ordinary records as one-constructor datatypes; structural
+-- induction must follow those fields just as it follows a direct List tail.
+-- A sum needs a case split, so no selector through an alternative is assumed.
+structuralSubterms :: Catalog -> Type -> Type -> String -> [String]
+structuralSubterms types root = descend []
+  where
+    descend seen ty name
+      | ty == root = [name]
+      | ty `elem` seen || length seen >= 128 = []
+      | otherwise = case declarationOf types ty of
+          Right (declaration, table) | [constructor] <- dataConstructors declaration -> concat
+            [descend (ty:seen) (instantiate table (binderType field))
+              (app (selectorSymbol ty constructor index) [name])
+            | (index,field) <- zip [0..] (constructorFields constructor)]
+          _ -> []
 
 -- | One case of induction on an input x.
 data Shape = DataCase DataConstructor [Type] | IntegerBase Integer | IntegerStep Integer
@@ -1272,7 +1291,8 @@ inductionTasks program mode law input lemmas = do
               pure (n, s, base, ft)
             let built = if null fs then constructorSymbol ty c else app (constructorSymbol ty c) [n | (n, _, _, _) <- fs]
             pure ( input ++ " = " ++ shortName (constructorId c), fs, [app "=" [xName, built]]
-                 , [Term xSort n "true" | (n, _, _, ft) <- fs, ft == ty] )
+                 , [Term xSort child "true" | (n, _, _, ft) <- fs,
+                      child <- structuralSubterms types ty ft n] )
           IntegerBase lo -> pure (input ++ " = " ++ show lo, [], [app "=" [xName, integer lo]], [])
           IntegerStep lo -> pure (input ++ " > " ++ show lo, [], [app ">" [xName, integer lo]], [Term IntegerSort (app "-" [xName, "1"]) "true"])
         ranges <- lift (mapM (\(n, o, _) -> domain bits (binderType (quantifiedBinder o)) n) rows)

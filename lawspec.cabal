@@ -375,10 +375,14 @@ extra-source-files:
     test/fixtures/constructor_properties.lawspec
     test/fixtures/definition_contracts.lawspec
     test/fixtures/dependent-model-arguments.lawspec
+    test/fixtures/effectful-attempt.lawspec
     test/fixtures/eq-set-foundation.lawspec
     test/fixtures/eq-set-operations-library.lawspec
     test/fixtures/eq-set-operations.lawspec
     test/fixtures/history-revocation.lawspec
+    test/fixtures/induction-product-nested.lawspec
+    test/fixtures/induction-product-pair.lawspec
+    test/fixtures/induction-product-record.lawspec
     test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
     test/fixtures/model-counters.lawspec

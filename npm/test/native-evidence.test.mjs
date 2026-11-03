@@ -268,6 +268,50 @@ test('native evidence preserves scope, stale results, failures and unselected ob
   assert.equal(proved.nativeEvidence.status, 'failed');
 });
 
+test('completed budget evidence stays measured with explicit timing scope at every target', () =>
+{
+  for (const target of [
+    'go',
+    'python',
+    'javascript',
+    'typescript',
+    'fsharp',
+    'rust',
+  ])
+  {
+    for (const kind of ['sampled', 'finite-inputs'])
+    {
+      const budget = {...obligation, executionKind: 'measurement'};
+      const row = {
+        ...observation(target),
+        coverage: {kind, scopedQuantifiers: false},
+        attempt: {tests: [{name: 'deadline', status: 'passed', time: 0.125}]},
+      };
+      const attach = value => attachNativeEvidence([budget], [value])[0];
+      const completed = attach(row);
+      assert.equal(completed.status, 'measured');
+      assert.equal(
+        completed.nativeEvidence.measurements[0].kind,
+        'native-check-duration',
+      );
+      assert.equal(completed.nativeEvidence.measurements[0].seconds, 0.125);
+      assert.match(nativeEvidenceText(completed), /including harness overhead/);
+      assert.match(
+        nativeEvidenceText(completed),
+        /exact operation timings are not exported/,
+      );
+      assert.equal(attach({...row, freshness: 'stale'}).status, 'planned');
+      assert.equal(attach({...row, outcome: 'failed'}).status, 'incomplete');
+      assert.equal(attach({...row, harness: {flaky: true}}).status, 'flaky');
+      const absent = attach({
+        ...row,
+        attempt: {tests: [{name: 'deadline', status: 'passed'}]},
+      });
+      assert.deepEqual(absent.nativeEvidence.measurements, []);
+    }
+  }
+});
+
 test('complete finite inputs remain distinct from nested witness or universal search', () =>
 {
   const row = {

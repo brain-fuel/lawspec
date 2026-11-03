@@ -20,6 +20,8 @@ import LawSpec.Scalar (prettyScalar)
 import LawSpec.Backend (declarationName, prettyType)
 import LawSpec.Collections (collectionsUnit,canonicalCollectionValues,collectionOperations,canonicalCollectionOperation)
 import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldOperation)
+import LawSpec.Discharge (budgeted)
+import qualified LawSpec.Typed.Plan as Typed
 
 type Names = [(C.Id,String)]
 
@@ -201,12 +203,49 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
   , "dataTypes" .= map dataView programDataDeclarations
   , "definitions" .= [definitionView u d | u <- programUnits, d <- C.unitDefinitions u]
   , "laws" .= [propertyView (C.idText (C.unitId u)) p | u <- programUnits,p <- C.unitProperties u]
+  , "temporalLaws" .= concat
+      [[temporalLawView owner "model" (S.modelLawName law) (S.modelLawModel law)
+          (S.modelLawSpan law) (S.modelLawFormula law)
+          ["every" .= S.modelLawEvery law, "fairness" .=
+            [object ["command" .= command, "strong" .= strong] | (strong,command) <- S.modelLawFairness law]]
+        | law <- S.modelLaws owner] ++
+       [temporalLawView owner "history" (S.historyLawName law) (S.historySource law)
+          (S.historySpan law) (S.historyFormula law) ["complete" .= S.historyComplete law]
+        | law <- S.historyLaws owner] | owner <- surface]
   , "contracts" .= [object ["owner" .= C.idText (C.unitId u),"contract" .= contractView c] | u <- programUnits,c <- C.unitContracts u]
   , "refinements" .= [refinementView u r | u <- surface,r <- S.refinements u]
   , "evidence" .= map evidenceView evidence
   , "expansions" .= expansions, "files" .= artifacts
   ]
   where
+    -- Temporal claims are not ordinary input/output assertions. Keep their
+    -- family and scope explicit while exposing every checked law to tools.
+    temporalLawView owner family name scope range formula extra = object
+      (["id" .= (S.unitName owner ++ "::law::" ++ name), "owner" .= S.unitName owner,
+        "name" .= name, "kind" .= (family :: String), "scope" .= scope,
+        "location" .= spanStart range, "formula" .= temporalFormulaView formula,
+        "description" .= ("A law over the " ++ family ++ " " ++ scope)] ++ extra)
+    temporalFormulaView formula = case formula of
+      S.TemporalAtom name _ -> object ["kind" .= ("atom" :: String), "name" .= name]
+      S.TemporalNot body -> unary "not" body
+      S.TemporalAlways body -> unary "always" body
+      S.TemporalEventually body -> unary "eventually" body
+      S.TemporalAnd left right -> binary "and" left right
+      S.TemporalOr left right -> binary "or" left right
+      S.TemporalImplies left right -> binary "implies" left right
+      S.TemporalUntil left right -> binary "until" left right
+      S.TemporalWhenever left right -> binary "whenever" left right
+      S.TemporalNeverBefore left right -> binary "never-before" left right
+      S.TemporalWithin body duration -> object
+        ["kind" .= ("within" :: String), "body" .= temporalFormulaView body,
+         "microseconds" .= show duration]
+      S.TemporalReference parts _ -> object ["kind" .= ("reference" :: String),
+        "parts" .= [either (\word -> object ["kind" .= ("word" :: String), "text" .= word])
+          (\argument -> object ["kind" .= ("argument" :: String), "formula" .= temporalFormulaView argument]) part | part <- parts]]
+      where
+        unary name body = object ["kind" .= (name :: String), "body" .= temporalFormulaView body]
+        binary name left right = object ["kind" .= (name :: String),
+          "left" .= temporalFormulaView left, "right" .= temporalFormulaView right]
     definitionView u d = object
       [ "owner" .= C.idText (C.unitId u)
       , "id" .= C.idText (C.declarationId (C.definitionDeclaration d))
@@ -247,7 +286,8 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       Just (definition,_) <- [canonicalCollectionOperation operation],definition == public] of
         operation:_ -> Just operation
         _ -> Nothing
-    unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++
+    handlerPlan = Typed.typedPlanPerforming Typed.scalarTypes programDataDeclarations programUnits
+    unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"typeText" .= declarationTypeText u d,"origin" .= originView (C.declarationOrigin d)] ++
         ["source" .= sourceView owner name | Just (owner,name) <- [C.declarationSource d]] ++
         ["representation" .= str "structural-record-storage" | C.unitId u==RecordViews.viewUnitId,
           definition<-C.unitDefinitions u,C.definitionDeclaration definition==d,RecordViews.viewSignature definition/=Nothing] ++
@@ -263,9 +303,20 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           , "origin" .= originView (C.abilityOrigin a)] | a <- C.unitAbilities u] | not (null (C.unitAbilities u))] ++
       ["handlers" .= [object ["id" .= C.idText (C.handlerId h), "name" .= C.handlerName h
           , "ability" .= C.abilityKey (C.handlerAbility h)
+          , "goEmbedding" .= object ["available" .= null (Typed.handlerFallbackReasons handlerPlan h)
+              , "reasons" .= Typed.handlerFallbackReasons handlerPlan h
+              , "runtime" .= str (if Typed.isTypedHandler handlerPlan h then "typed-native" else "checked-dynamic")]
           , "clauses" .= [object ["operation" .= op, "definition" .= C.idText d] | (op, d) <- C.handlerClauses h]
           , "state" .= fmap (typeView . fst) (C.handlerState h)
           , "origin" .= originView (C.handlerOrigin h)] | h <- C.unitHandlers u] | not (null (C.unitHandlers u))])
+    -- Human tools use the checked source signature, which retains refinements,
+    -- dependent indices and linear transitions erased from the runtime ABI.
+    -- The structured Core type remains available to machine consumers.
+    declarationTypeText owner declaration = case
+      [ty | unit <- surface, S.unitName unit == C.idText (C.unitId owner),
+            (name,ty) <- S.sourceSignatures unit ++ S.functions unit, name == C.declarationName declaration] of
+      ty:_ -> S.prettySourceType ty
+      [] -> prettyType (C.declarationType declaration)
     -- An async declaration uses Async, whose default handler is the
     -- target's native async (abilities-mapping.md).
     declarationRow d = [U.asyncAbility | C.declarationAsync d] ++ map C.abilityKey (C.declarationUses d)
@@ -320,6 +371,9 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       s : _ -> Just s
       [] -> Nothing
     evidenceView o = object (obligationFields (declarationBinders (obligationDeclaration o)) o ++
+      ["executionKind" .= ("measurement" :: String)
+      | obligationStage o == "law", u <- programUnits, p <- C.unitProperties u,
+        C.propertyId p == obligationDeclaration o, budgeted p] ++
       -- A law's obligation comes from the law plane; how it is discharged,
       -- from the harness plane, which is reported beside it.
       [ "harness" .= harnessView (declarationBinders (obligationDeclaration o)) (C.propertyHarness p)

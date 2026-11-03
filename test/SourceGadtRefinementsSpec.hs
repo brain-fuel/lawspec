@@ -37,6 +37,33 @@ outcomes program=do
   forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
 
 test_sourceGadtRefinements=describe "stored refinements in structural GADT indices" $ do
+  it "completes indexed payloads before admitting inline and named field refinements" $ do
+    let nonnegative = "(value :: Int32 where value >= 0)"
+        cases =
+          [ ("stroke :: " ++ nonnegative ++ " rest :: Page m", "stroke = VALUE, rest = Blank")
+          , ("rest :: Page m stroke :: " ++ nonnegative, "rest = Blank, stroke = VALUE")
+          , ("metadata :: record{stroke :: " ++ nonnegative ++ "} rest :: Page m",
+             "metadata = record{stroke = VALUE}, rest = Blank")
+          , ("stroke :: StrokeId rest :: Page m", "stroke = VALUE, rest = Blank")
+          ]
+        replaceValue value text = case break (== 'V') text of
+          (before, 'V':'A':'L':'U':'E':after) -> before ++ value ++ after
+          _ -> text
+        source fields payload value = unlines
+          [ "unit refinedPayloads"
+          , "refinement StrokeId is " ++ nonnegative ++ " end refinement"
+          , "type Page (n :: Whole) is one of"
+          , "| Blank where n = 0"
+          , "| Mark of type record{" ++ fields ++ "} where n = m + 1"
+          , "end type"
+          , "function first (unused :: Unit) -> Page 1 is Mark record{" ++ replaceValue value payload ++ "} end function"
+          , "end unit"
+          ]
+    forM_ [32,64] $ \bits -> forM_ cases $ \(fields,payload) -> do
+      let check value = compileCoreCanonical bits S.defaultGeneration
+            [S.Source "indexed-field-refinements.lawspec" (source fields payload value)]
+      checked (check "0") (\program -> validateProgram program `shouldBe` Right ())
+      check "-1" `shouldSatisfy` isLeft
   it "uses a positive record field after a generic GADT payload pattern" $
     checked (compile (header++reciprocal "a" "when Tagged record{value = item} then 1 / item"++selected)) outcomes
   it "uses the same stored obligation through a generic payload projection" $

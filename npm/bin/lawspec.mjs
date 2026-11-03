@@ -176,8 +176,21 @@ function refutedOnly(result)
     : result;
 }
 
+const emittedWarnings = new Set();
 function diagnostics(result)
 {
+  if (!options.json)
+  {
+    for (const warning of result.warnings ?? [])
+    {
+      const message = `${warning.at ? `${warning.at.file}:${warning.at.line}:${warning.at.column}: ` : ''}warning ${warning.code}: ${warning.message}`;
+      if (!emittedWarnings.has(message))
+      {
+        console.error(message);
+        emittedWarnings.add(message);
+      }
+    }
+  }
   if (result.diagnostics?.length)
     throw Object.assign(
       new Error(
@@ -320,7 +333,6 @@ async function init()
   const language = options.target;
   if (!targets.includes(language))
     throw new Error(`Choose --target ${targets.join('|')}`);
-  const root = path.resolve(configRoot, options.project || '.');
   if (path.extname(configFile) !== '.edn')
     throw new Error(
       'Use lawspec.edn; JSON configuration is no longer supported',
@@ -342,12 +354,22 @@ async function init()
           targets: [],
         }
       : await readManifest(configFile);
-  if (
-    config.targets.some(
-      t => t.language === language && path.resolve(configRoot, t.root) === root,
-    )
-  )
-    throw new Error('Target is already configured');
+  const declared = config.targets.filter(
+    target => target.language === language,
+  );
+  if (options.project === undefined && declared.length > 1)
+  {
+    throw new Error(
+      `Several ${language} targets are configured; choose the root with --project`,
+    );
+  }
+  const root = path.resolve(
+    configRoot,
+    options.project ?? declared[0]?.root ?? '.',
+  );
+  const configured = config.targets.some(
+    t => t.language === language && path.resolve(configRoot, t.root) === root,
+  );
   await mkdir(root, {recursive: true});
   const buildFiles = [
     'Cargo.toml',
@@ -391,23 +413,29 @@ async function init()
       starter,
       artifactTargets.includes(language) && language !== 'make'
         ? 'unit configuration\ntype Settings is a record{port :: UInt16 enabled :: Bool} end type\nfunction settings (unused :: Unit) -> Settings is Settings record{port = 8080, enabled = true} end function\nend unit\n'
-        : await readFile(
-            new URL('../starter-rc1.lawspec', import.meta.url),
-            'utf8',
-          ),
+        : (
+            await readFile(
+              new URL('../starter-rc1.lawspec', import.meta.url),
+              'utf8',
+            )
+          ).replace(/^-- Generated[^\r\n]*Do not edit\.\r?\n/, ''),
       true,
     );
   if (options.machineBits !== undefined)
     config.machineBits = options.machineBits;
-  config.targets.push({
-    language,
-    root: path.relative(configRoot, root) || '.',
-  });
-  await atomicWrite(
-    configFile,
-    writeManifest(config, {compact: options.minify === true}),
-    current === null,
-  );
+  if (!configured)
+    config.targets.push({
+      language,
+      root: path.relative(configRoot, root) || '.',
+    });
+  if (current === null || !configured || options.machineBits !== undefined)
+  {
+    await atomicWrite(
+      configFile,
+      writeManifest(config, {compact: options.minify === true}),
+      current === null,
+    );
+  }
   output(
     `Configured ${language}. ${hasBuild ? 'Existing build files preserved.' : 'Created missing project build files.'}\n${setup[language]}\nNext: lawspec doctor, then lawspec generate.`,
   );
@@ -1832,11 +1860,6 @@ async function main()
         ...(options['warn-matches'] ? {warnMatches: true} : {}),
       }),
     );
-    if (!options.json)
-      for (const warning of result.warnings ?? [])
-        console.error(
-          `${warning.at ? `${warning.at.file}:${warning.at.line}:${warning.at.column}: ` : ''}warning ${warning.code}: ${warning.message}`,
-        );
     for (const target of selected)
     {
       if (target.nativeBindings !== undefined)

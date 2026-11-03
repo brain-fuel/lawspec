@@ -17,6 +17,11 @@ lawspec explain [<unit>::<law>] [--view eng|math|dev] [--machine-bits <32|64>] [
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec describe --json [--config <path>]
+lawspec fetch [--locked] [--offline] [--config <path>]
+lawspec update [<package>] [--config <path>]
+lawspec learn [--port <port>]
+lawspec project init|adopt|status|validate [--project <directory>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -38,7 +43,7 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--target <language>` | Select configured targets of this language. Without it, generation uses every configured target and testing uses the configured program targets. |
 | `--machine-bits <32\|64>` | Override the configuration's machine profile for this command. |
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
-| `--minify` | Compact output. Accepted only by `init`, `generate` and `examples`. |
+| `--minify` | Compact output. Used by `init`, `generate`, `test` generation and `examples`; required language line breaks remain. |
 | `--no-cache` | Do not read or write the compiler cache for this command. |
 
 ## Optional match warnings

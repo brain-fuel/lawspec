@@ -802,3 +802,15 @@ REQ-lawspec-quantifier-layout:
   kind: requirement
   title: Quantified claims have separate headers, indented bodies and aligned closers, preserve source meaning and comments, and format identically on repeat in native and browser tooling.
   locator: docs/reference/formatting.md
+why3-structural-induction:
+  kind: article
+  title: "Why3 structural algebraic induction and its implementation"
+  locator: https://github.com/AdaCore/why3/blob/master/src/transform/induction.ml
+lean-inductive-types:
+  kind: article
+  title: "Lean 4 reference: inductive types and recursors"
+  locator: https://lean-lang.org/doc/reference/latest/The-Type-System/Inductive-Types/
+go-type-aliases:
+  kind: article
+  title: "Go language specification: alias declarations"
+  locator: https://go.dev/ref/spec#Alias_declarations

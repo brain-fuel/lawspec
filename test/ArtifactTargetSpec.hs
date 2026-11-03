@@ -66,6 +66,20 @@ test_artifactTargets = describe "artifact targets" $ do
       contents "configuration.tfvars.json" files `shouldSatisfy` isInfixOf "{\n  \"settings\": {\n    \"port\": 8080,"
   it "rejects loss of unsupported scalar semantics" $
     emit "yaml" (unlines ["unit unsupported", "value :: Unit -> Rational", "end unit"]) `shouldSatisfy` isLeft
+  it "restricts HCL to entry reachability while retaining type-only input units" $ do
+    let extra = "type Unused is one of A | B end type\n"
+        library = "unit boundary\n" ++ extra
+        entry = "function port (unused :: Unit) -> UInt16 is 8080 end function\n"
+    case emit "hcl" (library ++ entry ++ "end unit") of
+      Left message -> expectationFailure message
+      Right files -> do
+        contents "variables.tf" files `shouldSatisfy` isInfixOf "variable \"port\""
+        contents "variables.tf" files `shouldNotSatisfy` isInfixOf "type_unused"
+        contents "lawspec-artifacts.json" files `shouldSatisfy` isInfixOf "not reachable from any configuration entry"
+    emit "hcl" (library ++ "value :: Unit -> Unused\nend unit") `shouldSatisfy` isLeft
+    emit "hcl" (library ++ "type Settings is a record{choice :: Unused} end type\nvalue :: Unit -> Settings\nend unit") `shouldSatisfy` isLeft
+    emit "hcl" (library ++ "end unit") `shouldSatisfy` isLeft
+    emit "hcl" (library ++ entry ++ "function invalid (x :: Int32) -> Rational is 1 / 0 end function\nend unit") `shouldSatisfy` isLeft
   it "refuses HCL representations that cannot preserve unbounded integers or literal normalization" $ do
     emit "hcl" "unit exact\nvalue :: Unit -> Integer\nend unit" `shouldSatisfy` isLeft
     emit "hcl" "unit exact\nfunction value (u :: Unit) -> Text is \"e\x0301\" end function\nend unit" `shouldSatisfy` isLeft

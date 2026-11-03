@@ -2000,3 +2000,26 @@ test('recording inputs affect externally observing laws while checked ordinary l
   assert.notEqual(before.get('recording'), after.get('recording'));
   assert.equal(before.get('pure'), after.get('pure'));
 });
+
+test('Go JSON reports preserve elapsed seconds without inventing absent or invalid measurements', async () =>
+{
+  const events = [
+    {Action: 'pass', Test: 'TestQuick', Package: 'domain', Elapsed: 0.125},
+    {Action: 'fail', Test: 'TestSlow', Package: 'domain', Elapsed: 0},
+    {Action: 'pass', Test: 'TestMissing', Package: 'domain'},
+    {Action: 'pass', Test: 'TestInvalid', Package: 'domain', Elapsed: -1},
+    {Action: 'pass', Package: 'domain', Elapsed: 0.4},
+  ];
+  const actual = await executedTests(
+    {kind: 'go-json'},
+    events.map(event => JSON.stringify(event)).join('\n'),
+    '.',
+    0,
+  );
+  assert.deepEqual(actual, [
+    {name: 'TestQuick', classname: 'domain', status: 'passed', time: 0.125},
+    {name: 'TestSlow', classname: 'domain', status: 'failed', time: 0},
+    {name: 'TestMissing', classname: 'domain', status: 'passed'},
+    {name: 'TestInvalid', classname: 'domain', status: 'passed'},
+  ]);
+});

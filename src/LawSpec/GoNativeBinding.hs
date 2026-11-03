@@ -1,5 +1,5 @@
 -- | Checked bridges in application packages, with compiler-resolved call names.
-module LawSpec.GoNativeBinding (preparePlan, emitBindings) where
+module LawSpec.GoNativeBinding (preparePlan, prepareExternalReferences, externalArtifacts, emitBindings) where
 
 import Control.Monad (forM, unless)
 import Data.Char (toUpper, toLower, isUpper, isAscii, isAlpha, isAlphaNum, isLower)
@@ -17,6 +17,119 @@ import qualified LawSpec.GoExpr as E
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Naming (claimAll, scopeWith)
+
+-- One import resolution table serves every kind of configured native reference.
+goImports :: BindingPlan -> [(String,(String,FilePath))]
+goImports bindings = [(goImportAlias entry,("lawSpecImport" ++ show index,goImportPath entry)) |
+  (index,entry) <- zip [0::Int ..] (bindingGoImports bindings)]
+
+normalizeReference :: BindingPlan -> NativeRef -> NativeRef
+normalizeReference bindings (NativeRef [alias,name]) = case lookup alias (goImports bindings) of
+  Just (internal,_) -> NativeRef [internal,name]
+  Nothing -> NativeRef [alias,name]
+normalizeReference _ reference = reference
+
+importsForReferences :: BindingPlan -> [NativeRef] -> [(String,FilePath)]
+importsForReferences bindings refs = nub [(alias,path) | NativeRef [alias,_] <- refs,
+  (_, (internal,path)) <- goImports bindings, alias == internal]
+
+nativeReferences :: BindingPlan -> [NativeRef]
+nativeReferences bindings = map snd (bindingFunctions bindings) ++
+  [ref | (_,ConstructorCall ref) <- bindingCalls bindings] ++ map snd (bindingHandlers bindings) ++
+  [NativeRef (C.failureNative failure) | failure <- bindingFailures bindings] ++
+  map resolvedGeneratorFactory (resolvedGenerators (bindingRepresentations bindings)) ++
+  [ref | mapping <- resolvedTypes (bindingRepresentations bindings),
+    ref <- resolvedNativeType mapping : map resolvedNativeConstructor (resolvedConstructors mapping)] ++
+  [ref | mapping <- resolvedTypes (bindingRepresentations bindings), Just hook <- [resolvedCodec mapping],
+    ref <- [codecToNative hook,codecFromNative hook]]
+
+privateNames :: BindingPlan -> String -> Int -> [String]
+privateNames bindings prefix count = fst (claimAll
+  (scopeWith [name | NativeRef [name] <- nativeReferences bindings])
+  [prefix ++ show index | index <- [0::Int .. count-1]])
+
+failureAliases :: BindingPlan -> [([String],String)]
+failureAliases bindings = zip references (privateNames bindings "lawSpecMappedFailure" (length references))
+  where references = nub [parts | failure <- bindingFailures bindings,
+                          let parts = C.failureNative failure, length parts > 1]
+
+handlerAliases :: BindingPlan -> [((C.Id,[String]),String)]
+handlerAliases bindings = zip references (privateNames bindings "lawSpecNativeHandler" (length references))
+  where references = [(identity,referenceParts ref) | (identity,ref) <- bindingHandlers bindings,
+                      length (referenceParts ref) > 1]
+
+-- Foreign failure types have package-local aliases, preserving Go type identity.
+-- Foreign factories have forwarding functions, so each invocation still calls
+-- the configured factory. Generated source is never searched or rewritten.
+prepareExternalReferences :: BindingPlan -> Plan -> Plan
+prepareExternalReferences bindings plan = plan {plannedUnits =
+  [unit {plannedUnit = rewrite (plannedUnit unit)} | unit <- plannedUnits plan]}
+  where
+    rewrite unit = unit
+      {C.unitFailureBindings = [failure {C.failureNative = maybe (C.failureNative failure) pure
+          (lookup (C.failureNative failure) (failureAliases bindings))} | failure <- C.unitFailureBindings unit]
+      ,C.unitAbilities = [case lookup (C.Id (C.abilityKey (C.abilityInstance ability))) (bindingHandlers bindings) of
+          Just ref | C.abilityNative ability == Just (referenceParts ref),
+            Just name <- lookup (C.Id (C.abilityKey (C.abilityInstance ability)),referenceParts ref) (handlerAliases bindings) ->
+              ability {C.abilityNative = Just [name]}
+          _ -> ability | ability <- C.unitAbilities unit]}
+
+externalArtifacts :: Bool -> BindingPlan -> Plan -> Either String [Artifact]
+externalArtifacts minify bindings plan = do
+  mapM_ (goNativeReference bindings) (nativeReferences bindings)
+  fmap concat $ forM (plannedUnits plan) $ \planned -> do
+    let unit = plannedUnit planned
+        directory = map (\c -> if c == '.' then '/' else c) (unitName unit)
+        package = last (split '.' (unitName unit))
+        usedFailures = [ty | reference <- concatMap C.declarationUses (C.unitDeclarations unit) ++
+          concatMap (map snd . C.abilityFailures) (C.unitAbilities unit), C.isFail reference,
+          C.AbilityRef _ [ty] <- [reference]]
+        failures = [(parts,name) | (parts,name) <- failureAliases bindings,
+          any (\failure -> C.failureNative failure == [name] && C.failureType failure `elem` usedFailures)
+            (C.unitFailureBindings unit)]
+        handlers = [(ability,parts,name) | ability <- C.unitAbilities unit,
+          ((identity,parts),name) <- handlerAliases bindings,
+          identity == C.Id (C.abilityKey (C.abilityInstance ability)), C.abilityNative ability == Just [name]]
+        reference parts = intercalate "." (referenceParts (normalizeReference bindings (NativeRef parts)))
+        file name placement refs bodies = Artifact (directory ++ "/" ++ name)
+          (D.render (D.selectLayout minify (D.PrettyTabs 100)) (E.goHeaderDoc <>
+            D.text ("package " ++ package) <> D.hardline <> D.hardline <>
+            D.text "import (" <> D.nest 8 (D.hardline <> D.joinWith D.hardline
+              [D.text alias <> D.text " " <> E.quoted path | (alias,path) <-
+                importsForReferences bindings (map (normalizeReference bindings . NativeRef) refs)]) <>
+            D.hardline <> D.text ")" <> D.hardline <> D.hardline <>
+            D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "generated" placement
+    factories <- forM handlers $ \(ability,parts,name) -> do
+      resource <- traverse (G.goDataType (planDataDeclarations plan)) (C.abilityResource ability)
+      pure (D.text ("func " ++ name ++ "(" ++ maybe "" ("resource " ++) resource ++ ") " ++ interfaceName ability ++ " ") <>
+        D.block 8 (D.text "return " <> E.call (reference parts) [D.text "resource" | resource /= Nothing]))
+    pure ([file "lawspec_native_failures_test.go" "test" (map fst failures)
+        [D.text ("type " ++ name ++ " = " ++ reference parts) | (parts,name) <- failures] | not (null failures)] ++
+      [file "lawspec_native_handlers.go" "source" [parts | (_,parts,_) <- handlers] factories | not (null factories)])
+  where split c text = case break (== c) text of (first,[]) -> [first]; (first,_:rest) -> first : split c rest
+
+goIdentifier :: String -> Either String ()
+goIdentifier name = do
+  unless (case name of
+    c:cs -> isAscii c && (isAlpha c || c == '_') && name /= "_" && all (\x -> isAscii x && (isAlphaNum x || x == '_')) cs
+    [] -> False) (Left ("invalid Go native identifier: " ++ name))
+  unless (name `notElem` words "break default func interface select case defer go map struct chan else goto package switch const fallthrough if range type continue for import return var")
+    (Left ("reserved Go native identifier: " ++ name))
+
+goExported :: String -> Either String ()
+goExported name = do
+  goIdentifier name
+  unless (case name of c:_ -> isUpper c; [] -> False) (Left ("external Go native identifier must be exported: " ++ name))
+
+goNativeReference :: BindingPlan -> NativeRef -> Either String ()
+goNativeReference _ (NativeRef [name]) = goIdentifier name
+goNativeReference bindings (NativeRef [alias,name]) = do
+  goIdentifier alias
+  goExported name
+  unless (alias `elem` map goImportAlias (bindingGoImports bindings))
+    (Left ("unknown Go import alias: " ++ alias))
+goNativeReference _ _ = Left "Go native references require a local identifier or an import alias and exported identifier"
 
 -- | Only backend spellings change. Qualified type/constructor identities and
 -- propositions remain untouched, and every Go emitter sees the same spellings.
@@ -25,11 +138,7 @@ preparePlan bindings plan = do
   declarations <- reserve (planDataDeclarations plan)
   pure plan {planDataDeclarations = declarations}
   where
-    mappings = resolvedTypes (bindingRepresentations bindings)
-    refs = map snd (bindingFunctions bindings) ++ [ref | (_,ConstructorCall ref) <- bindingCalls bindings] ++
-      map resolvedGeneratorFactory (resolvedGenerators (bindingRepresentations bindings)) ++
-      [ref | m <- mappings, ref <- resolvedNativeType m : map resolvedNativeConstructor (resolvedConstructors m)] ++
-      [ref | m <- mappings, Just hook <- [resolvedCodec m], ref <- [codecToNative hook,codecFromNative hook]]
+    refs = nativeReferences bindings
     nativeNames = [name | NativeRef [name] <- refs]
     folded = map toLower
     cap [] = []
@@ -51,13 +160,12 @@ preparePlan bindings plan = do
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify plan testing files = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")
-  unless (null mappings || not (null (bindingFunctions plan)) || not (null (bindingCalls plan)) || not (null generators))
-    (Left "native types require function bindings")
+  unless (null mappings || not (null (bindingFunctions plan)) || not (null (bindingCalls plan)) ||
+    not (null (bindingHandlers plan)) || not (null generators))
+    (Left "native types require function or handler bindings")
   mapM_ (identifier . goImportAlias) (bindingGoImports plan)
   mapM_ identifier [method | (_,MethodCall method) <- bindingCalls plan]
-  mapM_ nativeRef ([r | (_,r) <- bindingFunctions plan] ++ [r | (_,ConstructorCall r) <- bindingCalls plan] ++ [resolvedNativeType m | m <- originalMappings] ++
-    [resolvedNativeConstructor c | m <- originalMappings,c <- resolvedConstructors m] ++ map resolvedGeneratorFactory originalGenerators ++
-    [ref | m <- originalMappings, Just hook <- [resolvedCodec m], ref <- [codecToNative hook,codecFromNative hook]])
+  mapM_ nativeRef (nativeReferences plan)
   mapM_ (\c -> case referenceParts (resolvedNativeConstructor c) of
     [_,_] -> mapM_ (exported . snd) (resolvedFields c)
     _ -> pure ()) [c | m <- originalMappings,c <- resolvedConstructors m]
@@ -85,9 +193,13 @@ emitBindings minify plan testing files = do
         propertyRoots = [inputType i | property <- plannedProperties p,i <- inputs property]
     concrete <- if null generators then pure [] else reachableGeneratorTypes declarations representations propertyRoots
     let usedGenerators = [g | g <- generators, any (\case C.Constructor name _ -> C.Id name == resolvedGeneratorType g; _ -> False) concrete]
-    if null boundAdapters && null usedGenerators then pure [] else do
+    let boundAbilities = [ability | ability <- ownAbilities unit,
+          lookup (C.Id (C.abilityKey (C.abilityInstance ability))) (bindingHandlers plan) /= Nothing]
+    if null boundAdapters && null usedGenerators && null boundAbilities then pure [] else do
       unless (null boundAdapters || all (maybe False (const True) . bound) adapters) (Left "a Go bound unit must map every adapter")
-      let roots = map C.declarationType adapters ++ propertyRoots
+      let roots = map C.declarationType adapters ++ propertyRoots ++
+            [ty | ability <- boundAbilities, (_,ty) <- C.abilityOperations ability] ++
+            [ty | ability <- boundAbilities, Just ty <- [C.abilityResource ability]]
           needed = reachable [] roots
           usedMappings = [m | m <- mappings,C.dataId (resolvedDeclaration m) `elem` needed]
           callNames = [(C.declarationId d,name d) | d <- boundAdapters]
@@ -157,8 +269,14 @@ emitBindings minify plan testing files = do
            D.text "_, _, _ = schema, bits, symbols" <> D.hardline <> resultStatement))
       -- Each bound production handler, wrapped in the generated interface:
       -- its operations' values cross with the native codecs.
-      wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, r) -> do
+      wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, original) -> do
         let wrapper = lowerFirst (interfaceName a) ++ "Bound"
+            r = normalize original
+        resource <- traverse (G.goDataType declarations) (C.abilityResource a)
+        resourceArguments <- forM [ty | Just ty <- [C.abilityResource a]] $ \ty -> do
+          canonical <- G.goCodecWithContext "symbols" declarations ty
+          native <- G.goNativeCodec declarations usedMappings ty
+          pure (E.call (native ++ ".toNative") [E.call (canonical ++ ".fromNative") [D.text "resource"]])
         -- The native handler's methods, in the bound types.
         nativeMethods <- forM (C.abilityOperations a) $ \(op, ty) -> do
           let (args, result) = C.functionType ty
@@ -185,8 +303,13 @@ emitBindings minify plan testing files = do
         pure (D.text ("// " ++ wrapper ++ " is the bound production handler of " ++ C.abilityName a ++ " as the generated interface.") <> D.hardline <>
           D.text ("type " ++ wrapper ++ " struct ") <> D.block 8 (D.text "inner interface " <> D.block 8 (D.joinWith D.hardline (map D.text nativeMethods))) <> D.hardline <> D.hardline <>
           D.text ("// New" ++ interfaceName a ++ "Bound makes it.") <> D.hardline <>
-          D.text ("func New" ++ interfaceName a ++ "Bound() " ++ interfaceName a ++ " ") <>
-            D.block 8 (D.text ("return &" ++ wrapper ++ "{inner: " ++ intercalate "." (referenceParts r) ++ "()}")) <>
+          D.text ("func New" ++ interfaceName a ++ "Bound(" ++ maybe "" ("resource " ++) resource ++ ") " ++ interfaceName a ++ " ") <>
+            D.block 8 (D.joinWith D.hardline
+              ((if resource == Nothing then [] else
+                [D.text "schema := lawSpecDataSchemaRegistry()", D.text ("bits := " ++ show bits),
+                 D.text "symbols := map[string]*lawSpecSymbol{}", D.text "_, _, _ = schema, bits, symbols"]) ++
+               [D.text ("return &" ++ wrapper ++ "{inner: ") <>
+                E.call (intercalate "." (referenceParts r)) resourceArguments <> D.text "}"])) <>
           D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) operations)
       codecs <- G.emitGoNativeCodecs layout package
         (importsFor ([resolvedNativeType m | m <- usedMappings] ++
@@ -234,13 +357,16 @@ emitBindings minify plan testing files = do
       let bridge = Artifact (directory ++ "/adapter.go") (D.render layout
             (E.goHeaderDoc <>
              D.text ("package " ++ package) <> D.hardline <> D.hardline <>
-             importDocs [r | d <- boundAdapters,Just r <- [bound d >>= callRef]] <>
+             importDocs ([r | d <- boundAdapters,Just r <- [bound d >>= callRef]] ++
+               [normalize ref | ability <- ownAbilities unit,
+                 Just ref <- [lookup (C.Id (C.abilityKey (C.abilityInstance ability))) (bindingHandlers plan)]]) <>
              D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers) <> D.hardline)) "generated" "source"
           support = Artifact (directory ++ "/lawspec_native_codecs.go") codecs "generated" "source"
       unless (all ((/= artifactPath support) . artifactPath) files) (Left "unit shadows Go native codec support")
-      let ownDefinitions = [f | f <- definitions, artifactPath f == directory ++ "/lawspec_definitions.go", not (null boundAdapters)]
-      pure ([bridge | not (null boundAdapters)] ++ [support] ++ generatorFiles ++ ownDefinitions ++
-        [f | f <- ordinary,null boundAdapters || artifactPath f /= artifactPath bridge])
+      let hasBridge = not (null boundAdapters && null wrappers)
+          ownDefinitions = [f | f <- definitions, artifactPath f == directory ++ "/lawspec_definitions.go", hasBridge]
+      pure ([bridge | hasBridge] ++ [support] ++ generatorFiles ++ ownDefinitions ++
+        [f | f <- ordinary,not hasBridge || artifactPath f /= artifactPath bridge])
   pure ([f | f <- files,artifactPath f `notElem` map artifactPath emitted] ++ emitted)
   where
     declarations = planDataDeclarations testing
@@ -259,12 +385,7 @@ emitBindings minify plan testing files = do
       resolvedConstructors = [c {resolvedNativeConstructor = normalize (resolvedNativeConstructor c)} |
         c <- resolvedConstructors m]} | m <- originalMappings]
     generators = [g {resolvedGeneratorFactory = normalize (resolvedGeneratorFactory g)} | g <- originalGenerators]
-    aliases = [(goImportAlias entry,("lawSpecImport" ++ show index,goImportPath entry)) |
-      (index,entry) <- zip [0::Int ..] (bindingGoImports plan)]
-    normalize (NativeRef [alias,name]) = case lookup alias aliases of
-      Just (internal,_) -> NativeRef [internal,name]
-      Nothing -> NativeRef [alias,name]
-    normalize ref = ref
+    normalize = normalizeReference plan
     normalizeCall (StaticCall ref) = StaticCall (normalize ref)
     normalizeCall (ConstructorCall ref) = ConstructorCall (normalize ref)
     normalizeCall call = call
@@ -275,30 +396,16 @@ emitBindings minify plan testing files = do
       C.Constructor name [] | Just d <- find ((== C.Id name) . C.dataId) declarations, C.dataHandle d -> Just (C.dataId d)
       _ -> Nothing
     isHandle = maybe False (const True) . handleId
-    importsFor refs = nub [(alias,path) | NativeRef [alias,_] <- refs,
-      (_, (internal,path)) <- aliases, alias == internal]
+    importsFor = importsForReferences plan
     importDocs refs = D.joinWith D.hardline
       [D.text ("import " ++ alias ++ " ") <> E.quoted path | (alias,path) <- importsFor refs] <>
       (if null (importsFor refs) then mempty else D.hardline <> D.hardline)
     layout = D.selectLayout minify (D.PrettyTabs 100)
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
-    identifier n = do
-      unless (case n of
-        c:cs -> isAscii c && (isAlpha c || c == '_') && n /= "_" && all (\x -> isAscii x && (isAlphaNum x || x == '_')) cs
-        [] -> False) (Left ("invalid Go native identifier: " ++ n))
-      unless (n `notElem` words "break default func interface select case defer go map struct chan else goto package switch const fallthrough if range type continue for import return var")
-        (Left ("reserved Go native identifier: " ++ n))
-    nativeRef (NativeRef [n]) = identifier n
-    nativeRef (NativeRef [alias,name]) = do
-      identifier alias
-      exported name
-      unless (alias `elem` map goImportAlias (bindingGoImports plan))
-        (Left ("unknown Go import alias: " ++ alias))
-    nativeRef _ = Left "Go native references require a local identifier or an import alias and exported identifier"
-    exported name = do
-      identifier name
-      unless (isUpper (head name)) (Left ("external Go native identifier must be exported: " ++ name))
+    identifier = goIdentifier
+    nativeRef = goNativeReference plan
+    exported = goExported
     generatorStubs directory package generatedNames scopedMappings boundRefs used = do
       let requested = filter resolvedGeneratorStub used
           applicationNames = [name | NativeRef [name] <- boundRefs ++
@@ -309,7 +416,7 @@ emitBindings minify plan testing files = do
             Just [] -> True
             Just (first:_) -> not (isLower first)
             Nothing -> False) ["Test","Benchmark","Fuzz","Example"]
-          nativeReferences = [resolvedNativeType m | generator <- requested, m <- mappings,
+          generatorReferences = [resolvedNativeType m | generator <- requested, m <- mappings,
             C.dataId (resolvedDeclaration m) == resolvedGeneratorType generator]
       if null requested then pure [] else do
         bodies <- forM requested $ \generator -> do
@@ -333,7 +440,7 @@ emitBindings minify plan testing files = do
           (D.text "// User-owned native generator factories. Implement before running properties." <> D.hardline <>
            D.text ("package " ++ package) <> D.hardline <> D.hardline <>
            D.text "import \"pgregory.net/rapid\"" <> D.hardline <> D.hardline <>
-           importDocs nativeReferences <> D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "user" "test"]
+           importDocs generatorReferences <> D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "user" "test"]
     reachable seen [] = seen
     reachable seen (ty:rest) = case ty of
       C.Arrow a b -> reachable seen (a:b:rest)

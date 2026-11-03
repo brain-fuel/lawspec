@@ -85,7 +85,12 @@ export interface Diagnostic
   related?: {message: string; span: Span}[];
 }
 
-export interface MatchWarning extends Diagnostic
+export interface CompilerWarning extends Diagnostic
+{
+  severity: 'warning';
+}
+
+export interface MatchWarning extends CompilerWarning
 {
   severity: 'warning';
   span: Span;
@@ -327,14 +332,58 @@ export interface DeclarationSource
   canonicalName?: string;
 }
 
+export type TemporalFormula =
+  | {kind: 'atom'; name: string}
+  | {kind: 'not' | 'always' | 'eventually'; body: TemporalFormula}
+  | {
+      kind: 'and' | 'or' | 'implies' | 'until' | 'whenever' | 'never-before';
+      left: TemporalFormula;
+      right: TemporalFormula;
+    }
+  | {kind: 'within'; body: TemporalFormula; microseconds: string}
+  | {
+      kind: 'reference';
+      parts: (
+        | {kind: 'word'; text: string}
+        | {kind: 'argument'; formula: TemporalFormula}
+      )[];
+    };
+
+export interface TemporalLaw
+{
+  id: string;
+  owner: string;
+  name: string;
+  kind: 'model' | 'history';
+  scope: string;
+  formula: TemporalFormula;
+  description: string;
+  location: Location;
+  every?: boolean;
+  complete?: boolean;
+  fairness?: {command: string; strong: boolean}[];
+}
+
 export interface Unit
 {
   id: string;
   declarations: (Binder & {
     origin: Origin;
+    typeText?: string;
     source?: DeclarationSource;
     representation?: 'structural-record-storage';
   })[];
+  handlers?: {
+    id: string;
+    name: string;
+    ability: string;
+    origin: Origin;
+    goEmbedding: {
+      available: boolean;
+      reasons: string[];
+      runtime: 'typed-native' | 'checked-dynamic';
+    };
+  }[];
 }
 
 export interface StructuralRecord
@@ -498,6 +547,7 @@ export interface ObligationEvidence
   reason: string;
   claim: Expr | null;
   exemption?: Exemption;
+  executionKind?: 'measurement';
   environment?: string;
   environmentRun?: AttestedRun;
   against?: AttestedDependency[];
@@ -1046,6 +1096,17 @@ export interface NativeConformanceEvidence
   status: NativeConformanceStatus;
   searchCompleteness: 'complete-finite-inputs' | 'not-established';
   observations: NativeExecutionObservation[];
+  measurements?: NativeMeasurement[];
+  measurementScope?: string;
+}
+
+export interface NativeMeasurement
+{
+  kind: 'native-check-duration';
+  target: string;
+  root: string;
+  test: string;
+  seconds: number;
 }
 
 export interface NativeCheckCoverage
@@ -1092,10 +1153,11 @@ export interface Result
   dataTypes?: DataTypeDeclaration[];
   definitions?: Definition[];
   laws?: Law[];
+  temporalLaws?: TemporalLaw[];
   contracts?: {owner: string; contract: Contract}[];
   refinements?: Refinement[];
   diagnostics: Diagnostic[];
-  warnings?: MatchWarning[];
+  warnings?: CompilerWarning[];
   warningAnalysis?: MatchWarningAnalysis;
   expansions?: string[];
   files?: Artifact[];

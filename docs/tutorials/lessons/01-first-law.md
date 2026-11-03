@@ -18,7 +18,7 @@ one that formats a quantity and one that parses it back.
 LawSpec is an npm package. It needs Node 22 or later, whatever language you
 test in.
 
-This lesson uses the unpublished 0.25.0 development checkout. Clone it beside
+This lesson uses the `1.0-rc.2` authoring profile. Clone a matching checkout beside
 the project directory created below:
 
 ```sh

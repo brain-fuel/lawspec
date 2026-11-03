@@ -2710,7 +2710,7 @@ unitP = blockP "unit" $ do
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
     (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
     [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members]
-    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members] [l | HistoryLawMember l <- members], imports, [f | FamilyMember f <- members],
+    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members] [l | HistoryLawMember l <- members] (map fst signatures), imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 

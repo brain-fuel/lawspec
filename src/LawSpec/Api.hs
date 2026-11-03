@@ -90,7 +90,7 @@ dispatch bytes
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
          -- A refuted law keeps its row and fails the request.
-         result files = withRefutations (refutations core obligations) $ (if matchWarningsRequested then withMatchWarnings syntax else id) $
+         result files = withGoEmbeddingWarnings target method $ withRefutations (refutations core obligations) $ (if matchWarningsRequested then withMatchWarnings syntax else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
@@ -204,6 +204,22 @@ dispatch bytes
               Just (Array ns) -> traverse (\v -> case v of String n -> Just (T.unpack n); _ -> Nothing) (toList ns)
               _ -> Nothing
             text k a = case KM.lookup k a of Just (String v) -> T.unpack v; _ -> ""
+    -- Explain the same capability decision used by typed handler emission.
+    -- The dynamic evaluator remains available; no unchecked setter is invented.
+    withGoEmbeddingWarnings "go" "planGeneration" (Object response) =
+      let rows = [object ["code" .= ("go-handler-embedding" :: String),
+                    "severity" .= ("warning" :: String), "at" .= Null,
+                    "message" .= ("Go handler " ++ name ++ " uses checked dynamic execution; Start/State/SetState embedding entry points are unavailable: " ++ why)] |
+                  Just (Array units) <- [KM.lookup "units" response], Object unit <- toList units,
+                  Just (Array handlers) <- [KM.lookup "handlers" unit], Object handler <- toList handlers,
+                  Just (String handlerName) <- [KM.lookup "name" handler], let name = T.unpack handlerName,
+                  Just (Object capability) <- [KM.lookup "goEmbedding" handler],
+                  KM.lookup "available" capability == Just (Bool False),
+                  Just (Array reasons) <- [KM.lookup "reasons" capability],
+                  let why = unwords [T.unpack reason | String reason <- toList reasons]]
+          existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
+      in Object (if null rows then response else KM.insert "warnings" (toJSON (existing ++ rows)) response)
+    withGoEmbeddingWarnings _ _ response = response
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
@@ -238,9 +254,24 @@ dispatch bytes
                  (KM.insert "diagnostics" (toJSON (existing ++ map toJSON refuted)) withTasks)))
     withAnalysisTasks _ _ _ response = response
     -- An exempted or expired check shows its exemption.
-    withExemptions analysed (Object value) = case KM.lookup "evidence" value of
-      Just (Array rows) -> Object (KM.insert "evidence" (Array (fmap (attach analysed) rows)) value)
-      _ -> Object value
+    withExemptions analysed (Object value) =
+      let annotated = case KM.lookup "evidence" value of
+            Just (Array rows) -> KM.insert "evidence" (Array (fmap (attach analysed) rows)) value
+            _ -> value
+          expired = [object
+            ["code" .= ("exemption-expired" :: String), "severity" .= ("warning" :: String),
+             "at" .= (Nothing :: Maybe Location),
+             "message" .= ("The exemption for " ++ C.idText (obligationDeclaration item) ++
+               " (" ++ obligationStage item ++ ") has expired" ++ deadline ++ "; it no longer excuses this check. " ++
+               "Remove it or establish the obligation independently.")]
+            | (item, Just (Object exemption)) <- analysed, KM.lookup "expired" exemption == Just (Bool True),
+              let deadline = case KM.lookup "until" exemption of
+                    Just (String until) -> " (until " ++ T.unpack until ++ ")"
+                    _ -> ""]
+          existing = case KM.lookup "warnings" annotated of
+            Just (Array warnings) -> toList warnings
+            _ -> []
+      in Object (if null expired then annotated else KM.insert "warnings" (toJSON (existing ++ expired)) annotated)
     withExemptions _ value = value
     attach analysed row = case row of
       Object o | Just view <- lookup (KM.lookup "declaration" o, KM.lookup "stage" o)

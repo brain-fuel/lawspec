@@ -80,7 +80,12 @@ In the project's `lawspec.edn`, give the version range and the directory to load
 
 ```edn
 {
-  :version 1
+  :manifest-version 1
+  :component {
+    :name "shop.application"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
   :sources ["orders.lawspec"]
   :dependencies {
     "shop.domain" "^1.0.0"

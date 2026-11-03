@@ -6,6 +6,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Defer effectful compile-time evaluation through called procedures, including
+  caught failures, and render evaluator source locations without raw AST dumps.
+- Resolve imported Go native failure types and handler factories consistently;
+  report why a handler lacks typed embedding entry points.
+- Admit refined fields in indexed constructors without placeholder-type errors,
+  and carry structural induction through record and Pair payloads.
+- Analyze bounded refined law sets without a solver and surface expired
+  exemptions even when completeness remains undecided.
+- Restrict HCL representation checks to reachable configuration types while
+  preserving mandatory validation of every definition.
+- Preserve measurement evidence for budget checks, with native-check durations
+  explicitly distinguished from operation timings.
+- Include model and history laws in MCP listings and explanations, advertise
+  read-only tools and use the package version in MCP/LSP handshakes. Editor type
+  displays retain source signatures instead of raw JSON or erased ABI types.
+- Repair missing declared target scaffolds, explain missing output roots and
+  mark copied starter specifications as user-owned. Refresh manifest examples
+  and document the boundaries of compact Go output.
+
 ## [0.31.2] - 2026-11-01
 
 ### Added

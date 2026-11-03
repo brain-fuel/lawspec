@@ -1,0 +1,14 @@
+unit evaluation.sink
+type SinkFull is one of Full end type
+ability Sink is
+ record :: Int32 -> Unit fails with SinkFull
+ pending :: (n :: Int64 where n >= 0)
+end ability
+handler memorySink for Sink with state queued :: (q :: Int64 where q >= 0 && q <= 3) start 0 is
+ operation record event is if queued < 3 then ~queued := queued + 1; () else raise Full end if end operation
+ operation pending is queued end operation
+end handler
+law queued using memorySink is
+ definition: prelude.isRight (prelude.attempt (record 1)) implies pending >= 1 end definition
+end law
+end unit

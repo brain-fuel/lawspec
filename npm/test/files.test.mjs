@@ -74,3 +74,23 @@ test('path traversal and symlink output paths are refused', async t =>
   await symlink(outside, path.join(p, 'src'));
   await assert.rejects(planWrites(p, artifacts), /symbolic-link/);
 });
+
+test('missing and non-directory output roots have actionable diagnostics', async t =>
+{
+  const root = await project(t);
+  const absent = path.join(root, 'missing', 'target');
+  await assert.rejects(
+    planWrites(absent, artifacts),
+    error =>
+      error.message.includes(`Output root does not exist: ${absent}`) &&
+      error.message.includes('initialize the target') &&
+      !error.message.includes('ENOENT'),
+  );
+  const file = path.join(root, 'file');
+  await writeFile(file, 'keep this file\n');
+  await assert.rejects(
+    planWrites(file, artifacts),
+    /Output root is not a directory/,
+  );
+  assert.equal(await readFile(file, 'utf8'), 'keep this file\n');
+});

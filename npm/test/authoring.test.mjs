@@ -1614,3 +1614,59 @@ end unit
     assert.ok(rejected.diagnostics.some(item => item.code === 'total'));
   }
 });
+
+test('WASM-backed LSP presents source types rather than lowered JSON', async () =>
+{
+  const uri = 'file:///unlikely-lawspec-types-project/types.lawspec';
+  const text = `unit editor.types
+ type Page (n :: Whole) is one of
+ | Blank where n = 0
+ | Mark of type record{value :: Int32 rest :: Page m} where n = m + 1
+ end type
+ empty :: Unit -> Page 0
+ end unit`;
+  const input = new PassThrough(),
+    output = new PassThrough(),
+    chunks = [];
+  output.on('data', data => chunks.push(data));
+  const {createCompiler} = await import('../api.mjs');
+  const running = serveLanguage(input, output, await createCompiler());
+  input.end(
+    Buffer.concat([
+      frame({
+        id: 1,
+        method: 'initialize',
+        params: {rootUri: 'file:///unlikely-lawspec-types-project'},
+      }),
+      frame({
+        method: 'textDocument/didOpen',
+        params: {textDocument: {uri, version: 1, text}},
+      }),
+      frame({
+        id: 2,
+        method: 'textDocument/documentSymbol',
+        params: {textDocument: {uri}},
+      }),
+      frame({
+        id: 3,
+        method: 'textDocument/hover',
+        params: {textDocument: {uri}, position: {line: 5, character: 3}},
+      }),
+      frame({id: 4, method: 'shutdown'}),
+    ]),
+  );
+  await running;
+  const responses = messages(Buffer.concat(chunks));
+  const diagnostics = responses.find(
+    item => item.method === 'textDocument/publishDiagnostics',
+  );
+  assert.deepEqual(diagnostics.params.diagnostics, []);
+  const symbols = responses.find(item => item.id === 2).result;
+  assert.match(
+    symbols.find(item => item.name === 'empty').detail,
+    /Unit -> Page 0/,
+  );
+  const hover = responses.find(item => item.id === 3).result;
+  assert.match(JSON.stringify(hover), /Unit -> Page 0/);
+  assert.doesNotMatch(JSON.stringify(hover), /constructor.*arguments/);
+});

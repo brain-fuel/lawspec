@@ -178,7 +178,9 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   , modelLaws :: [ModelLaw]
   -- Laws about an observed history (law n in history h ... is): checked
   -- with three values, since an open history may not decide yet.
-  , historyLaws :: [HistoryLaw] } deriving (Eq, Show, Generic)
+  , historyLaws :: [HistoryLaw]
+  -- Original parsed signatures for editor presentation, before ABI erasure.
+  , sourceSignatures :: [(String, Type)] } deriving (Eq, Show, Generic)
 
 -- | law name in history h is definition: the complete history holds P
 --   (or: the history so far holds P) end definition end law. h is a checked
@@ -520,6 +522,42 @@ prettyType (RecordShape fields) = "record{" ++ intercalate ", "
 prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
   atom t@(Arrow _ _) = "(" ++ prettyType t ++ ")"
   atom t = prettyType t
+-- | Source-facing type display restores grammar encodings retained by the
+-- parser. It does not alter ABI types, naming hashes or executable evidence.
+prettySourceType :: Type -> String
+prettySourceType = render
+  where
+    render (Refined name ty predicate) = "(" ++ name ++ " :: " ++ render ty ++
+      maybe "" ((" where " ++) . prettyExpr) predicate ++ ")"
+    render (Qualified _ ty) = render ty
+    render (CheckedType _ ty) = render ty
+    render (Application "Flow#" [before,after]) = render before ++ " / " ++ render after
+    render (RefinementApp name arguments) = unwords (sourceName name : map argument arguments)
+    render (Applied name ty) = name ++ " " ++ atom ty
+    render (Application name types) = unwords (name : map atom types)
+    render (Arrow before after) = atom before ++ " -> " ++ render after
+    render (RecordShape fields) = case positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields] of
+      Just types -> "(" ++ intercalate ", " (map render types) ++ ")"
+      Nothing -> "record{" ++ intercalate ", " [recordFieldLabel field ++ " :: " ++ render (recordFieldType field) | field <- fields] ++ "}"
+    render (IndexedRecord fields (RecordIndexConstraints guards)) =
+      render (Record fields) ++ " with index constraints " ++ intercalate ", " (map indexGuardText guards)
+    render ty = prettyType ty
+    atom ty@(Arrow _ _) = "(" ++ render ty ++ ")"
+    atom ty@(Applied _ _) = "(" ++ render ty ++ ")"
+    atom ty@(Application _ _) = "(" ++ render ty ++ ")"
+    atom ty@(RefinementApp _ (_:_)) = "(" ++ render ty ++ ")"
+    atom ty = render ty
+    argument (TypeArgument ty) = atom ty
+    argument (ValueArgument expression) = case unlocated expression of
+      Var name -> name
+      Number value -> show value
+      _ -> prettyExpr expression
+    unlocated (Located _ expression) = unlocated expression
+    unlocated expression = expression
+    sourceName name = case reverse name of
+      'x':'e':'d':'n':'i':'@':rest -> reverse rest
+      _ -> name
+
 prettyExpr :: Expr -> String
 prettyExpr (Located _ e) = prettyExpr e
 prettyExpr (TypeBound b t) = prettyType t ++ "." ++ b

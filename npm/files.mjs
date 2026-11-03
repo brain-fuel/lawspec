@@ -69,7 +69,27 @@ export async function safePath(root, relative)
   const resolved = path.resolve(root, relative);
   if (!resolved.startsWith(path.resolve(root) + path.sep))
     throw new Error(`Output escapes project: ${relative}`);
-  const realRoot = await realpath(root);
+  let realRoot;
+  try
+  {
+    const info = await stat(root);
+    if (!info.isDirectory())
+    {
+      throw new Error(`Output root is not a directory: ${path.resolve(root)}`);
+    }
+    realRoot = await realpath(root);
+  }
+  catch (error)
+  {
+    if (error.code === 'ENOENT')
+    {
+      throw new Error(
+        `Output root does not exist: ${path.resolve(root)}. Create it or initialize the target before generation.`,
+        {cause: error},
+      );
+    }
+    throw error;
+  }
   let cursor = root;
   for (const part of relative.split('/'))
   {

@@ -67,11 +67,14 @@ data ExplainOptions = ExplainOptions
 -- no law matched.
 explainResult :: ExplainOptions -> Value -> Either String Value
 explainResult options result =
-  let laws = [law | law <- arr (field "laws" result), maybe True (== selector law) (explainLaw options)]
+  let laws = [law | law <- arr (field "laws" result) ++ arr (field "temporalLaws" result),
+                   maybe True (== selector law) (explainLaw options)]
       selector law = str "owner" law <> "::" <> str "name" law
       context = presentation result
       evidence = fromMaybe (field "evidence" result) (explainEvidence options)
-      explanations = map (explainOne context (explainView options) evidence) laws
+      explanations = [if kind law `elem` ["model", "history"]
+        then explainTemporal (explainView options) evidence law
+        else explainOne context (explainView options) evidence law | law <- laws]
   in if null laws then Left "No matching law" else Right (object
        [ "explanations" .= map explanationJson explanations
        , "text" .= T.intercalate "\n\n" (map explanationText explanations) ])
@@ -1095,6 +1098,33 @@ valueExpression value
 
 -- * Laws
 
+explainTemporal :: View -> Value -> Value -> Explanation
+explainTemporal view evidence law = Explanation view (str "id" law) (str "name" law)
+  ([Section "law" [str "id" law] [], Section "statement" [scope, formula (field "formula" law)] []] ++
+   [Section "assumptions" fairness [] | not (null fairness)] ++
+   [Section "evidence" [str "status" row <> ": " <> str "reason" row] []
+      | row <- arr evidence, str "declaration" row == str "id" law])
+  where
+    scope
+      | kind law == "model" = (if field "every" law == Bool True then "Every run" else "Some run") <>
+          " of model " <> str "scope" law <> " must satisfy:"
+      | otherwise = (if field "complete" law == Bool True then "The complete history" else "The history so far") <>
+          " supplied by " <> str "scope" law <> " must satisfy:"
+    fairness = ["Assume " <> (if field "strong" item == Bool True then "strong " else "") <>
+      "fairness for " <> str "command" item | item <- arr (field "fairness" law)]
+    formula value = case kind value of
+      "atom" -> str "name" value
+      "reference" -> T.intercalate " " [if kind part == "word" then str "text" part
+        else "(" <> formula (field "formula" part) <> ")" | part <- arr (field "parts" value)]
+      "within" -> formula (field "body" value) <> " within " <> str "microseconds" value <> "us"
+      "whenever" -> "whenever " <> left value <> ", " <> right value
+      "never-before" -> "never " <> left value <> " before " <> right value
+      operator | operator `elem` ["not", "always", "eventually"] -> operator <> " (" <> formula (field "body" value) <> ")"
+      operator | operator `elem` ["and", "or", "implies", "until"] -> "(" <> left value <> " " <> operator <> " " <> right value <> ")"
+      _ -> "unsupported temporal presentation"
+    left = formula . field "left"
+    right = formula . field "right"
+
 explainOne :: Presentation -> View -> Value -> Value -> Explanation
 explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name" law)
     [Section k ls (if view == Eng then casesIn k else []) | (k, ls) <- sections, not (null ls)]
@@ -1238,6 +1268,10 @@ nativeEvidenceText item =
       firstPresent xs = case filter present xs of { v : _ -> jsString v; [] -> "native test failed" }
   in T.intercalate "\n" $
        ["Native conformance: " <> jsString (field "status" summary) <> "; search completeness: " <> jsString (field "searchCompleteness" summary)]
+       ++ ["Native check duration: " <> str "test" measurement <> " [" <> str "target" measurement <>
+            "] " <> jsString (field "seconds" measurement) <> " s"
+          | measurement <- arr (field "measurements" summary)]
+       ++ [scope | Just scope <- [strField "measurementScope" summary], not (T.null scope)]
        ++ [ jsString (field "target" row) <> " (" <> jsString (field "root" row) <> "): " <> jsString (field "outcome" row) <> "; " <> jsString (field "freshness" row)
             <> (if present (attempt row) then "; seed " <> jsString (field "seed" (attempt row)) <> "; " <> jsString (field "at" (attempt row)) else "")
             <> "; " <> jsString (field "reason" row) | row <- rows ]

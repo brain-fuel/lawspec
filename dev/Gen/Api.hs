@@ -75,7 +75,9 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "SourceSyntax" ([("version",text "1")] ++ fields [("path", "string"), ("unit", "string"), ("nodes", "SourceSyntaxNode[]"),("bindings","SourceSyntaxBinding[]"),("references","SourceSyntaxReference[]")])
   , interface "Diagnostic" [("code", text "string"), ("message", text "string"), ("at", union [text "Location", text "null"]),
        ("span?",text "Span"),("related?",array (record (fields [("message","string"),("span","Span")])))]
-  , interface "MatchWarning extends Diagnostic"
+  , interface "CompilerWarning extends Diagnostic"
+      [("severity",quoted "warning")]
+  , interface "MatchWarning extends CompilerWarning"
       [("severity",quoted "warning"),("span",text "Span")]
   , interface "MatchWarningAnalysis"
       [("kind",quoted "match-reachability"),("complete",text "false"),
@@ -169,8 +171,23 @@ declarations = joinWith (softbreak <> softbreak)
        ("trace", "string[]"), ("generation", "Generation"), ("inputDomain", "'nonempty' | 'universal'"),
        ("metadata", "LawMetadata"), ("harness", "LawHarness")])
   , interface "DeclarationSource" (fields [("unit","string"),("name","string"),("canonicalName?","string")])
+  , alias "TemporalFormula"
+      [variant "atom" [("name","string")],
+       record [("kind",union (map quoted ["not","always","eventually"])),("body",text "TemporalFormula")],
+       record [("kind",union (map quoted ["and","or","implies","until","whenever","never-before"])),
+         ("left",text "TemporalFormula"),("right",text "TemporalFormula")],
+       variant "within" [("body","TemporalFormula"),("microseconds","string")],
+       record [("kind",quoted "reference"),("parts",array (parens (union
+         [variant "word" [("text","string")],variant "argument" [("formula","TemporalFormula")]])))]]
+  , interface "TemporalLaw" (fields
+      [("id","string"),("owner","string"),("name","string"),("kind","'model' | 'history'"),
+       ("scope","string"),("formula","TemporalFormula"),("description","string"),
+       ("location","Location"),("every?","boolean"),("complete?","boolean")] ++
+      [("fairness?",array (record (fields [("command","string"),("strong","boolean")])))] )
   , interface "Unit"
-      [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin"),("source?",text "DeclarationSource"),("representation?",quoted "structural-record-storage")] <> text ")[]")]
+      [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin"),("typeText?",text "string"),("source?",text "DeclarationSource"),("representation?",quoted "structural-record-storage")] <> text ")[]"),
+       ("handlers?", array (record (fields [("id","string"),("name","string"),("ability","string"),("origin","Origin")] ++
+         [("goEmbedding",record (fields [("available","boolean"),("reasons","string[]"),("runtime","'typed-native' | 'checked-dynamic'")]))])))]
   , interface "StructuralRecord"
       [("kind",quoted "record"),("digest",text "string"),("descriptor",text "string"),
        ("positions?",text "string[]"),("indexGuards?",text "string[]"),
@@ -214,7 +231,7 @@ declarations = joinWith (softbreak <> softbreak)
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++
        -- Where its tests ran, when an environment attestation touches it.
-       fields [("exemption?", "Exemption")] ++
+       fields [("exemption?", "Exemption"),("executionKind?", "'measurement'")] ++
        fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]"),
                ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]"), ("environmentOutcome?", "NativeOutcome"),
                ("nativeEvidence?","NativeConformanceEvidence"),("adequacy?","NativeAdequacy[]"),
@@ -344,7 +361,10 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeConformanceEvidence" (fields [("kind","'native-conformance'"),
       ("status","NativeConformanceStatus"),
       ("searchCompleteness","'complete-finite-inputs' | 'not-established'"),
-      ("observations","NativeExecutionObservation[]")])
+      ("observations","NativeExecutionObservation[]"),
+      ("measurements?","NativeMeasurement[]"),("measurementScope?","string")])
+  , interface "NativeMeasurement" (fields [("kind","'native-check-duration'"),
+      ("target","string"),("root","string"),("test","string"),("seconds","number")])
   , interface "NativeCheckCoverage" (fields [("kind","'sampled' | 'examples' | 'finite-inputs'"),
       ("cases?","number"),("scopedQuantifiers","boolean")])
   , interface "NativeEvidenceTarget" (fields [("declaration","string"),("stage","string")])
@@ -355,9 +375,9 @@ declarations = joinWith (softbreak <> softbreak)
        ("parallel","boolean"),("kind?","'model'"),("scope?","string"),("obligations?","NativeEvidenceTarget[]"),("coverage","NativeCheckCoverage")])
   , interface "Result"
       ([("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++
-       fields [("languageProfile?", "\"1.0-rc.2\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
+       fields [("languageProfile?", "\"1.0-rc.2\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]"), ("temporalLaws?", "TemporalLaw[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
-       fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
+       fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "CompilerWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
        [("proofTasks?",text "ProofTask[]"),
         ("analysisTasks?", text "AnalysisTaskRow[]"), ("analysisEvidence?", text "ObligationEvidence[]"),
         ("analysisChecks?", text "AnalysisCheck[]"), ("modelTasks?", text "ModelTaskRow[]"), ("modelChecks?", text "ModelAnswerCheck[]"),

@@ -297,7 +297,9 @@ wrappedHandlers target bindings plan
     boundUnit u = let definitions = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)
                       adapters = [d | d <- C.unitDeclarations u, C.declarationId d `notElem` definitions]
                       calls = map (C.declarationId . fst) (NB.bindingFunctions bindings) ++ map (C.declarationId . fst) (NB.bindingCalls bindings)
-                  in not (null adapters) && all ((`elem` calls) . C.declarationId) adapters
+                      boundAbility = target == "go" && any (\ability -> lookup
+                        (C.Id (C.abilityKey (C.abilityInstance ability))) (NB.bindingHandlers bindings) /= Nothing) (C.unitAbilities u)
+                  in (not (null adapters) || boundAbility) && all ((`elem` calls) . C.declarationId) adapters
     wrap unit = unit { C.unitAbilities = [ if C.abilityNative a /= Nothing && C.abilityOwner a `elem` bound
                                              then a { C.abilityNative = Just (boundWrapper target a) } else a
                                          | a <- C.unitAbilities unit ] }
@@ -775,7 +777,8 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     then either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
-  let plan = wrappedHandlers target bindings (boundHandlers bindings (if target `elem` ["kotlin", "scala"] then nativeHandles target bindings prepared else prepared))
+  let boundPlan = wrappedHandlers target bindings (boundHandlers bindings (if target `elem` ["kotlin", "scala"] then nativeHandles target bindings prepared else prepared))
+      plan = if target == "go" then GoNativeBinding.prepareExternalReferences bindings boundPlan else boundPlan
   unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","scala","go","erlang","elixir","gleam","fsharp","csharp","swift"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
@@ -785,7 +788,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     (Left [Diagnostic "native-binding" "erlangIncludes is only valid for Erlang bindings" Nothing])
   let sourceRoot = if target `elem` ["javascript", "typescript", "rust"]
         then OutputLayout.sourceImportRoot target sourceDir testDir [] else "../src"
-  emitted <- if not (NB.hasBindings bindings) then emitMaterializedPlanWithNativeBridge sourceRoot False minify target plan
+  ordinaryEmitted <- if not (NB.hasBindings bindings) then emitMaterializedPlanWithNativeBridge sourceRoot False minify target plan
     else if target `elem` ["erlang","elixir","gleam"] then
       Beam.emitBeamWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if target `elem` DotNet.dotnetTargets then
@@ -824,6 +827,9 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (GoNativeBinding.emitBindings minify bindings plan ordinary)
     else Left [Diagnostic "native-binding" ("native binding emission is not implemented for " ++ target) Nothing]
+  external <- if target == "go" then either (Left . pure . (\message -> Diagnostic "native-binding" message Nothing)) Right
+    (GoNativeBinding.externalArtifacts minify bindings plan) else pure []
+  let emitted = ordinaryEmitted ++ external
   canonical <- if NB.hasBindings bindings && minify && target `elem` ["erlang","elixir","gleam"]
     then Beam.emitBeamWithBindings target False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if NB.hasBindings bindings && minify && target `elem` DotNet.dotnetTargets

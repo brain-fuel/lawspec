@@ -7,7 +7,7 @@ title: Set up Go
 
 ## Requirements
 
-- Go 1.22 or later (1.22–1.26 are supported), with Go modules.
+- Go 1.25 or later, with Go modules.
 - Rapid v1.2.0, without a local `replace`.
 
 ## Create the project
@@ -20,7 +20,7 @@ go test ./...
 ```
 
 In a directory without build files, `init` creates a `go.mod` for module
-`example.com/lawspec-example` with `go 1.22` and Rapid v1.2.0. In an existing
+`example.com/lawspec-example` with `go 1.25.0` and Rapid v1.2.0. In an existing
 module:
 
 ```sh
@@ -178,3 +178,14 @@ named from where it is used: the payload of a `Declined` case is
 law's comment gives what it says and the statement its tests check, text is
 written as Go string literals and characters as rune literals, and a failing
 assertion names its law and example and points at the expectation's line.
+
+## Handler embedding availability
+
+Fully typed spec handlers expose the generated start and state accessors. A
+handler that needs the checked dynamic evaluator still runs its laws, but does
+not expose unchecked native state setters. `generate` reports
+`go-handler-embedding` with the actual typed-planner reasons, and the compiler
+API includes `units[].handlers[].goEmbedding` (`available`, `runtime`, `reasons`).
+For example, a clause requiring runtime refinement checks can keep a handler on
+the dynamic path even when the underlying state is an integer. Removing the
+refinement merely to obtain an accessor would change the specification.

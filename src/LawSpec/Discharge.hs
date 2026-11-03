@@ -13,7 +13,7 @@
 --   assumed               native adapters, bindings and generators on trust
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
-  ( dischargeEvidence, dischargeEvidenceWith, dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, lawClaim, callees, showValue
+  ( dischargeEvidence, dischargeEvidenceWith, dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, lawClaim, callees, showValue, budgeted
   ) where
 
 import Control.Monad (forM)
@@ -97,7 +97,8 @@ dischargeSelected selection program = do
         called = S.fromList (concatMap callees (propertyExpressions p))
         adapters = S.toList (S.difference called definitionIds)
         reached = reachableDefinitions definitions (S.toList called)
-        effects = any (effectful (`M.member` stateful)) (propertyExpressions p) ||
+        effects = any (effectful (`M.member` stateful))
+          (propertyExpressions p ++ map definitionBody reached) ||
           any (\op -> M.notMember (operationId op) resolver && M.notMember (operationId op) stateful)
             (concatMap (performed . definitionBody) reached ++ concatMap performed (propertyExpressions p))
         natives = [ability | (ability, choice) <- propertyHandlers p, not (isFail ability), production choice]

@@ -1,10 +1,10 @@
 -- | Evidence and discharge of laws.
 module DischargeSpec (test_lawsAreDischargedWithHonestEvidence) where
 
-import Data.Aeson (Value(..), decode, encode, object, (.=))
+import Data.Aeson (Value(..), decode, encode, toJSON, object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
 import qualified Data.Vector as V
 import Test.Hspec
 import LawSpec.Api (dispatch)
@@ -36,6 +36,28 @@ twice = "function twice (x :: Int32) -> Integer is x + x end function\n"
 -- be reported as assumed. ref:DEC-evidence-statuses ref:REQ-honest-evidence
 test_lawsAreDischargedWithHonestEvidence :: Spec
 test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ do
+  it "defers caught failures through every reachable procedure" $ do
+    source <- readFile "test/fixtures/effectful-attempt.lawspec"
+    let (before,after) = break (isPrefixOf "law queued") (lines source)
+        helper = "procedure recordAccepted (event :: Int32) -> Bool uses Sink is prelude.isRight (prelude.attempt (record event)) end procedure"
+        wrapper = "procedure enqueue (event :: Int32) -> Bool uses Sink is recordAccepted event end procedure"
+        variants = [("prelude.isRight (prelude.attempt (record 1))",[]),
+                    ("recordAccepted 1",[helper]),("enqueue 1",[helper,wrapper])]
+        run (claim,definitions) = do
+          let changed = unlines (before ++ definitions ++ take 1 after ++
+                [" definition: " ++ claim ++ " implies pending >= 1 end definition", "end law", "end unit"])
+              response = decode (dispatch (encode (object ["method" .= ("check" :: String),
+                "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+                "verification" .= object ["layers" .= (["exhaustive","property"] :: [String])],
+                "sources" .= [Source "effects.lawspec" changed]]))) :: Maybe Value
+          case response of
+            Just (Object result) -> do
+              KM.lookup "diagnostics" result `shouldBe` Just (toJSON ([] :: [Value]))
+              let statuses = [status | Just (Array rows) <- [KM.lookup "evidence" result], Object row <- V.toList rows,
+                    KM.lookup "declaration" row == Just (String "evaluation.sink::law::queued"), Just status <- [KM.lookup "status" row]]
+              statuses `shouldBe` [String "planned"]
+            _ -> expectationFailure "missing compiler response"
+    mapM_ run variants
   it "proves linear laws over definitions, unfolding unrefined callees" $ do
     fmap fst (lawStatus "doubling" (twice ++ law "doubling" "for all (x :: Int32) => twice x = x * 2 end for all")) `shouldBe` Right Proved
     fmap fst (lawStatus "guarded" (twice ++ law "guarded" "for all (x :: Int32) => x > 0 implies twice x > x end for all")) `shouldBe` Right Proved

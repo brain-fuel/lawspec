@@ -288,12 +288,15 @@ configuration hcl plan = do
         Nothing -> pure Nothing
         Just _ -> Just <$> invoke (C.declarationId d) args
       pure (Entry d t value)
-  -- Export monomorphic named types even when there is no value declaration.
-  -- Generic declarations are instantiated through the entries that use them.
+  -- HCL's variable boundary is the configuration entries and their transitive
+  -- field types. A type-only unit still exports its concrete named inputs.
+  -- YAML retains its library schema definitions independently of values.
   let named = [C.Constructor (C.idText (C.dataId d)) [] | d <- datas,
         null (C.dataParameters d), C.dataStructural d == Nothing]
-      roots = nub (named ++ [t | Entry _ t _ <- entries])
-      typeOnly = [t | t <- named, t `notElem` [ty | Entry _ ty _ <- entries]]
+      entryTypes = [t | Entry _ t _ <- entries]
+      entryBoundary = hcl && not (null entries)
+      roots = nub ((if entryBoundary then [] else named) ++ entryTypes)
+      typeOnly = [t | not entryBoundary, t <- named, t `notElem` entryTypes]
       bits = planMachineBits plan
       source = specSource plan
   ordered <- reachable "configuration" (fmap snd . shape registry bits (const JNull)) roots
@@ -319,7 +322,7 @@ configuration hcl plan = do
         ("type", JString "object"), ("properties", JObject properties), ("required", JArray required),
         ("additionalProperties", JBool False), ("$defs", JObject defs)]
       typeVariables = zip typeVariableNames typeOnly
-      receipt = JObject
+      receipt = JObject (
         [ ("target", JString (if hcl then "hcl" else "yaml"))
         , ("kind", JString "configuration"), ("lawsExecuted", JBool False)
         , ("configurationComplete", JBool (length values == length entries && (not hcl || null typeOnly)))
@@ -332,6 +335,9 @@ configuration hcl plan = do
         , ("typeVariables", JArray [JObject [("name", JString name), ("type", JString (typeText t)),
             ("schema", JString (key t))] | hcl, (name,t) <- typeVariables])
         , ("types", JObject [(key t, JString (typeText t)) | t <- roots]) ]
+        ++ [("omittedTypes", JArray [JObject [("type", JString (typeText t)),
+              ("reason", JString "not reachable from any configuration entry")]
+            | t <- named, t `notElem` ordered]) | entryBoundary])
       link d = fmap (labelled (C.declarationName d) . Just) (sourceLink (C.declarationOrigin d))
   if not hcl then pure ([file "configuration.schema.json" (prettyJson root),
       file "lawspec-artifacts.json" (prettyJson receipt)] ++

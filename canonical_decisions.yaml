@@ -1240,3 +1240,14 @@ DEC-learn-review-deferral:
     The owner authorizes the existing pre-1.0 deferral policy for Learn comments as well as compiler and runtime comments. Keep every unreviewed verdict pending and record the work as due at 1.0.0. This changes the due version for that review; it does not manufacture approval, close the teaching checkpoint, weaken definition validation or establish verification evidence. Preserve all existing review debt and the 1.0 readership and external gates.
   opened: 0.31.2
   decided: 0.31.2
+
+DEC-evaluation-regression-categories:
+  status: decided
+  question: How should evaluation repros drive compiler and tooling fixes beyond their individual examples?
+  answer: |
+    Treat each repro as a boundary test for a category. Resolve every Go native reference through the same validated import inventory, including failure types and handler factories. Preserve alias type identity for errors.As instead of copying native error types. Plan finite refined domains with the shared quantifier-domain machinery; expired exemptions are visible warnings even when completeness remains undecided. Keep definition admission mandatory for unused artifact declarations while restricting HCL representation checks to configuration-entry reachability (type-only units still export their declared inputs). Retain parsed source signatures before ABI erasure for editor presentation and publish ordinary, model and history law families without pretending their semantics are interchangeable. Report typed-handler embedding eligibility from the emitter's planner, with dynamic execution and missing native setters explicitly distinguished. Budget test evidence retains measurement classification; exported native-check durations include harness overhead and are not exact operation timings. Repair declared target scaffolding without rewriting existing manifests or user code. Preserve inconclusive and missing evidence.
+
+    Structural induction follows proper recursive subterms through single-constructor product projections. This maps Why3's algebraic induction and record-as-product encoding and Lean's constructor recursors to LawSpec's existing SMT obligation generation. It does not introduce a new proof kernel or a Why3/Lean backend. Z3 executes the generated cases; successful solver answers retain the existing translation and solver trust boundary. Counterexample search remains separate and a reported refutation requires confirmation by LawSpec's evaluator. Alternative constructors, cycles and unsupported payloads are not guessed into induction hypotheses. This is a bounded extension to the existing task generator, rather than a new solver. Owner review debt remains deferred under the existing pre-1.0 policy.
+  opened: 0.31.2
+  decided: 0.31.2
+  refs: [why3, z3, why3-structural-induction, lean-inductive-types, go-type-aliases]

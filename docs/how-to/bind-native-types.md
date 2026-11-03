@@ -33,11 +33,16 @@ It exports an application with its own names for the specification's types
 
 ## Add bindings to a target
 
-Bindings belong to a target, under `nativeBindings`:
+Bindings belong to a target, under `native-bindings`:
 
 ```edn
 {
-  :version 1
+  :manifest-version 1
+  :component {
+    :name "shop.application"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
   :sources ["laws"]
   :targets [
     {
@@ -53,8 +58,8 @@ Bindings belong to a target, under `nativeBindings`:
 }
 ```
 
-`nativeBindings` accepts `types`, `functions`, `generators`, `rustCrate` (Rust
-only), `goImports` (Go only) and `erlangIncludes` (Erlang only). Unknown fields are errors, so a misspelled
+`native-bindings` accepts `types`, `functions`, `generators`, `rust-crate` (Rust
+only), `go-imports` (Go only) and `erlang-includes` (Erlang only). Unknown fields are errors, so a misspelled
 option can never be silently ignored.
 
 ## Name LawSpec declarations
@@ -92,18 +97,24 @@ and generator references from the test directory.
 
 Map the type, every constructor and every field:
 
-```json
+```edn
 {
-  "type": "example.payments::type::Money",
-  "native": ["payments_domain", "Price"],
-  "constructors": [
+  :type "example.payments::type::Money"
+  :native ["payments_domain" "Price"]
+  :constructors [
     {
-      "constructor": "Money",
-      "native": ["payments_domain", "Price"],
-      "style": "record",
-      "fields": [
-        {"field": "amount", "native": "major"},
-        {"field": "currency", "native": "unit"}
+      :constructor "Money"
+      :native ["payments_domain" "Price"]
+      :style "record"
+      :fields [
+        {
+          :field "amount"
+          :native "major"
+        }
+        {
+          :field "currency"
+          :native "unit"
+        }
       ]
     }
   ]
@@ -118,29 +129,59 @@ Each constructor has a `style`:
 
 A sum maps each alternative:
 
-```json
+```edn
 {
-  "type": "example.payments::type::Payment",
-  "native": ["payments_domain", "PaymentStatus"],
-  "constructors": [
-    {"constructor": "Paid", "native": ["payments_domain", "Settled"], "style": "variant",
-     "fields": [{"field": "value", "native": "price"}]},
-    {"constructor": "Declined", "native": ["payments_domain", "Rejected"], "style": "variant",
-     "fields": [{"field": "reason", "native": "explanation"}]}
+  :type "example.payments::type::Payment"
+  :native ["payments_domain" "PaymentStatus"]
+  :constructors [
+    {
+      :constructor "Paid"
+      :native ["payments_domain" "Settled"]
+      :style "variant"
+      :fields [
+        {
+          :field "value"
+          :native "price"
+        }
+      ]
+    }
+    {
+      :constructor "Declined"
+      :native ["payments_domain" "Rejected"]
+      :style "variant"
+      :fields [
+        {
+          :field "reason"
+          :native "explanation"
+        }
+      ]
+    }
   ]
 }
 ```
 
 And an enumeration maps each constant with `unit`:
 
-```json
+```edn
 {
-  "type": "example.payments::type::Currency",
-  "native": ["payments_domain", "CurrencyCode"],
-  "constructors": [
-    {"constructor": "USD", "native": ["payments_domain", "CurrencyCode", "Dollars"], "style": "unit"},
-    {"constructor": "EUR", "native": ["payments_domain", "CurrencyCode", "Euros"], "style": "unit"},
-    {"constructor": "GBP", "native": ["payments_domain", "CurrencyCode", "Pounds"], "style": "unit"}
+  :type "example.payments::type::Currency"
+  :native ["payments_domain" "CurrencyCode"]
+  :constructors [
+    {
+      :constructor "USD"
+      :native ["payments_domain" "CurrencyCode" "Dollars"]
+      :style "unit"
+    }
+    {
+      :constructor "EUR"
+      :native ["payments_domain" "CurrencyCode" "Euros"]
+      :style "unit"
+    }
+    {
+      :constructor "GBP"
+      :native ["payments_domain" "CurrencyCode" "Pounds"]
+      :style "unit"
+    }
   ]
 }
 ```
@@ -170,12 +211,23 @@ representation.
 
 ## Bind an adapter to an existing function
 
-```json
-"functions": [
-  {"declaration": "example.payments::addFee", "native": ["payments_domain", "apply_fee"]},
-  {"declaration": "example.payments::roundTrip", "native": ["payments_domain", "restore"]},
-  {"declaration": "example.payments::archive", "native": ["payments_domain", "store"]}
-]
+```edn
+{
+  :functions [
+    {
+      :declaration "example.payments::addFee"
+      :native ["payments_domain" "apply_fee"]
+    }
+    {
+      :declaration "example.payments::roundTrip"
+      :native ["payments_domain" "restore"]
+    }
+    {
+      :declaration "example.payments::archive"
+      :native ["payments_domain" "store"]
+    }
+  ]
+}
 ```
 
 A unit with function bindings must currently map every adapter it declares.
@@ -190,10 +242,16 @@ function, converts the result and validates it.
 ## Rust: name the application crate
 
 Rust tests must use your library's own types, not a second compiled copy.
-Name the library crate with `rustCrate`:
+Name the library crate with `rust-crate`:
 
-```json
-"nativeBindings": {"rustCrate": "lawspec_example", "types": [], "functions": []}
+```edn
+{
+  :native-bindings {
+    :rust-crate "lawspec_example"
+    :types []
+    :functions []
+  }
+}
 ```
 
 ## Go: bind types from other packages
@@ -201,14 +259,24 @@ Name the library crate with `rustCrate`:
 Declare import paths separately, then refer to their exported names through the
 alias:
 
-```json
+```edn
 {
-  "goImports": [{"alias": "domain", "path": "example.org/application/domain"}],
-  "functions": [{"declaration": "example::echo", "native": ["domain", "Echo"]}]
+  :go-imports [
+    {
+      :alias "domain"
+      :path "example.org/application/domain"
+    }
+  ]
+  :functions [
+    {
+      :declaration "example::echo"
+      :native ["domain" "Echo"]
+    }
+  ]
 }
 ```
 
-One alias can qualify types, constructors, functions and generator factories.
+One alias can qualify types, constructors, functions, generator factories, failure types and handler factories.
 Each generated file imports only what it uses. The compiler renames aliases
 internally, so an alias such as `rapid` cannot shadow a framework import.
 Duplicate aliases or paths, traversal segments and undeclared aliases are
