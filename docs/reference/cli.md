@@ -529,3 +529,8 @@ Canon executable may be selected through `CANON` for existing Canon projects.
 `lawspec learn [--port <port>]` serves the packaged F#-first coding-course preview on
 `127.0.0.1:8384` by default, without a manifest ref:DEC-learn-course-preview. Port 0 selects an
 available port. See [the project workflow](../how-to/manage-projects.md).
+
+## Authoring discovery
+
+See [authoring advisories](authoring-advisories.md) for `prelude`, `inspect`,
+`advise`, strict enforcement, read-only behavior and analysis limits.

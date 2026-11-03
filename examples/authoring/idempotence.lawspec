@@ -1,0 +1,10 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.idempotence
+
+function normalize (x :: Integer) -> Integer is if x < 0 then 0 - x else x
+  end if end function
+law "|normalization stabilizes| is
+  definition: apply law "|idempotent| normalize
+  end definition
+end law
+end unit

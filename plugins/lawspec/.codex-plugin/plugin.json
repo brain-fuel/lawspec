@@ -1,7 +1,7 @@
 {
   "name": "lawspec",
-  "version": "0.31.2-preview.4",
-  "description": "LawSpec project workflow and F#-first coding-course tutor.",
+  "version": "0.31.2-preview.5",
+  "description": "Prelude-first LawSpec authoring, project workflow and F#-first course tutoring.",
   "skills": "./skills/",
   "license": "MIT"
 }

@@ -8,6 +8,8 @@ import qualified Data.Aeson.KeyMap as KM
 import Control.Monad (unless)
 import Data.Aeson.Types (parseEither)
 import qualified Data.ByteString.Lazy as B
+import qualified LawSpec.Authoring as Authoring
+import qualified LawSpec.NativeInterface as NativeInterface
 import LawSpec.Model
 import LawSpec.Digest (digestString, digestHex)
 import LawSpec.SourceText (formatSourceWithSyntax, formatSourcesUsing)
@@ -52,6 +54,11 @@ import qualified LawSpec.Component as Component
 -- ref:DEC-incremental-compilation
 dispatch :: B.ByteString -> B.ByteString
 dispatch bytes
+  | Just (Object o) <- decode bytes, Just (String "prelude") <- KM.lookup "method" o =
+      encode (case KM.lookup "query" o of
+        Nothing -> Authoring.preludeView ""
+        Just (String query) -> Authoring.preludeView (T.unpack query)
+        _ -> failure [Diagnostic "request" "prelude query must be a string" Nothing])
   | Just value <- decode bytes, Just result <- Component.componentRequest value = encode result
   | otherwise = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
@@ -74,7 +81,7 @@ dispatch bytes
        stageVerification = if taskMethod then fmap (\config -> V.Verification
          (filter (/= V.Proof) (V.verificationLayers config))) verification else verification
        stageKey = (if taskMethod then "smt-task-preparation:" else "") ++ sharedRequest bytes
-   in case (if method=="format" || matchWarningsRequested then memoized syntaxStagesTable ("canonical:" ++ stageKey)
+   in case (if method=="format" || matchWarningsRequested || adviceRequested then memoized syntaxStagesTable ("canonical:" ++ stageKey)
           (stagesWithInput True True project packages sources bits settings native stageVerification)
         else fmap (\value -> (value,[])) (memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification))) of
     Left response -> response
@@ -90,9 +97,10 @@ dispatch bytes
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
          -- A refuted law keeps its row and fails the request.
-         result files = withGoEmbeddingWarnings target method $ withRefutations (refutations core obligations) $ (if matchWarningsRequested then withMatchWarnings syntax else id) $
+         result files = withGoEmbeddingWarnings target method $ withAuthoring syntax core $ withRefutations (refutations core obligations) $ (if matchWarningsRequested then withMatchWarnings syntax else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
+          "advise" -> result []
           "expand" -> result []
           -- Presentation of the expanded laws; it changes no obligation.
           "explain" | Right options <- explainOptions -> case result [] of
@@ -121,6 +129,19 @@ dispatch bytes
                 Left ds -> failure ds
                 Right _ -> withSources formattedSources (result [])
           "format" -> failure [Diagnostic "language-profile" "format requires API schema 5 and languageProfile 1.0-rc.2" Nothing]
+          "inspect" | target `elem` artifactTargets, native /= emptyNativeRequest ->
+            failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
+          "inspect" -> case plan of
+            Left ds -> failure ds
+            Right selectedPlan -> case emitPlanWithNativeOptions False target sourceDir testDir bindings selectedPlan of
+              Left ds -> failure ds
+              Right files -> case emitPlanWithNativeOptions True target sourceDir testDir bindings selectedPlan of
+                Left ds -> failure ds
+                Right compact -> case NativeInterface.interfaceView target bindings selectedPlan (files ++ networkArtifacts native) (compact ++ networkArtifacts native) of
+                  Left err -> failure [Diagnostic "native-interface" err Nothing]
+                  Right view -> case result (files ++ networkArtifacts native) of
+                    Object fields -> Object (KM.insert "interface" view fields)
+                    response -> response
           "planGeneration" | target `elem` artifactTargets, native /= emptyNativeRequest ->
             failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests core verification plan (verificationKeys verification
@@ -167,9 +188,17 @@ dispatch bytes
     formatCompilation = case decode bytes of
       Just (Object o) | Just (Bool requested) <- KM.lookup "compile" o -> requested
       _ -> True
+    adviceRequested = case decode bytes of
+      Just (Object input) | Just (Bool False) <- KM.lookup "advice" input -> False
+      _ -> True
+    withAuthoring syntax core response@(Object fields) = case decode bytes of
+      Just (Object input) | Just (Bool False) <- KM.lookup "advice" input -> response
+      _ -> Object (KM.insert "advice" (Authoring.adviceView syntax core) fields)
+    withAuthoring _ _ response = response
     -- Where the compiler may keep work between runs; the CLI names one per
     -- project and compiler build.
     cacheDirectory = case decode bytes of
+      Just (Object o) | Just (String method) <- KM.lookup "method" o, method `elem` ["inspect", "advise"] -> Nothing
       Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
       _ -> Nothing
     -- The host's counterexample values, each bound to a task it ran

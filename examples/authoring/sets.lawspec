@@ -1,0 +1,12 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.sets
+
+law "|distinct readings ignore repetitions| is
+  definition: prelude.setOf [3, 1, 1] = prelude.setOf [1, 3]
+  end definition
+end law
+law "|set equality does not establish occurrence preservation| is
+  definition: not (prelude.sameItems [3, 1, 1] [1, 3])
+  end definition
+end law
+end unit

@@ -1,0 +1,5 @@
+unit authoring.bad
+law "|set equality preserves occurrences| is
+ definition: prelude.sameItems [1, 1] [1] end definition
+end law
+end unit

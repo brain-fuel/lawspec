@@ -348,7 +348,7 @@ try
     path.join(root, 'learn/curriculum.json'),
     path.join(root, '.agents/skills/lawspec-learn/references/curriculum.json'),
   );
-  for (const skill of ['lawspec-project', 'lawspec-learn'])
+  for (const skill of ['lawspec-author', 'lawspec-project', 'lawspec-learn'])
   {
     await cp(
       path.join(root, '.agents/skills', skill),

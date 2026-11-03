@@ -156,6 +156,35 @@ async function compare(
   }
   return native;
 }
+await compare(
+  'prelude',
+  {query: 'sameItems'},
+  'prelude before initialization',
+  {required: true},
+);
+for (const machineBits of [32, 64])
+  for (const minify of [false, true])
+    for (const target of programTargets)
+    {
+      await compare(
+        'inspect',
+        {
+          ...options,
+          target,
+          machineBits,
+          minify,
+          sources: [
+            {
+              path: 'inspect.lawspec',
+              content:
+                'unit inspect\ntype Point is a record {x :: Integer y :: Maybe Decimal} end type\necho :: Point -> Point\nfunction size (xs :: List Integer) -> Integer is first matching case of xs: when Nil then 0 when Cons h t then 1 + size t end case end function\nend unit',
+            },
+          ],
+        },
+        `inspection and advice:${target}:${machineBits}:${minify}`,
+        {required: true},
+      );
+    }
 for (const machineBits of [32, 64])
 {
   for (const [index, text] of fixtures.entries())

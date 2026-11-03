@@ -637,6 +637,7 @@ library
       LawSpec.Api
       LawSpec.ArtifactEmit
       LawSpec.Attestation
+      LawSpec.Authoring
       LawSpec.Backend
       LawSpec.BeamAbilities
       LawSpec.BeamActors
@@ -824,6 +825,7 @@ library
       LawSpec.ModelTests
       LawSpec.Naming
       LawSpec.NativeBinding
+      LawSpec.NativeInterface
       LawSpec.NativeModelChecks
       LawSpec.NativeRequest
       LawSpec.NativeRequestView

@@ -123,9 +123,12 @@ test('MCP derives its release version and declares every inspection tool read-on
   assert.equal(server.initialized.serverInfo.version, version);
   const {tools} = await server.request('tools/list');
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
+    'lawspec_advise',
     'lawspec_check',
     'lawspec_explain',
+    'lawspec_inspect',
     'lawspec_list_laws',
+    'lawspec_prelude',
   ]);
   for (const tool of tools)
     assert.equal(tool.annotations.readOnlyHint, true, tool.name);

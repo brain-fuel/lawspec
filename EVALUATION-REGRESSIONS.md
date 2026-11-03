@@ -53,13 +53,35 @@ explains why iterative unfolding alone need not prove induction. Failed proof
 attempts stay incomplete; counterexample search is a separate execution whose
 model must be confirmed by LawSpec's evaluator before refutation is reported.
 
-## Validation recorded so far
+## Validation
 
-The focused native suite passes 59 examples, including direct, one-hop and
-two-hop effectful procedure calls. The first WASM-backed SDK batch passes 33
-checks with no skips, covering actual Go compilation, Z3, MCP and LSP. A separate
-actual CLI budget run passes its fast/slow controls. Native evidence tests pass
-14 checks; complete documentation manifests pass against the compiler schema.
-The broader cached Go/HCL/YAML CI run is in progress; its result is not implied
-by these focused checks. All review debt remains pending under the existing
-pre-1.0 policy.
+The combined native Hspec suite (`test/Main.hs`) passes **2,825 examples** with
+zero failures. Learn passes **122 checks** with no skips. The focused
+native/WASM comparison matches **723 complete responses**, including 362
+accepted generation responses; matching rejections are counted separately.
+Real Z3 proves six product-payload laws and produces three counterexamples
+confirmed by the evaluator. Actual Go execution covers wrapped mapped errors,
+unrelated-error rejection, imported handler factories and fast/slow budget
+controls. MCP checks version and read-only metadata for all six tools, executes project
+checks and ordinary/model/history listings and explanations, and exercises
+prelude discovery alongside the other agent's advisory checks. Documentation checks compile 136 snippets over
+128 pages and resolve their links.
+
+The initial cached Go/HCL/YAML CI run reported 157 successful stages and four
+failures. The SDK failures exposed a warning-consumer type assumption and a Go
+fixture missing its required import declaration; their corrected checks pass.
+Learn's three scene-receipt writes needed their output directory created on a
+fresh checkout; the full Learn rerun passes. The local report was moved out of
+the published documentation tree; documentation validation passes. The initial
+Stack compiler invocation gave no usable failure details; the complete native
+suite was rebuilt and run directly with explicit reporting and passes. The standard Stack invocation with explicit reporting also passes all 2,825
+examples. CI now requests that output explicitly so future failures remain
+attributable to named examples.
+The initial broad SDK run had 463 passes and five optional skips; corrected
+failed checks were rerun without claiming the skipped native environments ran.
+
+Project status and validation are incomplete for this compiler checkout: there
+is no root `lawspec.edn`, and the default Canon executable reports 0.1.0 instead
+of the project helper's expected 0.2.3. These reports do not replace direct
+compiler verification or sign off existing human review debt. Owner review
+remains deferred under the existing pre-1.0 policy.

@@ -139,6 +139,7 @@ planOutputs = do
   (courseStatus, curriculum, courseError) <- readProcessWithExitCode "node" ["learn/build-course.mjs", "--stdout"] ""
   unless (courseStatus == ExitSuccess) (die courseError)
   inventory <- learnInventory
+  authoring <- authoringOutputs version inventory curriculum
   let whole = [ Output "runtime/LawSpecDataStrategies.java" javaStrategies False, Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
               , Output "src/LawSpec/GroovySources.hs" groovy False
@@ -150,11 +151,60 @@ planOutputs = do
               , Output "npm/NORMALIZATION-LICENSES.txt" normalizationLicenses False
               , Output "npm/learn/lawspec-core.mjs" (replace "./core.wasm" "./core.wasm.gz" browser) False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
-  formatRepositoryOutputs (sortOn outputPath (whole ++ tutorialShims ++ course ++
+  formatRepositoryOutputs (sortOn outputPath (whole ++ tutorialShims ++ course ++ authoring ++
     [Output "npm/learn/style-options.json" codeStyle False,
      Output "learn/curriculum.json" curriculum False,
      Output "npm/learn/curriculum.json" curriculum False,
      Output "npm/learn/coverage.json" inventory False] ++ map fst rendered))
+
+-- | Portable skills share compiler inventories, existing library documentation,
+-- and executable includes. No separately maintained API catalog is introduced.
+-- ref:DEC-prelude-first-authoring
+authoringOutputs :: String -> String -> String -> IO [Output]
+authoringOutputs version inventory curriculum = do
+  guide <- portable "docs/how-to/authoring.md"
+  library <- mapM portable
+    ["docs/reference/prelude-algebra.md", "docs/reference/language/collections.md",
+     "docs/reference/language/sequences.md",
+     "docs/how-to/test-text-properties-and-idempotence.md", "docs/reference/language/failures.md",
+     "docs/reference/native-bindings.md", "docs/how-to/bind-native-types.md",
+     "docs/how-to/custom-codecs-and-generators.md", "docs/how-to/embed-a-generated-model.md"]
+  plugin <- readFile' "learn/plugin.json"
+  skills <- fmap concat $ forM ["lawspec-author", "lawspec-project", "lawspec-learn"] $ \name -> do
+    let source = if name == "lawspec-learn" then "learn/skills" else ".agents/skills"
+    body <- readFile' (source </> name </> "SKILL.md")
+    let roots = [".agents/skills" </> name, "plugins/lawspec/skills" </> name] ++
+          ["learn/skills" </> name | name == "lawspec-learn"]
+        refs = [("authoring.md", guide), ("library.json", inventory),
+          ("library.md", intercalate "\n\n" library),
+          ("prelude.lawspec", Common.content Prelude.preludeSource),
+          ("version.json", json (Object [("compilerVersion", String version)]) ++ "\n")] ++
+          [("curriculum.json", curriculum) | name == "lawspec-learn"]
+    pure ([Output (folder </> "SKILL.md") body False | folder <- roots,
+            folder /= source </> name] ++
+          [Output (folder </> "references" </> file) content False |
+            folder <- roots, (file,content) <- refs])
+  pure (Output "plugins/lawspec/.codex-plugin/plugin.json" plugin False : skills)
+  where
+    portable file = do
+      source <- readFile' file
+      expanded <- expand file (lines source)
+      -- Repository-relative links remain useful in standalone installations.
+      pure (foldl (\text (from,to) -> replace from to text) (unlines expanded)
+        [("(bind-native-types.md)", "(library.md#bind-native-types-and-functions)"),
+         ("(custom-codecs-and-generators.md)", "(library.md#custom-codecs-and-generators)"),
+         ("(embed-a-generated-model.md)", "(library.md#embed-a-generated-model)"),
+         ("(generate-example-artifacts.md#export-the-runnable-payment-project)",
+          "(https://goforge.dev/lawspec/how-to/generate-example-artifacts.html#export-the-runnable-payment-project)")])
+    expand _ [] = pure []
+    expand file (line:rest)
+      | "```" `isPrefixOf` line,
+        include:_ <- [drop 8 word | word <- words line, "include=" `isPrefixOf` word] = do
+          content <- readFile' include
+          let after = drop 1 (dropWhile (/= "```") rest)
+          remaining <- expand file after
+          pure (takeWhile (/= ' ') line : lines content ++ ["```"] ++ remaining)
+      | otherwise = (line :) <$> expand file rest
 
 -- | Repository scripts share the browser's pinned style tools. Target emission
 -- remains pure and independent of Node or external formatter processes.
@@ -276,7 +326,7 @@ factFills version =
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn"]
+shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "native-parsers"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

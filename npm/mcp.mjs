@@ -1,5 +1,4 @@
 // Generated from templates/npm/mcp.mjs by lawspec-dev generate. Do not edit.
-// Generated from templates/npm/mcp.mjs by lawspec-dev generate. Do not edit.
 import {McpServer} from '@modelcontextprotocol/server';
 import {serveStdio} from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
@@ -7,6 +6,7 @@ import path from 'node:path';
 import {createCompiler} from './api.mjs';
 import {readManifest, findManifest, dependencyRanges} from './component.mjs';
 import {resolveDependencies} from './component-packages.mjs';
+import {collectNativeSources} from './authoring.mjs';
 import {collectSources} from './files.mjs';
 const VERSION = '0.31.2';
 function diagnostics(result)
@@ -32,15 +32,18 @@ function toolError(error)
 }
 export async function serveLawSpec(configFile)
 {
-  configFile ??= await findManifest();
-  configFile = path.resolve(configFile);
-  const root = path.dirname(configFile);
+  let root;
   const compiler = await createCompiler();
   async function request()
   {
+    configFile ??= await findManifest();
+    configFile = path.resolve(configFile);
+    root = path.dirname(configFile);
     const config = await readManifest(configFile);
     const dependencies = await resolveDependencies(configFile, config, {
       writeLock: false,
+      offline: true,
+      readOnly: true,
     });
     return {
       sources: await collectSources(root, config.sources, root),
@@ -58,6 +61,88 @@ export async function serveLawSpec(configFile)
     };
   }
   const server = new McpServer({name: 'lawspec', version: VERSION});
+  server.registerTool(
+    'lawspec_prelude',
+    {
+      description:
+        'Read the installed compiler prelude inventory without a project.',
+      inputSchema: z.object({query: z.string().optional()}),
+      annotations: {readOnlyHint: true},
+    },
+    async input =>
+    {
+      try
+      {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(diagnostics(await compiler.prelude(input))),
+            },
+          ],
+        };
+      }
+      catch (error)
+      {
+        return toolError(error);
+      }
+    },
+  );
+  for (const method of ['inspect', 'advise'])
+    server.registerTool(
+      `lawspec_${method}`,
+      {
+        description:
+          method === 'inspect'
+            ? 'Read actual generated or bound interfaces without writing files.'
+            : 'Read authoring review candidates and explicit analysis limits. No application files are changed.',
+        inputSchema: z.object({target: z.string()}),
+        annotations: {readOnlyHint: true},
+      },
+      async ({target}) =>
+      {
+        try
+        {
+          const input = await request();
+          const config = await readManifest(configFile);
+          const selected = config.targets?.find(
+            item => item.language === target,
+          );
+          if (!selected) throw new Error('No matching configured target');
+          const result = diagnostics(
+            await compiler[method]({
+              ...input,
+              target,
+              sourceDir: selected.sourceDir,
+              testDir: selected.testDir,
+              nativeBindings: selected.nativeBindings,
+              ...(method === 'advise'
+                ? {
+                    nativeSources: await collectNativeSources(
+                      path.resolve(root, selected.root),
+                    ),
+                    exceptions: config.authoringExceptions ?? [],
+                  }
+                : {}),
+            }),
+          );
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  method === 'advise' ? result.advice : result.interface,
+                ),
+              },
+            ],
+          };
+        }
+        catch (error)
+        {
+          return toolError(error);
+        }
+      },
+    );
   server.registerTool(
     'lawspec_check',
     {

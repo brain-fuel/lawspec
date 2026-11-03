@@ -373,7 +373,7 @@ coreSteps =
   , step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"]
   , step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"]
   , step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"]
-  , step "compiler-tests" ["stack", "--no-terminal", "test"]
+  , step "compiler-tests" ["stack", "--no-terminal", "test", "--test-arguments=--format=specdoc --no-color"]
   , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
   , step "learn-assets" ["node", "tools/learn-build.mjs"]
   , step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/mcp.mjs", "templates/npm/project.mjs", "templates/npm/learn.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs"]

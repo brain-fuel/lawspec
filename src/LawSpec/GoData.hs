@@ -1,5 +1,5 @@
 -- | Native sealed interfaces and variants follow Go+'s resolved enum lowering.
-module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goFieldName, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
+module LawSpec.GoData (namesFor, emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goFieldName, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Memo (newPersistentTableByShow, Table, memoized)

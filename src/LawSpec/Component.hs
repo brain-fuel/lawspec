@@ -64,6 +64,16 @@ manifestProblems (Object manifest) = concat
       Nothing -> []
       Just (Array values) -> strings (K.toString name) values
       _ -> [K.toString name ++ " must be an array of paths"] | name <- ["packages", "inputs", "assets"]]
+  , case M.lookup "authoringExceptions" manifest of
+      Nothing -> []
+      Just (Array values) -> concat [case value of
+        Object entry -> unknown "authoring exception" ["declaration","rule","reason"] entry ++
+          ["authoring exception requires nonempty " ++ K.toString field |
+            field <- ["declaration","rule","reason"], case M.lookup field entry of
+              Just (String text) -> T.null (T.strip text)
+              _ -> True]
+        _ -> ["authoring exception must be a map"] | value <- toList values]
+      _ -> ["authoringExceptions must be an array"]
   , case M.lookup "provides" manifest of
       Nothing -> []
       Just (Array values) -> concat [contract "provides" value | value <- toList values]
@@ -75,7 +85,7 @@ manifestProblems (Object manifest) = concat
   ]
   where
     allowed = ["manifestVersion", "component", "package", "languageProfile", "sources", "targets", "dependencies", "packages",
-      "verification", "generation", "machineBits", "cache", "attestation", "description", "inputs", "assets", "provides", "requires"]
+      "authoringExceptions", "verification", "generation", "machineBits", "cache", "attestation", "description", "inputs", "assets", "provides", "requires"]
 manifestProblems _ = ["manifest must be a map"]
 
 unknown :: String -> [K.Key] -> Object -> [String]

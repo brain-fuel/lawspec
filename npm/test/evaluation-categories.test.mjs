@@ -61,6 +61,31 @@ test('stateful attempt laws defer; pure false laws still refute', async () =>
     JSON.stringify(indirect),
     /SourceSpan|a failure is caught when/,
   );
+  const stateless = await compiler.check({
+    ...base,
+    verification: {layers: ['exhaustive']},
+    sources: [
+      {
+        path: 'stateless.lawspec',
+        content: `unit fixed
+ability Seats is
+ count :: Unit -> Int32
+end ability
+handler four for Seats is
+ operation count unused is 4 end operation
+end handler
+procedure readSeats (unused :: Unit) -> Int32 uses Seats is count () end procedure
+law selected using four is definition: readSeats () = 4 end definition end law
+end unit`,
+      },
+    ],
+  });
+  assert.deepEqual(stateless.diagnostics, []);
+  assert.equal(
+    stateless.evidence.find(row => row.declaration === 'fixed::law::selected')
+      .status,
+    'exhaustively-checked',
+  );
   const falseResult = await compiler.check({
     ...base,
     sources: [

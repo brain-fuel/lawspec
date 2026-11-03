@@ -127,3 +127,15 @@ failure-composition lessons, include Wlaschin's caution against using Result for
 every error or forcing a railway into simple code. Accumulated validation and
 fail-fast binding teach different behaviors. Do not claim the deferred lessons
 or API collection have been delivered.
+
+## Authoring and reuse
+
+For specification or adapter edits, read [the shared authoring guide](references/authoring.md).
+Check `lawspec --version` against `references/version.json`, search the bundled
+[compiler inventory](references/library.json) and [library reference](references/library.md),
+and inspect actual generated interfaces before implementing native code.
+Prefer prelude operations, reusable laws, generated models and checked definitions.
+Migrate corresponding application types within scope; retaining them is an explicit
+native-binding or codec choice. Custom domain semantics, independent reference
+models and identified teaching exercises remain legitimate. Ordinary authoring can
+use `lawspec-author` when available; these references also work standalone.

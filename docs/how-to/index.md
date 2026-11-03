@@ -38,3 +38,5 @@ shows how to do it.
   Python, Go, Haskell, Kotlin and Rust.
 
 - [Start, adopt, and change a project](manage-projects.md), then learn the concepts locally.
+
+- [Author with the prelude and generated models](authoring.md)

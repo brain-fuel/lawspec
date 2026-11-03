@@ -1,0 +1,11 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.membership
+
+function present (x :: Int32) (xs :: List Int32) -> Bool is
+  prelude.member x xs
+end function
+law "|membership ignores multiplicity| is
+  definition: present 1 [1, 1] = present 1 [1]
+  end definition
+end law
+end unit

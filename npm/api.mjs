@@ -5,6 +5,10 @@ export async function createCompiler()
 {
   const call = await loadCore();
   return {
+    prelude: input => call({schemaVersion: 5, ...input, method: 'prelude'}),
+    inspect: input => call({schemaVersion: 5, ...input, method: 'inspect'}),
+    advise: async input =>
+      (await import('./authoring.mjs')).advise(call, input),
     format: input => call({schemaVersion: 5, ...input, method: 'format'}),
     check: input => call({schemaVersion: 5, ...input, method: 'check'}),
     expand: input => call({schemaVersion: 5, ...input, method: 'expand'}),

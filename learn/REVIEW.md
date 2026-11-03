@@ -513,3 +513,24 @@ coordinated semantic change; see `docs/reference/formatting.md`. This revision
 preserves that behavior and its evidence labels. Teaching approval, complete API
 coverage, the remaining integration matrix and existing human review debt stay
 open.
+
+
+## Prelude-first authoring references
+
+The existing sorting scene now explains why ascending order is a custom checked
+predicate and why occurrence preservation reuses `sameItems`, with a short
+membership/occurrence/set selection exercise. Scene IDs, project snapshots,
+learner persistence and browser bridge are unchanged. Teaching review remains
+pending. Native generated-model walkthroughs are separate from Fable evidence.
+
+The twelve authoring examples pass compiler checks in 32- and 64-bit profiles.
+Negative controls reject a dropped duplicate by law refutation and an unrelated
+named record by definition validation. Two isolated skill trials used the
+portable references and current 0.31.2 commands: sorting passed 40 generated
+checks plus three native checks; removing duplicates failed six checks. A model
+trial passed 18 combined application, explicit-binding and generated checks;
+same-shaped unbound records, floating Decimal substitution and a bare wrapper
+payload were rejected. These are executed native JavaScript checks, not proof.
+The installed F# payment suite passed, its wrong-fee mutant failed, and
+regeneration preserved application files. None of these trials claims teaching
+approval or browser F# execution.

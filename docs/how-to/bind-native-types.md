@@ -10,6 +10,11 @@ and you implement adapters against them. If your application already has its
 own domain model, native bindings connect LawSpec's types and adapters to it
 directly. The compiler then generates checked conversions between the two.
 
+Keep the module defining bound application types independent of generated modules
+that import those types. In JavaScript, importing a generated checked definition
+back into that module can create an initialization cycle; put application calls
+in a separate module.
+
 Bindings change only the native representation. Arithmetic, equality,
 definitions and refinements keep their LawSpec meaning.
 
@@ -39,7 +44,7 @@ Bindings belong to a target, under `native-bindings`:
 {
   :manifest-version 1
   :component {
-    :name "shop.application"
+    :name "payments"
     :version "0.1.0"
   }
   :language-profile "1.0-rc.2"

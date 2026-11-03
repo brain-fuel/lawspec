@@ -1,0 +1,12 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.occurrences
+
+law "|reordering keeps occurrences| is
+  definition: prelude.sameItems [3, 1, 1] [1, 3, 1]
+  end definition
+end law
+law "|dropping a duplicate changes occurrences| is
+  definition: not (prelude.sameItems [3, 1, 1] [1, 3])
+  end definition
+end law
+end unit

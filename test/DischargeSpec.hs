@@ -58,6 +58,22 @@ test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ d
               statuses `shouldBe` [String "planned"]
             _ -> expectationFailure "missing compiler response"
     mapM_ run variants
+  it "retains exhaustive execution through stateless spec-handler procedures" $ do
+    let source = unlines ["unit fixed", "ability Seats is", "count :: Unit -> Int32", "end ability",
+          "handler four for Seats is operation count unused is 4 end operation end handler",
+          "procedure readSeats (unused :: Unit) -> Int32 uses Seats is count () end procedure",
+          "law selected using four is definition: readSeats () = 4 end definition end law", "end unit"]
+        response = decode (dispatch (encode (object ["method" .= ("check" :: String),
+          "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+          "verification" .= object ["layers" .= (["exhaustive"] :: [String])],
+          "sources" .= [Source "stateless.lawspec" source]]))) :: Maybe Value
+    case response of
+      Just (Object result) -> do
+        KM.lookup "diagnostics" result `shouldBe` Just (toJSON ([] :: [Value]))
+        let statuses = [status | Just (Array rows) <- [KM.lookup "evidence" result], Object row <- V.toList rows,
+              KM.lookup "declaration" row == Just (String "fixed::law::selected"), Just status <- [KM.lookup "status" row]]
+        statuses `shouldBe` [String "exhaustively-checked"]
+      _ -> expectationFailure "missing compiler response"
   it "proves linear laws over definitions, unfolding unrefined callees" $ do
     fmap fst (lawStatus "doubling" (twice ++ law "doubling" "for all (x :: Int32) => twice x = x * 2 end for all")) `shouldBe` Right Proved
     fmap fst (lawStatus "guarded" (twice ++ law "guarded" "for all (x :: Int32) => x > 0 implies twice x > x end for all")) `shouldBe` Right Proved

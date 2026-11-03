@@ -318,8 +318,11 @@ const request:CheckRequest={languageProfile:'1.0-rc.2',verification:{layers:[]},
 const result=await (await createCompiler()).check(request);
 for(const warning of result.warnings??[]){
  const severity:'warning'=warning.severity;
+ // @ts-expect-error general compiler warnings can have no source span
+ const unchecked:number=warning.span.start.column;
+ if(!warning.span)continue;
  const location:number=warning.span.start.column;
- const checked:MatchWarning=warning;
+ const checked:MatchWarning={...warning,span:warning.span};
  console.log(severity,location,checked.code);
 }
 if(result.warningAnalysis){

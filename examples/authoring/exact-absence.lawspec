@@ -1,0 +1,12 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.exact_absence
+
+law "|decimal arithmetic is exact| is
+  definition: (0.1 :: Decimal) + 0.2 = 0.3
+  end definition
+end law
+law "|nested presence is not flattened| is
+  definition: (Present Absent :: Maybe (Maybe Integer)) != Absent
+  end definition
+end law
+end unit

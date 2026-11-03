@@ -144,7 +144,10 @@ must be expressible in HCL; unrelated library types are listed in the artifact
 manifest's `omittedTypes`, with a reason. An unsupported type reached through
 an entry or one of its fields still fails generation. All definitions and
 constructor restrictions remain subject to mandatory validation, including
-declarations outside the exported closure. Terraform's reserved
+declarations outside the exported closure.
+ref:DEC-evaluation-regression-categories
+
+Terraform's reserved
 variable names and clashes take `_2`; the artifact manifest gives each name.
 Object types list one attribute per line. Each restriction is its own
 validation block with its own message: a nested value must be set, an integer

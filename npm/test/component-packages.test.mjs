@@ -515,3 +515,48 @@ test('concurrent revision resolutions cannot overwrite one another through FETCH
     versions,
   );
 });
+
+test('read-only dependency resolution neither repairs markers nor unpacks cached Git revisions', async t =>
+{
+  const root = await setup(t),
+    repository = await contract(path.join(root, 'git'), 'example.library');
+  await exec('git', ['init', '--quiet', repository]);
+  await publish(repository, '1.0.0');
+  const local = await consumer(path.join(root, 'local'), {
+    'example.library': {version: '^1.0.0', path: '../git'},
+  });
+  await resolve(local, {readOnly: true});
+  await assert.rejects(readFile(path.join(root, 'local/lawspec.lock.edn')), {
+    code: 'ENOENT',
+  });
+  const project = await consumer(path.join(root, 'consumer'), {
+    'example.library': {version: '^1.0.0', git: repository},
+  });
+  await resolve(project);
+  const {readdir} = await import('node:fs/promises');
+  const cache = process.env.LAWSPEC_CACHE_DIR;
+  const marker = (await readdir(cache)).find(file => file.endsWith('.sha256'));
+  assert.ok(marker);
+  await rm(path.join(cache, marker));
+  const before = (await readdir(cache)).sort();
+  const lock = await readFile(
+    path.join(root, 'consumer/lawspec.lock.edn'),
+    'utf8',
+  );
+  const result = await resolve(project, {readOnly: true});
+  assert.equal(result.packages[0].version, '1.0.0');
+  assert.deepEqual((await readdir(cache)).sort(), before);
+  assert.equal(
+    await readFile(path.join(root, 'consumer/lawspec.lock.edn'), 'utf8'),
+    lock,
+  );
+  await rm(path.join(cache, marker.slice(0, -'.sha256'.length)), {
+    recursive: true,
+  });
+  const missing = (await readdir(cache)).sort();
+  await assert.rejects(
+    resolve(project, {readOnly: true}),
+    /Read-only.*unpacked cache/,
+  );
+  assert.deepEqual((await readdir(cache)).sort(), missing);
+});

@@ -1,0 +1,12 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.text
+
+law "|folding is explicit| is
+  definition: prelude.caseFold "Straße" = prelude.caseFold "STRASSE"
+  end definition
+end law
+law "|exact text remains distinct| is
+  definition: "Straße" != "STRASSE"
+  end definition
+end law
+end unit

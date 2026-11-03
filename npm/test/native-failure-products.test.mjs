@@ -32,6 +32,13 @@ const request = (
   target,
   sources: [{path: 'failures.lawspec', content: source(payload)}],
   nativeBindings: {
+    ...(target === 'go'
+      ? {
+          goImports: [
+            {alias: 'application', path: 'example.com/app/application'},
+          ],
+        }
+      : {}),
     failures: [
       {
         native: ['erlang', 'gleam'].includes(target)

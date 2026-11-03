@@ -43,9 +43,16 @@ The compiler exposes the following methods through `createCompiler()` in the `la
 package. Each takes a JSON request and returns a JSON result. The TypeScript
 declarations in `index.d.ts` describe the protocol exactly; this page explains
 it. For usage, see [Use the JavaScript API](../how-to/use-the-javascript-api.md).
+Prelude discovery accepts only an optional query and needs no source project.
+Inspection and advice retain mandatory definition validation. See
+[authoring discovery and advisories](authoring-advisories.md) for bounded native
+checks, explicit incomplete results, and their separation from law evidence.
 
 ```ts
 interface Compiler {
+  prelude(input: PreludeRequest): Promise<PreludeResult>;
+  inspect(input: GenerationRequest): Promise<Result>;
+  advise(input: AdviceRequest): Promise<Result>;
   format(input: FormatRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
@@ -253,6 +260,8 @@ interface Result {
   dataTypes?: DataTypeDeclaration[];
   definitions?: Definition[];
   laws?: Law[];
+  temporalLaws?: TemporalLaw[];             // model and history claims
+  warnings?: CompilerWarning[];
   contracts?: {owner: string; contract: Contract}[];
   refinements?: Refinement[];
   evidence?: ObligationEvidence[];
@@ -289,6 +298,12 @@ closer's span and the corresponding opener as related information. Codes are
 `block-close-label-required`, `block-close-mismatch`, `block-close-unknown`,
 `block-close-unexpected` and `block-unclosed`. Editor clients convert both spans
 to UTF-16 positions.
+
+Compiler `warnings` use `CompilerWarning[]`. General policy or target-capability
+warnings can have no source span; check `warning.span` before navigating to it.
+Match-reachability warnings carry a span and can be represented as `MatchWarning`.
+Warning analysis continues to report `complete: false`; its absence or an empty
+warning list does not establish exhaustive reachability.
 
 ### Artifacts
 
@@ -334,6 +349,15 @@ Declarations, properties and binders have resolved IDs, such as
 IDs stay stable when unrelated laws are added. Join references by ID, not by
 display name: two constructors with the same name can belong to different
 units.
+
+`units[].declarations[].typeText` displays the parsed LawSpec signature, retaining
+indices and linear transitions before runtime erasure. The structured `type`
+field remains the Core representation for machine consumers.
+
+`temporalLaws` lists model and history claims separately from ordinary `laws`.
+Each has a resolved ID, owner, scope and structured temporal formula; model
+entries retain fairness and history entries state whether completeness is
+required. Their verification outcomes remain in the corresponding evidence.
 
 Origins are `{kind: "source", span: {start, end}}` or
 `{kind: "generated", declaration}`. Source ranges come from the parser,

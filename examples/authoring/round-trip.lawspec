@@ -1,0 +1,10 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.round_trip
+
+function encode (x :: Bool) -> Int32 is if x then 1 else 0 end if end function
+function decode (x :: Int32) -> Bool is x = 1 end function
+law "|recover the flag| is
+  definition: apply law "|left inverse| decode encode
+  end definition
+end law
+end unit

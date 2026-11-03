@@ -1,0 +1,16 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.records
+
+type Point is a record
+{
+  x :: Integer
+  y :: Integer
+}
+end type
+function origin (unused :: Unit) -> Point is Point record{x = 0, y = 0}
+end function
+law "|origin uses the declared record| is
+  definition: origin () = Point record{x = 0, y = 0}
+  end definition
+end law
+end unit

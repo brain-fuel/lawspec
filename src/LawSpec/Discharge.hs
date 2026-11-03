@@ -97,7 +97,7 @@ dischargeSelected selection program = do
         called = S.fromList (concatMap callees (propertyExpressions p))
         adapters = S.toList (S.difference called definitionIds)
         reached = reachableDefinitions definitions (S.toList called)
-        effects = any (effectful (`M.member` stateful))
+        effects = any (effectful (\operation -> operation `M.member` stateful || operation `M.member` resolver))
           (propertyExpressions p ++ map definitionBody reached) ||
           any (\op -> M.notMember (operationId op) resolver && M.notMember (operationId op) stateful)
             (concatMap (performed . definitionBody) reached ++ concatMap performed (propertyExpressions p))

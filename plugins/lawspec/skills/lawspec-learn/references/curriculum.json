@@ -946,7 +946,10 @@
             "Laws adds sameItems to “sorting orders values and keeps every occurrence”. It requires each value to occur just as many times in the result as in the input. Ordering remains required too.",
             "Solution still returns []. The concrete “sorting keeps repeated values” law now expects the sorted form of [3, 1, 1]. Use Run checks with All checks: preservation rejects the lost values.",
             "This is stronger than asking whether values merely appear somewhere in the result. Two occurrences of 1 must remain two occurrences.",
-            "Read the whole new claim name: “sorting orders values and keeps every occurrence”. and joins the two requirements. The harness refers to this same name so its generated lists reach the strengthened claim."
+            "Read the whole new claim name: “sorting orders values and keeps every occurrence”. and joins the two requirements. The harness refers to this same name so its generated lists reach the strengthened claim.",
+            "Before writing a helper, inspect the prelude. sameItems already compares occurrence counts, so a second recursive counter would duplicate that operation. The ascending-order predicate is custom because this course needs adjacent Int32 values in ascending order; the prelude does not supply this predicate. Its recursion is checked for definition validity independently of the selected law checks.",
+            "Selection exercise: choose member, sameItems or setOf equality for (a) whether a requested title is present, (b) keeping two requests with the same rank, and (c) a summary of distinct temperatures. Then explain why [1, 1] and [1] distinguish (b) from (c). Answers: member, sameItems, setOf equality.",
+            "For generated records and application migration, follow the authoring guide at https://goforge.dev/lawspec/how-to/authoring.html and its runnable native payment examples. Those native F#/.NET examples provide separate evidence from this browser’s Fable execution."
           ],
           "focus": "Tests",
           "project": "exercises/sorting/02",

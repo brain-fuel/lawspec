@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "runtime": "web-tree-sitter@0.25.10",
+  "grammars": {
+    "java": {
+      "file": "java.wasm",
+      "sha256": "e430a1a344388d6d3bc9f87144dec0d204fca37fafe5f4ab23c51060972a2ac5",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "python": {
+      "file": "python.wasm",
+      "sha256": "2091d112a2989c54c2157a0a9a62c06d41a5ef3e40fd71f19cde7b4663bdd028",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "javascript": {
+      "file": "javascript.wasm",
+      "sha256": "fc5362de9cacbfd6c6ee11e5bf144c7adbbf26ae3703eaaba916d4b0d78da76f",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "typescript": {
+      "file": "typescript.wasm",
+      "sha256": "78a2710a7d0f60a8c9ab92cc6e961f76cf80b3d69690140eeca8a29eba9185db",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "go": {
+      "file": "go.wasm",
+      "sha256": "fd9af2da4da88b2537d4a33ce4739dd478cc5b141fdce4cdcf9a0e464b91b614",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "haskell": {
+      "file": "haskell.wasm",
+      "sha256": "1d749bd88cfc6d93f28d777451be12a3fffe93b75fc2b8dcdd6e8d8ea9a544c7",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "kotlin": {
+      "file": "kotlin.wasm",
+      "sha256": "82f658c6d6e07f0c2a421ab7e1308763fffa16627c7d10e9dd9f6f9a4f9ff25a",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "rust": {
+      "file": "rust.wasm",
+      "sha256": "dc7f9b4d182af6b8332b44cfb8d24c0b25892900b006af5ce7eafdef8c976d5a",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "erlang": {
+      "file": "erlang.wasm",
+      "sha256": "58d1baefa8133414181ab833824dc3d53d5f45e47a58726cc3255a1310704603",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "elixir": {
+      "file": "elixir.wasm",
+      "sha256": "1059cf0fe8666f0a0ce3d496a2e5451d736d0401186be7a20fc96fda321feb6e",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "gleam": {
+      "file": "gleam.wasm",
+      "sha256": "19cb0b6b845e902a02e056db1155e4b3552e351bd07aab537d93a0a418151a76",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "fsharp": {
+      "file": "fsharp.wasm",
+      "sha256": "ff1a927387fec25e184d120d9e18ec7cd5271b30f6380f02d494d3548a99f7b7",
+      "source": "https://registry.npmjs.org/tree-sitter-fsharp/-/tree-sitter-fsharp-0.3.12.tgz",
+      "build": "upstream WASM"
+    },
+    "csharp": {
+      "file": "csharp.wasm",
+      "sha256": "608208861b5cacee3805c486109e05cdfcf508988c303199cbba4628b8ed4151",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "scala": {
+      "file": "scala.wasm",
+      "sha256": "b77bab5adc8f838178ba469db065fa4a1aa250c419530e85fd2e470c080515e1",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "groovy": {
+      "file": "groovy.wasm",
+      "sha256": "6891230a7198a8d3e4900507056a34adf176d81881eb37cb92242d568e5f5278",
+      "source": "https://registry.npmjs.org/@dekobon/tree-sitter-groovy/-/tree-sitter-groovy-0.3.0.tgz",
+      "build": "wasi-sdk clang 21; --target=wasm32-wasi -fPIC -shared -O2 -nostdlib -Wl,--no-entry -Wl,--export=tree_sitter_groovy -Wl,--allow-undefined; upstream parser.c and scanner.c unchanged"
+    },
+    "clojure": {
+      "file": "clojure.wasm",
+      "sha256": "9499758c061c92c98ac63851aa26269bbcefbb512c5a70337397187edae3da82",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "swift": {
+      "file": "swift.wasm",
+      "sha256": "3553bb4258b20fe3514c12a6e68d990036b9446e528283ec6ab79ede8854e791",
+      "source": "https://registry.npmjs.org/tree-sitter-wasm/-/tree-sitter-wasm-2.0.4.tgz",
+      "build": "upstream WASM"
+    },
+    "prolog": {
+      "file": "prolog.wasm",
+      "sha256": "4528511de9610c9736f79f517c901e30bc6828811d4130a3dc4de5f2076defca",
+      "source": "https://crates.io/api/v1/crates/tree-sitter-prolog/0.1.0/download",
+      "build": "wasi-sdk clang 21; --target=wasm32-wasi -fPIC -shared -O2 -nostdlib -Wl,--no-entry -Wl,--export=tree_sitter_prolog -Wl,--allow-undefined; upstream parser.c unchanged"
+    }
+  }
+}

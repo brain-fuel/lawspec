@@ -1,7 +1,7 @@
 /** @file Execute every authored scene from its actual files; prose observations must survive these checks. ref:REQ-learn-executable-story */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile, writeFile} from 'node:fs/promises';
+import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {course, compile, execute} from './helpers.mjs';
 import {buildCourse} from '../build-course.mjs';
 import {expectationProblems} from '../browser/story.mjs';
@@ -52,6 +52,9 @@ for (const language of ['fsharp', 'typescript', 'javascript'])
    */
   async function verifyStoryScenes(t)
   {
+    await mkdir(new URL('../../.artifacts/learn-preview/', import.meta.url), {
+      recursive: true,
+    });
     const receipts = [];
     for (const lesson of course.lessons)
     {

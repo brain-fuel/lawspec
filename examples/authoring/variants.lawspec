@@ -1,0 +1,11 @@
+-- ref:DEC-prelude-first-authoring
+unit authoring.variants
+
+wrapper RequestId is Integer end wrapper
+type Reply is one of Accepted of type RequestId | Rejected of type Text end type
+function accept (id :: RequestId) -> Reply is Accepted id end function
+law "|payload retains its wrapper| is
+  definition: accept (RequestId 7) = Accepted (RequestId 7)
+  end definition
+end law
+end unit
