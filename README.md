@@ -1,152 +1,5 @@
-# LawSpec
 
-**State the law once. Check it everywhere.**
 
-LawSpec is a specification language for the laws your code must obey. It
-compiles reusable laws and concrete examples into native property-based tests
-and implementation adapters for Java, Python, JavaScript, TypeScript, Go,
-Haskell, Kotlin, Rust, C#, F#, Swift, Erlang, Elixir, Gleam, Clojure, Groovy and
-Scala. The compiler is written in Haskell and distributed on npm as prebuilt
-WebAssembly, with a Node CLI and a typed JavaScript API.
-
-The examples below use the current canonical authoring profile. The npm package
-includes the compiler and learning track; no Haskell installation is needed.
-
-## Features
-
-- **Reusable laws.** A prelude of [round-trip, equivalence and algebraic laws](docs/reference/prelude-algebra.md), and your own generic laws.
-- **Examples with expected results** that [pin each law down](docs/reference/language/laws-and-examples.md).
-- **Native tests** with each [target's framework, generators and shrinkers](docs/how-to/targets/index.md).
-- **A full scalar catalog** with [exact arithmetic](docs/reference/primitives.md) that never wraps.
-- **Structural data**: [lists, `Maybe`, `Either`, products and sums](docs/reference/language/types-and-data.md).
-- **Refinements and contracts** with [dependent generation](docs/reference/refinements.md) that constructs valid inputs.
-- **Automatic definition checks** for [exhaustiveness, termination, definedness and contracts](docs/reference/language/definitions.md), with deliberately deferred postconditions enforced at runtime.
-- **Indexed families** such as [length-indexed vectors](docs/reference/language/indexed-families.md), with proved indices.
-- **Domain modeling** with [wrappers and workflows](docs/reference/language/domain-modeling.md).
-- **Imports and versioned packages** of [shared laws and types](docs/reference/language/imports-and-packages.md).
-- **Optional Z3 law proofs** through an [explicit solver host](docs/explanation/smt-proof.md), with task identities, limits and outcomes recorded.
-- **Evidence** for every obligation: [proved, exhaustively checked, property tested, runtime checked or assumed](docs/reference/language/evidence-and-discharge.md).
-- **Native bindings** to [your existing domain types and generators](docs/how-to/bind-native-types.md).
-- **Safe regeneration**: [your adapters and build files stay yours](docs/explanation/ownership-and-regeneration.md).
-
-## Install
-
-Node 22+ and the selected target's build tools are required. No Haskell
-toolchain is needed. The reference platforms are macOS and Linux.
-
-To open the learning track locally:
-
-```sh
-npm install --global lawspec@0.31.3
-lawspec learn
-```
-
-Open the printed loopback URL, or use [Learn on GoForge](https://goforge.dev/lawspec/learn/).
-Six lessons pair worked examples with practice in F#, TypeScript or JavaScript.
-The course is a teaching preview; later lessons and capstones remain deferred.
-
-The checkout includes the development WASM package. To try it in a **new, empty
-directory**, initialize before installing, so that LawSpec can create
-`package.json` and its test script:
-
-```sh
-git clone https://github.com/brain-fuel/lawspec.git lawspec
-mkdir lawspec-example
-cd lawspec-example
-node ../lawspec/npm/bin/lawspec.mjs init --target javascript
-npm install --save-dev ../lawspec/npm
-npx lawspec --version
-npx lawspec check
-npx lawspec explain 'example.codec::codec'
-npx lawspec doctor
-```
-
-New projects start with `verification.layers: []`: intrinsic definition checks
-run, and no law verification is selected. Set `verification.layers` to
-`[:property :examples]` in `lawspec.edn`, then run `npx lawspec generate`.
-Implement `src/example/codec.mjs`, then run `npm test`:
-
-```javascript
-export function itoa(value) { return String(value); }
-export function atoi(value) { return Number(value); }
-```
-
-In an existing project, install the checkout's `npm` directory first, then run
-`npx lawspec init --target javascript`. Existing build files are preserved;
-apply the printed setup instructions before generating. See
-[Install LawSpec and create a project](docs/how-to/install-and-init.md).
-
-## Codex and Claude Code plugin
-
-The Git-backed `brain-fuel` marketplace includes the LawSpec plugin with three
-skills: `lawspec-author` for specifications and adapters, `lawspec-project` for
-project discovery and changes, and `lawspec-learn` for tutoring. Each includes
-its references, so installation does not require a compiler repository checkout.
-Install the LawSpec CLI separately with Node 22+:
-
-```sh
-npm install --global lawspec@0.31.3
-```
-
-For **Codex**, run these commands in your terminal:
-
-```sh
-codex plugin marketplace add brain-fuel/lawspec \
-  --sparse .agents/plugins --sparse plugins/lawspec
-codex plugin add lawspec@brain-fuel
-```
-
-For **Claude Code**, run:
-
-```sh
-claude plugin marketplace add brain-fuel/lawspec \
-  --sparse .claude-plugin plugins/lawspec
-claude plugin install lawspec@brain-fuel
-```
-
-Alternatively, inside Claude Code use `/plugin marketplace add brain-fuel/lawspec`
-and `/plugin install lawspec@brain-fuel`. Start a new session after installation.
-Ask Codex to use `lawspec-author`, or invoke `/lawspec:lawspec-author` in Claude
-Code; the project and tutor skills follow the same naming pattern.
-
-The terminal commands use sparse checkouts for the marketplace and plugin
-directories. For a local checkout, omit `--sparse` and its paths and replace
-`brain-fuel/lawspec` with the checkout's absolute path. To pin a release in Codex, append
-`--ref v0.31.3` to its marketplace-add command. In Claude Code, use
-`https://github.com/brain-fuel/lawspec.git#v0.31.3` as the marketplace source.
-Private repository installations require your existing GitHub access.
-
-To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or
-`claude plugin marketplace update brain-fuel`; in Claude Code then run
-`claude plugin update lawspec@brain-fuel`. In Codex, reinstall with
-`codex plugin add lawspec@brain-fuel` to select the refreshed package. Restart
-the host to load updated skills.
-
-This is a repository marketplace, not a listing in either host's curated public
-directory. The plugin has its own version in `learn/plugin.json`; the course
-remains a teaching preview. Maintainers regenerate both host manifests from that
-file with `make generate`. See the official
-[Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
-and [Claude Code marketplace documentation](https://code.claude.com/docs/en/plugin-marketplaces).
-
-## MCP server
-
-LawSpec can expose a project's compiler through a local MCP server. From the
-project directory, run `npx lawspec mcp`; a host can also launch that command
-as a child process. To inspect it interactively, run:
-
-```sh
-npx @modelcontextprotocol/inspector npx lawspec mcp
-```
-
-The server provides `lawspec_check`, `lawspec_list_laws`, and
-`lawspec_explain`. It reads the project's `lawspec.edn`, validates definitions,
-and reports the configured law verification and its evidence statuses. See the
-[MCP server guide](docs/how-to/use-mcp.md) for host setup and details.
-
-## Example
-
-```lawspec
 unit example.atoi_codec
 
 itoa :: Int32 -> Text
@@ -166,61 +19,20 @@ law "|round trip| is
   end example
 end law
 end unit
-```
 
-`lawspec explain` says what the law checks, in plain English:
+The first line defines a unit, which means three things. First, unit thing.other_thing​is a namespace header. Secondly, it's a scope, similar to the ns​ in Clojure, so other units can import​ it. Third, it's a contract boundary that the compiler understands. Each LawSpec unit​ defines laws for a certain slice of your native code.
 
-```text
-Law: round trip
-applying {itoa} and then {atoi} recovers the original integer
-For every x (an Int32):
-  The atoi for the itoa for this x must be this x.
-```
+On that note, these lines 
 
-`--view dev` shows the expanded property `atoi (itoa x) = x` with its
-examples. `--view math` uses mathematical notation.
+itoa :: Int32 -> Text
+atoi :: Text -> Int32
 
-The generated tests check the example, signed 32-bit boundary cases and
-randomized inputs against your `itoa` and `atoi`, on whichever targets you
-configure.
+Are declarations of functions. In LawSpec, they are called *adapters*.
 
-## Targets
+We should understand the distinction between declaration and definition. You declare a function when you write its signature, meaning name, domain, and codomain. This being software, domain and codomain are defined in terms of types. By contrast, a definition gives you the function body, which tells you what it actually does.
 
-| Target | Build setup | Test libraries | Test command |
-| --- | --- | --- | --- |
-| `java` | Maven, JDK 25, release 25 | JetCheck 0.3.0, JUnit Jupiter 5.14.x | `mvn test` |
-| `python` | Python 3.13 or 3.14, pyproject | pytest 8.4.x, Hypothesis 6.135.26+ (6.x) | `python -m pytest` |
-| `javascript` | Node 22+, npm, ESM | fast-check 4.x, node:test | `npm test` |
-| `typescript` | Node 22+, npm, TypeScript 5.9.x, ESM | fast-check 4.x, node:test | `npm test` |
-| `go` | Go modules, Go 1.22–1.26 | Rapid 1.2.0, testing | `go test ./...` |
-| `haskell` | Stack, GHC 9.10, LTS 24.58 | Hspec 2.11, Hedgehog 1.5, hspec-hedgehog 0.3 | `stack test` |
-| `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
-| `rust` | Rust 1.85+, edition 2024, Cargo | Proptest 1.11.0 | `cargo test` |
+The "actually does" part is your native code. Logically, this means that the function body is your native code. The declarations given in LawSpec, therefore, are references to functions implemented in Python or Elixir or Rust or whatever language you use. Constraining something outside of the LawSpec code means that we need some reference thereto, but cannot define it inside the LawSpec code.
 
-See the [target guides](docs/how-to/targets/index.md).
+## Law Definitions
 
-The [Prolog target](docs/reference/prolog.md) uses SWI-Prolog 10+, Janus and
-Python 3.13+, with PLUnit slots over pytest and Hypothesis. Its public interfaces
-are implemented; the full shared native acceptance matrix remains open.
-
-The [artifact targets](docs/reference/artifact-targets.md) generate HCL
-variables and values, YAML configuration and schemas, ANTLR data grammars,
-and Make pipelines. These targets emit no application law tests.
-
-## Documentation
-
-The [documentation](docs/index.md) has tutorials, how-to guides, a reference
-for the language, CLI, configuration and API, and explanations of the design.
-Release history is in the [changelog](CHANGELOG.md). To work on LawSpec itself,
-see [contributing](docs/how-to/contribute.md).
-
-Syntax highlighting is available as a [VS Code extension](editors/vscode/README.md).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-Start or adopt a project without choosing a language with `lawspec project init`
-or `lawspec project adopt`. `lawspec project status` separates Canon decisions
-from LawSpec evidence; `lawspec project validate` checks definitions and the
-configured verification layers. [Project workflow](docs/how-to/manage-projects.md).
+We don't define functions, but we do define laws. Definitions of laws in LawSpec are given by – shocker – definition​. The definition​ keyword is, literally, how LawSpec creates definitions, so the correspondence is disquotational: every law has a definition​ because every law has a definition. A close look at the definition will tell us what functions are being constrained and how, because the definition​ uses declared laws (e.g. itoa​, atoi​) and places them in LawSpec expressions that ascribe properties thereto. Any functions (adapters) constrained by a law's definition​ must be reachable from the current unit. These cannot be imported 
