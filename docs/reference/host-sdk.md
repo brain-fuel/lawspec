@@ -20,8 +20,9 @@ x64 application execution remains unverified.
 - **Linux x64:** the available Linux VM is ARM64. Precompiled application
   comparison passed under x64 emulation. The former runtime source path reached
   the 120-second guest deadline; source preparation is now an installation step
-  with its own bounded deadline. The revised installation lifecycle still needs
-  x64 acceptance, including native Linux x64 execution.
+  with its own bounded deadline. The revised full installation lifecycle passes
+  under x64 emulation on Node 24. Native Linux x64 execution and the complete
+  Node-version matrix remain outstanding.
 
 To resume, provide the missing execution environments and run the prepared
 acceptance bundle under Node 22, 24 and 26, preserving complete results and host
@@ -397,3 +398,14 @@ with its own bounded deadline. The revised SDK installation checks pass on
 macOS ARM64, Linux ARM64 and emulated Linux x64; full application acceptance
 for this lifecycle still needs the platform matrix. Native macOS/Linux x64
 execution remains outstanding. Runtime guest limits have not changed.
+
+
+The revised clean-install test passes on macOS ARM64/Node 26.8.1 and emulated
+Linux x64/Node 24.21.0. It installs prebuilt code, compares all nine compiler
+methods, forces compilation through `npm rebuild`, removes the compiler
+executable, and repeats all comparisons. Missing artifacts fail without a build.
+The whole emulated check took approximately 15 minutes; this is functional
+execution evidence, not native performance or release certification. The tested
+development archive and harness budgets are recorded in
+[`component/acceptance/installation.json`](../../component/acceptance/installation.json).
+Native x64 execution and the complete platform/Node matrix remain pending.
