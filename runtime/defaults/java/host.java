@@ -39,6 +39,19 @@ public final class Host
     }
 
     @Override
+    public void createDirectories(java.lang.String value0)
+    {
+      try
+      {
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of(value0));
+      }
+      catch (java.io.IOException failed)
+      {
+        throw new java.io.UncheckedIOException(failed);
+      }
+    }
+
+    @Override
     public java.lang.Boolean pathExists(java.lang.String value0)
     {
       try

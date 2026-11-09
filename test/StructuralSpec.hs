@@ -447,6 +447,8 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
             [Expr (scalarType "Bool") (Constant (SBool False)) origin]}
           leaf = ctor "Leaf" [scalarType "BigInt"]
       r <- registry [decl "Recursive" [] [never,leaf]]
+      reversed <- registry [decl "Recursive" [] [leaf,never]]
+      T.boundariesWithRegistry r 64 ty `shouldBe` T.boundariesWithRegistry reversed 64 ty
       case T.boundariesWithRegistry r 64 ty of
         Left message -> expectationFailure message
         Right values -> do

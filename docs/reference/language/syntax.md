@@ -245,3 +245,20 @@ Workflow concurrent groups close before their combination:
 `par ... with ... end par`; recovery uses `or else ... end or else`.
 Resource acquisition, release and reset each have their own ending before
 `end resource`.
+
+## Reserved names
+
+The identifier parser reserves these words (case-sensitive): `unit`, `law`,
+`requires`, `is`, `end`, `definition`, `description`, `rationale`, `example`,
+`expect`, `implies`, `and`, `true`, `false`, `references`, `are`, `Eq`, `where`,
+`refinement`, `type`, `match`, `with`, `if`, `then`, `else`, `in`, `when`,
+`otherwise`, `must`. The authoritative list is `identRaw` in
+`src/LawSpec/Parser.hs`; other grammatical words are contextual.
+
+Data declarations additionally reserve every primitive type name and `Type`,
+`Nullable`, `Optional`, `List`, `Maybe`, `Either`, as checked in
+`src/LawSpec/Data.hs`. Collection names such as `Entry` are ordinary shadowable
+names. Local declarations and explicit imports take precedence over implicit
+prelude names; use an explicit provider alias to disambiguate. A name that is
+legal in LawSpec can still need escaping in generated native code.
+ref:DEC-s1j-shared-failures

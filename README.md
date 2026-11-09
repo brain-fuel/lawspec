@@ -2,6 +2,10 @@
 
 **State the law once. Check it everywhere.**
 
+> **Development status — 2026-11-08:** The trusted precompiled Node artifact
+> work is **blocked on x64 execution acceptance**. See the
+> [blockers and resumption requirements](docs/reference/host-sdk.md#blocked-status).
+
 LawSpec is a specification language for the laws your code must obey. It
 compiles reusable laws and concrete examples into native property-based tests
 and implementation adapters for Java, Python, JavaScript, TypeScript, Go,

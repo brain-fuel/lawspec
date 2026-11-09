@@ -55,8 +55,8 @@
         "1.27"
       ],
       "rapid": [
-        "1.2.0",
-        "1.2.1"
+        /*@ rapid-minimum @*/,
+        /*@ rapid-maximum @*/
       ]
     },
     "haskell": {

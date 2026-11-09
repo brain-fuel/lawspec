@@ -285,6 +285,18 @@ decision. Source record identity and field order retain their meaning.
   one generator per type parameter. Imported factories are never scaffolded.
 - An empty type parameter is supplied through Rapid's discard control.
 
+Go interfaces and generated model types are package-local. A consumer's
+`Probe` interface is structurally compatible only when every method's parameter
+and result types agree; two packages' generated nominal records do not become
+identical because their fields match. A configured production factory is bridged
+in each consuming package with that package's typed codecs. For factories shared
+across packages, use an exported factory through `goImports`. Unqualified factory
+and codec-hook names must be supplied in every package that uses them. Unbound
+production handlers still require application implementations of the generated
+local interface; a provider's user adapter is not copied into consumers. Remove
+obsolete manual `New<Ability>Bound` workaround wrappers before regenerating;
+user-owned adapter files are preserved. ref:DEC-s1j-shared-failures
+
 ### Haskell
 
 - References are module components followed by a type, constructor or

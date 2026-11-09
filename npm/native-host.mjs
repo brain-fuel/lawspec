@@ -69,28 +69,29 @@ export async function fingerprintNativeHost(root = sdkRoot)
   const seen = new Set();
   async function packageRoot(name, from)
   {
-    let directory = path.dirname(
-      createRequire(path.join(from, 'package.json')).resolve(name),
-    );
-    while (true)
+    // Resource-only packages can export native artifacts without a main entry.
+    // Resolve their installed manifest through Node's package search paths;
+    // resolving `name` would reject an otherwise valid dependency.
+    const request = createRequire(path.join(from, 'package.json'));
+    for (const base of request.resolve.paths(name) ?? [])
     {
-      const candidate = path.join(directory, 'package.json');
-      const value = await readFile(candidate, 'utf8').then(
-        JSON.parse,
-        error =>
-        {
-          if (error.code === 'ENOENT') return null;
-          throw error;
-        },
-      );
+      const directory = path.join(base, name);
+      const value = await readFile(
+        path.join(directory, 'package.json'),
+        'utf8',
+      ).then(JSON.parse, error =>
+      {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
       if (value?.name === name)
         return {directory: await realpath(directory), value};
-      const parent = path.dirname(directory);
-      if (parent === directory)
-        throw new Error('Cannot identify native host dependency ' + name);
-      directory = parent;
     }
+    const error = new Error('Cannot identify native host dependency ' + name);
+    error.code = 'MODULE_NOT_FOUND';
+    throw error;
   }
+
   async function dependency(name, from, optional = false)
   {
     let selected;

@@ -43,6 +43,7 @@ data Config = Config
   , constructorContracts :: Bool
   -- Built-in collections need LawSpecCollectionCodecs (and containers).
   , usesCollections :: Bool
+  , drawRequirement :: GeneratorRequirement -> Type -> Maybe C.Quantifier -> Either [Diagnostic] GeneratorRequirement
   , nodeBudget :: Integer
   , reference :: Type -> Expr
   , machineBits :: Int
@@ -228,7 +229,7 @@ emitTests Config{..} unit laws = do
         let inp = domainInput plan
         case strategyOf inp of
           (strategy, d) : _ -> Bind (inputId inp) <$> sharedDraw plan (take index (map generatorBinder (generationPlan e))) strategy d
-          [] -> pure (Bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp)))) (zip [0 :: Int ..] (generationPlan e))
+          [] -> Bind (inputId inp) <$> sharedDraw plan (take index (map generatorBinder (generationPlan e))) "default law input" (C.DrawAny (inputType inp) Nothing)) (zip [0 :: Int ..] (generationPlan e))
       let names = H.List (map (var . inputId) (inputs e))
           defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           predicates = concatMap inputRefinements defaults
@@ -266,8 +267,21 @@ emitTests Config{..} unit laws = do
             Just name -> pure (call name (var "symbols" : map (var . local) (Draws.drawArguments call')))
             Nothing -> Left [Diagnostic "strategy" "missing Haskell draw helper" Nothing]
           body node = case Draws.drawStep node of
-            Draws.AnyDraw ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty)
-              (drawRange machineBits input ty aim))
+            Draws.AnyDraw ty aim | not (structural ty || nativeGenerators || constructorContracts) ->
+              pure (generatorWithin (drawRange machineBits input ty aim) ty)
+            Draws.AnyDraw ty aim -> do
+              requested <- drawRequirement requirement ty aim
+              seeds <- mapM literal (generatorBoundaries requested)
+              let scalar = case drawRange machineBits input ty aim of
+                    Nothing -> call "Strategies.primitiveStrategy" [var "machineBits"]
+                    Just range -> lambda ["scalarName"]
+                      (H.If (operator "P.==" [var "scalarName", string (typeKey ty)])
+                        (call "P.Right" [generatorWithin (Just range) ty])
+                        (call "Strategies.primitiveStrategy" [var "machineBits", var "scalarName"]))
+              pure (orFail (call (if nativeGenerators then "Strategies.checkedStrategyWith" else "Strategies.checkedStrategy")
+                ([call "NativeGenerators.factories" [var "symbols", var "schema", var "machineBits"] | nativeGenerators] ++
+                 [var "schema", reference ty, var "machineBits", integer (generationNodeBudget nodeBudget requested),
+                  call "P.Just" [var "symbols"], H.List seeds, scalar])))
             Draws.OneOfDraw _ values -> pure (call "Gen.element" [H.List (map expr values)])
             Draws.FrequencyDraw branches -> do
               values <- mapM (\(weight, child) -> H.Tuple . (integer weight :) . pure <$> invoke child) branches

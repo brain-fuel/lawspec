@@ -1,0 +1,39 @@
+-- ref:DEC-s1j-shared-failures
+unit regression.strategies
+
+type Positive is a record
+{
+  value :: (n :: Integer where n > 0)
+}
+end type
+
+type Plain is a record
+{
+  value :: Bool
+}
+end type
+
+law plain is definition:
+  for all (value :: Plain) => value = value end for all
+end definition end law
+
+law positive is definition:
+  for all (value :: Positive) => value.value > 0 end for all
+end definition end law
+
+law nested is definition:
+  for all (value :: Positive) => value.value > 1 end for all
+end definition end law
+
+harness regression.strategies.testing for regression.strategies is
+  strategy positive :: Positive is any Positive end strategy
+  strategy nested :: Positive is
+    bind ignored :: Plain from any Plain in
+      (frequency 1 any Positive, 1 any Positive)
+        such that it.value > 1 at most 1000 discards
+    end bind
+  end strategy
+  for law positive use positive for value end for law
+  for law nested use nested for value end for law
+end harness
+end unit

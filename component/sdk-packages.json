@@ -1,0 +1,39 @@
+{
+  "runtime": {
+    "file": "wasm-platform-kit-0.2.0.tgz",
+    "integrity": "sha512-t7nWsH8rR9PbgyYT7WTRRPSdJRo/gvhquchx1KnS00Y8DsYbC2Ok7YjXyWs6LnWK/zwHS70XAAiFo2v8eyHklQ==",
+    "shasum": "3407a2422fbc511af2dd0dbd106c1bc6799b2ce6"
+  },
+  "build": {
+    "file": "wasm-platform-kit-build-0.2.0.tgz",
+    "integrity": "sha512-qvl2DhcgvV4NlInak2w8ZXAqlVPnGjc7suYeoRZFwf91sNCuBLMJ0O5VYTUehXcfIZME5tRKCfRTRskJ9wMJqA==",
+    "shasum": "136870465fee39162ce54907eb50219b018ccee3"
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "file": "wasm-platform-kit-darwin-arm64-0.2.0.tgz",
+      "integrity": "sha512-IMSiABEXVxVeyOoEpskD55EJZCE6YeQIlwRkcsM0Fc8OZ4dVO+0WVFvmPGxaYQIuSXNMZaVE92XpNetvonAtIg==",
+      "shasum": "ba31fe5ab3090dbdbfae6c466408b2c126c5dfe5"
+    },
+    "darwin-x64": {
+      "file": "wasm-platform-kit-darwin-x64-0.2.0.tgz",
+      "integrity": "sha512-h1ytl5nrP+8tw2lb+c3XOKpf4zsoKl6mWgUqmTYUgLUYO+FuxD/3pHvZZgXqVK0dzhw1WpwwvCjsaPYmMlAhLw==",
+      "shasum": "8fa1050d50e08517a4060a5c6a314b0b6c7f7c8e"
+    },
+    "linux-arm64": {
+      "file": "wasm-platform-kit-linux-arm64-0.2.0.tgz",
+      "integrity": "sha512-OlOz5oyyQNt3j3SWYO5RoFhww/R2cbWyTDVljm1J1lCQ/eHUiCi3d7qMtRZumXtWArDFvMI8nywrIl0HFCpzcg==",
+      "shasum": "2e0a6bca02854a6cded9ad900a6f7e7ce2bb93d9"
+    },
+    "linux-x64": {
+      "file": "wasm-platform-kit-linux-x64-0.2.0.tgz",
+      "integrity": "sha512-G/Y+BIJaiSX2hN+wEuhoJUTZ8NRQeRv4pz9fAaC2Cqf5JpmQCLzV4oCVZus7E1ZaP0Qf82W7LRZBhnnfC8llvw==",
+      "shasum": "7d5874ebdb9ae01ffcc1edc132d18eda0812db76"
+    }
+  },
+  "platform": {
+    "file": "wasm-platform-kit-darwin-arm64-0.2.0.tgz",
+    "integrity": "sha512-IMSiABEXVxVeyOoEpskD55EJZCE6YeQIlwRkcsM0Fc8OZ4dVO+0WVFvmPGxaYQIuSXNMZaVE92XpNetvonAtIg==",
+    "shasum": "ba31fe5ab3090dbdbfae6c466408b2c126c5dfe5"
+  }
+}

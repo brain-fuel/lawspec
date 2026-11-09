@@ -1,0 +1,5 @@
+packages: . ../..
+allow-newer: unicode-data:base
+
+-- Shared dependency solution; each application keeps independent local outputs.
+import: ../../wasm/cabal.project.freeze

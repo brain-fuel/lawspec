@@ -31,7 +31,7 @@ Every target needs Node 22 or later. Beyond that:
 | `python` | The selected interpreter is Python 3.13+, with pytest 8.4.x and Hypothesis 6.135.26 or a later 6.x installed. `pyproject.toml` sets pytest `pythonpath` and `testpaths` to the configured directories and has no custom test selection options. `PYTEST_ADDOPTS` is unset. |
 | `javascript` | `package.json` has `"type": "module"` and fast-check 4.x is installed. |
 | `typescript` | As JavaScript, plus TypeScript 5.9.x and `@types/node` 22.x. `tsconfig.json` uses `module` NodeNext, `rootDir` `.`, `outDir` `dist`, target ES2022 or later, emits output, and includes the source and test directories. |
-| `go` | Go 1.22+ and Rapid v1.2.0, resolved without a local replacement. |
+| `go` | Go 1.22+ and stable Rapid `>=1.2.0 <1.4.0`, resolved without a local replacement. |
 | `haskell` | Stack resolves a GHC and a test plan with Hspec 2.11, Hedgehog 1.5, hspec-hedgehog 0.3 and hspec-discover. The test directory has a `Spec.hs` that uses hspec-discover. The one Cabal package directly depends on `text` and `bytestring` in the component that compiles generated source, and has a test suite that depends on Hspec and Hedgehog. |
 | `rust` | Rust 1.85+, a Cargo package with edition 2024, direct dependencies on proptest, num-bigint, num-rational, num-complex and num-traits, and the standard test harness. With a custom layout, the library path matches `sourceDir` and every generated test file is registered. |
 | `erlang` | OTP 29, Rebar3 3.27.1, compiled PropEr 1.5.0 from Hex, the effective test profile's source directories, unfiltered EUnit discovery, and the `lawspec_beam_report` event listener. A checkout replacement or a compiled dependency that no longer matches its declaration fails. |

@@ -5,6 +5,9 @@ decisions: canonical_decisions.yaml
 exemptions: canonical_exemptions.yaml
 vetting: canonical_vetting
 ignore:
+  - component/assets/
+  - component/generated/
+  - component/vendor/
   - .canon/
   - .integration/
   - .tools/

@@ -87,6 +87,8 @@ import qualified BuiltinsSpec
 import qualified BoundsSpec
 import qualified ECMAScriptSpec
 import qualified ConditionalSpec
+import qualified ServiceSpec
+import qualified MemoBackendSpec
 import qualified IncrementalSpec
 import qualified IdentitySpec
 import qualified TestManifestSpec
@@ -216,6 +218,8 @@ main = hspec $ do
   BoundsSpec.test_generationStaysWithinRefinedBoundsOnEveryTarget
   ECMAScriptSpec.test_javascriptIsLaidOutAsPrettierLaysItOut
   ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
+  ServiceSpec.spec
+  MemoBackendSpec.spec
   IncrementalSpec.test_incrementalCompilationGivesTheSameResultAsAFreshOne
   IdentitySpec.test_semanticIdentityIsBehaviourAndPresentationIsTheRest
   TestManifestSpec.test_testManifestNamesEveryLawsTestOnEachTarget

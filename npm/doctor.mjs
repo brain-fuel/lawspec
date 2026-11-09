@@ -255,8 +255,8 @@ export async function doctor(target, root, plannedArtifacts = [])
         ),
       );
       requireThat(
-        !data.Replace && data.Version === 'v1.2.0',
-        'Rapid v1.2.0 without local replacement is required',
+        !data.Replace && supported('go', 'rapid', data.Version),
+        `Stable Rapid >=${profiles.go.rapid[0]} <${profiles.go.rapid[1]} without local replacement is required`,
       );
       await run('go', ['list', '-mod=readonly', 'pgregory.net/rapid'], root, {
         env: {...process.env, GOTOOLCHAIN: 'local', GOFLAGS: ''},

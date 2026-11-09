@@ -309,6 +309,12 @@ It evaluates the candidate and collection once, in that order. Comparisons
 stop at the first equal element. `not (value in members)` negates the result.
 Membership is nonassociative; parenthesize larger Boolean expressions.
 
+`prelude.all predicate members` uses the same iterable domains as `any`.
+It stops at the first false predicate and returns true for an empty collection.
+The predicate's captured arguments are evaluated once, before traversal, even
+when the collection is empty. It uses the checked universal element callback;
+no new proof rule is introduced. ref:DEC-s1j-shared-failures
+
 `prelude.any predicate members` asks whether a Boolean predicate holds for
 at least one element. It visits elements in iteration order and stops at the
 first true result; an empty collection gives false. It needs no element `Eq`
@@ -1100,6 +1106,18 @@ decision. Source record identity and field order retain their meaning.
 - Factories are package-local functions returning `*rapid.Generator[T]`, with
   one generator per type parameter. Imported factories are never scaffolded.
 - An empty type parameter is supplied through Rapid's discard control.
+
+Go interfaces and generated model types are package-local. A consumer's
+`Probe` interface is structurally compatible only when every method's parameter
+and result types agree; two packages' generated nominal records do not become
+identical because their fields match. A configured production factory is bridged
+in each consuming package with that package's typed codecs. For factories shared
+across packages, use an exported factory through `goImports`. Unqualified factory
+and codec-hook names must be supplied in every package that uses them. Unbound
+production handlers still require application implementations of the generated
+local interface; a provider's user adapter is not copied into consumers. Remove
+obsolete manual `New<Ability>Bound` workaround wrappers before regenerating;
+user-owned adapter files are preserved. ref:DEC-s1j-shared-failures
 
 ### Haskell
 

@@ -41,6 +41,7 @@ data Config = Config
   , className :: String
   , constructorContracts :: Bool
   , nativeGenerators :: Bool
+  , drawRequirement :: GeneratorRequirement -> Type -> Maybe C.Quantifier -> Either [Diagnostic] GeneratorRequirement
   , nodeBudget :: Integer
   , machineBits :: Int
   -- Native adapters convert logical arguments and failures once per signature.
@@ -255,7 +256,8 @@ emitTests Config{..} unit laws = do
         let inp = domainInput plan
         case strategyOf inp of
           (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> sharedDraw e plan inp strategy (inputId inp) d
-          [] -> pure [bind (inputId inp) (sampled (generatorWithin (inputRange machineBits inp) (inputType inp)))]) (generationPlan e)
+          [] -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$>
+            sharedDraw e plan inp "default law input" (inputId inp) (C.DrawAny (inputType inp) Nothing)) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
               conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
@@ -288,7 +290,22 @@ emitTests Config{..} unit laws = do
           invoke child = call (table M.! Draws.drawCallee child) (map (text . localName) (Draws.drawArguments child))
           nodeDoc node = do
             body <- case Draws.drawStep node of
-              Draws.AnyDraw ty aim -> snd <$> drawDoc inp strategy name (C.DrawAny ty aim)
+              Draws.AnyDraw ty aim | not (structural ty || nativeGenerators || constructorContracts) ->
+                snd <$> drawDoc inp strategy name (C.DrawAny ty aim)
+              Draws.AnyDraw ty aim -> do
+                requested <- drawRequirement requirement ty aim
+                seeds <- mapM literal (generatorBoundaries requested)
+                let scalar = case drawRange machineBits inp ty aim of
+                      Nothing -> scalarGenerators
+                      Just range -> L.lambda ["type"] [D.group (D.group (text "if (type == " <> quoted (typeKey ty) <> text ")" <>
+                          D.nest 4 (D.softline <> generatorWithin (Just range) ty)) <> D.softline <>
+                          text "else " <> call "LawSpecScalars.generator" [text "type", text "MACHINE_BITS"])]
+                    source = call "LawSpecKotlinStrategies.checkedGenerator"
+                      ([text "SCHEMA",reference ty,text "MACHINE_BITS",number (generationNodeBudget nodeBudget requested),
+                        number (maxAttempts (generation expanded)),text "symbols",call "listOf" seeds] ++
+                       [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
+                       [scalar])
+                pure (DrawValue (L.selects source [L.call ".sample" [text "random"], text ".value", L.call ".requireValue" []]))
               Draws.OneOfDraw ty values -> snd <$> drawDoc inp strategy name (C.DrawOneOf ty values)
               Draws.FrequencyDraw alternatives -> pure (DrawValue (call "LawSpecDraws.frequency" (text "random" :
                 [text (show weight ++ " to ") <> L.lambda [] [invoke child] | (weight,child) <- alternatives])))

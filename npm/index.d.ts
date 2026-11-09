@@ -805,9 +805,16 @@ export type VerificationLayer =
   | 'model'
   | 'analysis';
 
+export interface Evaluation
+{
+  maxSteps?: number;
+  deferLaws?: string[];
+}
+
 export interface Verification
 {
   layers?: VerificationLayer[];
+  evaluation?: Evaluation;
 }
 
 export interface VerificationSelection
@@ -1356,4 +1363,10 @@ export interface Compiler
   planGeneration(input: GenerationRequest): Promise<Result>;
 }
 
-export function createCompiler(): Promise<Compiler>;
+export interface CompilerOptions
+{
+  runtime?: 'legacy' | 'component';
+  compilation?: 'precompiled';
+}
+
+export function createCompiler(options?: CompilerOptions): Promise<Compiler>;

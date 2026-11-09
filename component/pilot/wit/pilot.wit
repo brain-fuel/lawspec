@@ -1,0 +1,43 @@
+package lawspec:format-pilot@0.1.0;
+
+interface application {
+  use host:sdk/host@0.2.0.{error};
+  record source { path: string, content: string }
+  record location { file: string, line: u32, column: u32 }
+  record span { start: location, end: location }
+  record related { message: string, span: span }
+  record diagnostic {
+    code: string,
+    message: string,
+    at: option<location>,
+    span: option<span>,
+    related: list<related>,
+  }
+  record format-request { sources: list<source>, compile: option<bool> }
+  record format-response { formatted-sources: list<source>, diagnostics: list<diagnostic>, language-profile: string }
+  record prelude-operation { name: string, qualified-name: string, definition: option<string> }
+  record prelude-law { name: string, source: string }
+  variant prelude-entry { operation(prelude-operation), law(prelude-law) }
+  record prelude-response { entries: list<prelude-entry>, law-source: string }
+  record versions-request { range: string, versions: list<string> }
+  record versions-response { problems: list<string>, versions: option<list<string>> }
+  variant prelude-query { all, matching(string), invalid }
+  variant prelude-result { catalog(prelude-response), invalid(list<diagnostic>) }
+  prelude: func(query: prelude-query) -> result<prelude-result, error>;
+  select-versions: func(request: versions-request) -> result<versions-response, error>;
+  // This interface is the LawSpec pilot, not part of the reusable host API.
+  // Temporary bridge for compiler methods whose recursive result tables are not
+  // migrated yet. Formatting and discovery call shared typed services directly.
+  dispatch: func(request: string) -> result<string, error>;
+  format: func(request: format-request) -> result<format-response, error>;
+  echo: func(value: string) -> result<string, error>;
+  exercise: func(provider: string, request: host-request) -> result<string, error>;
+  record files-request { provider: string, paths: list<string>, write: option<bool>, compile: option<bool> }
+  format-files: func(request: files-request) -> result<format-response, error>;
+  use host:sdk/host@0.2.0.{request as host-request};
+}
+
+world pilot {
+  import host:sdk/host@0.2.0;
+  export application;
+}

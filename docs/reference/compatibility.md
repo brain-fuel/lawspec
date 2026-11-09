@@ -34,7 +34,7 @@ unknown, prerelease, missing and out-of-range versions.
 | | TypeScript | 5.9.x |
 | | `@types/node` | 22.x |
 | Go | Go | 1.22–1.26 |
-| | Rapid | 1.2.0 |
+| | Rapid | >=1.2.0 <1.4.0 (new projects use 1.3.0) |
 | Haskell | GHC | 9.10 (Stack `lts-24.58`) |
 | | hspec | 2.11 |
 | | hedgehog | 1.5 |
@@ -147,7 +147,7 @@ When `init` creates a scaffold, it pins:
 | Prolog | Python scaffold pins plus janus-swi 1.5.3; the selected interpreter loads SWI-Prolog |
 | JavaScript | fast-check 4.10.2 |
 | TypeScript | fast-check 4.10.2, TypeScript 5.9.3, `@types/node` 22.20.4 |
-| Go | `go 1.22`, Rapid v1.2.0 |
+| Go | `go 1.25.0`, Rapid v1.3.0 |
 | Haskell | `lts-24.58`; hspec, hedgehog, hspec-hedgehog, hspec-discover, containers, mtl |
 | Kotlin | Kotlin plugin 2.3.21, `jvmToolchain(25)`, Kotest 5.9.1 |
 | Rust | edition 2024, `rust-version = "1.85"`, proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, num-traits 0.2.19 |
@@ -168,3 +168,11 @@ test-runner configuration, not just installed versions. Custom filtering or
 configuration it cannot verify is rejected with instructions. Build tools may
 populate their normal caches while it resolves dependencies; LawSpec never runs
 a dependency installer. See [Diagnose your environment with doctor](../how-to/run-doctor.md).
+
+Rapid 1.3.0 reads `RAPID_*` flag defaults during package initialization. Generated
+LawSpec checks explicitly set their case count and the CLI supplies `LAWSPEC_SEED`
+for replay, overriding Rapid's default checks and seed. Other Rapid flags remain
+framework controls; they are not LawSpec evaluation limits. Malformed `RAPID_*`
+values can fail Rapid initialization before LawSpec's explicit settings run.
+See the released [Rapid engine](https://github.com/flyingmutant/rapid/blob/v1.3.0/engine.go).
+Local Go module replacements remain incompatible with the release check.

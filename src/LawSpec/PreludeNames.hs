@@ -58,7 +58,7 @@ preludeValueName name = isNumeric name || name `elem` publicPreludeNames
 publicPreludeNames :: [String]
 publicPreludeNames = map fst simplePreludeHelpers ++ map fst sequencePreludeHelpers ++
       map fst canonicalCollectionOperations ++ map fst matcherOperations ++ map fst timeOperations ++ railwayNames ++
-      ["any","member","contains","startsWith","endsWith","regexMatches","within","messageContains","recorded","caseFold","textContains"
+      ["any","all","member","contains","startsWith","endsWith","regexMatches","within","messageContains","recorded","caseFold","textContains"
       ,"toList","size","isEmpty","quot","rem","pow","wrapping","saturating","bounded"
       ,"raise","attempt","calls","append","slice","take","drop","at","range"]
 

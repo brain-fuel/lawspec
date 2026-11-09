@@ -1,0 +1,8 @@
+/node_modules/
+/assets/
+/generated/
+/vendor/
+/native-packages/
+/pilot/cabal.project.local
+/pilot/dist-newstyle/
+/pilot/wit/deps/host/host.wit

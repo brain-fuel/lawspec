@@ -1,0 +1,7 @@
+unit regression.provider
+type Packet is a record{value :: Bool} end type
+ability Probe is
+  read :: Packet -> Packet
+end ability
+procedure consult (value :: Bool) -> Bool uses Probe is (read (Packet record{value = value})).value end procedure
+end unit

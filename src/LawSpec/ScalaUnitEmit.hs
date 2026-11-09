@@ -240,6 +240,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
       , ScalaProperties.awaitResult = awaitFor
       , ScalaProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , ScalaProperties.nativeGenerators = nativeGenerators
+      , ScalaProperties.drawRequirement = anyRequirement dataDeclarations bits
       , ScalaProperties.nodeBudget = budget
       , ScalaProperties.expression = render
       , ScalaProperties.literal = valueLiteral

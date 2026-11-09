@@ -34,6 +34,11 @@ object Host {
       ()
     }
 
+    override def createDirectories(value0: java.lang.String): scala.Unit = {
+      java.nio.file.Files.createDirectories(java.nio.file.Path.of(value0))
+      ()
+    }
+
     override def pathExists(value0: java.lang.String): scala.Boolean =
       try
         java.nio.file.Files.exists(

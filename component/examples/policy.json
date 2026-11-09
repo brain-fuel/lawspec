@@ -1,0 +1,16 @@
+{
+  "profile": "hostile",
+  "grants": {
+    "public-settings": {
+      "kind": "environment",
+      "values": {"THEME": "light"}
+    },
+    "preferences": {
+      "kind": "storage",
+      "namespace": "example-app/example-plugin",
+      "quota": 4096,
+      "read": true,
+      "write": true
+    }
+  }
+}

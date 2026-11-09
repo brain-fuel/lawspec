@@ -30,6 +30,13 @@
   },
   "types": "index.d.ts",
   "dependencies": {"web-tree-sitter": "0.25.10", "ricestax": "0.3.2", "@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
+  "optionalDependencies": {
+    "wasm-platform-kit": "0.2.0",
+    "@lawspec/compiler-darwin-arm64": "0.31.3",
+    "@lawspec/compiler-darwin-x64": "0.31.3",
+    "@lawspec/compiler-linux-arm64": "0.31.3",
+    "@lawspec/compiler-linux-x64": "0.31.3"
+  },
   "files": [
              "*.mjs",
              "*.json",
@@ -37,6 +44,7 @@
              "bin",
              "core.wasm",
              "core_jsffi.js",
+             "host-component",
              "go.mod",
              "README.md",
              "CHANGELOG.md",
@@ -50,6 +58,7 @@
              "native-parsers"
            ],
   "scripts": {
+    "postinstall": "node host-component/install.mjs",
     "prepack": "for f in README.md CHANGELOG.md; do cmp -s ../$f $f || { cp ../$f .$f.$$ && mv -f .$f.$$ $f; }; done",
     "test": "node --test test/*.test.mjs"
   }

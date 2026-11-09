@@ -1,0 +1,6 @@
+unit regression.consumer
+import regression.middle as middle (inspect)
+law imported is definition:
+  for all (value :: Bool) => middle.inspect value = value end for all
+end definition end law
+end unit

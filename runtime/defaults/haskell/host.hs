@@ -24,6 +24,7 @@ fileSystemHandler =
           found <- Exception.try (B.readFile (T.unpack path)) :: IO (Either Exception.SomeException B.ByteString)
           pure (P.either (P.const P.Nothing) P.Just found),
         Abilities.writeBytes = \path bytes -> B.writeFile (T.unpack path) bytes,
+        Abilities.createDirectories = Directory.createDirectoryIfMissing True . T.unpack,
         Abilities.pathExists = \path -> do
           found <- Exception.try (Directory.pathIsSymbolicLink (T.unpack path)) :: IO (Either Exception.SomeException Bool)
           case found of

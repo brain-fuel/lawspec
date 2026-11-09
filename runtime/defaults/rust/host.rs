@@ -19,6 +19,11 @@ impl crate::lawspec_abilities::lawspec_host::FileSystem for FileSystemHandler
         std::fs::write(&value0, &value1).expect("writing the file failed");
     }
 
+    fn createDirectories(&self, value0: std::string::String) -> ()
+    {
+        std::fs::create_dir_all(&value0).expect("creating directories failed");
+    }
+
     fn pathExists(&self, value0: std::string::String) -> bool
     {
         std::fs::symlink_metadata(&value0).is_ok()

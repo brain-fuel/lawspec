@@ -8,7 +8,7 @@ title: Set up Go
 ## Requirements
 
 - Go 1.25 or later, with Go modules.
-- Rapid v1.2.0, without a local `replace`.
+- A stable Rapid version `>=1.2.0 <1.4.0`, without a local `replace`.
 
 ## Create the project
 
@@ -20,11 +20,11 @@ go test ./...
 ```
 
 In a directory without build files, `init` creates a `go.mod` for module
-`example.com/lawspec-example` with `go 1.25.0` and Rapid v1.2.0. In an existing
+`example.com/lawspec-example` with `go 1.25.0` and Rapid v1.3.0. In an existing
 module:
 
 ```sh
-go get pgregory.net/rapid@v1.2.0
+go get pgregory.net/rapid@v1.3.0
 go mod download
 ```
 

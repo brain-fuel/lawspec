@@ -30,6 +30,9 @@ class FileSystemHandler:
         with open(value0, "wb") as file:
             file.write(value1)
 
+    def createDirectories(self, value0: _builtins.str) -> None:
+        _os.makedirs(value0, exist_ok=True)
+
     def pathExists(self, value0: _builtins.str) -> _builtins.bool:
         try:
             return _os.path.lexists(value0)

@@ -6707,3 +6707,26 @@ The following paths identify the inspected implementation and its current docume
 Collect business feedback and update the open questions. Then consolidate the approved grammar, exact semantics, migration correspondence, public interfaces, implementation dependencies, and acceptance tests into a decision-complete plan.
 
 The initiative remains unfinished until that review and approval happen. The next engineering step is not to silently choose the unresolved alternatives.
+
+### 18.4 S1.j implementation and follow-up gates
+
+S1.j addresses shared failure modes and user tooling under
+`DEC-s1j-shared-failures` and `DEC-s1j-evaluation-budget`. The disposition and
+measured evidence are maintained in `docs/explanation/s1j-disposition.md`; an
+implementation entry is not owner review or release approval. Preserve the
+teaching review checkpoint and existing human/external gates.
+
+Separate roadmap work remains for larger recursive models: measure CPU, peak
+memory, evaluation visits and growth against record width, nesting depth and
+input count; reduce repeated validation without trusting native inputs or
+omitting constructor contracts. Compare shared expressions and Why3's
+strongest-postcondition VC technique before introducing new proof expansion.
+Obligation generation, solver execution and proof checking must remain distinct.
+
+Checked mutual recursion is a separate feature. Study SPARK/Ada subprogram
+variants and Why3 termination obligations, Lean 4 well-founded recursion,
+Idris 2 totality checking and Rocq's guarded mutual fixpoints. Specify a shared
+well-founded measure across every edge of a strongly connected call component
+and how any generated certificate is checked. None of those backend integrations
+or mutual-definition support is established by S1.j. Preserve explicit unknown,
+unsupported and incomplete outcomes while that work remains open.

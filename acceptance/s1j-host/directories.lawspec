@@ -1,0 +1,13 @@
+unit regression.directories
+import lawspec.host
+procedure prepare (root :: Text) -> Bool uses FileSystem is
+  let child = prelude.append root "/child/grandchild" in
+    createDirectories child;
+    createDirectories child;
+    pathExists child
+  end let
+end procedure
+law parents for directory :: TemporaryDirectory is
+  definition: prepare (directoryPath directory) end definition
+end law
+end unit

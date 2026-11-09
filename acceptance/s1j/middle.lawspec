@@ -1,0 +1,4 @@
+unit regression.middle
+import regression.provider as provider (Probe, consult)
+procedure inspect (value :: Bool) -> Bool uses Probe is provider.consult value end procedure
+end unit

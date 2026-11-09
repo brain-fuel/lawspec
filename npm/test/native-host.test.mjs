@@ -37,9 +37,17 @@ test('native host identity binds installed transitive implementation and separat
     await mkdir(folder, {recursive: true});
     await writeFile(
       path.join(folder, 'package.json'),
-      JSON.stringify({name, version: '1', main: 'index.js', dependencies}),
+      JSON.stringify({
+        name,
+        version: '1',
+        ...(name === 'nested'
+          ? {exports: {'./artifact.bin': './artifact.bin'}}
+          : {main: 'index.js'}),
+        dependencies,
+      }),
     );
     await writeFile(path.join(folder, 'index.js'), 'module.exports=1;');
+    await writeFile(path.join(folder, 'artifact.bin'), 'native artifact');
   }
   const before = await fingerprintNativeHost(root);
   await mkdir(path.join(root, 'generated'));

@@ -15,7 +15,8 @@ import LawSpec.Frontend (compileCore, compileCoreCanonical)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.NativeBinding (NativeRef(..))
 import LawSpec.NativeRequest
-import LawSpec.Testing (planTesting)
+import LawSpec.Testing (planTesting, planTestingWith)
+import qualified LawSpec.Core.Verification as V
 
 program :: String -> Either [Diagnostic] C.Program
 program source = compileCore 64 defaultGeneration [Source "payments.lawspec" source]
@@ -81,6 +82,22 @@ fileOf target path source = do
 -- fake would let a law pass that production breaks. ref:REQ-abilities
 test_abilityLawsHoldForEveryLawfulHandler :: Spec
 test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
+  it "materializes ability-only Go units independently of selected law checks" $ do
+    let sources = [Source "provider.lawspec" "unit sparse.provider\nability Probe is read :: Bool -> Bool end ability\nend unit\n",
+          Source "laws.lawspec" "unit sparse.laws\nlaw identity is definition: for all (value :: Bool) => value = value end for all end definition end law\nend unit"]
+    case compileCoreCanonical 64 defaultGeneration sources of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right compiled -> forM_ ([] : map pure [minBound..maxBound]) $ \layers ->
+        case planTestingWith (V.Verification layers) compiled >>= emitPlan "go" of
+          Left diagnostics -> expectationFailure (show (layers,diagnostics))
+          Right files -> do
+            let paths = map artifactPath files
+                provider = concat [artifactContent file | file <- files,
+                  artifactPath file == "sparse/provider/lawspec_abilities.go"]
+            provider `shouldSatisfy` isInfixOf "type Probe interface"
+            forM_ ["sparse/provider/lawspec_runtime.go","sparse/provider/lawspec_schema.go"] $ \required ->
+              paths `shouldContain` [required]
+            if null layers then paths `shouldSatisfy` (notElem "sparse/laws/lawspec_test.go") else pure ()
   describe "names" $
     it "rejects, on Java and Kotlin, an ability or handler named like the class holding its unit's abilities" $ do
       let clashing = unlines [ "unit example.gateway"

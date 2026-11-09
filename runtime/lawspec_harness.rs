@@ -93,7 +93,8 @@ impl Draws
     }
 
     /// A value of the default strategy.
-    pub fn any(&mut self, strategy: &proptest::strategy::BoxedStrategy<Value>) -> Value
+    pub fn any<T: std::fmt::Debug>(&mut self, strategy: &proptest::strategy::BoxedStrategy<T>)
+    -> T
     {
         let mut bytes = [0u8; 32];
         for chunk in bytes.chunks_mut(8)

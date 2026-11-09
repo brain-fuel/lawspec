@@ -1,4 +1,4 @@
--- | Evidence and discharge of laws.
+-- | Evidence and discharge of laws. ref:DEC-s1j-evaluation-budget
 module DischargeSpec (test_lawsAreDischargedWithHonestEvidence) where
 
 import Data.Aeson (Value(..), decode, encode, toJSON, object, (.=))
@@ -11,7 +11,9 @@ import LawSpec.Api (dispatch)
 import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Core.Evidence
-import LawSpec.Discharge (dischargeEvidence)
+import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith)
+import qualified LawSpec.Core.Verification as Verification
+import Data.Either (isLeft)
 import LawSpec.Frontend (compileCore)
 
 evidenceFor :: String -> Either [Diagnostic] [Obligation]
@@ -36,6 +38,25 @@ twice = "function twice (x :: Int32) -> Integer is x + x end function\n"
 -- be reported as assumed. ref:DEC-evidence-statuses ref:REQ-honest-evidence
 test_lawsAreDischargedWithHonestEvidence :: Spec
 test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ do
+  it "meters optional evaluation and validates explicit law identities" $ do
+    let text = "unit d\nfunction twice (x :: Int8) -> Integer is x + x end function\n" ++
+          law "square" "for all (x :: Int8) => twice x * twice x >= 0 end for all" ++ "end unit"
+        config layers steps deferred = Verification.VerificationEvaluation layers (Verification.Evaluation steps deferred)
+        statuses = fmap (map obligationStatus . filter ((== "law") . obligationStage))
+    case compileCore 64 defaultGeneration [Source "budget.lawspec" text] of
+      Left problems -> expectationFailure (show problems)
+      Right program -> do
+        statuses (dischargeEvidenceWith (config [Verification.Exhaustive] 1 []) program) `shouldBe` Right [Planned]
+        statuses (dischargeEvidenceWith (config [Verification.Exhaustive] 1000000 []) program) `shouldBe` Right [ExhaustivelyChecked]
+        statuses (dischargeEvidenceWith (config [Verification.Proof] 1000000 ["d::|square|"]) program) `shouldBe` Right [Incomplete]
+        statuses (dischargeEvidenceWith (config [Verification.Exhaustive] 1000000 ["d::|square|"]) program) `shouldBe` Right [Planned]
+        dischargeEvidenceWith (config [] 1 ["d::absent"]) program `shouldSatisfy` isLeft
+  it "never lets optional evaluation settings bypass invalid definitions" $ do
+    let response = dispatch (encode (object ["schemaVersion" .= (5::Int), "method" .= ("check"::String),
+          "languageProfile" .= ("1.0-rc.2"::String),
+          "verification" .= object ["layers" .= ([]::[String]), "evaluation" .= object ["maxSteps" .= (1::Int), "deferLaws" .= (["bad::later"]::[String])]],
+          "sources" .= [Source "bad.lawspec" "unit bad\nfunction invalid (x :: Integer) -> Rational is x / 0 end function\nend unit"]]))
+    show response `shouldSatisfy` isInfixOf "total"
   it "defers caught failures through every reachable procedure" $ do
     source <- readFile "test/fixtures/effectful-attempt.lawspec"
     let (before,after) = break (isPrefixOf "law queued") (lines source)

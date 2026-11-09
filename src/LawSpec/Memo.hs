@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
+
 -- | Memo tables for the compiler's pure stages. A compiler kept alive across
 -- requests (one wasm instance, the acceptance harness, an editor) reuses the
 -- work for whatever did not change. Keys name their inputs completely (see
@@ -16,11 +17,10 @@
 -- for a native compiler, its executable's size and modification time: a
 -- compiler rebuilt from changed sources (a checkout run in place) never
 -- reads what another build wrote, so generation depends only on the program.
-module LawSpec.Memo (Table, newTable, newPersistentTable, newTableByShow, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withoutMemoization, buildIdentity) where
+module LawSpec.Memo (Table, CacheBackend (..), withCacheBackend, newTable, newPersistentTable, newTableByShow, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withoutMemoization, buildIdentity) where
 
+import Control.Exception (SomeException, bracket, evaluate, try)
 import qualified Control.Monad.Trans.State.Strict as Transition
-import LawSpec.Blake3 (blake3, hexOf)
-import Control.Exception (SomeException, evaluate, try, bracket)
 import Data.Binary (Binary, decodeOrFail, encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -28,20 +28,21 @@ import Data.IORef
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Version (showVersion)
-import System.Directory (createDirectoryIfMissing, renameFile, getFileSize, getModificationTime)
+import LawSpec.Blake3 (blake3, hexOf)
+import LawSpec.Digest (digestHex, digestString)
+import Paths_lawspec (version)
+import System.Directory (createDirectoryIfMissing, getFileSize, getModificationTime, renameFile)
 import System.Environment (getExecutablePath)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Digest (digestHex, digestString)
-import Paths_lawspec (version)
 
-data Entry a = Entry { entryValue :: a, entryWeight :: !Int, entryStamp :: !Int }
+data Entry a = Entry {entryValue :: a, entryWeight :: !Int, entryStamp :: !Int}
 
 data State a = State
-  { entries :: !(M.Map T.Text (Entry a))
-  , order :: !(M.Map Int T.Text)  -- stamp to key, least recently used first
-  , total :: !Int
-  , clock :: !Int
+  { entries :: !(M.Map T.Text (Entry a)),
+    order :: !(M.Map Int T.Text), -- stamp to key, least recently used first
+    total :: !Int,
+    clock :: !Int
   }
 
 -- | How a persistent table reads and writes its entries.
@@ -57,24 +58,29 @@ newTable :: Int -> (a -> Int) -> IO (Table a)
 newTable budget weigh = Table budget weigh Nothing <$> newIORef (State M.empty M.empty 0 0)
 
 -- | A table that also keeps its entries in the request's cache directory.
-newPersistentTable :: Binary a => String -> Int -> (a -> Int) -> IO (Table a)
+newPersistentTable :: (Binary a) => String -> Int -> (a -> Int) -> IO (Table a)
 newPersistentTable name budget weigh =
   Table budget weigh (Just (Persistence name encode decoded)) <$> newIORef (State M.empty M.empty 0 0)
-  where decoded bytes = case decodeOrFail bytes of
-          Right (rest, _, value) | BL.null rest -> Just value
-          _ -> Nothing
+  where
+    decoded bytes = case decodeOrFail bytes of
+      Right (rest, _, value) | BL.null rest -> Just value
+      _ -> Nothing
 
 -- | The running compiler's build, beside its version: its executable's size
 -- and modification time where it has one (none in WebAssembly, whose host
 -- keeps a folder per build already).
 buildIdentity :: String
 buildIdentity = unsafePerformIO $ do
-  found <- try (do
-    path <- getExecutablePath
-    size <- getFileSize path
-    modified <- getModificationTime path
-    _ <- evaluate (length (show modified))
-    pure ("-" ++ take 16 (digestHex (digestString (path ++ " " ++ show size ++ " " ++ show modified))))) :: IO (Either SomeException String)
+  found <-
+    try
+      ( do
+          path <- getExecutablePath
+          size <- getFileSize path
+          modified <- getModificationTime path
+          _ <- evaluate (length (show modified))
+          pure ("-" ++ take 16 (digestHex (digestString (path ++ " " ++ show size ++ " " ++ show modified))))
+      ) ::
+      IO (Either SomeException String)
   pure (either (const "") id found)
 {-# NOINLINE buildIdentity #-}
 
@@ -83,7 +89,7 @@ buildIdentity = unsafePerformIO $ do
 -- Binary) traversal can be exponential while the selected output stays small.
 -- This observes at most budget+1 structural characters, identically on native
 -- and WASM; runtime pointer sharing never affects an identity or cache value.
-boundedShowWeight :: Show a => Int -> a -> Int
+boundedShowWeight :: (Show a) => Int -> a -> Int
 boundedShowWeight budget value = count 0 (show value)
   where
     limit = max 0 (min (maxBound - 1) budget)
@@ -93,7 +99,7 @@ boundedShowWeight budget value = count 0 (show value)
       | otherwise = count (size + 1) rest
 
 -- | Preserve ordinary cache weights, without traversing oversized structures.
-newTableByShow :: Show a => Int -> IO (Table a)
+newTableByShow :: (Show a) => Int -> IO (Table a)
 newTableByShow budget = newTable budget (boundedShowWeight budget)
 
 newPersistentTableByShow :: (Binary a, Show a) => String -> Int -> IO (Table a)
@@ -102,6 +108,27 @@ newPersistentTableByShow name budget = newPersistentTable name budget (boundedSh
 cacheDirectory :: IORef (Maybe FilePath)
 cacheDirectory = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE cacheDirectory #-}
+
+-- | A host can supply scoped persistence without giving the compiler ambient
+-- filesystem authority. The cache encoding and admission rules stay here.
+-- ref:DEC-host-sdk-independent-consumer
+data CacheBackend = CacheBackend
+  { cacheRead :: FilePath -> IO B.ByteString,
+    cacheWrite :: FilePath -> BL.ByteString -> IO ()
+  }
+
+cacheBackend :: IORef (Maybe CacheBackend)
+cacheBackend = unsafePerformIO (newIORef Nothing)
+{-# NOINLINE cacheBackend #-}
+
+-- | Scope a backend around a fully evaluated request; restore it even on failure.
+-- Callers serialize requests on a compiler instance, as for cacheDirectory.
+withCacheBackend :: Maybe CacheBackend -> IO a -> IO a
+withCacheBackend backend =
+  bracket
+    (atomicModifyIORef' cacheBackend (\previous -> (backend, previous)))
+    (writeIORef cacheBackend)
+    . const
 
 -- | Run a request with a cache directory (or none), forcing its result.
 withCacheDirectory :: Maybe FilePath -> BL.ByteString -> BL.ByteString
@@ -120,10 +147,12 @@ memoizationEnabled = unsafePerformIO (newIORef True)
 -- inside the bracket, rather than accept an already evaluated cached result.
 -- This changes no admission or verification step; it bypasses memo tables only.
 withoutMemoization :: (a -> BL.ByteString) -> a -> BL.ByteString
-withoutMemoization action input = unsafePerformIO $ bracket
-  (atomicModifyIORef' memoizationEnabled (\before -> (False,before)))
-  (writeIORef memoizationEnabled)
-  (\_ -> let result = action input in evaluate (BL.length result) >> pure result)
+withoutMemoization action input =
+  unsafePerformIO $
+    bracket
+      (atomicModifyIORef' memoizationEnabled (\before -> (False, before)))
+      (writeIORef memoizationEnabled)
+      (\_ -> let result = action input in evaluate (BL.length result) >> pure result)
 {-# NOINLINE withoutMemoization #-}
 
 -- | A structured emission chunk may request helpers or literals while it is
@@ -131,10 +160,16 @@ withoutMemoization action input = unsafePerformIO $ bracket
 -- incoming serialized helper/name state is an exact presentation input;
 -- the caller also supplies the checked dependency and native-context key.
 -- There is no generated-text parsing in either direction.
-memoizedState :: Binary state => Table (Either String (value, state)) -> String
-  -> Transition.StateT state (Either String) value -> Transition.StateT state (Either String) value
+memoizedState ::
+  (Binary state) =>
+  Table (Either String (value, state)) ->
+  String ->
+  Transition.StateT state (Either String) value ->
+  Transition.StateT state (Either String) value
 memoizedState table key action = Transition.StateT $ \before ->
-  memoized table (key ++ ":state:" ++ hexOf (blake3 (BL.toStrict (encode before))))
+  memoized
+    table
+    (key ++ ":state:" ++ hexOf (blake3 (BL.toStrict (encode before))))
     (Transition.runStateT action before)
 
 -- | Pure callers get caching without threading state: the key names the inputs
@@ -151,10 +186,14 @@ memoizedIO (Table budget weigh persistence ref) key value = do
   let k = T.pack key
   recorded <- atomicModifyIORef' ref $ \s -> case M.lookup k (entries s) of
     Just e ->
-      let e' = e { entryStamp = clock s }
-      in (s { entries = M.insert k e' (entries s)
-            , order = M.insert (clock s) k (M.delete (entryStamp e) (order s))
-            , clock = clock s + 1 }, Just (entryValue e))
+      let e' = e {entryStamp = clock s}
+       in ( s
+              { entries = M.insert k e' (entries s),
+                order = M.insert (clock s) k (M.delete (entryStamp e) (order s)),
+                clock = clock s + 1
+              },
+            Just (entryValue e)
+          )
     Nothing -> (s, Nothing)
   case recorded of
     Just v -> pure v
@@ -169,30 +208,48 @@ memoizedIO (Table budget weigh persistence ref) key value = do
       -- Admission precedes serialization. Expanding a shared layout DAG
       -- just to persist an entry we cannot keep defeats the table's bound.
       weight <- evaluate (max 1 (weigh computed))
-      if weight > budget then pure computed else do
-        case (stored, file, persistence) of
-          (Nothing, Just location, Just (Persistence _ encodeValue _)) -> writeStored location (encodeValue computed)
-          _ -> pure ()
-        atomicModifyIORef' ref $ \s ->
-          if M.member k (entries s) then (s, ()) else
-            (evict (s { entries = M.insert k (Entry computed weight (clock s)) (entries s)
-                      , order = M.insert (clock s) k (order s)
-                      , total = total s + weight
-                      , clock = clock s + 1 }), ())
-        pure computed
+      if weight > budget
+        then pure computed
+        else do
+          case (stored, file, persistence) of
+            (Nothing, Just location, Just (Persistence _ encodeValue _)) -> writeStored location (encodeValue computed)
+            _ -> pure ()
+          atomicModifyIORef' ref $ \s ->
+            if M.member k (entries s)
+              then (s, ())
+              else
+                ( evict
+                    ( s
+                        { entries = M.insert k (Entry computed weight (clock s)) (entries s),
+                          order = M.insert (clock s) k (order s),
+                          total = total s + weight,
+                          clock = clock s + 1
+                        }
+                    ),
+                  ()
+                )
+          pure computed
   where
     readStored (folder, name) = case persistence of
       Just (Persistence _ _ decodeValue) -> do
-        bytes <- try (B.readFile (folder </> name)) :: IO (Either SomeException B.ByteString)
+        backend <- readIORef cacheBackend
+        bytes <- try (maybe B.readFile cacheRead backend (folder </> name)) :: IO (Either SomeException B.ByteString)
         pure (either (const Nothing) (decodeValue . BL.fromStrict) bytes)
       Nothing -> pure Nothing
     -- Written to a temporary name and renamed, so a reader never sees half an
     -- entry. A cache that cannot be written is skipped.
     writeStored (folder, name) bytes = do
-      _ <- try (do
-        createDirectoryIfMissing True folder
-        BL.writeFile (folder </> (name ++ ".tmp")) bytes
-        renameFile (folder </> (name ++ ".tmp")) (folder </> name)) :: IO (Either SomeException ())
+      backend <- readIORef cacheBackend
+      _ <-
+        try
+          ( case backend of
+              Just provider -> cacheWrite provider (folder </> name) bytes
+              Nothing -> do
+                createDirectoryIfMissing True folder
+                BL.writeFile (folder </> (name ++ ".tmp")) bytes
+                renameFile (folder </> (name ++ ".tmp")) (folder </> name)
+          ) ::
+          IO (Either SomeException ())
       pure ()
     -- Drop the least recently used entries until the budget holds.
     -- Each admitted entry individually fits the budget.
@@ -201,5 +258,5 @@ memoizedIO (Table budget weigh persistence ref) key value = do
       | otherwise = case M.minViewWithKey (order s) of
           Just ((_, oldest), rest) ->
             let w = maybe 0 entryWeight (M.lookup oldest (entries s))
-            in evict s { entries = M.delete oldest (entries s), order = rest, total = total s - w }
+             in evict s {entries = M.delete oldest (entries s), order = rest, total = total s - w}
           Nothing -> s

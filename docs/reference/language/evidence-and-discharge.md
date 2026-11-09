@@ -385,3 +385,36 @@ shows where each law last passed. See [the CLI](../cli.md#evidence).
   tested law ran.
 - The compiler API reports the obligations in the `evidence` field of every
   result, and a request's `attestation` adds where the tests ran. See [the API reference](../api.md#evidence).
+
+## Compiler evaluation allowance
+
+Optional finite law evaluation defaults to 1,000,000 logical steps per law,
+shared across its inputs and recursive calls. Configure the SDK with
+`verification: {layers: ['exhaustive'], evaluation: {maxSteps: 1000000,
+deferLaws: ['example::slowLaw']}}`, or EDN:
+
+```edn
+:verification {:layers [:exhaustive :property]
+               :evaluation {:max-steps 1000000
+                            :defer-laws ["example::slowLaw"]}}
+```
+
+`maxSteps` must be a positive integer. `deferLaws` uses public test identities;
+phrase names keep their bars, for example `example::|slow law|`. Unknown identities
+are errors, even when no verification layers are selected. Deferral and exhausted
+evaluation retain an executable selected check as `PLANNED`; without one they
+report `INCOMPLETE`. Neither is a completed law result.
+
+Each expression visit and recursively validated value node consumes a step.
+Admitted definition bodies borrow already validated subvalues without repeating
+their complete validation; public arguments, constructor boundaries, external
+results and ordered contracts remain checked.
+This deterministic interpreter allowance follows the resource-limiting precedent
+of [Lean heartbeats](https://lean-lang.org/doc/api/Lean/Util/Heartbeats.html), but
+is LawSpec's own accounting, not Lean's allocation counter. It is not a wall-clock
+or memory limit. Planning finite domains, optional proof search, model analyses
+and mandatory definition admission retain their separate mechanisms. Solver
+settings are independent. Configuration participates in compiler cache identity.
+LawSpec's interpreter and validation remain in the trust boundary; evaluation
+does not emit a kernel-checked proof certificate or integrate a Lean backend.
+ref:DEC-s1j-evaluation-budget

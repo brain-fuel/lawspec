@@ -27,6 +27,10 @@ export class FileSystemHandler implements abilities.FileSystem
   {
     fs.writeFileSync(value0, value1);
   }
+  createDirectories(value0: string): void
+  {
+    fs.mkdirSync(value0, {recursive: true});
+  }
   pathExists(value0: string): boolean
   {
     try

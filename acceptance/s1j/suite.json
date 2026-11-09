@@ -1,0 +1,1 @@
+{"specs":["acceptance/s1j/strategies.lawspec","acceptance/s1j/provider.lawspec","acceptance/s1j/middle.lawspec","acceptance/s1j/consumer.lawspec"],"languageProfile":"1.0-rc.2","verification":{"layers":["property","examples"]}}

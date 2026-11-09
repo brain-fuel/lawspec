@@ -369,6 +369,9 @@
       },
       {
         "path": "reference/authoring-advisories.md"
+      },
+      {
+        "path": "reference/host-sdk.md"
       }
     ]
   },
@@ -410,6 +413,9 @@
       },
       {
         "path": "explanation/api-migration.md"
+      },
+      {
+        "path": "explanation/s1j-disposition.md"
       }
     ]
   }

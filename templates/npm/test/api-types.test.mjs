@@ -112,3 +112,26 @@ export {manifest, resolved, status, fingerprint, executionRun};
   execFileSync(tsc, ['--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext',
     '--moduleResolution', 'NodeNext', file], {cwd: root, stdio: 'pipe'});
 });
+
+test(
+  'compiler runtime selection preserves the existing factory and rejects unknown runtime names',
+  {skip: tsc === null && 'tsc is not installed'},
+  () =>
+  {
+    execFileSync(
+      tsc,
+      [
+        '--noEmit',
+        '--strict',
+        '--target',
+        'ES2022',
+        '--module',
+        'NodeNext',
+        '--moduleResolution',
+        'NodeNext',
+        'test/fixtures/host_sdk_api.ts',
+      ],
+      {cwd: root, stdio: 'pipe'},
+    );
+  },
+);

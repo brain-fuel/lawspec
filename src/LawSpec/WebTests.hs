@@ -582,9 +582,10 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
             (E.Ident "symbols" : map (E.Ident . localName) (Draws.drawArguments node))
           helper node = do
             body <- case Draws.drawStep node of
-              Draws.AnyDraw ty (Just aim) | Just range <- inputRange bits aim -> pure (generatorWithin (Just range) ty)
-              Draws.AnyDraw ty _ | ty == inputType (domainInput requirement) -> contextStrategy e requirement
-              Draws.AnyDraw ty _ -> pure (generatorOf ty)
+              Draws.AnyDraw ty aim | not hasData -> pure (generatorWithin (aim >>= inputRange bits) ty)
+              Draws.AnyDraw ty aim -> do
+                requested <- anyRequirement declarations bits requirement ty aim
+                contextStrategy e requested
               Draws.OneOfDraw _ values -> pure (E.method
                 (E.call "fc.integer" [object [("min",E.num 0),("max",E.num (toInteger (length values - 1)))]]) "map"
                 [lambda [E.param "_choice"] (E.Call
@@ -727,8 +728,7 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
           -- restrictions as the narrowed scalar generator. Recompute them in
           -- the actual lexical prefix on every draw/shrink. Earlier restrictions
           -- guard partial expressions in later restrictions in source order.
-          prefix = takeWhile ((/= inputId input) . inputId) (inputs e) ++ [input]
-          predicates = concatMap inputRefinements prefix
+          predicates = inputRefinements input
           candidates = E.Array (seeds ++ hints)
           accepted = lambda [E.param (inputId input)] (conjunction (map render predicates))
           witnesses
@@ -744,7 +744,7 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
       pure (case requiredSymbol plan of
         value:_ -> E.call "fc.constant" [render value]
         [] -> E.call "_data_strategy"
-          ([E.Ident "_lawspec_schema",referenceOf ty,width,E.num (toInteger budget),
+          ([E.Ident "_lawspec_schema",referenceOf ty,width,E.num (toInteger (generationNodeBudget budget plan)),
             scalar,E.Ident "symbols",witnesses] ++
             [E.num (toInteger (maxAttempts (generation e)))] ++
             -- The generated native wrapper takes index directly; the shared

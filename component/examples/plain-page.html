@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Haskell formatting component</title>
+  </head>
+  <body>
+    <h1>LawSpec formatting pilot</h1>
+    <label for="source">Source</label>
+    <textarea id="source" rows="12" cols="72">
+unit example
+function identity (x :: Int32) -> Int32 is
+x
+end function
+end unit
+</textarea>
+    <button id="format" type="button">Format</button>
+    <pre id="status" role="status" aria-live="polite"></pre>
+    <script type="module" src="./plain-page.mjs"></script>
+  </body>
+</html>

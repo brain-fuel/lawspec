@@ -437,8 +437,8 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                 boundName names binder = fst (claim (scopeWith (Expression.reservedLocals ++ map snd names ++ ["ctx", "draws"] ++ helperNames))
                   ("drawn_" ++ unraw (Expression.sourceLocal names binder)))
                 nodeBody names node = case Draws.drawStep node of
-                  Draws.AnyDraw ty aim -> RL.Laid <$> drawExpr names strategy (DrawAny ty aim)
-                  Draws.OneOfDraw ty values -> RL.Laid <$> drawExpr names strategy (DrawOneOf ty values)
+                  Draws.AnyDraw ty aim -> RL.Laid <$> drawExpr requirement names strategy (DrawAny ty aim)
+                  Draws.OneOfDraw ty values -> RL.Laid <$> drawExpr requirement names strategy (DrawOneOf ty values)
                   Draws.FrequencyDraw branches -> do
                     values <- mapM (invoke names (RL.atom "draws") . snd) branches
                     let weighted = zip (scanl1 (+) (map fst branches)) values
@@ -474,7 +474,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                 (RL.expr (RL.call "Ok" [expression]))))
             root <- invoke prior (RL.prefix "&mut " (RL.atom "draws")) (Draws.drawRoot graph)
             pure (RL.expr (RL.letIn functions root))
-          drawExpr names strategy d = case d of
+          drawExpr requirement names strategy d = case d of
             -- A refined strategy's any draws inside its refinement's range.
             DrawAny ty (Just aim)
               | Just (low, high) <- inputRange planMachineBits aim -> do
@@ -487,14 +487,20 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             DrawAny ty _
               | usesData ty -> do
                   ref <- schemaType ty
-                  pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::schema_strategy" [Doc.text "lawspec_schema::schema()?", borrow ref, bits, Doc.text "64"] <> Doc.text "?"])
+                  requested <- either (Left . show) Right (anyRequirement planDataDeclarations planMachineBits requirement ty Nothing)
+                  seeds <- mapM valueLiteral (generatorBoundaries requested)
+                  let budget = maximum (64 : map ((+ 8) . valueBudget) (generatorBoundaries requested))
+                      method = "ls_gen::checked_schema_strategy" ++ if hasNativeGenerators then "_with_generators" else ""
+                  pure (invoke "draws.any" [Doc.text "&" <> invoke method
+                    ([Doc.text "lawspec_schema::schema()?", borrow ref, bits, Doc.text (show budget), Doc.text "ctx",
+                      Expression.vector seeds] ++ [Doc.text "&native_generators()?" | hasNativeGenerators]) <> Doc.text "?"] <> Doc.text "?")
               | otherwise -> pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::strategy_with_profile" [string (typeName ty), bits] <> Doc.text "?"])
             DrawOneOf _ values -> do
               docs <- mapM (render names) values
               pure (Doc.text ("match draws.choose(" ++ show (length values) ++ ") ") <> block (statements
                 [Doc.text (if k == length docs - 1 then "_ => " else show k ++ " => ") <> v <> Doc.text "," | (k, v) <- zip [0..] docs]))
             DrawFrequency alternatives -> do
-              docs <- mapM (drawExpr names strategy . snd) alternatives
+              docs <- mapM (drawExpr requirement names strategy . snd) alternatives
               let bounds' = scanl1 (+) (map fst alternatives)
                   branches = [(b, doc) | (b, doc) <- zip bounds' docs]
                   chain' [(_, doc)] = Doc.text "{ " <> doc <> Doc.text " }"
@@ -502,7 +508,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                   chain' [] = Doc.text "unreachable!()"
               pure (block (statements [binding "pick" (Doc.text ("draws.choose(" ++ show (sum (map fst alternatives)) ++ ")")), chain' branches]))
             DrawSuchThat inner binder predicate limit -> do
-              doc <- drawExpr names strategy inner
+              doc <- drawExpr requirement names strategy inner
               let x = "drawn_" ++ unraw (Expression.sourceLocal names binder)
               keep <- render (names ++ [(binderId binder, x)]) predicate
               pure (block (statements
@@ -513,8 +519,8 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                  Doc.text ("found.ok_or_else(|| lawspec_harness::discarded(") <> string strategy <> Doc.text (", " ++ show limit ++ "))?")]))
             DrawBind binder from rest -> do
               let x = "drawn_" ++ unraw (Expression.sourceLocal names binder)
-              fromDoc <- drawExpr names strategy from
-              restDoc <- drawExpr (names ++ [(binderId binder, x)]) strategy rest
+              fromDoc <- drawExpr requirement names strategy from
+              restDoc <- drawExpr requirement (names ++ [(binderId binder, x)]) strategy rest
               pure (block (statements [binding x fromDoc, restDoc]))
           -- An expectation names its law, its example and where it is
           -- written; the runtime says how the values differ.

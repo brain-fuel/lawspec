@@ -1,0 +1,16 @@
+{
+  "name": "lawspec-component-development",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "wasm-platform-kit": "0.2.0"
+  },
+  "devDependencies": {
+    "wasm-platform-kit-build": "0.2.0"
+  }
+}

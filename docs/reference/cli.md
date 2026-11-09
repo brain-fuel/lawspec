@@ -534,3 +534,36 @@ available port. See [the project workflow](../how-to/manage-projects.md).
 
 See [authoring advisories](authoring-advisories.md) for `prelude`, `inspect`,
 `advise`, strict enforcement, read-only behavior and analysis limits.
+
+## Mutation testing
+
+`lawspec mutate [paths...] --target go --json` runs acceptance-format `.mutant`
+files. With no paths, it recursively finds `mutants/**/*.mutant`. Each file has
+optional `expect:` / `expect-any:` output expectations followed by edits:
+
+    expect: sample::identity
+    @@ native/adapter.go
+    <<<<<<<
+    return value
+    =======
+    return value + 1
+    >>>>>>>
+
+
+A search must occur exactly once; `*` replaces the entire existing file. The
+baseline must pass with actual native checks. Baseline and mutations run in
+separate temporary project copies, cleaned afterward. Files outside the project
+and external symbolic links are rejected. Native application code still has its
+normal host privileges; a temporary copy is not a process sandbox.
+
+`--mutation-timeout 120000` sets a positive per-run timeout in milliseconds.
+Reports distinguish `killed`, `surviving`, `invalid`, `errored`, `timed-out` and
+`unsupported`. A compiler rejection is invalid, not a law kill. Unexpected
+failure expectations are errors. A kill requires an individually identified
+executed failing law; a failed combined model method is not attributed to every
+logical alias. JSON includes actual failing identities, a law-to-mutant
+`killMatrix` and `uniqueKills` for mutants killed by exactly one observed law.
+These are observed adequacy results for these mutations, not a proof that a law
+is necessary or sufficient. Any result other than killed fails the command.
+The acceptance `rejected-at:` header is parsed but does not promote rejection to
+a kill in the public runner. ref:DEC-s1j-shared-failures

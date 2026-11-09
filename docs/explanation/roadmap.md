@@ -210,3 +210,18 @@ features those contracts need are LawSpec work.
 Once the features above are roughly in place, the code is rewritten and
 cleaned up, and every canonical comment, decision, reference and page that
 0.20.1 recorded as pending is reviewed and signed off with Rice's Tax.
+
+### Larger models and checked mutual recursion
+
+Continue the S1.j [measured scaling work](s1j-disposition.md): track CPU time,
+peak memory and logical evaluation work across record widths, nesting depths and
+recursive input counts. Avoid repeated proof expansion and subtree validation
+without weakening constructor contracts or mandatory definition admission.
+Optional law evaluation has an explicit allowance and deferral mechanism;
+exhaustion does not establish a law.
+
+Mutually recursive total definitions remain unsupported. Study Lean 4, Idris 2,
+Rocq and SPARK/Why3 termination and obligation-generation techniques before
+selecting an implementation. Keep obligation generation, solver execution and
+proof checking distinct, and retain unknown, unsupported and incomplete results.
+This work does not remove the teaching review or human/external release gates.

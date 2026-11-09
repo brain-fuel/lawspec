@@ -462,6 +462,10 @@ export function benchmarkInvocations(target, entries, {offline = false} = {})
       },
     ];
   }
+  // Re-read Gradle inputs after edits; retained watcher state can miss a
+  // mutation or restoration. Keep incremental compilation, not retained VFS.
+  // https://docs.gradle.org/current/userguide/file_system_watching.html
+  // ref:DEC-s1j-shared-failures
   if (language === 'kotlin')
     return groupBy(entries, e => e.file).map(([file, marks]) =>
     {
@@ -471,6 +475,7 @@ export function benchmarkInvocations(target, entries, {offline = false} = {})
         args: [
           ...(offline ? ['--offline'] : []),
           '--console=plain',
+          '--no-watch-fs',
           'test',
           '--rerun',
           '--tests',
@@ -505,6 +510,7 @@ export function benchmarkInvocations(target, entries, {offline = false} = {})
         args: [
           ...(offline ? ['--offline'] : []),
           '--console=plain',
+          '--no-watch-fs',
           'test',
           '--rerun',
           ...entries.flatMap(e => [
@@ -980,6 +986,7 @@ function nativeInvocations(
         args: [
           ...(offline ? ['--offline'] : []),
           '--console=plain',
+          '--no-watch-fs',
           'test',
           ...(coverage ? ['koverXmlReport'] : []),
           '--rerun',
@@ -1099,6 +1106,7 @@ function nativeInvocations(
         args: [
           ...(offline ? ['--offline'] : []),
           '--console=plain',
+          '--no-watch-fs',
           'test',
           ...(coverage ? ['jacocoTestReport'] : []),
           '--rerun',

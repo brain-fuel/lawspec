@@ -33,6 +33,12 @@ func (handler *FileSystemHandler) WriteBytes(value0 string, value1 []byte) {
 	}
 }
 
+func (handler *FileSystemHandler) CreateDirectories(value0 string) {
+	if err := os.MkdirAll(value0, 0o755); err != nil {
+		panic(err)
+	}
+}
+
 func (handler *FileSystemHandler) PathExists(value0 string) bool {
 	_, err := os.Lstat(value0)
 	return err == nil

@@ -29,6 +29,7 @@ data Config = Config
   , schemaNeeded :: Bool
   , constructorContracts :: Bool
   , nativeGenerators :: Bool
+  , drawRequirement :: GeneratorRequirement -> Type -> Maybe C.Quantifier -> Either [Diagnostic] GeneratorRequirement
   , nodeBudget :: Integer
   , machineBits :: Int
   , expression :: Expr -> D.Doc
@@ -166,16 +167,19 @@ emitTests Config{..} unit laws = do
             predicate = conjunction (map (truth . expr) (inputRefinements inp))
         case strategyOf inp of
           (strategy, d) : _ -> do
-            value <- sharedDraw plan (take index (map generatorBinder (generationPlan e))) strategy d
+            value <- sharedDraw (maxAttempts (generation e)) plan (take index (map generatorBinder (generationPlan e))) strategy d
             pure [Declare (inputId inp) (call "lsHarnessCheckDrawn" [quoted strategy, quoted (inputName inp),
               closure (inputId inp ++ " LawSpecValue") "bool" (returned predicate), value])]
-          [] -> pure ([Declare (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".Draw(t, " <> quoted (inputName inp) <> text ")")] ++
-            [Plain (text "if !(" <> predicate <> text ") " <> block (text "t.SkipNow()")) | not (null (inputRefinements inp))])) (zip [0 :: Int ..] (generationPlan e))
+          [] -> do
+            value <- sharedDraw (maxAttempts (generation e)) plan (take index (map generatorBinder (generationPlan e)))
+              "default law input" (C.DrawAny (inputType inp) Nothing)
+            pure ([Declare (inputId inp) value] ++
+              [Plain (text "if !(" <> predicate <> text ") " <> block (text "t.SkipNow()")) | not (null (inputRefinements inp))])) (zip [0 :: Int ..] (generationPlan e))
       pure $ testFunction (fn ++ "_Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ body ([symbols] ++ concat draws ++ plainAll (handlerInstalls e) ++ resourceDocs e ++ [Plain check])]
     -- Shared draw functions receive the current rapid generator, symbols
     -- and lexical captures. Invoking a function still performs a fresh draw.
-    sharedDraw requirement available strategy draw = do
+    sharedDraw attempts requirement available strategy draw = do
       let input = domainInput requirement
       plan <- either (Left . pure . (\message -> Diagnostic "strategy" message Nothing)) Right
         (Draws.planDraw requirement available draw)
@@ -192,8 +196,22 @@ emitTests Config{..} unit laws = do
             Just name -> pure (call name (text "t" : text "symbols" : map (text . local) (Draws.drawArguments edge)))
             Nothing -> Left [Diagnostic "strategy" "missing Go draw helper" Nothing]
           nodeBody node = case Draws.drawStep node of
-            Draws.AnyDraw ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty)
-              (drawRange machineBits input ty aim) <> text ".Draw(t, \"value\")")
+            Draws.AnyDraw ty aim -> do
+              requested <- drawRequirement requirement ty aim
+              seeds <- mapM literal (generatorBoundaries requested)
+              let range = drawRange machineBits input ty aim
+                  scalar = case range of
+                    Nothing -> text "_lawspecScalarGenerator"
+                    Just bounds -> closure "name string" "*rapid.Generator[LawSpecValue]"
+                      (statements [text "if name == " <> quoted (typeKey ty) <> text " " <>
+                        block (returned (generatorWithin (Just bounds) ty)),
+                        returned (call "_lawspecScalarGenerator" [text "name"])])
+                  source = call "lsCheckedDataStrategyWithAttempts"
+                    ([text "_lawspecSchema",reference ty,bitsDoc,number (generationNodeBudget nodeBudget requested),number attempts,
+                      text "symbols",E.array seeds,scalar] ++
+                     [text "lawSpecNativeFactories()" | nativeGenerators])
+              pure (if structural ty then source <> text ".Draw(t, \"value\").requireValue()"
+                else generatorWithin range ty <> text ".Draw(t, \"value\")")
             Draws.OneOfDraw _ values -> pure (call "lsHarnessOneOf" [text "t", text "[]func() LawSpecValue{" <>
               D.joinWith (text ", ") [closure "" "LawSpecValue" (returned (expr value)) | value <- values] <> text "}"])
             Draws.FrequencyDraw branches -> do

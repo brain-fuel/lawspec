@@ -818,3 +818,48 @@ go-type-aliases:
   kind: article
   title: "Go language specification: alias declarations"
   locator: https://go.dev/ref/spec#Alias_declarations
+component-canonical-abi:
+  kind: article
+  title: "WebAssembly Component Model: canonical ABI"
+  locator: https://github.com/WebAssembly/component-model/blob/main/design/mvp/CanonicalABI.md
+wit-bindgen-haskell:
+  kind: article
+  title: "wit-bindgen: Haskell language support issue 943"
+  locator: https://github.com/bytecodealliance/wit-bindgen/issues/943
+wasmtime-security:
+  kind: article
+  title: "Wasmtime sandbox security"
+  locator: https://docs.wasmtime.dev/security.html
+wasi-capabilities:
+  kind: article
+  title: "WASI capability security"
+  locator: https://wasi.dev/security
+jco-transpiling:
+  kind: article
+  title: "jco transpiling and explicit instantiation"
+  locator: https://bytecodealliance.github.io/jco/transpiling.html
+cap-std:
+  kind: article
+  title: "cap-std directory capabilities"
+  locator: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
+REQ-host-sdk-runtime-boundary:
+  kind: requirement
+  title: Direct typed Haskell components preserve formatter behavior and run only with embedding-owned capabilities, bounded execution and explicit failure outcomes.
+  locator: docs/reference/host-sdk.md
+
+lean-heartbeats:
+  kind: article
+  title: Lean deterministic heartbeat mechanism and implementation
+  locator: https://lean-lang.org/doc/api/Lean/Util/Heartbeats.html
+why3-vc-generation:
+  kind: article
+  title: Why3 verification condition generation and strongest postconditions
+  locator: https://why3.org/doc/vcgen.html
+idris2-totality:
+  kind: article
+  title: Idris 2 totality and mutually defined functions
+  locator: https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html
+rocq-recursive-definitions:
+  kind: article
+  title: Rocq inductive types and recursive functions
+  locator: https://rocq-prover.org/doc/V9.0.0/refman/language/core/inductive.html

@@ -77,6 +77,10 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
           Left diagnostics -> expectationFailure (show diagnostics)
           Right invoke -> do
             invoke (Id "fields::first") [nil] `shouldBe` Right (V.ScalarValue (SRational 0 1))
+            -- The admitted interpreter skips repeated borrowing checks only
+            -- after the public boundary rejects malformed native values.
+            invoke (Id "fields::first") [singleton 128] `shouldSatisfy` isLeft
+            invoke (Id "fields::first") [V.DataValue list (Id "List::Cons") [nil,nil]] `shouldSatisfy` isLeft
             mapM_ (\n -> invoke (Id "fields::first") [singleton n]
               `shouldBe` Right (V.ScalarValue (SRational 1 (n + 129)))) [-128..127]
         mapM_ (\target -> (planTesting program >>= emitPlan target) `shouldSatisfy` isRight) targets) [32,64]

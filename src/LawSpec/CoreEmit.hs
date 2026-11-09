@@ -9,7 +9,7 @@ import qualified LawSpec.JavaAbi as Abi
 import LawSpec.JavaTestStyle (TestStyle(..))
 import LawSpec.AbilityEmit (abilityArtifactsWithNativeBridge)
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
-import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName)
+import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName, goPackageAbilities)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
@@ -203,13 +203,13 @@ pythonPackages target plan artifact
     names = map (C.idText . C.unitId . plannedUnit) (plannedUnits plan)
     roots = ["src/", "src/lawspec_definitions/", "src/lawspec_abilities/"]
 
--- Every Go package holds every ability of the program, so two abilities with
--- one name would clash there: each that is not built in is named for its
+-- Reachable Go abilities can meet in a consuming package. Give colliding
+-- names stable spellings across the program: each non-built-in is named for its
 -- unit (example.shop's Log is ExampleShopLog), as colliding data types are.
 -- Built-in abilities keep their names, which their default handlers use.
 goAbilityNames :: String -> Plan -> Plan
 goAbilityNames target plan
-  | target /= "go" || null renamed = plan
+  | target /= "go" = plan
   | otherwise = plan { plannedUnits = [u { plannedUnit = rename (plannedUnit u) } | u <- plannedUnits plan] }
   where
     abilities = [a | u <- plannedUnits plan, a <- C.unitAbilities (plannedUnit u)]
@@ -219,7 +219,8 @@ goAbilityNames target plan
     qualified a = concatMap capitalize (split '.' (C.idText (C.abilityOwner a))) ++ C.abilityName a
     capitalize (c : cs) = toUpper c : cs
     capitalize [] = []
-    rename unit = unit { C.unitAbilities = [maybe a (\n -> a { C.abilityName = n }) (lookup (C.abilityId a) renamed) | a <- C.unitAbilities unit] }
+    rename unit = unit { C.unitAbilities = [maybe a (\n -> a { C.abilityName = n }) (lookup (C.abilityId a) renamed)
+      | a <- goPackageAbilities (map plannedUnit (plannedUnits plan)) unit] }
 
 -- Built-in units' adapter modules hold their default handlers
 -- (LawSpec.BuiltinDefaults).
@@ -451,7 +452,7 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
     (Left [Diagnostic "collision" "Scala adapter shadows a generated JVM runtime class" Nothing])
   unless (target /= "scala" || all ((`notElem` [["scala"], ["java"]]) . take 1 . split '.' . unitName) units)
     (Left [Diagnostic "identifier" "Scala's scala and java packages are reserved" Nothing])
-  emitted <- mapM (emitUnit laws) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) laws ||
+  emitted <- mapM (emitUnit laws) (filter (\u -> not (null (C.unitAbilities u) && null (C.unitHandlers u)) || not (null (functions u)) || any ((== unitName u) . owner) laws ||
     planModelChecks && not (null (C.unitMachines u) && null (C.unitSupervisors u))) units)
   dataFiles <- if target == "java" && (not (null planDataDeclarations) || not (null definitionCalls) || hasPayload)
     then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right

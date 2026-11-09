@@ -2807,7 +2807,7 @@ parseSourcesWithInventoryMode syntaxOnly origins capture canonical collections b
                 -- whole, as the collections unit is for bounded arithmetic.
                 in [Import unit alias items (Span origin origin) | namespaceOnly || not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
               collectionNames = canonicalCollectionNames collections
-          in (n, imports ++ builtin False collectionsUnit collectionsAlias collectionNames ++
+          in (n, imports ++ builtin (not (null collections)) collectionsUnit collectionsAlias collectionNames ++
                concat [builtin (canonicalSource source) unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration

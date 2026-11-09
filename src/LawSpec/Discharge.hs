@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- | How each law of a checked program is discharged, alongside the contract,
 -- construction and adapter obligations of LawSpec.Core.Evidence and the
 -- native bindings of a generation request. Strongest first:
@@ -11,24 +12,24 @@
 --   property-tested       generated cases, boundary cases and examples
 --   runtime-checked       contracts and codecs checked at native boundaries
 --   assumed               native adapters, bindings and generators on trust
-{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
   ( dischargeEvidence, dischargeEvidenceWith, dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, lawClaim, callees, showValue, budgeted
   ) where
 
-import Control.Monad (forM)
-import Data.List (intercalate, isPrefixOf)
+import Control.Monad (forM, unless)
+import Control.Monad.State.Strict (StateT, evalStateT, get, put, modify, lift)
+import Control.Monad.Except (throwError)
+import LawSpec.Naming (displayLabel)
+import Data.List (intercalate, isPrefixOf, isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (definitionContracts)
-import LawSpec.Core.Definitions (prepareHookedDefinitions)
-import LawSpec.Core.Eval (evaluateValueProposition, evaluateValue)
+import LawSpec.Core.Definitions (prepareHookedDefinitionsM)
+import LawSpec.Core.Eval (evaluateValueM, evaluateValuePropositionM)
 import LawSpec.Core.Quantification (lowerWitnessProof, lowerSearchProof)
 import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Core.Evidence
 import LawSpec.Core.Total (validateDefinitionContracts)
 import LawSpec.Core.Types (makeRegistry, TypeRegistry)
@@ -67,7 +68,11 @@ failRefuted program evidence = case refutations program evidence of
   ds -> Left ds
 dischargeSelected :: Maybe V.Verification -> Program -> Either [Diagnostic] [Obligation]
 dischargeSelected selection program = do
-  hooked <- prepareHookedDefinitions program
+  metered <- prepareHookedDefinitionsM evaluationStep program
+  let evaluation = maybe V.defaultEvaluation V.evaluation selection
+      identities = [idText (unitId u) ++ "::" ++ displayLabel (propertyName p) | u <- programUnits program, p <- unitProperties u]
+      unknown = filter (`notElem` identities) (V.deferLaws evaluation)
+  unless (null unknown) (Left [Diagnostic "verification" ("unknown deferred law: " ++ identity) Nothing | identity <- unknown])
   plan <- lawPlanner program
   registry <- either (Left . pure . (\m -> Diagnostic "generation" m Nothing)) Right
     (makeRegistry (programDataDeclarations program))
@@ -87,12 +92,6 @@ dischargeSelected selection program = do
     let resolver = specResolver program original
         stateful = statefulResolver program original
         p = resolvePerforms resolver original
-        hook states invoke' name = case M.lookup name resolver of
-          Just clause -> Just (\values -> invoke' clause (if null values then [ScalarValue (SAbsent "Unit")] else values))
-          Nothing -> case M.lookup name stateful of
-            Just (h, clause) -> Just (step states h (invoke' clause))
-            Nothing -> Nothing
-        invokeWith states = hooked (hook states)
         obligation status reason = Obligation (unitId u) (propertyId p) "law" (lawClaim original) status reason
         called = S.fromList (concatMap callees (propertyExpressions p))
         adapters = S.toList (S.difference called definitionIds)
@@ -141,6 +140,9 @@ dischargeSelected selection program = do
               (if selection == Nothing then "a performance budget: the generated tests time it on the real clock, so it is measured, never proved"
                else "a performance budget: the generated tests will time it on the real clock; no measurement has completed")
         Right planned
+          | idText (unitId u) ++ "::" ++ displayLabel (propertyName original) `elem` V.deferLaws evaluation ->
+              pure (obligation (if continuation enabled planned then Planned else Incomplete)
+                "optional compiler evaluation explicitly deferred; intrinsic definition checks passed; no compiler law result")
           | propertyInputDomain original == UniversalDomain, finiteCases planned == Just [] ->
               if enabled V.Exhaustive || enabled V.Proof then static
                 (if enabled V.Exhaustive then ExhaustivelyChecked else Proved)
@@ -149,20 +151,27 @@ dischargeSelected selection program = do
           | enabled V.Proof, closed, Right () <- proveScoped definitions registry bits p (plannedProperty planned) -> static Proved
               ("proved statically from its input refinements and the definitions it calls" ++ scopedDomains)
           | enabled V.Exhaustive, closed, not effects, Just tuples <- finiteCases planned -> do
-              results <- mapM (\values -> do
-                states <- freshStates registry bits (invokeWith Nothing) program original values
-                pure (refute (hasLogicalQuantifier (propertyBody original)) registry bits (invokeWith states) (plannedProperty planned) values)) tuples
-              let failures = concat [ds | Left ds <- results]
-                  incomplete = [d | d <- failures, code d == "witness-search-incomplete"]
-                  refuted = [d | d <- failures, code d == "refuted"]
-                  errors = [d | d <- failures, code d `notElem` ["witness-search-incomplete", "refuted"]]
-              if not (null errors) then Left errors
-              -- A counterexample the compiler evaluated refutes the law:
-              -- its row says so, and the build fails (refutations).
-              else if not (null refuted) then pure (obligation Refuted (intercalate "\n" (map message refuted)))
-              else if not (null incomplete) then pure (obligation Incomplete (message (head incomplete)))
-              else static ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
-                "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively" ++ scopedDomains)
+              let checkCases [] = pure Nothing
+                  checkCases (values : rest) = do
+                    accepted <- evaluateCase metered registry bits program original (plannedProperty planned) values
+                    if accepted then checkCases rest else pure (Just values)
+                  checked = evalStateT (checkCases tuples)
+                    (V.maxSteps evaluation, M.empty)
+              case checked of
+                Left message | "evaluation-exhausted:" `isInfixOf` message ->
+                  pure (obligation (if continuation enabled planned then Planned else Incomplete)
+                    ("optional compiler evaluation exhausted its " ++ show (V.maxSteps evaluation) ++ " logical steps; no completed compiler law result"))
+                Left message | "quantifier-search-incomplete:" `isInfixOf` message -> pure (obligation Incomplete message)
+                Left message | hasLogicalQuantifier (propertyBody original) ->
+                  Left [Diagnostic "verification-incomplete"
+                    ("scoped search could not complete: " ++ message ++ "; a failed candidate evaluation does not establish nonexistence")
+                    (Just (propertyLocation original))]
+                Left message -> pure (obligation Refuted ("law " ++ propertyName p ++ " is undefined: " ++ message))
+                Right (Just values) -> pure (obligation Refuted ("law " ++ propertyName p ++ " is false" ++
+                  (if null values then "" else " for " ++ intercalate ", "
+                    [binderName (quantifiedBinder q) ++ " = " ++ showValue value | (q,value) <- zip (propertyInputs p) values])))
+                Right Nothing -> static ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
+                  "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively" ++ scopedDomains)
           | enabled V.Exhaustive, Just tuples <- finiteCases planned -> pending ExhaustivelyChecked
               ("the generated tests check " ++ every tuples ++ relying adapters ++ scopedDomains)
           | enabled V.Property -> pending PropertyTested
@@ -224,20 +233,47 @@ dischargeSelected selection program = do
       Calls _ _ -> True
       Helper b _ | b `elem` [Recorded, AcquireResource, ReleaseResource, FreePort] -> True
       _ -> any (effectful answered) (children e)
-    refute scoped registry bits invoke p values = do
-      let env = zip (map (binderId . quantifiedBinder) (propertyInputs p)) values
-          at = Just (propertyLocation p)
-          shown = intercalate ", " [binderName (quantifiedBinder q) ++ " = " ++ showValue v | (q, v) <- zip (propertyInputs p) values]
-          input = if null shown then "" else " for " ++ shown
-      case evaluateValueProposition registry bits invoke env (propertyBody p) of
-        Right True -> pure ()
-        Right False -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " is false" ++ input) at]
-        Left message | "quantifier-search-incomplete:" `isPrefixOf` message -> Left [Diagnostic "witness-search-incomplete"
-          ("law " ++ propertyName p ++ " remains inconclusive" ++ input ++ ": " ++ message) at]
-        Left message | scoped -> Left [Diagnostic "verification-incomplete"
-          ("scoped search for law " ++ propertyName p ++ " could not complete" ++ input ++ ": " ++ message ++
-           "; a failed candidate evaluation does not establish nonexistence") at]
-        Left message -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " fails" ++ input ++ ": " ++ message) at]
+-- Logical work is deterministic and local to one law, across all its inputs.
+-- Each expression visit and each value-validation node consumes one step.
+-- Admission uses the unmetered evaluator and is never bypassed by this budget.
+type EvaluationRun = StateT (Integer, M.Map Id Value) (Either String)
+
+evaluationStep :: EvaluationRun ()
+evaluationStep = do
+  (remaining, states) <- get
+  if remaining <= 0 then throwError "evaluation-exhausted: logical step limit"
+    else put (remaining - 1, states)
+
+continuation :: (V.Layer -> Bool) -> PlannedProperty -> Bool
+continuation enabled planned = enabled V.Property ||
+  (enabled V.Exhaustive && finiteCases planned /= Nothing) ||
+  (enabled V.Examples && not (null (propertyExamples (plannedProperty planned))))
+
+evaluateCase :: (((Id -> [Value] -> EvaluationRun Value) -> Id -> Maybe ([Value] -> EvaluationRun Value)) -> Id -> [Value] -> EvaluationRun Value)
+  -> TypeRegistry -> Int -> Program -> Property -> Property -> [Value] -> EvaluationRun Bool
+evaluateCase metered registry bits program original planned values = do
+  modify (\(fuel, _) -> (fuel, M.empty))
+  let stateless = specResolver program original
+      stateful = statefulResolver program original
+      hook invoke identity = case M.lookup identity stateless of
+        Just clause -> Just (\args -> invoke clause (if null args then [ScalarValue (SAbsent "Unit")] else args))
+        Nothing -> case M.lookup identity stateful of
+          Nothing -> Nothing
+          Just (handler, clause) -> Just $ \args -> do
+            (_, states) <- get
+            state <- maybe (throwError "handler state unavailable") pure (M.lookup handler states)
+            result <- invoke clause (state : args)
+            case result of
+              DataValue _ _ [value, next] -> modify (\(fuel, table) -> (fuel, M.insert handler next table)) >> pure value
+              _ -> throwError "stateful handler did not return a pair"
+      invoke = metered hook
+  mapM_ (\handler -> case handlerState handler of
+    Just (_, start) -> do
+      value <- evaluateValueM evaluationStep registry bits invoke [] start
+      modify (\(fuel, states) -> (fuel, M.insert (handlerId handler) value states))
+    Nothing -> pure ()) [handler | (_, choice) <- propertyHandlers original, Just handler <- [specHandlerFor program choice]]
+  evaluateValuePropositionM evaluationStep registry bits invoke
+    (zip (map (binderId . quantifiedBinder) (propertyInputs planned)) values) (propertyBody planned)
 
 -- Each operation a law's spec handlers with state answer, by handler and
 -- clause.
@@ -252,38 +288,6 @@ specHandlerFor program choice = case choice of
   SpecHandler h -> lookup h [(handlerId x, x) | u <- programUnits program, x <- unitHandlers u]
   RecordingHandler inner -> specHandlerFor program inner
   ProductionHandler -> Nothing
-
--- The starting state of each spec handler with state a law runs under, in a
--- cell of its own for one case. (The values make each case's cell its own.)
-freshStates :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> Program -> Property -> [Value]
-  -> Either [Diagnostic] (Maybe (IORef (M.Map Id Value)))
-freshStates registry bits invoke program p values = do
-  starts <- forM [h | (_, choice) <- propertyHandlers p, Just h <- [specHandlerFor program choice], Just _ <- [handlerState h]] $ \h ->
-    case handlerState h of
-      Just (_, start) -> either (\m -> Left [Diagnostic "refuted" (handlerName h ++ ": " ++ m) Nothing]) (Right . (,) (handlerId h))
-        (evaluateValue registry bits invoke [] start)
-      Nothing -> Left []
-  if null starts then pure Nothing else pure (Just (cell (length values) (M.fromList starts)))
-
-{-# NOINLINE cell #-}
-cell :: Int -> M.Map Id Value -> IORef (M.Map Id Value)
-cell salt initial = unsafePerformIO (salt `seq` newIORef initial)
-
--- One operation of a handler with state: its clause takes the state first
--- and gives Pair result state.
-{-# NOINLINE step #-}
-step :: Maybe (IORef (M.Map Id Value)) -> Id -> ([Value] -> Either String Value) -> [Value] -> Either String Value
-step Nothing h _ _ = Left ("the state of " ++ idText h ++ " is not available here")
-step (Just ref) h clause values = unsafePerformIO $ do
-  states <- readIORef ref
-  case M.lookup h states of
-    Nothing -> pure (Left ("no state for " ++ idText h))
-    Just state -> case clause (state : values) of
-      Left message -> pure (Left message)
-      Right (DataValue _ _ [result, next]) -> do
-        writeIORef ref (M.insert h next states)
-        pure (Right result)
-      Right other -> pure (Left ("a clause of " ++ idText h ++ " gave " ++ show other ++ ", not a pair"))
 
 -- Each operation a law's stateless spec handlers answer, by the clause that
 -- answers it.

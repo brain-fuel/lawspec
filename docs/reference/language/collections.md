@@ -61,6 +61,12 @@ It evaluates the candidate and collection once, in that order. Comparisons
 stop at the first equal element. `not (value in members)` negates the result.
 Membership is nonassociative; parenthesize larger Boolean expressions.
 
+`prelude.all predicate members` uses the same iterable domains as `any`.
+It stops at the first false predicate and returns true for an empty collection.
+The predicate's captured arguments are evaluated once, before traversal, even
+when the collection is empty. It uses the checked universal element callback;
+no new proof rule is introduced. ref:DEC-s1j-shared-failures
+
 `prelude.any predicate members` asks whether a Boolean predicate holds for
 at least one element. It visits elements in iteration order and stops at the
 first true result; an empty collection gives false. It needs no element `Eq`

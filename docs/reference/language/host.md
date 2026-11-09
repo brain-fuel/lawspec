@@ -37,6 +37,7 @@ end unit
 ability FileSystem is
   readBytes :: Text -> Maybe Bytes
   writeBytes :: Text -> Bytes -> Unit
+  createDirectories :: Text -> Unit
   pathExists :: Text -> Bool
   removePath :: Text -> Unit
   temporaryDirectory :: Text -> Text
@@ -45,7 +46,12 @@ end ability
 ```
 
 - `readBytes path` is the file's bytes, or `Absent` when it cannot be read.
-- `writeBytes path b` writes the file, replacing it.
+- `writeBytes path b` writes the file, replacing it. It does not create missing
+  parent directories; call `createDirectories` first.
+- `createDirectories path` creates missing parents and succeeds if the directory
+  already exists. A file at that path, permission failure or other filesystem
+  failure is reported by the host handler. Custom `FileSystem` handlers must add
+  this operation when regenerating their interface. ref:DEC-s1j-shared-failures
 - `pathExists path` holds for a file, directory or link at the path.
 - `removePath path` removes a file, or a directory and what it holds; a path
   with nothing at it is left alone.

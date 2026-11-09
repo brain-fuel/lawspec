@@ -29,7 +29,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (evaluate)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import System.Mem.StableName (StableName, makeStableName)
-import Data.List (find, nub, partition, sort, stripPrefix, zip3)
+import Data.List (find, nub, partition, sort, sortOn, stripPrefix, zip3)
 import LawSpec.Regex (Regex, parseRegex, regexSamples)
 import LawSpec.IndexTerm
 import Control.Monad (filterM, unless, when)
@@ -67,6 +67,27 @@ caseCover p = maybe (compressCases (boundaryCases p)) Right (finiteCover p)
 -- | What each input's generator must respect, so every target's framework
 -- generates inside the same domain. ref:DEC-shrink-within-domain
 data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show, Generic)
+
+generationNodeBudget :: Integral n => n -> GeneratorRequirement -> n
+generationNodeBudget baseline requirement = maximum
+  (baseline : [8 + size value | value <- generatorBoundaries requirement])
+  where
+    size (DataValue _ _ fields) = 1 + sum (map size fields)
+    size (PresenceValue _ value) = 1 + maybe 0 size value
+    size _ = 1
+
+-- | A strategy's intermediate type has its own reachable constructor domain.
+-- Reuse the law requirement only for an undirected draw of that exact type.
+anyRequirement :: [DataDeclaration] -> Int -> GeneratorRequirement -> Type -> Maybe Quantifier
+  -> Either [Diagnostic] GeneratorRequirement
+anyRequirement declarations bits original ty aim
+  | aim == Nothing && ty == binderType (generatorBinder original) = Right original
+  | otherwise = either (Left . pure . (\message -> Diagnostic "strategy" message Nothing)) Right $ do
+      registry <- makeRegistry declarations
+      witnesses <- boundariesWithRegistry registry bits ty
+      let q = maybe (Quantifier ((generatorBinder original) { binderType = ty }) [] []) id aim
+      pure (GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) witnesses
+        (quantifiedBounds q) [] (indexedGeneration declarations [] q))
 
 -- | A predicate m x == target, where m is the index measure of a family,
 -- directs generation. Each constructor of every family reachable through
@@ -806,9 +827,34 @@ boundariesWithRegistry registry bits ty = do
 -- expansion and a global node budget bound recursive/growing applications.
 -- Every returned candidate is checked by the same evaluator as examples.
 constrainedBoundaries :: TypeRegistry -> Int -> Type -> Either String [Value]
-constrainedBoundaries registry bits root =
-  evalStateT (walk (length (registryDeclarations registry) + 3) root) (256, M.empty)
+constrainedBoundaries registry bits root = case root of
+  Constructor name _ | primitive name == Nothing, name `notElem` ["Nullable", "Optional", "List"] -> do
+    constructors <- viableConstructors registry table root
+    -- Each root constructor owns its search allowance. A recursive first
+    -- alternative cannot consume the work reserved for a later constructor.
+    concat <$> mapM (exploreConstructor 0) (sortOn (idText . fst) constructors)
+  _ -> explore 0 []
   where
+    maximumDepth = length (registryDeclarations registry) + 3
+    explore depth previous
+      | depth > maximumDepth = pure previous
+      | otherwise = do
+          values <- evalStateT (walk depth root) (4096, M.empty)
+          -- An empty list/absent optional is a witness, but it must not end
+          -- exploration before the stored element's constructors are reached.
+          let populated value = case value of
+                DataValue _ (Id "List::Cons") _ -> True
+                PresenceValue _ (Just _) -> True
+                _ -> False
+              enough = not (null values) && case root of
+                Constructor name _ | name `elem` ["List","Nullable","Optional"] -> any populated values
+                _ -> True
+          if enough then pure values else explore (depth + 1) values
+    exploreConstructor depth constructor
+      | depth > maximumDepth = pure []
+      | otherwise = do
+          values <- evalStateT (construct depth root constructor) (4096, M.empty)
+          if null values then exploreConstructor (depth + 1) constructor else pure values
     table = population registry
     constants = concat [concatMap literals (constructorPredicates c)
       | d <- registryDeclarations registry, c <- dataConstructors d]
@@ -851,17 +897,15 @@ constrainedBoundaries registry bits root =
           [[v,v] | v <- elements] ++ pairs))
       Constructor _ _ -> do
         constructors <- lift (viableConstructors registry table ty)
-        concat <$> mapM (\(tag,fields) -> do
-          domains <- mapM (walk (depth-1)) fields
-          -- Witnesses are rendered into every test that uses them: prefer
-          -- small ones, as deep balanced trees double in size with each
-          -- level, and use larger ones only when no small one is valid.
-          let candidates = [DataValue ty tag payload | payload <- combinations domains]
-              (small, large) = partition ((<= 32) . valueNodes) candidates
-          preferred <- lift (acceptedPrefix 32 (acceptsValue registry bits ty) small)
-          if null preferred then lift (acceptedPrefix 32 (acceptsValue registry bits ty) large)
-            else pure preferred) constructors
+        concat <$> mapM (construct depth ty) (sortOn (idText . fst) constructors)
       _ -> lift (Left ("no boundary witnesses for " ++ show ty))
+    construct depth ty (tag, fields) = do
+      domains <- mapM (walk (depth-1)) fields
+      let candidates = [DataValue ty tag payload | payload <- combinations domains]
+          (small, large) = partition ((<= 32) . valueNodes) candidates
+      preferred <- lift (acceptedPrefix 32 (acceptsValue registry bits ty) small)
+      if null preferred then lift (acceptedPrefix 32 (acceptsValue registry bits ty) large)
+        else pure preferred
     valueNodes value = case value of
       DataValue _ _ fields -> 1 + sum (map valueNodes fields)
       PresenceValue _ (Just inner) -> 1 + valueNodes inner

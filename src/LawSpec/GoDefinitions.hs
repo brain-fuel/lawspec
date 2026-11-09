@@ -23,7 +23,7 @@ import Data.Char (toUpper)
 import Data.List (nub, intercalate, zip4)
 import LawSpec.SourceLink (labelled, sourceLink)
 import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, uniqueNames, sourceDefinitionName)
-import LawSpec.AbilityNames (interfaceName, specName)
+import LawSpec.AbilityNames (interfaceName, specName, goPackageMembers)
 
 -- | Generated tests call checked definitions by these names, so every test
 -- file agrees.
@@ -77,8 +77,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       everyDefinition = M.fromList [(declarationId (definitionDeclaration d), d) | u <- units, d <- unitDefinitions u]
       -- The handlers each package declares: its own, and every handler a
       -- body installs (LawSpec.AbilityEmit.Go).
-      scoped = [h | v <- units, d <- unitDefinitions v, h <- scopedHandlers (definitionBody d)]
-      handlersOf u = unitHandlers u ++ [h | identity <- scoped, v <- units, h <- unitHandlers v, handlerId h == identity]
+      handlersOf = snd . goPackageMembers units
       -- A package's bodies: its unit's definitions, its handlers' clauses,
       -- and everything they reach.
       reachable u = closure S.empty (map (declarationId . definitionDeclaration) (unitDefinitions u) ++

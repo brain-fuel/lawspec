@@ -1,0 +1,42 @@
+{
+  "goImports": [
+    {
+      "alias": "app",
+      "path": "example.com/lawspec-example/application"
+    }
+  ],
+  "handlers": [
+    {
+      "ability": "regression.provider::Probe",
+      "native": [
+        "app",
+        "NewProbe"
+      ]
+    }
+  ],
+  "types": [
+    {
+      "type": "regression.provider::type::Packet",
+      "native": [
+        "app",
+        "Envelope"
+      ],
+      "constructors": [
+        {
+          "constructor": "Packet",
+          "native": [
+            "app",
+            "Envelope"
+          ],
+          "style": "record",
+          "fields": [
+            {
+              "field": "value",
+              "native": "Flag"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

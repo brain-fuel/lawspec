@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Independent Wasm Platform Kit integration exposes the compiler through a
+  capability-scoped component runtime, with typed Haskell services, generated
+  bindings and integrity-pinned native platform packages. The full application
+  port and default-runtime cutover remain incomplete.
+- Component installation verifies prebuilt native code or compiles the packaged
+  Wasm during installation. `WASM_PLATFORM_KIT_BUILD_FROM_SOURCE=1 npm rebuild lawspec`
+  forces source preparation; normal commands never trigger that compilation.
+
+### Changed
+
+- The component API rejects runtime `compilation: 'source'` with installation
+  repair instructions. The public SDK packages are named `wasm-platform-kit`.
+- S1J compiler and runtime work covers checked strategies, host defaults,
+  native bindings, cache behavior and mutation tooling; its disposition and
+  remaining review are recorded in `docs/explanation/s1j-disposition.md`.
+
 ## [0.31.3] - 2026-11-03
 
 ### Added

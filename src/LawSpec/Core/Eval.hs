@@ -1,9 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- | Reference execution of typed core. External calls are explicit effects;
 -- evaluating a pure predicate cannot accidentally invoke an adapter.
 module LawSpec.Core.Eval
   ( evaluate, evaluatePure, evaluateProposition
+  , evaluateValueM, evaluateAdmittedValueM, evaluateValuePropositionM, validateValueWithContractsM
   , evaluateValue, evaluateValuePure, evaluateValueProposition, validateValueWithContracts
   ) where
+import Control.Monad.Except (MonadError, liftEither, throwError, catchError)
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Common (Location(..), Span(..))
 import LawSpec.Core
@@ -42,19 +45,39 @@ evaluateValuePure registry bits = evaluateValue registry bits
 -- | Constructor predicates are closed and pure; an adapter dispatcher must not
 -- become available merely because a value crosses a definition boundary.
 validateValueWithContracts :: TypeRegistry -> Int -> Type -> Value -> Either String Value
-validateValueWithContracts registry bits =
-  validateValueWith (evaluateValuePure registry bits) registry bits
+validateValueWithContracts = validateValueWithContractsM (pure ())
+
+validateValueWithContractsM :: MonadError String m => m () -> TypeRegistry -> Int -> Type -> Value -> m Value
+validateValueWithContractsM tick registry bits =
+  validateValueWithM tick (evaluateValueM tick registry bits (\name _ -> throwError ("external call in pure expression: " ++ idText name))) registry bits
 
 -- | The reference semantics of Core: every target must agree with it, and the
 -- compiler uses it to check examples and enumerate finite domains.
 -- ref:DEC-portable-exact-arithmetic
 evaluateValue :: TypeRegistry -> Int -> ValueAdapter -> [(Id,Value)] -> Expr -> Either String Value
-evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
-  run env Expr{..} = context expressionOrigin $ let go = run env in case expressionNode of
-    Constant s -> validateValueWithContracts registry bits expressionType (fromScalarValue expressionType s)
+evaluateValue = evaluateValueM (pure ())
+
+evaluateValueM :: MonadError String m => m () -> TypeRegistry -> Int -> (Id -> [Value] -> m Value)
+  -> [(Id,Value)] -> Expr -> m Value
+evaluateValueM = evaluateWithAdmissionM False
+
+-- Only the admitted-definition interpreter uses this entry point. Its initial
+-- arguments are validated at the public call boundary. Borrowed subvalues of
+-- checked values need no second recursive validation; constructions and native
+-- results still pass through their complete contract checks.
+evaluateAdmittedValueM :: MonadError String m => m () -> TypeRegistry -> Int -> (Id -> [Value] -> m Value)
+  -> [(Id,Value)] -> Expr -> m Value
+evaluateAdmittedValueM = evaluateWithAdmissionM True
+
+evaluateWithAdmissionM :: MonadError String m => Bool -> m () -> TypeRegistry -> Int -> (Id -> [Value] -> m Value)
+  -> [(Id,Value)] -> Expr -> m Value
+evaluateWithAdmissionM admitted tick registry bits adapter bindings = run (M.fromList bindings) where
+  borrowed ty value = if admitted then pure value else validateValueWithContractsM tick registry bits ty value
+  run env Expr{..} = context expressionOrigin $ tick >> (let go = run env in case expressionNode of
+    Constant s -> validateValueWithContractsM tick registry bits expressionType (fromScalarValue expressionType s)
     Construct tag args -> do
       fields <- mapM go args
-      validateValueWithContracts registry bits expressionType (DataValue expressionType tag fields)
+      validateValueWithContractsM tick registry bits expressionType (DataValue expressionType tag fields)
     Match value cases -> do
       -- Program validation checks coverage and branch scopes; execution
       -- evaluates only the selected branch.
@@ -62,102 +85,101 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
       case payload of
         DataValue _ tag fields -> case filter ((== tag) . caseConstructor) cases of
           [branch] | length fields == length (caseBinders branch) -> do
-            checked <- sequence [validateValueWithContracts registry bits (binderType binder) field
+            checked <- sequence [borrowed (binderType binder) field
               | (binder, field) <- zip (caseBinders branch) fields]
             result <- run (M.union (M.fromList (zip (map binderId (caseBinders branch)) checked)) env) (caseBody branch)
-            validateValueWithContracts registry bits expressionType result
-          _ -> Left "missing, duplicate, or malformed match branch"
-        _ -> Left "matching requires a data value"
+            borrowed expressionType result
+          _ -> throwError "missing, duplicate, or malformed match branch"
+        _ -> throwError "matching requires a data value"
     Project _ index value -> do
       payload <- go value
       case payload of
-        DataValue _ _ fields | (field : _) <- drop index fields -> validateValueWithContracts registry bits expressionType field
-        _ -> Left "a field of a value without it"
+        DataValue _ _ fields | (field : _) <- drop index fields -> borrowed expressionType field
+        _ -> throwError "a field of a value without it"
     Update _ index value field -> do
       replacement <- go field
       payload <- go value
       case payload of
         DataValue t tag fields | index < length fields ->
-          validateValueWithContracts registry bits expressionType (DataValue t tag (take index fields ++ [replacement] ++ drop (index + 1) fields))
-        _ -> Left "a field of a value without it"
+          validateValueWithContractsM tick registry bits expressionType (DataValue t tag (take index fields ++ [replacement] ++ drop (index + 1) fields))
+        _ -> throwError "a field of a value without it"
     AllElements value binder predicate -> do
-      items <- go value >>= listItems
-      let every _ [] = Right (ScalarValue (SBool True))
+      items <- go value >>= liftEither . listItems
+      let every _ [] = pure (ScalarValue (SBool True))
           every index (item:rest) = do
-            accepted <- case do
-              checked <- validateValueWithContracts registry bits (binderType binder) item
-              run (M.insert (binderId binder) checked env) predicate >>= valueBoolean of
-                Left message -> Left ("List element " ++ show index ++ ": " ++ message)
-                Right result -> Right result
-            if accepted then every (index + 1) rest else Right (ScalarValue (SBool False))
+            accepted <- catchError (do
+              checked <- validateValueWithContractsM tick registry bits (binderType binder) item
+              run (M.insert (binderId binder) checked env) predicate >>= liftEither . valueBoolean)
+              (throwError . (("List element " ++ show index ++ ": ") ++))
+            if accepted then every (index + 1) rest else pure (ScalarValue (SBool False))
       every (0 :: Int) items
     SearchElements universal value binder predicate -> do
-      items <- go value >>= listItems
+      items <- go value >>= liftEither . listItems
       let decisive = if universal then -1 else 1
-          finished result = Right (ScalarValue (SInteger "Int8" result))
+          finished result = pure (ScalarValue (SInteger "Int8" result))
           search result [] = finished result
           search result (item : rest) = do
-            checked <- validateValueWithContracts registry bits (binderType binder) item
+            checked <- validateValueWithContractsM tick registry bits (binderType binder) item
             outcome <- run (M.insert (binderId binder) checked env) predicate
             case outcome of
               ScalarValue (SInteger "Int8" code)
                 | code == decisive -> finished code
                 | code == 0 -> search 0 rest
                 | code == negate decisive -> search result rest
-              _ -> Left "invalid finite search outcome"
+              _ -> throwError "invalid finite search outcome"
       search (negate decisive) items
     AllPayloads value predicates -> do
       payload <- go value
       let check (binder,predicate) item = do
-            checked <- validateValueWithContracts registry bits (binderType binder) item
-            run (M.insert (binderId binder) checked env) predicate >>= valueBoolean
-      accepted <- Payload.checkPayloads (validateValueWithContracts registry bits)
+            checked <- validateValueWithContractsM tick registry bits (binderType binder) item
+            run (M.insert (binderId binder) checked env) predicate >>= liftEither . valueBoolean
+      accepted <- Payload.checkPayloads (validateValueWithContractsM tick registry bits)
         registry (LawSpec.Core.expressionType value) (map check predicates) payload
       pure (ScalarValue (SBool accepted))
-    Local n -> maybe (Left ("unbound core value: " ++ idText n))
-      (validateValueWithContracts registry bits expressionType) (M.lookup n env)
-    ExternalCall n args -> mapM go args >>= adapter n >>= validateValueWithContracts registry bits expressionType
+    Local n -> maybe (throwError ("unbound core value: " ++ idText n))
+      (borrowed expressionType) (M.lookup n env)
+    ExternalCall n args -> mapM go args >>= adapter n >>= validateValueWithContractsM tick registry bits expressionType
     Binary op evidence a b -> do
       x <- go a
       y <- go b
       case evidence of
         Structural _ | op `elem` [Equal, NotEqual] -> do
-          same <- equalValues bits x y
+          same <- liftEither (equalValues bits x y)
           pure (ScalarValue (SBool (if op == Equal then same else not same)))
-        Structural _ -> Left "structural values support equality only"
+        Structural _ -> throwError "structural values support equality only"
         Numeric _ -> do
-          left <- toScalarValue x
-          right <- toScalarValue y
-          ScalarValue <$> binaryValue bits (binaryName op) left right
-    Unary Not a -> ScalarValue . SBool . not <$> (go a >>= valueBoolean)
+          left <- liftEither (toScalarValue x)
+          right <- liftEither (toScalarValue y)
+          ScalarValue <$> liftEither (binaryValue bits (binaryName op) left right)
+    Unary Not a -> ScalarValue . SBool . not <$> (go a >>= liftEither . valueBoolean)
     Unary Negate a -> do
-      x <- go a >>= toScalarValue
+      x <- go a >>= liftEither . toScalarValue
       case x of
         SComplex t r i -> pure (ScalarValue (SComplex t (floatScalar (scalarName r) (negate (floatValue r))) (floatScalar (scalarName i) (negate (floatValue i)))))
         SFloat t _ -> pure (ScalarValue (floatScalar t (negate (floatValue x))))
-        _ -> do r <- exactValue x; ScalarValue <$> convertValue bits expressionType (reduced (negate r))
-    ShortCircuit And a b -> do x <- go a >>= valueBoolean; if x then go b else pure (ScalarValue (SBool False))
-    ShortCircuit Or a b -> do x <- go a >>= valueBoolean; if x then pure (ScalarValue (SBool True)) else go b
-    If c a b -> do x <- go c >>= valueBoolean; if x then go a else go b
+        _ -> do r <- liftEither (exactValue x); ScalarValue <$> liftEither (convertValue bits expressionType (reduced (negate r)))
+    ShortCircuit And a b -> do x <- go a >>= liftEither . valueBoolean; if x then go b else pure (ScalarValue (SBool False))
+    ShortCircuit Or a b -> do x <- go a >>= liftEither . valueBoolean; if x then pure (ScalarValue (SBool True)) else go b
+    If c a b -> do x <- go c >>= liftEither . valueBoolean; if x then go a else go b
     Convert _ target a -> do
       value <- go a
       if target == LawSpec.Core.expressionType a
-        then validateValueWithContracts registry bits target value
-        else fromScalarValue target <$> (toScalarValue value >>= convertValue bits target)
+        then validateValueWithContractsM tick registry bits target value
+        else fromScalarValue target <$> liftEither (toScalarValue value >>= convertValue bits target)
     -- An operation goes to the handler the caller installed in the hook.
-    Perform op args -> mapM go args >>= adapter (operationId op) >>= validateValueWithContracts registry bits expressionType
-    Handle _ _ -> Left "a failure is caught when the law runs, not by the compiler"
+    Perform op args -> mapM go args >>= adapter (operationId op) >>= validateValueWithContractsM tick registry bits expressionType
+    Handle _ _ -> throwError "a failure is caught when the law runs, not by the compiler"
     Let binder value body -> do
       bound <- go value
       run (M.insert (binderId binder) bound env) body
-    Calls _ _ -> Left "calls are counted when the law runs, not by the compiler"
-    Helper Unreachable _ -> Left "a branch the indices rule out was reached"
+    Calls _ _ -> throwError "calls are counted when the law runs, not by the compiler"
+    Helper Unreachable _ -> throwError "a branch the indices rule out was reached"
     Helper IncompleteSearch [reason] -> do
       value <- go reason
       case value of
-        ScalarValue (SSequence "Text" codePoints) -> Left (map toEnum codePoints)
-        _ -> Left "quantifier-search-incomplete: invalid diagnostic reason"
-    Helper builtin args -> mapM go args >>= helper builtin
+        ScalarValue (SSequence "Text" codePoints) -> throwError (map toEnum codePoints)
+        _ -> throwError "quantifier-search-incomplete: invalid diagnostic reason"
+    Helper builtin args -> mapM go args >>= liftEither . helper builtin)
   helper Length [value@(DataValue (Constructor "List" [_]) _ _)] =
     ScalarValue . SInteger "Integer" . fromIntegral . length <$> listItems value
   helper IsPresent [PresenceValue _ payload] =
@@ -215,10 +237,9 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
   maybeValue element value = case value of
     Just v -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Present") [v]
     Nothing -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Absent") []
-  context origin result = case result of
-    Left msg | "quantifier-search-incomplete:" `isPrefixOf` msg -> Left msg
-    Left msg -> Left (originText origin ++ ": " ++ msg)
-    Right v -> Right v
+  context origin result = catchError result $ \msg ->
+    throwError (if any (`isPrefixOf` msg) ["quantifier-search-incomplete:", "evaluation-exhausted:"]
+      then msg else originText origin ++ ": " ++ msg)
 
 -- Internal constructors are never a user-facing source location.
 originText :: Origin -> String
@@ -241,12 +262,16 @@ evaluateProposition bits adapter env proposition = do
 -- | Equations compare by LawSpec's equality, not a host language's.
 -- ref:DEC-portable-exact-arithmetic
 evaluateValueProposition :: TypeRegistry -> Int -> ValueAdapter -> [(Id,Value)] -> Proposition -> Either String Bool
-evaluateValueProposition registry bits adapter env = go where
-  term = evaluateValue registry bits adapter env
-  go (Equation _ a b) = do x <- term a; y <- term b; equalValues bits x y
-  go (Implication g p) = do enabled <- term g >>= valueBoolean; if enabled then go p else pure True
+evaluateValueProposition = evaluateValuePropositionM (pure ())
+
+evaluateValuePropositionM :: MonadError String m => m () -> TypeRegistry -> Int -> (Id -> [Value] -> m Value)
+  -> [(Id,Value)] -> Proposition -> m Bool
+evaluateValuePropositionM tick registry bits adapter env = go where
+  term = evaluateValueM tick registry bits adapter env
+  go (Equation _ a b) = do x <- term a; y <- term b; liftEither (equalValues bits x y)
+  go (Implication g p) = do enabled <- term g >>= liftEither . valueBoolean; if enabled then go p else pure True
   go (Conjunction ps) = allM ps
   go (Negation body) = not <$> go body
-  go (Quantified _ _ _) = Left "a quantified proposition requires a complete search plan before evaluation"
-  allM [] = Right True
+  go (Quantified _ _ _) = throwError "a quantified proposition requires a complete search plan before evaluation"
+  allM [] = pure True
   allM (p:ps) = do ok <- go p; if ok then allM ps else pure False

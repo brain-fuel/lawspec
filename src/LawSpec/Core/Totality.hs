@@ -209,7 +209,7 @@ auditWithRecordInstances instances templates constructors contracts definitions 
     unless (all (`elem` proofArguments d) (concatMap freeVariables (proofArgumentDomains d)))
       (Left "argument domain contains an out-of-scope variable")
     forM_ (concatMap calls (expressions d)) $ \callee -> unless (callee `S.member` known)
-      (Left ("total definition calls an adapter or unknown definition: " ++ idText callee))
+      (Left ("total definition calls an adapter or unknown definition: " ++ idText callee ++ "; expose native work as an ability operation and call it from an effectful procedure; total functions require checked definitions"))
     let roots = M.fromList [(name, (index, False)) | (index,name) <- zip [0..] (proofArguments d)]
         bounded = initialFacts{parameterBounds=M.fromList [(name, domainBounds name (proofArgumentDomains d)) | name <- proofArguments d]}
         visit facts expression = walk signatures contractTable (proofId d) roots facts
@@ -1201,7 +1201,16 @@ strictLet :: Id -> Proof -> Proof -> Proof
 strictLet binder value body = case value of
   Variable _ -> substituted
   _ -> Match value [([], substituted)]
-  where substituted = substituteProof (M.singleton binder value) body
+  where
+    -- The strict prefix above is audited once. A product's result can be
+    -- substituted without copying that prefix into every enclosing product;
+    -- otherwise nested record literals double the proof tree at each level.
+    -- Only a known constructor is reduced: opaque calls retain their original
+    -- proof, and no constructor contract or strict prefix is discarded.
+    result = case knownResult value of
+      product@(Construct _ _) -> product
+      _ -> value
+    substituted = substituteProof (M.singleton binder result) body
 
 -- | let x = e in body, where e may be an ability operation's call. Its result
 -- is a value of its own: x names it, rather than standing for the opaque

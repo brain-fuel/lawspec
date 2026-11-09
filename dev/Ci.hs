@@ -213,44 +213,56 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     targetOf = M.fromList [(stepName s, target) | (Just target, steps) <- groups, s <- steps]
     names = S.fromList (map stepName (concatMap snd groups))
     present n = n `S.member` names
-    task s@(Step name env command) = Task name (filter present (follows name command (M.lookup name targetOf)))
-      (claims name env command (M.lookup name targetOf)) s
+    task s@(Step name env command) =
+      Task
+        name
+        (filter present (follows name command (M.lookup name targetOf)))
+        (claims name env command (M.lookup name targetOf))
+        s
     follows name command target = case target of
-      Nothing -> [bootstrap | name == "npm-tests", bootstrap <- ["typescript-bootstrap","javascript-bootstrap","python-bootstrap"]]
-        ++ ["python-bootstrap" | name == "beam-runtime"]
-        ++ ["editor-install" | name `elem` ["editor-grammar","npm-tests"]]
-        ++ ["docs" | name == "rejection-examples"]
-        ++ ["learn-install" | name == "generated"]
-        ++ ["generated" | name `elem` ["learn-assets", "code-style"]]
-        ++ ["learn-assets" | name `elem` ["learn-execution","learn-browser","npm-tests","package-smoke"]]
-        ++ ["learn-execution" | name == "learn-browser"]
+      Nothing ->
+        [bootstrap | name == "npm-tests", bootstrap <- ["typescript-bootstrap", "javascript-bootstrap", "python-bootstrap"]]
+          ++ ["python-bootstrap" | name == "beam-runtime"]
+          ++ ["editor-install" | name `elem` ["editor-grammar", "npm-tests"]]
+          ++ ["docs" | name == "rejection-examples"]
+          ++ ["learn-install" | name == "generated"]
+          ++ ["generated" | name `elem` ["learn-assets", "code-style"]]
+          ++ [prerequisite | name == "component-native-acceptance", prerequisite <- ["integrity", "generated"]]
+          ++ ["learn-assets" | name `elem` ["learn-execution", "learn-browser", "npm-tests", "package-smoke"]]
+          ++ ["learn-execution" | name == "learn-browser"]
       Just t
         | t `elem` Targets.artifactTargets -> ["artifact-bootstrap", "build-acceptance"]
         | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
-        | otherwise -> [t ++ "-bootstrap"] ++ ["build-acceptance" | isJust' (acceptanceProject [] command)]
-            ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
-            ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
-            ++ ["python-bootstrap" | name == "swift-network-interoperability"]
+        | otherwise ->
+            [t ++ "-bootstrap"]
+              ++ ["build-acceptance" | isJust' (acceptanceProject [] command)]
+              ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
+              ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
+              ++ ["python-bootstrap" | name == "swift-network-interoperability"]
     claims name env command target =
-      [if name `elem` aloneSteps then Exclusive "machine" else Shared "machine"] ++
-      [Exclusive "stack-build" | buildsStack command] ++
-      [Exclusive "stack-work" | name `elem` stackBuilders] ++
-      [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
-      [Shared "stack-work" | name `notElem` stackBuilders,
-        take 1 command == ["stack"] || name `elem` ["rejection-examples", "parity"]] ++
-      [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability", "npm-tests"]] ++
-      [Shared "env:javascript" | name == "npm-tests"] ++
-      [Shared "env:typescript" | name == "npm-tests"] ++
-      [Exclusive "env:artifacts" | name == "artifact-bootstrap"] ++
-      -- The wrapper may repair its pinned environment after a failed bootstrap.
-      [Exclusive "env:artifacts" | maybe False (`elem` Targets.artifactTargets) target] ++
-      [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command] ++
-      [Counted "timing" (max 1 (workers `div` 3)) | timing name command] ++
-      maybe [] (\p -> [Exclusive ("project:" ++ p)]) (acceptanceProject env command) ++
-      case target of
-        Just t | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> [Exclusive ("env:" ++ t)]
-               | otherwise -> [Shared ("env:" ++ t)]
-        Nothing -> []
+      [if name `elem` aloneSteps then Exclusive "machine" else Shared "machine"]
+        ++ [Exclusive "stack-build" | buildsStack command]
+        ++ [Exclusive "stack-work" | name `elem` stackBuilders]
+        ++ [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]]
+        ++ [ Shared "stack-work"
+           | name `notElem` stackBuilders,
+             take 1 command == ["stack"] || name `elem` ["rejection-examples", "parity"]
+           ]
+        ++ [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability", "npm-tests"]]
+        ++ [Shared "env:javascript" | name == "npm-tests"]
+        ++ [Shared "env:typescript" | name == "npm-tests"]
+        ++ [Exclusive "env:artifacts" | name == "artifact-bootstrap"]
+        ++
+        -- The wrapper may repair its pinned environment after a failed bootstrap.
+        [Exclusive "env:artifacts" | maybe False (`elem` Targets.artifactTargets) target]
+        ++ [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command]
+        ++ [Counted "timing" (max 1 (workers `div` 3)) | timing name command]
+        ++ maybe [] (\p -> [Exclusive ("project:" ++ p)]) (acceptanceProject env command)
+        ++ case target of
+          Just t
+            | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> [Exclusive ("env:" ++ t)]
+            | otherwise -> [Shared ("env:" ++ t)]
+          Nothing -> []
     stackBuilders = ["compiler-tests", "build-acceptance"]
     -- stack run, build and test may configure and build the repository's
     -- package (stack test enables the test suite, the others disable it, so
@@ -258,15 +270,18 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     buildsStack command = case command of
       "stack" : "--no-terminal" : verb : _ -> verb `elem` ["run", "build", "test"]
       _ -> command == ["sh", "tools/beam-runtime.sh"]
-    timing name command = name == "beam-runtime" ||
-      maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
+    timing name command =
+      name == "beam-runtime"
+        || maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
     isJust' = maybe False (const True)
 
 -- | Steps that run alone: package-smoke exports every bundled example under
 -- a hang guard, single-threaded for minutes, and a loaded machine slows it
--- past any fixed guard.
+-- past any fixed guard. Component acceptance also performs full source
+-- compilation, whose peak memory must not compete with other compiler jobs.
+-- ref:DEC-node-precompiled-components
 aloneSteps :: [String]
-aloneSteps = ["package-smoke"]
+aloneSteps = ["package-smoke", "component-native-acceptance"]
 
 -- | The BEAM steps that exercise a native property framework, bootstrapping
 -- its target when the framework is missing.
@@ -366,25 +381,27 @@ step name = Step name []
 
 coreSteps :: [Step]
 coreSteps =
-  [ step "integrity" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "integrity"]
-  , step "boundaries" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "boundaries"]
-  , step "learn-install" ["npm", "ci", "--prefix", "learn"]
-  , step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"]
-  , step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"]
-  , step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"]
-  , step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"]
-  , step "compiler-tests" ["stack", "--no-terminal", "test", "--test-arguments=--format=specdoc --no-color"]
-  , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
-  , step "learn-assets" ["node", "tools/learn-build.mjs"]
-  , step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/mcp.mjs", "templates/npm/project.mjs", "templates/npm/learn.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs"]
-  , step "learn-execution" ["npm", "test", "--prefix", "learn"]
-  , step "learn-browser" ["npm", "run", "test:browser", "--prefix", "learn"]
-  , step "parity" ["node", "tools/parity.mjs"]
-  , step "package-smoke" ["node", "tools/package-smoke.mjs"]
-  , step "docs" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "docs", "--check"]
-  , step "rejection-examples" ["node", "tools/rejection-examples.mjs"]
-  -- canon keeps its own content-addressed cache, so this step is never skipped.
-  , step "canon" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "canon", "check"] ]
+  [ step "integrity" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "integrity"],
+    step "boundaries" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "boundaries"],
+    step "learn-install" ["npm", "ci", "--prefix", "learn"],
+    step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"],
+    step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"],
+    step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"],
+    step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"],
+    step "compiler-tests" ["stack", "--no-terminal", "test", "--test-arguments=--format=specdoc --no-color"],
+    step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"],
+    step "learn-assets" ["node", "tools/learn-build.mjs"],
+    step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/mcp.mjs", "templates/npm/project.mjs", "templates/npm/learn.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs"],
+    step "learn-execution" ["npm", "test", "--prefix", "learn"],
+    step "learn-browser" ["npm", "run", "test:browser", "--prefix", "learn"],
+    step "parity" ["node", "tools/parity.mjs"],
+    step "package-smoke" ["node", "tools/package-smoke.mjs"],
+    step "component-native-acceptance" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "native-check"],
+    step "docs" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "docs", "--check"],
+    step "rejection-examples" ["node", "tools/rejection-examples.mjs"],
+    -- canon keeps its own content-addressed cache, so this step is never skipped.
+    step "canon" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "canon", "check"]
+  ]
 
 -- | The repository files a core step reads, as roots to keep or drop (an empty
 -- keep list keeps every file), and the commands whose output names its tools.
@@ -394,48 +411,146 @@ stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures. Its context probe
   -- also binds the selected tools, optional solver and actual SDK artifacts.
-  "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers)
-    [["node", "tools/ci-artifact-key.mjs", "compiler-tests"]])
+  "compiler-tests" ->
+    Just
+      ( Inputs
+          []
+          (["npm/", "tools/", "docs/", "editors/"] ++ ledgers)
+          [["node", "tools/ci-artifact-key.mjs", "compiler-tests"]]
+      )
   -- SDK tests select optional native tools by availability and environment,
   -- and resolve dependencies for fresh projects. A whole-suite cached pass
   -- must not bypass their actual toolchain and native-freshness checks.
   "npm-tests" -> Nothing
-  "parity" -> Just (Inputs ["tools/parity.mjs", "tools/ci-artifact-key.mjs", "examples/specs/", "examples/packages/",
-    "test/fixtures/artifact-configuration.lawspec", "test/fixtures/artifact-antlr-inputs.lawspec",
-    "test/fixtures/artifact-antlr-indexed-input.lawspec", "npm/starter-rc1.lawspec"] []
-    [["node", "tools/ci-artifact-key.mjs", "parity"]])
+  "parity" ->
+    Just
+      ( Inputs
+          [ "tools/parity.mjs",
+            "tools/ci-artifact-key.mjs",
+            "examples/specs/",
+            "examples/packages/",
+            "test/fixtures/artifact-configuration.lawspec",
+            "test/fixtures/artifact-antlr-inputs.lawspec",
+            "test/fixtures/artifact-antlr-indexed-input.lawspec",
+            "npm/starter-rc1.lawspec"
+          ]
+          []
+          [["node", "tools/ci-artifact-key.mjs", "parity"]]
+      )
   "package-smoke" -> Nothing
+  -- Native archives are ignored build products and can change independently of
+  -- tracked source. Never substitute a cached pass for executing this package.
+  "component-native-acceptance" -> Nothing
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
-  "rejection-examples" -> Just (Inputs ["dev/Docs.hs", "src/", "package.yaml", "templates/site/", "templates/tools/rejection-examples.mjs",
-    "tools/rejection-examples.mjs", "test/fixtures/canonical-rejection-"] [] [["node", "--version"], ["stack", "--version"]])
+  "rejection-examples" ->
+    Just
+      ( Inputs
+          [ "dev/Docs.hs",
+            "src/",
+            "package.yaml",
+            "templates/site/",
+            "templates/tools/rejection-examples.mjs",
+            "tools/rejection-examples.mjs",
+            "test/fixtures/canonical-rejection-"
+          ]
+          []
+          [["node", "--version"], ["stack", "--version"]]
+      )
   "rust-runtime-debug" -> Just rustRuntime
   "rust-runtime-release" -> Just rustRuntime
-  "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "runtime/lawspec_network.erl", "runtime/lawspec_crypto_", "runtime/defaults/vectors.txt",
-    "test/fixtures/beam/", "test/fixtures/recorded-values.json", "dev/BeamVectors.hs", "tools/beam-crypto-build.py",
-    "tools/beam-runtime.sh", "tools/beam-values-reference.py", "tools/beam-secure-interoperability.py",
-    "tools/beam-coverage-check.mjs", "npm/beam-coverage.mjs",
-    "runtime/lawspec_runtime.py", "runtime/lawspec_network.py", "test/locks/python.txt", "examples/specs/distribution.lawspec",
-    "src/LawSpec/Core/", "src/LawSpec/Core.hs", "src/LawSpec/Scalar.hs", "src/LawSpec/Regex.hs"] []
-    [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
-     ["erl", "-noshell", "-eval", "io:format(\"~tp~n\", [crypto:info_lib()]), halt()."],
-     ["cc", "--version"], ["stack", "--version"], ["python3", "--version"], ["node", "--version"]])
-  "swift-network-interoperability" -> Just (Inputs ["runtime/swift/LawSpecRuntime/", "runtime/lawspec_runtime.py", "runtime/lawspec_network.py",
-    "test/fixtures/swift/", "tools/swift-network-interoperability.py", "test/locks/python.txt"] []
-    [["swift", "--version"], [".integration/python/.venv/bin/python", "--version"]])
-  "beam-proper" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-proper.sh",
-    "test/locks/erlang/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
-    [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
-     ["rebar3", "version"]])
-  "beam-stream-data" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-stream-data.sh",
-    "test/locks/elixir/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
-    [["elixir", "--version"], ["mix", "--version"]])
-  "beam-qcheck" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-qcheck.sh",
-    "test/locks/gleam/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
-    [["gleam", "--version"], ["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."]])
+  "beam-runtime" ->
+    Just
+      ( Inputs
+          [ "runtime/lawspec_beam_",
+            "runtime/lawspec_network.erl",
+            "runtime/lawspec_crypto_",
+            "runtime/defaults/vectors.txt",
+            "test/fixtures/beam/",
+            "test/fixtures/recorded-values.json",
+            "dev/BeamVectors.hs",
+            "tools/beam-crypto-build.py",
+            "tools/beam-runtime.sh",
+            "tools/beam-values-reference.py",
+            "tools/beam-secure-interoperability.py",
+            "tools/beam-coverage-check.mjs",
+            "npm/beam-coverage.mjs",
+            "runtime/lawspec_runtime.py",
+            "runtime/lawspec_network.py",
+            "test/locks/python.txt",
+            "examples/specs/distribution.lawspec",
+            "src/LawSpec/Core/",
+            "src/LawSpec/Core.hs",
+            "src/LawSpec/Scalar.hs",
+            "src/LawSpec/Regex.hs"
+          ]
+          []
+          [ ["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
+            ["erl", "-noshell", "-eval", "io:format(\"~tp~n\", [crypto:info_lib()]), halt()."],
+            ["cc", "--version"],
+            ["stack", "--version"],
+            ["python3", "--version"],
+            ["node", "--version"]
+          ]
+      )
+  "swift-network-interoperability" ->
+    Just
+      ( Inputs
+          [ "runtime/swift/LawSpecRuntime/",
+            "runtime/lawspec_runtime.py",
+            "runtime/lawspec_network.py",
+            "test/fixtures/swift/",
+            "tools/swift-network-interoperability.py",
+            "test/locks/python.txt"
+          ]
+          []
+          [["swift", "--version"], [".integration/python/.venv/bin/python", "--version"]]
+      )
+  "beam-proper" ->
+    Just
+      ( Inputs
+          [ "runtime/lawspec_beam_",
+            "test/fixtures/beam/",
+            "tools/beam-proper.sh",
+            "test/locks/erlang/",
+            "src/LawSpec/Scaffold.hs",
+            "templates/tools/bootstrap-integration.mjs"
+          ]
+          []
+          [ ["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
+            ["rebar3", "version"]
+          ]
+      )
+  "beam-stream-data" ->
+    Just
+      ( Inputs
+          [ "runtime/lawspec_beam_",
+            "test/fixtures/beam/",
+            "tools/beam-stream-data.sh",
+            "test/locks/elixir/",
+            "src/LawSpec/Scaffold.hs",
+            "templates/tools/bootstrap-integration.mjs"
+          ]
+          []
+          [["elixir", "--version"], ["mix", "--version"]]
+      )
+  "beam-qcheck" ->
+    Just
+      ( Inputs
+          [ "runtime/lawspec_beam_",
+            "test/fixtures/beam/",
+            "tools/beam-qcheck.sh",
+            "test/locks/gleam/",
+            "src/LawSpec/Scaffold.hs",
+            "templates/tools/bootstrap-integration.mjs"
+          ]
+          []
+          [["gleam", "--version"], ["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."]]
+      )
   -- The artifact validators pin yamllint in their script and require
   -- OpenTofu 1.13.1, whose version keys the step with the other tools.
-  _ | name `elem` [t ++ "-artifact-validation" | t <- Targets.artifactTargets] ->
-      Just (Inputs [] unread [["tofu", "version"], ["java", "-version"], ["make", "--version"], ["python3", "--version"]])
+  _
+    | name `elem` [t ++ "-artifact-validation" | t <- Targets.artifactTargets] ->
+        Just (Inputs [] unread [["tofu", "version"], ["java", "-version"], ["make", "--version"], ["python3", "--version"]])
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"] ++ ledgers
@@ -502,11 +617,17 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
 
 -- | The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.
+-- Shared-failure regression families: ref:DEC-s1j-shared-failures.
 targetSteps :: String -> [Step]
 targetSteps target | target `elem` Targets.artifactTargets =
   [step (target ++ "-artifact-validation") ["sh", "tools/artifact-targets.sh", target]]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
+  [ Step (target ++ "-" ++ suite ++ suffix) env (acceptance [suite,target])
+  | suite <- ["s1j-strategies","s1j-host"],
+    (suffix,env) <- [("",[]),("-32-compact",compact)] ] ++
+  [ Step ("go-s1j-handlers" ++ suffix) env (acceptance ["s1j",target])
+  | target == "go", (suffix,env) <- [("",[]),("-32-compact",compact)] ] ++
   [ step "jvm-finite-cover" ["python3", "-B", "test/finite_cases_jvm.py"] | target == "java" ] ++
   [ step "go-finite-cover" ["python3", "-B", "test/finite_cases_go.py"] | target == "go" ] ++
   [ step "haskell-finite-cover" ["stack", "--no-terminal", "exec", "--", "runghc", "-iruntime", "test/finite_cases_haskell.hs"] | target == "haskell" ] ++

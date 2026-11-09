@@ -652,7 +652,10 @@ finiteScalar (Applied n t) = n `elem` ["Nullable", "Optional"] && finiteScalar t
 finiteScalar _ = False
 
 replaceExprVars :: [(String, Expr)] -> Expr -> Expr
-replaceExprVars = substituteExpr [] replaceTypeValueVars
+-- Empty alpha-renaming must not walk the remaining strict-let chain. Doing
+-- so at every branch duplicates each suffix and makes wide records exponential.
+replaceExprVars [] expression = expression
+replaceExprVars bindings expression = substituteExpr [] replaceTypeValueVars bindings expression
 
 -- | Traverse expressions and dependent annotations in one simultaneous
 -- substitution. Processing their types in a second pass would substitute
@@ -854,6 +857,7 @@ typeValueVars ty = case ty of
 -- | Substitute value dependencies without capturing a refinement or field
 -- binder. Public field labels and declaration order never change.
 replaceTypeValueVars :: [(String,Expr)] -> Type -> Type
+replaceTypeValueVars [] ty = ty
 replaceTypeValueVars env ty = case ty of
   Arrow a b -> Arrow (go a) (go b)
   Applied name a -> Applied name (go a)
@@ -888,7 +892,7 @@ scopeRecordFields extra env transform fields = walk used env [] fields
           fresh = head ["_record_" ++ binder ++ "_" ++ show i | i <- [0 :: Int ..],
             ("_record_" ++ binder ++ "_" ++ show i) `notElem` taken]
           name = if binder `elem` forbidden then fresh else binder
-          renamed' = (binder,Var name) : filter ((/= binder) . fst) renamed
+          renamed' = [(binder,Var name) | name /= binder] ++ filter ((/= binder) . fst) renamed
           ty' = transform active' (replaceTypeValueVars renamed' (recordFieldType field))
       in field{recordFieldBinding=name,recordFieldType=ty'} :
         walk (name:taken) active' renamed' rest

@@ -1,0 +1,8 @@
+{
+  :manifest-version 1
+  :component {:name "lawspec" :version "0.31.3"}
+  :language-profile "1.0-rc.2"
+  :sources ["laws"]
+  :verification {:layers []}
+  :targets []
+}

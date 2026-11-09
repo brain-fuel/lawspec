@@ -412,6 +412,7 @@ hostSource = unlines
   , "ability FileSystem is"
   , "  readBytes :: Text -> Maybe Bytes"
   , "  writeBytes :: Text -> Bytes -> Unit"
+  , "  createDirectories :: Text -> Unit"
   , "  pathExists :: Text -> Bool"
   , "  removePath :: Text -> Unit"
   , "  -- A new empty directory, or file, whose name starts with the text; its path."

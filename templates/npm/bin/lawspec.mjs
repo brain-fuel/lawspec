@@ -23,6 +23,7 @@ import {generateExamples} from '../examples-command.mjs';
 import {proveWithZ3} from '../proof.mjs';
 import {serveLanguage} from '../lsp.mjs';
 import {showScalar} from '../scalars.mjs';
+import {mutateProject} from '../mutate.mjs';
 import {doctor} from '../doctor.mjs';
 import {
   recordNativeAttempts,
@@ -81,6 +82,7 @@ for (let i = 0; i < args.length; i++)
   const arg = args[i];
   if (
     [
+      '--mutation-timeout',
       '--port',
       '--languages',
       '--target',
@@ -833,7 +835,11 @@ async function runTests(compiler, input, selected, roots, config)
         });
         if (!result.ok)
           throw new Error(
-            `${target.language}: current generated source failed native validation`,
+            target.language === 'go' &&
+              /New\w+Bound/.test(result.output) &&
+              result.output.includes('redeclared in this block')
+              ? 'Go handler bridge conflicts with an existing New<Ability>Bound workaround. Remove or rename that manual wrapper; user-owned adapters have been preserved.'
+              : `${target.language}: current generated source failed native validation`,
           );
       }
     }
@@ -1259,6 +1265,14 @@ async function runTests(compiler, input, selected, roots, config)
       ...(attestation ? {environment: attestation.environment} : {}),
       unchanged: chosen.length - stale.length,
       ok: !failed,
+      failedLaws: stale
+        .filter(
+          entry =>
+            attempts[entry.law]?.outcome === 'failed' &&
+            (attempts[entry.law]?.check?.nativeGroup?.length ?? 1) === 1 &&
+            attempts[entry.law]?.tests?.some(test => test.status === 'failed'),
+        )
+        .map(entry => entry.law),
       ...(chosen.length !== planned.tests.length
         ? {deselected: planned.tests.length - chosen.length}
         : {}),
@@ -1484,7 +1498,7 @@ async function main()
     output(
       'LawSpec ' +
         VERSION +
-        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
+        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
         targets.join(', '),
     );
     return;
@@ -1519,6 +1533,29 @@ async function main()
     throw new Error('--strict applies to advise');
   if (options['no-advice'] && !['check', 'generate'].includes(verb))
     throw new Error('--no-advice applies to check and generate');
+  if (verb === 'mutate')
+  {
+    const root = path.resolve(options.project ?? process.cwd());
+    const report = await mutateProject({
+      root,
+      paths: positional,
+      target: options.target,
+      config: options.config ?? 'lawspec.edn',
+      timeout: Number(options['mutation-timeout'] ?? 120000),
+    });
+    output(
+      options.json
+        ? report
+        : report.mutations
+            .map(
+              row =>
+                `${row.name}: ${row.status}${row.failedLaws.length ? ' (' + row.failedLaws.join(', ') + ')' : ''}`,
+            )
+            .join('\n') || `baseline: ${report.baseline.status}`,
+    );
+    if (!report.ok) process.exitCode = 1;
+    return;
+  }
   if (verb === 'learn')
   {
     if (positional.length || Object.keys(options).some(key => key !== 'port'))

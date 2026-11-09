@@ -4,10 +4,8 @@
 -- (New<Ability>Recording). Handlers travel in the symbols map generated code
 -- passes to every definition, under lsHandlersKey.
 --
--- Every package holds the checked bodies of every unit, and its own copy of
--- the data types, so each package declares the interface and recording of
--- every ability the program uses, and the spec handlers its unit declares or
--- any body installs with handle ... with h end.
+-- Each package holds its reachable checked bodies and local data codecs.
+-- Its interfaces, recordings and spec handlers follow that same closure.
 module LawSpec.AbilityEmit.Go (emit, productionStub, methodName) where
 
 import Data.Char (toUpper)
@@ -30,7 +28,7 @@ methodName [] = []
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit minify bits datas units = case clashes of
-  (name, owners) : _ -> Left ("in Go, every package holds every ability of the program, so two cannot share a name: " ++
+  (name, owners) : _ -> Left ("Go ability interfaces must have distinct generated names: " ++
     name ++ " is declared by " ++ intercalate " and " owners)
   [] -> do
     typed <- emitGoTyped datas units
@@ -39,13 +37,9 @@ emit minify bits datas units = case clashes of
     clashes = [ (interfaceName a, owners) | a <- everyAbility
               , let owners = distinctOn id [ownerName b | v <- units, b <- C.unitAbilities v, interfaceName b == interfaceName a]
               , length owners > 1 ]
-    wanted u = unitAbilityPieces u || (not (null everyAbility) && not (null (C.unitDefinitions u)))
+    wanted u = not (null (C.unitAbilities u) && null (handlersOf u))
     everyAbility = distinctOn interfaceName [a | v <- units, a <- C.unitAbilities v]
-    scoped = [h | v <- units, d <- C.unitDefinitions v, h <- scopedHandlers (C.definitionBody d)]
-    scopedHandlers e = case C.expressionNode e of
-      C.Handle (C.WithHandler _ (C.SpecHandler h)) body -> h : scopedHandlers body
-      _ -> concatMap scopedHandlers (C.children e)
-    handlersOf u = distinctOn specName (C.unitHandlers u ++ [h | identity <- scoped, v <- units, h <- C.unitHandlers v, C.handlerId h == identity])
+    handlersOf = distinctOn specName . snd . goPackageMembers units
     distinctOn key = foldr (\x acc -> x : filter ((/= key x) . key) acc) []
     layout = if minify then D.CompactTabs else D.PrettyTabs 100
     calls = Definitions.definitionCalls units
@@ -54,9 +48,9 @@ emit minify bits datas units = case clashes of
     unitFile typed u = do
       let identity = C.idText (C.unitId u)
           packageName = reverse (takeWhile (/= '.') (reverse identity))
-      interfaces <- mapM interface everyAbility
+      interfaces <- mapM interface (C.unitAbilities u)
       handlers <- mapM (\h -> if isTypedHandler (goTypedPlan typed) h then typedHandler typed h else specHandler h) (handlersOf u)
-      recordings <- mapM recording everyAbility
+      recordings <- mapM recording (C.unitAbilities u)
       let source = E.goHeaderDoc <>
             line ("package " ++ packageName) <> D.hardline <> D.hardline <>
             D.joinWith (D.hardline <> D.hardline) (interfaces ++ handlers ++ recordings) <> D.hardline

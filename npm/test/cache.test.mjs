@@ -184,3 +184,54 @@ test('SDK persisted compiler memos are separated by the actual WASM binary', asy
   for (const build of builds)
     assert.ok((await entries(path.join(cache, build))).length > 0);
 });
+
+test('evaluation settings survive EDN and cold, warm and disabled compiler caches', async t =>
+{
+  const root = await project(t);
+  await writeFile(
+    path.join(root, 'laws/example.lawspec'),
+    `unit budget
+function twice (x :: Int8) -> Integer is x + x end function
+law square is definition:
+  for all (x :: Int8) => twice x * twice x >= 0 end for all
+end definition end law
+end unit`,
+  );
+  const configure = async evaluation =>
+    writeFile(
+      path.join(root, 'lawspec.edn'),
+      configEDN({
+        manifestVersion: 1,
+        languageProfile: '1.0-rc.2',
+        sources: ['laws'],
+        targets: [],
+        verification: {layers: ['exhaustive'], evaluation},
+      }),
+    );
+  const status = text =>
+    JSON.parse(text)
+      .evidence.filter(row => row.stage === 'law')
+      .map(row => row.status);
+  for (const [evaluation, expected] of [
+    [{maxSteps: 1}, 'planned'],
+    [{maxSteps: 1000000}, 'exhaustively-checked'],
+    [{deferLaws: ['budget::square']}, 'planned'],
+  ])
+  {
+    await configure(evaluation);
+    const cold = await check(root);
+    assert.deepEqual(status(cold), [expected]);
+    assert.equal(await check(root), cold);
+    assert.equal(await check(root, '--no-cache'), cold);
+  }
+  for (const evaluation of [
+    {maxSteps: 0},
+    {maxSteps: -1},
+    {maxSteps: 1.5},
+    {deferLaws: ['budget::missing']},
+  ])
+  {
+    await configure(evaluation);
+    await assert.rejects(check(root));
+  }
+});

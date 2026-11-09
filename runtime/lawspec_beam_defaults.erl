@@ -63,6 +63,7 @@ handler(<<"lawspec.host::ability::FileSystem">>) ->
             end
         end,
         <<"writeBytes">> => fun(_, [Path, Bytes]) -> file_result(file:write_file(Path, Bytes)) end,
+        <<"createDirectories">> => fun(_, [Path]) -> file_result(filelib:ensure_path(Path)) end,
         <<"pathExists">> => fun(_, [Path]) ->
             case file:read_link_info(Path) of
                 {ok, _} -> true;

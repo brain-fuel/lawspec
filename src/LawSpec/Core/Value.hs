@@ -1,11 +1,13 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- | Structural values in the reference interpreter. Scalar encodings remain
 -- lossless leaves; algebraic constructors never share absence representations.
 module LawSpec.Core.Value
-  ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith
+  ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith, validateValueWithM, checkValueWithM
   , equalValues, compareValues, listValue, listItems, valueIndex, valueType, witnessFields, witnessKey, witnessKeys
   ) where
 
 import GHC.Generics (Generic)
+import Control.Monad.Except (MonadError, liftEither, throwError, catchError)
 import Control.Monad (unless, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
@@ -52,11 +54,15 @@ validateValue = validateValueWith (\_ _ -> Left "constructor field validation re
 -- validate only the outer constructor and forget a constrained nested payload.
 validateValueWith :: ([(Id,Value)] -> Expr -> Either String Value)
   -> TypeRegistry -> Int -> Type -> Value -> Either String Value
-validateValueWith evaluate registry bits expected value = do
-  result <- checkValueWith evaluate registry bits expected value
+validateValueWith = validateValueWithM (pure ())
+
+validateValueWithM :: MonadError String m => m () -> ([(Id,Value)] -> Expr -> m Value)
+  -> TypeRegistry -> Int -> Type -> Value -> m Value
+validateValueWithM tick evaluate registry bits expected value = do
+  result <- checkValueWithM tick evaluate registry bits expected value
   case result of
     ValueAccepted checked -> pure checked
-    RefinementRejected message -> Left message
+    RefinementRejected message -> throwError message
 
 -- | Candidate generation must distinguish a false predicate from a malformed
 -- value or an evaluation error. Rejection is data, not an exception to swallow.
@@ -67,38 +73,42 @@ data ValueCheck = ValueAccepted Value | RefinementRejected String deriving (Eq, 
 -- ref:DEC-shrink-within-domain
 checkValueWith :: ([(Id,Value)] -> Expr -> Either String Value)
   -> TypeRegistry -> Int -> Type -> Value -> Either String ValueCheck
-checkValueWith evaluate registry bits expected value =
+checkValueWith = checkValueWithM (pure ())
+
+checkValueWithM :: MonadError String m => m () -> ([(Id,Value)] -> Expr -> m Value)
+  -> TypeRegistry -> Int -> Type -> Value -> m ValueCheck
+checkValueWithM tick evaluate registry bits expected value =
   either RefinementRejected ValueAccepted <$> runExceptT (walk expected value)
   where
-    walk :: Type -> Value -> ExceptT String (Either String) Value
     walk expected value = do
-      lift (checkType registry expected)
+      lift tick
+      lift (liftEither (checkType registry expected))
       case value of
         ScalarValue scalar -> case fromScalarValue expected scalar of
           normalized@(PresenceValue _ _) -> walk expected normalized
           _ -> case expected of
             Constructor name [] | name == scalarName scalar ->
-              ScalarValue <$> lift (validateScalar bits scalar)
-            _ -> lift (Left "scalar value does not match its declared type")
+              ScalarValue <$> lift (liftEither (validateScalar bits scalar))
+            _ -> lift (liftEither (Left "scalar value does not match its declared type"))
         PresenceValue actual payload -> case actual of
           Constructor name [TypeArgument element] | expected == actual && name `elem` ["Nullable", "Optional"] ->
             PresenceValue actual <$> traverse (walk element) payload
-          _ -> lift (Left "presence value does not match its declared type")
+          _ -> lift (liftEither (Left "presence value does not match its declared type"))
         DataValue actual tag payload -> do
-          lift $ unless (actual == expected) (Left "data value does not match its declared type")
-          fields <- lift (constructorFieldsAt registry actual tag (map valueType payload))
-          lift $ unless (length fields == length payload)
+          lift . liftEither $ unless (actual == expected) (Left "data value does not match its declared type")
+          fields <- lift (liftEither (constructorFieldsAt registry actual tag (map valueType payload)))
+          lift . liftEither $ unless (length fields == length payload)
             (Left ("constructor payload arity mismatch: " ++ idText tag))
           checked <- zipWithM walk (map binderType fields) payload
-          predicates <- lift (constructorPredicatesFor registry actual tag)
+          predicates <- lift (liftEither (constructorPredicatesFor registry actual tag))
           let scope = zip (map binderId fields) checked
           mapM_ (\predicate -> do
-            result <- lift $ either (Left . ((idText tag ++ ": field refinement: ") ++)) Right
-              (evaluate scope predicate)
+            result <- lift $ catchError (evaluate scope predicate)
+              (throwError . ((idText tag ++ ": field refinement: ") ++))
             case result of
               ScalarValue (SBool True) -> pure ()
               ScalarValue (SBool False) -> throwE (idText tag ++ ": field refinement failed")
-              _ -> lift (Left (idText tag ++ ": field refinement did not produce Bool"))) predicates
+              _ -> lift (liftEither (Left (idText tag ++ ": field refinement did not produce Bool")))) predicates
           let field path index = valueAtPath registry fields checked path >>= \child -> valueIndex registry child index
           unless (all (guardHolds field) (indexGuards actual tag))
             (throwE (idText tag ++ ": index guard failed"))
@@ -107,16 +117,16 @@ checkValueWith evaluate registry bits expected value =
     -- A Set's items and a KeyVal's keys strictly increase.
     canonicalCollection actual checked = case (actual, checked) of
       (ty, [items]) | EqSet.isEqSetType ty -> do
-        values <- lift (listItems items)
-        distinct <- lift (EqSet.distinctMembers (equalValues bits) values)
+        values <- lift (liftEither (listItems items))
+        distinct <- lift (liftEither (EqSet.distinctMembers (equalValues bits) values))
         unless distinct (throwE "Eq-only set: duplicate equal elements")
       (Constructor name _, [items])
         | name `elem` [collections ++ "Set", collections ++ "KeyVal"] -> do
-            values <- lift (listItems items)
+            values <- lift (liftEither (listItems items))
             let key v = if name == collections ++ "KeyVal"
                   then case v of DataValue _ _ (k : _) -> k; _ -> v
                   else v
-            orders <- lift (sequence [compareValues (key a) (key b) | (a, b) <- zip values (drop 1 values)])
+            orders <- lift (liftEither (sequence [compareValues (key a) (key b) | (a, b) <- zip values (drop 1 values)]))
             unless (all (== LT) orders)
               (throwE (name ++ ": items must be sorted and distinct"))
       _ -> pure ()

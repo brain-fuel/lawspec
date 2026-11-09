@@ -39,6 +39,7 @@ data Config = Config
   , schemaNeeded :: Bool
   , nativeGenerators :: Bool
   , constructorContracts :: Bool
+  , drawRequirement :: GeneratorRequirement -> Type -> Maybe C.Quantifier -> Either [Diagnostic] GeneratorRequirement
   , nodeBudget :: Integer
   , machineBits :: Int
   -- Native adapters convert logical arguments and failures once per signature.
@@ -318,7 +319,9 @@ emitTests Config{..} unit laws = do
         let inp = domainInput plan
         case strategyOf inp of
           (strategy, d) : _ -> (\(defs, body) -> defs ++ [bind (inputId inp) (drawValue body)]) <$> sharedDraw e plan inp strategy (inputId inp) d
-          [] -> pure [bind (inputId inp) (call "environment.<Value>generate" [generatorWithin (inputRange machineBits inp) (inputType inp)])]) (generationPlan e)
+          [] -> do
+            (_, generator) <- contextualStrategy (generation e) plan
+            pure [bind (inputId inp) (call "environment.<Value>generate" [generator])]) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
           strategyChecks = [statement (call "LawSpecHarness.checkDrawn" [quoted strategy, quoted (inputName inp),
               conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)])
@@ -365,7 +368,10 @@ emitTests Config{..} unit laws = do
                 captures = [bind (renamed (C.binderId binder)) (callDoc (captured ++ ".get") [number i])
                   | (i,binder) <- zip [0::Int ..] (Draws.drawCaptures node)]
             body <- case Draws.drawStep node of
-              Draws.AnyDraw ty aim -> snd <$> drawDoc inp strategy name (C.DrawAny ty aim)
+              Draws.AnyDraw ty aim -> do
+                requested <- drawRequirement requirement ty aim
+                (_, generator) <- contextualStrategyWith (scopedExpression aliases) (generation expanded) requested
+                pure (DrawValue (call "environment.<Value>generate" [generator]))
               Draws.OneOfDraw _ values -> pure (DrawValue (callDoc "LawSpecHarness.oneOf" [chooser,
                 callDoc "List.<Supplier<Value>>of" [lambda "()" (scopedExpression aliases value) | value <- values]]))
               Draws.FrequencyDraw alternatives -> pure (DrawValue (callDoc "LawSpecHarness.frequency" [chooser,
@@ -615,11 +621,12 @@ emitTests Config{..} unit laws = do
              text ("for (int caseIndex = 0; caseIndex < " ++ show (cases (generation e)) ++ "; caseIndex++)") <> D.hardline <>
                block (statements [bind "sizeHint" (growing "caseIndex"),invocation (1 :: Int) (text "sizeHint")])]
       pure $ testFunction (fn ++ "_property") body
-    contextualStrategy settings plan = do
+    contextualStrategy = contextualStrategyWith expr
+    contextualStrategyWith renderValue settings plan = do
       let input = domainInput plan
           ty = inputType input
       seeds <- mapM literal (generatorBoundaries plan)
-      let hints = [expr hint | hint <- generatorHints plan, expressionType hint == ty,
+      let hints = [renderValue hint | hint <- generatorHints plan, expressionType hint == ty,
             case C.expressionNode hint of
               C.Constant _ -> True
               C.Local _ -> True
@@ -631,19 +638,19 @@ emitTests Config{..} unit laws = do
                 (D.softline <> text "? " <> generatorWithin (Just range) ty <>
                  D.softline <> text ": " <> call (Helpers.scalarsClass ++ ".generator") [text "scalar"]))))
           strategy = case requiredSymbol plan of
-            value:_ -> call "Generator.constant" [expr value]
+            value:_ -> call "Generator.constant" [renderValue value]
             [] | Just indexed <- generatorIndex plan ->
               -- The target is evaluated from inputs drawn earlier in this environment.
               chain (call "LawSpecDataStrategies.checkedIndexedGenerator"
-                [text "SCHEMA",reference ty,text "MACHINE_BITS",number nodeBudget,
+                [text "SCHEMA",reference ty,text "MACHINE_BITS",number (generationNodeBudget nodeBudget plan),
                  number (maxAttempts settings),text "symbols",
-                 expr (indexedTarget indexed),equationsDoc (indexedEquations indexed),
+                 renderValue (indexedTarget indexed),equationsDoc (indexedEquations indexed),
                  scalar,if nativeGenerators then call "lawspec.testing.LawSpecNativeGenerators.factories" []
                    else call "java.util.Map.of" []])
                 [("map",[text "LawSpecDataStrategies.Checked::requireValue"])]
             [] | nativeGenerators || constructorContracts -> chain
               (call "LawSpecDataStrategies.checkedGenerator"
-                ([text "SCHEMA",reference ty,text "MACHINE_BITS",number nodeBudget,number (maxAttempts settings),
+                ([text "SCHEMA",reference ty,text "MACHINE_BITS",number (generationNodeBudget nodeBudget plan),number (maxAttempts settings),
                  text "symbols",call "java.util.List.of" (seeds ++ hints),
                  scalar] ++
                 [call "lawspec.testing.LawSpecNativeGenerators.factories" [] | nativeGenerators]))
@@ -651,7 +658,7 @@ emitTests Config{..} unit laws = do
             [] -> hinted (generatorWithin (inputRange machineBits input) ty)
           -- Constant hints (regex samples, compared literals) are mixed in so
           -- a narrow refinement still meets the filter often enough.
-          constants = [expr hint | hint <- generatorHints plan, expressionType hint == ty,
+          constants = [renderValue hint | hint <- generatorHints plan, expressionType hint == ty,
             ty /= C.scalarType "Symbol", case C.expressionNode hint of C.Constant _ -> True; _ -> False]
           hinted generator
             | null constants = generator

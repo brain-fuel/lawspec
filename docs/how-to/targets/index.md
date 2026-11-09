@@ -14,7 +14,7 @@ where generated files go, and how LawSpec types appear in your code.
 | [`python`](python.md) | Python 3.13 or 3.14, pyproject | pytest 8.4.x, Hypothesis 6.135.26+ (6.x) | `python -m pytest` |
 | [`javascript`](javascript.md) | Node 22+, npm, ESM | fast-check 4.x, node:test | `npm test` |
 | [`typescript`](typescript.md) | Node 22+, npm, TypeScript 5.9.x, ESM | fast-check 4.x, node:test | `npm test` |
-| [`go`](go.md) | Go modules, Go 1.22–1.26 | Rapid 1.2.0, testing | `go test ./...` |
+| [`go`](go.md) | Go modules, Go 1.22–1.26 | Rapid >=1.2.0 <1.4.0, testing | `go test ./...` |
 | [`haskell`](haskell.md) | Stack, GHC 9.10, LTS 24.58 | Hspec 2.11, Hedgehog 1.5, hspec-hedgehog 0.3 | `stack test` |
 | [`kotlin`](kotlin.md) | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 | [`rust`](rust.md) | Rust 1.85+, edition 2024, Cargo | Proptest 1.11.0 | `cargo test` |

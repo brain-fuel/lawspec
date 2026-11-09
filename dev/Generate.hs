@@ -35,7 +35,7 @@ import qualified LawSpec.Targets as Targets
 import LawSpec.Collections (collectionsSource)
 import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
-import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
+import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, rapidMinimum, rapidMaximum, scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
 import qualified LawSpec.PreludeNames as PreludeNames
 import qualified LawSpec.Scalar as Scalar
@@ -318,6 +318,8 @@ factFills version =
         ("suffix", maybe Null String (checkSuffix c)), ("each", Bool (checkEach c)),
         ("environment", Object [(k, String v) | (k,v) <- checkEnvironment c])] | c <- presentationChecks t])
       | t <- Targets.programTargets])))
+  , ("rapid-minimum", Inline (json (String rapidMinimum)))
+  , ("rapid-maximum", Inline (json (String rapidMaximum)))
   , ("setup", Inline (json (Object [(t, String s) | t <- scaffoldTargets, Just s <- [setupAdvice t]])))
   , ("scaffolds", Inline (json (Object
       [ (t, Object [(layout, Object [(path, String content) | (path, content) <- files]) | (layout, minify) <- [("readable", False), ("compact", True)], Right files <- [scaffoldFiles minify t]])
@@ -329,7 +331,7 @@ factFills version =
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "native-parsers"]
+shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "native-parsers"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

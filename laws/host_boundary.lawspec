@@ -1,0 +1,24 @@
+-- ref:DEC-haskell-application-port
+unit lawspec.host_boundary
+
+-- Abstract admission rule; execution tests check the actual SDK handle tables.
+function mayReadResult (sameInstance :: Bool) (stillOwned :: Bool) -> Bool is
+  sameInstance and stillOwned
+end function
+
+law "|a result cannot be read through another instance| is
+  definition:
+    for all (stillOwned :: Bool) =>
+      mayReadResult false stillOwned must be false
+    end for all
+  end definition
+end law
+
+law "|a released result cannot be read| is
+  definition:
+    for all (sameInstance :: Bool) =>
+      mayReadResult sameInstance false must be false
+    end for all
+  end definition
+end law
+end unit

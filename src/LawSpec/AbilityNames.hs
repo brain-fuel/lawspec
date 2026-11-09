@@ -19,10 +19,70 @@ module LawSpec.AbilityNames
   , unitAbilityPieces, handlerKeys, abilityOf, specHandlerOf, operationTypes
   , ownedAbilityUnits, abilityHome, typeWord, ownAbilities, ownerName, unitAbility, displayName, fieldName
   , nestedClashes
+  , goPackageMembers, goPackageAbilities
   ) where
 
 import Data.Char (toUpper)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import qualified LawSpec.Core as C
+import LawSpec.Core.Stages (stageFailures)
+
+-- Go packages materialize reachable checked bodies and their spec handlers.
+-- Keep this closure shared by interface, body and native-bridge emission.
+goPackageMembers :: [C.Unit] -> C.Unit -> ([C.Definition], [C.Handler])
+goPackageMembers units unit = visit S.empty S.empty roots handlerRoots
+  where
+    definitions = M.fromList [(C.declarationId (C.definitionDeclaration d),d) | u <- units,d <- C.unitDefinitions u]
+    handlers = M.fromList [(C.handlerId h,h) | u <- units,h <- C.unitHandlers u]
+    contracts = M.fromList [(C.contractDeclaration c,c) | u <- units,c <- C.unitContracts u]
+    contractTerms c = C.contractExpressions c ++ C.contractRuntimePostconditions c
+    harnessTerms h = map C.coverWhen (C.harnessCover h) ++ map fst (C.harnessClassify h) ++
+      C.harnessLabels h ++ maybe [] pure (C.harnessTarget h)
+    expressions = concatMap C.propertyExpressions (C.unitProperties unit) ++
+      concatMap (harnessTerms . C.propertyHarness) (C.unitProperties unit) ++
+      maybe [] (map snd . C.harnessBenchmarks) (C.unitHarnessSettings unit) ++
+      concatMap (\c -> C.contractExpressions c ++ C.contractRuntimePostconditions c) (C.unitContracts unit)
+    roots = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions unit) ++ concatMap calls expressions
+    handlerRoots = map C.handlerId (C.unitHandlers unit) ++ concatMap installed expressions ++
+      concat [chosen choice | p <- C.unitProperties unit,(_,choice) <- C.propertyHandlers p]
+    chosen (C.SpecHandler identity) = [identity]
+    chosen (C.RecordingHandler inner) = chosen inner
+    chosen _ = []
+    calls e = case C.expressionNode e of
+      C.ExternalCall identity args -> identity : concatMap calls args
+      _ -> concatMap calls (C.children e)
+    installed e = case C.expressionNode e of
+      C.Handle (C.WithHandler _ choice) body -> chosen choice ++ installed body
+      _ -> concatMap installed (C.children e)
+    visit seen held [] [] =
+      ([d | (identity,d) <- M.toList definitions,identity `S.member` seen],
+       [h | (identity,h) <- M.toList handlers,identity `S.member` held])
+    visit seen held (identity:rest) pending
+      | identity `S.member` seen = visit seen held rest pending
+      | otherwise = case M.lookup identity definitions of
+          Nothing -> visit (S.insert identity seen) held rest pending
+          Just d -> let terms = C.definitionBody d : map snd (stageFailures d) ++
+                          maybe [] contractTerms (M.lookup identity contracts)
+                    in visit (S.insert identity seen) held
+                      (concatMap calls terms ++ maybe [] (foldr (:) []) (C.definitionPolicy d) ++ rest)
+                      (concatMap installed terms ++ pending)
+    visit seen held [] (identity:rest)
+      | identity `S.member` held = visit seen held [] rest
+      | otherwise = case M.lookup identity handlers of
+          Nothing -> visit seen (S.insert identity held) [] rest
+          Just h -> visit seen (S.insert identity held)
+            (map snd (C.handlerClauses h) ++ maybe [] (calls . snd) (C.handlerState h)) rest
+
+goPackageAbilities :: [C.Unit] -> C.Unit -> [C.Ability]
+goPackageAbilities units unit = M.elems (M.fromList
+  [(C.abilityInstance a,a) | a <- required ++ C.unitAbilities unit])
+  where
+    (definitions,handlers) = goPackageMembers units unit
+    refs = concatMap (C.declarationUses . C.definitionDeclaration) definitions ++
+      concatMap C.declarationUses (C.unitDeclarations unit) ++ concatMap C.handlerAbilities handlers ++
+      [C.operationAbility op | d <- definitions,op <- C.performed (C.definitionBody d)]
+    required = [a | u <- units,a <- C.unitAbilities u,C.abilityInstance a `elem` refs]
 
 capitalize :: String -> String
 capitalize (c : cs) = toUpper c : cs

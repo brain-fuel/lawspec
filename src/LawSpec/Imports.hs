@@ -736,7 +736,7 @@ walkExpr names scope e
   -- Resolve the predicate before introducing its binder to avoid capture.
   Apply prefix collection | contextualArticles names,
       Apply function predicate <- unlocated prefix,
-      Var "prelude.any" <- unlocated function -> do
+      Var operation <- unlocated function, operation `elem` ["prelude.any", "prelude.all"] -> do
     predicate' <- walkExpr names scope predicate
     collection' <- walkExpr names scope collection
     let taken = scope ++ exprVars predicate' ++ exprVars collection'
@@ -744,7 +744,9 @@ walkExpr names scope e
           "~lawspecAnyItem" ++ replicate i '_' `notElem` taken]
         binder = head freshNames
         (function, captures, _) = preparePredicate predicate' (tail freshNames)
-        iteration = Unary "!" (AllElementsExpr collection' binder (Unary "!" (Apply function (Var binder))))
+        iteration = if operation == "prelude.all"
+          then AllElementsExpr collection' binder (Apply function (Var binder))
+          else Unary "!" (AllElementsExpr collection' binder (Unary "!" (Apply function (Var binder))))
     -- Captured arguments are strict, even for an empty collection, and are
     -- evaluated once before drawing any elements or invoking the predicate.
     pure (foldr (\(name,value) body -> MatchExpr value [MatchBranch letTag [name] body]) iteration captures)

@@ -2,7 +2,7 @@ module CanonicalCollectionsSpec (test_canonicalCollections) where
 
 import Control.Monad (forM_)
 import Data.Either (isLeft,isRight)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, intercalate)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.CoreEmit (emitPlan,targets)
@@ -106,6 +106,30 @@ test_canonicalCollections = describe "canonical collections" $ do
         case planTestingWith (Verification [Exhaustive,Examples]) program of
           Left ds -> expectationFailure (show ds)
           Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
+  it "admits wide strict record construction without duplicating substitution" $ do
+    forM_ [16,32,64] $ \width -> do
+      let fields = ["field" ++ show index | index <- [1..width::Int]]
+          source = "type Wide is a record{\n" ++ unlines [field ++ " :: Integer" | field <- fields] ++ "} end type\n" ++
+            "function create (x :: Integer) -> Wide is Wide record{" ++ intercalate ", " [field ++ " = x" | field <- fields] ++ "} end function"
+      body source `shouldSatisfy` isRight
+  it "admits nested records without repeated identity renaming" $ do
+    let depth = 32 :: Int
+        declarations = ["type R" ++ show i ++ " is a record{next :: " ++
+          (if i == 0 then "Integer" else "R" ++ show (i-1)) ++ "} end type" | i <- [0..depth-1]]
+        value = foldl (\inner i -> "R" ++ show i ++ " record{next = " ++ inner ++ "}") "x" [0..depth-1]
+    body (unlines (declarations ++ ["function create (x :: Integer) -> R31 is " ++ value ++ " end function"]))
+      `shouldSatisfy` isRight
+  it "checks all through the existing universal element callback" $ do
+    forM_ ["([] :: List Bool)", "[true]", "#S{true}", "prelude.queueOf [true]", "prelude.stackOf [true]", "prelude.dequeOf [true]"] $ \collection ->
+      case body ("function identity (value :: Bool) -> Bool is value end function\nlaw every is definition: prelude.all identity (" ++ collection ++ ") = true end definition end law") of
+        Left ds -> expectationFailure (show ds)
+        Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (dischargeEvidenceWith (Verification [Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
+    body "function exceeds (limit :: Integer) (value :: Integer) -> Bool is value > limit end function\nfunction invalid (ignored :: Bool) -> Bool is prelude.all (exceeds (1 / 0)) ([] :: List Integer) end function" `shouldSatisfy` isLeft
+  it "resolves prelude operations when every provider type is imported elsewhere" $ do
+    let provider = Source "provider.lawspec" "unit provider\nimport lawspec.collections as c (Set)\nexport c.Set\nend unit"
+        consumer = Source "consumer.lawspec" "unit consumer\nimport provider as p (Set)\nfunction add (value :: Bool) (items :: Set Bool) -> Set Bool is prelude.insert value items end function\nend unit"
+    compileCoreCanonical 64 defaultGeneration [provider,consumer] `shouldSatisfy` isRight
   it "requires Eq for generic membership while any needs only its predicate" $ do
     body "function includes (value :: a) (members :: List a) -> Bool is value in members end function\n" `shouldSatisfy` isLeft
     body "function includes (value :: a) (members :: List a) -> Bool requires Eq a is value in members end function\n" `shouldSatisfy` isRight

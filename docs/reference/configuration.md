@@ -58,6 +58,7 @@ tags and executable forms are rejected. JSON manifests are no longer accepted.
 | `language-profile` | `1.0-rc.2` | Yes | The explicit canonical grammar and semantics. |
 | `component.version` / `package.version` | semantic version | Yes | An exemption written `until 1.2.0` expires at this version; see [law sets](language/law-sets.md). Component identity takes precedence when both are present. |
 | `verification` | object | No | `layers` defaults to `[]`, selecting none of the optional law checks. Choices: proof, exhaustive, property, examples, runtime, model, analysis. Intrinsic definition checks and their runtime enforcement remain automatic. |
+| `verification.evaluation` | object | No | Optional compiler evaluation: `:max-steps` is a positive integer (default 1,000,000); `:defer-laws` lists fully qualified public law identities (default `[]`). Unknown identities are rejected. Definition admission and solver settings remain independent; see [step accounting and evidence statuses](language/evidence-and-discharge.md#compiler-evaluation-allowance). |
 | `sources` | array of paths | Yes | `.lawspec` files, or directories scanned recursively for them. A file may hold a unit or a [harness](language/harness.md) for one. |
 | `targets` | vector of targets | No | Native target settings for this component. Package-only manifests may omit targets. |
 | `machine-bits` | `32` or `64` | No | The machine profile. Default `64`. `--machine-bits` overrides it. |
@@ -154,6 +155,7 @@ Describes a package directory.
 | --- | --- | --- | --- |
 | `name` | string | Yes | The package name. Every unit in the package is named `<name>` or `<name>.<suffix>`. |
 | `version` | string | Yes | `MAJOR.MINOR.PATCH`, with an optional prerelease. |
+| `verification.evaluation` | object | No | Optional compiler evaluation: `:max-steps` is a positive integer (default 1,000,000); `:defer-laws` lists fully qualified public law identities (default `[]`). Unknown identities are rejected. Definition admission and solver settings remain independent; see [step accounting and evidence statuses](language/evidence-and-discharge.md#compiler-evaluation-allowance). |
 | `sources` | array of paths | Yes | Source files or directories, relative to the package directory. |
 | `dependencies` | map | No | Package names mapped to ranges or source maps: `:version` plus `:path`, `:git` or `:archive`. |
 | `packages` | array of paths | No | Package directories to load when checking this package on its own with `lawspec package`. |

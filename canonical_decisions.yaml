@@ -1268,3 +1268,198 @@ DEC-evaluation-regression-categories:
   opened: 0.31.2
   decided: 0.31.2
   refs: [why3, z3, why3-structural-induction, lean-inductive-types, go-type-aliases]
+
+DEC-host-sdk-direct-haskell:
+  status: decided
+  question: How can independently packaged Haskell applications share a typed, capability-scoped Node and browser host?
+  answer: |
+    The owner's reusable host SDK plan selects WIT and the WebAssembly Component Model, a prebuilt Wasmtime helper for Node and host-generated jco glue in browser workers. The subsequent explicit direction replaces the proposed wit-bindgen C bridge with direct WIT-to-Haskell generation. Reuse upstream wit-parser for resolution, canonical sizes, offsets and function signatures, wasm-tools for component encoding and the upstream preview1 adapter, Wasmtime for Node execution, and preview2-shim for browser WASI. Emit Haskell ADTs and typed operations directly. Raw scalar foreign declarations use GHC's core Wasm calling convention; GHC and libc remain runtime dependencies, but no authored C bridge or wit-bindgen C output implements this boundary. Memory32 integer lanes, records, enums, variants, lists, options, results and imported resources are the initial supported subset. Other features and ambiguous generated names fail explicitly. The generator, its Haskell allocation/lifting/post-return support and initialization shim are new trusted code, not a proved compiler or an upstream Haskell backend. Resource scopes use bracket plus runtime handle validation; no static lifetime proof is claimed.
+
+    Applications grant authority; guest declarations never grant it. Grants are immutable per instance and revocation terminates its process or worker. Raw WASI receives no inherited application environment, preopens, stdio or socket authority. Named broker resources mediate selected file handles, network destinations and operations, scoped storage quotas, explicit environment values, isolated UI surfaces and validated native callbacks. cap-std supplies native path confinement including symlink races; browser handles remain in the page broker. Redirects cannot expand network grants. Explicit trustedJavaScript, trustedDOM, trustedNativeFFI and trustedProcess providers require the trusted profile and are rejected in the hostile profile. These callbacks are embedding-application code and remain outside guest isolation. Server authorization and browser consent remain independent requirements.
+
+    Host-generated artifact registration is mandatory before browser JavaScript loading, in both the page loader and worker. A self-authored plugin manifest plus hashes is insufficient. Only a trusted build transforms plugin Wasm into jco glue and adds its manifest digest to the application registry. Enforce guest memory/table limits, request/output bounds and execution deadlines; Node also meters fuel. Browser build instrumentation records failed memory.grow operations in a newly appended, guest-inaccessible global so exhaustion is not guessed from trap text. This instrumentation is part of the SDK trust boundary and uses upstream binary parsers, encoders and validators. Browser profiles require JSPI, workers, WebCrypto and a secure context; optional isolation headers are deployment requirements rather than authority. Missing features fail without downgrade.
+
+    The LawSpec formatting pilot remains separate from reusable runtime/provider decisions and calls the existing Haskell dispatcher with mandatory checked formatting by default and explicit syntax-only formatting. It preserves diagnostic locations and prevents writes after diagnostic failures. Existing CLI, SDK, Learn and editor APIs stay operational. Rust exercises the same host contract; it does not claim to format LawSpec. Record runtime, provider, artifact and policy identities with execution. Automated tests establish scoped execution evidence, not proof or human security review. Publishing, additional platform release artifacts, Wavelet integration and remaining first-party migrations are subsequent stages. Stop production cutover if Haskell integration, browser compatibility or containment fails.
+  opened: 0.31.3
+  decided: 0.31.3
+  refs: [component-canonical-abi, wit-bindgen-haskell, ghc-wasm, wasmtime-security, wasi-capabilities, jco-transpiling, cap-std]
+
+DEC-host-sdk-independent-consumer:
+  status: decided
+  question: How does LawSpec consume the SDK while the SDK develops independently?
+  answer: |
+    The owner requested immediate separation. The SDK lives in its own sibling
+    repository and owns runtime integration, capability enforcement, direct
+    WIT-to-Haskell generation and generic conformance tests. LawSpec retains its
+    application WIT, Haskell adapters, format wrappers and parity tests. Consumers
+    install integrity-checked, locally packed npm runtime/build/platform artifacts;
+    no application build imports SDK source files across repository boundaries.
+    Each application build generates its own immutable browser registration and
+    worker entrypoint; it never modifies the installed SDK dependency.
+
+    The first compiler API migration exposes explicit createCompiler({runtime:
+    'component'}) selection with unchanged operation signatures and response DTOs.
+    Its application WIT carries the existing schema-versioned JSON request and
+    response as text for compatibility; this does not claim generated field-level
+    WIT types for the entire legacy compiler protocol. Capability operations remain
+    generated typed Haskell. Every compiler method delegates to the same dispatcher,
+    preserving mandatory definition checks and evidence classifications. Existing
+    persistent memo encodings and admission are retained through a scoped cache IO
+    backend; a named file grant supplies storage, and runtime/provider/artifact/policy
+    identities partition persisted records. Raw WASI remains without file grants.
+
+    Default CLI, Learn and editor cutover remains gated on supported-platform and
+    application acceptance. SDK selection never falls back to the legacy loader.
+    Legacy remains the default during this explicit migration stage because only
+    the SDK's macOS ARM64 prebuilt package has been accepted. Publishing and other
+    default runtime migrations are not authorized by this development extraction.
+  opened: 0.31.3
+  decided: 0.31.3
+  refs: [component-canonical-abi, wasmtime-security, wasi-capabilities]
+
+DEC-haskell-application-port:
+  status: decided
+  question: Who owns application behavior after the independent host SDK pilot, and when may the default runtime change?
+  answer: |
+    The owner selected a full Haskell application port for LawSpec 0.32.0 using
+    independent SDK 0.2.0 artifacts. Haskell owns CLI/project workflows, proof and
+    native-execution interpretation, editor and MCP state, Learn and documentation
+    UI composition, embedding policy and development orchestration. The SDK owns
+    generic typed facilities and containment; it cannot contain LawSpec compiler,
+    command, curriculum or evidence decisions. Third-party tools, target runtimes,
+    generated programs and JavaScript integration tests retain their languages.
+    Generated WIT façades replace the pilot's text dispatcher. Recursive compiler
+    results use typed node tables in scoped resources, never an untyped value
+    envelope. Public helpers become asynchronous with updated callers and explicit
+    compatibility tests. Resources and jobs have explicit lifecycles; cancelling
+    a compiler job must not discard drafts or unrelated UI sessions. Embedding
+    policy is a separate trusted artifact; guest declarations grant no authority.
+
+    Preserve all nine compiler method shapes, mandatory definition validation,
+    source coordinates, ownership protections and explicit evidence outcomes.
+    Obligation generation, solver execution and proof checking stay distinct.
+    Keep legacy production entrypoints until all subsystem parity, containment,
+    package-installation, browser and native-platform execution gates pass and
+    documented performance limits are measured. A partial migration is progress,
+    not completion. Native acceptance requires macOS/Linux on x64 and ARM64 and
+    Node 22/24/26; Windows and musl remain unsupported, with the WSL route retained.
+    Clean consumers require no Haskell or Rust installation. Use integrity-pinned
+    SDK packages across repository boundaries, separate component build outputs
+    and a shared dependency solution. No publication, tags, SDK guest-language
+    expansion or human review approval follows from this implementation work.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [component-canonical-abi, wit-bindgen-haskell, ghc-wasm, wasmtime-security, wasi-capabilities, jco-transpiling]
+
+DEC-node-precompiled-components:
+  status: decided
+  question: How should LawSpec reduce Node component startup memory while retaining source builds?
+  answer: |
+    The owner requests trusted precompiled native artifacts for Node and an
+    explicit option to build from source. The SDK owns native compilation,
+    registration verification and immutable loading; LawSpec consumes packed,
+    integrity-pinned SDK artifacts and ships generated native registrations and
+    platform artifacts with its component entrypoint. Explicit source compilation
+    remains available, as do full repository Haskell and Rust builds. Missing or
+    mismatched precompiled artifacts fail without a fallback. Execution identities
+    and cache namespaces distinguish the component, native artifact, actual
+    runtime and configuration. Preserve mandatory definition validation and all
+    compiler result semantics. This changes the component runtime path; the full
+    application default cutover remains subject to its existing acceptance gates.
+    Native platform acceptance and human review require actual evidence. No npm
+    publication or release tag is authorized by this implementation.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [wasmtime-security]
+
+DEC-node-native-platform-packages:
+  status: decided
+  question: How does LawSpec distribute precompiled code without bundling every platform into the main npm package?
+  answer: |
+    The application owns optional @lawspec/compiler-<platform> packages and their
+    trusted digest registrations. The SDK supplies generic compilation, package
+    assembly and runtime verification; no application artifact belongs in the SDK
+    platform packages. LawSpec's main package keeps portable Wasm for explicit
+    source mode and generated registrations for native mode. Only the executing
+    platform's optional native package is needed. Local tarball records are
+    integrity-pinned and package paths include content identities to prevent stale
+    local installation reuse. Cross-compilation does not establish native platform
+    acceptance; execution results and any emulation are recorded separately.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [wasmtime-security]
+
+DEC-node-native-acceptance-bundle:
+  status: decided
+  question: How are the exact unpublished native archives transferred for independent platform acceptance?
+  answer: |
+    A native Haskell development command assembles a self-contained acceptance
+    directory from the pinned SDK and application archives and a prepared npm
+    package receipt. It verifies the copied archive bytes before exposing the
+    completed directory, rejects path-bearing archive names and symlink archive
+    inputs, refuses existing outputs and removes its own failed staging output.
+    Node supplies its standard streaming SHA-512 implementation; Haskell owns
+    package selection and validation. The generated JavaScript integration runner
+    needs only Node and npm on the acceptance host and executes the existing
+    clean-install test in both compilation modes. Bundle construction grants no
+    native platform acceptance, publication authority or human approval.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [wasmtime-security]
+
+DEC-s1j-shared-failures:
+  status: decided
+  question: How should S1.j address the reported compiler and tooling failures?
+  answer: |
+    Repair shared generation, provider resolution, handler materialization and
+    substitution paths with regression families. Accept stable Rapid >=1.2.0
+    <1.4.0 and scaffold 1.3.0. Add universal prelude.all over existing iterable
+    domains, FileSystem.createDirectories, and isolated user mutation runs with
+    actual failing-law evidence. Preserve user-owned adapters and host-SDK work.
+    Mutual total recursion remains unsupported; document checked restructuring.
+    Original-project and cross-platform confirmation remain explicit release
+    gates; reduced fixtures and local runs do not establish those results.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [rapid-go, REQ-honest-evidence]
+
+DEC-s1j-evaluation-budget:
+  status: decided
+  question: How should optional compiler law evaluation be bounded?
+  answer: |
+    Share a deterministic allowance of 1000000 logical expression and recursive
+    validation visits across each law's finite evaluation. Allow positive
+    maxSteps and explicit public deferLaws identities in verification.evaluation.
+    Neither setting changes mandatory admission or solver settings. Preserve
+    planned executable continuations and report incomplete when none exists.
+    Include settings in cache identities. Lean heartbeats provide resource-limit
+    precedent; this interpreter uses its own step accounting and supplies no
+    kernel proof certificate. Why3's size-controlled verification condition
+    generation informs further scaling work, not an integrated backend claim.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [lean-heartbeats, why3-vc-generation, REQ-honest-evidence]
+
+DEC-component-installation-preparation:
+  status: decided
+  question: When must native component preparation happen, and where is the SDK published?
+  answer: |
+    The owner named the independent SDK Wasm Platform Kit and supplied the public
+    brain-fuel/wasm-platform-kit repository. Consume integrity-pinned archives
+    under the wasm-platform-kit package names, independent of LawSpec releases.
+    The owner also authorized pushing and tagging, superseding the earlier
+    implementation-only restriction; release gates and pending human review
+    remain explicit.
+
+    npm installation must verify the platform prebuilt component or compile the
+    pinned portable component before succeeding. WASM_PLATFORM_KIT_BUILD_FROM_SOURCE=1
+    selects compilation during installation or npm rebuild. Normal application
+    execution must never compile a component, even when the native artifact is
+    missing. The old compilation: source runtime option is rejected. This
+    supersedes runtime source selection in DEC-node-precompiled-components.
+    The SDK owns bounded preparation, integrity checking and atomic receipts;
+    generated package bootstraps select the application artifact. Installation
+    compilation has a separate 15-minute limit; runtime containment is unchanged.
+  opened: 0.31.3
+  decided: 0.31.3
+  refs: []

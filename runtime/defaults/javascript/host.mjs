@@ -25,6 +25,10 @@ export class FileSystemHandler
   {
     fs.writeFileSync(value0, value1);
   }
+  createDirectories(value0)
+  {
+    fs.mkdirSync(value0, {recursive: true});
+  }
   pathExists(value0)
   {
     try

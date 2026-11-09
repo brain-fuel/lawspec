@@ -65,3 +65,53 @@ test('incompatible or unverifiable environments prevent generation writes', asyn
     );
   }
 });
+
+test('Rapid accepts both stable baselines and rejects unsupported versions', () =>
+{
+  for (const version of ['1.2.0', 'v1.3.0', '1.3.1'])
+    assert.equal(supported('go', 'rapid', version), true);
+  for (const version of ['1.1.0', '1.4.0', '1.3.0-rc.1', 'local', ''])
+    assert.equal(supported('go', 'rapid', version), false);
+});
+
+test('Go doctor applies the shared Rapid range to resolved modules', async t =>
+{
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-go-doctor-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  await writeFile(
+    path.join(root, 'go'),
+    `#!${process.execPath}
+if (process.argv[2] === 'version') console.log('go version go1.25.0 darwin/arm64');
+else if (process.argv.includes('-json')) console.log(JSON.stringify({
+  Version: process.env.RAPID_TEST_VERSION,
+  ...(process.env.RAPID_TEST_REPLACE ? {Replace: {Dir: '/local'}} : {}),
+}));
+`,
+    {mode: 0o755},
+  );
+  const module = new URL('../doctor.mjs', import.meta.url).href;
+  const code = `import {doctor} from ${JSON.stringify(module)}; console.log(JSON.stringify(await doctor({language:'go'},process.cwd())));`;
+  for (const [version, replacement, expected] of [
+    ['v1.2.0', '', true],
+    ['v1.3.0', '', true],
+    ['v1.3.0', 'local', false],
+    ['v1.4.0', '', false],
+    ['v1.3.0-rc.1', '', false],
+  ])
+  {
+    const {stdout} = await exec(
+      process.execPath,
+      ['--input-type=module', '-e', code],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          PATH: root + path.delimiter + process.env.PATH,
+          RAPID_TEST_VERSION: version,
+          RAPID_TEST_REPLACE: replacement,
+        },
+      },
+    );
+    assert.equal(JSON.parse(stdout).ok, expected, `${version} ${replacement}`);
+  }
+});

@@ -1,12 +1,14 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- | Closed execution of validated total definitions. The returned function has
 -- no adapter hook, so a definition cannot acquire effects during evaluation.
-module LawSpec.Core.Definitions (prepareDefinitions, prepareDefinitionsWithScopes, prepareResolvingDefinitions, prepareHookedDefinitions) where
+module LawSpec.Core.Definitions (prepareDefinitions, prepareDefinitionsWithScopes, prepareResolvingDefinitions, prepareHookedDefinitions, prepareHookedDefinitionsM) where
 
+import Control.Monad.Except (MonadError, throwError, catchError)
 import Control.Monad (unless)
 import qualified Data.Map.Strict as M
 import LawSpec.Common
 import LawSpec.Core
-import LawSpec.Core.Eval (evaluateValue, validateValueWithContracts)
+import LawSpec.Core.Eval (evaluateValueM, evaluateAdmittedValueM, validateValueWithContractsM)
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Core.Validate (validateProgram,validateProgramWithScopes)
 import LawSpec.Core.CapabilityScope (CapabilityScopes)
@@ -42,9 +44,19 @@ prepareHookedDefinitions :: Program -> Either [Diagnostic]
   (((Id -> [Value] -> Either String Value) -> Id -> Maybe ([Value] -> Either String Value)) -> Id -> [Value] -> Either String Value)
 prepareHookedDefinitions=prepareHookedDefinitionsIn validateProgram
 
+-- The caller's monad shares one work counter across recursive calls and
+-- validation. Admission itself always runs before that optional counter.
+prepareHookedDefinitionsM :: MonadError String m => m () -> Program -> Either [Diagnostic]
+  (((Id -> [Value] -> m Value) -> Id -> Maybe ([Value] -> m Value)) -> Id -> [Value] -> m Value)
+prepareHookedDefinitionsM = prepareHookedDefinitionsWith validateProgram
+
 prepareHookedDefinitionsIn :: (Program -> Either [Diagnostic] ()) -> Program -> Either [Diagnostic]
   (((Id -> [Value] -> Either String Value) -> Id -> Maybe ([Value] -> Either String Value)) -> Id -> [Value] -> Either String Value)
-prepareHookedDefinitionsIn validate program = do
+prepareHookedDefinitionsIn validate = prepareHookedDefinitionsWith validate (pure ())
+
+prepareHookedDefinitionsWith :: MonadError String m => (Program -> Either [Diagnostic] ()) -> m () -> Program -> Either [Diagnostic]
+  (((Id -> [Value] -> m Value) -> Id -> Maybe ([Value] -> m Value)) -> Id -> [Value] -> m Value)
+prepareHookedDefinitionsWith validate tick program = do
   validate program
   let boundaries = definitionContracts (programUnits program)
   registry <- either (Left . pure . (\message -> Diagnostic "core" message Nothing)) Right
@@ -54,30 +66,29 @@ prepareHookedDefinitionsIn validate program = do
       definitions = M.fromList [(declarationId (definitionDeclaration d), d)
         | u <- programUnits program, d <- unitDefinitions u, not (definitionOrchestrates d)]
       contracts = M.fromList [(contractDeclaration c,c) | c <- boundaries]
-      invoke resolver name values = case resolver (invoke resolver) name of
+      invoke known resolver name values = case resolver (invoke False resolver) name of
        Just answer -> answer values
        Nothing -> do
-        definition <- maybe (Left ("unknown total definition: " ++ idText name)) Right
+        definition <- maybe (throwError ("unknown total definition: " ++ idText name)) pure
           (M.lookup name definitions)
         let arguments = definitionArguments definition
-            (_, result) = functionType (declarationType (definitionDeclaration definition))
         unless (length arguments == length values)
-          (Left (idText name ++ ": definition argument count mismatch"))
-        checked <- sequence [validateValueWithContracts registry bits (binderType b) value
+          (throwError (idText name ++ ": definition argument count mismatch"))
+        checked <- if known then pure values else sequence [validateValueWithContractsM tick registry bits (binderType b) value
           | (b, value) <- zip arguments values]
         let contract = M.lookup name contracts
             contractScope c = zip (map binderId (contractArguments c)) checked
             require stage scope predicate = do
-              value <- either (Left . ((idText name ++ ": " ++ stage ++ ": ") ++)) Right
-                (evaluateValue registry bits (invoke resolver) scope predicate)
+              value <- catchError (evaluateValueM tick registry bits (invoke False resolver) scope predicate)
+                (throwError . ((idText name ++ ": " ++ stage ++ ": ") ++))
               unless (value == ScalarValue (SBool True))
-                (Left (idText name ++ ": " ++ stage ++ " failed"))
+                (throwError (idText name ++ ": " ++ stage ++ " failed"))
         -- Check in declaration order: a false guard must stop before a later
         -- predicate (or the body) that is only defined under that guard.
         mapM_ (\c -> mapM_ (require "precondition" (contractScope c)) (contractPreconditions c)) contract
-        value <- evaluateValue registry bits (invoke resolver) (zip (map binderId arguments) checked)
-          (definitionBody definition) >>= validateValueWithContracts registry bits result
+        value <- evaluateAdmittedValueM tick registry bits (invoke True resolver) (zip (map binderId arguments) checked)
+          (definitionBody definition)
         mapM_ (\c -> mapM_ (require "postcondition"
           ((binderId (contractResult c),value) : contractScope c)) (contractPostconditions c ++ contractRuntimePostconditions c)) contract
         pure value
-  pure invoke
+  pure (invoke False)

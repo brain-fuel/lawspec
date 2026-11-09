@@ -3,11 +3,17 @@
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
   ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith
-  , PresentationCheck(..), presentationChecks, gleamTestPackage
+  , PresentationCheck(..), presentationChecks, gleamTestPackage, rapidMinimum, rapidMaximum, rapidDefault
   ) where
 
 import Data.List (intercalate)
 import qualified LawSpec.Targets as Targets
+
+-- | Supported stable Rapid releases and the scaffold baseline.
+rapidMinimum, rapidMaximum, rapidDefault :: String
+rapidMinimum = "1.2.0"
+rapidMaximum = "1.4.0"
+rapidDefault = "1.3.0"
 
 -- | The order users see the targets in everywhere: the CLI, the generated npm
 -- facts and the docs read this one list. ref:DEC-generated-javascript
@@ -87,7 +93,7 @@ setupAdvice target = lookup target
   , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and, for a program that imports lawspec.crypto or lawspec.network, cryptography 50: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
   , ("javascript", "Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2, and for a program that imports lawspec.crypto or lawspec.network npm install @noble/post-quantum@0.7.1.")
   , ("typescript", "Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4 (and npm install @noble/post-quantum@0.7.1 for a program that imports lawspec.crypto or lawspec.network). Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
-  , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.")
+  , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v" ++ rapidDefault ++ " (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.")
   , ("haskell", "Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.")
   , ("scala", "Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test .")
@@ -226,9 +232,9 @@ scaffoldFilesWith crypto minify target = case target of
   "go" -> Right [("go.mod", unlines $
     [ "module example.com/lawspec-example", "", "go 1.25.0", ""
     ] ++ (if crypto then
-    [ "require (", "\tgithub.com/cloudflare/circl v1.6.5", "\tpgregory.net/rapid v1.2.0", ")", ""
+    [ "require (", "\tgithub.com/cloudflare/circl v1.6.5", "\tpgregory.net/rapid v" ++ rapidDefault, ")", ""
     , "require (", "\tgolang.org/x/crypto v0.54.0 // indirect", "\tgolang.org/x/sys v0.47.0 // indirect", ")" ]
-    else [ "require pgregory.net/rapid v1.2.0" ]))]
+    else [ "require pgregory.net/rapid v" ++ rapidDefault ]))]
   "haskell" -> Right
     [ ("stack.yaml", "snapshot: lts-24.58\npackages: [.]\n" ++
         (if crypto then "# lawspec.crypto's default handlers and lawspec.network\nextra-deps: [crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0, mldsa-0.1.1.0]\n" else ""))

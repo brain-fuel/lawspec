@@ -131,6 +131,11 @@ native bindings are present. Results, including rejected requests, use schema 5.
 Omitting `verification` selects no law checks. Mandatory definition validation
 still runs, and laws report `not-verified`.
 
+`verification.evaluation` accepts `maxSteps` (a positive integer, default
+1,000,000) and `deferLaws` (fully qualified public law identities). Unknown law
+identities are rejected. These settings govern optional compiler evaluation;
+see [step accounting and evidence statuses](language/evidence-and-discharge.md#compiler-evaluation-allowance).
+
 `planGeneration.tests` is a `NativeTestEntry[]` manifest of selected native checks.
 Each entry identifies its obligation, generated file, native name and dependency
 key. An entry with `kind: 'model'` names an exact native test slot; its optional

@@ -165,7 +165,7 @@ goUnitScalarNames declarations definitions unit laws = nub (concatMap scalars
 
 goUnitUsesSchema :: [(C.Id,String)] -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Unit -> [Expanded] -> Bool
 goUnitUsesSchema adapters nativeGenerators declarations definitions unit laws =
-  nativeGenerators || not (null adapters) || not (null definitions) || not (null declarations) ||
+  nativeGenerators || not (null (C.unitAbilities unit)) || not (null adapters) || not (null definitions) || not (null declarations) ||
   any (custom . snd) (functions unit) || any (any (custom . inputType) . inputs) owned ||
   any needsSchema (concatMap C.contractExpressions (contracts unit) ++ concatMap (C.propertyExpressions . original) owned)
   where
@@ -294,7 +294,7 @@ nativeScalarProductWithCompanions companions network javaStyle adapterBindings n
            Doc.text ("package " ++ last parts) <> Doc.hardline <>
            mconcat [Doc.hardline <> goStubFn n t | (n,t) <- adapterFunctions] <>
            -- Built-in abilities have default handlers (LawSpec.BuiltinDefaults).
-           mconcat [Doc.text (java (GoAbilities.productionStub dataDeclarations a)) | a <- C.unitAbilities u, C.idText (C.abilityOwner a) `notElem` defaultedUnits]
+           mconcat [Doc.text (java (GoAbilities.productionStub dataDeclarations a)) | a <- C.unitAbilities u, C.abilityNative a == Nothing, C.idText (C.abilityOwner a) `notElem` defaultedUnits]
          | hs = Doc.render (H.layout minify) $
            Doc.joinWith Doc.hardline (map Doc.text (["-- User-owned LawSpec adapter for " ++ unitName u ++ ": implement each function.",
              "module " ++ intercalate "." (map hsPart parts) ++ " where", ""] ++ hsStubImports)) <>
@@ -807,6 +807,7 @@ nativeScalarProductWithCompanions companions network javaStyle adapterBindings n
       , KotlinProperties.awaitResult = awaitFor
       , KotlinProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , KotlinProperties.nativeGenerators = nativeGenerators
+      , KotlinProperties.drawRequirement = anyRequirement dataDeclarations bits
       , KotlinProperties.nodeBudget = javaDataBudget
       , KotlinProperties.adapterWrappers = [doc | (_, (_, doc)) <- ktAdapterWrappers] ++ [doc | (_, (_, doc)) <- ktAttemptWrappers]
       , KotlinProperties.expression = ktRender
@@ -1022,6 +1023,7 @@ nativeScalarProductWithCompanions companions network javaStyle adapterBindings n
       , HaskellProperties.awaitResult = hsAwait
       , HaskellProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , HaskellProperties.usesCollections = hsCollections
+      , HaskellProperties.drawRequirement = anyRequirement dataDeclarations bits
       , HaskellProperties.nodeBudget = javaDataBudget
       , HaskellProperties.reference = hsRef
       , HaskellProperties.machineBits = bits
@@ -1109,6 +1111,7 @@ nativeScalarProductWithCompanions companions network javaStyle adapterBindings n
       , GoProperties.awaitResult = awaitFor
       , GoProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , GoProperties.nativeGenerators = nativeGenerators
+      , GoProperties.drawRequirement = anyRequirement dataDeclarations bits
       , GoProperties.nodeBudget = javaDataBudget
       , GoProperties.machineBits = bits
       , GoProperties.expression = goRender
@@ -1335,6 +1338,7 @@ nativeScalarProductWithCompanions companions network javaStyle adapterBindings n
       , JavaProperties.nativeGenerators = nativeGenerators
       , JavaProperties.machineBits = bits
       , JavaProperties.constructorContracts = hasConstructorContracts dataDeclarations
+      , JavaProperties.drawRequirement = anyRequirement dataDeclarations bits
       , JavaProperties.nodeBudget = javaDataBudget
       , JavaProperties.awaitResult = awaitFor
       , JavaProperties.adapterWrappers = [doc | (_, (_, doc)) <- javaAdapterWrappers] ++ [doc | (_, (_, doc)) <- javaAttemptWrappers]

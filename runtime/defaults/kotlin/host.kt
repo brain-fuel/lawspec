@@ -22,6 +22,10 @@ object Host {
             java.nio.file.Files.write(java.nio.file.Path.of(value0), value1)
         }
 
+        override fun createDirectories(value0: kotlin.String) {
+            java.nio.file.Files.createDirectories(java.nio.file.Path.of(value0))
+        }
+
         override fun pathExists(value0: kotlin.String): kotlin.Boolean =
             try {
                 java.nio.file.Files.exists(

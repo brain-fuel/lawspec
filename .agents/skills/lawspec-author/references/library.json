@@ -1335,6 +1335,15 @@
       "execution": "deferred"
     },
     {
+      "id": "builtin:lawspec.host::createDirectories",
+      "kind": "builtin",
+      "name": "lawspec.host::createDirectories",
+      "source": "checked built-in operation: lawspec.host",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "builtin:lawspec.host::emptyEnvironment",
       "kind": "builtin",
       "name": "lawspec.host::emptyEnvironment",
@@ -2634,6 +2643,15 @@
       "id": "prelude:UIntSize",
       "kind": "prelude",
       "name": "UIntSize",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "prelude:all",
+      "kind": "prelude",
+      "name": "all",
       "source": "src/LawSpec/PreludeNames.hs",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4242,135 +4260,135 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:144: Explanations",
+      "id": "reference:docs/reference/api.md:149: Explanations",
       "kind": "reference",
-      "name": "docs/reference/api.md:144: Explanations",
+      "name": "docs/reference/api.md:149: Explanations",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:194: SMT tasks and solver execution",
+      "id": "reference:docs/reference/api.md:199: SMT tasks and solver execution",
       "kind": "reference",
-      "name": "docs/reference/api.md:194: SMT tasks and solver execution",
+      "name": "docs/reference/api.md:199: SMT tasks and solver execution",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:241: Packages",
+      "id": "reference:docs/reference/api.md:246: Packages",
       "kind": "reference",
-      "name": "docs/reference/api.md:241: Packages",
+      "name": "docs/reference/api.md:246: Packages",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:251: Results",
+      "id": "reference:docs/reference/api.md:256: Results",
       "kind": "reference",
-      "name": "docs/reference/api.md:251: Results",
+      "name": "docs/reference/api.md:256: Results",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:281: Diagnostics",
+      "id": "reference:docs/reference/api.md:286: Diagnostics",
       "kind": "reference",
-      "name": "docs/reference/api.md:281: Diagnostics",
+      "name": "docs/reference/api.md:286: Diagnostics",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:308: Artifacts",
+      "id": "reference:docs/reference/api.md:313: Artifacts",
       "kind": "reference",
-      "name": "docs/reference/api.md:308: Artifacts",
+      "name": "docs/reference/api.md:313: Artifacts",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:331: Types and identities",
+      "id": "reference:docs/reference/api.md:336: Types and identities",
       "kind": "reference",
-      "name": "docs/reference/api.md:331: Types and identities",
+      "name": "docs/reference/api.md:336: Types and identities",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:367: Expressions",
+      "id": "reference:docs/reference/api.md:372: Expressions",
       "kind": "reference",
-      "name": "docs/reference/api.md:367: Expressions",
+      "name": "docs/reference/api.md:372: Expressions",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:416: Laws and assertions",
+      "id": "reference:docs/reference/api.md:421: Laws and assertions",
       "kind": "reference",
-      "name": "docs/reference/api.md:416: Laws and assertions",
+      "name": "docs/reference/api.md:421: Laws and assertions",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:476: Values",
+      "id": "reference:docs/reference/api.md:481: Values",
       "kind": "reference",
-      "name": "docs/reference/api.md:476: Values",
+      "name": "docs/reference/api.md:481: Values",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:509: Declarations",
+      "id": "reference:docs/reference/api.md:514: Declarations",
       "kind": "reference",
-      "name": "docs/reference/api.md:509: Declarations",
+      "name": "docs/reference/api.md:514: Declarations",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:532: Evidence",
+      "id": "reference:docs/reference/api.md:537: Evidence",
       "kind": "reference",
-      "name": "docs/reference/api.md:532: Evidence",
+      "name": "docs/reference/api.md:537: Evidence",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:604: Packages in results",
+      "id": "reference:docs/reference/api.md:609: Packages in results",
       "kind": "reference",
-      "name": "docs/reference/api.md:604: Packages in results",
+      "name": "docs/reference/api.md:609: Packages in results",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:611: Native bindings",
+      "id": "reference:docs/reference/api.md:616: Native bindings",
       "kind": "reference",
-      "name": "docs/reference/api.md:611: Native bindings",
+      "name": "docs/reference/api.md:616: Native bindings",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:655: Planned environment dependencies",
+      "id": "reference:docs/reference/api.md:660: Planned environment dependencies",
       "kind": "reference",
-      "name": "docs/reference/api.md:655: Planned environment dependencies",
+      "name": "docs/reference/api.md:660: Planned environment dependencies",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4620,6 +4638,15 @@
       "execution": "deferred"
     },
     {
+      "id": "reference:docs/reference/cli.md:538: Mutation testing",
+      "kind": "reference",
+      "name": "docs/reference/cli.md:538: Mutation testing",
+      "source": "docs/reference/cli.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "reference:docs/reference/cli.md:69: `fmt`",
       "kind": "reference",
       "name": "docs/reference/cli.md:69: `fmt`",
@@ -4683,45 +4710,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:120: Generation",
+      "id": "reference:docs/reference/configuration.md:121: Generation",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:120: Generation",
+      "name": "docs/reference/configuration.md:121: Generation",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:133: `lawspec.edn`",
+      "id": "reference:docs/reference/configuration.md:134: `lawspec.edn`",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:133: `lawspec.edn`",
+      "name": "docs/reference/configuration.md:134: `lawspec.edn`",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:165: Generated state",
+      "id": "reference:docs/reference/configuration.md:167: Generated state",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:165: Generated state",
+      "name": "docs/reference/configuration.md:167: Generated state",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:172: Contract resolution and component descriptions",
+      "id": "reference:docs/reference/configuration.md:174: Contract resolution and component descriptions",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:172: Contract resolution and component descriptions",
+      "name": "docs/reference/configuration.md:174: Contract resolution and component descriptions",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:84: Targets",
+      "id": "reference:docs/reference/configuration.md:85: Targets",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:84: Targets",
+      "name": "docs/reference/configuration.md:85: Targets",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4795,6 +4822,69 @@
       "kind": "reference",
       "name": "docs/reference/formatting.md:90: Source highlighting",
       "source": "docs/reference/formatting.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:136: Trust and acceptance",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:136: Trust and acceptance",
+      "source": "docs/reference/host-sdk.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:182: Application port status",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:182: Application port status",
+      "source": "docs/reference/host-sdk.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:255: Helper memory investigation",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:255: Helper memory investigation",
+      "source": "docs/reference/host-sdk.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:330: Precompiled Node implementation",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:330: Precompiled Node implementation",
+      "source": "docs/reference/host-sdk.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:50: Package boundary",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:50: Package boundary",
+      "source": "docs/reference/host-sdk.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:91: Compiler API and formatter",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:91: Compiler API and formatter",
+      "source": "docs/reference/host-sdk.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-sdk.md:9: Blocked status",
+      "kind": "reference",
+      "name": "docs/reference/host-sdk.md:9: Blocked status",
+      "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
@@ -5106,54 +5196,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:152: Operations",
+      "id": "reference:docs/reference/language/collections.md:158: Operations",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:152: Operations",
+      "name": "docs/reference/language/collections.md:158: Operations",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:172: Sized stacks and queues",
+      "id": "reference:docs/reference/language/collections.md:178: Sized stacks and queues",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:172: Sized stacks and queues",
+      "name": "docs/reference/language/collections.md:178: Sized stacks and queues",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:192: The portable order",
+      "id": "reference:docs/reference/language/collections.md:198: The portable order",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:192: The portable order",
+      "name": "docs/reference/language/collections.md:198: The portable order",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:215: Native types",
+      "id": "reference:docs/reference/language/collections.md:221: Native types",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:215: Native types",
+      "name": "docs/reference/language/collections.md:221: Native types",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:235: Generation",
+      "id": "reference:docs/reference/language/collections.md:241: Generation",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:235: Generation",
+      "name": "docs/reference/language/collections.md:241: Generation",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:242: Limits",
+      "id": "reference:docs/reference/language/collections.md:248: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:242: Limits",
+      "name": "docs/reference/language/collections.md:248: Limits",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5178,9 +5268,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/collections.md:90: Collection types",
+      "id": "reference:docs/reference/language/collections.md:96: Collection types",
       "kind": "reference",
-      "name": "docs/reference/language/collections.md:90: Collection types",
+      "name": "docs/reference/language/collections.md:96: Collection types",
       "source": "docs/reference/language/collections.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5316,6 +5406,15 @@
       "id": "reference:docs/reference/language/definitions.md:161: Generated code",
       "kind": "reference",
       "name": "docs/reference/language/definitions.md:161: Generated code",
+      "source": "docs/reference/language/definitions.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/definitions.md:182: Mutual recursion and native calls",
+      "kind": "reference",
+      "name": "docs/reference/language/definitions.md:182: Mutual recursion and native calls",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5613,6 +5712,15 @@
       "id": "reference:docs/reference/language/evidence-and-discharge.md:377: Reading the evidence",
       "kind": "reference",
       "name": "docs/reference/language/evidence-and-discharge.md:377: Reading the evidence",
+      "source": "docs/reference/language/evidence-and-discharge.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:389: Compiler evaluation allowance",
+      "kind": "reference",
+      "name": "docs/reference/language/evidence-and-discharge.md:389: Compiler evaluation allowance",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6069,6 +6177,15 @@
       "execution": "deferred"
     },
     {
+      "id": "reference:docs/reference/language/host.md:101: Resources",
+      "kind": "reference",
+      "name": "docs/reference/language/host.md:101: Resources",
+      "source": "docs/reference/language/host.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "reference:docs/reference/language/host.md:34: FileSystem",
       "kind": "reference",
       "name": "docs/reference/language/host.md:34: FileSystem",
@@ -6078,27 +6195,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/host.md:62: Environment",
+      "id": "reference:docs/reference/language/host.md:68: Environment",
       "kind": "reference",
-      "name": "docs/reference/language/host.md:62: Environment",
+      "name": "docs/reference/language/host.md:68: Environment",
       "source": "docs/reference/language/host.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/host.md:81: Ports",
+      "id": "reference:docs/reference/language/host.md:87: Ports",
       "kind": "reference",
-      "name": "docs/reference/language/host.md:81: Ports",
-      "source": "docs/reference/language/host.md",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "reference:docs/reference/language/host.md:95: Resources",
-      "kind": "reference",
-      "name": "docs/reference/language/host.md:95: Resources",
+      "name": "docs/reference/language/host.md:87: Ports",
       "source": "docs/reference/language/host.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6852,6 +6960,15 @@
       "execution": "deferred"
     },
     {
+      "id": "reference:docs/reference/language/syntax.md:249: Reserved names",
+      "kind": "reference",
+      "name": "docs/reference/language/syntax.md:249: Reserved names",
+      "source": "docs/reference/language/syntax.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "reference:docs/reference/language/syntax.md:40: Blocks and endings",
       "kind": "reference",
       "name": "docs/reference/language/syntax.md:40: Blocks and endings",
@@ -7284,36 +7401,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:288: Haskell",
+      "id": "reference:docs/reference/native-bindings.md:300: Haskell",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:288: Haskell",
+      "name": "docs/reference/native-bindings.md:300: Haskell",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:301: Erlang, Elixir and Gleam",
+      "id": "reference:docs/reference/native-bindings.md:313: Erlang, Elixir and Gleam",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:301: Erlang, Elixir and Gleam",
+      "name": "docs/reference/native-bindings.md:313: Erlang, Elixir and Gleam",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:336: Uninhabited type parameters",
+      "id": "reference:docs/reference/native-bindings.md:348: Uninhabited type parameters",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:336: Uninhabited type parameters",
+      "name": "docs/reference/native-bindings.md:348: Uninhabited type parameters",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:343: Ownership",
+      "id": "reference:docs/reference/native-bindings.md:355: Ownership",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:343: Ownership",
+      "name": "docs/reference/native-bindings.md:355: Ownership",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

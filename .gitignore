@@ -83,3 +83,6 @@ runtime/dotnet/**/obj/
 /npm/learn/vendor/
 /learn/formatter/bin/
 /learn/formatter/obj/
+
+# Built application component; reproduced by component/tools/build.mjs.
+/npm/host-component/

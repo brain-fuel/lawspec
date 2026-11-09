@@ -215,6 +215,18 @@ public enum Defaults {
           }
         ),
         (
+          "createDirectories",
+          { _, args in
+            let p = try text(args[0])
+            do {
+              try FileManager.default.createDirectory(atPath: p, withIntermediateDirectories: true)
+            } catch {
+              throw fail("CreateDirectoriesFailed", "\(p): \(error)")
+            }
+            return .unit
+          }
+        ),
+        (
           "pathExists",
           { _, args in .bool(FileManager.default.fileExists(atPath: try text(args[0]))) }
         ),

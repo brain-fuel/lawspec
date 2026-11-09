@@ -178,3 +178,28 @@ and validates its arguments and result.
 The [target guides](../../how-to/targets/index.md) give the details. See
 [the total-function example](../../../examples/specs/total_functions.lawspec)
 for recursive list counting and structural equality.
+
+## Mutual recursion and native calls
+
+Mutually recursive total definitions are not supported in this increment.
+Combine related traversals into one structurally recursive function, carrying a
+mode or returning the results together. For example, this single traversal
+computes list parity without calls between `even` and `odd`:
+
+```lawspec
+unit guide.parity
+function evenLength (values :: List Bool) -> Bool is
+  first matching case of values:
+    when Nil then true
+    when Cons head tail then not (evenLength tail)
+  end case
+end function
+law pairs is definition: evenLength [true, false] end definition end law
+end unit
+```
+
+A native adapter is outside the checked definition system. To call native work
+from LawSpec, expose it as an ability operation and use a `procedure` declaring
+that ability. A total function may call other checked total definitions.
+Disabling law verification does not change these admission rules.
+ref:DEC-s1j-shared-failures

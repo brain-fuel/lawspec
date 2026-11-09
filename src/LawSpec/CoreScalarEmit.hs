@@ -625,11 +625,9 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
             (map (text . localName) (Draws.drawArguments node))
           helper node = do
             body <- case Draws.drawStep node of
-              Draws.AnyDraw ty (Just aim) | Just range <- inputRange bits aim -> pure
-                (method (text "_draw") "draw" [Generator.generatorDocWithin bits usesData referenceDoc (Just range) ty])
-              Draws.AnyDraw ty _ | ty == inputType (domainInput requirement) ->
-                (\source -> method (text "_draw") "draw" [source]) <$> contextStrategy e requirement
-              Draws.AnyDraw ty _ -> pure (method (text "_draw") "draw" [generatorDoc ty])
+              Draws.AnyDraw ty aim -> do
+                requested <- anyRequirement declarations bits requirement ty aim
+                (\source -> method (text "_draw") "draw" [source]) <$> contextStrategy e requested
               Draws.OneOfDraw _ values -> pure (invoke "_harness.draw_one_of"
                 [text "_draw",array [lambda [] (render value) | value <- values]])
               Draws.FrequencyDraw alternatives -> pure (invoke "_harness.draw_frequency"
@@ -772,8 +770,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
           -- restrictions as the narrowed scalar generator. Recompute them in
           -- the actual lexical prefix on every draw/shrink. Earlier restrictions
           -- guard partial expressions in later restrictions in source order.
-          prefix = takeWhile ((/= inputId input) . inputId) (inputs e) ++ [input]
-          predicates = concatMap inputRefinements prefix
+          predicates = inputRefinements input
           candidates = array (seeds ++ hints)
           accepted = lambda [text (inputId input)] (conjunction (map render predicates))
           witnesses
@@ -790,7 +787,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
       pure (case requiredSymbol plan of
         value:_ -> invoke "st.just" [render value]
         [] -> invoke "_data_strategy"
-          ([text "_lawspec_schema",referenceDoc ty,width,text (show budget),
+          ([text "_lawspec_schema",referenceDoc ty,width,text (show (generationNodeBudget budget plan)),
             scalar,text "symbols",witnesses] ++
             maybe [] (pure . indexDoc) (generatorIndex plan)))
     -- Index-directed generation: the target is evaluated from earlier draws.
