@@ -6,12 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-09
+
 ### Added
 
 - Independent Wasm Platform Kit integration exposes the compiler through a
   capability-scoped component runtime, with typed Haskell services, generated
   bindings and integrity-pinned native platform packages. The full application
   port and default-runtime cutover remain incomplete.
+  The `@lawspec/compiler-<platform>` packages cover macOS and glibc Linux on
+  ARM64 and x64. Linux x64 is accepted on execution under emulation; macOS x64
+  is cross-built and unverified.
 - Component installation verifies prebuilt native code or compiles the packaged
   Wasm during installation. `WASM_PLATFORM_KIT_BUILD_FROM_SOURCE=1 npm rebuild lawspec`
   forces source preparation; normal commands never trigger that compilation.
@@ -2491,6 +2496,7 @@ A maintenance release. The language, generated code and API are unchanged from
   owned values.
 
 [Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...HEAD
+[0.32.0]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...v0.32.0
 [0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3
 [0.31.2]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.2
 [0.31.1]: https://www.npmjs.com/package/lawspec/v/0.31.1

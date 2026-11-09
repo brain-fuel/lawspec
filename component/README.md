@@ -1,8 +1,7 @@
 # LawSpec component integration
 
-> **Blocked — 2026-11-08:** Native artifact shipment is awaiting x64 execution
-> acceptance. See the authoritative [blocked status](../docs/reference/host-sdk.md#blocked-status)
-> for the missing environments, resumption requirements and prepared bundle.
+> **Released with 0.32.0.** Linux x64 is accepted on emulated execution and
+> macOS x64 is unverified. See the authoritative [release status](../docs/reference/host-sdk.md#release-status).
 
 This directory owns LawSpec's adapter to the independently maintained Wasm Platform Kit.
 It is a private development package. The SDK source is in a separate repository;

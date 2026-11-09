@@ -1440,6 +1440,24 @@ DEC-s1j-evaluation-budget:
   decided: 0.32.0
   refs: [lean-heartbeats, why3-vc-generation, REQ-honest-evidence]
 
+DEC-component-release-acceptance:
+  status: decided
+  question: Which platform evidence does shipping the native component packages with 0.32.0 require?
+  answer: |
+    On 9 November 2026 the owner accepted x64 for release with an explicit note
+    that macOS x64 is unverified, to be corrected later, and asked for the kit
+    and LawSpec to be published. Linux x64 rests on execution under x64
+    emulation; native x64 hardware is not recorded. The macOS x64 package is
+    cross-built with no recorded execution. The published status must state
+    both. This supersedes the publication restriction in
+    DEC-node-precompiled-components and the acceptance precondition in
+    DEC-component-installation-preparation; it supplies no platform evidence,
+    performance claim or human vetting, and leaves the default-runtime cutover
+    subject to its existing gates.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: [REQ-honest-evidence]
+
 DEC-component-installation-preparation:
   status: decided
   question: When must native component preparation happen, and where is the SDK published?
