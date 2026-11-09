@@ -1,0 +1,48 @@
+decision/haskell/component/pilot/Application.hs/module/Application:
+  digest: sha256:23a8cba04988d753
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/checked:
+  digest: sha256:60eb2be329681634
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/diagnostic:
+  digest: sha256:7685a65af2558cd0
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/dispatch:
+  digest: sha256:9e6319031f4dee3b
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/echo:
+  digest: sha256:e6f3c97a3bfbab57
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/exercise:
+  digest: sha256:df388543759b04a3
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/format:
+  digest: sha256:959443c1a85845ab
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/formatFiles:
+  digest: sha256:9a97e429f336b34b
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/location:
+  digest: sha256:4082bad84ef33c32
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/prelude:
+  digest: sha256:1dcbb043a7306e53
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/selectVersions:
+  digest: sha256:f44894c61f1a63dd
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/haskell/component/pilot/Application.hs/module/Application/function/spanValue:
+  digest: sha256:5111697fba5a0ded
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
