@@ -1,0 +1,7 @@
+expect: positive
+@@ acceptance/s1j/strategies.lawspec
+<<<<<<<
+  for all (value :: Positive) => value.value > 0 end for all
+=======
+  for all (value :: Positive) => value.value < 0 end for all
+>>>>>>>

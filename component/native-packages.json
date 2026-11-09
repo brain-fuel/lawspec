@@ -2,29 +2,29 @@
   "darwin-arm64": {
     "name": "@lawspec/compiler-darwin-arm64",
     "version": "0.31.3",
-    "file": "lawspec-compiler-darwin-arm64-0.31.3-0c7bbadab842.tgz",
-    "integrity": "sha512-1Sjf6u+3SzTspCxryWumOpa902KNOGeU12eeiosF6p3r1loQK7ZjWjW+IJirRq99qPKxHsIjI/b2aaEatWg1NA==",
-    "shasum": "0c7bbadab842aa0806bfc0e4492c3594561c9359"
+    "file": "lawspec-compiler-darwin-arm64-0.31.3-91130162356f.tgz",
+    "integrity": "sha512-qVR6yPlFRNvQrg8jdIh6wAejXQHvgzxKzJh3yYlsYCGyzI6407l8mi6Dm13+s1nqViHsI/0l+79LrgN5g+/5nQ==",
+    "shasum": "91130162356fb543c266637c7f90409faed44c54"
   },
   "linux-arm64": {
     "name": "@lawspec/compiler-linux-arm64",
     "version": "0.31.3",
-    "file": "lawspec-compiler-linux-arm64-0.31.3-3d52447f667e.tgz",
-    "integrity": "sha512-SOhoABJJDZa4wXsHRXb2J6h8g3GBgXy89aEVABzJGyJOKDuMsHDNxTPWl1szX/4Ba2yeqlqmGBE6qMKNqzcVvw==",
-    "shasum": "3d52447f667e87ea5fdb2a33e7fe672bda85b0e9"
+    "file": "lawspec-compiler-linux-arm64-0.31.3-ad3ff1a360e3.tgz",
+    "integrity": "sha512-o4BzL9UkPx9BbPy4cd0//0tWsXYnP295Hp9SCQuDIvru4Qm5x86oq1xaksQqR8/13uWvYlA8+ubmjdHo23meMQ==",
+    "shasum": "ad3ff1a360e3c5df24fb14fffdedeeafb8ff0030"
   },
   "linux-x64": {
     "name": "@lawspec/compiler-linux-x64",
     "version": "0.31.3",
-    "file": "lawspec-compiler-linux-x64-0.31.3-1bb96a38dc20.tgz",
-    "integrity": "sha512-zlhH+cbi8bCdZ9lnMS0GoJR72Ox6/OoEeY89gdZWr4nb/N8h4JyfhcKp6CGMUUdzE+h6tfs0+cWp5U0o6cXaNA==",
-    "shasum": "1bb96a38dc20bf013a449f11c5ee95975fc7251c"
+    "file": "lawspec-compiler-linux-x64-0.31.3-df8b14c0c229.tgz",
+    "integrity": "sha512-59lD1N5kcDV0OCGEg6XujDPdxTWcrFGjlJqEqXa0om/3RyugR0mxLG9BNrZywVxY2CWjqkY+SnhLcJ5Nz4KX+g==",
+    "shasum": "df8b14c0c229fca3af48aa7913d2ea76a5b2885f"
   },
   "darwin-x64": {
     "name": "@lawspec/compiler-darwin-x64",
     "version": "0.31.3",
-    "file": "lawspec-compiler-darwin-x64-0.31.3-4752b746d911.tgz",
-    "integrity": "sha512-oOeRUlCCbqX7s4sevIscUQuLvoF4eRtZpZPqtR8BGs2yJ3wMAH1E78PkaUp0tPXpwjkCAl/zf3Z2kO4+He5TvA==",
-    "shasum": "4752b746d911041251c1dd097febe80411032846"
+    "file": "lawspec-compiler-darwin-x64-0.31.3-7be05d75c766.tgz",
+    "integrity": "sha512-rQSTq3nKeEuaDmxCiuzUHvthgfID4Dm16FsLVXa3p7Pgjc5a0kAoUXELc+Kt42QWI73/pSd1zsFypTBZPmAHMw==",
+    "shasum": "7be05d75c766f2c502375719872bf02bf94fcb4b"
   }
 }

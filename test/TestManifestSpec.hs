@@ -74,6 +74,27 @@ unsplit text = case text of
 -- live. ref:DEC-incremental-compilation ref:REQ-test-manifest
 test_testManifestNamesEveryLawsTestOnEachTarget :: Spec
 test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $ do
+  it "reports a deferred empty law as incomplete without inventing a native continuation" $ do
+    let source = unlines ["unit emptyDeferred",
+          "law vacuous is definition: for all (value :: Bool where false) => false end for all end definition end law",
+          "law ordinary is definition: for all (value :: Bool) => value = value end for all end definition end law",
+          "end unit"]
+    forM_ programTargets $ \target -> forM_ [["property"], ["exhaustive"], ["exhaustive", "property"]] $ \layers -> do
+      let request = object ["schemaVersion" .= (5::Int), "languageProfile" .= ("1.0-rc.2"::String),
+            "method" .= ("planGeneration"::String), "target" .= target,
+            "verification" .= object ["layers" .= (layers::[String]),
+              "evaluation" .= object ["deferLaws" .= (["emptyDeferred::vacuous"]::[String])]],
+            "sources" .= [object ["path" .= ("empty.lawspec"::String), "content" .= source]]]
+      case decode (dispatch (encode request)) of
+        Just (Object response) -> do
+          field "diagnostics" response `shouldBe` Array mempty
+          let Array tests = field "tests" response
+              Array evidence = field "evidence" response
+          [field "law" entry | Object entry <- V.toList tests] `shouldBe` [String "emptyDeferred::law::ordinary"]
+          [field "status" item | Object item <- V.toList evidence,
+            field "declaration" item == String "emptyDeferred::law::vacuous", field "stage" item == String "law"]
+              `shouldBe` [String "incomplete"]
+        other -> expectationFailure (show (other :: Maybe Value))
   it "retains complete empty-domain Core evidence without planning a nonexistent native test" $ do
     let source = unlines ["unit emptyManifest",
           "law vacuous is definition: for all (x :: Integer) (y :: Integer where y > x and y < x + 1) => false end for all end definition end law",

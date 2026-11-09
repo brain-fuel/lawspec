@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-09T06:41:23.848073+00:00",
+  "status": "completed with non-passing records; corrective evidence recorded; human and external gates remain open",
+  "originalRun": {
+    "command": [
+      "lawspec-dev",
+      "ci",
+      "--jobs",
+      "6"
+    ],
+    "plannedSteps": 2752,
+    "passed": 2733,
+    "failed": 16,
+    "cached": 3,
+    "exitCode": 1,
+    "evidence": {
+      "path": ".artifacts/s1j-final-verification/lawspec-s1j-ci2.log",
+      "sha256": "fe2ee520f89d23f44cb30b174ae22a913f0447253e18b5b8dce709491891c85a"
+    }
+  },
+  "failureDispositions": [
+    {
+      "step": "scala-native-constructors",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-scala-constructors.log",
+          "sha256": "b188576c401cec3b43aa9ca4012563605332079668cbaa61b3f218ffca5e1a66"
+        }
+      ]
+    },
+    {
+      "step": "groovy-native-bindings-32-compact",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-groovy-bindings-recheck.log",
+          "sha256": "f965bf725ad1d0bfa1d80dfd0297181059be8df26d3e5568b232a0063b2f01b2"
+        }
+      ]
+    },
+    {
+      "step": "groovy-model-layer-selection",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-groovy-model-recheck.log",
+          "sha256": "a57c498dcfc7b4d618fd14d46e41de43a907c639ee7db4c7315eb0f4b398ef3d"
+        }
+      ]
+    },
+    {
+      "step": "go-native-bindings",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-go-bindings-recheck.log",
+          "sha256": "7cba527b0fc8fe11998b13cb51a84da5c812c14d44f1b8830f08d35766005219"
+        }
+      ]
+    },
+    {
+      "step": "kotlin-model-layer-selection-32-compact",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-kotlin-model-stable.log",
+          "sha256": "d053b5cf3184402dd8fcd5cdc4681e2519e950fa561d60b9227c4121b21c2e1e"
+        }
+      ]
+    },
+    {
+      "step": "javascript-model-layer-selection",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-javascript-model-frozen.log",
+          "sha256": "37c881122455bec57490245b40cceea77a6c473cde061be1d9c0c033beb28f87"
+        }
+      ]
+    },
+    {
+      "step": "javascript-multi-project-replay",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-replay-stable.log",
+          "sha256": "b2c60c98c5b8e02e39cd3d84fdc4b1807c751caaf39f34d970efda21dffcbfdd"
+        }
+      ]
+    },
+    {
+      "step": "prolog-native-bindings",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-prolog-bindings-stable.log",
+          "sha256": "7b0236557536544ef94b02ac566e41f257a3030b7b233f3c6345d39e70980501"
+        }
+      ]
+    },
+    {
+      "step": "python-model-layer-selection",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-python-model-stable.log",
+          "sha256": "ac7bcbec6910e7c4b5152dfa53924515f2640825b1e1ff362e68fbd92e7fd7d6"
+        }
+      ]
+    },
+    {
+      "step": "swift-model-layer-selection-32-compact",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-swift-model-stable.log",
+          "sha256": "a62e195bd0e8376951d4e49c01f8d9ca82782e5d664f40d7821e76fed389a0e3"
+        }
+      ]
+    },
+    {
+      "step": "python-model-layer-selection-32-compact",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-python-model32-stable.log",
+          "sha256": "d6684ae894793366e29d33d99317346c52b110e040c77daccb131f0180f9208c"
+        }
+      ]
+    },
+    {
+      "step": "compiler-tests",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-compiler-tests-final.log",
+          "sha256": "cdf75d13acf9296ee0271f8684f5063b59dd3a6768ca44ff5152c844b26936c4"
+        }
+      ]
+    },
+    {
+      "step": "canon",
+      "originalResult": "failed",
+      "followupResult": "pending owner review",
+      "pendingSignoffs": 47,
+      "scope": "Definition admission and Canon status pass; the human validation gate remains open."
+    },
+    {
+      "step": "kotlin-integration",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-kotlin-acceptance-clean.log",
+          "sha256": "8d48784dd8920ed73bf2ca52cb21d6f3cee387cbe4a27e4520cdb0f1c54c282a"
+        }
+      ]
+    },
+    {
+      "step": "npm-tests",
+      "originalResult": "failed",
+      "followupResult": "passed",
+      "evidence": [
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-doc-manifests-final.log",
+          "sha256": "8b21e5160e316472870d5ada31f286749b55be483c3f28632c7cdeeb2c759fe8"
+        },
+        {
+          "path": ".artifacts/s1j-final-verification/lawspec-s1j-go-budget-final.log",
+          "sha256": "754fa0ca74a71351a716ef6c5eed6cce2a37168dae0be0d38b6a9de715ead123"
+        }
+      ],
+      "scope": "The two failing tests passed exact reruns. The five environment-specific skips passed their separate CI steps. The entire SDK suite was not rerun."
+    },
+    {
+      "step": "parity",
+      "originalResult": "interrupted for compiler rebuild",
+      "followupResult": "passed",
+      "receipt": "docs/explanation/s1j-parity.json",
+      "scope": "Six fixture partitions cover the complete corpus and every target/profile; shared probes repeat in each partition."
+    }
+  ],
+  "finalCompiler": {
+    "examples": 2838,
+    "failures": 0,
+    "buildRecordSha256": "64ec6307210c6a23c73e68895b6bec6f8d6cf2f58c1aa8f036ee18234664968a",
+    "evidence": {
+      "path": ".artifacts/s1j-final-verification/lawspec-s1j-compiler-tests-final.log",
+      "sha256": "cdf75d13acf9296ee0271f8684f5063b59dd3a6768ca44ff5152c844b26936c4"
+    }
+  },
+  "additionalFocusedVerification": {
+    "positiveSuiteTargetProfileCombinations": 74,
+    "refinementNegativeControls": 36,
+    "note": "These new S1.j acceptance steps were registered after the running CI launcher was built, and were executed separately."
+  },
+  "notes": [
+    "The run spans compiler and host-SDK artifact updates; affected failures were rerun with stable artifacts. Original failed records are preserved, not relabeled as passing.",
+    "The final compiler suite, complete native/WASM parity and six platform/Node cache configurations passed after the final empty-domain continuation correction.",
+    "Original-project confirmations, native x64/WSL checks, teaching review and existing host-SDK/release gates remain independent."
+  ],
+  "localLogIndex": ".artifacts/s1j-final-verification/logs.json"
+}
