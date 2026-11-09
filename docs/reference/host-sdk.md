@@ -204,7 +204,21 @@ JavaScript index-key order and exact output bytes. The native tests compare
 against recorded results, while Node replays both the frozen test-only reference
 and the current public codec. This is finite compatibility evidence, not a proof
 for every input. The candidate is not connected to public SDK entrypoints; the
-asynchronous helper and typed manifest-service cutover remain pending.
+asynchronous helper and typed WIT manifest-service cutover remain pending.
+
+Manifest admission now has compiler-independent domain records in
+`LawSpec.Manifest.Types`, a pure validator in `LawSpec.Service.Manifest`, and
+explicit JSON/EDN projections. The existing native JSON adapter uses that
+validator; EDN admission calls it without serializing through JSON. Missing,
+malformed and present fields remain distinct, and the adapter preserves the
+original response manifest. `LawSpec.Version` shares version admission and
+selection with compiler package resolution without importing the compiler.
+An import-boundary check restricts these services to six local modules.
+Frozen pre-extraction results cover 739 JSON requests and 647 direct EDN
+admissions; the suite has 1,387 passing checks including syntax/admission failure
+separation. It preserves observed version-parser limitations relative to
+[SemVer 2.0.0](https://semver.org/), rather than changing admission during the port.
+These native services still require typed WIT bindings and component acceptance.
 
 The [EDN specification](https://github.com/edn-format/edn) supplies the external
 syntax; [Megaparsec 9.7.0](https://hackage-content.haskell.org/package/megaparsec-9.7.0/docs/Text-Megaparsec.html)

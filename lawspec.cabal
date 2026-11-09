@@ -12,6 +12,7 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     test/fixtures/application-port/manifest-codec.json
+    test/fixtures/application-port/manifest-service.json
     test/fixtures/application-port/README.txt
     dev/ci-cache-test/Main.hs
     vendor/unicode/LICENSE.txt
@@ -817,7 +818,9 @@ library
       LawSpec.LawClaims
       LawSpec.MachineSpec
       LawSpec.Mailboxes
+      LawSpec.Manifest.Decode
       LawSpec.Manifest.EDN
+      LawSpec.Manifest.Types
       LawSpec.MappingCheck
       LawSpec.Matchers
       LawSpec.Memo
@@ -882,6 +885,7 @@ library
       LawSpec.Search
       LawSpec.Service.Compilation
       LawSpec.Service.Formatting
+      LawSpec.Service.Manifest
       LawSpec.Sessions
       LawSpec.Sessions.Go
       LawSpec.Sessions.Haskell
@@ -942,6 +946,7 @@ library
       LawSpec.Typed.Swift
       LawSpec.Typed.Web
       LawSpec.Unification
+      LawSpec.Version
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
@@ -1144,6 +1149,7 @@ test-suite lawspec-test
       LawAnalysisSpec
       LawPrimitivesSpec
       ManifestCodecSpec
+      ManifestServiceSpec
       MappingSpec
       MatcherAdmissionSpec
       MatchWarningSpec

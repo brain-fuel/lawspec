@@ -191,12 +191,14 @@ archiveIntegrity file = do
 -- syntax or inference behind Core, the testing plan, or an emitter.
 boundaries :: IO ()
 boundaries = do
-  seen <- visitAll S.empty [(root, []) | root <- roots]
+  seen <- visitAll (`S.member` forbidden) "Core/backend" S.empty [(root, []) | root <- roots]
   putStrLn
     ( "Core and emitters: "
         ++ show (S.size seen)
         ++ " modules satisfy the syntax/inference boundary."
     )
+  controller <- visitAll (`notElem` controllerModules) "Manifest/controller" S.empty [(root, []) | root <- controllerRoots]
+  putStrLn ("Manifest/controller services: " ++ show (S.size controller) ++ " modules remain independent of the compiler.")
   where
     forbidden =
       S.fromList
@@ -232,17 +234,19 @@ boundaries = do
         "Core.Smt",
         "Prolog.Emit"
       ]
-    visitAll seen [] = pure seen
-    visitAll seen ((name, trail) : rest) = do
+    controllerRoots = ["Manifest.Types", "Manifest.Decode", "Service.Manifest", "Version"]
+    controllerModules = controllerRoots ++ ["Manifest.EDN", "Targets"]
+    visitAll _ _ seen [] = pure seen
+    visitAll rejected boundary seen ((name, trail) : rest) = do
       when
-        (name `S.member` forbidden)
-        (die ("Core/backend boundary violation: " ++ intercalate " -> " (reverse (name : trail))))
+        (rejected name)
+        (die (boundary ++ " boundary violation: " ++ intercalate " -> " (reverse (name : trail))))
       if name `S.member` seen
-        then visitAll seen rest
+        then visitAll rejected boundary seen rest
         else do
           source <- readFile ("src/LawSpec" </> map (\c -> if c == '.' then '/' else c) name ++ ".hs")
           let imports = mapMaybe localImport (lines source)
-          visitAll (S.insert name seen) ([(i, name : trail) | i <- imports] ++ rest)
+          visitAll rejected boundary (S.insert name seen) ([(i, name : trail) | i <- imports] ++ rest)
     localImport line = do
       rest <- stripPrefix "import " line
       let unqualified = maybe rest dropSpaces (stripPrefix "qualified " (dropSpaces rest))
