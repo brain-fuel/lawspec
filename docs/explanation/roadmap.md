@@ -28,6 +28,11 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.25 | Canonical authoring, records, quantifiers, mappings, optional law layers and compiler-backed authoring tools | Readability exercise deferred |
 | 0.26 | Explicit named endings for every block and grammar profile `1.0-rc.2`; pre-1.0 migration support removed | Readability and final compatibility sign-off remain open |
 | 0.27 | Completed CALM execution evidence, Prolog and HCL, YAML, ANTLR and Make artifact targets | Folio, the remaining demonstration and verification commitments, and human/external 1.0 gates remain open |
+| 0.28 | Solver proofs over data, recursion, text and numbers; validated counterexamples; law-set analysis; model and history laws | No kernel-checked proof tier; native implementations, effects and resources are not given to the solver |
+| 0.29 | Syntax-only formatting by default and record type layout | — |
+| 0.30 | Triple-quoted multiline text and known discrepancies | — |
+| 0.31 | Compact finite test plans and shared scoped searches on all 18 executable targets; unified EDN manifests and components | Teaching review of the learning course |
+| 0.32 | Shared compiler, generation and tooling corrections (S1.j): checked strategies, evaluation allowance and deferral, the `mutate` command, and an opt-in component runtime | Original-project confirmations; native x64 and WSL2 cache checks; default-runtime cutover; larger models and checked mutual recursion |
 
 0.16 in detail:
 
@@ -184,9 +189,16 @@ both machine profiles. Artifact generation remains distinct from law execution.
 
 ## Planned
 
-### Following milestone: Folio
+### Haskell application port and default component runtime
 
-Folio remains to emit documentation pages. Completing that target will make
+The component runtime is opt-in. Porting the remaining application services to
+typed Haskell and making that runtime the default wait on the platform and
+application acceptance recorded in [the host SDK reference](../reference/host-sdk.md).
+
+### Folio
+
+Folio remains to emit documentation pages, and is deferred by the owner until
+the rest of the system has settled. Completing that target will make
 every required language canon reads a target. The remaining demonstration and
 verification commitments stay in the approved pre-1.0 contract. C and C++ remain optional.
 

@@ -23,6 +23,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - S1J compiler and runtime work covers checked strategies, host defaults,
   native bindings, cache behavior and mutation tooling; its disposition and
   remaining review are recorded in `docs/explanation/s1j-disposition.md`.
+- Every custom `FileSystem` handler must implement `createDirectories`;
+  `writeBytes` does not create missing parents. New Go projects use Rapid
+  1.3.0, and stable 1.2.x projects remain accepted.
+- `maxSteps` and `deferLaws` bound optional compiler evaluation only. A
+  deferred or exhausted law is planned or incomplete, never completed evidence.
+
+### Fixed
+
+- A deferred law over a provably empty input domain reports incomplete
+  evidence when no executable case or generator remains.
+- Gradle test and benchmark invocations disable filesystem watching, so a
+  restored source is recompiled instead of reusing stale bytecode.
 
 ## [0.31.3] - 2026-11-03
 
