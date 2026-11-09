@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Manifest/Decode.hs/module/LawSpec.Manifest.Decode:
+  digest: sha256:e2d7a8e4e2ee99f6
+  verdict: pending
+decision/haskell/src/LawSpec/Manifest/Decode.hs/module/LawSpec.Manifest.Decode/function/admitEDNManifest:
+  digest: sha256:a1ddbb349dfcddcf
+  verdict: pending

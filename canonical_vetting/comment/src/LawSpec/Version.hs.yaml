@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version:
+  digest: sha256:8b898cee4e527e93
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/data/Comparator:
+  digest: sha256:82021c0d8f2ac669
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/data/Version:
+  digest: sha256:9ccf3ed566135a41
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/data/VersionSelection:
+  digest: sha256:43e33637c1b51c13
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/function/parseRange:
+  digest: sha256:0c6a58f4dcc8521b
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/function/parseVersion:
+  digest: sha256:905abb00883bf2c6
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/function/satisfies:
+  digest: sha256:873a921df0c7fece
+  verdict: pending
+decision/haskell/src/LawSpec/Version.hs/module/LawSpec.Version/function/selectVersions:
+  digest: sha256:e82e34a7bf3d6803
+  verdict: pending

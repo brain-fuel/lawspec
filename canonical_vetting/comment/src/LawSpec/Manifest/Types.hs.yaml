@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Manifest/Types.hs/module/LawSpec.Manifest.Types:
+  digest: sha256:647550c4d1d519be
+  verdict: pending
+decision/haskell/src/LawSpec/Manifest/Types.hs/module/LawSpec.Manifest.Types/data/Dependency:
+  digest: sha256:c07e637335f077a9
+  verdict: pending
+decision/haskell/src/LawSpec/Manifest/Types.hs/module/LawSpec.Manifest.Types/data/Field:
+  digest: sha256:06946a06f43a750f
+  verdict: pending
+decision/haskell/src/LawSpec/Manifest/Types.hs/module/LawSpec.Manifest.Types/data/ManifestVersion:
+  digest: sha256:761ba414db621cf5
+  verdict: pending
