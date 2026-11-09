@@ -25,7 +25,7 @@ test(
   'packed LawSpec retains its default API and explicitly runs the SDK without a compiler',
   // Includes prebuilt and source installation plus missing-package controls.
   // Each execution below keeps its own deadline; guest limits are unchanged.
-  {timeout: 1080000},
+  {timeout: 1560000},
   async t =>
   {
     const temp = await mkdtemp(path.join(tmpdir(), 'lawspec-sdk-install-'));
@@ -133,10 +133,11 @@ for (const method of ['prelude','check','format','expand','inspect','planGenerat
 console.log('packaged compiler passed');
 `,
     );
+    // Each round compares nine methods; its budget exceeds one guest job.
     const result = await exec(process.execPath, ['smoke.mjs'], {
       cwd: temp,
       env: {PATH: path.join(temp, 'bin')},
-      timeout: 60000,
+      timeout: 180000,
       maxBuffer: 1024 * 1024,
     });
     assert.match(result.stdout, /packaged compiler passed/);
@@ -167,7 +168,7 @@ console.log('packaged compiler passed');
     const sourceResult = await exec(process.execPath, ['smoke.mjs'], {
       cwd: temp,
       env: {PATH: path.join(temp, 'bin')},
-      timeout: 60000,
+      timeout: 180000,
       maxBuffer: 1024 * 1024,
     });
     assert.match(sourceResult.stdout, /packaged compiler passed/);

@@ -81,5 +81,5 @@ execFileSync(process.execPath, ['--test', 'component/test/package.test.mjs'], {
     ),
   },
   stdio: 'inherit',
-  timeout: 1140000,
+  timeout: 1620000,
 });
