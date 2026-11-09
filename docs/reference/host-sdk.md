@@ -221,9 +221,11 @@ This checkpoint passes the native library/development/CLI/test build, 820 native
 codec cases and 1,641 Node reference/public-codec checks on macOS ARM64/Node
 26.8.1. All 258 generated files and the existing 267-module compiler boundary
 check pass. Root definition validation passes with no optional law layers
-selected. Full project validation still reports pending Canon sign-off; human
-review is not inferred. The broad compiler suite was interrupted and is not
-claimed as passing. Production component artifacts and installation/platform
+selected. The owner subsequently approved the 47 pending component-comment
+sign-offs in this conversation. Their digest-bound verdicts are recorded under
+`canonical_vetting/comment/component/`, with notes identifying the delegated
+approval. Broader deferred review and full-port acceptance remain open. The broad
+compiler suite was interrupted and is not claimed as passing. Production component artifacts and installation/platform
 acceptance have not been rebuilt or rerun for this candidate.
 
 The SDK boundary now has the resource and integer machinery needed for typed

@@ -1,0 +1,40 @@
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/application:
+  digest: sha256:11422ff660440921
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/files:
+  digest: sha256:73717f0f221fb66b
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/natives:
+  digest: sha256:daf8a5a1f9b81d53
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/platform:
+  digest: sha256:2eb17602c94e2494
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/read:
+  digest: sha256:d9e60d383fd14cd2
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/records:
+  digest: sha256:6d722b6d5edaaf5b
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/root:
+  digest: sha256:2c056054155f348b
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/sdk:
+  digest: sha256:83b7434f629ff00d
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/sdkRecord:
+  digest: sha256:5b68adb92b4a3ec2
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/native-acceptance-runner.mjs/variable/setup:
+  digest: sha256:ab9364ab6d95cc97
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good

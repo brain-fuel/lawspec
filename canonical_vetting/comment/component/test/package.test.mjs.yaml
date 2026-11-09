@@ -1,0 +1,8 @@
+decision/javascript/component/test/package.test.mjs/variable/exec:
+  digest: sha256:a27d8284c43a9d7a
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
+decision/javascript/component/test/package.test.mjs/variable/root:
+  digest: sha256:67ac42492c25179c
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good

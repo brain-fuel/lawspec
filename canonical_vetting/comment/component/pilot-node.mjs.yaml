@@ -1,0 +1,4 @@
+decision/javascript/component/pilot-node.mjs/function/createFormatter:
+  digest: sha256:4c8b06efa6c48196
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good

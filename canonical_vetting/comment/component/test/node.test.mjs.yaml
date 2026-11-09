@@ -1,0 +1,4 @@
+decision/javascript/component/test/node.test.mjs/variable/denied:
+  digest: sha256:24af3f803db9572c
+  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
+  verdict: good
