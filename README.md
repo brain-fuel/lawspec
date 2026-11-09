@@ -2,9 +2,11 @@
 
 **State the law once. Check it everywhere.**
 
-> **Development status — 2026-11-08:** The trusted precompiled Node artifact
-> work is **blocked on x64 execution acceptance**. See the
-> [blockers and resumption requirements](docs/reference/host-sdk.md#blocked-status).
+> **Development status — 2026-11-08:** The full Haskell application port is
+> **incomplete**; the existing runtime remains the default. See the
+> [application work and acceptance gates](docs/reference/host-sdk.md#application-port-status).
+> Trusted precompiled Node artifacts also await
+> [native platform acceptance](docs/reference/host-sdk.md#blocked-status).
 
 LawSpec is a specification language for the laws your code must obey. It
 compiles reusable laws and concrete examples into native property-based tests

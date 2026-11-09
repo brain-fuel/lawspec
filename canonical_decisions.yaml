@@ -1463,3 +1463,37 @@ DEC-component-installation-preparation:
   opened: 0.31.3
   decided: 0.31.3
   refs: []
+
+DEC-application-controller-workers:
+  status: decided
+  question: How does the Haskell application retain UI state while compiler work is cancelled or running?
+  answer: |
+    The owner selected separate components. A lightweight application controller
+    owns workspace and UI state; separate compiler workers perform compiler jobs.
+    Shared types must not import the compiler implementation into the controller.
+    Controller operations are short event/state transitions. Compiler work is
+    serialized within each execution context. Queued cancellation removes only
+    that request; active cancellation terminates the worker and releases its
+    resources. Later work recreates the worker without discarding drafts,
+    progress or unrelated sessions. This settles the architecture; it does not
+    claim an implemented controller or passing lifecycle acceptance.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: []
+
+DEC-application-port-performance-baseline:
+  status: decided
+  question: Which numerical performance targets gate the full Haskell application port?
+  answer: |
+    Measure representative startup, formatting, large compiler results, project
+    and proof workflows, prolonged editor/Learn sessions and installation builds
+    before setting numerical release targets. The earlier 94 percent reduction
+    is not a release requirement. Existing containment limits remain unchanged.
+    Record per-process peak RSS, sampled process-tree memory, available Wasm and
+    Haskell heap observations, latency and bundle sizes with artifact identities.
+    Installation compilation is separate from runtime memory. Sampled RSS is not
+    a proven peak. The baseline report is the checkpoint for owner-selected
+    numerical limits; acceptance remains open until those limits are set and met.
+  opened: 0.32.0
+  decided: 0.32.0
+  refs: []
