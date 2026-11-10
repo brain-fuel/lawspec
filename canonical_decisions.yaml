@@ -1531,3 +1531,42 @@ DEC-spring-actor-starter:
   opened: 0.33.0
   decided: 0.33.0
   refs: [actor-spring-boot-starter, actor-spring-boot-starter-source]
+
+DEC-native-actor-binding:
+  status: decided
+  question: How is an existing hand-written Pekko actor checked against a LawSpec actor?
+  answer: |
+    Declaratively, by a native binding, never by changing the application's
+    actor. The binding names the behaviour factory and maps each handler to its
+    message class, its replyTo, the reply class and the reply's result
+    accessor; LawSpec generates the asks and converts every value with the
+    existing native codecs. The JVM model runner drives the actor through
+    LawSpecRuntime.ActorBackend (spawn, call a handler, crash and await the
+    restart, read state), which LawSpec's own actor implements too, so the same
+    run generation, crash injection, shrinking, invariants and
+    linearizability (Wing and Gong, as Jepsen's Knossos checks it) apply to
+    both. The native actor's state is private: abstractions and invariants on
+    it are rejected, and every check observes replies only.
+
+    Precedent, Pekko Typed 1.7.1: the behaviour runs in ActorTestKit (Pekko's
+    own test kit), each handler is asked with AskPattern and a timeout, and a
+    crash is a private message that a Behaviors.intercept interceptor turns
+    into an exception inside the actor, so SupervisorStrategy.restart restarts
+    it as Pekko's supervision would. An EventSourcedBehavior is instead stopped
+    at the crash and started again with the same persistence id, as Pekko's
+    EventSourcedBehaviorTestKit.restart does, and recovers from
+    PersistenceTestKit's in-memory journal: restarting it in place while it
+    recovers lets the old incarnation's journal replies reach the new one, which
+    then stops recovering (observed with Pekko 1.7.1). The interceptor and the
+    supervision around it are LawSpec's, not the application's own strategy,
+    which runs inside the behaviour and is not exercised by an injected crash.
+
+    Trust boundary: Pekko's dispatcher, mailbox ordering, ask, supervision and
+    journal are trusted as the system under test's platform; LawSpec's runner
+    and its linearizability check are the checker. A reply that does not come
+    within the ask timeout is a failure, never a pass. Spring starter actors,
+    sharded entities and targets other than Java are explicit unsupported
+    diagnostics until their checkers land.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [herlihy-wing-linearizability, erlang-otp-supervisors, pekko-typed-testing]

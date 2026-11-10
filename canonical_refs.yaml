@@ -350,6 +350,10 @@ ghc-wasm:
   kind: package
   title: ghc-wasm-meta, the GHC WebAssembly backend toolchain
   locator: https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta
+pekko-typed-testing:
+  kind: article
+  title: Apache Pekko Typed, Testing (ActorTestKit), Interaction Patterns (ask) and Persistence Testing
+  locator: https://pekko.apache.org/docs/pekko/current/typed/testing.html
 erlang-otp-supervisors:
   kind: article
   title: Erlang/OTP Design Principles, Supervision Principles
@@ -887,10 +891,6 @@ pekko-typed-supervision-source:
   kind: code
   title: "Apache Pekko Typed: internal Supervision (restart limits, stash, logging)"
   locator: https://github.com/apache/pekko/blob/v1.7.1/actor-typed/src/main/scala/org/apache/pekko/actor/typed/internal/Supervision.scala
-pekko-typed-testing:
-  kind: article
-  title: "Apache Pekko Typed: asynchronous testing with ActorTestKit"
-  locator: https://pekko.apache.org/docs/pekko/1.1/typed/testing-async.html
 pekko-persistence-typed:
   kind: article
   title: "Apache Pekko Typed: event sourcing (EventSourcedBehavior) and the persistence test kit"

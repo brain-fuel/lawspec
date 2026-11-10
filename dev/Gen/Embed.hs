@@ -94,7 +94,10 @@ runtimeFiles =
   -- lawspec.network (LawSpec.Network).
   , ("python-network", "lawspec_network.py"), ("javascript-network", "lawspec_network.mjs")
   , ("java-network", "LawSpecNetwork.java"), ("go-network", "lawspec_network.go")
-  , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs") ]
+  , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs")
+  -- The checker of existing Pekko actors, written only for JVM projects
+  -- whose native bindings bind actors (LawSpec.JavaNativeBinding).
+  , ("java-pekko-native", "pekko/LawSpecPekkoNative.java") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

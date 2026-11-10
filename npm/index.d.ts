@@ -618,6 +618,25 @@ export interface NativeNetworkBinding
   trusted?: string;
 }
 
+export interface NativeActorHandlerBinding
+{
+  handler: string;
+  message: NativeReference;
+  replyTo?: boolean;
+  reply?: NativeReference;
+  result?: string;
+}
+
+export interface NativeActorBinding
+{
+  actor: string;
+  behavior?: NativeReference;
+  spring?: NativeReference;
+  persistence?: 'event-sourced';
+  entity?: NativeReference;
+  handlers: NativeActorHandlerBinding[];
+}
+
 export interface NativeBindings
 {
   types?: NativeTypeBinding[];
@@ -630,6 +649,7 @@ export interface NativeBindings
   failures?: NativeFailureMapping[];
   network?: NativeNetworkBinding;
   erlangIncludes?: NativeErlangInclude[];
+  actors?: NativeActorBinding[];
 }
 
 export type DischargeStatus =

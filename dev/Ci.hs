@@ -698,6 +698,8 @@ targetSteps target =
   | target `elem` ["java", "kotlin", "groovy", "clojure"], suite <- ["actors", "restarts"] ] ++
   -- Scala's own suites: bound handlers whose operations fail answer Either.
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
+  -- Existing Pekko actors checked against a LawSpec actor's model (Java).
+  [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "java", suite <- ["pekko-native-actors"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ Step (target ++ "-model-layer-selection" ++ suffix) env ["node", "tools/model-layer-integration.mjs", target]

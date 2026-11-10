@@ -742,6 +742,10 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings plan | target
 emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
   checkDefinitionPlan original
   checkExecutionPlan original
+  -- Existing native actors are checked on Java so far; elsewhere the
+  -- binding is an error rather than a check silently skipped.
+  unless (target == "java" || null (NB.bindingActors bindings))
+    (Left [Diagnostic "native-binding" ("unsupported: native actor bindings are checked on Java only, not yet on " ++ target) Nothing])
   let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
         Just name -> declaration { C.declarationName = name }
         Nothing -> declaration

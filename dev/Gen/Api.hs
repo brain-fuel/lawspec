@@ -448,6 +448,15 @@ declarations =
       interface "NativeFailureMapping" (fields [("failure", "string"), ("native", "NativeReference")]),
       interface "NativeNetworkBinding" (fields [("identity?", "string"), ("trusted?", "string")]),
       interface
+        "NativeActorHandlerBinding"
+        (fields [("handler", "string"), ("message", "NativeReference"), ("replyTo?", "boolean"), ("reply?", "NativeReference"), ("result?", "string")]),
+      interface
+        "NativeActorBinding"
+        ( fields [("actor", "string"), ("behavior?", "NativeReference"), ("spring?", "NativeReference")]
+            ++ [("persistence?", quoted "event-sourced")]
+            ++ fields [("entity?", "NativeReference"), ("handlers", "NativeActorHandlerBinding[]")]
+        ),
+      interface
         "NativeBindings"
         ( fields
             [ ("types?", "NativeTypeBinding[]"),
@@ -459,7 +468,8 @@ declarations =
               ("handlers?", "NativeHandlerBinding[]"),
               ("failures?", "NativeFailureMapping[]"),
               ("network?", "NativeNetworkBinding"),
-              ("erlangIncludes?", "NativeErlangInclude[]")
+              ("erlangIncludes?", "NativeErlangInclude[]"),
+              ("actors?", "NativeActorBinding[]")
             ]
         ),
       alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-discrepancy", "flaky", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"]),

@@ -21,6 +21,8 @@ nativeRequestView request=object
     "failures" .= [object ["failure" .= mappedFailure item,"native" .= referenceParts (mappedNative item)] | item<-requestFailures request],
     "names" .= [object ["declaration" .= C.idText (nameDeclaration item),"name" .= nameOverride item] | item<-requestNames request]] ++
     ["rustCrate" .= name | Just name<-[requestRustCrate request]]++
+    -- Requests without native actors keep their earlier view.
+    ["actors" .= map actorView (requestActors request) | not (null (requestActors request))]++
     ["network" .= object (["identity" .= name | Just name<-[networkIdentity item]]++
       ["trusted" .= name | Just name<-[networkTrusted item]]) | Just item<-[requestNetwork request]])
   where
@@ -35,6 +37,16 @@ nativeRequestView request=object
       StaticCall ref->["native" .= referenceParts ref]
       MethodCall name->["method" .= name]
       ConstructorCall ref->["constructor" .= referenceParts ref])
+    actorView item=object (["actor" .= boundActorName item]++
+      (case boundActorSource item of
+        BehaviorFactory ref->["behavior" .= referenceParts ref]
+        SpringActorClass ref->["spring" .= referenceParts ref])++
+      ["persistence" .= ("event-sourced"::String) | Just EventSourced<-[boundActorPersistence item]]++
+      ["entity" .= referenceParts ref | Just ref<-[boundActorEntity item]]++
+      ["handlers" .= map handlerView (boundActorHandlers item)])
+    handlerView item=object (["handler" .= boundHandlerName item,"message" .= referenceParts (handlerMessage item),
+      "replyTo" .= handlerReplyTo item]++["reply" .= referenceParts ref | Just ref<-[handlerReply item]]++
+      ["result" .= name | Just name<-[handlerResult item]])
     style RecordConstructor="record"::String
     style VariantConstructor="variant"
     style UnitConstructor="unit"
