@@ -130,6 +130,94 @@ bridge returns a task that is already done. On BEAM, the constructor instead
 runs in the same monitored worker as other async native calls. On Kotlin, an async method binding
 needs its handle's type binding, since Kotlin calls the method itself.
 
+## Native actors
+
+`actors` binds an existing Pekko Typed actor to a LawSpec
+[actor](language/actors.md), so the actor's model checks the application's
+own actor instead of LawSpec's. The behaviour and its messages stay the
+application's; LawSpec generates the asks. Java checks native actors
+today; every other target rejects the field as unsupported, and Spring
+starter actors and sharded entities are rejected as well.
+
+```json
+{
+  "actors": [{
+    "actor": "example.accounts::account",
+    "behavior": ["example", "Account", "create"],
+    "persistence": "event-sourced",
+    "handlers": [
+      {"handler": "deposit", "message": ["example", "Account", "Deposit"],
+       "replyTo": true, "reply": ["example", "Account", "Balance"], "result": "balance"},
+      {"handler": "close", "message": ["example", "Account", "Close"]}
+    ]
+  }]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `actor` | The LawSpec actor, as `<unit>::<actor>`. |
+| `behavior` | A static factory returning the actor's `Behavior<Command>`. It takes no arguments, or, for an event-sourced actor, its persistence id. |
+| `spring` | A Spring starter `SpringActor` class, instead of `behavior`. Not yet checked. |
+| `persistence` | `"event-sourced"`: the actor recovers its state from its journal. The checks give each run's actor a fresh persistence id on Pekko's in-memory journal. |
+| `entity` | The sharded entity's `EntityTypeKey`. Not yet checked. |
+| `handlers` | One entry for each of the actor's handlers, and no others. |
+
+Each handler entry gives:
+
+- `handler`: the handler's name in the actor.
+- `message`: the message class. Its constructor takes the handler's arguments
+  after the state, in order, converted by the native codecs, then the
+  `replyTo` address when `replyTo` is true.
+- `replyTo`: whether the message carries an `ActorRef` to answer. A handler
+  with a result must have one.
+- `reply`: the class of the answer, the type argument of the `replyTo`
+  address. A handler without a result may still name one, as an
+  acknowledgement whose content is ignored.
+- `result`: the accessor on the reply that gives the handler's result,
+  converted by the native codecs. Without it, the reply itself is the result.
+
+The checks spawn the behaviour in Pekko's `ActorTestKit` and run the actor's
+model against it: generated runs with injected crashes, shrinking, model
+invariants, parallel histories and linearizability, and the actor's
+scenarios. Each handler is asked with `AskPattern`; a handler without a
+`replyTo` is sent with `tell`. A crash is a private message, handled after
+the messages sent before it: an interceptor around the behaviour turns it
+into an exception, so Pekko's supervision restarts the behaviour. An
+event-sourced actor is instead stopped and started again with the same
+persistence id, as Pekko's `EventSourcedBehaviorTestKit` restarts one, and
+recovers from its journal. The model's state then follows the actor's
+`restart from` reference, or its start without one; an event-sourced actor
+that keeps its state needs a reference that keeps the model's. A told
+message whose events are still being written when the crash comes may be
+lost, as in production, so bind an acknowledgement for a handler whose
+effect must survive a crash.
+
+A reply that does not arrive within the ask timeout fails the run with the
+handler and its arguments; it never passes. The timeout is
+`LAWSPEC_ASK_TIMEOUT_MS` milliseconds, 3000 by default.
+
+The native actor's state is private. An actor whose `abstract` function or
+invariants read its state cannot be bound; state the property over the model
+instead. Binding validation also rejects:
+
+- an unknown actor, a missing, unknown or repeated handler, and a native
+  function binding for one of the actor's adapters;
+- a handler with a result but no `replyTo` or `reply`, a `result` without a
+  `reply`, and a `reply` without a `replyTo`;
+- several reply classes for one handler, including a stream of replies;
+- a start that takes arguments, and handlers that are async, use abilities,
+  or take or return functions or other actors' handles.
+
+The Java compiler checks the rest of the agreement: the generated wiring
+calls each message constructor with the codecs' native types and reads each
+result accessor into the result's codec, so a mismatched type does not
+compile. The actor's adapters become a generated bridge whose methods say the
+native actor runs them. The application's build supplies Pekko 1.7.1:
+`pekko-actor-typed_3` (and `pekko-persistence-typed_3` for an event-sourced
+actor), with `pekko-actor-testkit-typed_3` and `pekko-persistence-testkit_3`
+for the tests. ref:DEC-native-actor-binding
+
 ## Validation
 
 `check` resolves bindings once, against the typed declarations, and rejects:

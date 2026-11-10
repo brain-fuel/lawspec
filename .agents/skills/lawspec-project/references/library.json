@@ -4386,18 +4386,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:660: Planned environment dependencies",
+      "id": "reference:docs/reference/api.md:66: Requests",
       "kind": "reference",
-      "name": "docs/reference/api.md:660: Planned environment dependencies",
+      "name": "docs/reference/api.md:66: Requests",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:66: Requests",
+      "id": "reference:docs/reference/api.md:675: Planned environment dependencies",
       "kind": "reference",
-      "name": "docs/reference/api.md:66: Requests",
+      "name": "docs/reference/api.md:675: Planned environment dependencies",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7293,18 +7293,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:133: Validation",
+      "id": "reference:docs/reference/native-bindings.md:133: Native actors",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:133: Validation",
-      "source": "docs/reference/native-bindings.md",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "reference:docs/reference/native-bindings.md:149: Guarantees on every target",
-      "kind": "reference",
-      "name": "docs/reference/native-bindings.md:149: Guarantees on every target",
+      "name": "docs/reference/native-bindings.md:133: Native actors",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7320,117 +7311,135 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:174: Evidence",
+      "id": "reference:docs/reference/native-bindings.md:221: Validation",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:174: Evidence",
+      "name": "docs/reference/native-bindings.md:221: Validation",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:180: Targets",
+      "id": "reference:docs/reference/native-bindings.md:237: Guarantees on every target",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:180: Targets",
+      "name": "docs/reference/native-bindings.md:237: Guarantees on every target",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:182: Prolog",
+      "id": "reference:docs/reference/native-bindings.md:262: Evidence",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:182: Prolog",
+      "name": "docs/reference/native-bindings.md:262: Evidence",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:191: Rust",
+      "id": "reference:docs/reference/native-bindings.md:268: Targets",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:191: Rust",
+      "name": "docs/reference/native-bindings.md:268: Targets",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:206: Python",
+      "id": "reference:docs/reference/native-bindings.md:270: Prolog",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:206: Python",
+      "name": "docs/reference/native-bindings.md:270: Prolog",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:221: JavaScript and TypeScript",
+      "id": "reference:docs/reference/native-bindings.md:279: Rust",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:221: JavaScript and TypeScript",
+      "name": "docs/reference/native-bindings.md:279: Rust",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:235: Java",
+      "id": "reference:docs/reference/native-bindings.md:294: Python",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:235: Java",
+      "name": "docs/reference/native-bindings.md:294: Python",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:249: Kotlin",
+      "id": "reference:docs/reference/native-bindings.md:309: JavaScript and TypeScript",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:249: Kotlin",
+      "name": "docs/reference/native-bindings.md:309: JavaScript and TypeScript",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:261: Go",
+      "id": "reference:docs/reference/native-bindings.md:323: Java",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:261: Go",
+      "name": "docs/reference/native-bindings.md:323: Java",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:300: Haskell",
+      "id": "reference:docs/reference/native-bindings.md:337: Kotlin",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:300: Haskell",
+      "name": "docs/reference/native-bindings.md:337: Kotlin",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:313: Erlang, Elixir and Gleam",
+      "id": "reference:docs/reference/native-bindings.md:349: Go",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:313: Erlang, Elixir and Gleam",
+      "name": "docs/reference/native-bindings.md:349: Go",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:348: Uninhabited type parameters",
+      "id": "reference:docs/reference/native-bindings.md:388: Haskell",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:348: Uninhabited type parameters",
+      "name": "docs/reference/native-bindings.md:388: Haskell",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:355: Ownership",
+      "id": "reference:docs/reference/native-bindings.md:401: Erlang, Elixir and Gleam",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:355: Ownership",
+      "name": "docs/reference/native-bindings.md:401: Erlang, Elixir and Gleam",
+      "source": "docs/reference/native-bindings.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/native-bindings.md:436: Uninhabited type parameters",
+      "kind": "reference",
+      "name": "docs/reference/native-bindings.md:436: Uninhabited type parameters",
+      "source": "docs/reference/native-bindings.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/native-bindings.md:443: Ownership",
+      "kind": "reference",
+      "name": "docs/reference/native-bindings.md:443: Ownership",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

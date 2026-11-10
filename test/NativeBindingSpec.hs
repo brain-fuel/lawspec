@@ -3,6 +3,8 @@ module NativeBindingSpec (test_nativeBindingsResolveToOneUnambiguousIdentity) wh
 
 import Control.Monad (forM_)
 import Test.Hspec
+import Data.Aeson (eitherDecode)
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Either (isLeft)
 import Data.List (isInfixOf, sort)
 import qualified LawSpec.HaskellData as Haskell
@@ -195,3 +197,62 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
         uses (chain "Int8") `shouldBe` False
         uses (chain "IntSize") `shouldBe` True
         uses (C.Constructor "machine::type::Native" []) `shouldBe` True
+  -- An existing Pekko actor stands in for a LawSpec actor only when its
+  -- binding covers exactly the actor's handlers, every result can be asked
+  -- for, and nothing reads the actor's private state.
+  -- ref:DEC-native-actor-binding
+  it "resolves native actor bindings against the actor's handlers" $ do
+    let actorSource abstract = unlines
+          [ "unit bank"
+          , "type Account is a record{ balance :: Int64 } end type"
+          , "openAccount :: Unit -> Account"
+          , "deposit :: Account -> UInt8 -> Pair Int64 Account"
+          , "close :: Account -> Account"
+          , "peek :: Account -> Int64"
+          , "function modelDeposit (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) -> Pair Int64 Int64 is Pair (n + amount) (n + amount) end function"
+          , "function modelClose (n :: Int64) -> Int64 is 0 end function"
+          , "actor account :: Account by Int64 is"
+          , "  start openAccount by 0"
+          , "  on deposit by modelDeposit"
+          , "  on close by modelClose"
+          , if abstract then "  abstract peek" else ""
+          , "end actor"
+          , "end unit" ]
+        deposit = Request.ActorHandlerBinding "deposit" (ref "Deposit") True (Just (ref "Balance")) (Just "balance")
+        close = Request.ActorHandlerBinding "close" (ref "Close") False Nothing Nothing
+        actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
+          Nothing Nothing handlers
+        resolveActors abstract actors = case compileCore 64 defaultGeneration [Source "bank" (actorSource abstract)] of
+          Left diagnostics -> Left (show diagnostics)
+          Right program -> Request.resolveNativeRequest program Request.emptyNativeRequest { Request.requestActors = actors }
+    case resolveActors False [actor [deposit, close]] of
+      Left message -> expectationFailure message
+      Right plan -> case Request.bindingActors plan of
+        [bound] -> do
+          map Request.resolvedHandlerArguments (Request.resolvedActorHandlers bound)
+            `shouldBe` [[C.scalarType "UInt8"], []]
+          map Request.resolvedHandlerResult (Request.resolvedActorHandlers bound)
+            `shouldBe` [Just (C.scalarType "Int64"), Nothing]
+          sort (map C.idText (Request.resolvedActorAdapters bound))
+            `shouldBe` ["bank::close", "bank::deposit", "bank::openAccount"]
+        other -> expectationFailure (show other)
+    let rejected actors expected = case resolveActors False actors of
+          Left message -> message `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure ("accepted; expected " ++ expected)
+    rejected [actor [deposit]] "handler close has no message binding"
+    rejected [actor [deposit, close, close {Request.boundHandlerName = "open"}]] "there is no handler open"
+    rejected [actor [deposit {Request.handlerReplyTo = False}, close]] "needs a replyTo"
+    rejected [actor [deposit {Request.handlerReply = Nothing}, close]] "needs the reply class"
+    rejected [actor [deposit, close {Request.handlerResult = Just "value"}]] "returns no result"
+    rejected [(actor [deposit, close]) {Request.boundActorName = "bank::teller"}] "unknown actor"
+    rejected [actor [deposit, close], actor [deposit, close]] "duplicate native actor binding"
+    case resolveActors True [actor [deposit, close]] of
+      Left message -> message `shouldSatisfy` isInfixOf "unsupported: its abstract function"
+      Right _ -> expectationFailure "an abstraction over a native actor's state was accepted"
+  it "rejects several reply classes for one native actor handler" $ do
+    let parsed reply = eitherDecode (BL.pack ("{\"actors\": [{\"actor\": \"bank::account\", \"behavior\": [\"app\", \"create\"], " ++
+          "\"handlers\": [{\"handler\": \"deposit\", \"message\": [\"app\", \"Deposit\"], \"replyTo\": true, \"reply\": " ++ reply ++ "}]}]}"))
+          :: Either String Request.NativeRequest
+    parsed "[\"app\", \"Balance\"]" `shouldSatisfy` (not . isLeft)
+    either id (const "") (parsed "[[\"app\", \"Balance\"], [\"app\", \"Rejected\"]]")
+      `shouldSatisfy` isInfixOf "several replies"
