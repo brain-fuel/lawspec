@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Prior-art decisions for 0.33's Pekko and Spring actor runtimes
+  (DEC-pekko-runtime, DEC-pekko-otp-supervision, DEC-restart-keeps-state,
+  DEC-pekko-cluster-remote, DEC-spring-actor-starter), and a planned 0.33
+  roadmap row.
+
 ## [0.32.0] - 2026-11-09
 
 ### Added

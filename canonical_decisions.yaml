@@ -1484,3 +1484,50 @@ DEC-component-installation-preparation:
   opened: 0.31.3
   decided: 0.31.3
   refs: []
+
+DEC-pekko-runtime:
+  status: decided
+  question: How do LawSpec's generated actors run on Apache Pekko, beside the LawSpec JVM runtime, and what is trusted?
+  answer: |
+    A JVM target chooses its actor runtime in lawspec.edn, `:actors {:runtime :lawspec|:pekko|:spring}`; the spec stays runtime-neutral, the LawSpec runtime (LawSpecRuntime.java's Actor and Supervisor) stays the default and its output is unchanged. :pekko and :spring are rejected with a diagnostic on a non-JVM target. On :pekko the generated <Name>Actor and <Name>Supervisor keep the public surface of the LawSpec runtime's (start, a blocking method per handler, tell<Handler>, crash, monitor, link, stop), so adapters, laws and the Groovy and Clojure reuse of the Java classes do not change. Each actor is a Pekko Typed behaviour over the LawSpec state value whose messages carry the handler's adapter call; a blocking method is AskPattern.ask with a configurable timeout. Boilerplate lives once in runtime/pekko (LawSpecPekko for the system and the ask, LawSpecPekkoSupervisor, LawSpecCrashInterceptor) and generated code stays small. Pekko 1.7.1 (pekko-actor-typed_3 and the test kit, persistence, cluster and sharding modules) is pinned although 2.0.0 is the newest release, as the approved plan names it; it runs on Java 8 and later and brings the Scala 3.3 library and Typesafe Config.
+
+    Precedent. Pekko's supervise(...).onFailure(SupervisorStrategy.restart()) reinstalls the original behaviour, so the state is fresh unless kept elsewhere; the ActorRef and the mailbox survive a restart and the failing message is lost (pekko-supervision). PreRestart reaches the failing behaviour before it is replaced. resume() keeps the state. Behaviors.intercept with a BehaviorInterceptor sees every message of a class before the inner behaviour, which is how a crash is injected without changing user code. AskPattern.ask takes Pekko's japi Function, a timeout and the system's scheduler. Supervised failures log at ERROR by default; generated actors switch that logging off, since a crash is an expected test step. Trust boundary: Pekko's dispatcher, mailboxes and supervision run the actors; LawSpec checks the handlers against the model with its own Model runner and checks the supervision laws of DEC-pekko-otp-supervision against the Pekko implementation; neither is a proof of Pekko itself, and an ask that times out is reported, never passed. No obligation generator, solver or proof checker is involved.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-typed-fault-tolerance, pekko-supervision, pekko-typed-interceptors, pekko-typed-interaction-patterns, pekko-typed-testing, pekko-maven-central]
+
+DEC-pekko-otp-supervision:
+  status: decided
+  question: Pekko Typed supervises one actor at a time with restart limits per actor and no strategy across siblings. How do LawSpec supervisors keep OTP's meaning on Pekko?
+  answer: |
+    By emulation in one runtime class, LawSpecPekkoSupervisor, a parent behaviour parameterised by generated child specifications (a name, a lifetime and how to start the child), never duplicated per supervisor. It spawns the children in order, watches each, and on a child's crash or stop applies OTP's rules (erlang-otp-supervisor-behaviour): one for one restarts the child, one for all every child, rest for one the child and those after it; permanent children restart after a crash or a stop, transient after a crash only, temporary never; more restarts than allowed within the period stops every child in reverse start order and fails the supervisor, which its own supervisor restarts with all its siblings, or which, at the top, stops and tells its monitors. A restart is in place: the child keeps its address and pending messages, as LawSpec's runtime does, by restarting the child's state inside its own behaviour rather than spawning a new ActorRef. Pekko's own restart().withLimit is not used for the budget, because it stops only the failing actor and escalates nothing unless watched (pekko-typed-fault-tolerance); OTP counts restarts per supervisor. Monitors and links are Pekko watch with ChildFailed and Terminated. Trust boundary: the emulation is LawSpec code over Pekko's watch and signals, so the same conformance check that LawSpecRuntime.checkSupervision() runs for the LawSpec runtime is run against it.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [erlang-otp-supervisors, erlang-otp-supervisor-behaviour, pekko-typed-fault-tolerance]
+
+DEC-restart-keeps-state:
+  status: decided
+  question: An event-sourced actor, or one whose state survives its worker, resumes after a crash with the state it had. How does a spec say so, readably and on every target?
+  answer: |
+    A new actor line, `restart keeps state`, beside `restart from f by g`; an actor has at most one. It means that after a crash the state is the state before it: the state committed by the last message handled, since a message that crashes commits nothing. The model's state is kept too. The compiler elaborates it into the actor's restart step with generated identity functions over the actor's state and the model's (<actor>KeepState and <actor>KeepModel), so every target's model runner, crash injection and shrinking work unchanged, and every actor emitter passes the identity as the runtime's restart function. Precedent: Pekko's resume() keeps the state and an EventSourcedBehavior recovers it from its journal (pekko-persistence-typed); OTP restarts from init, so a gen_server keeps state only by storing it outside the process. The phrase states the observable property, not the mechanism. For a bound native Pekko actor, the check expects the recovered state after an injected crash, so a native actor that loses state on restart fails. Nothing is assumed of the journal: recovery is checked by running it.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-persistence-typed, pekko-typed-fault-tolerance, erlang-otp-supervisors]
+
+DEC-pekko-cluster-remote:
+  status: decided
+  question: How do serve and connect work on the Pekko and Spring runtimes?
+  answer: |
+    Through Pekko Cluster: serve registers the actor with the typed Receptionist under its name over Artery, connect looks it up, and sharded entities build on cluster sharding with the actor's `by` key as the entity id. Wire values reuse the canonical encodings of DEC-distribution-canonical-wire, as a Pekko serializer driven by the LawSpec codec, so a value means the same on both runtimes. LawSpec's own network layer stays for the LawSpec runtime. Remote laws run on a two-node cluster inside one JVM. Trust boundary: Pekko's membership, failure detector and transport; an unreachable node is an explicit Unreachable failure, never a pass. Planned for 0.33.0 and not yet implemented: until it is, serve and connect on :pekko are reported as unsupported.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-cluster-typed]
+
+DEC-spring-actor-starter:
+  status: decided
+  question: How do LawSpec actors run in Spring Boot applications?
+  answer: |
+    Through the community starter io.github.seonwkim:actor-spring-boot-starter 1.0.0 with actor-test 1.0.0 (Java 21+, Spring Boot 3.5.x; its POM brings Spring Boot 3.5.16). Its public API has no Pekko types: actors implement SpringActor<Command> and are spawned with SpringActorSystem.actor(...).spawnAndWait(); an ask is handle.ask(command).withTimeout(d).execute(); supervision is SupervisionStrategy.restart().withLimit(n, d); tests use the @ActorTest slice. Generated actors on :spring are @Component SpringActors with the same public surface as on :lawspec and :pekko, and supervisors reuse LawSpecPekkoSupervisor's OTP emulation, spawned through the starter. The starter's actor-core pins Pekko 1.1.3; generated builds declare Pekko 1.7.1 directly, which Maven's nearest-wins and Gradle's highest-wins both select. Trust boundary: the starter and Spring's container start and wire the actors; LawSpec's checks run against the result. Implemented by a later 0.33 step.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [actor-spring-boot-starter, actor-spring-boot-starter-source]

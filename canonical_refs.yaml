@@ -863,3 +863,51 @@ rocq-recursive-definitions:
   kind: article
   title: Rocq inductive types and recursive functions
   locator: https://rocq-prover.org/doc/V9.0.0/refman/language/core/inductive.html
+erlang-otp-supervisor-behaviour:
+  kind: article
+  title: "Erlang/OTP stdlib: supervisor behaviour (strategies, restart types, intensity and period)"
+  locator: https://www.erlang.org/doc/apps/stdlib/supervisor.html
+pekko-typed-fault-tolerance:
+  kind: article
+  title: "Apache Pekko Typed: fault tolerance (supervise, restart withLimit, PreRestart, ChildFailed)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/fault-tolerance.html
+pekko-supervision:
+  kind: article
+  title: "Apache Pekko: supervision and monitoring (a restart keeps the ActorRef and the mailbox)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/general/supervision.html
+pekko-typed-interaction-patterns:
+  kind: article
+  title: "Apache Pekko Typed: interaction patterns (AskPattern.ask)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/interaction-patterns.html
+pekko-typed-interceptors:
+  kind: code
+  title: "Apache Pekko Typed: Behaviors.intercept and BehaviorInterceptor"
+  locator: https://github.com/apache/pekko/blob/v1.7.1/actor-typed/src/main/scala/org/apache/pekko/actor/typed/BehaviorInterceptor.scala
+pekko-typed-supervision-source:
+  kind: code
+  title: "Apache Pekko Typed: internal Supervision (restart limits, stash, logging)"
+  locator: https://github.com/apache/pekko/blob/v1.7.1/actor-typed/src/main/scala/org/apache/pekko/actor/typed/internal/Supervision.scala
+pekko-typed-testing:
+  kind: article
+  title: "Apache Pekko Typed: asynchronous testing with ActorTestKit"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/testing-async.html
+pekko-persistence-typed:
+  kind: article
+  title: "Apache Pekko Typed: event sourcing (EventSourcedBehavior) and the persistence test kit"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/persistence.html
+pekko-cluster-typed:
+  kind: article
+  title: "Apache Pekko Typed: cluster, receptionist and sharding"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster.html
+pekko-maven-central:
+  kind: article
+  title: "Maven Central: org.apache.pekko pekko-actor-typed_3 releases"
+  locator: https://repo1.maven.org/maven2/org/apache/pekko/pekko-actor-typed_3/maven-metadata.xml
+actor-spring-boot-starter:
+  kind: article
+  title: "actor-spring-boot-starter: Pekko actors in Spring Boot (SpringActor, SpringActorSystem, @ActorTest)"
+  locator: https://seonwkim.github.io/actor-spring-boot-starter/
+actor-spring-boot-starter-source:
+  kind: code
+  title: "actor-spring-boot-starter source repository"
+  locator: https://github.com/seonWKim/actor-spring-boot-starter
