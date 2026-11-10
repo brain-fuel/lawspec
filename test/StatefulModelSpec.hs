@@ -14,6 +14,9 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model hiding (Expectation)
 import qualified LawSpec.ModelLaws as ML
 import qualified LawSpec.Core.ModelCheck as MC
+import LawSpec.Common (Artifact (..))
+import LawSpec.CoreEmit (emitPlan)
+import LawSpec.Testing (Plan (..), planTesting)
 
 stack :: String
 stack = unlines
@@ -207,3 +210,41 @@ test_actorRuntimeSettings = describe "actor runtime settings" $ do
       `shouldSatisfy` either (any (isInfixOf "unknown field mailbox")) (const False)
     settings "java" (object ["remote" .= ("cluster" :: String)])
       `shouldSatisfy` either (any (isInfixOf "needs :runtime :pekko or :spring")) (const False)
+  -- serve and connect over Pekko Cluster only with :remote :cluster; LawSpec's
+  -- runtime keeps its own network. ref:DEC-pekko-cluster-remote
+  it "give Pekko actors serve and connect over Pekko Cluster only with :remote :cluster" $ do
+    let source = unlines
+          [ "unit example.tally"
+          , "type Tally is a record{ count :: Int64 } end type"
+          , "openTally :: Unit -> Tally"
+          , "add :: Tally -> UInt8 -> Pair Int64 Tally"
+          , "function modelAdd (n :: UInt8) (total :: Int64 where total >= 0 && total <= 1000000) -> Pair Int64 Int64 is"
+          , "  Pair (total + n) (total + n)"
+          , "end function"
+          , "actor tally :: Tally by Int64 is"
+          , "  start openTally by 0"
+          , "  on add by modelAdd"
+          , "end actor"
+          , "end unit" ]
+        files actors target = either (error . show) id $ do
+          core <- compileCore 64 defaultGeneration [Source "tally.lawspec" source]
+          plan <- planTesting core
+          emitPlan target plan {planActors = actors}
+        file actors target path = concat [artifactContent f | f <- files actors target, artifactPath f == path]
+        cluster runtime = ActorSettings runtime ClusterRemote
+        javaActor = "src/main/java/lawspec/actors/TallyActor.java"
+        runtimeFile = "src/main/java/lawspec/runtime/pekko/LawSpecPekkoCluster.java"
+    forM_ [(cluster PekkoActors, "java"), (cluster SpringActors, "java")] $ \(actors, target) -> do
+      let actor = file actors target javaActor
+      actor `shouldSatisfy` isInfixOf "public String serve(LawSpecPekkoCluster.Node node, String name)"
+      actor `shouldSatisfy` isInfixOf "import lawspec.runtime.pekko.LawSpecPekkoCluster;"
+      map artifactPath (files actors target) `shouldContain` [runtimeFile]
+    file (cluster PekkoActors) "kotlin" "src/main/kotlin/lawspec/actors/TallyActor.kt"
+      `shouldSatisfy` isInfixOf "fun serve(node: LawSpecPekkoCluster.Node, name: String): String"
+    file (cluster PekkoActors) "scala" "src/main/scala/lawspec/actors/TallyActor.scala"
+      `shouldSatisfy` isInfixOf "def serve(node: LawSpecPekkoCluster.Node, name: String): String"
+    let plain = ActorSettings PekkoActors LawSpecRemote
+    file plain "java" javaActor `shouldSatisfy` (not . isInfixOf "serve(")
+    map artifactPath (files plain "java") `shouldNotContain` [runtimeFile]
+    file defaultActorSettings "java" javaActor
+      `shouldSatisfy` isInfixOf "public String serve(LawSpecRuntime.Node node, String name)"

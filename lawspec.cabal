@@ -74,6 +74,7 @@ extra-source-files:
     runtime/LawSpecSchema.java
     runtime/pekko/LawSpecCrashInterceptor.java
     runtime/pekko/LawSpecPekko.java
+    runtime/pekko/LawSpecPekkoCluster.java
     runtime/pekko/LawSpecPekkoNative.java
     runtime/pekko/LawSpecPekkoSharding.java
     runtime/pekko/LawSpecPekkoSupervisor.java
