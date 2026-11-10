@@ -1,0 +1,7 @@
+expect: model account fails at step
+@@ src/main/scala/example/Account.scala
+<<<<<<<
+            Effect.persist(Deposited(amount)).thenReply(replyTo)(after => Balance(after.balance))
+=======
+            Effect.persist(Deposited(amount)).thenReply(replyTo)(_ => Balance(state.balance))
+>>>>>>>

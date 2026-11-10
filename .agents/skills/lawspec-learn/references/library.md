@@ -954,12 +954,12 @@ needs its handle's type binding, since Kotlin calls the method itself.
 
 ## Native actors
 
-`actors` binds an existing Pekko Typed actor to a LawSpec
-[actor](language/actors.md), so the actor's model checks the application's
-own actor instead of LawSpec's. The behaviour and its messages stay the
-application's; LawSpec generates the asks. Java checks native actors
-today; every other target rejects the field as unsupported, and Spring
-starter actors and sharded entities are rejected as well.
+`actors` binds an existing Pekko Typed actor, or a Spring Boot actor starter
+actor, to a LawSpec [actor](language/actors.md), so the actor's model checks
+the application's own actor instead of LawSpec's. The behaviour and its
+messages stay the application's; LawSpec generates the asks. Java and Scala
+check Pekko actors, and Java checks Spring starter actors. Every other target
+rejects the field as unsupported, and sharded entities are rejected as well.
 
 ```json
 {
@@ -980,7 +980,7 @@ starter actors and sharded entities are rejected as well.
 | --- | --- |
 | `actor` | The LawSpec actor, as `<unit>::<actor>`. |
 | `behavior` | A static factory returning the actor's `Behavior<Command>`. It takes no arguments, or, for an event-sourced actor, its persistence id. |
-| `spring` | A Spring starter `SpringActor` class, instead of `behavior`. Not yet checked. |
+| `spring` | A Spring starter `SpringActor` component class, instead of `behavior`. Java only. |
 | `persistence` | `"event-sourced"`: the actor recovers its state from its journal. The checks give each run's actor a fresh persistence id on Pekko's in-memory journal. |
 | `entity` | The sharded entity's `EntityTypeKey`. Not yet checked. |
 | `handlers` | One entry for each of the actor's handlers, and no others. |
@@ -1030,6 +1030,31 @@ instead. Binding validation also rejects:
 - several reply classes for one handler, including a stream of replies;
 - a start that takes arguments, and handlers that are async, use abilities,
   or take or return functions or other actors' handles.
+
+On Scala, `behavior` names an object's factory, `example.Account.create`,
+which takes `()` or, for an event-sourced actor, its persistence id. Messages
+are built with `Message(arguments..., replyTo)`, so Scala case classes and Java
+classes both work, and a result accessor is read as `reply.balance`. The
+generated wiring calls the same Java checker, so the checks are the same as on
+Java. A Scala `spring` binding is rejected.
+
+A `spring` binding names a `SpringActor` component. A Spring context holds the
+starter's actor support and that component, so the component gets Spring's
+dependency injection; beans it needs from the rest of the application are not
+in that context. Each run's actor is the behaviour the component's `create`
+returns, with the run's actor id as its context's `actorId()`, compiled to Pekko
+by the starter's own compiler and run in the same `ActorTestKit`, with its own
+supervision strategy inside LawSpec's crash interceptor. Each handler's
+`message` is an `AskCommand` of the reply class: its constructor takes the
+handler's arguments, and the check sets its reply address as the starter's
+ask does, so `replyTo` is true for every handler with a reply. Event-sourced
+Spring starter actors are rejected as unsupported for now; bind the Pekko
+behaviour instead. The application's build supplies the starter 1.0.0 and
+`pekko-actor-testkit-typed_3` and `pekko-persistence-testkit_3` 1.7.1 for
+the tests, as for a Pekko actor. The checker uses the
+starter's internal `PekkoBehaviors` and `PekkoActorRef` classes, which have no
+compatibility promise across starter releases, so the starter is pinned.
+ref:DEC-spring-actor-starter
 
 The Java compiler checks the rest of the agreement: the generated wiring
 calls each message constructor with the codecs' native types and reads each

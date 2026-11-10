@@ -23,9 +23,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `LawSpecPekkoSupervisor` (OTP strategies, lifetimes, restart limit and
   escalation) and `LawSpecCrashInterceptor`. With `:runtime :pekko`, Java,
   Kotlin, Groovy and Clojure actors run on it, and the build gains
-  `pekko-actor-typed_3`. `:spring`, Scala on `:pekko` and `:remote :cluster`
-  are not implemented yet and are reported as unsupported; actors on `:pekko`
-  have no `serve` and `connect` yet.
+  `pekko-actor-typed_3`. Scala on `:pekko` reuses the Java runtime through
+  Scala 3's SAM conversion. `:remote :cluster` and sharding are not
+  implemented yet and are reported as unsupported; actors on `:pekko` have no
+  `serve` and `connect` yet.
+- A `:spring` actor runtime on Spring Boot 3.5.16 and
+  `io.github.seonwkim:actor-spring-boot-starter` 1.0.0 (`runtime/spring`).
+  Java and Kotlin actors gain a nested `@Component` `SpringActor` and are
+  spawned through the starter's `SpringActorSystem`; supervision is the
+  `:pekko` OTP emulation. Groovy and Clojure reuse the Java classes. Java's
+  generated supervision test is an `@ActorTest` (`actor-test` 1.0.0). Scala
+  on `:spring` is an explicit unsupported diagnostic.
 - Native bindings accept `actors`: an existing Pekko Typed actor, named by its
   behaviour factory and each handler's message, `replyTo`, reply class and
   result accessor, stands in for a LawSpec `actor`. On Java, the actor's model
@@ -35,10 +43,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   actors run on the in-memory journal and recover after a crash. Ask
   timeouts fail the run. Shapes LawSpec cannot ask or observe (several
   replies, a missing `replyTo`, invariants on the actor's state) are explicit
-  diagnostics, and other targets, Spring starter actors and sharded entities
-  are rejected as unsupported. The `pekko-native-actors` acceptance suite
-  checks a hand-written event-sourced account, with mutants for a wrong
-  reply, state lost on restart and a non-linearizable implementation.
+  diagnostics, and other targets and sharded entities are rejected as
+  unsupported. Scala binds Pekko actors too, with generated Scala wiring over
+  the Java checker. On Java, `"spring": "<class>"` binds an existing starter
+  `SpringActor` component (not event-sourced ones yet). The
+  `pekko-native-actors` acceptance suite checks a hand-written event-sourced
+  account on Java and Scala, and `pekko-native-actors-spring` a Spring
+  account on Java, with mutants for a wrong reply, state lost on restart and
+  a non-linearizable implementation.
+
+### Fixed
+
+- Kotlin trailing lambdas whose parameters fit on the call line but whose
+  arrow does not are laid out as ktfmt does (`{ s` then `->` on the next
+  line).
 
 ## [0.32.0] - 2026-11-09
 

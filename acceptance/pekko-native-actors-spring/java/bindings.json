@@ -1,0 +1,18 @@
+{
+  "actors": [
+    {
+      "actor": "example.accounts::account",
+      "spring": ["example", "AccountActor"],
+      "handlers": [
+        {"handler": "deposit", "message": ["example", "AccountActor", "Deposit"], "replyTo": true,
+         "reply": ["example", "AccountActor", "Balance"], "result": "balance"},
+        {"handler": "withdrawAll", "message": ["example", "AccountActor", "WithdrawAll"], "replyTo": true,
+         "reply": ["example", "AccountActor", "Balance"], "result": "balance"},
+        {"handler": "balance", "message": ["example", "AccountActor", "GetBalance"], "replyTo": true,
+         "reply": ["example", "AccountActor", "Balance"], "result": "balance"},
+        {"handler": "close", "message": ["example", "AccountActor", "Close"], "replyTo": true,
+         "reply": ["example", "AccountActor", "Closed"]}
+      ]
+    }
+  ]
+}

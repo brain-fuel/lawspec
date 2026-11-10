@@ -1,7 +1,7 @@
 -- | Typed application codecs keep validation in the shared logical schema.
 module LawSpec.JavaNativeBinding (emitBindings, emitBindingsProduct) where
 
-import Control.Monad (forM, unless)
+import Control.Monad (forM, unless, when)
 import Data.List (intercalate, find, nub, isPrefixOf)
 import Data.Char (toUpper, toLower)
 import qualified LawSpec.Core as C
@@ -260,13 +260,20 @@ emitBindingsProduct javaStyle minify plan testing product = do
                 unless (length (referenceParts ref) >= 2)
                   (Left ("native actor " ++ actorIdentity actor ++ ": behavior names a class and its static factory"))
                 pure (methodReference ref)
-              SpringActorClass _ -> Left ("native actor " ++ actorIdentity actor ++
-                ": unsupported: Spring starter actors are not yet checked on Java; bind its Pekko behavior")
+              -- A Spring starter actor: its component's behaviour, compiled by
+              -- the starter. ref:DEC-spring-actor-starter
+              SpringActorClass ref -> do
+                mapM_ J.identifier (referenceParts ref)
+                when (resolvedActorPersistence actor == Just EventSourced)
+                  (Left ("native actor " ++ actorIdentity actor ++ ": unsupported: event-sourced Spring starter actors are not checked yet; bind its Pekko behavior"))
+                pure (call "LawSpecSpringNative.behavior" [D.text (reference ref ++ ".class")])
             unless (resolvedActorEntity actor == Nothing)
               (Left ("native actor " ++ actorIdentity actor ++ ": unsupported: sharded entities are not yet checked; remove entity to check one actor"))
             handlers <- mapM (handlerLink actor) (resolvedActorHandlers actor)
-            let start = call (if resolvedActorPersistence actor == Just EventSourced
-                  then "LawSpecPekkoNative.eventSourced" else "LawSpecPekkoNative.behavior")
+            let start = call (case (resolvedActorPersistence actor, resolvedActorSource actor) of
+                  (Just EventSourced, _) -> "LawSpecPekkoNative.eventSourced"
+                  (_, SpringActorClass _) -> "LawSpecPekkoNative.identified"
+                  _ -> "LawSpecPekkoNative.behavior")
                   [E.quoted (actorIdentity actor), source]
             pure (D.text ("/** " ++ actorIdentity actor ++ ", run by the native " ++ (case resolvedActorSource actor of
                     BehaviorFactory ref -> reference ref
@@ -276,6 +283,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
           let wiring = Artifact "src/test/java/lawspec/testing/LawSpecNativeActors.java" (render
                 (D.text "package lawspec.testing;" <> D.hardline <> D.hardline <>
                  D.text "import lawspec.pekko.LawSpecPekkoNative;" <> D.hardline <>
+                 (if spring then D.text "import lawspec.pekko.LawSpecSpringNative;" <> D.hardline else mempty) <>
                  D.text "import lawspec.runtime.LawSpecRuntime;" <> D.hardline <>
                  D.text "import lawspec.runtime.LawSpecSchema;" <> D.hardline <> D.hardline <>
                  D.text "public final class LawSpecNativeActors" <> D.hardline <> D.block 2
@@ -291,6 +299,8 @@ emitBindingsProduct javaStyle minify plan testing product = do
                 [ Artifact "src/test/java/lawspec/runtime/pekko/LawSpecCrashInterceptor.java"
                     (runtimeSource "java-pekko-crash") "generated" "test"
                 | not (any ((== "src/main/java/lawspec/runtime/pekko/LawSpecCrashInterceptor.java") . artifactPath) files) ]
+              springSupport = [ Artifact "src/test/java/lawspec/pekko/LawSpecSpringNative.java"
+                  (runtimeSource "java-spring-native") "generated" "test" | spring ]
           -- Each unit with a bound actor: its model test drives the native actor.
           models <- fmap concat $ forM (plannedUnits testing) $ \p -> do
             let unit = plannedUnit p
@@ -301,7 +311,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
                 (modelTestProductWithBackends False backends javaStyle "java" bits declarations
                   (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) (modelTestUnit testing unit))
               pure [product']
-          pure ([wiring, backend] ++ interceptor ++ concatMap Product.jvmArtifacts models, concatMap Product.jvmCases models)
+          pure ([wiring, backend] ++ interceptor ++ springSupport ++ concatMap Product.jvmArtifacts models, concatMap Product.jvmCases models)
     -- One handler as a link of the backend's chain: its message from the
     -- arguments after the state, and its reply's result.
     handlerLink actor handler = do
@@ -313,7 +323,14 @@ emitBindingsProduct javaStyle minify plan testing product = do
       decoded <- forM (zip [0::Int ..] (resolvedHandlerArguments handler)) $ \(i,ty) -> do
         bridge <- either context Right (codec [] (D.text "SCHEMA") (D.text (show bits)) ty)
         pure (method bridge "decode" [D.text ("arguments.get(" ++ show i ++ ")")])
-      let messageOf replyTo = call ("new " ++ reference (handlerMessage binding)) (decoded ++ [D.text "replyTo" | replyTo])
+      let springActor = case resolvedActorSource actor of
+            SpringActorClass _ -> True
+            BehaviorFactory _ -> False
+          -- A Spring starter command is an AskCommand whose reply address is
+          -- set as the starter's ask sets it.
+          messageOf replyTo
+            | springActor && replyTo = call "LawSpecSpringNative.asked" [call ("new " ++ reference (handlerMessage binding)) decoded, D.text "replyTo"]
+            | otherwise = call ("new " ++ reference (handlerMessage binding)) (decoded ++ [D.text "replyTo" | replyTo])
           name = E.quoted (boundHandlerName binding)
       case (resolvedHandlerResult handler, handlerReply binding) of
         (Just ty, Just reply) -> do
@@ -326,6 +343,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
         (Nothing, Nothing) -> pure (call "tell" [name, JL.lambdaValue ["symbols", "arguments"] (messageOf False)])
         (Just _, Nothing) -> context "returns a result, so it needs a reply class"
     actorIdentity actor = C.idText (resolvedActorUnit actor) ++ "::" ++ resolvedActorName actor
+    spring = or [True | actor <- bindingActors plan, SpringActorClass _ <- [resolvedActorSource actor]]
     -- unit example.bank, actor account: exampleBankAccount.
     actorMethod actor = case concatMap (split '_') (split '.' (C.idText (resolvedActorUnit actor))) ++ [resolvedActorName actor] of
       first : rest -> first ++ concatMap cap rest

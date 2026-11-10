@@ -73,6 +73,8 @@ runtimeFiles =
   -- Generated actors on Apache Pekko (:actors {:runtime :pekko}).
   , ("java-pekko", "pekko/LawSpecPekko.java"), ("java-pekko-supervisor", "pekko/LawSpecPekkoSupervisor.java")
   , ("java-pekko-crash", "pekko/LawSpecCrashInterceptor.java")
+  -- Generated actors through the Spring Boot actor starter (:runtime :spring).
+  , ("java-spring", "spring/LawSpecSpring.java")
   , ("java-data-strategies-body", "LawSpecDataStrategies.inc"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")
   , ("go-schema", "lawspec_schema.go"), ("go-codecs", "lawspec_codecs.go")
   , ("go-data-strategies", "lawspec_data_strategies.go"), ("haskell", "LawSpecRuntime.hs")
@@ -97,7 +99,8 @@ runtimeFiles =
   , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs")
   -- The checker of existing Pekko actors, written only for JVM projects
   -- whose native bindings bind actors (LawSpec.JavaNativeBinding).
-  , ("java-pekko-native", "pekko/LawSpecPekkoNative.java") ]
+  , ("java-pekko-native", "pekko/LawSpecPekkoNative.java")
+  , ("java-spring-native", "spring/LawSpecSpringNative.java") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

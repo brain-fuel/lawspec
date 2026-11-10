@@ -18,6 +18,8 @@ import qualified LawSpec.Actors.Scala as Scala
 import qualified LawSpec.Actors.Rust as Rust
 import qualified LawSpec.Actors.Haskell as Haskell
 import qualified LawSpec.Actors.Pekko as Pekko
+import qualified LawSpec.Actors.PekkoScala as PekkoScala
+import qualified LawSpec.Actors.Spring as Spring
 
 -- | Programs without actors get no actor files; the others get a typed class per
 -- actor on every target. ref:DEC-actors-otp-supervision
@@ -38,6 +40,9 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
       (LawSpecActors, _) -> lawspecEmitter t
       (_, ClusterRemote) -> unsupported "serve and connect over Pekko Cluster (:remote :cluster) are not implemented yet"
       (PekkoActors, _) | t `elem` ["java", "kotlin"] -> Pekko.emit t
+      (PekkoActors, _) | t == "scala" -> PekkoScala.emit t
+      (SpringActors, _) | t `elem` ["java", "kotlin"] -> Spring.emit t
+      (SpringActors, _) | t == "scala" -> unsupported "generated actors on :spring are not supported for Scala: the Spring Boot actor starter is a Java and Kotlin library; use :runtime :pekko"
       (runtime, _) -> unsupported ("generated actors on :" ++ actorRuntimeName runtime ++ " are not implemented for " ++ t ++ " yet")
     unsupported message = \_ _ _ _ _ -> Left message
     lawspecEmitter t = case t of

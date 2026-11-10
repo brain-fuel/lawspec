@@ -7,7 +7,7 @@
 -- reuse of the Java classes do not change. The runtime's files are written
 -- once beside the actors, never per actor or supervisor.
 -- ref:DEC-pekko-runtime ref:DEC-pekko-otp-supervision
-module LawSpec.Actors.Pekko (emit, runtimeFiles) where
+module LawSpec.Actors.Pekko (emit, runtimeFiles, pekkoRuntime) where
 
 import LawSpec.Actors.Jvm (Runtime(..), emitWith)
 import LawSpec.Actors.Types (Actor, Supervision)
@@ -23,6 +23,7 @@ pekkoRuntime = Runtime
   , runtimeSupervisor = "LawSpecPekkoSupervisor"
   , runtimeImports = ["lawspec.runtime.pekko.LawSpecPekko", "lawspec.runtime.pekko.LawSpecPekkoSupervisor"]
   , runtimeRemote = False
+  , runtimeSpring = False
   }
 
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]

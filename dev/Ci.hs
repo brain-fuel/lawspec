@@ -695,11 +695,18 @@ targetSteps target =
   -- The JVM targets' actors again on Apache Pekko (:actors {:runtime :pekko}),
   -- with the same laws and mutants. ref:DEC-pekko-runtime
   [ Step (target ++ "-" ++ suite ++ "-pekko") [("LAWSPEC_ACTORS", "pekko")] (acceptance [suite, target])
+  | target `elem` ["java", "kotlin", "scala", "groovy", "clojure"], suite <- ["actors", "restarts"] ] ++
+  -- And through the Spring Boot actor starter (:runtime :spring), which is
+  -- for Java and Kotlin, reused by Groovy and Clojure.
+  -- ref:DEC-spring-actor-starter
+  [ Step (target ++ "-" ++ suite ++ "-spring") [("LAWSPEC_ACTORS", "spring")] (acceptance [suite, target])
   | target `elem` ["java", "kotlin", "groovy", "clojure"], suite <- ["actors", "restarts"] ] ++
   -- Scala's own suites: bound handlers whose operations fail answer Either.
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
-  -- Existing Pekko actors checked against a LawSpec actor's model (Java).
-  [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "java", suite <- ["pekko-native-actors"] ] ++
+  -- Existing Pekko actors checked against a LawSpec actor's model (Java and
+  -- Scala), and an existing Spring starter actor (Java).
+  [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target `elem` ["java", "scala"], suite <- ["pekko-native-actors"] ] ++
+  [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "java", suite <- ["pekko-native-actors-spring"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ Step (target ++ "-model-layer-selection" ++ suffix) env ["node", "tools/model-layer-integration.mjs", target]

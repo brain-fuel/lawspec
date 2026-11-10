@@ -259,9 +259,13 @@ them, and `monitor(f)`.
 
 ## Runtimes
 
-On Java, Kotlin, Groovy and Clojure, a target can run its actors and
+On Java, Kotlin, Scala, Groovy and Clojure, a target can run its actors and
 supervisors on Apache Pekko with `:actors {:runtime :pekko}` in
-[`lawspec.edn`](../configuration.md#actor-runtimes). Each actor is then a
+[`lawspec.edn`](../configuration.md#actor-runtimes). On Java, Kotlin,
+Groovy and Clojure, `:actors {:runtime :spring}` runs them through the Spring
+Boot actor starter instead: each actor class also has a `SpringActor`
+component, and its actors are spawned through the starter's actor system.
+Scala with `:spring` is rejected. Each actor is then a
 Pekko Typed behaviour, restarted in place by Pekko's supervision, and each
 supervisor keeps the strategies, lifetimes, restart limit and escalation
 above. The generated classes keep their methods, except `serve` and

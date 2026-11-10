@@ -1,0 +1,24 @@
+expect: is not linearizable
+@@ src/main/java/example/AccountActor.java
+<<<<<<<
+          holding.balance += command.amount;
+          command.reply(new Balance(holding.balance));
+          return SpringActorBehavior.same();
+=======
+          // Mutant: the deposit reads and writes the balance in two steps
+          // off the actor's turn, so concurrent deposits can lose one another.
+          java.util.concurrent.CompletableFuture.runAsync(() -> {
+            long before = holding.balance;
+            try
+            {
+              Thread.sleep(2);
+            }
+            catch (InterruptedException error)
+            {
+              Thread.currentThread().interrupt();
+            }
+            holding.balance = before + command.amount;
+            command.reply(new Balance(before + command.amount));
+          });
+          return SpringActorBehavior.same();
+>>>>>>>

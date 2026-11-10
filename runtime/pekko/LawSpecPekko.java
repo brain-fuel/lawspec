@@ -46,6 +46,9 @@ public final class LawSpecPekko
 
   private static ActorSystem<Void> system;
 
+  // An actor system another runtime gave (LawSpecSpring's), used instead of system's.
+  private static ActorSystem<?> given;
+
   private static final java.util.concurrent.atomic.AtomicLong NAMES =
       new java.util.concurrent.atomic.AtomicLong();
 
@@ -66,6 +69,21 @@ public final class LawSpecPekko
       system = ActorSystem.create(Behaviors.<Void>empty(), "lawspec", quiet);
     }
     return system;
+  }
+
+  /**
+   * Runs later actors, asks and supervisors in an actor system another runtime started, such as the
+   * Spring starter's (LawSpecSpring); null returns to LawSpec's own.
+   */
+  public static synchronized void use(ActorSystem<?> system)
+  {
+    given = system;
+  }
+
+  /** The actor system later actors run in: the one given to use, or LawSpec's own. */
+  private static synchronized ActorSystem<?> current()
+  {
+    return given != null ? given : system();
   }
 
   /** Stops the actor system; a later actor starts a new one. */
@@ -112,7 +130,7 @@ public final class LawSpecPekko
     var timeout = askTimeout();
     try
     {
-      return AskPattern.ask(target, message, timeout, system().scheduler()).toCompletableFuture()
+      return AskPattern.ask(target, message, timeout, current().scheduler()).toCompletableFuture()
           .join();
     }
     catch (CompletionException e)
@@ -132,7 +150,7 @@ public final class LawSpecPekko
   /** Spawns a top-level actor of the system, named prefix and a number. */
   public static <T> ActorRef<T> spawn(Behavior<T> behavior, String prefix)
   {
-    return system().systemActorOf(behavior, prefix + "-" + NAMES.incrementAndGet(), Props.empty());
+    return current().systemActorOf(behavior, prefix + "-" + NAMES.incrementAndGet(), Props.empty());
   }
 
   /** A message an actor handles: the adapter call, and where its reply goes (none for a tell). */
@@ -197,16 +215,24 @@ public final class LawSpecPekko
 
     public Actor(S state, Function<S, S> restart)
     {
+      this(state, restart, behavior -> spawn(behavior, "lawspec-actor"));
+    }
+
+    /**
+     * An actor spawned by spawner, which runs the actor's behaviour where the runtime that chose it
+     * says, such as through the Spring starter's actor system (LawSpecSpring).
+     */
+    public Actor(S state, Function<S, S> restart,
+        Function<Behavior<Object>, ActorRef<Object>> spawner)
+    {
       this.state = state;
       this.restartState = restart;
       Behavior<Object> core = Behaviors.setup(context -> running());
-      this.ref = spawn(
-          Behaviors
-              .supervise(Behaviors
-                  .intercept(() -> new LawSpecCrashInterceptor<Object>(this::accept), core))
-              .onFailure(
-                  SupervisorStrategy.restart().withStopChildren(false).withLoggingEnabled(false)),
-          "lawspec-actor");
+      this.ref = spawner.apply(Behaviors
+          .supervise(
+              Behaviors.intercept(() -> new LawSpecCrashInterceptor<Object>(this::accept), core))
+          .onFailure(
+              SupervisorStrategy.restart().withStopChildren(false).withLoggingEnabled(false)));
     }
 
     /** The Pekko reference, which takes LawSpecCrashInterceptor's crash signal. */

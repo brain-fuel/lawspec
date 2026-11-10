@@ -129,24 +129,36 @@ on Apache Pekko instead of LawSpec's own runtime:
 
 | Field | Values | Meaning |
 | --- | --- | --- |
-| `runtime` | `:lawspec` (default), `:pekko`, `:spring` | `:lawspec` is LawSpec's runtime, unchanged. `:pekko` runs each actor as a Pekko Typed behaviour and each supervisor as an OTP-style Pekko parent; the build gains `org.apache.pekko:pekko-actor-typed_3` 1.7.1. `:spring` runs them through the Spring Boot actor starter. |
+| `runtime` | `:lawspec` (default), `:pekko`, `:spring` | `:lawspec` is LawSpec's runtime, unchanged. `:pekko` runs each actor as a Pekko Typed behaviour and each supervisor as an OTP-style Pekko parent; the build gains `org.apache.pekko:pekko-actor-typed_3` 1.7.1. `:spring` runs the same actors through the Spring Boot actor starter (`io.github.seonwkim:actor-spring-boot-starter` 1.0.0, Spring Boot 3.5.16): each actor class has a `SpringActor` component and its actors are spawned through the starter's actor system; the build gains the starter, Pekko 1.7.1 and, on Java, the starter's `actor-test` slice. |
 | `remote` | `:cluster` | `serve` and `connect` use Pekko Cluster. Needs `:runtime :pekko` or `:spring`. |
 
 The spec does not change with the runtime. Generated actors keep the same
 methods, so adapters, laws and tests stay the same, and the same laws and
 mutants are checked on every runtime. `:pekko` and `:spring` are only for Java,
 Kotlin, Scala, Groovy and Clojure; another target with either is rejected.
-Groovy and Clojure use the Java classes, so they run on Pekko when their target
-selects it.
+Groovy and Clojure use the Java classes, so they run on Pekko or Spring when
+their target selects it. Scala's actors run on `:pekko` through the same
+runtime classes, and its build gains `pekko-actor-typed` through Scala CLI.
+The Spring starter is a Java and Kotlin library, so Scala with `:spring` is
+rejected with a diagnostic; use `:pekko`.
 
-On `:pekko`, a call waits for its reply for up to 30 seconds by default.
+On `:spring`, the first actor started in a JVM uses the starter's actor system
+of the Spring application, when it has been given one, or starts a Spring
+context with only the starter's actor support and the generated actor
+components, as the starter's `@ActorTest` slice does. Java's generated
+supervision test is an `@ActorTest` with that configuration; the other targets'
+tests start the same context themselves. Supervisors are the same OTP
+emulation as on `:pekko`.
+
+On `:pekko` and `:spring`, a call waits for its reply for up to 30 seconds by
+default.
 Set the `lawspec.pekko.ask-timeout` system property (for example `5s` or
 `500ms`) to change it. A call that times out throws
 `LawSpecPekko.AskTimedOut`; it is never treated as a reply.
 
-On `:pekko`, generated actors have no `serve` and `connect` methods until
-`:remote :cluster` is implemented. `:spring`, Scala on `:pekko` and
-`:remote :cluster` are planned for 0.33 and are not implemented yet; generation
+On `:pekko` and `:spring`, generated actors have no `serve` and `connect`
+methods until `:remote :cluster` is implemented. `:remote :cluster` and sharding
+are planned for a later 0.33 step and are not implemented yet; generation
 reports them as unsupported.
 
 Directories must be relative paths whose segments contain only letters, digits,

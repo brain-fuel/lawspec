@@ -1,0 +1,72 @@
+unit example.accounts
+
+-- The account of examples/specs/actors.lawspec, run by an existing Spring
+-- Boot actor starter actor (a SpringActor component) instead of LawSpec's
+-- own: the native binding names its component and each handler's command,
+-- and LawSpec asks it every command and compares each reply with the model,
+-- in sequence, across crashes and from several callers at once. The actor
+-- keeps its balance in memory, so a crash restarts it from its start, and
+-- the model's state starts again from 0.
+type Account is a record{  balance :: Int64} end type
+
+openAccount :: Unit -> Account
+deposit :: Account -> UInt8 -> Pair Int64 Account
+withdrawAll :: Account -> Pair Int64 Account
+balance :: Account -> Pair Int64 Account
+close :: Account -> Account
+
+function modelDeposit (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) -> Pair Int64 Int64 is
+  Pair (n + amount) (n + amount)
+end function
+
+function modelWithdrawAll (n :: Int64) -> Pair Int64 Int64 is Pair n 0 end function
+
+function modelBalance (n :: Int64) -> Pair Int64 Int64 is Pair n n end function
+function modelClose (n :: Int64) -> Int64 is 0 end function
+function solvent (n :: Int64) -> Bool is n >= 0 end function
+
+actor account :: Account by Int64 is
+  start openAccount by 0
+  on deposit by modelDeposit
+  on withdrawAll by modelWithdrawAll
+  on balance by modelBalance
+  on close by modelClose
+  invariant solvent
+end actor
+
+-- A scenario runs the actor's messages from processes that talk over
+-- channels. Some runs crash one process at a random point: a receive from a
+-- process that failed runs its or else instead of waiting forever.
+protocol Receipt is
+  send Int64
+end protocol
+
+scenario `a deposit's receipt, or the balance if the teller fails` in account is
+  channel receipt :: Receipt
+  par
+    n <- deposit 5
+    send receipt n
+  with
+    receive receipt m or else
+      balance
+    end or else
+    expect m = 5
+  end par
+end scenario
+
+-- A mailbox has many senders and one receiver: two tellers report their
+-- deposits to one auditor, who receives both reports.
+scenario `two tellers report to one auditor` in account is
+  mailbox reports of Int64
+  par
+    n <- deposit 3
+    send reports n
+  with
+    m <- deposit 4
+    send reports m
+  with
+    receive reports first
+    receive reports second
+  end par
+end scenario
+end unit

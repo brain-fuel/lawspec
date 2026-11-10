@@ -636,9 +636,11 @@ library
       LawSpec.Actors.Haskell
       LawSpec.Actors.Jvm
       LawSpec.Actors.Pekko
+      LawSpec.Actors.PekkoScala
       LawSpec.Actors.Python
       LawSpec.Actors.Rust
       LawSpec.Actors.Scala
+      LawSpec.Actors.Spring
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api

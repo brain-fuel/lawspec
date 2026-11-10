@@ -107,6 +107,16 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   }
 
   /**
+   * An actor whose factory takes the run's actor identity, the same for each of its restarts, such
+   * as a Spring starter actor's id (LawSpecSpringNative).
+   */
+  public static <C> LawSpecPekkoNative<C> identified(String actor,
+      Function<String, Behavior<C>> factory)
+  {
+    return new LawSpecPekkoNative<>(actor, factory, false);
+  }
+
+  /**
    * An event-sourced actor whose factory takes its persistence id; every run's actor gets a fresh
    * one, on the in-memory journal.
    */

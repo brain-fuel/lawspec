@@ -124,6 +124,14 @@ whose shrink trees Kotest 5.9's `flatMap` would otherwise discard. Refinement
 filters retry up to `maxAttempts` at each value, avoiding Kotest's unbounded
 filter sampling.
 
+## Actor runtimes
+
+Generated actors run on LawSpec's runtime by default. `:actors {:runtime
+:pekko}` in `lawspec.edn` runs them on Apache Pekko 1.7.1, and
+`:actors {:runtime :spring}` through the Spring Boot actor starter 1.0.0,
+where each actor class has a nested `SpringActor` component. `build.gradle.kts`
+gains the pinned libraries. See [actor runtimes](../../reference/configuration.md#actor-runtimes).
+
 ## Formatting
 
 Output is what ktfmt 0.64 writes in its kotlinlang style: four-space

@@ -2,7 +2,7 @@
 -- structure only; they never reformat user source. The readable layout is the
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
-  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, pekkoVersion
+  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, pekkoVersion, springStarterVersion
   , PresentationCheck(..), presentationChecks, gleamTestPackage, rapidMinimum, rapidMaximum, rapidDefault
   ) where
 
@@ -20,6 +20,12 @@ rapidDefault = "1.3.0"
 -- ref:DEC-pekko-runtime
 pekkoVersion :: String
 pekkoVersion = "1.7.1"
+
+-- | The Spring Boot actor starter (io.github.seonwkim:actor-spring-boot-starter
+-- and its actor-test slice, on Spring Boot 3.5.16) generated actors run
+-- through with :runtime :spring. ref:DEC-spring-actor-starter
+springStarterVersion :: String
+springStarterVersion = "1.0.0"
 
 -- | The order users see the targets in everywhere: the CLI, the generated npm
 -- facts and the docs read this one list. ref:DEC-generated-javascript
@@ -240,7 +246,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]
-  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto pekko) ++ "\n")]
+  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto pekko spring) ++ "\n")]
   "go" -> Right [("go.mod", unlines $
     [ "module example.com/lawspec-example", "", "go 1.25.0", ""
     ] ++ (if crypto then
@@ -275,6 +281,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
             ([ "implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")" ] ++
              [ "implementation(\"org.bouncycastle:bcprov-jdk18on:1.86\")" | crypto ] ++
              [ "implementation(\"org.apache.pekko:pekko-actor-typed_3:" ++ pekkoVersion ++ "\")" | pekko ] ++
+             [ "implementation(\"io.github.seonwkim:actor-spring-boot-starter:" ++ springStarterVersion ++ "\")" | spring ] ++
              [ "testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-property:5.9.1\")" ])
@@ -288,6 +295,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
         , "//> using options -deprecation -feature"
         , "//> using javaOpt --sun-misc-unsafe-memory-access=allow" ] ++
         [ "//> using dep org.bouncycastle:bcprov-jdk18on:1.86" | crypto ] ++
+        [ "//> using dep org.apache.pekko::pekko-actor-typed:" ++ pekkoVersion | pekko ] ++
         [ "//> using test.dep org.scalacheck::scalacheck:1.20.0"
         , "//> using test.dep org.scalatest::scalatest-funsuite:3.2.20" ])) ]
   -- Groovy over the Java model: Gradle compiles both jointly (DEC-groovy-over-java).
@@ -306,6 +314,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
             ([ "implementation 'org.apache.groovy:groovy:5.0.8'" ] ++
              [ "implementation 'org.bouncycastle:bcprov-jdk18on:1.86'" | crypto ] ++
              [ "implementation 'org.apache.pekko:pekko-actor-typed_3:" ++ pekkoVersion ++ "'" | pekko ] ++
+             [ "implementation 'io.github.seonwkim:actor-spring-boot-starter:" ++ springStarterVersion ++ "'" | spring ] ++
              [ "testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')"
              , "testImplementation 'org.spockframework:spock-core'"
              , "testImplementation 'org.jetbrains:jetCheck:0.3.0'"
@@ -319,7 +328,8 @@ scaffoldFilesFor runtime crypto minify target = case target of
         [ "{:paths [\"src\" \"target/classes\"]"
         , " :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}" ++
             (if crypto then "\n        org.bouncycastle/bcprov-jdk18on {:mvn/version \"1.86\"}" else "") ++
-            (if pekko then "\n        org.apache.pekko/pekko-actor-typed_3 {:mvn/version \"" ++ pekkoVersion ++ "\"}" else "") ++ "}"
+            (if pekko then "\n        org.apache.pekko/pekko-actor-typed_3 {:mvn/version \"" ++ pekkoVersion ++ "\"}" else "") ++
+            (if spring then "\n        io.github.seonwkim/actor-spring-boot-starter {:mvn/version \"" ++ springStarterVersion ++ "\"}" else "") ++ "}"
         , " :aliases"
         , " {:test {:extra-paths [\"test\" \"target/test-classes\"]"
         , "         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}"
@@ -330,6 +340,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
   _ -> Left ("Unknown target: " ++ target)
   where
     pekko = runtime /= LawSpecActors
+    spring = runtime == SpringActors
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
     commonPackage = [("name", Str "lawspec-example"), ("version", Str "0.1.0"), ("private", Bool True), ("type", Str "module")]
     kotlinBlock name statements
@@ -434,8 +445,8 @@ renderJson minify depth value = case value of
 
 data Xml = Element String [(String, String)] (Either String [Xml])
 
-mavenProject :: Bool -> Bool -> Xml
-mavenProject crypto pekko = Element "project"
+mavenProject :: Bool -> Bool -> Bool -> Xml
+mavenProject crypto pekko spring = Element "project"
   [ ("xmlns", "http://maven.apache.org/POM/4.0.0")
   , ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
   , ("xsi:schemaLocation", "http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd") ]
@@ -444,8 +455,12 @@ mavenProject crypto pekko = Element "project"
     , node "dependencies"
         ([ compileDependency "org.bouncycastle" "bcprov-jdk18on" "1.86" | crypto ] ++
         [ compileDependency "org.apache.pekko" "pekko-actor-typed_3" pekkoVersion | pekko ] ++
+        [ compileDependency "io.github.seonwkim" "actor-spring-boot-starter" springStarterVersion | spring ] ++
         [ dependency "org.jetbrains" "jetCheck" "0.3.0"
-        , dependency "org.junit.jupiter" "junit-jupiter" "5.14.0" ])
+        , dependency "org.junit.jupiter" "junit-jupiter" "5.14.0" ] ++
+        -- After JUnit, so Maven's nearest-first choice keeps JUnit 5.14's
+        -- own API rather than the 5.12 one the starter's actor-test names.
+        [ dependency "io.github.seonwkim" "actor-test" springStarterVersion | spring ])
     , node "build" [node "plugins"
         [ plugin "maven-compiler-plugin" "3.14.1"
         , plugin "maven-surefire-plugin" "3.5.4" ]] ]))

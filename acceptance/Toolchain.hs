@@ -16,6 +16,11 @@ import Control.Monad (when)
 actorRuntimePins :: String -> [String]
 actorRuntimePins runtime = case runtime of
   "pekko" -> ["org.apache.pekko:pekko-actor-typed_3:1.7.1"]
+  "spring" ->
+    [ "org.apache.pekko:pekko-actor-typed_3:1.7.1"
+    , "io.github.seonwkim:actor-spring-boot-starter:1.0.0"
+    , "io.github.seonwkim:actor-test:1.0.0"
+    , "org.springframework.boot:spring-boot:3.5.16" ]
   _ -> []
 
 data Toolchain = Toolchain

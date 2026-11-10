@@ -33,7 +33,8 @@ import qualified LawSpec.KotlinExpr as KotlinExpr
 import qualified LawSpec.KotlinProperties as KotlinProperties
 import qualified LawSpec.KotlinTestHelpers as KotlinTestHelpers
 import qualified LawSpec.KotlinLayout as KotlinLayout
-import LawSpec.ScalaUnitEmit (emitScalaUnit)
+import LawSpec.ScalaUnitEmit (emitScalaUnitOn)
+import LawSpec.ActorRuntime (ActorRuntime(..))
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -97,26 +98,26 @@ nativeScalarEmitWithAdapterBindings adapters generators minify datas definitions
   Product.jvmArtifacts <$> nativeScalarProductWithAdapterBindings JUnit adapters generators minify datas definitions bits target unit laws
 
 nativeScalarProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
-nativeScalarProductWithAdapterBindings = nativeScalarProductWithCompanions False True False
+nativeScalarProductWithAdapterBindings = nativeScalarProductWithCompanions LawSpecActors True False
 
 -- | The unit's tests, stubs and ABI, with public Go schema artifacts assembled
 -- separately. This lets their type contents have independent cache identities.
 nativeScalarUnitProductWithAdapterBindings :: TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
-nativeScalarUnitProductWithAdapterBindings = nativeScalarProductWithCompanions False False False
+nativeScalarUnitProductWithAdapterBindings = nativeScalarProductWithCompanions LawSpecActors False False
 
 -- | Program-wide network setup is explicit even for a unit with no direct
 -- network declaration, and remains part of the unit emission cache context.
 nativeScalarUnitProductWithNetwork :: Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
-nativeScalarUnitProductWithNetwork = nativeScalarUnitProductOn False
+nativeScalarUnitProductWithNetwork = nativeScalarUnitProductOn LawSpecActors
 
--- | On the Pekko actor runtime (pekko), the unit's supervision test checks
+-- | On the Pekko or Spring actor runtime, the unit's supervision test checks
 -- Pekko's supervisors. ref:DEC-pekko-otp-supervision
-nativeScalarUnitProductOn :: Bool -> Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
+nativeScalarUnitProductOn :: ActorRuntime -> Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
 nativeScalarUnitProductOn pekko network = nativeScalarProductWithCompanions pekko False network
 
 nativeScalarEmitWithNetwork :: Bool -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithNetwork network adapters generators minify datas definitions bits target unit laws =
-  Product.jvmArtifacts <$> nativeScalarProductWithCompanions False True network JUnit adapters generators minify datas definitions bits target unit laws
+  Product.jvmArtifacts <$> nativeScalarProductWithCompanions LawSpecActors True network JUnit adapters generators minify datas definitions bits target unit laws
 
 -- | Public declarations are preserved for every package, including types no
 -- law in that package happens to mention.
@@ -179,10 +180,10 @@ goUnitUsesSchema adapters nativeGenerators declarations definitions unit laws =
     needsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     needsSchema term = custom (expressionType term) || any needsSchema (C.children term)
 
-nativeScalarProductWithCompanions :: Bool -> Bool -> Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
+nativeScalarProductWithCompanions :: ActorRuntime -> Bool -> Bool -> TestStyle -> [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] Product.JvmProduct
 -- Scala's units have an emitter of their own (LawSpec.ScalaUnitEmit).
-nativeScalarProductWithCompanions _ _ _ _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
-  Product.files <$> emitScalaUnit (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
+nativeScalarProductWithCompanions pekko _ _ _ _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
+  Product.files <$> emitScalaUnitOn pekko (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
 nativeScalarProductWithCompanions pekko companions network javaStyle adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()

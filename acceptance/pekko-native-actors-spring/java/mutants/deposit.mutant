@@ -1,0 +1,9 @@
+expect: model account fails at step
+@@ src/main/java/example/AccountActor.java
+<<<<<<<
+          holding.balance += command.amount;
+          command.reply(new Balance(holding.balance));
+=======
+          command.reply(new Balance(holding.balance));
+          holding.balance += command.amount;
+>>>>>>>

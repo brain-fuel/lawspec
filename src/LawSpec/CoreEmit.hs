@@ -698,7 +698,7 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
       _ -> pure []
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
-          Native.nativeScalarUnitProductOn (actorRuntime planActors == PekkoActors) (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
+          Native.nativeScalarUnitProductOn (actorRuntime planActors) (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
       | otherwise = Product.files <$> Scalar.scalarEmitWithSourceRoot sourceRoot False minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
@@ -742,10 +742,10 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings plan | target
 emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
   checkDefinitionPlan original
   checkExecutionPlan original
-  -- Existing native actors are checked on Java so far; elsewhere the
+  -- Existing native actors are checked on Java and Scala so far; elsewhere the
   -- binding is an error rather than a check silently skipped.
-  unless (target == "java" || null (NB.bindingActors bindings))
-    (Left [Diagnostic "native-binding" ("unsupported: native actor bindings are checked on Java only, not yet on " ++ target) Nothing])
+  unless (target `elem` ["java", "scala"] || null (NB.bindingActors bindings))
+    (Left [Diagnostic "native-binding" ("unsupported: native actor bindings are checked on Java and Scala only, not yet on " ++ target) Nothing])
   let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
         Just name -> declaration { C.declarationName = name }
         Nothing -> declaration

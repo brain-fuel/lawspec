@@ -1,0 +1,39 @@
+expect: crash()
+@@ src/main/scala/example/Account.scala
+<<<<<<<
+*
+=======
+// Mutant: the balance lives in memory, so a restart loses it.
+package example
+
+import org.apache.pekko.Done
+import org.apache.pekko.actor.typed.{ActorRef, Behavior}
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+
+object Account {
+  sealed trait Command
+  final case class Deposit(amount: Short, replyTo: ActorRef[Balance]) extends Command
+  final case class WithdrawAll(replyTo: ActorRef[Balance]) extends Command
+  final case class GetBalance(replyTo: ActorRef[Balance]) extends Command
+  final case class Close(replyTo: ActorRef[Done]) extends Command
+  final case class Balance(balance: Long)
+
+  def create(id: String): Behavior[Command] = holding(0L)
+
+  private def holding(balance: Long): Behavior[Command] =
+    Behaviors.receiveMessage {
+      case Deposit(amount, replyTo) =>
+        replyTo ! Balance(balance + amount)
+        holding(balance + amount)
+      case WithdrawAll(replyTo) =>
+        replyTo ! Balance(balance)
+        holding(0L)
+      case GetBalance(replyTo) =>
+        replyTo ! Balance(balance)
+        Behaviors.same
+      case Close(replyTo) =>
+        replyTo ! Done
+        holding(0L)
+    }
+}
+>>>>>>>

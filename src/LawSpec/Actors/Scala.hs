@@ -6,7 +6,7 @@
 -- in a LawSpecRuntime.Actor; each handler is a method that sends its message
 -- and returns the reply, tell<Handler> sends it without waiting, and stop()
 -- refuses further messages.
-module LawSpec.Actors.Scala (emit) where
+module LawSpec.Actors.Scala (emit, emitWith) where
 
 import Data.List (isInfixOf)
 import qualified LawSpec.Code.Doc as D
@@ -15,30 +15,35 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.ScalaData (scalaCodecReceiverIn, scalaDataType, identifier, scalaQuoted)
 import qualified LawSpec.ScalaLayout as L
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..))
-import LawSpec.Actors.Jvm (Wire(..), actorWire, replyOf, adapterFunction, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital)
+import LawSpec.Actors.Jvm (Runtime(..), lawspecRuntime, runtimeImportsFor, Wire(..), actorWire, replyOf, adapterFunction, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital)
 
 -- | Actors become a typed class with a companion, Scala's idiom for one,
 -- generated from the declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
-emit _ _ bits datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
+emit = emitWith lawspecRuntime
+
+-- | The same classes over another runtime with LawSpecRuntime's methods, such
+-- as Pekko's (LawSpec.Actors.PekkoScala).
+emitWith :: Runtime -> String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emitWith rt _ _ bits datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
   where
     directory = "src/main/scala/lawspec/actors/"
     artifact a = do
       identifier (actorClass a)
       mapM_ (reserved a) (actorHandlers a)
-      source <- scalaSource datas (either (const Nothing) Just (actorWire bits datas a)) a
+      source <- scalaSource rt datas (if runtimeRemote rt then either (const Nothing) Just (actorWire bits datas a) else Nothing) a
       pure (Artifact (directory ++ actorClass a ++ ".scala") source "generated" "source")
     supervisorArtifact s = do
       identifier (supervisionClass s)
       mapM_ (\(_, name, _) -> identifier name) (supervisionChildren s)
-      pure (Artifact (directory ++ supervisionClass s ++ ".scala") (scalaSupervisor s) "generated" "source")
+      pure (Artifact (directory ++ supervisionClass s ++ ".scala") (scalaSupervisor rt s) "generated" "source")
     reserved a h
       | handlerName h `elem` ["start", "stop", "crash", "monitor", "link", "serve", "connect"] || ("tell" ++ capital (handlerName h)) `elem` map handlerName (actorHandlers a) =
           Left ("actor " ++ actorName a ++ ": handler " ++ handlerName h ++ " clashes with a method of " ++ actorClass a ++ "; rename it")
       | otherwise = pure ()
 
-scalaSource :: [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
-scalaSource datas wire a = do
+scalaSource :: Runtime -> [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
+scalaSource rt datas wire a = do
   own <- scalaDataType datas (actorState a)
   let startArgs = actorStartArguments a
   startParams <- sequence [(\n -> p ++ ": " ++ n) <$> scalaDataType datas t | (p, t) <- startArgs, not (isUnit t)]
@@ -60,13 +65,14 @@ scalaSource datas wire a = do
         , comment 2 "Refuses further messages; those already sent are still handled." <>
           D.text "def stop(): Unit = actor.stop()" ] ++ snd remote
       start = comment 2 ("Makes the actor's state with " ++ C.declarationName (actorStart a) ++ " and starts the actor, under supervisor (when given) with the given lifetime.") <>
-        L.parameters (D.text "def start") (map D.text (startParams ++ ["supervisor: LawSpecRuntime.Supervisor = null", "lifetime: String = LawSpecRuntime.Supervisor.PERMANENT"])) <>
+        L.parameters (D.text "def start") (map D.text (startParams ++ ["supervisor: " ++ runtimeSupervisor rt ++ " = null", "lifetime: String = " ++ runtimeSupervisor rt ++ ".PERMANENT"])) <>
         D.text (": " ++ cls ++ " = ") <> L.block
-          [ L.bind "actor" (L.call ("LawSpecRuntime.Actor[" ++ own ++ "]") [initial, restart])
+          [ L.bind "actor" (L.call (runtimeActor rt ++ "[" ++ own ++ "]") [initial, restart])
           , D.text "if (supervisor != null) supervisor.supervise(actor, lifetime)"
           , D.text ("new " ++ cls ++ "(actor)") ]
       body = D.render D.Compact (D.joinWith D.hardline (classMembers ++ fst remote))
-      imports = [ "import lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecRuntime", "LawSpecScala", "LawSpecScalaCodecs"], (c ++ ".") `isInfixOf` body || c == "LawSpecRuntime" ]
+      imports = [ "import lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecRuntime", "LawSpecScala", "LawSpecScalaCodecs"], (c ++ ".") `isInfixOf` body || c == "LawSpecRuntime" ] ++
+        map ("import " ++) (runtimeImportsFor rt [runtimeActor rt, runtimeSupervisor rt])
   pure $ D.render L.scalaStyle $
     D.text ("// Generated by LawSpec from actor " ++ actorName a ++ ". Do not edit.") <> D.hardline <>
     D.text "package lawspec.actors" <> D.hardline <> D.hardline <>
@@ -75,7 +81,7 @@ scalaSource datas wire a = do
       "Each handler method sends a message and returns the reply; tell methods send it without waiting. " ++
       "A handler that throws crashes the actor: the caller gets LawSpecRuntime.ActorCrashed, and a supervised actor restarts " ++
       "(from its restart adapter, or its start) while any other stops.") <>
-    D.group (D.text ("final class " ++ cls ++ " private (") <> D.nest 4 (D.softbreak <> D.text ("private val actor: LawSpecRuntime.Actor[" ++ own ++ "]")) <> D.softbreak <> D.text ")") <>
+    D.group (D.text ("final class " ++ cls ++ " private (") <> D.nest 4 (D.softbreak <> D.text ("private val actor: " ++ runtimeActor rt ++ "[" ++ own ++ "]")) <> D.softbreak <> D.text ")") <>
     D.text " " <> L.block [D.joinWith (D.hardline <> D.hardline) classMembers] <> D.hardline <> D.hardline <>
     D.text ("object " ++ cls ++ " ") <> L.block [D.joinWith (D.hardline <> D.hardline) (fst remote ++ [start])] <> D.hardline
   where
@@ -151,15 +157,15 @@ scalaSource datas wire a = do
         , comment 2 ("Sends " ++ name ++ " without waiting for the reply.") <>
           L.equalsBody (signature ("tell" ++ capital name) "Unit") (L.trailing (D.text "actor.cast") ["(s: " ++ own ++ ")"] step) ]
 
-scalaSupervisor :: Supervision -> String
-scalaSupervisor s = D.render L.scalaStyle $
+scalaSupervisor :: Runtime -> Supervision -> String
+scalaSupervisor rt s = D.render L.scalaStyle $
   D.text ("// Generated by LawSpec from supervisor " ++ supervisionName s ++ ". Do not edit.") <> D.hardline <>
   D.text "package lawspec.actors" <> D.hardline <> D.hardline <>
-  D.text "import lawspec.runtime.LawSpecRuntime" <> D.hardline <> D.hardline <>
+  D.joinWith D.hardline (map (D.text . ("import " ++)) ("lawspec.runtime.LawSpecRuntime" : runtimeImportsFor rt [runtimeSupervisor rt])) <> D.hardline <> D.hardline <>
   L.comment 80 ("Supervisor " ++ supervisionName s ++ ": " ++ strategyText s ++ ", at most " ++ show (supervisionRestarts s) ++
     " restarts in " ++ seconds s ++ "s.") <>
   L.parameters (D.text ("final class " ++ cls ++ " private "))
-    (D.text "private val supervisor: LawSpecRuntime.Supervisor" : [D.text ("val " ++ name ++ ": " ++ childClass c) | (_, name, c) <- supervisionChildren s]) <>
+    (D.text ("private val supervisor: " ++ runtimeSupervisor rt) : [D.text ("val " ++ name ++ ": " ++ childClass c) | (_, name, c) <- supervisionChildren s]) <>
   D.text " " <> L.block [D.joinWith (D.hardline <> D.hardline)
     [ L.comment 78 "notify gets Exit(\"crashed\", cause) when it passes its restart limit, and Exit(\"stopped\", null) once stopped." <>
       L.equalsBody (D.text "def monitor(notify: LawSpecRuntime.Exit => Unit): Unit") (D.text "supervisor.monitor(exit => notify(exit))")
@@ -167,9 +173,9 @@ scalaSupervisor s = D.render L.scalaStyle $
       D.text "def stop(): Unit = supervisor.stop()" ]] <> D.hardline <> D.hardline <>
   D.text ("object " ++ cls ++ " ") <> L.block
     [ L.comment 78 "Starts the supervisor and its children, under parent (when given) with the given lifetime." <>
-      L.parameters (D.text "def start") (map D.text ["parent: LawSpecRuntime.Supervisor = null", "lifetime: String = LawSpecRuntime.Supervisor.PERMANENT"]) <>
+      L.parameters (D.text "def start") (map D.text ["parent: " ++ runtimeSupervisor rt ++ " = null", "lifetime: String = " ++ runtimeSupervisor rt ++ ".PERMANENT"]) <>
       D.text (": " ++ cls ++ " = ") <> L.block
-        ([ L.bind "own" (L.call "LawSpecRuntime.Supervisor" [D.text (scalaQuoted (strategyName s)), D.text (show (supervisionRestarts s)), D.text (seconds s)]) ] ++
+        ([ L.bind "own" (L.call (runtimeSupervisor rt) [D.text (scalaQuoted (strategyName s)), D.text (show (supervisionRestarts s)), D.text (seconds s)]) ] ++
          [ L.bind name (L.call (childClass c ++ ".start") [D.text "own", D.text (scalaQuoted (lifetimeName l))]) | (l, name, c) <- supervisionChildren s ] ++
          [ D.text "if (parent != null) parent.supervise(own, lifetime)"
          , L.call ("new " ++ cls) (map D.text ("own" : [name | (_, name, _) <- supervisionChildren s])) ]) ] <> D.hardline

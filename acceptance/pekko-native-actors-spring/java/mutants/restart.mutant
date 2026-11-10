@@ -1,0 +1,20 @@
+expect: crash()
+@@ src/main/java/example/AccountActor.java
+<<<<<<<
+        .withState(behavior -> new Holding())
+=======
+        .withState(behavior -> KEPT.computeIfAbsent(context.actorId(), id -> new Holding()))
+>>>>>>>
+@@ src/main/java/example/AccountActor.java
+<<<<<<<
+  @Override
+  public SpringActorBehavior<Command> create(SpringActorContext context)
+=======
+  // Mutant: each actor's balance outlives its incarnations, so a restart
+  // keeps it.
+  private static final java.util.Map<String, Holding> KEPT =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  @Override
+  public SpringActorBehavior<Command> create(SpringActorContext context)
+>>>>>>>
