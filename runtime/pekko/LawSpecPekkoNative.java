@@ -17,31 +17,31 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import lawspec.runtime.LawSpecRuntime;
 import lawspec.runtime.LawSpecRuntime.Value;
+import lawspec.runtime.pekko.LawSpecCrashInterceptor;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
-import org.apache.pekko.actor.typed.BehaviorInterceptor;
 import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.Terminated;
-import org.apache.pekko.actor.typed.TypedActorContext;
 import org.apache.pekko.actor.typed.javadsl.AskPattern;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 
 /**
  * Checks an existing Pekko Typed actor against a LawSpec actor's model: the model runner drives
  * this backend instead of LawSpec's own actor, with the same runs, crashes, shrinking, invariants
- * on the model and linearizability. The bound behaviour runs unchanged inside an ActorTestKit;
- * each handler is a message asked with AskPattern, and the reply's result is compared with the
- * model. The actor's state stays private: nothing reads it.
+ * on the model and linearizability. The bound behaviour runs unchanged inside an ActorTestKit; each
+ * handler is a message asked with AskPattern, and the reply's result is compared with the model.
+ * The actor's state stays private: nothing reads it.
  *
- * <p>A crash is a private message, handled after the messages sent before it. A crash
- * interceptor around the behaviour turns it into an exception, so Pekko's own supervision
- * restarts the actor from its behaviour. An event-sourced actor is instead stopped and started
- * again with the same persistence id, and recovers from its journal (the in-memory
- * PersistenceTestKit journal). A reply that does not come within the ask timeout fails the run; it
- * is never a pass.
+ * <p>
+ * A crash is a private message, handled after the messages sent before it. A crash interceptor
+ * around the behaviour turns it into an exception, so Pekko's own supervision restarts the actor
+ * from its behaviour. An event-sourced actor is instead stopped and started again with the same
+ * persistence id, and recovers from its journal (the in-memory PersistenceTestKit journal). A reply
+ * that does not come within the ask timeout fails the run; it is never a pass.
  *
- * <p>The ask timeout is LAWSPEC_ASK_TIMEOUT_MS milliseconds (3000 when not set).
+ * <p>
+ * The ask timeout is LAWSPEC_ASK_TIMEOUT_MS milliseconds (3000 when not set).
  * ref:DEC-native-actor-binding
  */
 public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
@@ -121,15 +121,16 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
       Class<R> reply, Result<? super R> result)
   {
     handlers.put(handler, (symbols, ref, arguments) -> {
-      Object answer = await(AskPattern.<Object, R>ask(ref,
-          replyTo -> message.make(symbols, arguments, replyTo), timeout, system().scheduler()),
+      Object answer = await(
+          AskPattern.<Object, R>ask(ref, replyTo -> message.make(symbols, arguments, replyTo),
+              timeout, system().scheduler()),
           () -> "native actor " + actor + " did not reply to " + handler + describe(arguments)
               + " within " + timeout.toMillis() + " ms");
       if (!reply.isInstance(answer))
       {
-        throw new NativeActorFailure("native actor " + actor + " answered " + handler
-            + describe(arguments) + " with " + answer.getClass().getName() + ", not "
-            + reply.getName());
+        throw new NativeActorFailure(
+            "native actor " + actor + " answered " + handler + describe(arguments) + " with "
+                + answer.getClass().getName() + ", not " + reply.getName());
       }
       return result.of(symbols, reply.cast(answer));
     });
@@ -157,67 +158,77 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   public Value spawn(Map<String, Object> symbols, List<Value> startArguments)
   {
     var identity = actor + "-" + IDENTITIES.incrementAndGet();
-    return LawSpecRuntime.handle(HANDLE, new Spawned(identity, start(identity)));
+    var restarted = new AtomicReference<CompletableFuture<Void>>();
+    return LawSpecRuntime.handle(HANDLE,
+        new Spawned(identity, restarted, start(identity, restarted)));
   }
 
   /**
-   * One incarnation of the actor. A behaviour without persistence restarts in place, through the
-   * supervision around the crash interceptor; an event-sourced one stops at a crash, and the next
+   * One incarnation of the actor, wrapped in LawSpecCrashInterceptor. A behaviour without
+   * persistence restarts in place, through the supervision around the interceptor, and tells the
+   * pending crash step when it starts again; an event-sourced one stops at a crash, and the next
    * incarnation recovers from the journal.
    */
-  private ActorRef<Object> start(String identity)
+  private ActorRef<Object> start(String identity,
+      AtomicReference<CompletableFuture<Void>> restarted)
   {
-    var restarted = new AtomicReference<CompletableFuture<Void>>();
-    Behavior<Object> crashing = Behaviors.intercept(
-        () -> new CrashInterceptor<C>(restarted, persistent), factory.apply(identity));
-    return testKit().spawn(persistent ? crashing : Behaviors.supervise(crashing)
-        .onFailure(CrashSignal.class, SupervisorStrategy.restart().withLoggingEnabled(false)));
+    Behavior<C> behavior = Behaviors.setup(context -> {
+      var pending = restarted.getAndSet(null);
+      if (pending != null)
+      {
+        pending.complete(null);
+      }
+      return factory.apply(identity);
+    });
+    var strategy = persistent ? SupervisorStrategy.stop() : SupervisorStrategy.restart();
+    return testKit().spawn(Behaviors.supervise(LawSpecCrashInterceptor.wrap(behavior)).onFailure(
+        LawSpecCrashInterceptor.InjectedCrash.class, strategy.withLoggingEnabled(false)));
   }
 
   @Override
-  public Value call(Map<String, Object> symbols, Value actor, String handler,
-      List<Value> arguments)
+  public Value call(Map<String, Object> symbols, Value actor, String handler, List<Value> arguments)
   {
     var bound = handlers.get(handler);
     if (bound == null)
     {
-      throw new IllegalArgumentException("native actor " + this.actor + " has no handler "
-          + handler);
+      throw new IllegalArgumentException(
+          "native actor " + this.actor + " has no handler " + handler);
     }
     return bound.call(symbols, spawned(actor).ref, List.copyOf(arguments));
   }
 
   /**
-   * The crash follows the messages already sent. An event-sourced actor is then stopped and
-   * started again with the same persistence id, as Pekko's EventSourcedBehaviorTestKit restarts
-   * one: restarting it in place while it recovers would let the old incarnation's journal replies
-   * reach the new one.
+   * The crash follows the messages already sent. An event-sourced actor is then stopped and started
+   * again with the same persistence id, as Pekko's EventSourcedBehaviorTestKit restarts one:
+   * restarting it in place while it recovers would let the old incarnation's journal replies reach
+   * the new one.
    */
   @Override
   public void crash(Map<String, Object> symbols, Value actor)
   {
     var spawned = spawned(actor);
-    var done = new CompletableFuture<Void>();
     var ref = spawned.ref;
-    ref.tell(new Crash(done));
     Supplier<String> late = () -> "native actor " + this.actor + " did not restart within "
         + timeout.toMillis() + " ms of a crash";
-    await(done, late);
-    if (persistent)
+    if (!persistent)
     {
-      var stopped = new CompletableFuture<Void>();
-      testKit().spawn(Behaviors.setup(context -> {
-        context.watch(ref);
-        return Behaviors.receive(Object.class)
-            .onSignal(Terminated.class, signal -> {
-              stopped.complete(null);
-              return Behaviors.stopped();
-            })
-            .build();
-      }));
-      await(stopped, late);
-      spawned.ref = start(spawned.identity);
+      var done = new CompletableFuture<Void>();
+      spawned.restarted.set(done);
+      LawSpecCrashInterceptor.crash(ref, "crash");
+      await(done, late);
+      return;
     }
+    LawSpecCrashInterceptor.crash(ref, "crash");
+    var stopped = new CompletableFuture<Void>();
+    testKit().spawn(Behaviors.setup(context -> {
+      context.watch(ref);
+      return Behaviors.receive(Object.class).onSignal(Terminated.class, signal -> {
+        stopped.complete(null);
+        return Behaviors.stopped();
+      }).build();
+    }));
+    await(stopped, late);
+    spawned.ref = start(spawned.identity, spawned.restarted);
   }
 
   @Override
@@ -227,15 +238,21 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
         "native actor " + this.actor + " keeps its state private");
   }
 
-  /** A run's actor: its persistence id, and its current incarnation. */
+  /**
+   * A run's actor: its persistence id, the crash step waiting for it to restart, and its current
+   * incarnation.
+   */
   private static final class Spawned
   {
     final String identity;
+    final AtomicReference<CompletableFuture<Void>> restarted;
     volatile ActorRef<Object> ref;
 
-    Spawned(String identity, ActorRef<Object> ref)
+    Spawned(String identity, AtomicReference<CompletableFuture<Void>> restarted,
+        ActorRef<Object> ref)
     {
       this.identity = identity;
+      this.restarted = restarted;
       this.ref = ref;
     }
   }
@@ -319,80 +336,15 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   /** The test kit for event-sourced actors, on the in-memory journal and snapshot store. */
   private static final class Journaled
   {
-    static final ActorTestKit KIT = started("lawspec-native-journaled", ConfigFactory.parseString(
-        "pekko.persistence.testkit.events.serialize = off\n"
-            + "pekko.persistence.testkit.snapshots.serialize = off\n")
-        .withFallback(common())
-        .withFallback(org.apache.pekko.persistence.testkit.PersistenceTestKitPlugin.getInstance()
-            .config())
-        .withFallback(org.apache.pekko.persistence.testkit.PersistenceTestKitSnapshotPlugin
-            .getInstance().config()));
-  }
-
-  /** The private crash signal, completed once the actor has restarted; only this class sends it. */
-  private record Crash(CompletableFuture<Void> restarted)
-  {
-  }
-
-  /** What the crash interceptor throws, which only the supervision around it restarts on. */
-  private static final class CrashSignal extends RuntimeException
-  {
-    private static final long serialVersionUID = 1L;
-
-    CrashSignal()
-    {
-      super("LawSpec crash injection", null, false, false);
-    }
-  }
-
-  /**
-   * Turns the private crash signal into an exception inside the actor (or, for an event-sourced
-   * actor, stops it) and passes every other message on; when the behaviour restarted after it
-   * starts, it tells the crash step.
-   *
-   * <p>Interim: the pekko-core runtime's LawSpecCrashInterceptor replaces this class when the two
-   * merge.
-   */
-  private static final class CrashInterceptor<C> extends BehaviorInterceptor<Object, C>
-  {
-    private final AtomicReference<CompletableFuture<Void>> restarted;
-    private final boolean stop;
-
-    CrashInterceptor(AtomicReference<CompletableFuture<Void>> restarted, boolean stop)
-    {
-      super(Object.class);
-      this.restarted = restarted;
-      this.stop = stop;
-    }
-
-    @Override
-    public Behavior<C> aroundStart(TypedActorContext<Object> context, PreStartTarget<C> target)
-    {
-      var started = target.start(context);
-      var pending = restarted.getAndSet(null);
-      if (pending != null)
-      {
-        pending.complete(null);
-      }
-      return started;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public Behavior<C> aroundReceive(TypedActorContext<Object> context, Object message,
-        ReceiveTarget<C> target)
-    {
-      if (message instanceof Crash crash)
-      {
-        if (stop)
-        {
-          crash.restarted().complete(null);
-          return Behaviors.stopped();
-        }
-        restarted.set(crash.restarted());
-        throw new CrashSignal();
-      }
-      return target.apply(context, (C) message);
-    }
+    static final ActorTestKit KIT =
+        started("lawspec-native-journaled",
+            ConfigFactory
+                .parseString("pekko.persistence.testkit.events.serialize = off\n"
+                    + "pekko.persistence.testkit.snapshots.serialize = off\n")
+                .withFallback(common())
+                .withFallback(org.apache.pekko.persistence.testkit.PersistenceTestKitPlugin
+                    .getInstance().config())
+                .withFallback(org.apache.pekko.persistence.testkit.PersistenceTestKitSnapshotPlugin
+                    .getInstance().config()));
   }
 }

@@ -285,6 +285,12 @@ emitBindingsProduct javaStyle minify plan testing product = do
                       D.text "private LawSpecNativeActors() {}"] ++ factories)))) "generated" "test"
               backend = Artifact "src/test/java/lawspec/pekko/LawSpecPekkoNative.java"
                 (runtimeSource "java-pekko-native") "generated" "test"
+              -- The crash interceptor, unless the generated actors on Pekko
+              -- already compile it with the program.
+              interceptor =
+                [ Artifact "src/test/java/lawspec/runtime/pekko/LawSpecCrashInterceptor.java"
+                    (runtimeSource "java-pekko-crash") "generated" "test"
+                | not (any ((== "src/main/java/lawspec/runtime/pekko/LawSpecCrashInterceptor.java") . artifactPath) files) ]
           -- Each unit with a bound actor: its model test drives the native actor.
           models <- fmap concat $ forM (plannedUnits testing) $ \p -> do
             let unit = plannedUnit p
@@ -295,7 +301,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
                 (modelTestProductWithBackends False backends javaStyle "java" bits declarations
                   (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) (modelTestUnit testing unit))
               pure [product']
-          pure ([wiring, backend] ++ concatMap Product.jvmArtifacts models, concatMap Product.jvmCases models)
+          pure ([wiring, backend] ++ interceptor ++ concatMap Product.jvmArtifacts models, concatMap Product.jvmCases models)
     -- One handler as a link of the backend's chain: its message from the
     -- arguments after the state, and its reply's result.
     handlerLink actor handler = do
