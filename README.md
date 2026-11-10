@@ -46,7 +46,7 @@ toolchain is needed. The reference platforms are macOS and Linux.
 To open the learning track locally:
 
 ```sh
-npm install --global lawspec@0.32.0
+npm install --global lawspec@0.33.0
 lawspec learn
 ```
 
@@ -94,7 +94,7 @@ its references, so installation does not require a compiler repository checkout.
 Install the LawSpec CLI separately with Node 22+:
 
 ```sh
-npm install --global lawspec@0.32.0
+npm install --global lawspec@0.33.0
 ```
 
 For **Codex**, run these commands in your terminal:
@@ -121,8 +121,8 @@ Code; the project and tutor skills follow the same naming pattern.
 The terminal commands use sparse checkouts for the marketplace and plugin
 directories. For a local checkout, omit `--sparse` and its paths and replace
 `brain-fuel/lawspec` with the checkout's absolute path. To pin a release in Codex, append
-`--ref v0.32.0` to its marketplace-add command. In Claude Code, use
-`https://github.com/brain-fuel/lawspec.git#v0.32.0` as the marketplace source.
+`--ref v0.33.0` to its marketplace-add command. In Claude Code, use
+`https://github.com/brain-fuel/lawspec.git#v0.33.0` as the marketplace source.
 Private repository installations require your existing GitHub access.
 
 To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or
