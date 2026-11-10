@@ -232,4 +232,8 @@ be caught.
   points to the Akka Platform Guide. Its last code is from Akka 2.6, before
   the fork, and uses Akka's packages and Cassandra. So there is no Pekko
   write side to bind, and no read side, nor projection, to check.
-- **Scala samples.** The Scala variants wait for the Scala native binding.
+- **Scala samples.** The Scala persistence and sharding samples are checked
+  as the Java ones are, with the same specs. The Scala fsm sample is not: its
+  chopstick answers with two case classes, `Taken` or `Busy`, and no
+  accessor says which, so a binding cannot read `take`'s `Bool` from the
+  reply yet.

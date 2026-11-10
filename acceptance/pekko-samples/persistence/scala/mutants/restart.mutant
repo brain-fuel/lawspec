@@ -1,0 +1,9 @@
+expect: crash()
+@@ src/main/scala/sample/persistence/ShoppingCart.scala
+<<<<<<<
+      PersistenceId("ShoppingCart", cartId),
+=======
+      // Mutant: each incarnation journals under a new id, so a restart,
+      // which replays the journal, loses the cart.
+      PersistenceId("ShoppingCart", cartId + java.util.UUID.randomUUID()),
+>>>>>>>

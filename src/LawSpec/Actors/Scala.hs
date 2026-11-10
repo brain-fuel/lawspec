@@ -52,9 +52,11 @@ scalaSource rt datas wire a = do
   let startValues = [if isUnit t then D.text "()" else D.text p | (p, t) <- startArgs]
       initial = awaited (actorStart a) (adapterCallDoc (actorStart a) startValues)
       restart = case actorRestart a of
-        Just d -> D.text ("(s: " ++ own ++ ") => ") <> awaited d (adapterCallDoc d [D.text "s"])
-        Nothing | actorKeepsState a -> D.text ("(s: " ++ own ++ ") => s")
-        Nothing -> D.text ("(_: " ++ own ++ ") => ") <> initial
+        -- The body goes on the next line when the lambda does not fit, as
+        -- scalafmt puts it.
+        Just d -> L.arrow ("(s: " ++ own ++ ")") (awaited d (adapterCallDoc d [D.text "s"]))
+        Nothing | actorKeepsState a -> L.arrow ("(s: " ++ own ++ ")") (D.text "s")
+        Nothing -> L.arrow ("(_: " ++ own ++ ")") initial
       classMembers = methods ++
         [ comment 2 "Crashes the actor as a failing handler would, after the messages already sent: for testing how it restarts." <>
           D.text "def crash(): Unit = actor.crash()"
@@ -153,9 +155,9 @@ scalaSource rt datas wire a = do
           signature n result = L.parameters (D.text ("def " ++ n)) (map D.text params) <> D.text (": " ++ result)
       pure $ D.joinWith (D.hardline <> D.hardline)
         [ comment 2 ("Sends " ++ name ++ " and waits for the reply.") <>
-          L.equalsBody (signature name replyType) (L.trailing (D.text ("actor.call[" ++ replyType ++ "]")) ["(s: " ++ own ++ ")"] step)
+          L.equalsBody (signature name replyType) (L.trailingBelow ("actor.call[" ++ replyType ++ "]") ["(s: " ++ own ++ ")"] step)
         , comment 2 ("Sends " ++ name ++ " without waiting for the reply.") <>
-          L.equalsBody (signature ("tell" ++ capital name) "Unit") (L.trailing (D.text "actor.cast") ["(s: " ++ own ++ ")"] step) ]
+          L.equalsBody (signature ("tell" ++ capital name) "Unit") (L.trailingBelow "actor.cast" ["(s: " ++ own ++ ")"] step) ]
 
 scalaSupervisor :: Runtime -> Supervision -> String
 scalaSupervisor rt s = D.render L.scalaStyle $

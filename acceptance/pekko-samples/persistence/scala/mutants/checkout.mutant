@@ -1,0 +1,9 @@
+expect: model cart fails at step
+@@ src/main/scala/sample/persistence/ShoppingCart.scala
+<<<<<<<
+        if (state.isCheckedOut) checkedOutShoppingCart(cartId, state, command)
+=======
+        // Mutant: a checked-out cart still takes new items, so checkout is
+        // not final.
+        if (state.isCheckedOut && !command.isInstanceOf[AddItem]) checkedOutShoppingCart(cartId, state, command)
+>>>>>>>

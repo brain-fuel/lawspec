@@ -293,7 +293,7 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
     rejected [actor [deposit { Request.handlerResult = Just "balance" }, close]] "not both"
     rejected [sharded { Request.boundActorPersistence = Just Request.EventSourced }] "event-sourced sharded entity"
     rejected [(actor [deposit, close]) { Request.boundActorEntity = Just (ref "TypeKey") }] "a caller of a sharded entity"
-    rejected [actor [deposit { Request.handlerReplyArguments = [ref "Summary"], Request.handlerReply = Nothing }, close]] "needs the reply class"
+    rejected [actor [deposit { Request.handlerReplyArguments = [ref "Summary"], Request.handlerReply = Nothing }, close]] "type arguments need the reply class"
     let parsed handler = eitherDecode (BL.pack ("{\"actors\": [{\"actor\": \"bank::account\", \"behavior\": [\"app\", \"create\"], " ++
           "\"handlers\": [" ++ handler ++ "]}]}")) :: Either String Request.NativeRequest
     case parsed "{\"handler\": \"deposit\", \"messageFactory\": [\"app\", \"Messages\", \"deposit\"], \"replyTo\": true, \"reply\": [\"app\", \"StatusReply\"], \"replyArguments\": [[\"app\", \"Balance\"]], \"result\": \"isSuccess\"}" of

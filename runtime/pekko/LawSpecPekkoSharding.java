@@ -40,6 +40,13 @@ public final class LawSpecPekkoSharding implements LawSpecPekkoNative.Entities
     return new LawSpecPekkoSharding(key.name());
   }
 
+  /** The entities of the application's entity type, as the Scala DSL names it. */
+  public static LawSpecPekkoSharding of(
+      org.apache.pekko.cluster.sharding.typed.scaladsl.EntityTypeKey<?> key)
+  {
+    return new LawSpecPekkoSharding(key.name());
+  }
+
   @Override
   public ActorTestKit testKit()
   {

@@ -136,8 +136,8 @@ needs its handle's type binding, since Kotlin calls the method itself.
 actor, to a LawSpec [actor](language/actors.md), so the actor's model checks
 the application's own actor instead of LawSpec's. The behaviour and its
 messages stay the application's; LawSpec generates the asks. Java and Scala
-check Pekko actors, and Java checks Spring starter actors. Every other target
-rejects the field as unsupported, and sharded entities are rejected as well.
+check Pekko actors, sharded entities included, and Java checks Spring
+starter actors. Every other target rejects the field as unsupported.
 The [Pekko how-to](../how-to/check-pekko-actors.md) checks apache/pekko-samples
 this way.
 
@@ -235,11 +235,14 @@ instead. Binding validation also rejects:
   or take or return functions or other actors' handles.
 
 On Scala, `behavior` names an object's factory, `example.Account.create`,
-which takes `()` or, for an event-sourced actor, its persistence id. Messages
-are built with `Message(arguments..., replyTo)`, so Scala case classes and Java
-classes both work, and a result accessor is read as `reply.balance`. The
-generated wiring calls the same Java checker, so the checks are the same as on
-Java. A Scala `spring` binding is rejected.
+which takes `()` or, for an event-sourced actor or a sharded entity, its
+persistence or entity id. Messages are built with `Message(arguments...,
+replyTo)`, so Scala case classes, Java classes and `messageFactory` methods
+all work, and a result accessor or `resultField` is read as `reply.balance`.
+`replyArguments` type the reply as `StatusReply[Summary]`, and an `entity`
+may name a Scala DSL `EntityTypeKey`. The generated wiring sits in the
+behaviour's package and calls the same Java checker, so the checks are the
+same as on Java. A Scala `spring` binding is rejected.
 
 A `spring` binding names a `SpringActor` component. A Spring context holds the
 starter's actor support and that component, so the component gets Spring's

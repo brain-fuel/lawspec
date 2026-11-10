@@ -43,9 +43,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   actors run on the in-memory journal and recover after a crash. Ask
   timeouts fail the run. Shapes LawSpec cannot ask or observe (several
   replies, a missing `replyTo`, invariants on the actor's state) are explicit
-  diagnostics, and other targets are rejected as unsupported. Scala binds Pekko actors too, with generated Scala wiring over
-  the Java checker. On Java, `"spring": "<class>"` binds an existing starter
-  `SpringActor` component (not event-sourced ones yet). The
+  diagnostics, and other targets are rejected as unsupported. Scala binds
+  Pekko actors too, with generated Scala wiring over the Java checker and the
+  same binding fields as Java (callers, generic replies, result fields,
+  message factories and sharded entities). On Java, `"spring": "<class>"`
+  binds an existing starter `SpringActor` component (not event-sourced or
+  sharded ones yet). The
   `pekko-native-actors` acceptance suite checks a hand-written event-sourced
   account on Java and Scala, and `pekko-native-actors-spring` a Spring
   account on Java, with mutants for a wrong reply, state lost on restart and
@@ -67,13 +70,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   put down, a starvation law that LawSpec refutes, and stations that share
   their readings. A how-to, "Check Pekko actors with LawSpec", uses them as
   worked examples and lists what LawSpec cannot check yet, including the CQRS
-  sample, which has no Pekko code upstream.
+  sample, which has no Pekko code upstream. The Scala persistence and
+  sharding samples are checked the same way; the Scala fsm sample is not yet,
+  as its chopstick's `Taken` and `Busy` answers have no accessor to bind.
 
 ### Fixed
 
 - Kotlin trailing lambdas whose parameters fit on the call line but whose
   arrow does not are laid out as ktfmt does (`{ s` then `->` on the next
   line).
+- Scala output follows scalafmt where long lines broke differently: nested
+  type arguments break inside their own brackets, one argument a line; an
+  actor's handler lambda puts its parameter below `actor.call[T] {` when the
+  line is full; an actor's restart lambda puts its body on the next line;
+  and a long model-test backend reference breaks before its method.
 
 ## [0.32.0] - 2026-11-09
 
