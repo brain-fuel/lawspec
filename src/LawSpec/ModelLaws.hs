@@ -5,20 +5,24 @@
 -- explicit-state checker (LawSpec.Core.ModelCheck) explores every reachable
 -- state, so a result is the model's, never a native implementation's.
 -- ref:DEC-model-checking
-module LawSpec.ModelLaws (modelLawEvidence, historyLawEvidence, ModelRun(..), formulaOf, expandFormula, predicateOf, systemOf) where
+module LawSpec.ModelLaws (modelLawEvidence, historyLawEvidence, ModelRun(..), formulaOf, expandFormula, predicateOf, systemOf, StateKey) where
 
 import Control.Monad (forM, unless, when)
 import Data.List (intercalate)
+import qualified Data.IntSet as IS
+import Data.Maybe (fromMaybe, isNothing)
 import qualified Data.Map.Strict as M
 import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import qualified LawSpec.Core.LawAnalysis as A
+import LawSpec.Core.Definitions (Trusted(..), prepareTrustedDefinitions)
 import LawSpec.Core.Machine (Machine(..), MachineStart(..), Command(..), admits, shifted)
 import LawSpec.Core.ModelCheck
 import LawSpec.Core.Value (Value(..), listItems)
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
 import LawSpec.ModelDomains (dependentRanges, resolveBound)
+import LawSpec.ModelReduction (footprints, persistent, readsOfPredicate)
 import qualified LawSpec.Model as S
 
 -- | A model law's result.
@@ -36,6 +40,34 @@ argumentLimit = 4096
 modelLawEvidence :: Bool -> [S.Unit] -> C.Program -> Either [Diagnostic] [Obligation]
 modelLawEvidence ran units program = fmap concat $ forM units $ \u -> do
   let properties = concatMap S.temporalProperties [u' | u' <- units]
+      -- Each model's system and reachable graph, built at most once and
+      -- shared by every law about it.
+      prepared = M.fromList [ (machineName m, prepare m) | cu <- C.programUnits program, C.idText (C.unitId cu) == S.unitName u, m <- C.unitMachines cu ]
+      -- When no law about the model assumes fairness or sets a deadline,
+      -- and its state has no typestate, it is explored with partial-order
+      -- reduction, every law's predicates visible (LawSpec.ModelReduction).
+      prepare m = do
+        (system, alphabet, stateType) <- systemParts program m
+        let lawsHere = [l | l <- S.modelLaws u, S.modelLawModel l == machineName m]
+            atomsOf l
+              | not (null (S.modelLawFairness l)) = Nothing
+              | otherwise = case expandFormula properties (S.modelLawFormula l) of
+                  Right (S.TemporalWhenever _ (S.TemporalWithin _ _)) -> Nothing
+                  Right (S.TemporalWithin _ _) -> Nothing
+                  Right f -> either (const Nothing) (Just . formulaAtoms) (toFormula (predicateOf (S.unitName u) program) f)
+                  Left _ -> Nothing
+            contracts = [ c | cu <- C.programUnits program, c <- C.unitContracts cu ]
+            predicate name = case [ d | cu <- C.programUnits program, d <- C.unitDefinitions cu, C.idText (C.declarationId (C.definitionDeclaration d)) == name ] of
+              d : _ -> Right d
+              [] -> Left ("no predicate " ++ name)
+            reduction = case (mapM atomsOf lawsHere, alphabet) of
+              (Just atoms, Just (Right steps)) | not (null lawsHere) -> either (const Nothing) Just $ do
+                footprint <- footprints program stateType contracts steps
+                predicateReads <- mapM (\a -> predicate a >>= readsOfPredicate program stateType) (concat atoms)
+                let visible = foldr (\a b -> IS.union <$> a <*> b) (Just IS.empty) predicateReads
+                pure noReduction { reductionPersistent = Just (\_ steps' -> persistent footprint visible steps') }
+              _ -> Nothing
+        pure (system, explore stateLimit system (fromMaybe noReduction reduction))
   forM (S.modelLaws u) $ \law -> do
     let unitId = C.Id (S.unitName u)
         lawId = C.Id (S.unitName u ++ "::law::" ++ S.modelLawName law)
@@ -62,24 +94,30 @@ modelLawEvidence ran units program = fmap concat $ forM units $ \u -> do
       let fairness = [if strong then Strong c else Weak c | (strong, c) <- S.modelLawFairness law]
           hasWait = "wait" `elem` map commandName commands
           checked = do
-            system <- systemOf program machine
+            (system, graph) <- M.findWithDefault (Left "the model is not prepared") (machineName machine) prepared
             case claim of
               -- Every run holds P: no fair run holds not P. Some run holds P:
               -- a fair run holds P.
-              Left formula -> search stateLimit system fairness (if S.modelLawEvery law then negation formula else formula)
+              Left formula -> case graph of
+                Left outcome -> Right outcome
+                Right g -> searchGraph g (systemHolds system) fairness (if S.modelLawEvery law then negation formula else formula)
               Right (trigger, response, d) -> do
                 let tick = gcd d hour
                 unless hasWait (Left "a deadline needs the model's wait command")
                 let timed = deadlineSystem system trigger response d tick
                 search stateLimit timed fairness (FUntil FTrue (FAtom lateAtom))
+          reducedNote = case M.lookup (machineName machine) prepared of
+            Just (Right (_, Right g)) | graphReduced g > 0 ->
+              " (a partial-order reduction: " ++ show (graphReduced g) ++ " of them took only independent steps)"
+            _ -> ""
           assumed = if null fairness then "" else " under " ++ intercalate " and " [if strong then "strong fairness for " ++ c else "fairness for " ++ c | (strong, c) <- S.modelLawFairness law]
       pure $ case checked of
         Left why | take 11 why == "incomplete:" -> obligation Incomplete (drop 11 why)
                  | otherwise -> obligation Unsupported why
         Right (Bounded n why) -> obligation Incomplete ("no counterexample in the first " ++ show n ++ " states; " ++ why)
         Right (NoRun n)
-          | S.modelLawEvery law -> obligation Proved ("every run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored")
-          | otherwise -> obligation Refuted ("no run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored")
+          | S.modelLawEvery law -> obligation Proved ("every run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored" ++ reducedNote)
+          | otherwise -> obligation Refuted ("no run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored" ++ reducedNote)
         Right (Lasso prefix _) | Right (_, _, d) <- claim ->
           obligation Refuted ("a run misses the " ++ duration d ++ " deadline" ++ assumed ++ ": " ++
             intercalate ", " (mergeWaits (filter (/= "stays") prefix)))
@@ -194,21 +232,59 @@ predicateOf unit program name = case [ d | cu <- C.programUnits program, C.idTex
 
 -- | The model's reference as a transition system: a state is a model value
 -- and the typestate indices; a step is a command with arguments, allowed by
--- its precondition and indices, computed by its reference definition.
-systemOf :: C.Program -> Machine C.Id -> Either String (System (Value, [Integer]))
-systemOf program machine = do
+-- its precondition, its indices and its reference's own refinements,
+-- computed by its reference definition. A reference is partial when its
+-- parameters are refined: a step outside them is not enabled, as a
+-- precondition that does not hold. Argument tuples that do not depend on the
+-- indices are enumerated once.
+systemOf :: C.Program -> Machine C.Id -> Either String (System StateKey (Value, [Integer]))
+systemOf program machine = (\(system, _, _) -> system) <$> systemParts program machine
+
+-- | A step of the model's alphabet: its command, how it is shown, its
+-- reference and precondition, and its arguments.
+type Step = (String, String, C.Definition, Maybe C.Definition, [Value])
+
+-- | A state's identity in the visited set: its value written out flat, each
+-- constructor as a number and each integer as its number in any integer
+-- type, then its indices. Comparing constructors' qualified names instead
+-- dominated the search, since they share long prefixes. The state's type
+-- fixes each constructor's arity, so the flat form is exact; the set keeps
+-- every key whole, with no hash compaction, so it never conflates states.
+data StateKey = StateKey [KeyAtom] [Integer] deriving (Eq, Ord)
+
+data KeyAtom = KeyTag !Int | KeyName C.Id | KeyScalar Scalar | KeyAbsent | KeyPresent deriving (Eq, Ord)
+
+stateKey :: M.Map C.Id Int -> (Value, [Integer]) -> StateKey
+stateKey tags (value, indices) = StateKey (flat value []) indices
+  where
+    flat v rest = case v of
+      ScalarValue (SInteger _ n) -> KeyScalar (SInteger "Integer" n) : rest
+      ScalarValue scalar -> KeyScalar scalar : rest
+      DataValue _ tag fields -> maybe (KeyName tag) KeyTag (M.lookup tag tags) : foldr flat rest fields
+      PresenceValue _ Nothing -> KeyAbsent : rest
+      PresenceValue _ (Just inner) -> KeyPresent : flat inner rest
+
+-- | The system, every step it has when its argument tuples do not depend on
+-- the indices (Nothing otherwise), and its state type.
+systemParts :: C.Program -> Machine C.Id -> Either String (System StateKey (Value, [Integer]), Maybe (Either String [Step]), C.Type)
+systemParts program machine = do
   ctx <- A.context program
+  let tags = M.fromList (zip [ C.constructorId k | d <- C.programDataDeclarations program, k <- C.dataConstructors d ] [0 ..])
+  trusted <- either (Left . concatMap show) Right (prepareTrustedDefinitions program)
   start <- maybe (Left "the model has no start") Right (machineStart machine)
-  let definition name = case [d | cu <- C.programUnits program, d <- C.unitDefinitions cu, C.declarationId (C.definitionDeclaration d) == name] of
-        d : _ -> Right d
-        [] -> Left ("the model's reference " ++ C.idText name ++ " is not a checked definition")
-      origin = C.GeneratedFrom (C.Id "model-check")
-      call d values = do
-        let binders = C.definitionArguments d
-            result = snd (C.functionType (C.declarationType (C.definitionDeclaration d)))
-            expr = C.Expr result (C.ExternalCall (C.declarationId (C.definitionDeclaration d))
-              [C.Expr (C.binderType b) (C.Local (C.binderId b)) origin | b <- binders]) origin
-        A.contextEvaluate ctx (zip (map C.binderId binders) values) expr
+  let definitions = M.fromList [ (C.declarationId (C.definitionDeclaration d), d) | cu <- C.programUnits program, d <- C.unitDefinitions cu ]
+      definition name = maybe (Left ("the model's reference " ++ C.idText name ++ " is not a checked definition")) Right (M.lookup name definitions)
+      contracts = M.fromListWith (flip (++)) [ (C.contractDeclaration c, [c]) | cu <- C.programUnits program, c <- C.unitContracts cu ]
+      -- States are values a checked reference returned and arguments are
+      -- enumerated from their types, so calls skip checking them again.
+      call d values = trustedCall trusted (C.declarationId (C.definitionDeclaration d)) values
+      -- Whether values are inside a definition's refined parameters.
+      admitted d values = fmap and $ sequence
+        [ trustedEvaluate trusted (zip (map C.binderId (C.contractArguments c)) values) p >>= truth
+        | c <- M.findWithDefault [] (C.declarationId (C.definitionDeclaration d)) contracts, p <- C.contractPreconditions c ]
+      truth v = case v of
+        ScalarValue (SBool b) -> Right b
+        _ -> Left "a condition did not evaluate to a Boolean"
       tuples binders = map (map snd) <$> A.enumerateFrom ctx argumentLimit [] [C.Quantifier b [] [] | b <- binders]
       indicesNeeded = machineIndices machine > 0
   startDefinition <- definition (startModel start)
@@ -225,41 +301,56 @@ systemOf program machine = do
     let arguments = init (C.definitionArguments ref)
     when (null (C.definitionArguments ref)) (Left ("the reference of " ++ commandName c ++ " takes no model state"))
     ranges <- dependentRanges (C.programDataDeclarations program) (concatMap C.unitContracts (C.programUnits program)) c
-    pure (c, ref, guard', arguments, ranges)
-  let tuplesAt c arguments ranges indices = do
-        domains <- forM (zip (commandArguments c) arguments) $ \(position, binder) ->
-          case (C.binderType binder, lookup position ranges) of
-            (C.Constructor name [], Just comparisons) | isInteger name -> do
-              values <- mapM (\(op,e) -> (,) op <$> resolveBound indices e) comparisons
-              let original = integerBounds (C.programMachineBits program) name
-                  lowers = [n + if op == C.Greater then 1 else 0 | (op,n) <- values, op `elem` [C.Greater,C.GreaterEqual,C.Equal]] ++ maybe [] (pure . fst) original ++ [0 | name == "BigUInt"]
-                  uppers = [n - if op == C.Less then 1 else 0 | (op,n) <- values, op `elem` [C.Less,C.LessEqual,C.Equal]] ++ maybe [] (pure . snd) original
-              if null lowers || null uppers then Left "not finite: model command argument has no finite bounds" else do
-                let lo = maximum lowers; hi = minimum uppers
-                if hi - lo + 1 > toInteger argumentLimit then Left "incomplete: model command argument domain exceeds enumeration limit"
-                  else Right [ScalarValue (SInteger name n) | n <- [lo..hi], all (\(op,k) -> op /= C.NotEqual || n /= k) values]
-            _ -> map (snd . head) <$> A.enumerateFrom ctx argumentLimit [] [C.Quantifier binder [] []]
-        let productSize = product (map (toInteger . length) domains)
-        if productSize > toInteger argumentLimit then Left "incomplete: model command argument tuples exceed enumeration limit"
-          else Right (sequence domains)
-      steps (state, indices) = fmap concat $ forM references $ \(c, ref, guard', arguments, ranges) -> do
+    -- Without index-dependent ranges, a command's argument tuples are the
+    -- same in every state.
+    let fixed = if null ranges then Just (tuplesAt c arguments [] []) else Nothing
+    pure (c, ref, guard', arguments, ranges, fixed)
+  let steps (state, indices) = fmap concat $ forM references $ \(c, ref, guard', arguments, ranges, fixed) -> do
         allowed <- case guard' of
           Nothing -> Right True
           Just g -> (== ScalarValue (SBool True)) <$> call g [state]
         if not allowed || (indicesNeeded && not (admits c indices)) then Right [] else do
-          argumentTuples <- tuplesAt c arguments ranges indices
-          forM argumentTuples $ \values -> do
-            result <- call ref (values ++ [state])
-            next <- if commandReturnsUnit c then Right result else case result of
-              DataValue _ _ [_, n] -> Right n
-              _ -> Left ("the reference of " ++ commandName c ++ " did not give a result and a state")
-            let shown = unwords (commandName c : map A.showValue values)
-            pure (commandName c, shown, (next, if indicesNeeded then shifted c indices else indices))
+          argumentTuples <- fromMaybe (tuplesAt c arguments ranges indices) fixed
+          fmap concat $ forM argumentTuples $ \values -> do
+            inside <- admitted ref (values ++ [state])
+            if not inside then Right [] else do
+              result <- call ref (values ++ [state])
+              next <- if commandReturnsUnit c then Right result else case result of
+                DataValue _ _ [_, n] -> Right n
+                _ -> Left ("the reference of " ++ commandName c ++ " did not give a result and a state")
+              let shown = unwords (commandName c : map A.showValue values)
+              pure [(commandName c, shown, (next, if indicesNeeded then shifted c indices else indices))]
+      predicates = M.fromList [ (C.idText (C.declarationId (C.definitionDeclaration d)), d) | d <- M.elems definitions, length (C.definitionArguments d) == 1 ]
       holds name (state, _) = do
-        d <- definition (C.Id name)
+        d <- maybe (Left ("the model's predicate " ++ name ++ " is not a checked definition")) Right (M.lookup name predicates)
         v <- call d [state]
         pure (v == ScalarValue (SBool True))
-  pure (System starts steps holds (\(v, is) -> show (A.canonical v) ++ show is))
+      alphabet = if indicesNeeded || any (\(_, _, _, _, _, fixed) -> isNothing fixed) references then Nothing else Just $
+        fmap concat $ forM references $ \(c, ref, guard', _, _, fixed) -> do
+          tuples' <- fromMaybe (Right []) fixed
+          pure [ (commandName c, unwords (commandName c : map A.showValue values), ref, guard', values) | values <- tuples' ]
+      stateType = case references of
+        (_, ref, _, _, _, _) : _ | not (null (C.definitionArguments ref)) -> C.binderType (last (C.definitionArguments ref))
+        _ -> C.Constructor "Unit" []
+  pure (System starts steps holds (stateKey tags), alphabet, stateType)
+  where
+    tuplesAt c arguments ranges indices = do
+      ctx <- A.context program
+      domains <- forM (zip (commandArguments c) arguments) $ \(position, binder) ->
+        case (C.binderType binder, lookup position ranges) of
+          (C.Constructor name [], Just comparisons) | isInteger name -> do
+            values <- mapM (\(op,e) -> (,) op <$> resolveBound indices e) comparisons
+            let original = integerBounds (C.programMachineBits program) name
+                lowers = [n + if op == C.Greater then 1 else 0 | (op,n) <- values, op `elem` [C.Greater,C.GreaterEqual,C.Equal]] ++ maybe [] (pure . fst) original ++ [0 | name == "BigUInt"]
+                uppers = [n - if op == C.Less then 1 else 0 | (op,n) <- values, op `elem` [C.Less,C.LessEqual,C.Equal]] ++ maybe [] (pure . snd) original
+            if null lowers || null uppers then Left "not finite: model command argument has no finite bounds" else do
+              let lo = maximum lowers; hi = minimum uppers
+              if hi - lo + 1 > toInteger argumentLimit then Left "incomplete: model command argument domain exceeds enumeration limit"
+                else Right [ScalarValue (SInteger name n) | n <- [lo..hi], all (\(op,k) -> op /= C.NotEqual || n /= k) values]
+          _ -> map (snd . head) <$> A.enumerateFrom ctx argumentLimit [] [C.Quantifier binder [] []]
+      let productSize = product (map (toInteger . length) domains)
+      if productSize > toInteger argumentLimit then Left "incomplete: model command argument tuples exceed enumeration limit"
+        else Right (sequence domains)
 
 -- | The predicate a deadline's search looks for: a deadline passed.
 lateAtom :: String
@@ -270,8 +361,8 @@ lateAtom = "late"
 -- where the trigger holds (or the start, for Q within d) until one where
 -- the response holds; once it passes d, the run is late. Time is whole
 -- microseconds, and a deadline is met at exactly d.
-deadlineSystem :: System (Value, [Integer]) -> Maybe S.RunFormula -> S.RunFormula -> Integer -> Integer
-  -> System ((Value, [Integer]), Maybe Integer, Bool)
+deadlineSystem :: System k (Value, [Integer]) -> Maybe S.RunFormula -> S.RunFormula -> Integer -> Integer
+  -> System (k, Maybe Integer, Bool) ((Value, [Integer]), Maybe Integer, Bool)
 deadlineSystem base trigger response d tick = System starts steps holds key
   where
     truth f s = case f of
@@ -309,7 +400,7 @@ deadlineSystem base trigger response d tick = System starts steps holds key
     holds name (s, _, late)
       | name == lateAtom = Right late
       | otherwise = systemHolds base name s
-    key (s, timer, late) = systemKey base s ++ "|" ++ show timer ++ show late
+    key (s, timer, late) = (systemKey base s, timer, late)
 
 -- | Whole microseconds in the largest unit that divides them.
 duration :: Integer -> String

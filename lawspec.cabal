@@ -830,6 +830,7 @@ library
       LawSpec.ModelDomains
       LawSpec.ModelLaws
       LawSpec.ModelProof
+      LawSpec.ModelReduction
       LawSpec.ModelTests
       LawSpec.Naming
       LawSpec.NativeBinding

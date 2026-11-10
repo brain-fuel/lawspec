@@ -17,7 +17,8 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
 /**
  * The hakkers' protocol of Hakker.java, run against the sample's real Chopstick actors: each step
  * sends the chopsticks the messages a hakker would, from that hakker's own address, and reports
- * how they answered. A step the hakker cannot take now does nothing, as the model says.
+ * how they answered. The model's references are partial, so LawSpec only sends a hakker a step
+ * it can take now; a step it cannot take would change nothing here.
  */
 public final class Hakkers
 {
@@ -53,12 +54,12 @@ public final class Hakkers
     }
   }
 
-  /** A table of three hakkers, with a chopstick between each two. */
+  /** A table of five hakkers, as DiningHakkers.java seats them, a chopstick between each two. */
   private static final class Table
   {
     final List<ActorRef<Chopstick.Command>> chopsticks = List.of(chopstick(), chopstick(),
-        chopstick());
-    final List<Seat> seats = List.of(new Seat(), new Seat(), new Seat());
+        chopstick(), chopstick(), chopstick());
+    final List<Seat> seats = List.of(new Seat(), new Seat(), new Seat(), new Seat(), new Seat());
 
     private static ActorRef<Chopstick.Command> chopstick()
     {
@@ -74,6 +75,8 @@ public final class Hakkers
       case SampleHakkersHakker.Ghosh ghosh -> 0;
       case SampleHakkersHakker.Boner boner -> 1;
       case SampleHakkersHakker.Klang klang -> 2;
+      case SampleHakkersHakker.Krasser krasser -> 3;
+      case SampleHakkersHakker.Manie manie -> 4;
     };
   }
 

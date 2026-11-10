@@ -9,14 +9,15 @@ unit sample.hakkers
 --
 -- This model states that protocol. Its adapters run it against the
 -- sample's real Chopstick actors, and its laws hold of every run of the
--- model. The sample seats five hakkers; this table seats three, because
--- the model checker explores five hakkers' 9,864 states too slowly for a
--- test suite (see the how-to). The sample's Hakker actor itself is driven
--- only by its own timers and answers nothing, so it is not bound.
+-- model. Like the sample, it seats five hakkers. The sample's Hakker actor
+-- itself is driven only by its own timers and answers nothing, so it is
+-- not bound.
 type Hakker is one of
   | Ghosh
   | Boner
   | Klang
+  | Krasser
+  | Manie
 end type
 
 -- Where a hakker is in the protocol. A hungry hakker has asked for both
@@ -33,11 +34,13 @@ type Phase is one of
 end type
 
 -- Hakker i's left chopstick is chopstick i, its right chopstick i + 1, as
--- DiningHakkers.java seats them, around a table of three.
+-- DiningHakkers.java seats them, around a table of five.
 type Seats is a record{
     ghosh :: Phase
     boner :: Phase
-    klang :: Phase}
+    klang :: Phase
+    krasser :: Phase
+    manie :: Phase}
 end type
 
 handle Table
@@ -57,6 +60,8 @@ function phase (h :: Hakker) (s :: Seats) -> Phase is
     when Ghosh then s.ghosh
     when Boner then s.boner
     when Klang then s.klang
+    when Krasser then s.krasser
+    when Manie then s.manie
   end case
 end function
 
@@ -65,14 +70,18 @@ function seat (h :: Hakker) (p :: Phase) (s :: Seats) -> Seats is
     when Ghosh then s with ghosh = p
     when Boner then s with boner = p
     when Klang then s with klang = p
+    when Krasser then s with krasser = p
+    when Manie then s with manie = p
   end case
 end function
 
 function leftOf (h :: Hakker) -> Hakker is
   first matching case of h :
-    when Ghosh then Klang
+    when Ghosh then Manie
     when Boner then Ghosh
     when Klang then Boner
+    when Krasser then Klang
+    when Manie then Krasser
   end case
 end function
 
@@ -80,7 +89,9 @@ function rightOf (h :: Hakker) -> Hakker is
   first matching case of h :
     when Ghosh then Boner
     when Boner then Klang
-    when Klang then Ghosh
+    when Klang then Krasser
+    when Krasser then Manie
+    when Manie then Ghosh
   end case
 end function
 
@@ -97,15 +108,25 @@ function rightTaken (h :: Hakker) (s :: Seats) -> Bool is
 end function
 
 function startSeats (u :: Unit) -> Seats is
-  Seats record{ ghosh = Thinking, boner = Thinking, klang = Thinking}
+  Seats record{
+    ghosh = Thinking,
+    boner = Thinking,
+    klang = Thinking,
+    krasser = Thinking,
+    manie = Thinking}
 end function
 
--- A step a hakker cannot take now changes nothing (and answers false).
-function modelHungry (h :: Hakker) (s :: Seats) -> Seats is
-  if phase h s = Thinking then seat h Hungry s else s end if
+-- Each reference is partial: its state parameter is refined to the phases
+-- where the hakker can take that step, so a step it cannot take now is not
+-- part of the model at all. The model checker does not explore it, and
+-- generated runs never draw it, as Hakker.java never sends it.
+function modelHungry (h :: Hakker) (s :: Seats where phase h s = Thinking) -> Seats is
+  seat h Hungry s
 end function
 
-function modelLeftAnswers (h :: Hakker) (s :: Seats) -> Pair Bool Seats is
+function modelLeftAnswers (h :: Hakker)
+  (s :: Seats where phase h s = Hungry || phase h s = HasRight || phase h s = DeniedRight)
+  -> Pair Bool Seats is
   let p = phase h s in
     let taken = not (leftTaken h s) in
       first matching case of p :
@@ -121,7 +142,9 @@ function modelLeftAnswers (h :: Hakker) (s :: Seats) -> Pair Bool Seats is
   end let
 end function
 
-function modelRightAnswers (h :: Hakker) (s :: Seats) -> Pair Bool Seats is
+function modelRightAnswers (h :: Hakker)
+  (s :: Seats where phase h s = Hungry || phase h s = HasLeft || phase h s = DeniedLeft)
+  -> Pair Bool Seats is
   let p = phase h s in
     let taken = not (rightTaken h s) in
       first matching case of p :
@@ -137,8 +160,8 @@ function modelRightAnswers (h :: Hakker) (s :: Seats) -> Pair Bool Seats is
   end let
 end function
 
-function modelFull (h :: Hakker) (s :: Seats) -> Seats is
-  if phase h s = Eating then seat h Thinking s else s end if
+function modelFull (h :: Hakker) (s :: Seats where phase h s = Eating) -> Seats is
+  seat h Thinking s
 end function
 
 model table :: shared Table by Seats is
@@ -153,8 +176,11 @@ end model
 function eats (p :: Phase) -> Bool is p = Eating end function
 
 function neighboursApart (s :: Seats) -> Bool is
-  not (eats s.ghosh && eats s.boner) && not (eats s.boner && eats s.klang)
-    && not (eats s.klang && eats s.ghosh)
+  not (eats s.ghosh && eats s.boner)
+    && not (eats s.boner && eats s.klang)
+    && not (eats s.klang && eats s.krasser)
+    && not (eats s.krasser && eats s.manie)
+    && not (eats s.manie && eats s.ghosh)
 end function
 
 -- A hakker never waits for nothing: in every state some hakker has a step
@@ -167,6 +193,7 @@ end function
 
 function someoneCanStep (s :: Seats) -> Bool is
   canStep s.ghosh || canStep s.boner || canStep s.klang
+    || canStep s.krasser || canStep s.manie
 end function
 
 function ghoshEats (s :: Seats) -> Bool is eats s.ghosh end function
