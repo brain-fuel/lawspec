@@ -73,7 +73,7 @@ import {
   safePath,
   collectSources,
 } from '../files.mjs';
-const VERSION = '0.31.3';
+const VERSION = '0.32.0';
 const args = process.argv.slice(2);
 const verb = args.shift();
 const options = {};

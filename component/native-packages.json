@@ -1,30 +1,30 @@
 {
   "darwin-arm64": {
-    "name": "@lawspec/compiler-darwin-arm64",
-    "version": "0.31.3",
-    "file": "lawspec-compiler-darwin-arm64-0.31.3-0c7bbadab842.tgz",
-    "integrity": "sha512-1Sjf6u+3SzTspCxryWumOpa902KNOGeU12eeiosF6p3r1loQK7ZjWjW+IJirRq99qPKxHsIjI/b2aaEatWg1NA==",
-    "shasum": "0c7bbadab842aa0806bfc0e4492c3594561c9359"
+    "name": "@goforgedev/compiler-darwin-arm64",
+    "version": "0.32.0",
+    "file": "goforgedev-compiler-darwin-arm64-0.32.0-32b3ed6306f1.tgz",
+    "integrity": "sha512-lz3iyn3049hKIP77fED9+Vg01VmftxrE737azR0gdx1pEzxj2uTX/L2Kr3nVN4URqsP0eoYRq9SBjujQHgrEMg==",
+    "shasum": "32b3ed6306f16e436747b2bac6505b57e5046d0f"
   },
   "linux-arm64": {
-    "name": "@lawspec/compiler-linux-arm64",
-    "version": "0.31.3",
-    "file": "lawspec-compiler-linux-arm64-0.31.3-3d52447f667e.tgz",
-    "integrity": "sha512-SOhoABJJDZa4wXsHRXb2J6h8g3GBgXy89aEVABzJGyJOKDuMsHDNxTPWl1szX/4Ba2yeqlqmGBE6qMKNqzcVvw==",
-    "shasum": "3d52447f667e87ea5fdb2a33e7fe672bda85b0e9"
+    "name": "@goforgedev/compiler-linux-arm64",
+    "version": "0.32.0",
+    "file": "goforgedev-compiler-linux-arm64-0.32.0-ece4f7e0c599.tgz",
+    "integrity": "sha512-QocxJtzFaigUTOIJtb8R6g17Pz+Vtn2G1zfWMmzfNrzRuZr2BZHdpMk3ygNJR7KIG0bitbuWnyIEjnktMA9AoA==",
+    "shasum": "ece4f7e0c5994730449e5899a07381ff467a8356"
   },
   "linux-x64": {
-    "name": "@lawspec/compiler-linux-x64",
-    "version": "0.31.3",
-    "file": "lawspec-compiler-linux-x64-0.31.3-1bb96a38dc20.tgz",
-    "integrity": "sha512-zlhH+cbi8bCdZ9lnMS0GoJR72Ox6/OoEeY89gdZWr4nb/N8h4JyfhcKp6CGMUUdzE+h6tfs0+cWp5U0o6cXaNA==",
-    "shasum": "1bb96a38dc20bf013a449f11c5ee95975fc7251c"
+    "name": "@goforgedev/compiler-linux-x64",
+    "version": "0.32.0",
+    "file": "goforgedev-compiler-linux-x64-0.32.0-82c967351f78.tgz",
+    "integrity": "sha512-P5As271vN+CgqqetxoFsOHeklIf0mGcjasQxJhCgi2mY7/bx2jbeYNnL61r1eK469ZLscxl17l0nysNxUROSkg==",
+    "shasum": "82c967351f788e8b66f3e044c62e2c540a2be916"
   },
   "darwin-x64": {
-    "name": "@lawspec/compiler-darwin-x64",
-    "version": "0.31.3",
-    "file": "lawspec-compiler-darwin-x64-0.31.3-4752b746d911.tgz",
-    "integrity": "sha512-oOeRUlCCbqX7s4sevIscUQuLvoF4eRtZpZPqtR8BGs2yJ3wMAH1E78PkaUp0tPXpwjkCAl/zf3Z2kO4+He5TvA==",
-    "shasum": "4752b746d911041251c1dd097febe80411032846"
+    "name": "@goforgedev/compiler-darwin-x64",
+    "version": "0.32.0",
+    "file": "goforgedev-compiler-darwin-x64-0.32.0-1bbebaeac966.tgz",
+    "integrity": "sha512-DTmgzrgUD3WN9vnWx19MPOn9SXZdoHSCmSDFARZvjcPmxZ9elSD6gFbwugZ1X3SrIQy/LOTHydQHwtQPTWtr/A==",
+    "shasum": "1bbebaeac966ff05dab2c31ca1f5654d5387dc2e"
   }
 }

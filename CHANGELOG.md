@@ -6,12 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-09
+
 ### Added
 
 - Independent Wasm Platform Kit integration exposes the compiler through a
   capability-scoped component runtime, with typed Haskell services, generated
   bindings and integrity-pinned native platform packages. The full application
   port and default-runtime cutover remain incomplete.
+  The `@goforgedev/compiler-<platform>` packages cover macOS and glibc Linux on
+  ARM64 and x64. Linux x64 is accepted on execution under emulation; macOS x64
+  is cross-built and unverified.
 - Component installation verifies prebuilt native code or compiles the packaged
   Wasm during installation. `WASM_PLATFORM_KIT_BUILD_FROM_SOURCE=1 npm rebuild lawspec`
   forces source preparation; normal commands never trigger that compilation.
@@ -23,6 +28,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - S1J compiler and runtime work covers checked strategies, host defaults,
   native bindings, cache behavior and mutation tooling; its disposition and
   remaining review are recorded in `docs/explanation/s1j-disposition.md`.
+- Every custom `FileSystem` handler must implement `createDirectories`;
+  `writeBytes` does not create missing parents. New Go projects use Rapid
+  1.3.0, and stable 1.2.x projects remain accepted.
+- `maxSteps` and `deferLaws` bound optional compiler evaluation only. A
+  deferred or exhausted law is planned or incomplete, never completed evidence.
+
+### Fixed
+
+- `check` and `generate` no longer segfault (exit 139) on Linux x64 when they
+  read a warm `.lawspec/cache`. Node's WASI file calls ran as V8 fast API calls
+  and could start a garbage collection that V8 cannot complete from there; the
+  compiler host now disables those fast calls. Reproduced and verified under
+  x64 emulation with Node 22; native x64 confirmation remains open.
+- A deferred law over a provably empty input domain reports incomplete
+  evidence when no executable case or generator remains.
+- Gradle test and benchmark invocations disable filesystem watching, so a
+  restored source is recompiled instead of reusing stale bytecode.
 
 ## [0.31.3] - 2026-11-03
 
@@ -2479,6 +2501,7 @@ A maintenance release. The language, generated code and API are unchanged from
   owned values.
 
 [Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...HEAD
+[0.32.0]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...v0.32.0
 [0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3
 [0.31.2]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.2
 [0.31.1]: https://www.npmjs.com/package/lawspec/v/0.31.1

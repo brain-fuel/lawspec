@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-09T04:47:59.754815+00:00",
+  "status": "scoped execution passed; release acceptance incomplete",
+  "change": "S1.j deferred empty-domain laws require an executable continuation for planned evidence",
+  "componentSha256": "77c136a1d36641d5a273d461dad2ccf5faec351c846f04209ac01a8b82a352ee",
+  "compilerBuildRecordSha256": "64ec6307210c6a23c73e68895b6bec6f8d6cf2f58c1aa8f036ee18234664968a",
+  "execution": "native",
+  "platform": "darwin-arm64",
+  "node": "v26.8.1",
+  "verifiedArchives": [
+    {
+      "file": "wasm-platform-kit-0.2.0-3407a2422fbc.tgz",
+      "integrity": "sha512-t7nWsH8rR9PbgyYT7WTRRPSdJRo/gvhquchx1KnS00Y8DsYbC2Ok7YjXyWs6LnWK/zwHS70XAAiFo2v8eyHklQ=="
+    },
+    {
+      "file": "wasm-platform-kit-darwin-arm64-0.2.0-ba31fe5ab309.tgz",
+      "integrity": "sha512-IMSiABEXVxVeyOoEpskD55EJZCE6YeQIlwRkcsM0Fc8OZ4dVO+0WVFvmPGxaYQIuSXNMZaVE92XpNetvonAtIg=="
+    },
+    {
+      "file": "lawspec-compiler-darwin-arm64-0.31.3-91130162356f.tgz",
+      "integrity": "sha512-qVR6yPlFRNvQrg8jdIh6wAejXQHvgzxKzJh3yYlsYCGyzI6407l8mi6Dm13+s1nqViHsI/0l+79LrgN5g+/5nQ=="
+    },
+    {
+      "file": "lawspec-0.31.3.tgz",
+      "integrity": "sha512-DF7i6cY2bYXpmOLgwC+Ymg5zXz3O5eIM/nTMsjxrQ/avpOfKJbeyf/02bSC2AwewuW1N1se0bGGNo9u/zWh/jA=="
+    }
+  ],
+  "logSha256": "17ff70939e08bc93fa8aa055253c4460f38f1a99a2782479f1b71e2a3084c3bb",
+  "cases": [
+    "acceptance bundle integrity and isolation negative controls",
+    "prebuilt clean installation",
+    "all nine compiler methods compared against legacy runtime",
+    "forced source compilation through npm rebuild",
+    "compiler executable removed before repeating compiler methods",
+    "missing artifact and helper controls"
+  ],
+  "nativePackages": {
+    "darwin-arm64": {
+      "name": "@lawspec/compiler-darwin-arm64",
+      "version": "0.31.3",
+      "file": "lawspec-compiler-darwin-arm64-0.31.3-91130162356f.tgz",
+      "integrity": "sha512-qVR6yPlFRNvQrg8jdIh6wAejXQHvgzxKzJh3yYlsYCGyzI6407l8mi6Dm13+s1nqViHsI/0l+79LrgN5g+/5nQ==",
+      "shasum": "91130162356fb543c266637c7f90409faed44c54"
+    },
+    "linux-arm64": {
+      "name": "@lawspec/compiler-linux-arm64",
+      "version": "0.31.3",
+      "file": "lawspec-compiler-linux-arm64-0.31.3-ad3ff1a360e3.tgz",
+      "integrity": "sha512-o4BzL9UkPx9BbPy4cd0//0tWsXYnP295Hp9SCQuDIvru4Qm5x86oq1xaksQqR8/13uWvYlA8+ubmjdHo23meMQ==",
+      "shasum": "ad3ff1a360e3c5df24fb14fffdedeeafb8ff0030"
+    },
+    "linux-x64": {
+      "name": "@lawspec/compiler-linux-x64",
+      "version": "0.31.3",
+      "file": "lawspec-compiler-linux-x64-0.31.3-df8b14c0c229.tgz",
+      "integrity": "sha512-59lD1N5kcDV0OCGEg6XujDPdxTWcrFGjlJqEqXa0om/3RyugR0mxLG9BNrZywVxY2CWjqkY+SnhLcJ5Nz4KX+g==",
+      "shasum": "df8b14c0c229fca3af48aa7913d2ea76a5b2885f"
+    },
+    "darwin-x64": {
+      "name": "@lawspec/compiler-darwin-x64",
+      "version": "0.31.3",
+      "file": "lawspec-compiler-darwin-x64-0.31.3-7be05d75c766.tgz",
+      "integrity": "sha512-rQSTq3nKeEuaDmxCiuzUHvthgfID4Dm16FsLVXa3p7Pgjc5a0kAoUXELc+Kt42QWI73/pSd1zsFypTBZPmAHMw==",
+      "shasum": "7be05d75c766f2c502375719872bf02bf94fcb4b"
+    }
+  },
+  "pending": [
+    "Native macOS x64 execution",
+    "Native Linux x64 execution",
+    "Complete Node 22/24/26 installation matrix",
+    "Final release archive validation",
+    "Canon human review",
+    "npm authentication and publication",
+    "Full Haskell application-port cutover"
+  ],
+  "note": "Earlier installation.json identifies its original archives. This receipt records the rebuilt S1.j component and does not transfer earlier platform execution to new bytes."
+}

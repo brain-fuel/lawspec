@@ -1,8 +1,8 @@
 {
   "runtime": {
     "file": "wasm-platform-kit-0.2.0.tgz",
-    "integrity": "sha512-t7nWsH8rR9PbgyYT7WTRRPSdJRo/gvhquchx1KnS00Y8DsYbC2Ok7YjXyWs6LnWK/zwHS70XAAiFo2v8eyHklQ==",
-    "shasum": "3407a2422fbc511af2dd0dbd106c1bc6799b2ce6"
+    "integrity": "sha512-k3qkI6WFOijEUKvm1No4ciA42k5rHPLKKbpbouurVXqwG6GIUI8iBYMSUBHH3wQigIXmW9ag6es5832qlRgmrA==",
+    "shasum": "30c25061ff7d05bc5526b6582cdba58bb9394806"
   },
   "build": {
     "file": "wasm-platform-kit-build-0.2.0.tgz",

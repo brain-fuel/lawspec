@@ -245,8 +245,11 @@ evaluationStep = do
     else put (remaining - 1, states)
 
 continuation :: (V.Layer -> Bool) -> PlannedProperty -> Bool
-continuation enabled planned = enabled V.Property ||
-  (enabled V.Exhaustive && finiteCases planned /= Nothing) ||
+-- A complete empty cover emits no native case. Selecting a layer alone does
+-- not make an executable continuation available (ref:DEC-s1j-evaluation-budget).
+continuation enabled planned =
+  (enabled V.Property && (finiteCases planned /= Just [] || not (null (boundaryCases planned)))) ||
+  (enabled V.Exhaustive && maybe False (not . null) (finiteCases planned)) ||
   (enabled V.Examples && not (null (propertyExamples (plannedProperty planned))))
 
 evaluateCase :: (((Id -> [Value] -> EvaluationRun Value) -> Id -> Maybe ([Value] -> EvaluationRun Value)) -> Id -> [Value] -> EvaluationRun Value)

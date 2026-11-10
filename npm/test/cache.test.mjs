@@ -234,4 +234,17 @@ end unit`,
     await configure(evaluation);
     await assert.rejects(check(root));
   }
+  await writeFile(
+    path.join(root, 'laws/example.lawspec'),
+    `unit budget
+law vacuous is definition:
+  for all (value :: Bool where false) => false end for all
+end definition end law
+end unit`,
+  );
+  await configure({deferLaws: ['budget::vacuous']});
+  const empty = await check(root);
+  assert.deepEqual(status(empty), ['incomplete']);
+  assert.equal(await check(root), empty);
+  assert.equal(await check(root, '--no-cache'), empty);
 });

@@ -1,8 +1,7 @@
 # LawSpec component integration
 
-> **Blocked — 2026-11-08:** Native artifact shipment is awaiting x64 execution
-> acceptance. See the authoritative [blocked status](../docs/reference/host-sdk.md#blocked-status)
-> for the missing environments, resumption requirements and prepared bundle.
+> **Released with 0.32.0.** Linux x64 is accepted on emulated execution and
+> macOS x64 is unverified. See the authoritative [release status](../docs/reference/host-sdk.md#release-status).
 
 This directory owns LawSpec's adapter to the independently maintained Wasm Platform Kit.
 It is a private development package. The SDK source is in a separate repository;
@@ -24,7 +23,7 @@ Build products and local tarballs are ignored; the installed SDK is never change
 Scripts and JavaScript tests are generated from `templates/component/`.
 
 `package-native` moves application native code into optional
-`@lawspec/compiler-<platform>` packages and stages generated registration that
+`@goforgedev/compiler-<platform>` packages and stages generated registration that
 locates the installed package automatically. The main application package keeps
 the portable Wasm, without bundling native code for every platform. Local tarballs
 and integrity records are written to `component/vendor/` and

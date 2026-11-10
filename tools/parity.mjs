@@ -162,6 +162,43 @@ await compare(
   'prelude before initialization',
   {required: true},
 );
+// A selected verification layer is not evidence of an executable continuation.
+// ref:DEC-s1j-evaluation-budget
+for (const target of programTargets)
+  for (const layers of [
+    ['property'],
+    ['exhaustive'],
+    ['property', 'exhaustive'],
+  ])
+  {
+    const result = await compare(
+      'planGeneration',
+      {
+        ...options,
+        target,
+        verification: {
+          layers,
+          evaluation: {deferLaws: ['emptyDeferred::vacuous']},
+        },
+        sources: [
+          {
+            path: 'empty-deferred.lawspec',
+            content:
+              'unit emptyDeferred\nlaw vacuous is definition: for all (value :: Bool where false) => false end for all end definition end law\nend unit',
+          },
+        ],
+      },
+      `empty deferred continuation:${target}:${layers.join(',')}`,
+      {required: true},
+    );
+    assert.deepEqual(result.tests, []);
+    assert.deepEqual(
+      result.evidence
+        .filter(item => item.stage === 'law')
+        .map(item => item.status),
+      ['incomplete'],
+    );
+  }
 for (const machineBits of [32, 64])
   for (const minify of [false, true])
     for (const target of programTargets)

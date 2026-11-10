@@ -394,9 +394,9 @@ shared across its inputs and recursive calls. Configure the SDK with
 deferLaws: ['example::slowLaw']}}`, or EDN:
 
 ```edn
-:verification {:layers [:exhaustive :property]
-               :evaluation {:max-steps 1000000
-                            :defer-laws ["example::slowLaw"]}}
+{:verification {:layers [:exhaustive :property]
+                :evaluation {:max-steps 1000000
+                             :defer-laws ["example::slowLaw"]}}}
 ```
 
 `maxSteps` must be a positive integer. `deferLaws` uses public test identities;

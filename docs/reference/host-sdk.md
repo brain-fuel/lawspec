@@ -6,41 +6,31 @@ title: Independent host SDK integration
 
 # Independent host SDK integration
 
-## Blocked status
+## Release status
 
-**Blocked as of 2026-11-08.** The goal "ship trusted precompiled native artifacts
-for Node, with an option to build from source" is not complete. The implementation,
-integrity-pinned packages and local acceptance tooling are prepared, but required
-x64 application execution remains unverified.
+**Released with 0.32.0 under the owner's 9 November 2026 decision.** The goal
+"ship trusted precompiled native artifacts for Node, with an option to build
+from source" ships with these platform statements. ref:DEC-component-release-acceptance
 
-- **macOS x64:** this Mac cannot launch x64 executables and has no Rosetta
-  installation. An Intel Mac is needed, or explicit approval to install Rosetta
-  and accept Apple's license for translated testing. Translated results must be
-  identified as such; they do not establish native CPU performance.
-- **Linux x64:** the available Linux VM is ARM64. Precompiled application
-  comparison passed under x64 emulation. The former runtime source path reached
-  the 120-second guest deadline; source preparation is now an installation step
-  with its own bounded deadline. The revised full installation lifecycle passes
-  under x64 emulation on Node 24. Native Linux x64 execution and the complete
-  Node-version matrix remain outstanding.
+- **macOS ARM64 and Linux ARM64:** native installation and execution recorded.
+- **Linux x64:** accepted on the precompiled application comparison and the
+  full installation lifecycle executed under x64 emulation. Native Linux x64
+  hardware and the complete Node-version matrix are not recorded.
+- **macOS x64: unverified.** The package is cross-built; this Mac cannot launch
+  x64 executables and has no Rosetta installation, so no execution is recorded.
+  The owner accepted shipping it with this note, to be corrected later.
 
-To resume, provide the missing execution environments and run the prepared
-acceptance bundle under Node 22, 24 and 26, preserving complete results and host
-OS/CPU details. Hosted CI remains disabled under `DEC-local-ci-only`; execution
-limits must not be relaxed to turn an emulation failure into acceptance.
-
-The local handoff is `.artifacts/host-sdk-native/lawspec-native-acceptance-current.tar`;
-its adjacent `.json` receipt records its SHA-256 and entrypoint
-`native-ci-bundle/run.mjs`. These ignored artifacts are available in this checkout.
-The requirement audit is `.artifacts/host-sdk-native/completion-audit.json`.
+To close the remaining rows, run the prepared acceptance bundle on an Intel Mac
+and on native Linux x64 under Node 22, 24 and 26, preserving complete results
+and host OS/CPU details. Hosted CI remains disabled under `DEC-local-ci-only`;
+execution limits must not be relaxed to turn an emulation failure into acceptance.
 See [the component build instructions](../../component/README.md) to reproduce a
 bundle from pinned archives.
 
-ARM64 tests and integrity checks do not close these x64 gates. Existing Canon
-review/provenance diagnostics remain, and human approval is still pending.
-No packages or release tags have been published; the full application-port
-cutover remains incomplete. Update this status when new execution evidence
-changes the blockers. ref:DEC-node-precompiled-components
+ARM64 and emulated results are not native x64 evidence. Human review of the
+remaining Canon material is still pending, and the full application-port
+cutover remains incomplete: the component runtime is opt-in. Update this status
+when new execution evidence changes it. ref:DEC-node-precompiled-components
 
 The reusable [Wasm Platform Kit](https://github.com/brain-fuel/wasm-platform-kit)
 lives in its own Git repository, checked out beside LawSpec as
@@ -183,8 +173,10 @@ platforms, full first-party cutover and Wavelet integration remain subsequent wo
 
 ## Application port status
 
-The owner-approved target is the complete Haskell application in LawSpec 0.32.0,
-using SDK 0.2.0. The architecture and cutover gates are recorded once in Canon.
+The owner-approved target is the complete Haskell application, using SDK 0.2.0.
+The architecture and cutover gates are recorded once in Canon. The decision
+named LawSpec 0.32.0; that release shipped without the port, which is now the
+next roadmap milestone and has no committed release number.
 ref:DEC-haskell-application-port
 
 The separate controller/compiler architecture is settled in
@@ -194,8 +186,9 @@ in `DEC-application-port-performance-baseline`. The earlier 94% reduction is not
 a requirement, and existing containment limits remain in force.
 ref:DEC-application-controller-workers ref:DEC-application-port-performance-baseline
 
-The isolated `codex/haskell-application-port` checkout starts from `a91b22f0` to
-preserve ongoing S1J work. Its first candidate service is
+The port's first checkpoint was developed on `codex/haskell-application-port`
+from `a91b22f0`; that branch now includes the 0.32.0 release and its
+completed S1J work, and is not yet merged into `main`. Its first candidate service is
 `LawSpec.Manifest.EDN`: a Haskell/Megaparsec codec with ordered fields, normalized
 keyword keys, duplicate rejection, safe-integer admission, explicit JSON
 encoding and readable/compact EDN rendering. Frozen pre-port observations include
@@ -281,8 +274,8 @@ cutover; architectural removal of application JavaScript; all native platforms;
 and application performance acceptance. Compiler jobs and UI sessions have not
 been split. Public default selection and the legacy production runtime remain
 until the full gates pass. This is an implemented SDK foundation, not completion
-of the application port, and the existing application package retains 0.31.3
-until its 0.32.0 compatibility change is ready.
+of the application port; the 0.32.0 application package keeps the existing
+runtime as its default.
 
 To resume the full port, complete and verify the following work in sequence:
 
@@ -429,7 +422,7 @@ compilation mode alongside artifact, runtime, provider and policy identities.
 The legacy application default remains subject to the full port's cutover gates.
 
 `node component/tools/package-native.mjs` creates optional
-`@lawspec/compiler-<platform>` npm packages. Generated registration locates the
+`@goforgedev/compiler-<platform>` npm packages. Generated registration locates the
 installed platform artifact automatically, so the main LawSpec tarball contains
 no native component. Forced installation compilation bypasses prebuilt native package selection.
 Additional trusted receipt directories can be supplied to this command;

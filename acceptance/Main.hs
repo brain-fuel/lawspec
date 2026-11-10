@@ -292,6 +292,14 @@ writeProject suite target project defaultProfile minify generated = do
   -- Clojure's Java model and reports must describe this generated project.
   -- Removed or renamed units must not survive as classes or old test suites.
   when (target == "clojure") (removePathForcibly (project </> "target"))
+  -- Gradle trusts its recorded task history. A history written while its
+  -- filesystem observations were stale reports classes compiled from a mutant
+  -- as up to date for the restored sources, so a fresh run discards the
+  -- project's classes and history. Downloaded dependencies live outside it.
+  -- ref:DEC-s1j-shared-failures
+  mode <- cacheMode
+  when (mode == Refresh && target `elem` ["kotlin", "groovy"]) $
+    forM_ ["build", ".gradle", ".kotlin"] $ \folder -> removePathForcibly (project </> folder)
   -- Gleam retains foreign Erlang modules in its compiled application after
   -- their source files move or disappear. Clear compiled applications, while
   -- retaining downloaded packages and path-dependency config fingerprints.

@@ -2,11 +2,14 @@
 
 **State the law once. Check it everywhere.**
 
-> **Development status — 2026-11-08:** The full Haskell application port is
-> **incomplete**; the existing runtime remains the default. See the
+> **Platform status — 2026-11-09:** The opt-in component runtime ships
+> precompiled native packages. Linux x64 is accepted on emulated execution and
+> **macOS x64 is unverified**. See the
+> [release status](docs/reference/host-sdk.md#release-status).
+>
+> **Development status:** The full Haskell application port is **incomplete**;
+> the existing runtime remains the default. See the
 > [application work and acceptance gates](docs/reference/host-sdk.md#application-port-status).
-> Trusted precompiled Node artifacts also await
-> [native platform acceptance](docs/reference/host-sdk.md#blocked-status).
 
 LawSpec is a specification language for the laws your code must obey. It
 compiles reusable laws and concrete examples into native property-based tests
@@ -43,7 +46,7 @@ toolchain is needed. The reference platforms are macOS and Linux.
 To open the learning track locally:
 
 ```sh
-npm install --global lawspec@0.31.3
+npm install --global lawspec@0.32.0
 lawspec learn
 ```
 
@@ -91,7 +94,7 @@ its references, so installation does not require a compiler repository checkout.
 Install the LawSpec CLI separately with Node 22+:
 
 ```sh
-npm install --global lawspec@0.31.3
+npm install --global lawspec@0.32.0
 ```
 
 For **Codex**, run these commands in your terminal:
@@ -118,8 +121,8 @@ Code; the project and tutor skills follow the same naming pattern.
 The terminal commands use sparse checkouts for the marketplace and plugin
 directories. For a local checkout, omit `--sparse` and its paths and replace
 `brain-fuel/lawspec` with the checkout's absolute path. To pin a release in Codex, append
-`--ref v0.31.3` to its marketplace-add command. In Claude Code, use
-`https://github.com/brain-fuel/lawspec.git#v0.31.3` as the marketplace source.
+`--ref v0.32.0` to its marketplace-add command. In Claude Code, use
+`https://github.com/brain-fuel/lawspec.git#v0.32.0` as the marketplace source.
 Private repository installations require your existing GitHub access.
 
 To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or

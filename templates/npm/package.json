@@ -32,10 +32,10 @@
   "dependencies": {"web-tree-sitter": "0.25.10", "ricestax": "0.3.2", "@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
   "optionalDependencies": {
     "wasm-platform-kit": "0.2.0",
-    "@lawspec/compiler-darwin-arm64": /*@ version @*/,
-    "@lawspec/compiler-darwin-x64": /*@ version @*/,
-    "@lawspec/compiler-linux-arm64": /*@ version @*/,
-    "@lawspec/compiler-linux-x64": /*@ version @*/
+    "@goforgedev/compiler-darwin-arm64": /*@ version @*/,
+    "@goforgedev/compiler-darwin-x64": /*@ version @*/,
+    "@goforgedev/compiler-linux-arm64": /*@ version @*/,
+    "@goforgedev/compiler-linux-x64": /*@ version @*/
   },
   "files": /*@ package-files @*/,
   "scripts": {

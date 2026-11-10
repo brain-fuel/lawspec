@@ -170,7 +170,9 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
           Right emitted = compileCore 64 defaultGeneration sources >>= planTesting >>= emitPlan "go"
           abilitiesOf path = concat [artifactContent f | f <- emitted, artifactPath f == path]
       abilitiesOf "app/journal/lawspec_abilities.go" `shouldSatisfy` ("type AppJournalLog interface" `isInfixOf`)
-      abilitiesOf "app/journal/lawspec_abilities.go" `shouldSatisfy` ("type Log interface" `isInfixOf`)
+      abilitiesOf "app/journal/lawspec_abilities.go" `shouldNotSatisfy` ("type Log interface" `isInfixOf`)
+      abilitiesOf "app/audit/lawspec_abilities.go" `shouldSatisfy` ("type Log interface" `isInfixOf`)
+      abilitiesOf "app/audit/lawspec_abilities.go" `shouldNotSatisfy` ("type AppJournalLog interface" `isInfixOf`)
     it "are reported as default-handler, or assumed when bound" $ do
       let Right compiled = program crypto
           statusOf name evidence = [obligationStatus o | o <- evidence, C.idText (obligationDeclaration o) == name]

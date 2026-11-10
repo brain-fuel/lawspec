@@ -251,8 +251,11 @@ toolchain project target = do
     _ | target `elem` ["kotlin", "groovy"] -> do
       let local = root </> ".tools/gradle-9.3.0/bin/gradle"
       gradle <- (\exists -> if exists then local else "gradle") <$> doesFileExist local
+      -- Re-observe source files after every mutation and restoration instead
+      -- of retaining Gradle's filesystem observations between runs.
       -- Gradle prints failing test names only; assertion messages are in the XML reports.
-      pure (Toolchain gradle ["test", "--console=plain"] (pure ()) (xmlReports (project </> "build/test-results/test")))
+      -- ref:DEC-s1j-shared-failures
+      pure (Toolchain gradle ["test", "--console=plain", "--no-watch-fs"] (pure ()) (xmlReports (project </> "build/test-results/test")))
     -- dotnet test builds the solution incrementally (MSBuild compares file
     -- contents' timestamps at full resolution) and runs it on
     -- Microsoft.Testing.Platform, as global.json selects.
