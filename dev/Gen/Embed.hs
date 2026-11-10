@@ -70,6 +70,9 @@ runtimeFiles =
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs"), ("web-fast", "lawspec_fast.mjs")
   , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java")
+  -- Generated actors on Apache Pekko (:actors {:runtime :pekko}).
+  , ("java-pekko", "pekko/LawSpecPekko.java"), ("java-pekko-supervisor", "pekko/LawSpecPekkoSupervisor.java")
+  , ("java-pekko-crash", "pekko/LawSpecCrashInterceptor.java")
   , ("java-data-strategies-body", "LawSpecDataStrategies.inc"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")
   , ("go-schema", "lawspec_schema.go"), ("go-codecs", "lawspec_codecs.go")
   , ("go-data-strategies", "lawspec_data_strategies.go"), ("haskell", "LawSpecRuntime.hs")
