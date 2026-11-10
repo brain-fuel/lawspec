@@ -144,6 +144,14 @@ test_modelChecking = describe "model checking" $ do
       diagnostics response `shouldSatisfy` any (isInfixOf "a run breaks it")
     it "shows a run that holds a some-run law" $
       row "an order can be fulfilled" response `shouldSatisfy` maybe False (\(s, why) -> s == "proved" && "validate, authorize, capture, fulfil" `isInfixOf` why)
+  -- apache/pekko-samples' dining hakkers, as the pekko-samples/fsm
+  -- acceptance suite states them. ref:DEC-pekko-sample-suites
+  describe "the dining hakkers of pekko-sample-fsm-java" $ do
+    response <- runIO (check <$> readFile "acceptance/pekko-samples/fsm/hakkers.lawspec")
+    it "proves mutual exclusion and deadlock freedom over every reachable table" $ do
+      row "neighbours never eat at once" response `shouldBe` Just ("proved", "every run holds it: all 247 states explored")
+      row "no deadlock" response `shouldBe` Just ("proved", "every run holds it: all 247 states explored")
+      fmap fst (row "a hakker can eat" response) `shouldBe` Just "proved"
   it "refutes a mutant that ships before payment, with the invalid steps" $ do
     source <- readFile "test/fixtures/order-workflow.lawspec"
     let mutant = replace "  fulfil ~ toFulfilled when isCaptured" "  fulfil ~ toFulfilled when isAuthorized" source
