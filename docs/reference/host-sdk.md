@@ -173,9 +173,67 @@ platforms, full first-party cutover and Wavelet integration remain subsequent wo
 
 ## Application port status
 
-The owner-approved target is the complete Haskell application in LawSpec 0.32.0,
-using SDK 0.2.0. The architecture and cutover gates are recorded once in Canon.
+The owner-approved target is the complete Haskell application, using SDK 0.2.0.
+The architecture and cutover gates are recorded once in Canon. The decision
+named LawSpec 0.32.0; that release shipped without the port, which is now the
+next roadmap milestone and has no committed release number.
 ref:DEC-haskell-application-port
+
+The separate controller/compiler architecture is settled in
+`DEC-application-controller-workers`; it is not yet implemented. Numerical
+release limits await a representative baseline and owner selection, as recorded
+in `DEC-application-port-performance-baseline`. The earlier 94% reduction is not
+a requirement, and existing containment limits remain in force.
+ref:DEC-application-controller-workers ref:DEC-application-port-performance-baseline
+
+The port's first checkpoint was developed on `codex/haskell-application-port`
+from `a91b22f0`; that branch now includes the 0.32.0 release and its
+completed S1J work, and is not yet merged into `main`. Its first candidate service is
+`LawSpec.Manifest.EDN`: a Haskell/Megaparsec codec with ordered fields, normalized
+keyword keys, duplicate rejection, safe-integer admission, explicit JSON
+encoding and readable/compact EDN rendering. Frozen pre-port observations include
+820 examples with malformed delimiters, discard forms, Unicode escapes,
+JavaScript index-key order and exact output bytes. The native tests compare
+against recorded results, while Node replays both the frozen test-only reference
+and the current public codec. This is finite compatibility evidence, not a proof
+for every input. The candidate is not connected to public SDK entrypoints; the
+asynchronous helper and typed WIT manifest-service cutover remain pending.
+
+Manifest admission now has compiler-independent domain records in
+`LawSpec.Manifest.Types`, a pure validator in `LawSpec.Service.Manifest`, and
+explicit JSON/EDN projections. The existing native JSON adapter uses that
+validator; EDN admission calls it without serializing through JSON. Missing,
+malformed and present fields remain distinct, and the adapter preserves the
+original response manifest. `LawSpec.Version` shares version admission and
+selection with compiler package resolution without importing the compiler.
+An import-boundary check restricts these services to six local modules.
+Frozen pre-extraction results cover 739 JSON requests and 647 direct EDN
+admissions; the suite has 1,387 passing checks including syntax/admission failure
+separation. It preserves observed version-parser limitations relative to
+[SemVer 2.0.0](https://semver.org/), rather than changing admission during the port.
+These native services still require typed WIT bindings and component acceptance.
+
+The [EDN specification](https://github.com/edn-format/edn) supplies the external
+syntax; [Megaparsec 9.7.0](https://hackage-content.haskell.org/package/megaparsec-9.7.0/docs/Text-Megaparsec.html)
+supplies parsing and explicit custom failures. The pinned `edn-data@1.2.2`
+implementation is the compatibility reference. Its malformed-input quirks
+require an explicit reader-frame layer; a stricter general EDN reader would
+change observed behavior. This layer is trusted codec code, invokes no tag
+handlers or evaluation, and is unrelated to proof checking. The ordered EDN
+representation is limited to an external-format boundary, not a replacement for
+typed compiler WIT schemas. See the [fixture record](../../test/fixtures/application-port/README.txt)
+for provenance, reproduction and the current scope.
+
+This checkpoint passes the native library/development/CLI/test build, 820 native
+codec cases and 1,641 Node reference/public-codec checks on macOS ARM64/Node
+26.8.1. All 258 generated files and the existing 267-module compiler boundary
+check pass. Root definition validation passes with no optional law layers
+selected. The owner subsequently approved the 47 pending component-comment
+sign-offs in this conversation. Their digest-bound verdicts are recorded under
+`canonical_vetting/comment/component/`, with notes identifying the delegated
+approval. Broader deferred review and full-port acceptance remain open. The broad
+compiler suite was interrupted and is not claimed as passing. Production component artifacts and installation/platform
+acceptance have not been rebuilt or rerun for this candidate.
 
 The SDK boundary now has the resource and integer machinery needed for typed
 compiler node tables. Independent Haskell/Rust fixtures exercise bulk reads,
@@ -216,8 +274,27 @@ cutover; architectural removal of application JavaScript; all native platforms;
 and application performance acceptance. Compiler jobs and UI sessions have not
 been split. Public default selection and the legacy production runtime remain
 until the full gates pass. This is an implemented SDK foundation, not completion
-of the application port, and the existing application package retains 0.31.3
-until its 0.32.0 compatibility change is ready.
+of the application port; the 0.32.0 application package keeps the existing
+runtime as its default.
+
+To resume the full port, complete and verify the following work in sequence:
+
+| Work | Required evidence before cutover |
+| --- | --- |
+| Compiler/component services | Domain-typed interfaces for all nine methods, scoped result tables, manifest/resolution/identity services, schema-5 and malformed-request differential tests. The manifest codec corpus alone does not close this gate. |
+| Platform and controller | Complete canonical types and platform facilities, immutable trusted policy artifacts, separate controller/compiler packages, cancellation and resource-ownership tests. |
+| CLI and projects | Haskell argument/workflow implementation and parity for offline, locked and read-only operations, archive/path protections, generated ownership, diagnostics and exit status. |
+| Proof/native execution | Haskell orchestration and parity for task selection, solver results, replay, coverage, attestations and cache admission; unknown/unsupported/incomplete remain explicit. |
+| Editor and protocols | Haskell document/workspace state and MCP behavior; UTF-16, versions, formatting and read-only tests. |
+| Learn and documentation | Haskell state/composition/event handling; actual Chromium, Firefox and WebKit application tests for persistence, accessibility, focus and cancellation recovery. |
+| Development and distribution | Haskell orchestration, asynchronous helpers and lifecycle APIs, complete controller/compiler receipts, installation failure controls, generated exports and an architectural check over sources, templates and package contents. |
+| Performance and release | Representative baseline followed by owner-selected limits; all native macOS/Linux x64/ARM64 and Node 22/24/26 gates; integrate current S1J changes, rerun final artifacts, and retain pending human review. |
+
+Only after those gates pass may defaults change, legacy production code be
+removed, and release tags be pushed. Hosted CI remains disabled. Missing native
+hosts and owner-selected performance limits are external prerequisites; they do
+not prevent continuing the unfinished implementation work.
+
 
 The earlier formatter-pilot measurement (before the typed service extraction) on macOS ARM64/Node 26.8.1 recorded
 three cold starts (median 5.765 seconds), thirty checked-format calls on one tiny

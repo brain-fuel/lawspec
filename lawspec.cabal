@@ -5,12 +5,15 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.32.0
+version:        0.33.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
+    test/fixtures/application-port/manifest-codec.json
+    test/fixtures/application-port/manifest-service.json
+    test/fixtures/application-port/README.txt
     dev/ci-cache-test/Main.hs
     vendor/unicode/LICENSE.txt
     vendor/unicode/NORMALIZATION-LICENSES.txt
@@ -815,6 +818,9 @@ library
       LawSpec.LawClaims
       LawSpec.MachineSpec
       LawSpec.Mailboxes
+      LawSpec.Manifest.Decode
+      LawSpec.Manifest.EDN
+      LawSpec.Manifest.Types
       LawSpec.MappingCheck
       LawSpec.Matchers
       LawSpec.Memo
@@ -879,6 +885,7 @@ library
       LawSpec.Search
       LawSpec.Service.Compilation
       LawSpec.Service.Formatting
+      LawSpec.Service.Manifest
       LawSpec.Sessions
       LawSpec.Sessions.Go
       LawSpec.Sessions.Haskell
@@ -939,6 +946,7 @@ library
       LawSpec.Typed.Swift
       LawSpec.Typed.Web
       LawSpec.Unification
+      LawSpec.Version
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
@@ -1140,6 +1148,8 @@ test-suite lawspec-test
       LanguageGapsSpec
       LawAnalysisSpec
       LawPrimitivesSpec
+      ManifestCodecSpec
+      ManifestServiceSpec
       MappingSpec
       MatcherAdmissionSpec
       MatchWarningSpec

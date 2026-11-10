@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Manifest admission and version selection now run in compiler-independent
+  Haskell services, the first checkpoint of the Haskell application port.
+  Recorded results from before the change (739 JSON requests and 647 EDN
+  admissions) replay unchanged; this is finite regression evidence, not a
+  proof for every input. A Haskell manifest EDN codec is included but is not
+  connected to any public entrypoint. The existing runtime remains the default.
+  See the [application port status](docs/reference/host-sdk.md#application-port-status).
+
 ## [0.32.0] - 2026-11-09
 
 ### Added
