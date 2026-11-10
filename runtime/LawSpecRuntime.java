@@ -5003,6 +5003,17 @@ public final class LawSpecRuntime
     public Model(String spec, ModelCallback[] start, ModelCallback[][] commands,
         ModelCallback abstractState, ModelCallback[] invariants)
     {
+      this(spec, start, commands, abstractState, invariants, null);
+    }
+
+    /**
+     * An actor model whose runs drive the given backend, such as a native actor, in place of
+     * LawSpec's own actor; null keeps LawSpec's actor. A backend that cannot read the actor's state
+     * admits no abstraction and no invariant on the state.
+     */
+    public Model(String spec, ModelCallback[] start, ModelCallback[][] commands,
+        ModelCallback abstractState, ModelCallback[] invariants, ActorBackend driver)
+    {
       var forms = readDescriptor(spec);
       var machine = form(forms.get(0));
       name = atomText(machine.get(1));
@@ -5091,13 +5102,20 @@ public final class LawSpecRuntime
           built.add(c);
         }
       }
+      ActorBackend backend = null;
+      if (driver != null && !actor)
+      {
+        throw new IllegalArgumentException("model " + name + " is not an actor's model");
+      }
       if (actor)
       {
         var run = start[0];
         var begin = start[1];
+        backend = driver != null ? driver : new LawSpecActorBackend(run, built, restart);
+        var driven = backend;
         startRun = (symbols, args) -> {
           symbols.put(START_ARGUMENTS, args);
-          return handle(ACTOR_HANDLE, new Actor<Value>(run.apply(symbols, args)));
+          return driven.spawn(symbols, args);
         };
         startModel = (symbols, args) -> {
           symbols.put(START_ARGUMENTS, args);
@@ -5105,10 +5123,10 @@ public final class LawSpecRuntime
         };
         for (var c : built)
         {
-          c.run = actorCommand(c.run, c.unit);
+          c.run = actorCommand(driven, c.name);
         }
         var steps = new ArrayList<ModelCommand>(built);
-        steps.add(crashStep(run, begin, restart));
+        steps.add(crashStep(driven, begin, restart));
         this.steps = steps;
       }
       else
@@ -5118,8 +5136,13 @@ public final class LawSpecRuntime
         this.steps = built;
       }
       this.commands = built;
+      if (driver != null && abstractState != null)
+      {
+        throw new IllegalArgumentException(
+            "model " + name + ": a native actor's state cannot be abstracted; it is private");
+      }
       this.abstractState =
-          actor && abstractState != null ? actorRead(abstractState) : abstractState;
+          actor && abstractState != null ? actorRead(backend, abstractState) : abstractState;
       var kinds = new ArrayList<String>();
       var checks = new ArrayList<ModelCallback>();
       var invariantList = invariants == null ? new ModelCallback[0] : invariants;
@@ -5128,13 +5151,48 @@ public final class LawSpecRuntime
       {
         kinds.add(atomText(invariantForm.get(k + 1)));
         boolean onState = !atomText(invariantForm.get(k + 1)).equals("model");
-        checks.add(actor && onState ? actorRead(invariantList[k]) : invariantList[k]);
+        if (driver != null && onState)
+        {
+          throw new IllegalArgumentException(
+              "model " + name + ": a native actor's state is private, so no invariant reads it");
+        }
+        checks.add(actor && onState ? actorRead(backend, invariantList[k]) : invariantList[k]);
       }
       invariantKinds = kinds;
       this.invariants = checks;
       perKey = keyed;
       consistency = declaredConsistency;
     }
+  }
+
+  /**
+   * What an actor model's runs drive: LawSpec's own actor, or an existing native actor (such as a
+   * Pekko behaviour) checked against the same model. The runner generates, shrinks and checks runs
+   * the same way whichever backend runs them. ref:DEC-native-actor-binding
+   */
+  public interface ActorBackend
+  {
+    /** Starts a fresh actor for one run, given the start's arguments, and returns its handle. */
+    Value spawn(Map<String, Object> symbols, List<Value> startArguments);
+
+    /**
+     * Sends the actor one handler's message with its arguments (after the state) and waits for the
+     * reply: the result, or Unit's value for a handler without one. A reply that never comes is an
+     * exception naming the handler and its arguments, never a pass.
+     */
+    Value call(Map<String, Object> symbols, Value actor, String handler, List<Value> arguments);
+
+    /**
+     * Crashes the actor between messages and returns once it has restarted, so the messages after
+     * it reach the restarted actor.
+     */
+    void crash(Map<String, Object> symbols, Value actor);
+
+    /**
+     * The actor's state between messages, for an abstraction or an invariant on the state; a
+     * native actor keeps its state private and throws.
+     */
+    Value state(Value actor);
   }
 
   private static final String ACTOR_HANDLE = "lawspec.actor";
@@ -5153,20 +5211,83 @@ public final class LawSpecRuntime
     return (List<Value>) symbols.getOrDefault(START_ARGUMENTS, List.of());
   }
 
-  /** An injected crash of an actor model, as a step with no arguments. */
-  private static ModelCommand crashStep(ModelCallback startRun, ModelCallback startModel,
-      ModelCommand restart)
+  /**
+   * LawSpec's own actor running the handler bridges (the state first, returning Pair reply state,
+   * or the state alone for a Unit reply). A crash restarts it from its last state (restart from) or
+   * its start.
+   */
+  private static final class LawSpecActorBackend implements ActorBackend
   {
-    ModelCallback run = (symbols, args) -> {
-      var actor = actorOf(args.get(0));
+    /** A handler's bridge, kept before the model's command runs through the backend. */
+    private record Handler(ModelCallback run, boolean unit)
+    {
+    }
+
+    private final ModelCallback start;
+    private final Map<String, Handler> handlers = new java.util.HashMap<>();
+    private final ModelCallback restart;
+
+    LawSpecActorBackend(ModelCallback start, List<ModelCommand> handlers, ModelCommand restart)
+    {
+      this.start = start;
+      for (var c : handlers)
+      {
+        this.handlers.put(c.name, new Handler(c.run, c.unit));
+      }
+      this.restart = restart == null ? null : restart.run;
+    }
+
+    @Override
+    public Value spawn(Map<String, Object> symbols, List<Value> startArguments)
+    {
+      return handle(ACTOR_HANDLE, new Actor<Value>(start.apply(symbols, startArguments)));
+    }
+
+    @Override
+    public Value call(Map<String, Object> symbols, Value actor, String handler,
+        List<Value> arguments)
+    {
+      var command = handlers.get(handler);
+      return actorOf(actor).call(state -> {
+        var full = new ArrayList<Value>();
+        full.add(state);
+        full.addAll(arguments);
+        var out = command.run.apply(symbols, full);
+        if (command.unit)
+        {
+          return new Next<>(absent("Unit"), out);
+        }
+        var pair = (Data) out.data();
+        return new Next<>(pair.fields().get(0), pair.fields().get(1));
+      });
+    }
+
+    @Override
+    public void crash(Map<String, Object> symbols, Value actor)
+    {
       if (restart != null)
       {
-        actor.restart(s -> restart.run.apply(symbols, List.of(s)));
+        actorOf(actor).restart(s -> restart.apply(symbols, List.of(s)));
       }
       else
       {
-        actor.restart(s -> startRun.apply(symbols, startArguments(symbols)));
+        actorOf(actor).restart(s -> start.apply(symbols, startArguments(symbols)));
       }
+    }
+
+    @Override
+    public Value state(Value actor)
+    {
+      return actorOf(actor).state();
+    }
+  }
+
+  /** An injected crash of an actor model, as a step with no arguments. */
+  private static ModelCommand crashStep(ActorBackend backend, ModelCallback startModel,
+      ModelCommand restart)
+  {
+    ModelCallback run = (symbols, args) -> {
+      backend.crash(symbols, args.get(0));
       return absent("Unit");
     };
     ModelCallback reference =
@@ -5175,31 +5296,19 @@ public final class LawSpecRuntime
     return new ModelCommand(run, reference);
   }
 
-  /**
-   * A handler bridge (the state first, returning Pair reply state, or the state alone for a Unit
-   * reply) as a command on an actor.
-   */
-  private static ModelCallback actorCommand(ModelCallback run, boolean unit)
+  /** A handler as a command on an actor: the handle first, then the message's arguments. */
+  private static ModelCallback actorCommand(ActorBackend backend, String handler)
   {
-    return (symbols, args) -> actorOf(args.get(0)).call(state -> {
-      var full = new ArrayList<Value>(args);
-      full.set(0, state);
-      var out = run.apply(symbols, full);
-      if (unit)
-      {
-        return new Next<>(absent("Unit"), out);
-      }
-      var pair = (Data) out.data();
-      return new Next<>(pair.fields().get(0), pair.fields().get(1));
-    });
+    return (symbols, args) -> backend.call(symbols, args.get(0), handler,
+        args.subList(1, args.size()));
   }
 
   /** A callback over the system state that reads an actor's state instead. */
-  private static ModelCallback actorRead(ModelCallback callback)
+  private static ModelCallback actorRead(ActorBackend backend, ModelCallback callback)
   {
     return (symbols, args) -> {
       var full = new ArrayList<Value>(args);
-      full.set(0, actorOf(args.get(0)).state());
+      full.set(0, backend.state(args.get(0)));
       return callback.apply(symbols, full);
     };
   }
