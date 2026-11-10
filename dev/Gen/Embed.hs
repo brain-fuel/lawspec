@@ -100,7 +100,8 @@ runtimeFiles =
   -- The checker of existing Pekko actors, written only for JVM projects
   -- whose native bindings bind actors (LawSpec.JavaNativeBinding).
   , ("java-pekko-native", "pekko/LawSpecPekkoNative.java")
-  , ("java-spring-native", "spring/LawSpecSpringNative.java") ]
+  , ("java-spring-native", "spring/LawSpecSpringNative.java")
+  , ("java-pekko-sharding", "pekko/LawSpecPekkoSharding.java") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

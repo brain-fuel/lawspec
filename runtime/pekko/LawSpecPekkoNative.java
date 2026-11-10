@@ -7,8 +7,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -21,6 +25,7 @@ import lawspec.runtime.pekko.LawSpecCrashInterceptor;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
+import org.apache.pekko.actor.typed.RecipientRef;
 import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.Terminated;
 import org.apache.pekko.actor.typed.javadsl.AskPattern;
@@ -41,8 +46,14 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
  * that does not come within the ask timeout fails the run; it is never a pass.
  *
  * <p>
+ * A handler with a caller takes the caller as its first argument: each caller has its own address
+ * for the run, and every message from that caller carries it, as an actor's own reference would
+ * (the dining hakkers' chopstick knows its hakker by address). A sharded entity's handler takes the
+ * entity's id first instead, and is sent through the entity's EntityRef (LawSpecPekkoSharding).
+ *
+ * <p>
  * The ask timeout is LAWSPEC_ASK_TIMEOUT_MS milliseconds (3000 when not set).
- * ref:DEC-native-actor-binding
+ * ref:DEC-native-actor-binding ref:DEC-pekko-sample-suites
  */
 public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
 {
@@ -78,9 +89,20 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     }
   }
 
+  /**
+   * Where sharded entities live: the entity of one run with an id, made by the given behaviour from
+   * that entity id, through the entity's EntityRef in a one-node cluster.
+   */
+  public interface Entities
+  {
+    ActorTestKit testKit();
+
+    RecipientRef<Object> entity(String entityId, Function<String, Behavior<Object>> behavior);
+  }
+
   private interface Handler
   {
-    Value call(Map<String, Object> symbols, ActorRef<Object> actor, List<Value> arguments);
+    Value call(Map<String, Object> symbols, Spawned actor, List<Value> arguments);
   }
 
   private static final String HANDLE = "lawspec.pekko";
@@ -91,13 +113,25 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   private final boolean persistent;
   private final Map<String, Handler> handlers = new LinkedHashMap<>();
   private final Duration timeout = askTimeout();
+  private final Entities entities;
+  private final Function<Value, String> entityId;
+  private final Map<String, AtomicReference<CompletableFuture<Void>>> restarts =
+      new ConcurrentHashMap<>();
 
   private LawSpecPekkoNative(String actor, Function<String, Behavior<C>> factory,
-      boolean persistent)
+      boolean persistent, Entities entities, Function<Value, String> entityId)
   {
     this.actor = actor;
     this.factory = factory;
     this.persistent = persistent;
+    this.entities = entities;
+    this.entityId = entityId;
+  }
+
+  private LawSpecPekkoNative(String actor, Function<String, Behavior<C>> factory,
+      boolean persistent)
+  {
+    this(actor, factory, persistent, null, null);
   }
 
   /** An actor whose behaviour a factory of no arguments makes. */
@@ -126,25 +160,139 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     return new LawSpecPekkoNative<>(actor, factory, true);
   }
 
+  /**
+   * A sharded entity whose factory takes its entity id. Every handler takes the id first, as text
+   * that entityId reads; each run's entities are its own.
+   */
+  public static <C> LawSpecPekkoNative<C> sharded(String actor, Entities entities,
+      Function<String, Behavior<C>> factory, Function<Value, String> entityId)
+  {
+    return new LawSpecPekkoNative<>(actor, factory, false, entities, entityId);
+  }
+
+  /** A reply class with type arguments, such as StatusReply of a summary, as the class it is. */
+  @SuppressWarnings("unchecked")
+  public static <R> Class<R> replyClass(Class<?> raw)
+  {
+    return (Class<R>) raw;
+  }
+
+  /** A caller's address, as the message's address of whatever type it answers. */
+  @SuppressWarnings("unchecked")
+  public static <R> ActorRef<R> address(ActorRef<?> caller)
+  {
+    return (ActorRef<R>) caller;
+  }
+
   /** A handler whose message carries a reply address; the reply's result is the handler's. */
   public <R> LawSpecPekkoNative<C> ask(String handler, Message<? extends C, R> message,
       Class<R> reply, Result<? super R> result)
   {
-    handlers.put(handler, (symbols, ref, arguments) -> {
+    handlers.put(handler, (symbols, spawned, arguments) -> {
       Object answer = await(
-          AskPattern.<Object, R>ask(ref, replyTo -> message.make(symbols, arguments, replyTo),
-              timeout, system().scheduler()),
-          () -> "native actor " + actor + " did not reply to " + handler + describe(arguments)
-              + " within " + timeout.toMillis() + " ms");
-      if (!reply.isInstance(answer))
-      {
-        throw new NativeActorFailure(
-            "native actor " + actor + " answered " + handler + describe(arguments) + " with "
-                + answer.getClass().getName() + ", not " + reply.getName());
-      }
-      return result.of(symbols, reply.cast(answer));
+          AskPattern.<Object, R>ask(target(spawned, arguments),
+              replyTo -> message.make(symbols, arguments, replyTo), timeout, system().scheduler()),
+          () -> silent(handler, arguments));
+      return answered(symbols, handler, arguments, reply, result, answer);
     });
     return this;
+  }
+
+  /**
+   * A handler whose first argument is its caller: the message carries the caller's own address, and
+   * the reply is the next message that address receives. One caller's messages go one at a time, as
+   * an actor's would.
+   */
+  public <R> LawSpecPekkoNative<C> callerAsk(String handler, Message<? extends C, R> message,
+      Class<R> reply, Result<? super R> result)
+  {
+    handlers.put(handler, (symbols, spawned, arguments) -> {
+      var caller = spawned.caller(arguments.get(0));
+      synchronized (caller)
+      {
+        caller.inbox.clear();
+        target(spawned, arguments).tell(message.make(symbols, arguments, address(caller.ref)));
+        Object answer =
+            await(caller.next(timeout.toMillis() * 2), () -> silent(handler, arguments));
+        return answered(symbols, handler, arguments, reply, result, answer);
+      }
+    });
+    return this;
+  }
+
+  /** A handler without a result whose message carries its caller's address, sent at once. */
+  public LawSpecPekkoNative<C> callerTell(String handler, Message<? extends C, Object> message)
+  {
+    handlers.put(handler, (symbols, spawned, arguments) -> {
+      var caller = spawned.caller(arguments.get(0));
+      synchronized (caller)
+      {
+        target(spawned, arguments).tell(message.make(symbols, arguments, caller.ref));
+      }
+      return LawSpecRuntime.absent("Unit");
+    });
+    return this;
+  }
+
+  private String silent(String handler, List<Value> arguments)
+  {
+    return "native actor " + actor + " did not reply to " + handler + describe(arguments)
+        + " within " + timeout.toMillis() + " ms";
+  }
+
+  private <R> Value answered(Map<String, Object> symbols, String handler, List<Value> arguments,
+      Class<R> reply, Result<? super R> result, Object answer)
+  {
+    if (!reply.isInstance(answer))
+    {
+      throw new NativeActorFailure(
+          "native actor " + actor + " answered " + handler + describe(arguments) + " with "
+              + answer.getClass().getName() + ", not " + reply.getName());
+    }
+    return result.of(symbols, reply.cast(answer));
+  }
+
+  /** Where a message goes: the run's actor, or, for a sharded entity, the entity its id names. */
+  private RecipientRef<Object> target(Spawned spawned, List<Value> arguments)
+  {
+    if (entities == null)
+    {
+      return spawned.ref;
+    }
+    var id = spawned.identity + "~" + entityId.apply(arguments.get(0));
+    spawned.entities.add(id);
+    return entities.entity(id, this::entity);
+  }
+
+  /**
+   * A sharded entity's behaviour, from the entity id the run gave it; the factory sees the id
+   * without the run. It restarts in place after a crash, through LawSpecCrashInterceptor.
+   */
+  private Behavior<Object> entity(String id)
+  {
+    var restarted = restarts.computeIfAbsent(id, key -> new AtomicReference<>());
+    return crashing(restarted, false, () -> factory.apply(id.substring(id.indexOf('~') + 1)));
+  }
+
+  /**
+   * The behaviour factory makes, wrapped in LawSpecCrashInterceptor under supervision that restarts
+   * it in place after an injected crash (or, for an event-sourced actor, stops it). Each start
+   * tells the crash step waiting for it.
+   */
+  private static <C> Behavior<Object> crashing(AtomicReference<CompletableFuture<Void>> restarted,
+      boolean stop, Supplier<Behavior<C>> factory)
+  {
+    Behavior<C> behavior = Behaviors.setup(context -> {
+      var pending = restarted.getAndSet(null);
+      if (pending != null)
+      {
+        pending.complete(null);
+      }
+      return factory.get();
+    });
+    var strategy = stop ? SupervisorStrategy.stop() : SupervisorStrategy.restart();
+    return Behaviors.supervise(LawSpecCrashInterceptor.wrap(behavior))
+        .onFailure(LawSpecCrashInterceptor.InjectedCrash.class, strategy.withLoggingEnabled(false));
   }
 
   /** A handler without a result whose message is acknowledged with a reply. */
@@ -157,8 +305,8 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   /** A handler without a result whose message is sent without waiting. */
   public LawSpecPekkoNative<C> tell(String handler, Notice<? extends C> message)
   {
-    handlers.put(handler, (symbols, ref, arguments) -> {
-      ref.tell(message.make(symbols, arguments));
+    handlers.put(handler, (symbols, spawned, arguments) -> {
+      target(spawned, arguments).tell(message.make(symbols, arguments));
       return LawSpecRuntime.absent("Unit");
     });
     return this;
@@ -167,32 +315,27 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   @Override
   public Value spawn(Map<String, Object> symbols, List<Value> startArguments)
   {
+    if (entities != null)
+    {
+      // A run's entities start when they are first sent a message.
+      return LawSpecRuntime.handle(HANDLE, new Spawned("run" + IDENTITIES.incrementAndGet(),
+          new AtomicReference<>(), null, testKit()));
+    }
     var identity = actor + "-" + IDENTITIES.incrementAndGet();
     var restarted = new AtomicReference<CompletableFuture<Void>>();
     return LawSpecRuntime.handle(HANDLE,
-        new Spawned(identity, restarted, start(identity, restarted)));
+        new Spawned(identity, restarted, start(identity, restarted), testKit()));
   }
 
   /**
    * One incarnation of the actor, wrapped in LawSpecCrashInterceptor. A behaviour without
-   * persistence restarts in place, through the supervision around the interceptor, and tells the
-   * pending crash step when it starts again; an event-sourced one stops at a crash, and the next
-   * incarnation recovers from the journal.
+   * persistence restarts in place, through the supervision around the interceptor; an event-sourced
+   * one stops at a crash, and the next incarnation recovers from the journal.
    */
   private ActorRef<Object> start(String identity,
       AtomicReference<CompletableFuture<Void>> restarted)
   {
-    Behavior<C> behavior = Behaviors.setup(context -> {
-      var pending = restarted.getAndSet(null);
-      if (pending != null)
-      {
-        pending.complete(null);
-      }
-      return factory.apply(identity);
-    });
-    var strategy = persistent ? SupervisorStrategy.stop() : SupervisorStrategy.restart();
-    return testKit().spawn(Behaviors.supervise(LawSpecCrashInterceptor.wrap(behavior)).onFailure(
-        LawSpecCrashInterceptor.InjectedCrash.class, strategy.withLoggingEnabled(false)));
+    return testKit().spawn(crashing(restarted, persistent, () -> factory.apply(identity)));
   }
 
   @Override
@@ -204,7 +347,7 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
       throw new IllegalArgumentException(
           "native actor " + this.actor + " has no handler " + handler);
     }
-    return bound.call(symbols, spawned(actor).ref, List.copyOf(arguments));
+    return bound.call(symbols, spawned(actor), List.copyOf(arguments));
   }
 
   /**
@@ -217,6 +360,19 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   public void crash(Map<String, Object> symbols, Value actor)
   {
     var spawned = spawned(actor);
+    if (entities != null)
+    {
+      // Every entity the run has started crashes, and restarts in place.
+      for (var id : spawned.entities)
+      {
+        var restarted = new CompletableFuture<Void>();
+        restarts.computeIfAbsent(id, key -> new AtomicReference<>()).set(restarted);
+        entities.entity(id, this::entity).tell(LawSpecCrashInterceptor.signal("crash"));
+        await(restarted, () -> "native entity " + id + " of " + this.actor
+            + " did not restart within " + timeout.toMillis() + " ms of a crash");
+      }
+      return;
+    }
     var ref = spawned.ref;
     Supplier<String> late = () -> "native actor " + this.actor + " did not restart within "
         + timeout.toMillis() + " ms of a crash";
@@ -226,19 +382,21 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
       spawned.restarted.set(done);
       LawSpecCrashInterceptor.crash(ref, "crash");
       await(done, late);
-      return;
     }
-    LawSpecCrashInterceptor.crash(ref, "crash");
-    var stopped = new CompletableFuture<Void>();
-    testKit().spawn(Behaviors.setup(context -> {
-      context.watch(ref);
-      return Behaviors.receive(Object.class).onSignal(Terminated.class, signal -> {
-        stopped.complete(null);
-        return Behaviors.stopped();
-      }).build();
-    }));
-    await(stopped, late);
-    spawned.ref = start(spawned.identity, spawned.restarted);
+    else
+    {
+      LawSpecCrashInterceptor.crash(ref, "crash");
+      var stopped = new CompletableFuture<Void>();
+      testKit().spawn(Behaviors.setup(context -> {
+        context.watch(ref);
+        return Behaviors.receive(Object.class).onSignal(Terminated.class, signal -> {
+          stopped.complete(null);
+          return Behaviors.stopped();
+        }).build();
+      }));
+      await(stopped, late);
+      spawned.ref = start(spawned.identity, spawned.restarted);
+    }
   }
 
   @Override
@@ -250,20 +408,62 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
 
   /**
    * A run's actor: its persistence id, the crash step waiting for it to restart, and its current
-   * incarnation.
+   * incarnation; its callers' addresses; and, for sharded entities, the ids of those it has
+   * started.
    */
   private static final class Spawned
   {
     final String identity;
     final AtomicReference<CompletableFuture<Void>> restarted;
     volatile ActorRef<Object> ref;
+    final ActorTestKit kit;
+    final Map<String, Caller> callers = new ConcurrentHashMap<>();
+    final Set<String> entities = ConcurrentHashMap.newKeySet();
 
     Spawned(String identity, AtomicReference<CompletableFuture<Void>> restarted,
-        ActorRef<Object> ref)
+        ActorRef<Object> ref, ActorTestKit kit)
     {
       this.identity = identity;
       this.restarted = restarted;
       this.ref = ref;
+      this.kit = kit;
+    }
+
+    /** The caller a value names, with its own address for the rest of the run. */
+    Caller caller(Value who)
+    {
+      return callers.computeIfAbsent(LawSpecRuntime.render(who), key -> new Caller(kit));
+    }
+  }
+
+  /** A caller's address, and what it has received there. */
+  private static final class Caller
+  {
+    final BlockingQueue<Object> inbox = new LinkedBlockingQueue<>();
+    final ActorRef<Object> ref;
+
+    Caller(ActorTestKit kit)
+    {
+      ref = kit.spawn(Behaviors.receive(Object.class).onAnyMessage(message -> {
+        inbox.add(message);
+        return Behaviors.same();
+      }).build());
+    }
+
+    /** The next message the caller receives, within the given time. */
+    CompletableFuture<Object> next(long millis)
+    {
+      try
+      {
+        var message = inbox.poll(millis, TimeUnit.MILLISECONDS);
+        return message == null ? CompletableFuture.failedFuture(new TimeoutException())
+            : CompletableFuture.completedFuture(message);
+      }
+      catch (InterruptedException error)
+      {
+        Thread.currentThread().interrupt();
+        return CompletableFuture.failedFuture(error);
+      }
     }
   }
 
@@ -316,6 +516,10 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
 
   private ActorTestKit testKit()
   {
+    if (entities != null)
+    {
+      return entities.testKit();
+    }
     return persistent ? Journaled.KIT : Plain.KIT;
   }
 
@@ -356,5 +560,11 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
                     .getInstance().config())
                 .withFallback(org.apache.pekko.persistence.testkit.PersistenceTestKitSnapshotPlugin
                     .getInstance().config()));
+  }
+
+  /** Settings every test kit shares: daemon threads, and quiet restarts. */
+  public static Config quiet()
+  {
+    return common();
   }
 }

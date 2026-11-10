@@ -1,0 +1,10 @@
+expect: crash()
+@@ src/main/java/sample/persistence/ShoppingCart.java
+<<<<<<<
+        return Effect().persist(new ItemAdded(cartId, cmd.itemId, cmd.quantity))
+=======
+        // Mutant: the item is added to the cart in memory but never
+        // persisted, so a restart, which replays the journal, loses it.
+        state.updateItem(cmd.itemId, cmd.quantity);
+        return Effect().none()
+>>>>>>>

@@ -1,0 +1,8 @@
+expect: model chopstick fails at step
+@@ src/main/java/sample/Chopstick.java
+<<<<<<<
+                .onMessage(Put.class, m -> m.hakker.equals(hakker), (msg) -> available())
+=======
+                // Mutant: the chopstick is never put down.
+                .onMessage(Put.class, m -> m.hakker.equals(hakker), (msg) -> Behaviors.same())
+>>>>>>>

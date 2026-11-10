@@ -43,14 +43,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   actors run on the in-memory journal and recover after a crash. Ask
   timeouts fail the run. Shapes LawSpec cannot ask or observe (several
   replies, a missing `replyTo`, invariants on the actor's state) are explicit
-  diagnostics, and other targets and sharded entities are rejected as
-  unsupported. Scala binds Pekko actors too, with generated Scala wiring over
+  diagnostics, and other targets are rejected as unsupported. Scala binds Pekko actors too, with generated Scala wiring over
   the Java checker. On Java, `"spring": "<class>"` binds an existing starter
   `SpringActor` component (not event-sourced ones yet). The
   `pekko-native-actors` acceptance suite checks a hand-written event-sourced
   account on Java and Scala, and `pekko-native-actors-spring` a Spring
   account on Java, with mutants for a wrong reply, state lost on restart and
   a non-linearizable implementation.
+- Native actor handlers accept `replyArguments` (a generic reply such as
+  `StatusReply<Summary>`), `resultField` (a public field of the reply),
+  `caller` (the first argument is a caller the actor knows by address, with
+  one reply address for the run) and `messageFactory` (a static method that
+  makes the message). An actor binding's `entity` now runs the actor as a
+  sharded entity in a one-node cluster (`LawSpecPekkoSharding`), each
+  handler taking the entity's id first. The generated wiring sits in the
+  behaviour's package, so package-private messages can be bound. An
+  event-sourced sharded entity, and a caller of one, are unsupported.
+- The `pekko-samples/persistence`, `pekko-samples/fsm` and
+  `pekko-samples/sharding` acceptance suites check apache/pekko-samples'
+  Java shopping cart, dining hakkers and weather station, vendored unchanged
+  at f9ce3d60 and built on Pekko 1.7.1, with mutants: an item lost after a
+  restart, a checkout that is not final, a chopstick granted twice, one never
+  put down, a starvation law that LawSpec refutes, and stations that share
+  their readings. A how-to, "Check Pekko actors with LawSpec", uses them as
+  worked examples and lists what LawSpec cannot check yet, including the CQRS
+  sample, which has no Pekko code upstream.
 
 ### Fixed
 

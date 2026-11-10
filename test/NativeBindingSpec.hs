@@ -218,8 +218,8 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
           , if abstract then "  abstract peek" else ""
           , "end actor"
           , "end unit" ]
-        deposit = Request.ActorHandlerBinding "deposit" (ref "Deposit") True (Just (ref "Balance")) (Just "balance")
-        close = Request.ActorHandlerBinding "close" (ref "Close") False Nothing Nothing
+        deposit = Request.actorHandler "deposit" (ref "Deposit") True (Just (ref "Balance")) (Just "balance")
+        close = Request.actorHandler "close" (ref "Close") False Nothing Nothing
         actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
           Nothing Nothing handlers
         resolveActors abstract actors = case compileCore 64 defaultGeneration [Source "bank" (actorSource abstract)] of
@@ -256,3 +256,50 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
     parsed "[\"app\", \"Balance\"]" `shouldSatisfy` (not . isLeft)
     either id (const "") (parsed "[[\"app\", \"Balance\"], [\"app\", \"Rejected\"]]")
       `shouldSatisfy` isInfixOf "several replies"
+  -- The pekko-samples' own messages: a chopstick that knows its hakker by
+  -- address, a StatusReply, a public field and a sharded entity's id.
+  -- ref:DEC-pekko-sample-suites
+  it "resolves callers, sharded entities and reply fields of native actor handlers" $ do
+    let source = unlines
+          [ "unit bank"
+          , "type Account is a record{ balance :: Int64 } end type"
+          , "openAccount :: Unit -> Account"
+          , "deposit :: Account -> Text -> UInt8 -> Pair Int64 Account"
+          , "close :: Account -> Text -> Account"
+          , "function modelDeposit (who :: Text) (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) -> Pair Int64 Int64 is Pair (n + amount) (n + amount) end function"
+          , "function modelClose (who :: Text) (n :: Int64) -> Int64 is 0 end function"
+          , "actor account :: Account by Int64 is"
+          , "  start openAccount by 0"
+          , "  on deposit by modelDeposit"
+          , "  on close by modelClose"
+          , "end actor"
+          , "end unit" ]
+        deposit = (Request.actorHandler "deposit" (ref "Deposit") False (Just (ref "Balance")) Nothing)
+          { Request.handlerCaller = True, Request.handlerResultField = Just "balance" }
+        close = Request.actorHandler "close" (ref "Close") False Nothing Nothing
+        actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
+          Nothing Nothing handlers
+        resolve actors = case compileCore 64 defaultGeneration [Source "bank" source] of
+          Left diagnostics -> Left (show diagnostics)
+          Right program -> Request.resolveNativeRequest program Request.emptyNativeRequest { Request.requestActors = actors }
+        rejected actors expected = case resolve actors of
+          Left message -> message `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure ("accepted; expected " ++ expected)
+        sharded = (actor [deposit { Request.handlerCaller = False, Request.handlerReplyTo = True }, close])
+          { Request.boundActorEntity = Just (ref "TypeKey") }
+    either expectationFailure (const (pure ())) (() <$ resolve [actor [deposit, close]])
+    either expectationFailure (const (pure ())) (() <$ resolve [sharded])
+    rejected [actor [deposit { Request.handlerReplyTo = True }, close]] "has no replyTo as well"
+    rejected [actor [deposit { Request.handlerResult = Just "balance" }, close]] "not both"
+    rejected [sharded { Request.boundActorPersistence = Just Request.EventSourced }] "event-sourced sharded entity"
+    rejected [(actor [deposit, close]) { Request.boundActorEntity = Just (ref "TypeKey") }] "a caller of a sharded entity"
+    rejected [actor [deposit { Request.handlerReplyArguments = [ref "Summary"], Request.handlerReply = Nothing }, close]] "needs the reply class"
+    let parsed handler = eitherDecode (BL.pack ("{\"actors\": [{\"actor\": \"bank::account\", \"behavior\": [\"app\", \"create\"], " ++
+          "\"handlers\": [" ++ handler ++ "]}]}")) :: Either String Request.NativeRequest
+    case parsed "{\"handler\": \"deposit\", \"messageFactory\": [\"app\", \"Messages\", \"deposit\"], \"replyTo\": true, \"reply\": [\"app\", \"StatusReply\"], \"replyArguments\": [[\"app\", \"Balance\"]], \"result\": \"isSuccess\"}" of
+      Right request -> map Request.boundActorHandlers (Request.requestActors request) `shouldBe`
+        [[(Request.actorHandler "deposit" (NativeRef ["app","Messages","deposit"]) True (Just (ref "StatusReply")) (Just "isSuccess"))
+          { Request.handlerReplyArguments = [ref "Balance"], Request.handlerMessageFactory = True }]]
+      Left message -> expectationFailure message
+    either id (const "") (parsed "{\"handler\": \"close\", \"message\": [\"app\", \"Close\"], \"messageFactory\": [\"app\", \"close\"]}")
+      `shouldSatisfy` isInfixOf "exactly one of message or messageFactory"

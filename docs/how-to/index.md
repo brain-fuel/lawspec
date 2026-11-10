@@ -31,6 +31,8 @@ shows how to do it.
 - [Bind native types and functions](bind-native-types.md)
 - [Write custom codecs and generators](custom-codecs-and-generators.md)
 - [Embed a generated model](embed-a-generated-model.md)
+- [Check Pekko actors with LawSpec](check-pekko-actors.md), with
+  apache/pekko-samples as worked examples
 
 ## Targets
 

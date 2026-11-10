@@ -707,6 +707,10 @@ targetSteps target =
   -- Scala), and an existing Spring starter actor (Java).
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target `elem` ["java", "scala"], suite <- ["pekko-native-actors"] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "java", suite <- ["pekko-native-actors-spring"] ] ++
+  -- apache/pekko-samples, vendored unchanged and checked through native
+  -- actor bindings (Java). ref:DEC-pekko-sample-suites
+  [ step (target ++ "-pekko-sample-" ++ sample) (acceptance ["pekko-samples/" ++ sample, target])
+  | target == "java", sample <- ["fsm", "persistence", "sharding"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ Step (target ++ "-model-layer-selection" ++ suffix) env ["node", "tools/model-layer-integration.mjs", target]

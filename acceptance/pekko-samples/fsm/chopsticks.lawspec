@@ -1,0 +1,54 @@
+unit sample.chopsticks
+
+-- The chopstick of apache/pekko-samples' pekko-sample-fsm-java (the dining
+-- hakkers), checked as the sample wrote it. A chopstick knows its hakker by
+-- address: Take and Put carry the hakker's own ActorRef, which the sample
+-- compares. So each handler's first argument is its caller: LawSpec gives
+-- every hakker one address for the whole run, sends each message from it,
+-- and reads the chopstick's answer there.
+type Hakker is one of
+  | Ghosh
+  | Boner
+  | Klang
+  | Krasser
+  | Manie
+end type
+
+-- Who holds the chopstick, if anyone.
+type Holder is one of
+  | Free
+  | HeldBy of type Hakker
+end type
+
+type Stick is a record{ id :: Int32 } end type
+
+openStick :: Unit -> Stick
+-- Take answers Taken (true) or Busy (false).
+take :: Stick -> Hakker -> Pair Bool Stick
+-- Put is not answered.
+put :: Stick -> Hakker -> Stick
+
+-- Mutual exclusion: a held chopstick is busy to every hakker, its holder
+-- included, until its holder puts it down.
+function modelTake (hakker :: Hakker) (held :: Holder) -> Pair Bool Holder is
+  first matching case of held :
+    when Free then Pair true (HeldBy hakker)
+    when HeldBy holder then Pair false held
+  end case
+end function
+
+-- Only the holder can put it down; anyone else's Put changes nothing.
+function modelPut (hakker :: Hakker) (held :: Holder) -> Holder is
+  first matching case of held :
+    when Free then Free
+    when HeldBy holder then if holder = hakker then Free else held end if
+  end case
+end function
+
+-- A crash restarts the chopstick from its behaviour: available again.
+actor chopstick :: Stick by Holder is
+  start openStick by Free
+  on take by modelTake
+  on put by modelPut
+end actor
+end unit

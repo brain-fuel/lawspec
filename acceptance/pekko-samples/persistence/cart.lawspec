@@ -1,0 +1,85 @@
+unit sample.persistence.cart
+
+-- The shopping cart of apache/pekko-samples' pekko-sample-persistence-java,
+-- checked as the sample wrote it: an event-sourced Pekko actor whose
+-- commands answer StatusReply. The native binding names its behaviour and
+-- each handler's message; LawSpec asks the real ShoppingCart every message
+-- and compares each answer with this model, in sequence, across crashes
+-- and from several callers at once. A crash stops the cart, and it recovers
+-- from its journal, so its state survives: restart keeps state.
+type Cart is a record{ id :: Int64 } end type
+
+-- What the model keeps: each item's quantity, and whether the cart is
+-- checked out.
+type Basket is a record{
+    items :: KeyVal Text Int32
+    checkedOut :: Bool}
+end type
+
+openCart :: Unit -> Cart
+-- Each command answers whether the cart accepted it (StatusReply success).
+addItem :: Cart -> Text -> Int32 -> Pair Bool Cart
+removeItem :: Cart -> Text -> Pair Bool Cart
+adjustItemQuantity :: Cart -> Text -> Int32 -> Pair Bool Cart
+checkout :: Cart -> Pair Bool Cart
+-- Get answers the cart's summary: its items, and whether it is checked out.
+items :: Cart -> Pair (KeyVal Text Int32) Cart
+checkedOut :: Cart -> Pair Bool Cart
+
+function emptyBasket (u :: Unit) -> Basket is
+  Basket record{ items = prelude.keyValOf [], checkedOut = false}
+end function
+
+-- An item already in the cart, a quantity below one, and anything once the
+-- cart is checked out are rejected.
+function modelAddItem (item :: Text) (quantity :: Int32)
+    (b :: Basket) -> Pair Bool Basket is
+  if b.checkedOut then Pair false b else
+    first matching case of prelude.lookup item b.items :
+      when Present held then Pair false b
+      when Absent then
+        if quantity <= 0 then Pair false b else Pair true (b with items = prelude.put item quantity b.items) end if
+    end case
+  end if
+end function
+
+-- Removing an item the cart does not hold is accepted, and changes nothing.
+function modelRemoveItem (item :: Text) (b :: Basket) -> Pair Bool Basket is
+  if b.checkedOut then Pair false b else Pair true (b with items = prelude.delete item b.items) end if
+end function
+
+function modelAdjustItemQuantity (item :: Text)
+    (quantity :: Int32) (b :: Basket) -> Pair Bool Basket is
+  if b.checkedOut || quantity <= 0 then Pair false b else
+    first matching case of prelude.lookup item b.items :
+      when Present held then Pair true (b with items = prelude.put item quantity b.items)
+      when Absent then Pair false b
+    end case
+  end if
+end function
+
+-- An empty cart cannot be checked out, and a cart is checked out once.
+function modelCheckout (b :: Basket) -> Pair Bool Basket is
+  if b.checkedOut || prelude.isEmpty b.items then Pair false b else Pair true (b with checkedOut = true) end if
+end function
+
+function modelItems (b :: Basket) -> Pair (KeyVal Text Int32) Basket is Pair b.items b end function
+function modelCheckedOut (b :: Basket) -> Pair Bool Basket is Pair b.checkedOut b end function
+
+actor cart :: Cart by Basket is
+  start openCart by (emptyBasket ())
+  restart keeps state
+  on addItem by modelAddItem
+  on removeItem by modelRemoveItem
+  on adjustItemQuantity by modelAdjustItemQuantity
+  on checkout by modelCheckout
+  on items by modelItems
+  on checkedOut by modelCheckedOut
+end actor
+
+-- A checked-out cart is final: every command but Get is then rejected,
+-- as the model says, and the checks hold the real cart to it. A law over
+-- the model's runs (every run holds whenever checked out, always checked
+-- out) would be incomplete here: item names and quantities are unbounded,
+-- so the model's states cannot all be explored.
+end unit

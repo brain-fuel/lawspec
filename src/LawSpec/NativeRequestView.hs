@@ -44,9 +44,11 @@ nativeRequestView request=object
       ["persistence" .= ("event-sourced"::String) | Just EventSourced<-[boundActorPersistence item]]++
       ["entity" .= referenceParts ref | Just ref<-[boundActorEntity item]]++
       ["handlers" .= map handlerView (boundActorHandlers item)])
-    handlerView item=object (["handler" .= boundHandlerName item,"message" .= referenceParts (handlerMessage item),
-      "replyTo" .= handlerReplyTo item]++["reply" .= referenceParts ref | Just ref<-[handlerReply item]]++
-      ["result" .= name | Just name<-[handlerResult item]])
+    handlerView item=object ([(if handlerMessageFactory item then "messageFactory" else "message") .= referenceParts (handlerMessage item),
+      "handler" .= boundHandlerName item,"replyTo" .= handlerReplyTo item]++["reply" .= referenceParts ref | Just ref<-[handlerReply item]]++
+      ["replyArguments" .= map referenceParts (handlerReplyArguments item) | not (null (handlerReplyArguments item))]++
+      ["result" .= name | Just name<-[handlerResult item]]++["resultField" .= name | Just name<-[handlerResultField item]]++
+      ["caller" .= True | handlerCaller item])
     style RecordConstructor="record"::String
     style VariantConstructor="variant"
     style UnitConstructor="unit"

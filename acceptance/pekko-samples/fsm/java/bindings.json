@@ -1,0 +1,13 @@
+{
+  "actors": [
+    {
+      "actor": "sample.chopsticks::chopstick",
+      "behavior": ["sample", "Chopstick", "create"],
+      "handlers": [
+        {"handler": "take", "message": ["sample", "Chopstick", "Take"], "caller": true,
+         "reply": ["sample", "Chopstick", "Answer"], "result": "isTaken"},
+        {"handler": "put", "message": ["sample", "Chopstick", "Put"], "caller": true}
+      ]
+    }
+  ]
+}

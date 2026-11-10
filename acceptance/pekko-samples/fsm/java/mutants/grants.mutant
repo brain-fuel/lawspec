@@ -1,0 +1,10 @@
+expect: model chopstick fails at step
+@@ src/main/java/sample/Chopstick.java
+<<<<<<<
+                    msg.hakker.tell(new Busy(context.getSelf()));
+                    return Behaviors.same();
+=======
+                    // Mutant: a taken chopstick is granted again.
+                    msg.hakker.tell(new Taken(context.getSelf()));
+                    return takenBy(msg.hakker);
+>>>>>>>

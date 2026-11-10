@@ -1,0 +1,9 @@
+expect: model cart fails at step
+@@ src/main/java/sample/persistence/ShoppingCart.java
+<<<<<<<
+      .onCommand(AddItem.class, checkedOutCommandHandlers::onAddItem)
+=======
+      // Mutant: a checked-out cart still takes new items, so checkout is
+      // not final.
+      .onCommand(AddItem.class, openShoppingCartCommandHandlers::onAddItem)
+>>>>>>>
