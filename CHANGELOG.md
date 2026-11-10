@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Native bindings accept `actors`: an existing Pekko Typed actor, named by its
+  behaviour factory and each handler's message, `replyTo`, reply class and
+  result accessor, stands in for a LawSpec `actor`. On Java, the actor's model
+  checks drive it in Pekko's `ActorTestKit` through the new
+  `LawSpecRuntime.ActorBackend`: sequential runs with injected crashes,
+  shrinking, model invariants, linearizability and scenarios. Event-sourced
+  actors run on the in-memory journal and recover after a crash. Ask
+  timeouts fail the run. Shapes LawSpec cannot ask or observe (several
+  replies, a missing `replyTo`, invariants on the actor's state) are explicit
+  diagnostics, and other targets, Spring starter actors and sharded entities
+  are rejected as unsupported. The `pekko-native-actors` acceptance suite
+  checks a hand-written event-sourced account, with mutants for a wrong
+  reply, state lost on restart and a non-linearizable implementation.
+
 ## [0.32.0] - 2026-11-09
 
 ### Added

@@ -1,0 +1,71 @@
+expect: crash()
+@@ src/main/java/example/Account.java
+<<<<<<<
+*
+=======
+// Mutant: the balance lives in memory, so a restart loses it.
+package example;
+
+import org.apache.pekko.Done;
+import org.apache.pekko.actor.typed.ActorRef;
+import org.apache.pekko.actor.typed.Behavior;
+import org.apache.pekko.actor.typed.javadsl.Behaviors;
+
+public final class Account
+{
+  public interface Command
+  {
+  }
+
+  public record Deposit(short amount, ActorRef<Balance> replyTo) implements Command
+  {
+  }
+
+  public record WithdrawAll(ActorRef<Balance> replyTo) implements Command
+  {
+  }
+
+  public record GetBalance(ActorRef<Balance> replyTo) implements Command
+  {
+  }
+
+  public record Close(ActorRef<Done> replyTo) implements Command
+  {
+  }
+
+  public record Balance(long balance)
+  {
+  }
+
+  private Account()
+  {
+  }
+
+  public static Behavior<Command> create(String id)
+  {
+    return Behaviors.setup(context -> holding(0L));
+  }
+
+  private static Behavior<Command> holding(long balance)
+  {
+    return Behaviors.receive(Command.class)
+        .onMessage(Deposit.class, command -> {
+          command.replyTo().tell(new Balance(balance + command.amount()));
+          return holding(balance + command.amount());
+        })
+        .onMessage(WithdrawAll.class, command -> {
+          command.replyTo().tell(new Balance(balance));
+          return holding(0L);
+        })
+        .onMessage(GetBalance.class, command -> {
+          command.replyTo().tell(new Balance(balance));
+          return Behaviors.same();
+        })
+        .onMessage(Close.class, command -> {
+          command.replyTo().tell(Done.done());
+          return holding(0L);
+        })
+        .build();
+  }
+}
+>>>>>>>
