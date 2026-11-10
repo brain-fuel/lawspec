@@ -72,6 +72,9 @@ extra-source-files:
     runtime/LawSpecNetwork.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
+    runtime/pekko/LawSpecCrashInterceptor.java
+    runtime/pekko/LawSpecPekko.java
+    runtime/pekko/LawSpecPekkoSupervisor.java
     runtime/LawSpecDataStrategies.inc
     runtime/LawSpecKotlin.kt
     runtime/LawSpecKotlinCodecs.kt
@@ -631,6 +634,7 @@ library
       LawSpec.Actors.Go
       LawSpec.Actors.Haskell
       LawSpec.Actors.Jvm
+      LawSpec.Actors.Pekko
       LawSpec.Actors.Python
       LawSpec.Actors.Rust
       LawSpec.Actors.Scala

@@ -141,11 +141,13 @@ selects it.
 
 On `:pekko`, a call waits for its reply for up to 30 seconds by default.
 Set the `lawspec.pekko.ask-timeout` system property (for example `5s` or
-`500ms`) to change it. A call that times out fails with `ActorCrashed`; it is
-never treated as a reply.
+`500ms`) to change it. A call that times out throws
+`LawSpecPekko.AskTimedOut`; it is never treated as a reply.
 
-`:spring`, Scala on `:pekko` and `:remote :cluster` are planned for 0.33 and
-are not implemented yet; generation reports them as unsupported.
+On `:pekko`, generated actors have no `serve` and `connect` methods until
+`:remote :cluster` is implemented. `:spring`, Scala on `:pekko` and
+`:remote :cluster` are planned for 0.33 and are not implemented yet; generation
+reports them as unsupported.
 
 Directories must be relative paths whose segments contain only letters, digits,
 `_` and `-`. For Go, `source-dir` and `test-dir` must be equal.

@@ -113,8 +113,8 @@ public final class LawSpecCrashInterceptor<T> extends BehaviorInterceptor<Object
 
   @Override
   @SuppressWarnings("unchecked")
-  public Behavior<T> aroundReceive(
-      TypedActorContext<Object> context, Object message, ReceiveTarget<T> target)
+  public Behavior<T> aroundReceive(TypedActorContext<Object> context, Object message,
+      ReceiveTarget<T> target)
   {
     if (message instanceof Crash crash)
     {

@@ -42,7 +42,7 @@ module Ci (ci) where
 import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, withMVar)
 import Control.Exception (AsyncException(..), IOException, SomeException, evaluate, handle, mask, onException, throwIO, try)
-import Control.Monad (filterM, forM, forM_, forever, unless, void, when)
+import Control.Monad (filterM, forM, forM_, forever, mfilter, unless, void, when)
 import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
@@ -300,7 +300,7 @@ warmUp target = target ++ "-crypto"
 -- handshakes and overlapping naps (the workflows suite times an all group).
 timingSuites :: [String]
 timingSuites =
-  [ "actors", "sessions", "distribution", "concurrent", "scheduling", "resilience", "consistency", "workflows"
+  [ "actors", "restarts", "sessions", "distribution", "concurrent", "scheduling", "resilience", "consistency", "workflows"
   , "beam-remote-api", "beam-network-api", "beam-actor-api", "beam-session-api", "beam-mailbox-api" ]
 
 -- | The suite and target of an acceptance command.
@@ -314,7 +314,8 @@ acceptanceProject :: [(String, String)] -> [String] -> Maybe FilePath
 acceptanceProject env command = do
   (suite, target) <- acceptanceSuite command
   let profile = (if lookup "LAWSPEC_MACHINE_BITS" env == Just "32" then "32" else "") ++
-        (if lookup "LAWSPEC_MINIFY" env == Just "1" then "-compact" else "")
+        (if lookup "LAWSPEC_MINIFY" env == Just "1" then "-compact" else "") ++
+        maybe "" ('-' :) (mfilter (`notElem` ["", "lawspec"]) (lookup "LAWSPEC_ACTORS" env))
   pure (suite ++ profile ++ "/" ++ target)
 
 -- | The console: in parallel, whole lines are printed as steps finish, and a
@@ -671,7 +672,7 @@ targetSteps target =
   [ Step (target ++ "-recorded" ++ suffix) env (acceptance ["recorded", target])
   | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
-  | suite <- ["integration", "definitions", "rc1-nesting", "rc1-codec", "rc1-native-names", "rc1-existence", "rc1-composition", "rc1-empty-domains", "rc1-recursive-records", "rc1-record-payloads", "minor-empty-record-patterns", "minor-stateful-initializers", "minor-positional-products", "minor-branch-admission", "minor-gadt-payload-indices", "minor-existential-records", "minor-container-records", "minor-refined-gadt-indices", "minor-record-predicate-functions", "minor-native-failure-products", "minor-refined-primitive-inputs", "minor-smt-arithmetic", "minor-typed-mappings", "minor-unicode-filenames", "minor-exact-widening", "minor-bounded-generators", "rc1-record-refinements", "rc1-metadata", "rc1-references", "rc1-witnesses", "rc1-integer-domains", "rc1-search", "rc1-eq-set-foundation", "rc1-eq-set-operations", "rc1-sets", "rc1-set-literals", "rc1-set-domains", "rc1-set-generation", "rc1-collection-membership", "rc1-prelude-names", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar", "records", "sequences", "composition", "contracts"] ] ++
+  | suite <- ["integration", "definitions", "rc1-nesting", "rc1-codec", "rc1-native-names", "rc1-existence", "rc1-composition", "rc1-empty-domains", "rc1-recursive-records", "rc1-record-payloads", "minor-empty-record-patterns", "minor-stateful-initializers", "minor-positional-products", "minor-branch-admission", "minor-gadt-payload-indices", "minor-existential-records", "minor-container-records", "minor-refined-gadt-indices", "minor-record-predicate-functions", "minor-native-failure-products", "minor-refined-primitive-inputs", "minor-smt-arithmetic", "minor-typed-mappings", "minor-unicode-filenames", "minor-exact-widening", "minor-bounded-generators", "rc1-record-refinements", "rc1-metadata", "rc1-references", "rc1-witnesses", "rc1-integer-domains", "rc1-search", "rc1-eq-set-foundation", "rc1-eq-set-operations", "rc1-sets", "rc1-set-literals", "rc1-set-domains", "rc1-set-generation", "rc1-collection-membership", "rc1-prelude-names", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "restarts", "consistency", "distribution", "packages", "refinement", "scalar", "records", "sequences", "composition", "contracts"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
   -- also runs their TypeScript, F#, C# and Swift implementations.
   [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript", "fsharp", "csharp", "swift"] ] ++
@@ -691,6 +692,10 @@ targetSteps target =
       "models", "concurrent", "handles", "consistency", "actors", "sessions", "distribution", "scheduling", "matchers", "tables", "keywords", "durations", "flow",
       "integration", "collections", "railway", "generation", "asyncbindings", "refinement",
       "records", "sequences", "composition", "contracts"] ] ++
+  -- The JVM targets' actors again on Apache Pekko (:actors {:runtime :pekko}),
+  -- with the same laws and mutants. ref:DEC-pekko-runtime
+  [ Step (target ++ "-" ++ suite ++ "-pekko") [("LAWSPEC_ACTORS", "pekko")] (acceptance [suite, target])
+  | target `elem` ["java", "kotlin", "groovy", "clojure"], suite <- ["actors", "restarts"] ] ++
   -- Scala's own suites: bound handlers whose operations fail answer Either.
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]

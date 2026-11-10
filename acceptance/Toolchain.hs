@@ -1,5 +1,5 @@
 -- | The native test command for each target, shared by every acceptance suite.
-module Toolchain (Toolchain(..), toolchain, Formatter(..), formatter, mutantArguments, compileFailure) where
+module Toolchain (Toolchain(..), toolchain, Formatter(..), formatter, mutantArguments, compileFailure, actorRuntimePins) where
 
 import Data.Char (toLower, isSpace)
 import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix, dropWhileEnd)
@@ -9,6 +9,14 @@ import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.Process (callProcess, readProcess)
 import Control.Monad (when)
+
+-- | The pinned libraries a non-default actor runtime adds to a JVM project
+-- (LAWSPEC_ACTORS), part of the acceptance cache key. The scaffolds carry the
+-- same versions (LawSpec.Scaffold.pekkoVersion). ref:DEC-pekko-runtime
+actorRuntimePins :: String -> [String]
+actorRuntimePins runtime = case runtime of
+  "pekko" -> ["org.apache.pekko:pekko-actor-typed_3:1.7.1"]
+  _ -> []
 
 data Toolchain = Toolchain
   { command :: FilePath

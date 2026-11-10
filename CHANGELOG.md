@@ -12,6 +12,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (DEC-pekko-runtime, DEC-pekko-otp-supervision, DEC-restart-keeps-state,
   DEC-pekko-cluster-remote, DEC-spring-actor-starter), and a planned 0.33
   roadmap row.
+- `:actors {:runtime :lawspec|:pekko|:spring, :remote :cluster}` on a target in
+  `lawspec.edn`. `:lawspec` stays the default with unchanged output; `:pekko`
+  and `:spring` are rejected on non-JVM targets.
+- `restart keeps state`: an actor line saying that after a crash the actor and
+  its model keep the state committed by the last message handled. It is
+  implemented on every target, with the `restarts` acceptance suite and a
+  mutant that loses the state.
+- An Apache Pekko 1.7.1 actor runtime (`runtime/pekko`): `LawSpecPekko`,
+  `LawSpecPekkoSupervisor` (OTP strategies, lifetimes, restart limit and
+  escalation) and `LawSpecCrashInterceptor`. With `:runtime :pekko`, Java,
+  Kotlin, Groovy and Clojure actors run on it, and the build gains
+  `pekko-actor-typed_3`. `:spring`, Scala on `:pekko` and `:remote :cluster`
+  are not implemented yet and are reported as unsupported; actors on `:pekko`
+  have no `serve` and `connect` yet.
 
 ## [0.32.0] - 2026-11-09
 

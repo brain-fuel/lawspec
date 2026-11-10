@@ -7,7 +7,7 @@
 -- runs it in a LawSpecRuntime.Actor; each handler is a method that sends its
 -- message and returns the reply, tell<Handler> sends it without waiting, and
 -- stop() refuses further messages.
-module LawSpec.Actors.Jvm (emit, Wire(..), actorWire, replyOf, adapterCall, adapterFunction, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital) where
+module LawSpec.Actors.Jvm (emit, emitWith, Runtime(..), lawspecRuntime, Wire(..), actorWire, replyOf, adapterCall, adapterFunction, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital) where
 
 import qualified LawSpec.JavaLayout as J
 import qualified LawSpec.JavaExpr as E
@@ -33,7 +33,25 @@ import LawSpec.Scalar (nativeRepresentation)
 -- | Actors become a typed class, or Java and Kotlin's idiom for one, generated
 -- from the declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
-emit target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
+emit = emitWith lawspecRuntime
+
+-- | The runtime classes generated actors and supervisors run on: LawSpec's own
+-- (LawSpecRuntime) or another with the same methods, such as Pekko's
+-- (LawSpec.Actors.Pekko). The generated classes' public methods are the same.
+data Runtime = Runtime
+  { runtimeActor :: String
+  , runtimeSupervisor :: String
+  -- What the generated Java and Kotlin files import besides LawSpecRuntime.
+  , runtimeImports :: [String]
+  -- Whether actors get serve and connect over LawSpec's network.
+  , runtimeRemote :: Bool
+  }
+
+lawspecRuntime :: Runtime
+lawspecRuntime = Runtime "LawSpecRuntime.Actor" "LawSpecRuntime.Supervisor" [] True
+
+emitWith :: Runtime -> String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emitWith rt target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
   where
     kotlin = target == "kotlin"
     directory = if kotlin then "src/main/kotlin/lawspec/actors/" else "src/main/java/lawspec/actors/"
@@ -41,13 +59,13 @@ emit target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*>
     artifact a = do
       identifier (actorClass a)
       mapM_ (reserved a) (actorHandlers a)
-      source <- (if kotlin then kotlinSource else javaSource) datas (either (const Nothing) Just (actorWire bits datas a)) a
+      source <- (if kotlin then kotlinSource else javaSource) rt datas (if runtimeRemote rt then either (const Nothing) Just (actorWire bits datas a) else Nothing) a
       pure (Artifact (directory ++ actorClass a ++ extension) source "generated" "source")
     supervisorArtifact s = do
       identifier (supervisionClass s)
       mapM_ (\(_, name, _) -> identifier name) (supervisionChildren s)
       pure (Artifact (directory ++ supervisionClass s ++ extension)
-        ((if kotlin then kotlinSupervisor else javaSupervisor) s) "generated" "source")
+        ((if kotlin then kotlinSupervisor else javaSupervisor) rt s) "generated" "source")
     reserved a h
       | handlerName h `elem` ["start", "stop", "crash", "monitor", "link", "serve", "connect"] || ("tell" ++ capital (handlerName h)) `elem` map handlerName (actorHandlers a) =
           Left ("actor " ++ actorName a ++ ": handler " ++ handlerName h ++ " clashes with a method of " ++ actorClass a ++ "; rename it")
@@ -87,8 +105,8 @@ actorWire bits datas a = do
 replyOf :: Handler -> C.Type
 replyOf h = maybe (C.Constructor "Unit" []) id (handlerReply h)
 
-javaSource :: [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
-javaSource datas wire actor = do
+javaSource :: Runtime -> [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
+javaSource rt datas wire actor = do
   own <- boxed (actorState actor)
   startParameters <- mapM (\(name, ty) -> (`J.parameter` name) <$> native ty) startArguments
   methods <- mapM (handler own) (actorHandlers actor)
@@ -99,7 +117,7 @@ javaSource datas wire actor = do
         Just declaration -> adapter declaration [D.text startStateName]
         Nothing | actorKeepsState actor -> D.text startStateName
         Nothing -> initial)
-      actorType = J.applied "LawSpecRuntime.Actor" [own]
+      actorType = J.applied (runtimeActor rt) [own]
       startNames = map (D.text . fst) startArguments
       startBody =
         [J.bind "actor" (J.callWith (D.text "new " <> actorType) [initial, restart]),
@@ -110,9 +128,9 @@ javaSource datas wire actor = do
          J.block (J.call ("private " ++ cls) [J.parameter actorType "actor"]) [D.text "this.actor = actor;"],
          javadoc 98 ("Makes the actor's state with " ++ C.declarationName (actorStart actor) ++ " and starts the actor.") <> D.hardline <>
            J.block (J.signature "public static " (D.text cls) "start" startParameters)
-             [J.returned (J.call "start" (startNames ++ [D.text "null", D.text "LawSpecRuntime.Supervisor.PERMANENT"]))],
+             [J.returned (J.call "start" (startNames ++ [D.text "null", D.text (runtimeSupervisor rt ++ ".PERMANENT")]))],
          javadoc 98 ("Makes the actor's state with " ++ C.declarationName (actorStart actor) ++ " and starts the actor, under supervisor (when not null) with the given lifetime.") <> D.hardline <>
-           J.block (J.signature "public static " (D.text cls) "start" (startParameters ++ map D.text ["LawSpecRuntime.Supervisor supervisor", "String lifetime"])) startBody] ++ methods ++
+           J.block (J.signature "public static " (D.text cls) "start" (startParameters ++ map D.text [runtimeSupervisor rt ++ " supervisor", "String lifetime"])) startBody] ++ methods ++
         [simple "Crashes the actor as a failing handler would, after the messages already sent: for testing how it restarts." "crash" [] "actor.crash();",
          simple "notify gets Exit(\"crashed\", cause) after each crash, and Exit(\"stopped\", null) once it stops." "monitor"
            [J.parameter (J.applied "java.util.function.Consumer" [D.text "LawSpecRuntime.Exit"]) "notify"] "actor.monitor(notify);",
@@ -121,7 +139,7 @@ javaSource datas wire actor = do
   pure (D.render (D.Pretty 100)
     (D.text ("// Generated by LawSpec from actor " ++ actorName actor ++ ". Do not edit.") <> D.hardline <> D.hardline <>
      D.text "package lawspec.actors;" <> D.hardline <> D.hardline <>
-     D.text "import lawspec.runtime.LawSpecRuntime;" <> D.hardline <> D.hardline <>
+     javaImports rt [runtimeActor rt, runtimeSupervisor rt] <>
      javadoc 100 ("Actor " ++ actorName actor ++ ": owns its state and handles one message at a time, in the order they arrive. " ++
        "Each handler method sends a message and returns the reply; tell methods send it without waiting. " ++
        "A handler that throws crashes the actor: the caller gets LawSpecRuntime.ActorCrashed, and a supervised actor restarts " ++
@@ -211,8 +229,8 @@ javaSource datas wire actor = do
                ([D.text "private final LawSpecRuntime.RemoteActor remote;",
                  J.block (J.call "private Remote" [D.text "LawSpecRuntime.RemoteActor remote"]) [D.text "this.remote = remote;"]] ++ remoteMethods))]
 
-kotlinSource :: [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
-kotlinSource datas wire a = do
+kotlinSource :: Runtime -> [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
+kotlinSource rt datas wire a = do
   own <- kotlinDataType datas (actorState a)
   let startArgs = actorStartArguments a
   startParams <- sequence [(\n -> p ++ ": " ++ n) <$> kotlinDataType datas t | (p, t) <- startArgs, not (isUnit t)]
@@ -227,9 +245,9 @@ kotlinSource datas wire a = do
       startDoc = kdoc 92 ("Makes the actor's state with " ++ C.declarationName (actorStart a) ++
           " and starts the actor, under supervisor (when given) with the given lifetime.") <> D.hardline <>
         D.text "@JvmStatic" <> D.hardline <> D.text "@JvmOverloads" <> D.hardline <>
-        K.callWith (D.text "fun start") (map D.text (startParams ++ ["supervisor: LawSpecRuntime.Supervisor? = null", "lifetime: String = LawSpecRuntime.Supervisor.PERMANENT"])) <>
+        K.callWith (D.text "fun start") (map D.text (startParams ++ ["supervisor: " ++ runtimeSupervisor rt ++ "? = null", "lifetime: String = " ++ runtimeSupervisor rt ++ ".PERMANENT"])) <>
         D.text (": " ++ cls ++ " ") <> K.block
-          [ K.bind "actor" (K.trailing (K.call ("LawSpecRuntime.Actor<" ++ own ++ ">") [initial]) (fst restart) [snd restart])
+          [ K.bind "actor" (K.trailing (K.call (runtimeActor rt ++ "<" ++ own ++ ">") [initial]) (fst restart) [snd restart])
           , D.text "supervisor?.supervise(actor, lifetime)"
           , D.text ("return " ++ cls ++ "(actor)") ]
       members = D.joinWith (D.hardline <> D.hardline) $
@@ -244,7 +262,8 @@ kotlinSource datas wire a = do
         , kdoc 96 "Refuses further messages; those already sent are still handled." <> D.hardline <>
           D.text "fun stop() = actor.stop()" ] ++ snd remote
       body = D.render K.kotlinStyle members
-      imports = [ "lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecKotlinCodecs", "LawSpecRuntime"], (c ++ ".") `isInfixOf` body || (c ++ "(") `isInfixOf` body || (c ++ "<") `isInfixOf` body ]
+      imports = [ "lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecKotlinCodecs", "LawSpecRuntime"], (c ++ ".") `isInfixOf` body || (c ++ "(") `isInfixOf` body || (c ++ "<") `isInfixOf` body ] ++
+        runtimeImportsFor rt [runtimeActor rt, runtimeSupervisor rt]
   pure $ D.render K.kotlinStyle $
     D.text ("// Generated by LawSpec from actor " ++ actorName a ++ ". Do not edit.") <> D.hardline <>
     D.text "package lawspec.actors" <> D.hardline <> D.hardline <>
@@ -253,7 +272,7 @@ kotlinSource datas wire a = do
       "Each handler method sends a message and returns the reply; tell methods send it without waiting. " ++
       "A handler that throws crashes the actor: the caller gets LawSpecRuntime.ActorCrashed, and a supervised actor restarts " ++
       "(from its restart adapter, or its start) while any other stops.") <> D.hardline <>
-    D.group (D.text ("class " ++ cls) <> D.softline <> D.text ("private constructor(private val actor: LawSpecRuntime.Actor<" ++ own ++ ">)")) <>
+    D.group (D.text ("class " ++ cls) <> D.softline <> D.text ("private constructor(private val actor: " ++ runtimeActor rt ++ "<" ++ own ++ ">)")) <>
     D.text " " <> D.block 4 members <> D.hardline
   where
     cls = actorClass a
@@ -331,11 +350,11 @@ kotlinSource datas wire a = do
 
 -- | A supervisor's class: start() makes the runtime supervisor and starts
 -- each child under it, in order; each child is a field.
-javaSupervisor :: Supervision -> String
-javaSupervisor supervision = D.render (D.Pretty 100) $
+javaSupervisor :: Runtime -> Supervision -> String
+javaSupervisor rt supervision = D.render (D.Pretty 100) $
   D.text ("// Generated by LawSpec from supervisor " ++ supervisionName supervision ++ ". Do not edit.") <> D.hardline <> D.hardline <>
   D.text "package lawspec.actors;" <> D.hardline <> D.hardline <>
-  D.text "import lawspec.runtime.LawSpecRuntime;" <> D.hardline <> D.hardline <>
+  javaImports rt [runtimeSupervisor rt] <>
   javadoc 100 ("Supervisor " ++ supervisionName supervision ++ ": " ++ strategyText supervision ++ ", at most " ++
     show (supervisionRestarts supervision) ++ " restarts in " ++ seconds supervision ++ "s.") <> D.hardline <>
   D.text ("public final class " ++ cls) <> D.hardline <>
@@ -344,17 +363,17 @@ javaSupervisor supervision = D.render (D.Pretty 100) $
     cls = supervisionClass supervision
     children = supervisionChildren supervision
     members =
-      [D.joinWith D.hardline (D.text "private final LawSpecRuntime.Supervisor supervisor;" :
+      [D.joinWith D.hardline (D.text ("private final " ++ runtimeSupervisor rt ++ " supervisor;") :
         [D.text ("public final " ++ childClass child ++ " " ++ name ++ ";") | (_,name,child) <- children]),
        J.block (J.call ("private " ++ cls)
-         (D.text "LawSpecRuntime.Supervisor supervisor" : [D.text (childClass child ++ " " ++ name) | (_,name,child) <- children]))
+         (D.text (runtimeSupervisor rt ++ " supervisor") : [D.text (childClass child ++ " " ++ name) | (_,name,child) <- children]))
          (D.text "this.supervisor = supervisor;" : [D.text ("this." ++ name ++ " = " ++ name ++ ";") | (_,name,_) <- children]),
        javadoc 98 "Starts the supervisor and its children." <> D.hardline <>
          J.block (J.signature "public static " (D.text cls) "start" [])
-           [J.returned (J.call "start" [D.text "null",D.text "LawSpecRuntime.Supervisor.PERMANENT"])],
+           [J.returned (J.call "start" [D.text "null",D.text (runtimeSupervisor rt ++ ".PERMANENT")])],
        javadoc 98 "Starts the supervisor and its children, under parent (when not null) with the given lifetime." <> D.hardline <>
-         J.block (J.signature "public static " (D.text cls) "start" (map D.text ["LawSpecRuntime.Supervisor parent","String lifetime"]))
-           ([J.bind "own" (J.call "new LawSpecRuntime.Supervisor"
+         J.block (J.signature "public static " (D.text cls) "start" (map D.text [runtimeSupervisor rt ++ " parent","String lifetime"]))
+           ([J.bind "own" (J.call ("new " ++ runtimeSupervisor rt)
                [E.quoted (strategyName supervision),D.text (show (supervisionRestarts supervision)),D.text (seconds supervision)])] ++
             [J.bind name (J.call (childClass child ++ ".start") [D.text "own",E.quoted (lifetimeName lifetime)]) | (lifetime,name,child) <- children] ++
             [J.block (D.text "if (parent != null)") [D.text "parent.supervise(own, lifetime);"],
@@ -365,22 +384,22 @@ javaSupervisor supervision = D.render (D.Pretty 100) $
        javadoc 98 "Stops every child, last started first, without restarting them." <> D.hardline <>
          J.block (J.signature "public " (D.text "void") "stop" []) [D.text "supervisor.stop();"]]
 
-kotlinSupervisor :: Supervision -> String
-kotlinSupervisor s = D.render K.kotlinStyle $
+kotlinSupervisor :: Runtime -> Supervision -> String
+kotlinSupervisor rt s = D.render K.kotlinStyle $
   D.text ("// Generated by LawSpec from supervisor " ++ supervisionName s ++ ". Do not edit.") <> D.hardline <>
   D.text "package lawspec.actors" <> D.hardline <> D.hardline <>
-  D.text "import lawspec.runtime.LawSpecRuntime" <> D.hardline <> D.hardline <>
+  D.joinWith D.hardline [D.text ("import " ++ i) | i <- "lawspec.runtime.LawSpecRuntime" : runtimeImportsFor rt [runtimeSupervisor rt]] <> D.hardline <> D.hardline <>
   javadoc 100 ("Supervisor " ++ supervisionName s ++ ": " ++ strategyText s ++ ", at most " ++ show (supervisionRestarts s) ++
     " restarts in " ++ seconds s ++ "s.") <> D.hardline <>
   D.group (D.text ("class " ++ cls) <> D.softline <> K.callWith (D.text "private constructor")
-    (D.text "private val supervisor: LawSpecRuntime.Supervisor" : [D.text ("val " ++ name ++ ": " ++ childClass c) | (_, name, c) <- supervisionChildren s])) <>
+    (D.text ("private val supervisor: " ++ runtimeSupervisor rt) : [D.text ("val " ++ name ++ ": " ++ childClass c) | (_, name, c) <- supervisionChildren s])) <>
   D.text " " <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
     [ D.text "companion object " <> K.block
         [ javadoc 92 "Starts the supervisor and its children, under parent (when given) with the given lifetime." <> D.hardline <>
           D.text "@JvmStatic" <> D.hardline <> D.text "@JvmOverloads" <> D.hardline <>
-          K.callWith (D.text "fun start") (map D.text ["parent: LawSpecRuntime.Supervisor? = null", "lifetime: String = LawSpecRuntime.Supervisor.PERMANENT"]) <>
+          K.callWith (D.text "fun start") (map D.text ["parent: " ++ runtimeSupervisor rt ++ "? = null", "lifetime: String = " ++ runtimeSupervisor rt ++ ".PERMANENT"]) <>
           D.text (": " ++ cls ++ " ") <> K.block
-            ([ K.bind "own" (K.call "LawSpecRuntime.Supervisor" [K.kotlinString (strategyName s), D.text (show (supervisionRestarts s)), D.text (seconds s)]) ] ++
+            ([ K.bind "own" (K.call (runtimeSupervisor rt) [K.kotlinString (strategyName s), D.text (show (supervisionRestarts s)), D.text (seconds s)]) ] ++
              [ K.bind name (K.call (childClass c ++ ".start") [D.text "own", K.kotlinString (lifetimeName l)]) | (l, name, c) <- supervisionChildren s ] ++
              [ D.text "parent?.supervise(own, lifetime)"
              , D.text "return " <> K.call cls (map D.text ("own" : [name | (_, name, _) <- supervisionChildren s])) ]) ]
@@ -389,6 +408,17 @@ kotlinSupervisor s = D.render K.kotlinStyle $
     , javadoc 96 "Stops every child, last started first, without restarting them." <> D.hardline <>
       D.text "fun stop() = supervisor.stop()" ]) <> D.hardline
   where cls = supervisionClass s
+
+-- | LawSpecRuntime, then the runtime's own classes, in the order
+-- google-java-format sorts imports.
+javaImports :: Runtime -> [String] -> D.Doc
+javaImports rt used = D.joinWith D.hardline [D.text ("import " ++ i ++ ";") | i <- "lawspec.runtime.LawSpecRuntime" : runtimeImportsFor rt used] <> D.hardline <> D.hardline
+
+-- | The runtime's imports that the named classes (such as LawSpecPekko.Actor)
+-- need.
+runtimeImportsFor :: Runtime -> [String] -> [String]
+runtimeImportsFor rt used = [i | i <- runtimeImports rt, simple i `elem` map (takeWhile (/= '.')) used]
+  where simple = reverse . takeWhile (/= '.') . reverse
 
 childClass :: Child -> String
 childClass c = case c of

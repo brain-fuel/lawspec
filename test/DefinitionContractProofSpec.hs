@@ -12,6 +12,7 @@ import qualified LawSpec.Core.Types as Types
 import qualified LawSpec.Core.Schema as Schema
 import qualified LawSpec.Core.Eval as Eval
 import LawSpec.Testing (planTesting, Plan(..))
+import LawSpec.ActorRuntime (defaultActorSettings)
 import LawSpec.CoreEmit (emitPlan, targets)
 import LawSpec.Core.Validate (operationEvidence, validateProgram)
 import qualified DefinitionContractFixture as Fixture
@@ -449,7 +450,7 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
     it "enables audited constructor contracts on all eight backends" $ do
       Schema.dataSchemas [positiveType] `shouldSatisfy` isLeft
       planTesting (program [positiveType] [function]) `shouldSatisfy` isRight
-      mapM_ (\target -> emitPlan target (Plan 64 [positiveType] [] True True) `shouldSatisfy` isRight)
+      mapM_ (\target -> emitPlan target (Plan 64 [positiveType] [] True True defaultActorSettings) `shouldSatisfy` isRight)
         targets
 
   it "audits division in every List predicate under its local guard" $ do

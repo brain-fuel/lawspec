@@ -18,6 +18,7 @@ import LawSpec.Core.Total (validateDefinitions)
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.CoreEmit (emitPlan, targets)
 import qualified LawSpec.Testing as Testing
+import LawSpec.ActorRuntime (defaultActorSettings)
 import qualified LawSpec.Public as Public
 import Data.Either (isLeft, isRight)
 import Data.List (isInfixOf)
@@ -335,6 +336,6 @@ test_payloadPredicatesTraverseRecursiveParametersScoped = describe "recursive pa
             (Equation (Structural boolean) body truth) [] defaultGeneration "" "" [] [] [] [] noHarness NonemptyDomain emptyLawMetadata
           unit = Unit (Id "payload") [] [] [property] [] []
           plan = Testing.Plan 64 [tree]
-            [Testing.PlannedUnit unit [Testing.PlannedProperty property Nothing [] [] (propertyBody property)]] True True
+            [Testing.PlannedUnit unit [Testing.PlannedProperty property Nothing [] [] (propertyBody property)]] True True defaultActorSettings
       forM_ targets $ \target ->
         emitPlan target plan `shouldSatisfy` isRight

@@ -12,9 +12,9 @@ import lawspec.runtime.LawSpecRuntime.Next;
  * escalation as LawSpecRuntime.Supervisor, over LawSpecPekko actors. Strategy "one_for_one"
  * restarts the child that crashed, "one_for_all" every child, "rest_for_one" it and those added
  * after it. A child's lifetime: "permanent" restarts after a crash or a stop, "transient" only
- * after a crash, "temporary" never. More than maxRestarts within period seconds is the
- * supervisor's own crash: its supervisor restarts all of its children, or, at the top, every
- * child stops, last added first, and its monitors are told.
+ * after a crash, "temporary" never. More than maxRestarts within period seconds is the supervisor's
+ * own crash: its supervisor restarts all of its children, or, at the top, every child stops, last
+ * added first, and its monitors are told.
  *
  * <p>
  * Pekko supervises each actor alone, and its restart limit stops only that actor, so the policy
@@ -122,7 +122,8 @@ public final class LawSpecPekkoSupervisor
     }
     else
     {
-      throw new IllegalArgumentException("a supervisor's child is an Actor or a LawSpecPekkoSupervisor");
+      throw new IllegalArgumentException(
+          "a supervisor's child is an Actor or a LawSpecPekkoSupervisor");
     }
   }
 
@@ -346,8 +347,8 @@ public final class LawSpecPekkoSupervisor
   }
 
   /**
-   * notify gets Exit("crashed", cause) when it passes its restart limit, and Exit("stopped",
-   * null) once stopped.
+   * notify gets Exit("crashed", cause) when it passes its restart limit, and Exit("stopped", null)
+   * once stopped.
    */
   public void monitor(java.util.function.Consumer<Exit> notify)
   {
@@ -380,7 +381,6 @@ public final class LawSpecPekkoSupervisor
     }
   }
 
-
   /**
    * The runtime's own check of crashes, links, monitors and supervision on Pekko: every strategy,
    * lifetime, the restart limit and escalation, as LawSpecRuntime.checkSupervision checks them.
@@ -388,7 +388,8 @@ public final class LawSpecPekkoSupervisor
    */
   public static void checkSupervision()
   {
-    java.util.function.Supplier<LawSpecPekko.Actor<Long>> counter = () -> new LawSpecPekko.Actor<Long>(0L, s -> 0L);
+    java.util.function.Supplier<LawSpecPekko.Actor<Long>> counter =
+        () -> new LawSpecPekko.Actor<Long>(0L, s -> 0L);
     java.util.function.Consumer<LawSpecPekko.Actor<Long>> bump =
         a -> a.call(s -> new Next<Long, Long>(s + 1, s + 1));
     java.util.function.Consumer<LawSpecPekko.Actor<Long>> fail = a -> {
@@ -470,7 +471,8 @@ public final class LawSpecPekkoSupervisor
     expectSupervision(kinds(events), List.of("crashed"),
         "a supervisor past its limit tells its monitors");
     var outer = new LawSpecPekkoSupervisor(LawSpecPekkoSupervisor.ONE_FOR_ONE, 5, 10);
-    var inner = outer.supervise(new LawSpecPekkoSupervisor(LawSpecPekkoSupervisor.ONE_FOR_ONE, 1, 10));
+    var inner =
+        outer.supervise(new LawSpecPekkoSupervisor(LawSpecPekkoSupervisor.ONE_FOR_ONE, 1, 10));
     x = inner.supervise(counter.get());
     y = inner.supervise(counter.get());
     bump.accept(y);

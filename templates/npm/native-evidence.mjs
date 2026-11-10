@@ -256,6 +256,7 @@ export async function readNativeObservations({
             sourceDir: target.sourceDir,
             testDir: target.testDir,
             nativeBindings: target.nativeBindings,
+            actors: target.actors,
             minify,
             ...(wired ? {attestation: wired} : {}),
           }),

@@ -744,6 +744,7 @@ async function runTests(compiler, input, selected, roots, config)
         sourceDir: target.sourceDir,
         testDir: target.testDir,
         nativeBindings: target.nativeBindings,
+        actors: target.actors,
         minify: options.minify === true,
         ...(attestation ? {attestation} : {}),
       }),
@@ -1887,6 +1888,7 @@ async function main()
         sourceDir: target.sourceDir,
         testDir: target.testDir,
         nativeBindings: target.nativeBindings,
+        actors: target.actors,
         nativeSources,
         exceptions: config.authoringExceptions ?? [],
       });
@@ -1950,6 +1952,7 @@ async function main()
         sourceDir: target.sourceDir,
         testDir: target.testDir,
         nativeBindings: target.nativeBindings,
+        actors: target.actors,
       }),
     );
     return output(options.json ? result : result.interface);
@@ -2073,6 +2076,7 @@ async function main()
           await compiler.check({
             ...input,
             nativeBindings: target.nativeBindings,
+            actors: target.actors,
           }),
         );
     }
@@ -2421,6 +2425,7 @@ async function main()
           sourceDir: target.sourceDir,
           testDir: target.testDir,
           nativeBindings: target.nativeBindings,
+          actors: target.actors,
           minify: options.minify === true,
         }),
       ).files,

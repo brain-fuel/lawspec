@@ -185,6 +185,7 @@ main = hspec $ do
   IndexedSpec.test_indexedFamiliesElaborateToErasedDataWithProvedIndices
   DomainModelSpec.test_wrappersAndWorkflowsElaborateToCheckedLaws
   StatefulModelSpec.test_statefulModelsElaborateFromTypestate
+  StatefulModelSpec.test_actorRuntimeSettings
   ScenarioSpec.test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree
   TargetNamesSpec.test_targetNamesNeverCollideWithKeywords
   TimeSpec.test_durationsAreExactAndPortable

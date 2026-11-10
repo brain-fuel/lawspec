@@ -115,6 +115,7 @@ export async function serveLawSpec(configFile)
               sourceDir: selected.sourceDir,
               testDir: selected.testDir,
               nativeBindings: selected.nativeBindings,
+              actors: selected.actors,
               ...(method === 'advise'
                 ? {
                     nativeSources: await collectNativeSources(

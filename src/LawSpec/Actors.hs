@@ -6,6 +6,7 @@
 -- handlers are the user's own adapters, called with native values.
 module LawSpec.Actors (actorArtifacts) where
 
+import LawSpec.ActorRuntime (ActorRemote(..), ActorRuntime(..), ActorSettings(..), actorRuntimeName)
 import LawSpec.Actors.Types (actorsOf, supervisionsOf)
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
@@ -16,6 +17,7 @@ import qualified LawSpec.Actors.Jvm as Jvm
 import qualified LawSpec.Actors.Scala as Scala
 import qualified LawSpec.Actors.Rust as Rust
 import qualified LawSpec.Actors.Haskell as Haskell
+import qualified LawSpec.Actors.Pekko as Pekko
 
 -- | Programs without actors get no actor files; the others get a typed class per
 -- actor on every target. ref:DEC-actors-otp-supervision
@@ -28,7 +30,17 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
     units = map plannedUnit (plannedUnits plan)
     datas = planDataDeclarations plan
     bits = planMachineBits plan
-    emitter t = case t of
+    settings = planActors plan
+    -- A JVM target's actors run on its chosen runtime (lawspec.edn's
+    -- :actors); what is not implemented yet is refused, never ignored.
+    -- ref:DEC-pekko-runtime
+    emitter t = case (actorRuntime settings, actorRemote settings) of
+      (LawSpecActors, _) -> lawspecEmitter t
+      (_, ClusterRemote) -> unsupported "serve and connect over Pekko Cluster (:remote :cluster) are not implemented yet"
+      (PekkoActors, _) | t `elem` ["java", "kotlin"] -> Pekko.emit t
+      (runtime, _) -> unsupported ("generated actors on :" ++ actorRuntimeName runtime ++ " are not implemented for " ++ t ++ " yet")
+    unsupported message = \_ _ _ _ _ -> Left message
+    lawspecEmitter t = case t of
       "python" -> Python.emit t
       "go" -> Go.emit t
       "javascript" -> Web.emit t

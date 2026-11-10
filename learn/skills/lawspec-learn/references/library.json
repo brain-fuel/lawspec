@@ -4710,36 +4710,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:121: Generation",
+      "id": "reference:docs/reference/configuration.md:115: Actor runtimes",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:121: Generation",
+      "name": "docs/reference/configuration.md:115: Actor runtimes",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:134: `lawspec.edn`",
+      "id": "reference:docs/reference/configuration.md:157: Generation",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:134: `lawspec.edn`",
+      "name": "docs/reference/configuration.md:157: Generation",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:167: Generated state",
+      "id": "reference:docs/reference/configuration.md:170: `lawspec.edn`",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:167: Generated state",
+      "name": "docs/reference/configuration.md:170: `lawspec.edn`",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:174: Contract resolution and component descriptions",
+      "id": "reference:docs/reference/configuration.md:203: Generated state",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:174: Contract resolution and component descriptions",
+      "name": "docs/reference/configuration.md:203: Generated state",
+      "source": "docs/reference/configuration.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/configuration.md:210: Contract resolution and component descriptions",
+      "kind": "reference",
+      "name": "docs/reference/configuration.md:210: Contract resolution and component descriptions",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

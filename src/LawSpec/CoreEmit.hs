@@ -11,6 +11,7 @@ import LawSpec.AbilityEmit (abilityArtifactsWithNativeBridge)
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName, goPackageAbilities)
 import LawSpec.Actors (actorArtifacts)
+import LawSpec.ActorRuntime (ActorRuntime(..), ActorSettings(..), defaultActorSettings)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
 import LawSpec.Mailboxes (mailboxArtifacts)
@@ -679,7 +680,10 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
             D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
             map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
             Native.dataBudget laws,globalFlags,collectionFlag,target == "haskell" && usesNetworkUnits (map plannedUnit plannedUnits))))
-      cached <- fmap unstoreProduct $ memoized emitTable key (fmap storeProduct (emitUnitWith laws testing))
+      -- The actor runtime changes a supervised unit's tests; the default keeps
+      -- its existing key.
+      let runtimeKey = if planActors == defaultActorSettings then key else digestHex (digestString (key ++ show planActors))
+      cached <- fmap unstoreProduct $ memoized emitTable runtimeKey (fmap storeProduct (emitUnitWith laws testing))
       companions <- if target == "go" then Native.goCompanionArtifacts [] False minify planDataDeclarations calls planMachineBits testing laws else pure []
       pure cached { Product.jvmArtifacts = companions ++ Product.jvmArtifacts cached }
     nativeNames = case target of
@@ -694,7 +698,7 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
       _ -> pure []
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
-          Native.nativeScalarUnitProductWithNetwork (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
+          Native.nativeScalarUnitProductOn (actorRuntime planActors == PekkoActors) (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
       | otherwise = Product.files <$> Scalar.scalarEmitWithSourceRoot sourceRoot False minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool

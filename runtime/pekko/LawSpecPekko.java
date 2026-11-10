@@ -58,14 +58,10 @@ public final class LawSpecPekko
     if (system == null)
     {
       Config quiet =
-          ConfigFactory.parseString(
-                  String.join(
-                      "\n",
-                      "pekko.daemonic = on",
-                      "pekko.loglevel = \"OFF\"",
-                      "pekko.stdout-loglevel = \"OFF\"",
-                      "pekko.log-dead-letters = off",
-                      "pekko.log-dead-letters-during-shutdown = off"))
+          ConfigFactory
+              .parseString(String.join("\n", "pekko.daemonic = on", "pekko.loglevel = \"OFF\"",
+                  "pekko.stdout-loglevel = \"OFF\"", "pekko.log-dead-letters = off",
+                  "pekko.log-dead-letters-during-shutdown = off"))
               .withFallback(ConfigFactory.load());
       system = ActorSystem.create(Behaviors.<Void>empty(), "lawspec", quiet);
     }
@@ -110,14 +106,13 @@ public final class LawSpecPekko
    * Sends the message message makes for a reply address and waits for the reply, at most
    * askTimeout(); throws AskTimedOut when none comes.
    */
-  public static <Q, R> R ask(
-      RecipientRef<Q> target, org.apache.pekko.japi.function.Function<ActorRef<R>, Q> message)
+  public static <Q, R> R ask(RecipientRef<Q> target,
+      org.apache.pekko.japi.function.Function<ActorRef<R>, Q> message)
   {
     var timeout = askTimeout();
     try
     {
-      return AskPattern.ask(target, message, timeout, system().scheduler())
-          .toCompletableFuture()
+      return AskPattern.ask(target, message, timeout, system().scheduler()).toCompletableFuture()
           .join();
     }
     catch (CompletionException e)
@@ -191,8 +186,7 @@ public final class LawSpecPekko
     private int pending;
 
     private volatile LawSpecPekkoSupervisor supervisor;
-    private final List<Consumer<Exit>> monitors =
-        new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Consumer<Exit>> monitors = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final List<Actor<?>> links = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final ActorRef<Object> ref;
 
@@ -206,16 +200,13 @@ public final class LawSpecPekko
       this.state = state;
       this.restartState = restart;
       Behavior<Object> core = Behaviors.setup(context -> running());
-      this.ref =
-          spawn(
-              Behaviors.supervise(
-                      Behaviors.intercept(
-                          () -> new LawSpecCrashInterceptor<Object>(this::accept), core))
-                  .onFailure(
-                      SupervisorStrategy.restart()
-                          .withStopChildren(false)
-                          .withLoggingEnabled(false)),
-              "lawspec-actor");
+      this.ref = spawn(
+          Behaviors
+              .supervise(Behaviors
+                  .intercept(() -> new LawSpecCrashInterceptor<Object>(this::accept), core))
+              .onFailure(
+                  SupervisorStrategy.restart().withStopChildren(false).withLoggingEnabled(false)),
+          "lawspec-actor");
     }
 
     /** The Pekko reference, which takes LawSpecCrashInterceptor's crash signal. */
@@ -251,16 +242,11 @@ public final class LawSpecPekko
           return Behaviors.stopped();
         }
       }
-      return Behaviors.receive(Object.class)
-          .onMessage(Call.class, this::handle)
-          .onMessageEquals(Ending.CHECK, this::ended)
-          .onSignal(
-              PreRestart.class,
-              signal -> {
-                restarting();
-                return Behaviors.same();
-              })
-          .build();
+      return Behaviors.receive(Object.class).onMessage(Call.class, this::handle)
+          .onMessageEquals(Ending.CHECK, this::ended).onSignal(PreRestart.class, signal -> {
+            restarting();
+            return Behaviors.same();
+          }).build();
     }
 
     @SuppressWarnings("unchecked")
@@ -319,8 +305,8 @@ public final class LawSpecPekko
     }
 
     /**
-     * On the actor's turn, as Pekko restarts it: restart (with its supervisor's leave) or stop, then
-     * tell monitors and links, then the caller whose message crashed it.
+     * On the actor's turn, as Pekko restarts it: restart (with its supervisor's leave) or stop,
+     * then tell monitors and links, then the caller whose message crashed it.
      */
     private void restarting()
     {
@@ -416,7 +402,8 @@ public final class LawSpecPekko
     private void post(Function<S, ? extends Next<?, S>> handler, ActorRef<Reply> replyTo)
     {
       count();
-      ref.tell(new Call((Function<Object, ? extends Next<?, Object>>) (Function<?, ?>) handler, replyTo));
+      ref.tell(new Call((Function<Object, ? extends Next<?, Object>>) (Function<?, ?>) handler,
+          replyTo));
     }
 
     private void count()
@@ -439,13 +426,8 @@ public final class LawSpecPekko
     public <R> R call(Function<S, Next<R, S>> handler)
     {
       count();
-      Reply reply =
-          ask(
-              ref,
-              replyTo ->
-                  new Call(
-                      (Function<Object, ? extends Next<?, Object>>) (Function<?, ?>) handler,
-                      replyTo));
+      Reply reply = ask(ref, replyTo -> new Call(
+          (Function<Object, ? extends Next<?, Object>>) (Function<?, ?>) handler, replyTo));
       if (reply.failure() != null)
       {
         throw reply.failure();

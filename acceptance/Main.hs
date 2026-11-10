@@ -151,7 +151,7 @@ main = do
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
         formatInputs <- maybe [] formatterInputs <$> formatter target
-        let labels = [suite, target, profile, show mutate]
+        let labels = [suite, target, profile, show mutate] ++ maybe [] actorRuntimePins (runtimeName runtime)
             inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
         key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
         semanticScaffolds <- either die pure (scaffoldFilesFor runtime (usesCrypto target generated) False target)

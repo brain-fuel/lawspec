@@ -1,11 +1,13 @@
 -- | Stateful models and their commands.
-module StatefulModelSpec (test_statefulModelsElaborateFromTypestate) where
+module StatefulModelSpec (test_statefulModelsElaborateFromTypestate, test_actorRuntimeSettings) where
 
 import FixtureSource (extendUnit)
 import Data.List (isInfixOf)
 import Control.Monad (forM_)
 import Test.Hspec
+import LawSpec.ActorRuntime
 import LawSpec.Compile
+import Data.Aeson (Value (..), object, (.=))
 import LawSpec.Core.Machine
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
@@ -87,6 +89,24 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
           `shouldSatisfy` or
         [C.declarationUses d | (identity,d) <- declarations, identity `elem` map fst bridges]
           `shouldSatisfy` any (not . null)
+  -- ref:DEC-restart-keeps-state
+  it "elaborates restart keeps state into checked identities, not bridges" $ do
+    input <- readFile "examples/specs/restarts.lawspec"
+    case compileCore 64 defaultGeneration [Source "restarts.lawspec" input] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let units = C.programUnits program
+            declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
+            restarts = [c | u <- units, m <- C.unitMachines u, c <- machineCommands m, commandRestart c]
+            named identity = fmap C.declarationName (lookup identity declarations)
+        [(named (commandSystem c), commandRun c == commandSystem c) | c <- restarts]
+          `shouldBe` [(Just "tabKeepState", True)]
+  it "rejects an actor with two restart lines" $ do
+    input <- readFile "examples/specs/restarts.lawspec"
+    let twice = unlines (concatMap (\line -> if line == "  restart keeps state" then [line, line] else [line]) (lines input))
+    case compileCore 64 defaultGeneration [Source "restarts.lawspec" twice] of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "says how it restarts more than once"
+      Right _ -> expectationFailure "expected a rejection"
   it "read each command's typestate from its flow parameter" $
     case machinesOf (extendUnit stack $ unlines
       [ "model stack :: Stack n by List Int8 is"
@@ -169,3 +189,21 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
     chosen one `shouldBe` ["chooseAt 0"]
     chosen two `shouldBe` ["chooseAt 0", "chooseAt 1"]
     chosen (next "clear" two) `shouldBe` []
+
+-- | A target's :actors settings pick its actor runtime; the JVM runtimes are
+-- refused elsewhere, and nothing unknown is ignored. ref:DEC-pekko-runtime
+test_actorRuntimeSettings :: Spec
+test_actorRuntimeSettings = describe "actor runtime settings" $ do
+  let settings target value = actorSettings "actors" (Just target) (Just value)
+  it "default to LawSpec's runtime" $
+    actorSettings "actors" (Just "java") Nothing `shouldBe` Right defaultActorSettings
+  it "select Pekko on a JVM target" $
+    settings "kotlin" (object ["runtime" .= ("pekko" :: String)])
+      `shouldBe` Right (ActorSettings PekkoActors LawSpecRemote)
+  it "reject Pekko off the JVM, unknown fields and cluster without a JVM runtime" $ do
+    settings "python" (object ["runtime" .= ("pekko" :: String)])
+      `shouldSatisfy` either (any (isInfixOf "runs on the JVM")) (const False)
+    settings "java" (object ["mailbox" .= ("x" :: String)])
+      `shouldSatisfy` either (any (isInfixOf "unknown field mailbox")) (const False)
+    settings "java" (object ["remote" .= ("cluster" :: String)])
+      `shouldSatisfy` either (any (isInfixOf "needs :runtime :pekko or :spring")) (const False)

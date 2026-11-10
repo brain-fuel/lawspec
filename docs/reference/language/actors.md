@@ -37,7 +37,7 @@ end actor
 ```text
 actor name :: State by Model is
   start f by value                  -- or ~ value
-  restart from g by reference       -- optional
+  restart from g by reference       -- optional; or: restart keeps state
   on handler by reference [when precondition]
   abstract function
   invariant predicate
@@ -49,6 +49,7 @@ end actor
 | `start f by e` | `f` makes the actor's first state, and `e` is the model's, as in a [model](models.md). A supervised actor's start takes no arguments. |
 | `on h by r` | `h` is a handler: an adapter taking the state first, then the message's arguments, and returning `Pair Reply State`, or the `State` alone when there is no reply. `r` is its reference over the model state, as for a model's command. |
 | `restart from g by r` | After a crash, `g :: State -> State` makes the restarted state from the last one, and `r :: Model -> Model` does the same for the model. Without it, a restarted actor starts again from `start`. |
+| `restart keeps state` | After a crash, the actor and its model keep the state committed by the last message handled; the message that crashed commits nothing. Use it for an actor whose state outlives a crash, such as one recovered from a journal. An actor has at most one restart line. |
 | `abstract`, `invariant` | As in a model, over the actor's own state. |
 
 The actor's handle type is its name, capitalized, followed by `Actor`, so
@@ -247,13 +248,26 @@ supervisor supervises itself.
 
 A restart happens **in place**: the actor keeps its address and the
 messages waiting for it, so handles held elsewhere keep working. Its state
-comes from `restart from`, or from `start`.
+comes from `restart from`, is kept by `restart keeps state`, or comes from
+`start`.
 
 Every supervisor becomes a class such as `BankSupervisor`. Its `start()`
 starts the children, which are then available by name: in Python,
 `bank = BankSupervisor.start()`, then `bank.account.deposit(5)`. It also
 has `stop()`, which stops the children, last first, without restarting
 them, and `monitor(f)`.
+
+## Runtimes
+
+On Java, Kotlin, Groovy and Clojure, a target can run its actors and
+supervisors on Apache Pekko with `:actors {:runtime :pekko}` in
+[`lawspec.edn`](../configuration.md#actor-runtimes). Each actor is then a
+Pekko Typed behaviour, restarted in place by Pekko's supervision, and each
+supervisor keeps the strategies, lifetimes, restart limit and escalation
+above. The generated classes keep their methods, except `serve` and
+`connect`, so adapters and laws do not change, and the same conformance
+check runs against the Pekko runtime. A call waits at most the configured
+ask timeout and then fails.
 
 ## Evidence
 
@@ -266,3 +280,6 @@ monitors, and runs in the generated tests of every unit with a supervisor.
 The [actors example](../../../examples/specs/actors.lawspec) has an
 account with a restart, a supervisor, and a scenario that survives a
 crashed process.
+
+The [restarts example](../../../examples/specs/restarts.lawspec) has a tab
+that keeps its total across a crash.
