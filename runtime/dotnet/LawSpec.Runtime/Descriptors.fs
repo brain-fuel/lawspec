@@ -436,8 +436,7 @@ let rec private finiteWithin
         | Forms [ Atom "maybe"; item ] ->
             finiteWithin item table limit expanding
             |> Option.map (fun inner ->
-                Data("Maybe::Absent", [])
-                :: [ for v in inner -> Data("Maybe::Present", [ v ]) ])
+                Data("Maybe::Absent", []) :: [ for v in inner -> Data("Maybe::Present", [ v ]) ])
         | Forms [ Atom "either"; left; right ] ->
             (match finiteWithin left table limit expanding, finiteWithin right table limit expanding with
              | Some ls, Some rs ->
@@ -450,7 +449,8 @@ let rec private finiteWithin
             let ofConstructor c =
                 match c with
                 | Forms(Atom "ctor" :: tag :: fields) ->
-                    let domains = fields |> List.map (fun field -> finiteWithin field table limit expanding)
+                    let domains =
+                        fields |> List.map (fun field -> finiteWithin field table limit expanding)
 
                     if List.forall Option.isSome domains then
                         product (List.choose id domains) limit

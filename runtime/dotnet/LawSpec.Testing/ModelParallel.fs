@@ -95,7 +95,9 @@ let generateCase
     (branchLength: int)
     : Case * int * Random.Seed =
     let length, r1 = Random.below (BigInteger 4) random
-    let ((startArgs, _) as prefix), prefixRejected, r2 = generateRun model r1 (int length) size false
+
+    let ((startArgs, _) as prefix), prefixRejected, r2 =
+        generateRun model r1 (int length) size false
 
     match states model prefix with
     | None -> (prefix, List.replicate threads []), prefixRejected, r2
