@@ -3501,9 +3501,10 @@ public final class LawSpecRuntime
     }
 
     /**
-     * Every value of a descriptor, in a fixed order, when there are at most limit of them; null when
-     * there are more, or infinitely many. Integers ascend, false comes before true, and constructors
-     * come in their declared order with their fields' values varying last field fastest.
+     * Every value of a descriptor, in a fixed order, when there are at most limit of them; null
+     * when there are more, or infinitely many. Integers ascend, false comes before true, and
+     * constructors come in their declared order with their fields' values varying last field
+     * fastest.
      */
     public List<Value> finite(Object descriptor, int limit)
     {
@@ -5894,12 +5895,14 @@ public final class LawSpecRuntime
   /** How a failing run's rejected draws read after its failure. */
   private static String rejectedNote(int rejected)
   {
-    return rejected == 0 ? "" : " (the reference rejected " + rejected + " drawn steps of this run)";
+    return rejected == 0
+        ? ""
+        : " (the reference rejected " + rejected + " drawn steps of this run)";
   }
 
   /**
-   * One line of JSON per model check, appended to the file LAWSPEC_MODEL_REPORT names: how many runs
-   * and steps it checked, and how many drawn steps the reference rejected.
+   * One line of JSON per model check, appended to the file LAWSPEC_MODEL_REPORT names: how many
+   * runs and steps it checked, and how many drawn steps the reference rejected.
    */
   private static void reportModel(Model model, String check, int runs, int steps, int rejected,
       String outcome)
@@ -5910,7 +5913,8 @@ public final class LawSpecRuntime
       return;
     }
     String line = "{\"model\":\"" + model.name + "\",\"check\":\"" + check + "\",\"runs\":" + runs
-        + ",\"steps\":" + steps + ",\"rejected\":" + rejected + ",\"outcome\":\"" + outcome + "\"}\n";
+        + ",\"steps\":" + steps + ",\"rejected\":" + rejected + ",\"outcome\":\"" + outcome
+        + "\"}\n";
     try
     {
       java.nio.file.Files.writeString(java.nio.file.Path.of(path), line,
@@ -6256,7 +6260,8 @@ public final class LawSpecRuntime
     var steps = new ArrayList<ModelStep>();
     for (long n = 0; n < length; n++)
     {
-      var taken = nextStep(model, symbols, random, state, model.startIndices, size, false, rejected);
+      var taken =
+          nextStep(model, symbols, random, state, model.startIndices, size, false, rejected);
       if (taken == null)
       {
         break;
@@ -6817,8 +6822,8 @@ public final class LawSpecRuntime
       if (mostlyRejected(accepted, rejected[0]))
       {
         reportModel(model, "parallel", n + 1, steps, rejectedTotal, "incomplete");
-        throw new IllegalStateException(
-            incompleteRun(model, "parallel case " + (n + 1) + " of " + cases, accepted, rejected[0]));
+        throw new IllegalStateException(incompleteRun(model,
+            "parallel case " + (n + 1) + " of " + cases, accepted, rejected[0]));
       }
       long shake = random.next();
       var failure = parallelFails(model, c, repeats, shake);
