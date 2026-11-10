@@ -1,0 +1,10 @@
+expect: incomplete model generation: model stack's run
+@@ examples/specs/models.lawspec
+<<<<<<<
+function modelPush (x :: Int8) (xs :: List Int8) -> List Int8 is Cons x xs end function
+=======
+-- Mutant: the reference takes a push only onto a stack of more than a
+-- hundred items, which a run never builds, so it rejects every push drawn.
+-- Such runs show nothing, so they are incomplete, not passed.
+function modelPush (x :: Int8) (xs :: List Int8 where prelude.length xs > 100) -> List Int8 is Cons x xs end function
+>>>>>>>

@@ -30,9 +30,14 @@ function emptyBasket (u :: Unit) -> Basket is
   Basket record{ items = prelude.keyValOf [], checkedOut = false}
 end function
 
+-- The runs use three item names and quantities from zero to three, so they
+-- add, adjust and remove the same items again and again. Each reference
+-- takes only those, and LawSpec draws only what the references take.
 -- An item already in the cart, a quantity below one, and anything once the
 -- cart is checked out are rejected.
-function modelAddItem (item :: Text) (quantity :: Int32)
+function modelAddItem
+    (item :: Text where item = "apple" || item = "pear" || item = "plum")
+    (quantity :: Int32 where quantity >= 0 && quantity <= 3)
     (b :: Basket) -> Pair Bool Basket is
   if b.checkedOut then Pair false b else
     first matching case of prelude.lookup item b.items :
@@ -44,12 +49,16 @@ function modelAddItem (item :: Text) (quantity :: Int32)
 end function
 
 -- Removing an item the cart does not hold is accepted, and changes nothing.
-function modelRemoveItem (item :: Text) (b :: Basket) -> Pair Bool Basket is
+function modelRemoveItem
+    (item :: Text where item = "apple" || item = "pear" || item = "plum")
+    (b :: Basket) -> Pair Bool Basket is
   if b.checkedOut then Pair false b else Pair true (b with items = prelude.delete item b.items) end if
 end function
 
-function modelAdjustItemQuantity (item :: Text)
-    (quantity :: Int32) (b :: Basket) -> Pair Bool Basket is
+function modelAdjustItemQuantity
+    (item :: Text where item = "apple" || item = "pear" || item = "plum")
+    (quantity :: Int32 where quantity >= 0 && quantity <= 3)
+    (b :: Basket) -> Pair Bool Basket is
   if b.checkedOut || quantity <= 0 then Pair false b else
     first matching case of prelude.lookup item b.items :
       when Present held then Pair true (b with items = prelude.put item quantity b.items)

@@ -15,44 +15,46 @@
     describe/2
 ]).
 
+%% A case, how many of its drawn steps the reference rejected (the prefix's
+%% and every branch's), and the random state after it.
 generate(Model, Random, Size, Threads, BranchLength) ->
     {Length, R1} = lawspec_beam_random:below(4, Random),
-    {Prefix = {Args, _}, R2} = lawspec_beam_model:generate(Model, R1, Length, Size, false),
+    {Prefix = {Args, _}, PrefixRejected, R2} =
+        lawspec_beam_model:generate(Model, R1, Length, Size, false),
     case lawspec_beam_model:simulate(Model, Prefix) of
         invalid ->
-            {{Prefix, lists:duplicate(Threads, [])}, R2};
+            {{Prefix, lists:duplicate(Threads, [])}, PrefixRejected, R2};
         {ok, States} ->
-            {Branches, R3} = lawspec_beam_model:with_context(Model, Args, fun(Context) ->
+            {Branches, {R3, Rejected}} = lawspec_beam_model:with_context(Model, Args, fun(Context) ->
                 lists:mapfoldl(
-                    fun(_, R) ->
+                    fun(_, {R, J}) ->
                         {N, Next} = lawspec_beam_random:below(BranchLength, R),
-                        generate_branch(Model, Context, Next, Size, N + 1, lists:last(States), [])
+                        {Branch, More, Last} = generate_branch(
+                            Model, Context, Next, Size, N + 1, lists:last(States), [], 0
+                        ),
+                        {Branch, {Last, J + More}}
                     end,
-                    R2,
+                    {R2, PrefixRejected},
                     lists:seq(1, Threads)
                 )
             end),
-            {trim(Model, {Prefix, Branches}), R3}
+            {trim(Model, {Prefix, Branches}), Rejected, R3}
     end.
-generate_branch(_, _, Random, _, 0, _, Steps) ->
-    {lists:reverse(Steps), Random};
-generate_branch(#{commands := Commands}, _, Random, _, _, _, Steps) when
-    tuple_size(Commands) =:= 0
-->
-    {lists:reverse(Steps), Random};
-generate_branch(Model, Context, Random, Size, Remaining, State, Steps) ->
-    {Index, R1} = lawspec_beam_random:below(tuple_size(maps:get(commands, Model)), Random),
-    Command = lawspec_beam_model:command(Model, Index),
-    {Args, R2} = lists:mapfoldl(
-        fun(D, R) -> lawspec_beam_values:generate(D, maps:get(table, Model), R, Size) end,
-        R1,
-        maps:get(arguments, Command)
+generate_branch(_, _, Random, _, 0, _, Steps, Rejected) ->
+    {lists:reverse(Steps), Rejected, Random};
+generate_branch(Model, Context, Random, Size, Remaining, State, Steps, Rejected) ->
+    {Taken, More, R1} = lawspec_beam_model:next_step(
+        Model, Context, Random, State, maps:get(start_indices, Model), Size, false
     ),
-    case lawspec_beam_model:step(Command, Context, Args, State) of
-        invalid ->
-            generate_branch(Model, Context, R2, Size, Remaining - 1, State, Steps);
-        {ok, Next, _} ->
-            generate_branch(Model, Context, R2, Size, Remaining - 1, Next, [{Index, Args} | Steps])
+    case Taken of
+        none_enabled ->
+            {lists:reverse(Steps), Rejected + More, R1};
+        no_step ->
+            generate_branch(Model, Context, R1, Size, Remaining - 1, State, Steps, Rejected + More);
+        {step, Step, Next} ->
+            generate_branch(
+                Model, Context, R1, Size, Remaining - 1, Next, [Step | Steps], Rejected + More
+            )
     end.
 trim(Model, Case = {Prefix, Branches}) ->
     case allowed(Model, Case) of
@@ -493,27 +495,76 @@ check(Model, Options) ->
     true = maps:get(shared, Model),
     true = lists:all(fun(N) -> is_integer(N) andalso N > 0 end, [Cases, Repeats, Threads, Length]),
     true = is_integer(Shrinks) andalso Shrinks >= 0,
-    check_cases(Model, 0, Cases, Repeats, Shrinks, Threads, Length, Seed, Seed bxor 16#5bd1e995).
-check_cases(_, N, N, _, _, _, _, _, _) ->
-    ok;
-check_cases(Model, N, Cases, Repeats, Shrinks, Threads, Length, Seed, Random) ->
-    {Case, R1} = generate(Model, Random, 1 + N rem 8, Threads, Length),
+    check_cases(
+        Model, 0, Cases, Repeats, Shrinks, Threads, Length, Seed, Seed bxor 16#5bd1e995, {0, 0}
+    ).
+check_cases(Model, N, N, _, _, _, _, _, _, {Steps, Rejected}) ->
+    lawspec_beam_model:report(Model, <<"parallel">>, N, Steps, Rejected, <<"passed">>);
+check_cases(Model, N, Cases, Repeats, Shrinks, Threads, Length, Seed, Random, {Steps, Rejected}) ->
+    {Case = {{_, PrefixSteps}, Branches}, CaseRejected, R1} =
+        generate(Model, Random, 1 + N rem 8, Threads, Length),
+    Accepted = length(PrefixSteps) + lists:sum([length(B) || B <- Branches]),
+    Totals = {AllSteps, AllRejected} = {Steps + Accepted, Rejected + CaseRejected},
+    case CaseRejected > Accepted of
+        true ->
+            lawspec_beam_model:report(
+                Model, <<"parallel">>, N + 1, AllSteps, AllRejected, <<"incomplete">>
+            ),
+            Message = lawspec_beam_model:incomplete(
+                Model,
+                [
+                    <<"parallel case ">>,
+                    integer_to_binary(N + 1),
+                    <<" of ">>,
+                    integer_to_binary(Cases)
+                ],
+                {Accepted, CaseRejected}
+            ),
+            error(
+                {lawspec,
+                    {model_incomplete, maps:get(name, Model), #{
+                        seed => Seed,
+                        'case' => N,
+                        run => Case,
+                        accepted => Accepted,
+                        rejected => CaseRejected,
+                        message => Message
+                    }}}
+            );
+        false ->
+            ok
+    end,
     {Shake, R2} = lawspec_beam_random:next(R1),
     case repeats(Model, Case, Repeats, Shake) of
         ok ->
-            check_cases(Model, N + 1, Cases, Repeats, Shrinks, Threads, Length, Seed, R2);
+            check_cases(
+                Model, N + 1, Cases, Repeats, Shrinks, Threads, Length, Seed, R2, Totals
+            );
         {error, Failure} ->
+            lawspec_beam_model:report(
+                Model, <<"parallel">>, N + 1, AllSteps, AllRejected, <<"failed">>
+            ),
             {Smaller, Found} = shrink(Model, Case, Failure, max(2, Repeats div 2), Shrinks, Shake),
+            Details = #{
+                seed => Seed,
+                'case' => N,
+                shake => Shake,
+                run => Smaller,
+                description => describe(Model, Smaller),
+                failure => Found
+            },
             error(
                 {lawspec,
-                    {model_inconsistent, maps:get(name, Model), maps:get(consistency, Model), #{
-                        seed => Seed,
-                        'case' => N,
-                        shake => Shake,
-                        run => Smaller,
-                        description => describe(Model, Smaller),
-                        failure => Found
-                    }}}
+                    {model_inconsistent, maps:get(name, Model), maps:get(consistency, Model),
+                        case CaseRejected of
+                            0 ->
+                                Details;
+                            _ ->
+                                Details#{
+                                    rejected => CaseRejected,
+                                    note => lawspec_beam_model:rejected_note(CaseRejected)
+                                }
+                        end}}
             )
     end.
 

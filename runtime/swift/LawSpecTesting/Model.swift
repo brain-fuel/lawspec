@@ -411,6 +411,7 @@ public enum Model {
       {
         return lo > hi
       }
+      if case .forms(let f) = d, f.count == 2, f[0] == .atom("oneof") { return true }
       return false
     }
   }
@@ -458,56 +459,174 @@ public enum Model {
     return (values, r)
   }
 
+  // Generation honours the reference. A step is drawn among the commands
+  // enabled at the model state: typestate admits them, their precondition
+  // holds, and some arguments are inside the reference's refinements. When a
+  // command's argument tuples are few (finiteSteps), each is tried against
+  // the reference and one valid tuple is chosen, as QuickCheck state machines
+  // generate from a precondition. Otherwise arguments are drawn and checked
+  // again, up to stepAttempts times, and every draw the reference rejects is
+  // counted. A run where the reference rejected more draws than it accepted
+  // shows little, so its check is incomplete, never passed.
+  // ref:DEC-honest-model-steps
+
+  /// The most argument tuples of one step that are enumerated instead of drawn.
+  private static let finiteSteps = 64
+
+  /// How many times a step's arguments are drawn before the step is given up.
+  private static let stepAttempts = 8
+
+  /// The commands enabled at a state, each with its valid argument tuples, or
+  /// nil to draw them.
+  private static func enabledSteps(
+    _ model: Machine, _ context: Context, _ state: Value, _ indices: [BigInt]
+  ) throws -> [(Int, [[Value]]?)] {
+    var out = [(Int, [[Value]]?)]()
+    for (i, c) in model.commands.enumerated() {
+      if !admits(c, indices) { continue }
+      let descriptors = try modelArguments(c, indices)
+      if emptyModelArguments(descriptors) { continue }
+      if let w = c.when {
+        let holds =
+          (try? callback(w, context, [state])).map { Scalar.equal($0, .bool(true)) } ?? false
+        if !holds { continue }
+      }
+      var domains: [[Value]]? = []
+      for d in descriptors {
+        guard let values = try Descriptors.finite(d, model.table, finiteSteps) else {
+          domains = nil
+          break
+        }
+        domains?.append(values)
+      }
+      guard let tuples = domains.flatMap({ Descriptors.product($0, finiteSteps) }) else {
+        out.append((i, nil))
+        continue
+      }
+      // A tuple outside the reference is not a step here.
+      let valid = tuples.filter { step(c, context, $0, state) != nil }
+      if !valid.isEmpty { out.append((i, valid)) }
+    }
+    return out
+  }
+
+  /// One drawn step: no command enabled (the run stops), every draw rejected
+  /// (the run goes on from the same state), or a step and the model state
+  /// after it.
+  public enum Next {
+    case noneEnabled
+    case noStep
+    case taken((Int, [Value]), Value)
+  }
+
+  /// The next step of a run at a state and indices, how many of its drawn
+  /// arguments the reference rejected, and the next random state.
+  public static func nextStep(
+    _ model: Machine, _ context: Context, _ random: Random.Seed, _ state: Value,
+    _ indices: [BigInt], _ size: Int, _ crashes: Bool
+  ) throws -> (Next, Int, Random.Seed) {
+    let enabled = try enabledSteps(model, context, state, indices)
+    if enabled.isEmpty { return (.noneEnabled, 0, random) }
+    let (choice, r1) = Random.below(BigInt(enabled.count), random)
+    let (index, tuples) = enabled[choice.exactly(Int.self)!]
+    func taken(_ c: Step, _ i: Int, _ args: [Value]) -> Next {
+      guard let (next, _) = step(c, context, args, state) else { return .noStep }
+      return .taken((i, args), next)
+    }
+    // One step in eight of an actor's run is a crash.
+    var r2 = r1
+    if crashes && model.actor {
+      let (crash, r) = Random.below(8, r1)
+      r2 = r
+      if crash.isZero {
+        let i = model.commands.count
+        return (taken(try command(model, i), i, []), 0, r2)
+      }
+    }
+    let c = try command(model, index)
+    if let tuples = tuples {
+      if tuples.count == 1 { return (taken(c, index, tuples[0]), 0, r2) }
+      let (k, r3) = Random.below(BigInt(tuples.count), r2)
+      return (taken(c, index, tuples[k.exactly(Int.self)!]), 0, r3)
+    }
+    var random = r2
+    var rejected = 0
+    for _ in 0..<stepAttempts {
+      let (args, r) = try arguments(model, modelArguments(c, indices), random, size)
+      random = r
+      let next = taken(c, index, args)
+      if case .noStep = next {
+        rejected += 1
+      } else {
+        return (next, rejected, random)
+      }
+    }
+    return (.noStep, rejected, random)
+  }
+
   /// A run drawn from a random state, of at most a length, at a size; crashes
   /// are injected (one step in eight) only when asked, and only for actors.
+  /// Also how many of its drawn steps the reference rejected.
   public static func generateRun(
     _ model: Machine, _ random: Random.Seed, _ length: Int, _ size: Int, _ crashes: Bool
-  ) throws -> (Run, Random.Seed) {
+  ) throws -> (Run, Int, Random.Seed) {
     let (startArgs, r1) = try arguments(model, model.startArguments, random, size)
-    return try withCase(model, startArgs) { context -> (Run, Random.Seed) in
-      guard let started = try? initial(model, context) else { return ((startArgs, []), r1) }
+    return try withCase(model, startArgs) { context -> (Run, Int, Random.Seed) in
+      guard let started = try? initial(model, context) else { return ((startArgs, []), 0, r1) }
       var random = r1
       var remaining = length
       var indices = model.startIndices
       var state = started
       var steps = [(Int, [Value])]()
+      var rejected = 0
       while remaining != 0 {
-        let allowed = try model.commands.indices.filter { i in
-          let ds = try modelArguments(model.commands[i], indices)
-          return admits(model.commands[i], indices) && !emptyModelArguments(ds)
-        }
-        if allowed.isEmpty { break }
-        let (choice, next1) = Random.below(BigInt(allowed.count), random)
-        var index = allowed[choice.exactly(Int.self)!]
-        var next2 = next1
-        if crashes && model.actor {
-          let (crash, r) = Random.below(8, next1)
-          if crash.isZero { index = model.commands.count }
-          next2 = r
-        }
-        let c = try command(model, index)
-        let (args, next3) = try arguments(model, modelArguments(c, indices), next2, size)
-        random = next3
+        let (next, drawn, r) = try nextStep(model, context, random, state, indices, size, crashes)
+        random = r
+        rejected += drawn
+        if case .noneEnabled = next { break }
         remaining -= 1
-        if let (after, _) = step(c, context, args, state) {
-          indices = shifted(c, indices)
+        if case .taken(let s, let after) = next {
+          indices = shifted(try command(model, s.0), indices)
           state = after
-          steps.append((index, args))
-        } else {
-          let dependent = c.arguments.contains { d in
-            if case .forms(let f) = d { return f.first == .atom("dependent") }
-            return false
-          }
-          let allowed =
-            try c.when.map { Scalar.equal(try callback($0, context, [state]), .bool(true)) } ?? true
-          if dependent && allowed {
-            throw fail(
-              "IncompleteModelGeneration",
-              "dependent arguments rejected by the reference (1 attempt)")
-          }
+          steps.append(s)
         }
       }
-      return ((startArgs, steps), random)
+      return ((startArgs, steps), rejected, random)
+    }
+  }
+
+  /// The message of a run whose reference rejected more of its drawn steps
+  /// than it accepted.
+  public static func incompleteRun(
+    _ model: Machine, _ run: String, _ accepted: Int, _ rejected: Int
+  ) -> String {
+    "incomplete model generation: model \(model.name)'s \(run) drew \(rejected) steps its reference rejected and \(accepted) it accepted; fewer than half of its steps are valid, so it shows little of the system"
+  }
+
+  /// How a failing run's rejected draws read after its failure.
+  public static func rejectedNote(_ rejected: Int) -> String {
+    rejected == 0 ? "" : " (the reference rejected \(rejected) drawn steps of this run)"
+  }
+
+  /// One line of JSON per model check, appended to the file
+  /// LAWSPEC_MODEL_REPORT names: how many runs and steps it checked, and how
+  /// many drawn steps the reference rejected.
+  public static func reportModel(
+    _ model: Machine, _ check: String, _ runs: Int, _ steps: Int, _ rejected: Int,
+    _ outcome: String
+  ) {
+    guard let path = ProcessInfo.processInfo.environment["LAWSPEC_MODEL_REPORT"], !path.isEmpty
+    else { return }
+    let line =
+      "{\"model\":\"\(model.name)\",\"check\":\"\(check)\",\"runs\":\(runs),\"steps\":\(steps),\"rejected\":\(rejected),\"outcome\":\"\(outcome)\"}\n"
+    // The report is a side channel; the check's own result stands.
+    let data = Data(line.utf8)
+    if let handle = FileHandle(forWritingAtPath: path) {
+      defer { try? handle.close() }
+      _ = try? handle.seekToEnd()
+      try? handle.write(contentsOf: data)
+    } else {
+      FileManager.default.createFile(atPath: path, contents: data)
     }
   }
 
@@ -781,18 +900,31 @@ public enum Model {
     try require(options.maxShrinks >= 0, "ModelInvalidShrinks")
     let start = seed(options.seed)
     var random = start
+    var steps = 0
+    var rejected = 0
     for n in 0..<options.cases {
       let (length, r1) = Random.below(BigInt(options.maxLength + 1), random)
-      let (run, r2) = try generateRun(model, r1, length.exactly(Int.self)!, 1 + n % 8, true)
+      let (run, drawn, r2) = try generateRun(model, r1, length.exactly(Int.self)!, 1 + n % 8, true)
+      let accepted = run.1.count
+      steps += accepted
+      rejected += drawn
+      if drawn > accepted {
+        reportModel(model, "sequential", n + 1, steps, rejected, "incomplete")
+        throw Fail.with(
+          "IncompleteModelGeneration",
+          incompleteRun(model, "run \(n + 1) of \(options.cases)", accepted, drawn))
+      }
       if let failure = execute(model, run) {
+        reportModel(model, "sequential", n + 1, steps, rejected, "failed")
         let (smaller, found) = try shrinkRun(model, run, failure, options.maxShrinks)
         throw Fail.with(
           "ModelFailed",
-          "model \(model.name): seed \(start.state) (LAWSPEC_SEED=\(start.state) replays it), case \(n): \(describe(model, smaller)); at step \(found.step): \(found.reason)"
+          "model \(model.name): seed \(start.state) (LAWSPEC_SEED=\(start.state) replays it), case \(n): \(describe(model, smaller)); at step \(found.step): \(found.reason)\(rejectedNote(drawn))"
         )
       }
       random = r2
     }
+    reportModel(model, "sequential", options.cases, steps, rejected, "passed")
   }
 
   /// Check a model's sequential runs.
