@@ -5,7 +5,7 @@
 -- definitions, references, preconditions, abstraction and invariants, each
 -- wrapped to take a symbol context and a list of logical values) to the
 -- target's model runtime.
-module LawSpec.ModelTests (modelTestArtifacts, modelTestProduct, modelTestProductWithNetwork, rustModelTests, rustModelTestsWithNetwork) where
+module LawSpec.ModelTests (modelTestArtifacts, modelTestProduct, modelTestProductWithNetwork, modelTestProductWithBackends, rustModelTests, rustModelTestsWithNetwork) where
 
 import qualified LawSpec.JavaLayout as J
 import LawSpec.JavaTestStyle (TestStyle(..))
@@ -105,7 +105,14 @@ modelTestProduct = modelTestProductWithNetwork False
 
 -- | The caller supplies the checked program-wide network requirement.
 modelTestProductWithNetwork :: Bool -> TestStyle -> String -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] Product.JvmProduct
-modelTestProductWithNetwork network style target bits datas calls u
+modelTestProductWithNetwork network = modelTestProductWithBackends network []
+
+-- | As modelTestProductWithNetwork, where each named actor model's runs
+-- drive the given backend (a Java expression making a
+-- LawSpecRuntime.ActorBackend), such as a natively bound actor, instead of
+-- LawSpec's own actor. Java only.
+modelTestProductWithBackends :: Bool -> [(String, D.Doc)] -> TestStyle -> String -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] Product.JvmProduct
+modelTestProductWithBackends network backends style target bits datas calls u
   | null (C.unitMachines u) && null (C.unitSupervisors u) = pure mempty
   | otherwise = do
       prepared <- mapM (\m -> (,) m <$> prepare bits datas calls u m) (C.unitMachines u)
@@ -195,11 +202,12 @@ modelTestProductWithNetwork network style target bits datas calls u
           ([ testMark <> D.text ("public void model" ++ capitalize (machineName m) ++ "()") <> D.hardline <>
              D.block 2 (D.joinWith D.hardline (
                [ D.group (D.text "var model =" <> D.nest 4 (D.softline <> E.call "new LawSpecRuntime.Model"
-                   [ jvmString "java" spec
+                   ([ jvmString "java" spec
                    , array "LawSpecRuntime.ModelCallback" (maybe [] (\(r, f) -> [jCallback r, jCallback f]) (startCallbacks cs))
                    , array "LawSpecRuntime.ModelCallback[]" [braces [jCallback r, jCallback f, maybe (D.text nil) jCallback w] | (r, f, w) <- commandCallbacks cs]
                    , maybe (D.text nil) jCallback (abstractCallback cs)
-                   , array "LawSpecRuntime.ModelCallback" (map jCallback (invariantCallbacks cs)) ])) <> D.text ";"
+                   , array "LawSpecRuntime.ModelCallback" (map jCallback (invariantCallbacks cs)) ]
+                   ++ maybe [] pure (lookup (machineName m) backends)))) <> D.text ";"
                , D.text "LawSpecRuntime.checkModel(model);" ] ++
                [ D.text "LawSpecRuntime.checkModelParallel(model);" | machineShared m ] ++
                [ E.call "LawSpecRuntime.checkScenario" [D.text "model", jvmString "java" (programSpec p)] <> D.text ";" | p <- machineScenarios m ]))
