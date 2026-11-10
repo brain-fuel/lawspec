@@ -1,0 +1,8 @@
+expect: model stations fails at step
+@@ src/main/java/sample/killrweather/WeatherStation.java
+<<<<<<<
+  private final List<Data> values = new ArrayList<>();
+=======
+  // Mutant: every station shares one list of readings.
+  private static final List<Data> values = new ArrayList<>();
+>>>>>>>

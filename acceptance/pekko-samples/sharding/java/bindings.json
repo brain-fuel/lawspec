@@ -1,0 +1,15 @@
+{
+  "actors": [
+    {
+      "actor": "sample.killrweather.stations::stations",
+      "behavior": ["sample", "killrweather", "WeatherStation", "create"],
+      "entity": ["sample", "killrweather", "WeatherStation", "TypeKey"],
+      "handlers": [
+        {"handler": "record", "messageFactory": ["sample", "killrweather", "StationMessages", "reading"], "replyTo": true,
+         "reply": ["sample", "killrweather", "WeatherStation", "DataRecorded"], "resultField": "wsid"},
+        {"handler": "readings", "messageFactory": ["sample", "killrweather", "StationMessages", "temperatures"], "replyTo": true,
+         "reply": ["sample", "killrweather", "WeatherStation", "QueryResult"], "resultField": "readings"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{ "specs": ["acceptance/pekko-samples/fsm/chopsticks.lawspec", "acceptance/pekko-samples/fsm/hakkers.lawspec"] }

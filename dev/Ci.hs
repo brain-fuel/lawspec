@@ -700,6 +700,10 @@ targetSteps target =
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
   -- Existing Pekko actors checked against a LawSpec actor's model (Java).
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "java", suite <- ["pekko-native-actors"] ] ++
+  -- apache/pekko-samples, vendored unchanged and checked through native
+  -- actor bindings (Java). ref:DEC-pekko-sample-suites
+  [ step (target ++ "-pekko-sample-" ++ sample) (acceptance ["pekko-samples/" ++ sample, target])
+  | target == "java", sample <- ["fsm", "persistence", "sharding"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ Step (target ++ "-model-layer-selection" ++ suffix) env ["node", "tools/model-layer-integration.mjs", target]
