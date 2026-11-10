@@ -124,6 +124,9 @@ runs while retaining incremental compilation. This uses Gradle's
 it does not change LawSpec's passing-result cache or skip native checks.
 Already stale compiled outputs can require a one-time `gradle clean`; the Kotlin
 integration fixture needed that recovery before its full mutation family passed.
+The 0.32.0 release run met the same state in the Groovy definitions project. A
+fresh acceptance run (`ci --fresh`, `LAWSPEC_CACHE=refresh`) now removes each
+Gradle project's `build`, `.gradle` and `.kotlin` directories before writing it.
 
 ## Verification ledger
 
