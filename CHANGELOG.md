@@ -39,6 +39,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are rejected as unsupported. The `pekko-native-actors` acceptance suite
   checks a hand-written event-sourced account, with mutants for a wrong
   reply, state lost on restart and a non-linearizable implementation.
+- Native actor handlers accept `replyArguments` (a generic reply such as
+  `StatusReply<Summary>`), `resultField` (a public field of the reply),
+  `caller` (the first argument is a caller the actor knows by address, with
+  one reply address for the run) and `messageFactory` (a static method that
+  makes the message). An actor binding's `entity` now runs the actor as a
+  sharded entity in a one-node cluster (`LawSpecPekkoSharding`), each
+  handler taking the entity's id first. The generated wiring sits in the
+  behaviour's package, so package-private messages can be bound. An
+  event-sourced sharded entity, and a caller of one, are unsupported.
+- The `pekko-samples/persistence`, `pekko-samples/fsm` and
+  `pekko-samples/sharding` acceptance suites check apache/pekko-samples'
+  Java shopping cart, dining hakkers and weather station, vendored unchanged
+  at f9ce3d60 and built on Pekko 1.7.1, with mutants: an item lost after a
+  restart, a checkout that is not final, a chopstick granted twice, one never
+  put down, a starvation law that LawSpec refutes, and stations that share
+  their readings. A how-to, "Check Pekko actors with LawSpec", uses them as
+  worked examples and lists what LawSpec cannot check yet, including the CQRS
+  sample, which has no Pekko code upstream.
 
 ## [0.32.0] - 2026-11-09
 

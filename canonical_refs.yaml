@@ -899,6 +899,18 @@ pekko-cluster-typed:
   kind: article
   title: "Apache Pekko Typed: cluster, receptionist and sharding"
   locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster.html
+apache-pekko-samples:
+  kind: code
+  title: "apache/pekko-samples at f9ce3d60a4f24b1844409e3153c7fbf361cc2506: fsm, persistence and sharding (Java)"
+  locator: https://github.com/apache/pekko-samples/tree/f9ce3d60a4f24b1844409e3153c7fbf361cc2506
+pekko-cluster-sharding-typed:
+  kind: article
+  title: "Apache Pekko Typed: Cluster Sharding (EntityTypeKey, Entity.of, EntityRef)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster-sharding.html
+pekko-status-reply:
+  kind: article
+  title: "Apache Pekko Typed: request-response with StatusReply (askWithStatus)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/interaction-patterns.html#generic-response-wrapper
 pekko-maven-central:
   kind: article
   title: "Maven Central: org.apache.pekko pekko-actor-typed_3 releases"

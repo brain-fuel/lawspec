@@ -1570,3 +1570,65 @@ DEC-native-actor-binding:
   opened: 0.33.0
   decided: 0.33.0
   refs: [herlihy-wing-linearizability, erlang-otp-supervisors, pekko-typed-testing]
+
+DEC-pekko-sample-suites:
+  status: decided
+  question: How are apache/pekko-samples checked, and what do they need from native actor bindings?
+  answer: |
+    The Java samples are vendored unchanged under acceptance/pekko-samples
+    from apache/pekko-samples at f9ce3d60a4f24b1844409e3153c7fbf361cc2506,
+    with each sample's LICENSE and COPYING (CC0) and the repository's Apache
+    LICENSE and NOTICE. Only each sample's build is LawSpec's: Pekko 1.7.1
+    instead of the samples' 1.5.0 (LawSpecPekkoNative is built against 1.7.1,
+    and its test kits must match the actor modules), Java 25, and the test
+    kits. Sample code is never reshaped. Where a sample could not be bound
+    as it is, the binding grew the smallest feature that binds it:
+
+    - The samples' messages are package-private, so the generated wiring is
+      placed in the behaviour's own package (its reference's leading
+      lower-case names) instead of lawspec.testing.
+    - The shopping cart answers StatusReply<Summary> (Pekko's generic
+      response wrapper): replyArguments types the reply address, and
+      resultField reads a public field (Summary.items), as accessors cannot.
+    - The chopstick knows its hakker by ActorRef and frees itself only for a
+      Put from the same address. A caller handler takes the caller first;
+      each caller value has one reply address for the run, its messages carry
+      it, a reply is the next message that address receives (TestProbe-like,
+      precedent: pekko-actor-testkit-typed's probes), and one caller's
+      messages go one at a time, as an actor's would.
+    - The weather station is a sharded entity. entity runs it under Cluster
+      Sharding in a one-node cluster (Cluster.manager joins itself), with
+      an EntityTypeKey named after the bound key and the bound behaviour in
+      LawSpec's crash interceptor, and asks through EntityRef; every handler
+      takes the entity id (Text) first, and each run's entity ids carry the
+      run, which the behaviour's factory does not see. Its Record message
+      carries the sample's Data, which no codec makes (native type bindings
+      expect records in public classes), so messageFactory names a static
+      method, here a ten-line suite helper in the sample's package.
+
+    The sharding backend (LawSpecPekkoSharding) is a separate runtime file,
+    written only when a binding has an entity, so projects without
+    pekko-cluster-sharding-typed are unchanged.
+
+    Gaps recorded, not worked around: the Hakker actor answers nothing and
+    is driven by its timers, so it has no binding and its protocol is a
+    model whose adapters drive the real chopsticks; the explicit-state
+    checker takes minutes over five hakkers' 9,864 states, so the table
+    seats three; fairness is per command, not per argument, and model-law
+    references must be total, so "every hungry hakker eventually eats" is
+    stated only as a spec mutant that LawSpec refutes (the protocol livelocks
+    under every fairness); reference refinements on command arguments do
+    not guide model generation and a rejected step is skipped, so the cart's
+    item names are any text; the cart's laws over runs would be incomplete
+    (unbounded items), so its finality is checked against the real cart; the
+    CQRS Java sample has no Pekko code upstream (its last code is Akka 2.6
+    with Cassandra), so it has no suite. Scala variants wait for the Scala
+    native binding.
+
+    Trust boundary: as DEC-native-actor-binding, plus Pekko Cluster and
+    Cluster Sharding as the platform. LawSpec's sharding setup, not the
+    sample's initSharding, starts the entity, so the sample's own sharding
+    wiring is not exercised.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [apache-pekko-samples, pekko-cluster-sharding-typed, pekko-status-reply, pekko-typed-testing]

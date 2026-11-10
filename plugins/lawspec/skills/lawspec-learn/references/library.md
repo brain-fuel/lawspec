@@ -959,7 +959,9 @@ needs its handle's type binding, since Kotlin calls the method itself.
 own actor instead of LawSpec's. The behaviour and its messages stay the
 application's; LawSpec generates the asks. Java checks native actors
 today; every other target rejects the field as unsupported, and Spring
-starter actors and sharded entities are rejected as well.
+starter actors are rejected as well. The
+[Pekko how-to](../how-to/check-pekko-actors.md) checks
+apache/pekko-samples this way.
 
 ```json
 {
@@ -982,7 +984,7 @@ starter actors and sharded entities are rejected as well.
 | `behavior` | A static factory returning the actor's `Behavior<Command>`. It takes no arguments, or, for an event-sourced actor, its persistence id. |
 | `spring` | A Spring starter `SpringActor` class, instead of `behavior`. Not yet checked. |
 | `persistence` | `"event-sourced"`: the actor recovers its state from its journal. The checks give each run's actor a fresh persistence id on Pekko's in-memory journal. |
-| `entity` | The sharded entity's `EntityTypeKey`. Not yet checked. |
+| `entity` | The sharded entity's `EntityTypeKey`, a static field. The entity runs under Cluster Sharding, and every handler takes the entity's id, a `Text`, first. |
 | `handlers` | One entry for each of the actor's handlers, and no others. |
 
 Each handler entry gives:
@@ -991,13 +993,27 @@ Each handler entry gives:
 - `message`: the message class. Its constructor takes the handler's arguments
   after the state, in order, converted by the native codecs, then the
   `replyTo` address when `replyTo` is true.
+- `messageFactory`: instead of `message`, a static method that takes the same
+  arguments and returns the message. Use it when the message's constructor
+  takes the application's own classes that no codec makes.
 - `replyTo`: whether the message carries an `ActorRef` to answer. A handler
   with a result must have one.
 - `reply`: the class of the answer, the type argument of the `replyTo`
   address. A handler without a result may still name one, as an
   acknowledgement whose content is ignored.
+- `replyArguments`: the reply class's type arguments, for a generic reply
+  such as `StatusReply<Summary>`. The message then gets a reply address of
+  that type, and the result accessor reads it.
 - `result`: the accessor on the reply that gives the handler's result,
   converted by the native codecs. Without it, the reply itself is the result.
+- `resultField`: instead of `result`, a public field of the reply that holds
+  the result.
+- `caller`: when true, the handler's first argument is its caller, which the
+  actor knows by address, as the dining hakkers' chopstick knows its hakker.
+  Each caller gets one address for the whole run, and its messages carry it
+  in place of a fresh `replyTo`. With a `reply`, the result is the next
+  reply that address receives; without one, the message is sent with `tell`.
+  One caller's messages go one at a time.
 
 The checks spawn the behaviour in Pekko's `ActorTestKit` and run the actor's
 model against it: generated runs with injected crashes, shrinking, model
@@ -1008,7 +1024,11 @@ the messages sent before it: an interceptor around the behaviour turns it
 into an exception, so Pekko's supervision restarts the behaviour. An
 event-sourced actor is instead stopped and started again with the same
 persistence id, as Pekko's `EventSourcedBehaviorTestKit` restarts one, and
-recovers from its journal. The model's state then follows the actor's
+recovers from its journal. A sharded entity runs in a one-node cluster in the
+test kit: LawSpec starts sharding for an entity type named after the bound
+key, with the bound behaviour wrapped in its crash interceptor, so the
+application's own sharding setup does not run. Each run's entities are its
+own, and a crash restarts every entity the run has started. The model's state then follows the actor's
 `restart from` reference, or its start without one; an event-sourced actor
 that keeps its state needs a reference that keeps the model's. A told
 message whose events are still being written when the crash comes may be
@@ -1027,6 +1047,11 @@ instead. Binding validation also rejects:
   function binding for one of the actor's adapters;
 - a handler with a result but no `replyTo` or `reply`, a `result` without a
   `reply`, and a `reply` without a `replyTo`;
+- both `result` and `resultField`, both `message` and `messageFactory`,
+  `replyArguments` without a `reply`, and a `caller` with no argument or with
+  a `replyTo`;
+- an `entity` whose handlers do not take a `Text` first, an event-sourced
+  sharded entity, and a caller of a sharded entity (all unsupported);
 - several reply classes for one handler, including a stream of replies;
 - a start that takes arguments, and handlers that are async, use abilities,
   or take or return functions or other actors' handles.
@@ -1037,8 +1062,11 @@ result accessor into the result's codec, so a mismatched type does not
 compile. The actor's adapters become a generated bridge whose methods say the
 native actor runs them. The application's build supplies Pekko 1.7.1:
 `pekko-actor-typed_3` (and `pekko-persistence-typed_3` for an event-sourced
-actor), with `pekko-actor-testkit-typed_3` and `pekko-persistence-testkit_3`
-for the tests. ref:DEC-native-actor-binding
+actor, `pekko-cluster-sharding-typed_3` for a sharded entity), with
+`pekko-actor-testkit-typed_3` and `pekko-persistence-testkit_3` for the
+tests. The wiring is generated in the behaviour's own package (its
+reference's leading lower-case names), so it can name messages that are not
+public. ref:DEC-native-actor-binding ref:DEC-pekko-sample-suites
 
 ## Validation
 
