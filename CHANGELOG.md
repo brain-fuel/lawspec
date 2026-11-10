@@ -14,7 +14,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   capability-scoped component runtime, with typed Haskell services, generated
   bindings and integrity-pinned native platform packages. The full application
   port and default-runtime cutover remain incomplete.
-  The `@lawspec/compiler-<platform>` packages cover macOS and glibc Linux on
+  The `@goforgedev/compiler-<platform>` packages cover macOS and glibc Linux on
   ARM64 and x64. Linux x64 is accepted on execution under emulation; macOS x64
   is cross-built and unverified.
 - Component installation verifies prebuilt native code or compiles the packaged
@@ -36,6 +36,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `check` and `generate` no longer segfault (exit 139) on Linux x64 when they
+  read a warm `.lawspec/cache`. Node's WASI file calls ran as V8 fast API calls
+  and could start a garbage collection that V8 cannot complete from there; the
+  compiler host now disables those fast calls. Reproduced and verified under
+  x64 emulation with Node 22; native x64 confirmation remains open.
 - A deferred law over a provably empty input domain reports incomplete
   evidence when no executable case or generator remains.
 - Gradle test and benchmark invocations disable filesystem watching, so a

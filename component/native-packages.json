@@ -1,30 +1,30 @@
 {
   "darwin-arm64": {
-    "name": "@lawspec/compiler-darwin-arm64",
+    "name": "@goforgedev/compiler-darwin-arm64",
     "version": "0.32.0",
-    "file": "lawspec-compiler-darwin-arm64-0.32.0-07f77f95ee86.tgz",
-    "integrity": "sha512-cvkLAuDHLNcM/WrxYj9l5v4p86vcCYkJjDl8cdRYUmXd2MVEiCPqEeO48RPQOs8SNUoiM5aZOmAsH0RsAKH+ew==",
-    "shasum": "07f77f95ee8630015b361a0c0b3aacc2f34be981"
+    "file": "goforgedev-compiler-darwin-arm64-0.32.0-32b3ed6306f1.tgz",
+    "integrity": "sha512-lz3iyn3049hKIP77fED9+Vg01VmftxrE737azR0gdx1pEzxj2uTX/L2Kr3nVN4URqsP0eoYRq9SBjujQHgrEMg==",
+    "shasum": "32b3ed6306f16e436747b2bac6505b57e5046d0f"
   },
   "linux-arm64": {
-    "name": "@lawspec/compiler-linux-arm64",
+    "name": "@goforgedev/compiler-linux-arm64",
     "version": "0.32.0",
-    "file": "lawspec-compiler-linux-arm64-0.32.0-cc0af4299c9c.tgz",
-    "integrity": "sha512-WVB2sku7Mtj6rPJzhDOaNZobaRzp3+cAgk6PGwPE+mfh6RByDnBOgVneVIfsU7yYY98jx0Ay5Q3YOE7iPSOYjg==",
-    "shasum": "cc0af4299c9c072204452c63bdd5e121ead86cbe"
+    "file": "goforgedev-compiler-linux-arm64-0.32.0-ece4f7e0c599.tgz",
+    "integrity": "sha512-QocxJtzFaigUTOIJtb8R6g17Pz+Vtn2G1zfWMmzfNrzRuZr2BZHdpMk3ygNJR7KIG0bitbuWnyIEjnktMA9AoA==",
+    "shasum": "ece4f7e0c5994730449e5899a07381ff467a8356"
   },
   "linux-x64": {
-    "name": "@lawspec/compiler-linux-x64",
+    "name": "@goforgedev/compiler-linux-x64",
     "version": "0.32.0",
-    "file": "lawspec-compiler-linux-x64-0.32.0-e57397d224ce.tgz",
-    "integrity": "sha512-VLT+6grRD9O2Pr4Wa2hzfV9LDDQW3sH/v6vpTE9xJQ7t8SpjG/UYHVpqpZCF9Sg9knEDXf878NcJpzc/5HygmA==",
-    "shasum": "e57397d224ce76e74cc8b7dd7dd271b42ce1d005"
+    "file": "goforgedev-compiler-linux-x64-0.32.0-82c967351f78.tgz",
+    "integrity": "sha512-P5As271vN+CgqqetxoFsOHeklIf0mGcjasQxJhCgi2mY7/bx2jbeYNnL61r1eK469ZLscxl17l0nysNxUROSkg==",
+    "shasum": "82c967351f788e8b66f3e044c62e2c540a2be916"
   },
   "darwin-x64": {
-    "name": "@lawspec/compiler-darwin-x64",
+    "name": "@goforgedev/compiler-darwin-x64",
     "version": "0.32.0",
-    "file": "lawspec-compiler-darwin-x64-0.32.0-984e1a424333.tgz",
-    "integrity": "sha512-jhRPUoYJBuareybwUHTQUhz+tVByR+qDCtrbSkmrMNbPM9O0Nn0uG7t+bNJ04F0+3mPzDM0S/YIKn3TFp2pW0g==",
-    "shasum": "984e1a424333b03f108bf15df4d1046cec4b45a6"
+    "file": "goforgedev-compiler-darwin-x64-0.32.0-1bbebaeac966.tgz",
+    "integrity": "sha512-DTmgzrgUD3WN9vnWx19MPOn9SXZdoHSCmSDFARZvjcPmxZ9elSD6gFbwugZ1X3SrIQy/LOTHydQHwtQPTWtr/A==",
+    "shasum": "1bbebaeac966ff05dab2c31ca1f5654d5387dc2e"
   }
 }

@@ -345,7 +345,7 @@ compilation mode alongside artifact, runtime, provider and policy identities.
 The legacy application default remains subject to the full port's cutover gates.
 
 `node component/tools/package-native.mjs` creates optional
-`@lawspec/compiler-<platform>` npm packages. Generated registration locates the
+`@goforgedev/compiler-<platform>` npm packages. Generated registration locates the
 installed platform artifact automatically, so the main LawSpec tarball contains
 no native component. Forced installation compilation bypasses prebuilt native package selection.
 Additional trusted receipt directories can be supplied to this command;

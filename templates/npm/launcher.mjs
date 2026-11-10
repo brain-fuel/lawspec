@@ -7,6 +7,11 @@ let compiled;
 
 export async function loadCore() {
   const { WASI } = await import("node:wasi");
+  // node:wasi imports are V8 fast API calls. uvwasi allocates inside them
+  // (path_open while reading a warm cache), which can start a collection that
+  // cannot walk the optimized caller's frame: Node segfaults on Linux x64.
+  // Ordinary calls keep the same results. ref:DEC-s1j-shared-failures
+  (await import("node:v8")).setFlagsFromString("--no-turbo-fast-api-calls");
   if (Number(process.versions.node.split(".")[0]) < 22)
     throw new Error("LawSpec requires Node 22+");
   compiled ??= readFile(new URL("./core.wasm", import.meta.url)).then(async bytes => ({

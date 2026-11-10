@@ -17,7 +17,7 @@ The teaching review and human/external release gates in
 | 1 | Central Rapid range `>=1.2.0 <1.4.0`, scaffold 1.3.0; unsupported releases and local replacements rejected. Both released baselines execute the checked-strategy fixture. | Original dependency setup. |
 | 2 | Intermediate `any` uses checked generation of its requested type, including nested binding, frequency and filtering; unrelated refinements do not require contracts for a plain Go schema. | Original constrained domain and shrink/replay artifact. |
 | 3 | Imported collection operations retain their canonical prelude provider; import/re-export and shadowing regressions. | Original package graph. |
-| 4 | Fresh-process cold/warm, damaged and disabled caches agree on macOS ARM64 under Node 22.23.4 and Node 24.21.0, including evaluation settings. Linux ARM64 passes all five cache checks under Node 22.23.4 and 24.22.2; emulated Linux x64 passes under Node 22.23.3 and 24.21.0. | Native x64 hardware, macOS x64 and the unavailable WSL2 project; no crash fix is claimed without reproduction. |
+| 4 | Fresh-process cold/warm, damaged and disabled caches agree on macOS ARM64 under Node 22.23.4 and Node 24.21.0, including evaluation settings. Linux ARM64 passes all five cache checks under Node 22.23.4 and 24.22.2; emulated Linux x64 passes under Node 22.23.3 and 24.21.0. | Native x64 hardware, macOS x64 and the unavailable WSL2 project. The reported warm-cache segfault was later reproduced under x64 emulation with a 73-law specification; see the cache crash section. |
 | 5 | Empty substitution avoids repeated record expansion; flat construction measured through 64 fields. | Original wide record and workload. |
 | 6 | Nested construction retains one strict proof prefix; admitted definition evaluation avoids repeatedly validating borrowed subvalues. Recursion is metered and measured separately. | Original recursive model; larger-model roadmap remains open. |
 | 7 | Witness search explores every root constructor independently at increasing depth and uses canonical constructor order; constrained, impossible and recursive domain regressions retain exhaustion. | Original witness domain. |
@@ -67,6 +67,29 @@ For future checked mutual recursion, the roadmap starts with
 [Rocq structural recursion](https://rocq-prover.org/doc/V9.0.0/refman/language/core/inductive.html),
 Lean termination checking and SPARK/Why3 obligation generation. Generating an
 obligation, executing a solver and checking a proof remain separate claims.
+
+## Warm-cache segfault on Linux x64
+
+A user report (cold `check` passes, later runs exit 139, worse as the
+specification grows) reproduces with published 0.31.3 on emulated Linux x64
+under Node 22.23.4, using four bundled specifications with 73 laws: of four
+`check` runs the second and fourth crashed, and `generate` crashed. Three
+core dumps share one stack: the compiler's WASI `path_open` runs as a V8 fast
+API call (`node::wasi::WASI::WasiFunction<…PathOpen…>::FastCallback`); uvwasi
+allocates, Node reports the allocation through
+`AdjustAmountOfExternalAllocatedMemory`, V8 starts a full collection, and root
+iteration faults in `InnerPointerToCodeCache::GetCacheEntry` while visiting
+the optimized calling frame. The two-law cache fixture above is too small to
+optimize that caller, which is why the earlier cache checks passed.
+
+With `--no-turbo-fast-api-calls`, warm checks on the same cache passed, and
+four default control runs immediately afterwards all crashed. The compiler
+host now sets that V8 flag before it creates WASI. Results are unchanged;
+WASI calls take the ordinary call path. The same specification passed three
+warm runs on macOS ARM64 without the flag, and why that platform is spared
+is not established. No upstream Node correction has been identified, and
+native x64 hardware remains unconfirmed. The component runtime does not use
+`node:wasi`.
 
 ## Migration
 

@@ -1376,7 +1376,7 @@ DEC-node-native-platform-packages:
   status: decided
   question: How does LawSpec distribute precompiled code without bundling every platform into the main npm package?
   answer: |
-    The application owns optional @lawspec/compiler-<platform> packages and their
+    The application owns optional @goforgedev/compiler-<platform> packages and their
     trusted digest registrations. The SDK supplies generic compilation, package
     assembly and runtime verification; no application artifact belongs in the SDK
     platform packages. LawSpec's main package keeps portable Wasm for explicit
@@ -1454,6 +1454,9 @@ DEC-component-release-acceptance:
     DEC-component-installation-preparation; it supplies no platform evidence,
     performance claim or human vetting, and leaves the default-runtime cutover
     subject to its existing gates.
+    The owner publishes the native packages under the goforgedev npm
+    organisation, as @goforgedev/compiler-<platform>; the earlier @lawspec scope
+    was never published.
   opened: 0.32.0
   decided: 0.32.0
   refs: [REQ-honest-evidence]

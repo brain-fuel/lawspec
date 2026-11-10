@@ -61,7 +61,7 @@ await packageNativeArtifacts({
   directory,
   artifacts: [...artifacts.values()],
   packageDirectory,
-  packagePrefix: '@lawspec/compiler',
+  packagePrefix: '@goforgedev/compiler',
   version: application.version,
   licenseFile: path.join(root, '../LICENSE'),
   license: application.license,

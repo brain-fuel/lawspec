@@ -23,7 +23,7 @@ Build products and local tarballs are ignored; the installed SDK is never change
 Scripts and JavaScript tests are generated from `templates/component/`.
 
 `package-native` moves application native code into optional
-`@lawspec/compiler-<platform>` packages and stages generated registration that
+`@goforgedev/compiler-<platform>` packages and stages generated registration that
 locates the installed package automatically. The main application package keeps
 the portable Wasm, without bundling native code for every platform. Local tarballs
 and integrity records are written to `component/vendor/` and
