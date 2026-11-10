@@ -4719,36 +4719,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:157: Generation",
+      "id": "reference:docs/reference/configuration.md:159: Generation",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:157: Generation",
+      "name": "docs/reference/configuration.md:159: Generation",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:170: `lawspec.edn`",
+      "id": "reference:docs/reference/configuration.md:172: `lawspec.edn`",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:170: `lawspec.edn`",
+      "name": "docs/reference/configuration.md:172: `lawspec.edn`",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:203: Generated state",
+      "id": "reference:docs/reference/configuration.md:205: Generated state",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:203: Generated state",
+      "name": "docs/reference/configuration.md:205: Generated state",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:210: Contract resolution and component descriptions",
+      "id": "reference:docs/reference/configuration.md:212: Contract resolution and component descriptions",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:210: Contract resolution and component descriptions",
+      "name": "docs/reference/configuration.md:212: Contract resolution and component descriptions",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5052,45 +5052,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:115: BEAM native APIs",
+      "id": "reference:docs/reference/language/actors.md:116: BEAM native APIs",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:115: BEAM native APIs",
+      "name": "docs/reference/language/actors.md:116: BEAM native APIs",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:175: Actors on other nodes",
+      "id": "reference:docs/reference/language/actors.md:176: Actors on other nodes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:175: Actors on other nodes",
+      "name": "docs/reference/language/actors.md:176: Actors on other nodes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:200: Mailboxes",
+      "id": "reference:docs/reference/language/actors.md:201: Mailboxes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:200: Mailboxes",
+      "name": "docs/reference/language/actors.md:201: Mailboxes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:219: Supervisors",
+      "id": "reference:docs/reference/language/actors.md:220: Supervisors",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:219: Supervisors",
+      "name": "docs/reference/language/actors.md:220: Supervisors",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:258: Evidence",
+      "id": "reference:docs/reference/language/actors.md:260: Runtimes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:258: Evidence",
+      "name": "docs/reference/language/actors.md:260: Runtimes",
+      "source": "docs/reference/language/actors.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/actors.md:272: Evidence",
+      "kind": "reference",
+      "name": "docs/reference/language/actors.md:272: Evidence",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5106,18 +5115,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:57: What LawSpec checks",
+      "id": "reference:docs/reference/language/actors.md:58: What LawSpec checks",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:57: What LawSpec checks",
+      "name": "docs/reference/language/actors.md:58: What LawSpec checks",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:78: Typed actors in your code",
+      "id": "reference:docs/reference/language/actors.md:79: Typed actors in your code",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:78: Typed actors in your code",
+      "name": "docs/reference/language/actors.md:79: Typed actors in your code",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
