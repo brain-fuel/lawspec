@@ -1003,6 +1003,8 @@ export interface GenerationRequest extends CheckRequest
   sourceDir?: string;
   testDir?: string;
   minify?: boolean;
+  /** The target's actor runtime, as lawspec.edn's :actors gives it. */
+  actors?: {runtime?: 'lawspec' | 'pekko' | 'spring'; remote?: 'cluster'};
 }
 
 export type ProofTask =

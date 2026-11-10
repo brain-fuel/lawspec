@@ -73,7 +73,8 @@ import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraphWithBits, ide
 import LawSpec.Frontend (compileCore)
 import LawSpec.Memo (buildIdentity)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesWith)
+import LawSpec.ActorRuntime (ActorRuntime(..))
+import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesFor)
 import LawSpec.Targets (programTargets)
 import LawSpec.BuiltinDefaults (adapterPath)
 import Toolchain
@@ -102,6 +103,7 @@ main = do
       mutate = "--no-mutants" `notElem` flags
   bits <- maybe 64 read <$> lookupEnv "LAWSPEC_MACHINE_BITS"
   minify <- (== Just "1") <$> lookupEnv "LAWSPEC_MINIFY"
+  runtime <- actorRuntime
   manifest <- BL.readFile ("acceptance" </> suite </> "suite.json")
   specs <- case decode manifest >>= list . field "specs" of
     Just values -> pure [T.unpack s | String s <- values]
@@ -123,9 +125,10 @@ main = do
         _ -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", String "1.0-rc.2"),
               ("verification", object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])])]
       extra = protocol ++ [("packages", toJSON packages) | not (null packages)] ++
-        [("dependencies", dependencies) | dependencies /= Null]
+        [("dependencies", dependencies) | dependencies /= Null] ++
+        [("actors", object ["runtime" .= name]) | Just name <- [runtimeName runtime]]
   let targets = if null selected then programTargets else selected
-      profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "")
+      profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "") ++ maybe "" ('-' :) (runtimeName runtime)
   forM_ targets $ \target -> do
     let project = ".artifacts" </> (suite ++ profile) </> target
         bindingsFile = "acceptance" </> suite </> target </> "bindings.json"
@@ -143,7 +146,7 @@ main = do
       if mismatch then expectMismatch target bits project
       else do
         mode <- cacheMode
-        scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
+        scaffolds <- either die pure (scaffoldFilesFor runtime (usesCrypto target generated) minify target)
         suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
@@ -151,7 +154,7 @@ main = do
         let labels = [suite, target, profile, show mutate]
             inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
         key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
-        semanticScaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) False target)
+        semanticScaffolds <- either die pure (scaffoldFilesFor runtime (usesCrypto target generated) False target)
         meaning <- forM (semanticIdentities bits sources) $ \hashes ->
           meaningKey target [suite,target,show bits,show mutate] buildIdentity (hashes ++ map snd vectors ++ [show (extra ++ native)]) semanticScaffolds inputs
         exact <- if mode == Reuse then lookupResult key else pure Nothing
@@ -285,8 +288,27 @@ usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.cr
   || (target `elem` ["haskell", "rust"] && generatedPath g == adapterPath target "lawspec.randomness")
   || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"])
 
+-- | LAWSPEC_ACTORS=pekko (or spring) runs a suite's JVM targets with that
+-- actor runtime, as lawspec.edn's :actors {:runtime :pekko} would; the
+-- default is LawSpec's own runtime. ref:DEC-pekko-runtime
+actorRuntime :: IO ActorRuntime
+actorRuntime = lookupEnv "LAWSPEC_ACTORS" >>= \choice -> case choice of
+  Nothing -> pure LawSpecActors
+  Just "" -> pure LawSpecActors
+  Just "lawspec" -> pure LawSpecActors
+  Just "pekko" -> pure PekkoActors
+  Just "spring" -> pure SpringActors
+  Just other -> die ("LAWSPEC_ACTORS must be lawspec, pekko or spring, not " ++ other)
+
+runtimeName :: ActorRuntime -> Maybe String
+runtimeName runtime = case runtime of
+  LawSpecActors -> Nothing
+  PekkoActors -> Just "pekko"
+  SpringActors -> Just "spring"
+
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
+  runtime <- actorRuntime
   createDirectoryIfMissing True project
   forM_ ["src", "lib", "java", "test", "test-support", "tests", "example", "dist", "lawspec", "priv", "lawspec_crypto_build.escript"] $ \folder -> removePathForcibly (project </> folder)
   -- Clojure's Java model and reports must describe this generated project.
@@ -298,7 +320,7 @@ writeProject suite target project defaultProfile minify generated = do
   -- Deleting those fingerprints forces Hex resolution despite a valid lock.
   when (target == "gleam") $ forM_ ["dev", "prod", "lsp", "erlang-shipment"] $ \mode ->
     removePathForcibly (project </> "build" </> mode)
-  scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
+  scaffolds <- either die pure (scaffoldFilesFor runtime (usesCrypto target generated) minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
   adapters <- suiteFiles suite target

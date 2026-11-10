@@ -39,6 +39,13 @@ export interface ComponentTarget
   clojure?: string;
   dotnet?: string;
   nativeBindings?: import('./index.js').NativeBindings;
+  actors?: ActorSettings;
+}
+/** A JVM target's actor runtime (lawspec.edn's :actors). */
+export interface ActorSettings
+{
+  runtime?: 'lawspec' | 'pekko' | 'spring';
+  remote?: 'cluster';
 }
 export interface ComponentManifest
 {

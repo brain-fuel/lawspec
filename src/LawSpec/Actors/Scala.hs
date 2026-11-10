@@ -48,6 +48,7 @@ scalaSource datas wire a = do
       initial = awaited (actorStart a) (adapterCallDoc (actorStart a) startValues)
       restart = case actorRestart a of
         Just d -> D.text ("(s: " ++ own ++ ") => ") <> awaited d (adapterCallDoc d [D.text "s"])
+        Nothing | actorKeepsState a -> D.text ("(s: " ++ own ++ ") => s")
         Nothing -> D.text ("(_: " ++ own ++ ") => ") <> initial
       classMembers = methods ++
         [ comment 2 "Crashes the actor as a failing handler would, after the messages already sent: for testing how it restarts." <>

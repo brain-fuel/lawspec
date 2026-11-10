@@ -100,6 +100,7 @@ generated files; `test-dir` and native bindings are rejected.
 | `gradle` | `kotlin` | Gradle command. Default: `gradlew` in the root, otherwise `gradle`. |
 | `rustc`, `cargo` | `rust` | Rust compiler and Cargo commands. Defaults `rustc` and `cargo`. |
 | `native-bindings` | all | Native type, function and generator bindings; see [native bindings](native-bindings.md). |
+| `actors` | `java`, `kotlin`, `scala`, `groovy`, `clojure` | The runtime generated actors and supervisors run on; see [below](#actor-runtimes). |
 
 Default directories:
 
@@ -110,6 +111,41 @@ Default directories:
 | `python`, `rust`, `prolog` | `src` | `tests` |
 | `javascript`, `typescript`, `haskell` | `src` | `test` |
 | `go` | the root | the root |
+
+### Actor runtimes
+
+A JVM target can run its generated [actors and supervisors](language/actors.md)
+on Apache Pekko instead of LawSpec's own runtime:
+
+```edn
+{
+  :language :java
+  :root "java"
+  :actors {
+    :runtime :pekko
+  }
+}
+```
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `runtime` | `:lawspec` (default), `:pekko`, `:spring` | `:lawspec` is LawSpec's runtime, unchanged. `:pekko` runs each actor as a Pekko Typed behaviour and each supervisor as an OTP-style Pekko parent; the build gains `org.apache.pekko:pekko-actor-typed_3` 1.7.1. `:spring` runs them through the Spring Boot actor starter. |
+| `remote` | `:cluster` | `serve` and `connect` use Pekko Cluster. Needs `:runtime :pekko` or `:spring`. |
+
+The spec does not change with the runtime. Generated actors keep the same
+methods, so adapters, laws and tests stay the same, and the same laws and
+mutants are checked on every runtime. `:pekko` and `:spring` are only for Java,
+Kotlin, Scala, Groovy and Clojure; another target with either is rejected.
+Groovy and Clojure use the Java classes, so they run on Pekko when their target
+selects it.
+
+On `:pekko`, a call waits for its reply for up to 30 seconds by default.
+Set the `lawspec.pekko.ask-timeout` system property (for example `5s` or
+`500ms`) to change it. A call that times out fails with `ActorCrashed`; it is
+never treated as a reply.
+
+`:spring`, Scala on `:pekko` and `:remote :cluster` are planned for 0.33 and
+are not implemented yet; generation reports them as unsupported.
 
 Directories must be relative paths whose segments contain only letters, digits,
 `_` and `-`. For Go, `source-dir` and `test-dir` must be equal.

@@ -5,6 +5,7 @@ import GHC.Generics (Generic)
 import LawSpec.Core
 import qualified LawSpec.Core.EqSet as EqSet
 import qualified LawSpec.Core.Verification as V
+import LawSpec.ActorRuntime (ActorSettings, defaultActorSettings)
 import LawSpec.Common
 import LawSpec.Scalar
 import LawSpec.Core.Eval (evaluateValue, evaluateValuePure)
@@ -43,6 +44,9 @@ data Plan = Plan
   -- Execution selection is separate from the authoritative typed units.
   , planModelChecks :: Bool
   , planPropertyChecks :: Bool
+  -- The target's actor runtime, a generation choice the request makes; the
+  -- checked program does not depend on it. ref:DEC-pekko-runtime
+  , planActors :: ActorSettings
   } deriving (Eq, Show, Generic)
 -- | Each unit's laws are planned together because they are emitted together.
 data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [PlannedProperty] } deriving (Eq, Show, Generic)
@@ -156,7 +160,7 @@ planLowered program@Program{..} = do
         pure (PlannedUnit (u { unitProperties = map plannedProperty properties }) properties)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
   units<-mapM unit programUnits
-  pure (Plan programMachineBits interned units True True)
+  pure (Plan programMachineBits interned units True True defaultActorSettings)
 
 -- | Only model-test builders receive this execution view. Public actor and
 -- supervisor APIs, validation, definitions and source/evidence views use the

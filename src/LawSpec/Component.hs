@@ -12,6 +12,7 @@ import Data.List (sortOn)
 import Data.Ord (Down (..))
 import qualified Data.Text as T
 import LawSpec.Packages (parseRange, parseVersion, satisfies)
+import LawSpec.ActorRuntime (actorSettings)
 import LawSpec.Targets (targets)
 
 componentRequest :: Value -> Maybe Value
@@ -165,11 +166,15 @@ target :: Int -> Value -> [String]
 target index (Object value) =
   unknown
     at
-    ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings"]
+    ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings", "actors"]
     value
     ++ [at ++ ".language is unsupported" | M.lookup "language" value `notElem` map (Just . String . T.pack) targets]
     ++ [at ++ ".root must be a nonempty path" | case M.lookup "root" value of Just (String root) -> T.null root; _ -> True]
+    ++ either id (const []) (actorSettings (at ++ ".actors") language (M.lookup "actors" value))
   where
+    language = case M.lookup "language" value of
+      Just (String name) -> Just (T.unpack name)
+      _ -> Nothing
     at = "targets[" ++ show index ++ "]"
 target index _ = ["targets[" ++ show index ++ "] must be a map"]
 

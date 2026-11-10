@@ -71,6 +71,7 @@ actorText datas a = do
       made = awaited (actorStart a) (adapter (actorStart a) ++ "(" ++ intercalate ", " values ++ ")")
       restarted = case actorRestart a of
         Just d -> awaited d (adapter d ++ "(state.(" ++ own ++ "))")
+        Nothing | actorKeepsState a -> "state"
         Nothing -> made
       names = [p | (p, t, _) <- startArgs, not (unit t)]
   pure $
@@ -86,7 +87,7 @@ actorText datas a = do
     , ""
     , "// Start" ++ cls ++ "Under starts the actor under supervisor (when not nil) with a"
     , "// lifetime (LawSpecPermanent, LawSpecTransient or LawSpecTemporary). After a"
-    , "// crash it restarts " ++ maybe "from its start" (\d -> "from its last state by " ++ adapter d) (actorRestart a) ++ "."
+    , "// crash it restarts " ++ maybe (if actorKeepsState a then "with the state it had" else "from its start") (\d -> "from its last state by " ++ adapter d) (actorRestart a) ++ "."
     , "func Start" ++ cls ++ "Under(" ++ intercalate ", " (["supervisor *LawSpecSupervisor", "lifetime string"] ++ params) ++ ") " ++ cls ++ " {"
     , "\tactor := NewLawSpecActorWithRestart(" ++ made ++ ", func(state any) any {"
     , "\t\treturn " ++ restarted

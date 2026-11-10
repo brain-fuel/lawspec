@@ -117,6 +117,7 @@ emitActors _ bits datas units
           startCall = awaited (actorStart a) (L.App ("handlers." ++ field (actorStart a)) (if null startValues then [L.A "()"] else startValues))
           restartCall = case actorRestart a of
             Just d -> L.Fun "state" (L.App "box" [awaited d (L.App ("handlers." ++ field d) [state])])
+            Nothing | actorKeepsState a -> L.Fun "state" (L.A "state")
             Nothing -> L.Fun "_" (L.App "box" [startCall])
       startTypes <- mapM (native . snd) startParams
       methods <- forM (actorHandlers a) $ \h -> do

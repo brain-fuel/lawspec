@@ -5,7 +5,7 @@
 -- run. It runs before flow types are desugared, so commands still have their
 -- flow parameters and typestate is read from them.
 module LawSpec.StatefulModel
-  ( ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors
+  ( ModelDeclaration(..), ModelCommand(..), ModelRestart(..), elaborateModels, checkSupervisors
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
@@ -40,13 +40,19 @@ data ModelDeclaration = ModelDeclaration
   -- An actor's own state type: its handlers take it first and return it
   -- with their result; the model's state type is the actor's handle.
   , modelActor :: Maybe Type
-  -- The adapter giving a restarted actor's state from its last one, and
-  -- the reference giving the model's.
-  , modelRestart :: Maybe (String, String)
+  -- How a crashed actor restarts, when not from its start.
+  , modelRestart :: Maybe ModelRestart
   -- What its histories must agree with the model by; linearizable when
   -- not said.
   , modelConsistency :: Maybe Consistency
   } deriving (Eq, Show)
+
+-- | `restart from f by g`: the adapter f gives a restarted actor's state from
+-- its last one, and the reference g the model's. `restart keeps state`: the
+-- state after a crash is the state before it, for the actor and the model.
+-- ref:DEC-restart-keeps-state
+data ModelRestart = RestartFrom String String | RestartKeepsState
+  deriving (Eq, Show)
 
 -- | Each command of the system under test is paired with the reference that
 -- says what it should do to the model. ref:DEC-stateful-models-linearizability
@@ -89,13 +95,29 @@ elaborateModels declarations u = do
   forM_ (zip declarations results) $ \(m, (machine, start)) ->
     forM_ (generatedNames machine ++ maybe [] (pure . functionName) start) $ \n -> when (n `elem` taken)
       (Left (Just (modelSpan m), "model " ++ modelName m ++ " generates " ++ n ++ ", which is already declared; rename one"))
-  let starts = [d | (_, Just d) <- results] ++ behaviours
+  let kept = concatMap keptStates declarations
+  forM_ declarations $ \m -> forM_ [functionName d | d <- keptStates m] $ \n -> when (n `elem` taken)
+    (Left (Just (modelSpan m), "actor " ++ modelName m ++ " generates " ++ n ++ " for restart keeps state, which is already declared; rename one"))
+  let starts = [d | (_, Just d) <- results] ++ behaviours ++ kept
       signature d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
   pure u0
     { machines = machines u ++ map fst results
     , functionDefinitions = functionDefinitions u ++ starts
     , functions = functions u ++ map signature starts
     , declarationSpans = declarationSpans u ++ [(functionName d, functionSpan d) | d <- starts] }
+
+-- | The checked identities `restart keeps state` restarts an actor and its
+-- model by. ref:DEC-restart-keeps-state
+keptStates :: ModelDeclaration -> [FunctionDefinition]
+keptStates m = case (modelRestart m, modelActor m) of
+  (Just RestartKeepsState, Just own) ->
+    [ FunctionDefinition (keepState m) [("state", own)] own [] (Var "state") (modelSpan m)
+    , FunctionDefinition (keepModel m) [("model", modelBy m)] (modelBy m) [] (Var "model") (modelSpan m) ]
+  _ -> []
+
+keepState, keepModel :: ModelDeclaration -> String
+keepState m = modelName m ++ "KeepState"
+keepModel m = modelName m ++ "KeepModel"
 
 elaborateModel :: Unit -> ModelDeclaration -> Either Failure (Machine String, Maybe FunctionDefinition)
 elaborateModel u m = do
@@ -167,7 +189,13 @@ elaborateModel u m = do
       [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts Nothing False)
   -- An actor restarted after a crash: f makes the system's state from the
   -- last one, and the reference g the model's.
-  restart <- forM (modelRestart m) $ \(f, g) -> do
+  restart <- forM (modelRestart m) $ \how -> case how of
+   RestartKeepsState -> do
+    _ <- maybe (failing "only an actor can restart") pure (modelActor m)
+    -- Generated identities over the actor's state and the model's, so every
+    -- model runner and actor runtime restarts with the state it had.
+    pure (Command "restart" (keepState m) (keepState m) (keepModel m) Nothing [] 0 True [] [] Nothing True)
+   RestartFrom f g -> do
     own <- maybe (failing "only an actor can restart") pure (modelActor m)
     ty <- maybe (failing ("restart from " ++ f ++ ": " ++ f ++ " has no signature")) pure (signatureOf f)
     when (f `elem` map functionName (functionDefinitions u))

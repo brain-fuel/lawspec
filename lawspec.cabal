@@ -290,6 +290,7 @@ extra-source-files:
     examples/specs/refinements.lawspec
     examples/specs/resilience.lawspec
     examples/specs/resources.lawspec
+    examples/specs/restarts.lawspec
     examples/specs/scalar_adapters.lawspec
     examples/specs/scalar_catalog.lawspec
     examples/specs/scalars.lawspec
@@ -625,6 +626,7 @@ library
       LawSpec.AbilityEmit.Scala
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames
+      LawSpec.ActorRuntime
       LawSpec.Actors
       LawSpec.Actors.Go
       LawSpec.Actors.Haskell

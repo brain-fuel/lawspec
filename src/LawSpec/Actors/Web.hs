@@ -121,6 +121,7 @@ actorClassCode ts datas wire a = do
       startCall = E.call (impl (actorStart a)) startValues
       restart = case actorRestart a of
         Just d -> E.Arrow (C.declarationAsync d) [typedP "s" (E.TKeyword "any")] Nothing (E.ExpressionBody (awaited d (E.call (impl d) [E.Ident "s"])))
+        Nothing | actorKeepsState a -> E.Arrow False [typedP "s" (E.TKeyword "any")] Nothing (E.ExpressionBody (E.Ident "s"))
         Nothing -> E.Arrow (C.declarationAsync (actorStart a)) [] Nothing (E.ExpressionBody (awaited (actorStart a) startCall))
       actorField = E.Field (["readonly" | ts]) "#actor" (typedT (E.TRef "ls.Actor" [])) Nothing
       actor = private' "#actor"

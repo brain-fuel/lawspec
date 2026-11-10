@@ -649,7 +649,7 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
     lawKey law = D.fullKey graph (show planMachineBits) law
     emitUnit laws u = do
       let owned = filter ((== unitName u) . owner) laws
-          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
+          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks planActors) u
           -- Machine callbacks, scenarios and their argument descriptors are
           -- checked references in the graph. Bodies are emitted separately;
           -- their signatures still determine callback arity and public stubs.

@@ -97,6 +97,7 @@ javaSource datas wire actor = do
       initial = adapter (actorStart actor) startValues
       restart = J.lambdaValue [startStateName] (case actorRestart actor of
         Just declaration -> adapter declaration [D.text startStateName]
+        Nothing | actorKeepsState actor -> D.text startStateName
         Nothing -> initial)
       actorType = J.applied "LawSpecRuntime.Actor" [own]
       startNames = map (D.text . fst) startArguments
@@ -221,6 +222,7 @@ kotlinSource datas wire a = do
       initial = awaited (actorStart a) (adapterCallDoc (actorStart a) startValues)
       restart = case actorRestart a of
         Just d -> (["s"], awaited d (adapterCallDoc d [D.text "s"]))
+        Nothing | actorKeepsState a -> (["s"], D.text "s")
         Nothing -> (["_"], initial)
       startDoc = kdoc 92 ("Makes the actor's state with " ++ C.declarationName (actorStart a) ++
           " and starts the actor, under supervisor (when given) with the given lifetime.") <> D.hardline <>

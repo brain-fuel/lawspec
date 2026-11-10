@@ -86,6 +86,7 @@ emitActors bits datas units
           closure parameter body = D.text ("{ " ++ parameter ++ " in") <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "}"
           restart = case actorRestart a of
             Just d -> closure "state" (invoke (sigOf d) ("handlers." ++ field d) [D.text ("state as! " ++ stateType)])
+            Nothing | actorKeepsState a -> closure "state" (D.text "state")
             Nothing -> closure "_" startCall
           paramDecl = ["_ " ++ n ++ ": " ++ t | ((n, _), t) <- zip startParams startTypes]
           paramArgs = map fst startParams

@@ -2,11 +2,12 @@
 -- structure only; they never reformat user source. The readable layout is the
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
-  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith
+  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, pekkoVersion
   , PresentationCheck(..), presentationChecks, gleamTestPackage, rapidMinimum, rapidMaximum, rapidDefault
   ) where
 
 import Data.List (intercalate)
+import LawSpec.ActorRuntime (ActorRuntime (..))
 import qualified LawSpec.Targets as Targets
 
 -- | Supported stable Rapid releases and the scaffold baseline.
@@ -14,6 +15,11 @@ rapidMinimum, rapidMaximum, rapidDefault :: String
 rapidMinimum = "1.2.0"
 rapidMaximum = "1.4.0"
 rapidDefault = "1.3.0"
+
+-- | The Apache Pekko release generated actors run on with :runtime :pekko.
+-- ref:DEC-pekko-runtime
+pekkoVersion :: String
+pekkoVersion = "1.7.1"
 
 -- | The order users see the targets in everywhere: the CLI, the generated npm
 -- facts and the docs read this one list. ref:DEC-generated-javascript
@@ -127,7 +133,13 @@ gleamTestPackage = unlines
 -- With crypto: the libraries of lawspec.crypto's default handlers and of
 -- lawspec.network's secure transport, only for programs that import them.
 scaffoldFilesWith :: Bool -> Bool -> String -> Either String [(FilePath, String)]
-scaffoldFilesWith crypto minify target = case target of
+scaffoldFilesWith = scaffoldFilesFor LawSpecActors
+
+-- | A JVM target's build with the actor runtime it chose: Pekko's typed actors
+-- join the dependencies only when :actors selects :pekko, so the default
+-- scaffolds are unchanged. ref:DEC-pekko-runtime
+scaffoldFilesFor :: ActorRuntime -> Bool -> Bool -> String -> Either String [(FilePath, String)]
+scaffoldFilesFor runtime crypto minify target = case target of
   "hcl" -> Right []
   "yaml" -> Right []
   "make" -> Right []
@@ -228,7 +240,7 @@ scaffoldFilesWith crypto minify target = case target of
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]
-  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto) ++ "\n")]
+  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto pekko) ++ "\n")]
   "go" -> Right [("go.mod", unlines $
     [ "module example.com/lawspec-example", "", "go 1.25.0", ""
     ] ++ (if crypto then
@@ -262,6 +274,7 @@ scaffoldFilesWith crypto minify target = case target of
         , kotlinBlock "dependencies"
             ([ "implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")" ] ++
              [ "implementation(\"org.bouncycastle:bcprov-jdk18on:1.86\")" | crypto ] ++
+             [ "implementation(\"org.apache.pekko:pekko-actor-typed_3:" ++ pekkoVersion ++ "\")" | pekko ] ++
              [ "testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-property:5.9.1\")" ])
@@ -292,6 +305,7 @@ scaffoldFilesWith crypto minify target = case target of
         , kotlinBlock "dependencies"
             ([ "implementation 'org.apache.groovy:groovy:5.0.8'" ] ++
              [ "implementation 'org.bouncycastle:bcprov-jdk18on:1.86'" | crypto ] ++
+             [ "implementation 'org.apache.pekko:pekko-actor-typed_3:" ++ pekkoVersion ++ "'" | pekko ] ++
              [ "testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')"
              , "testImplementation 'org.spockframework:spock-core'"
              , "testImplementation 'org.jetbrains:jetCheck:0.3.0'"
@@ -304,7 +318,8 @@ scaffoldFilesWith crypto minify target = case target of
     [ ("deps.edn", unlines $
         [ "{:paths [\"src\" \"target/classes\"]"
         , " :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}" ++
-            (if crypto then "\n        org.bouncycastle/bcprov-jdk18on {:mvn/version \"1.86\"}}" else "}")
+            (if crypto then "\n        org.bouncycastle/bcprov-jdk18on {:mvn/version \"1.86\"}" else "") ++
+            (if pekko then "\n        org.apache.pekko/pekko-actor-typed_3 {:mvn/version \"" ++ pekkoVersion ++ "\"}" else "") ++ "}"
         , " :aliases"
         , " {:test {:extra-paths [\"test\" \"target/test-classes\"]"
         , "         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}"
@@ -314,6 +329,7 @@ scaffoldFilesWith crypto minify target = case target of
   "swift" -> Right (swiftScaffold minify)
   _ -> Left ("Unknown target: " ++ target)
   where
+    pekko = runtime /= LawSpecActors
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
     commonPackage = [("name", Str "lawspec-example"), ("version", Str "0.1.0"), ("private", Bool True), ("type", Str "module")]
     kotlinBlock name statements
@@ -418,8 +434,8 @@ renderJson minify depth value = case value of
 
 data Xml = Element String [(String, String)] (Either String [Xml])
 
-mavenProject :: Bool -> Xml
-mavenProject crypto = Element "project"
+mavenProject :: Bool -> Bool -> Xml
+mavenProject crypto pekko = Element "project"
   [ ("xmlns", "http://maven.apache.org/POM/4.0.0")
   , ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
   , ("xsi:schemaLocation", "http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd") ]
@@ -427,6 +443,7 @@ mavenProject crypto = Element "project"
     [ node "properties" (fields [("maven.compiler.release", "25"), ("project.build.sourceEncoding", "UTF-8")])
     , node "dependencies"
         ([ compileDependency "org.bouncycastle" "bcprov-jdk18on" "1.86" | crypto ] ++
+        [ compileDependency "org.apache.pekko" "pekko-actor-typed_3" pekkoVersion | pekko ] ++
         [ dependency "org.jetbrains" "jetCheck" "0.3.0"
         , dependency "org.junit.jupiter" "junit-jupiter" "5.14.0" ])
     , node "build" [node "plugins"
