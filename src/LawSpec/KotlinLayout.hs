@@ -95,9 +95,16 @@ lambda parameters body
 trailing :: D.Doc -> [String] -> [D.Doc] -> D.Doc
 trailing invocation parameters body
   | '\n' `elem` flat = broken
-  | otherwise = D.bestFit [D.text (flat ++ " ") <> lambda parameters body, D.prefixChoice opening (D.text (flat ++ " ") <> lambda parameters body) broken]
+  | otherwise = D.bestFit [D.text (flat ++ " ") <> lambda parameters body, D.prefixChoice opening (D.text (flat ++ " ") <> lambda parameters body) belowOrBroken]
   where
     flat = D.render D.Compact invocation
+    -- When the call and its brace fit but the parameters do not, ktfmt
+    -- keeps the call whole and puts the parameters on the next line,
+    -- indented with the body.
+    belowOrBroken
+      | null parameters = broken
+      | otherwise = D.prefixChoice (flat ++ " {") below broken
+    below = D.text (flat ++ " ") <> D.multiline (D.text "{" <> D.nest 4 (D.hardline <> D.text (foldr1 (\a b -> a ++ ", " ++ b) parameters ++ " ->") <> D.hardline <> statements body) <> D.hardline <> D.text "}")
     broken = invocation <> D.text " " <> D.multiline (lambdaOpening parameters <> D.nest 4 (D.hardline <> statements body) <> D.hardline <> D.text "}")
     opening = flat ++ " " ++ D.render D.Compact (lambdaOpening parameters)
 
