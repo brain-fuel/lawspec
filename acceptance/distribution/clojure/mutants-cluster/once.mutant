@@ -1,0 +1,7 @@
+@@ src/example/distribution.clj
+<<<<<<<
+        (do (.add tally (short amount))
+            (.add tally (short amount)))
+=======
+        (do (.add tally (short amount)))
+>>>>>>>
