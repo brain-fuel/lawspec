@@ -647,13 +647,17 @@ interface NativeActorBinding {
   behavior?: NativeReference;                         // a static factory of Behavior<Command>
   spring?: NativeReference;                           // a SpringActor class (not yet checked)
   persistence?: 'event-sourced';
-  entity?: NativeReference;                           // an EntityTypeKey (not yet checked)
+  entity?: NativeReference;                           // a sharded entity's EntityTypeKey
   handlers: {
     handler: string;
-    message: NativeReference;                         // its arguments, then replyTo
+    message?: NativeReference;                        // its arguments, then replyTo
+    messageFactory?: NativeReference;                 // or a static method making it
     replyTo?: boolean;
+    caller?: boolean;                                 // the first argument is the caller
     reply?: NativeReference;                          // one class; several are rejected
+    replyArguments?: NativeReference[];               // the reply's type arguments
     result?: string;                                  // an accessor on the reply
+    resultField?: string;                             // or a public field of it
   }[];
 }
 interface NativeFunctionBinding {

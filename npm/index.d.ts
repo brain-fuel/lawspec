@@ -621,10 +621,14 @@ export interface NativeNetworkBinding
 export interface NativeActorHandlerBinding
 {
   handler: string;
-  message: NativeReference;
+  message?: NativeReference;
+  messageFactory?: NativeReference;
   replyTo?: boolean;
+  caller?: boolean;
   reply?: NativeReference;
+  replyArguments?: NativeReference[];
   result?: string;
+  resultField?: string;
 }
 
 export interface NativeActorBinding

@@ -97,7 +97,8 @@ runtimeFiles =
   , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs")
   -- The checker of existing Pekko actors, written only for JVM projects
   -- whose native bindings bind actors (LawSpec.JavaNativeBinding).
-  , ("java-pekko-native", "pekko/LawSpecPekkoNative.java") ]
+  , ("java-pekko-native", "pekko/LawSpecPekkoNative.java")
+  , ("java-pekko-sharding", "pekko/LawSpecPekkoSharding.java") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

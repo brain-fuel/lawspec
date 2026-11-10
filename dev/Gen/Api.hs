@@ -449,7 +449,7 @@ declarations =
       interface "NativeNetworkBinding" (fields [("identity?", "string"), ("trusted?", "string")]),
       interface
         "NativeActorHandlerBinding"
-        (fields [("handler", "string"), ("message", "NativeReference"), ("replyTo?", "boolean"), ("reply?", "NativeReference"), ("result?", "string")]),
+        (fields [("handler", "string"), ("message?", "NativeReference"), ("messageFactory?", "NativeReference"), ("replyTo?", "boolean"), ("caller?", "boolean"), ("reply?", "NativeReference"), ("replyArguments?", "NativeReference[]"), ("result?", "string"), ("resultField?", "string")]),
       interface
         "NativeActorBinding"
         ( fields [("actor", "string"), ("behavior?", "NativeReference"), ("spring?", "NativeReference")]
