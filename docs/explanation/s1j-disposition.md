@@ -72,7 +72,7 @@ obligation, executing a solver and checking a proof remain separate claims.
 
 A user report (cold `check` passes, later runs exit 139, worse as the
 specification grows) reproduces with published 0.31.3 on emulated Linux x64
-under Node 22.23.4, using four bundled specifications with 73 laws: of four
+under Node 22.23.4, using three bundled specifications with 73 laws: of four
 `check` runs the second and fourth crashed, and `generate` crashed. Three
 core dumps share one stack: the compiler's WASI `path_open` runs as a V8 fast
 API call (`node::wasi::WASI::WasiFunction<…PathOpen…>::FastCallback`); uvwasi
@@ -85,7 +85,11 @@ optimize that caller, which is why the earlier cache checks passed.
 With `--no-turbo-fast-api-calls`, warm checks on the same cache passed, and
 four default control runs immediately afterwards all crashed. The compiler
 host now sets that V8 flag before it creates WASI. Results are unchanged;
-WASI calls take the ordinary call path. The same specification passed three
+WASI calls take the ordinary call path. With that launcher change applied to
+the published 0.31.3 package, eight warm checks passed on the same cache, and
+`generate` ended with an ordinary diagnostic about the reproduction project's
+missing Python setup instead of a crash; a complete generation on x64 was not
+observed. The same specification passed three
 warm runs on macOS ARM64 without the flag, and why that platform is spared
 is not established. No upstream Node correction has been identified, and
 native x64 hardware remains unconfirmed. The component runtime does not use
