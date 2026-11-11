@@ -1,0 +1,57 @@
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.05, "logicalSteps": null, "kind": "letchain", "size": 2, "inputs": 1, "seconds": 0.07606133300000001, "peakRssBytes": 64389120, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.05, "logicalSteps": null, "kind": "letchain", "size": 4, "inputs": 1, "seconds": 0.072249583, "peakRssBytes": 62406656, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.15, "logicalSteps": null, "kind": "letchain", "size": 6, "inputs": 1, "seconds": 0.17702762500000002, "peakRssBytes": 84459520, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 2.07, "logicalSteps": null, "kind": "letchain", "size": 8, "inputs": 1, "seconds": 2.096333625, "peakRssBytes": 431554560, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 46.47, "logicalSteps": null, "kind": "letchain", "size": 10, "inputs": 1, "seconds": 46.512150333, "peakRssBytes": 5626200064, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "kind": "letchain", "size": 12, "inputs": 1, "timedOut": true}
+{"compiler": "0.33.0 main c36f04e4", "kind": "letchain", "size": 14, "inputs": 1, "timedOut": true}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.39, "logicalSteps": null, "kind": "cache-cold", "size": 8, "inputs": 1, "seconds": 0.42821783300001925, "peakRssBytes": 91078656, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.4, "logicalSteps": null, "kind": "cache-warm", "size": 8, "inputs": 1, "seconds": 0.4171898750000196, "peakRssBytes": 152813568, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 1.44, "logicalSteps": null, "kind": "cache-cold", "size": 32, "inputs": 1, "seconds": 1.4885056249999593, "peakRssBytes": 177094656, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 1.47, "logicalSteps": null, "kind": "cache-warm", "size": 32, "inputs": 1, "seconds": 1.519179333000011, "peakRssBytes": 459046912, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.09, "logicalSteps": 97, "kind": "recursive", "size": 4, "inputs": 1, "seconds": 0.1135511669999687, "peakRssBytes": 67010560, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.09, "logicalSteps": 776, "kind": "recursive", "size": 4, "inputs": 8, "seconds": 0.11321354199998268, "peakRssBytes": 67010560, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.1, "logicalSteps": 3104, "kind": "recursive", "size": 4, "inputs": 32, "seconds": 0.11707333300000755, "peakRssBytes": 65994752, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.09, "logicalSteps": 213, "kind": "recursive", "size": 8, "inputs": 1, "seconds": 0.11700954100001582, "peakRssBytes": 65961984, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.1, "logicalSteps": 1704, "kind": "recursive", "size": 8, "inputs": 8, "seconds": 0.11515520799997603, "peakRssBytes": 65978368, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.1, "logicalSteps": 6816, "kind": "recursive", "size": 8, "inputs": 32, "seconds": 0.13224274999998897, "peakRssBytes": 65994752, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.11, "logicalSteps": 541, "kind": "recursive", "size": 16, "inputs": 1, "seconds": 0.1264458750000017, "peakRssBytes": 67043328, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.11, "logicalSteps": 4328, "kind": "recursive", "size": 16, "inputs": 8, "seconds": 0.12655645800003867, "peakRssBytes": 67059712, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.11, "logicalSteps": 17312, "kind": "recursive", "size": 16, "inputs": 32, "seconds": 0.1323497910000242, "peakRssBytes": 67059712, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.11, "logicalSteps": 1581, "kind": "recursive", "size": 32, "inputs": 1, "seconds": 0.1325152499999831, "peakRssBytes": 67026944, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.12, "logicalSteps": 12648, "kind": "recursive", "size": 32, "inputs": 8, "seconds": 0.1442140409999979, "peakRssBytes": 67010560, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.14, "logicalSteps": 50592, "kind": "recursive", "size": 32, "inputs": 32, "seconds": 0.15817037499999742, "peakRssBytes": 67026944, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.15, "logicalSteps": 5197, "kind": "recursive", "size": 64, "inputs": 1, "seconds": 0.17636166700003741, "peakRssBytes": 68091904, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.17, "logicalSteps": 41576, "kind": "recursive", "size": 64, "inputs": 8, "seconds": 0.19963504200001125, "peakRssBytes": 68075520, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "cpuSeconds": 0.27, "logicalSteps": 166304, "kind": "recursive", "size": 64, "inputs": 32, "seconds": 0.2984656670000163, "peakRssBytes": 68075520, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.09, "logicalSteps": null, "kind": "letchain", "size": 2, "inputs": 1, "seconds": 1.693068042, "peakRssBytes": 64667648, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.05, "logicalSteps": null, "kind": "letchain", "size": 4, "inputs": 1, "seconds": 0.07228699999999999, "peakRssBytes": 62619648, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.05, "logicalSteps": null, "kind": "letchain", "size": 6, "inputs": 1, "seconds": 0.07165512500000015, "peakRssBytes": 63684608, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.06, "logicalSteps": null, "kind": "letchain", "size": 8, "inputs": 1, "seconds": 0.08282125000000007, "peakRssBytes": 64733184, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.06, "logicalSteps": null, "kind": "letchain", "size": 10, "inputs": 1, "seconds": 0.08718166699999985, "peakRssBytes": 65781760, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.07, "logicalSteps": null, "kind": "letchain", "size": 12, "inputs": 1, "seconds": 0.09959724999999997, "peakRssBytes": 67878912, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.08, "logicalSteps": null, "kind": "letchain", "size": 14, "inputs": 1, "seconds": 0.0981839579999999, "peakRssBytes": 67878912, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.28, "logicalSteps": null, "kind": "cache-cold", "size": 8, "inputs": 1, "seconds": 0.307954042, "peakRssBytes": 91291648, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.33, "logicalSteps": null, "kind": "cache-warm", "size": 8, "inputs": 1, "seconds": 0.351296042, "peakRssBytes": 157253632, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 1.0, "logicalSteps": null, "kind": "cache-cold", "size": 32, "inputs": 1, "seconds": 1.038627542, "peakRssBytes": 161595392, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 1.21, "logicalSteps": null, "kind": "cache-warm", "size": 32, "inputs": 1, "seconds": 1.2552461669999997, "peakRssBytes": 470794240, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.09, "logicalSteps": 81, "kind": "recursive", "size": 4, "inputs": 1, "seconds": 0.11714312500000013, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.09, "logicalSteps": 648, "kind": "recursive", "size": 4, "inputs": 8, "seconds": 0.1170380419999999, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.09, "logicalSteps": 2592, "kind": "recursive", "size": 4, "inputs": 32, "seconds": 0.11709741600000001, "peakRssBytes": 66158592, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.09, "logicalSteps": 149, "kind": "recursive", "size": 8, "inputs": 1, "seconds": 0.11616529099999973, "peakRssBytes": 66158592, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.1, "logicalSteps": 1192, "kind": "recursive", "size": 8, "inputs": 8, "seconds": 0.11729404199999927, "peakRssBytes": 66158592, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.1, "logicalSteps": 4768, "kind": "recursive", "size": 8, "inputs": 32, "seconds": 0.11706629200000052, "peakRssBytes": 66158592, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.1, "logicalSteps": 285, "kind": "recursive", "size": 16, "inputs": 1, "seconds": 0.11713262499999999, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.1, "logicalSteps": 2280, "kind": "recursive", "size": 16, "inputs": 8, "seconds": 0.11554645800000074, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.1, "logicalSteps": 9120, "kind": "recursive", "size": 16, "inputs": 32, "seconds": 0.12406995799999976, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.11, "logicalSteps": 557, "kind": "recursive", "size": 32, "inputs": 1, "seconds": 0.13141833299999917, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.11, "logicalSteps": 4456, "kind": "recursive", "size": 32, "inputs": 8, "seconds": 0.1289674579999982, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.11, "logicalSteps": 17824, "kind": "recursive", "size": 32, "inputs": 32, "seconds": 0.1435604159999997, "peakRssBytes": 67207168, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.13, "logicalSteps": 1101, "kind": "recursive", "size": 64, "inputs": 1, "seconds": 0.16006783299999938, "peakRssBytes": 68255744, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.14, "logicalSteps": 8808, "kind": "recursive", "size": 64, "inputs": 8, "seconds": 0.162796084, "peakRssBytes": 68255744, "diagnostics": []}
+{"compiler": "s1j-followup 09ecc18a", "cpuSeconds": 0.15, "logicalSteps": 35232, "kind": "recursive", "size": 64, "inputs": 32, "seconds": 0.17517966699999477, "peakRssBytes": 68255744, "diagnostics": []}
+{"compiler": "0.33.0 main c36f04e4", "kind": "cache-cold", "size": 128, "inputs": 1, "seconds": 5.49, "sourceLines": 3087, "note": "three units of 128 four-binding definitions; one manual run each, no-cache is the median of three"}
+{"compiler": "0.33.0 main c36f04e4", "kind": "cache-warm", "size": 128, "inputs": 1, "seconds": 5.4, "sourceLines": 3087, "note": "three units of 128 four-binding definitions; one manual run each, no-cache is the median of three"}
+{"compiler": "s1j-followup 09ecc18a", "kind": "no-cache", "size": 128, "inputs": 1, "seconds": 3.52, "sourceLines": 3087, "note": "three units of 128 four-binding definitions; one manual run each, no-cache is the median of three"}
+{"compiler": "s1j-followup 09ecc18a", "kind": "cache-cold", "size": 128, "inputs": 1, "seconds": 3.79, "sourceLines": 3087, "note": "three units of 128 four-binding definitions; one manual run each, no-cache is the median of three"}
+{"compiler": "s1j-followup 09ecc18a", "kind": "cache-warm", "size": 128, "inputs": 1, "seconds": 4.36, "sourceLines": 3087, "note": "three units of 128 four-binding definitions; one manual run each, no-cache is the median of three"}

@@ -27,7 +27,7 @@ The teaching review and human/external release gates in
 | 11 | `FileSystem.createDirectories` added to default handlers; nested parents and repeated creation covered by the resource fixture. | Custom handler migration and platform filesystem failures. |
 | 12 | Public `mutate` command executes a passing baseline and independent temporary copies, reports actual failing laws, classifications, kill matrix and unique kills. | Project-specific mutants establish observed adequacy only. |
 | 13 | Total-definition adapter-call errors explain abilities and effectful procedures. | Original call site. |
-| 14 | Mutual recursion remains unsupported; checked parity restructuring example and an established-techniques roadmap added. | Separate future feature; not an implemented recursion checker. |
+| 14 | Unsupported in 0.32.0. Admitted from 0.33.0 by size-change analysis; see the [follow-up](s1j-followup.md). | Mutual induction in law proofs. |
 | 15 | Go package-local interfaces, transitive ability dependencies, sparse unit runtime materialization and handler wrapper migration documented and exercised. | Original workaround wrappers and package layout. |
 
 ## Measurement and trust boundaries
