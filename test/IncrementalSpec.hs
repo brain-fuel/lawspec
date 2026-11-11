@@ -24,7 +24,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
-import LawSpec.Api (dispatch)
+import LawSpec.Api (dispatch, sharedRequest)
 import LawSpec.Dependencies (dependencyGraph, fullKey)
 import LawSpec.SurfaceContext (contextFor)
 import LawSpec.SourceContext (emptyContext)
@@ -175,6 +175,23 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     check `shouldSatisfy` maybe False (const True)
     response (request "check" "python" one) `shouldBe` check
 
+  -- S1.j report 20: one check compiled the project once for each target.
+  it "shares one compiled program across targets with different native bindings" $ do
+    let sources = fst (programs "shared")
+        bound target bindings = case decode (request "planGeneration" target sources) of
+          Just (Object fields) -> encode (Object (KeyMap.insert "nativeBindings" bindings fields))
+          _ -> error "request is an object"
+        clashing = object ["goImports" .=
+          [object ["alias" .= ("one" :: String), "path" .= ("example.com/same" :: String)],
+           object ["alias" .= ("two" :: String), "path" .= ("example.com/same" :: String)]]]
+        diagnostics value = [text | Just (Object fields) <- [decode value], Just (Array items) <- [KeyMap.lookup "diagnostics" fields],
+          Object item <- toList items, Just (String text) <- [KeyMap.lookup "message" item]]
+    sharedRequest (bound "go" clashing) `shouldBe` sharedRequest (request "check" "rust" sources)
+    sharedRequest (request "check" "rust" sources) `shouldNotBe` sharedRequest (request "check" "rust" (snd (programs "shared")))
+    -- The bindings are still resolved for each request against that program.
+    diagnostics (dispatch (request "planGeneration" "go" sources)) `shouldBe` []
+    diagnostics (dispatch (bound "go" clashing)) `shouldBe` ["duplicate Go import path"]
+    diagnostics (dispatch (request "planGeneration" "go" sources)) `shouldBe` []
   describe "dependency keys" $ do
     it "digests with SHA-256" $ do
       digestHex (digestString "") `shouldBe` "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

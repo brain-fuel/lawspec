@@ -2,7 +2,7 @@
 -- formatting and discovery services also feed the component interface, so their
 -- validation does not depend on an external request encoding.
 -- ref:DEC-wasm-distribution ref:DEC-haskell-application-port
-module LawSpec.Api (dispatch) where
+module LawSpec.Api (dispatch, sharedRequest) where
 
 import Control.Monad (unless)
 import Data.Aeson
@@ -106,12 +106,15 @@ dispatch bytes
                        memoized
                          syntaxStagesTable
                          ("canonical:" ++ stageKey)
-                         (stagesWithInput True True project packages sources bits settings native stageVerification)
-                     else fmap (\value -> (value, [])) (memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification))
+                         (stagesWithInput True True project packages sources bits settings emptyNativeRequest stageVerification)
+                     else fmap (\value -> (value, [])) (memoized stagesTable stageKey (stages project packages sources bits settings emptyNativeRequest stageVerification))
                  ) of
               Left diagnostics -> failure diagnostics
-              Right ((us, es, core, bindings, (lawEvidence, analysisRows), described, plan), syntax) ->
-                either failure id $
+              -- Native bindings differ by target and change nothing before
+              -- emission, so the compiled program is shared across targets
+              -- and each request resolves its own bindings against it.
+              Right ((us, es, core, _, (lawEvidence, analysisRows), described, plan), syntax) ->
+                either failure id $ (either (\message -> Left [Diagnostic "native-binding" message Nothing]) Right (resolveNativeRequest core native) >>=) $ \bindings ->
                   fmap
                     ( \analysed ->
                         let evidence = lawEvidence ++ map fst analysed
@@ -701,7 +704,7 @@ sharedRequest bytes = case decode bytes of
               ( foldr
                   (KM.delete . K.fromString)
                   o
-                  ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
+                  ["method", "target", "sourceDir", "testDir", "minify", "nativeBindings", "cacheDirectory", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
               )
           )
       )

@@ -486,12 +486,16 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
    -- so editing a body or another unit's laws reuses it.
    let dataDigest = digestHex (digestString (show (dataTypes,sourceTypes)))
        key parts = digestHex (digestString parts)
-   mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit sourceTypes dataTypes bits u)) us
-   _ <- forM (zip beforeExpansion us) $ \(original,u) -> do
+   -- A unit is rendered and hashed once; its three keys then hash the digest.
+   -- Rendering and hashing dominated an unchanged check when each key
+   -- repeated them (S1.j report 20).
+   let unitDigests = map (key . show) us
+   mapM_ (\(u,unitDigest) -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, unitDigest))) (validateUnit sourceTypes dataTypes bits u)) (zip us unitDigests)
+   _ <- forM (zip3 beforeExpansion us unitDigests) $ \(original,u,unitDigest) -> do
      let checks=fieldDefinitionChecks original u
          dependencies=fieldDefinitionDependencies original checks
          validationUnit=u{functionDefinitions=functionDefinitions u ++ checks}
-         templateKey=key (show (bits,dataDigest,u,checks))
+         templateKey=key (show (bits,dataDigest,unitDigest,checks))
          fieldDiagnostics result=either (Left . map renderFieldDiagnostic) Right result
          renderFieldDiagnostic diagnostic=diagnostic{message=foldl label (message diagnostic) checks}
          label text check=case stripPrefix (functionName check ++ ": ") text of
@@ -499,7 +503,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
            Nothing->text
      templates <- fieldDiagnostics $ Memo.memoized definitionTemplatesTable templateKey
        (inferDefinitionTemplates sourceTypes dataTypes bits validationUnit)
-     Memo.memoized validationTable (key (show ("totality-field-expansion",bits,dataDigest,u,checks,dependencies))) $ fieldDiagnostics $ do
+     Memo.memoized validationTable (key (show ("totality-field-expansion",bits,dataDigest,unitDigest,checks,dependencies))) $ fieldDiagnostics $ do
        deferred<-auditTemplatesWithDeferrals sourceTypes dataTypes bits validationUnit
          (filter (\(definition,_,_,_)->functionName definition `notElem` orchestrations u) templates)
        forM_ dependencies $ \(name,range) ->

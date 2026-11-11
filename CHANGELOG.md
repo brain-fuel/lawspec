@@ -36,6 +36,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `lawspec mutate` can judge a mutant that edits an owned generated file,
   such as a checked definition's generated code. The run tests the file as
   edited; it used to stop with "unowned or edited generated file".
+- `check` and `generate` compile a project once for all its targets. Each
+  target's native bindings were part of the compiled program's key, so every
+  target with different bindings compiled the project again. Bindings are now
+  resolved for each target against the one compiled program. A native-binding
+  error is therefore reported after the program's own errors, not before.
+- An unchanged `check` no longer spends most of its time computing cache
+  keys. Each unit was rendered and hashed three times on every run, which
+  cost as much as the validation the cache saved.
 - Go: a bound handler's bridge is generated only in packages that use the
   ability: its owner, and units whose laws, declarations or spec handlers need
   it. A unit that only imported the declaring unit received
