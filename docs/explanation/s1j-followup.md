@@ -21,7 +21,7 @@ passes. It does not mean the original project was run.
 | 18 | Changed | `npm/package-lock.json` pins the optional native packages, `tools/npm-lock.mjs` regenerates it, and CI checks it. | `npm ci` from a checkout needs the 0.33.0 native packages to be published. |
 | 19 | Changed | A Go unit receives a bound-handler bridge only for abilities it uses. | The original package layout. |
 | 20 | Partly changed | See [Cache and compile time](#cache-and-compile-time). | Reuse across runs, and the `generate` slowdown. |
-| 21 | Partly changed | `prelude.split`, `trim`, `words` and `lines` exist on every target ([sequences](../reference/language/sequences.md#pieces-of-a-text)). The `text-pieces` suite passes on all 18 program targets with both mutants rejected. | List `map` and `filter`, and the capability that gives one `map` for lists and `Either`, are not implemented. |
+| 21 | Partly changed | `prelude.split`, `trim`, `words` and `lines` exist on every target ([sequences](../reference/language/sequences.md#pieces-of-a-text)). The `text-pieces` suite passes on all 18 program targets with both mutants rejected. List `map` and `filter` exist on every target; the `list-mapping` suite passes on all 18 with its three mutants rejected. | The capability that gives one `map` for lists and `Either` is not implemented. The typed fast-path backends run list `map` and `filter` through the portable runtime. |
 
 ## Cache and compile time
 

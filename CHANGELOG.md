@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-11
+
 ### Added
 
 - Prior-art decisions for 0.33's Pekko and Spring actor runtimes
@@ -2719,7 +2721,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/brain-fuel/lawspec/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...v0.32.0
 [0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3
 [0.31.2]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.2
