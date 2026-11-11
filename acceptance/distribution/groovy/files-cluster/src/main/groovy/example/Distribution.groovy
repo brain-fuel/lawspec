@@ -77,8 +77,8 @@ final class Distribution {
   // Two members of a Pekko Cluster on this machine, started once for the run: the actor is
   // served on one and called from the other over Artery. The JVM's exit leaves the cluster.
   private static final class Cluster {
-    static final LawSpecPekkoCluster.Node SERVER = LawSpecPekkoCluster.Node.start()
-    static final LawSpecPekkoCluster.Node CLIENT = LawSpecPekkoCluster.Node.join(SERVER)
+    static final lawspec.runtime.pekko.LawSpecPekkoCluster.Node SERVER = LawSpecPekkoCluster.Node.start()
+    static final lawspec.runtime.pekko.LawSpecPekkoCluster.Node CLIENT = LawSpecPekkoCluster.Node.join(SERVER)
     static final java.util.concurrent.atomic.AtomicLong SERVED = new java.util.concurrent.atomic.AtomicLong()
     // A call to an actor whose member has left the cluster throws Unreachable at once.
     static final boolean LEFT_MEMBER_UNREACHABLE = leftMemberUnreachable()
