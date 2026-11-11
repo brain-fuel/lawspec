@@ -323,7 +323,7 @@ export async function serveLanguage(
             definitionProvider: true,
             referencesProvider: true,
           },
-          serverInfo: {name: 'LawSpec', version: '0.32.0'},
+          serverInfo: {name: 'LawSpec', version: '0.33.0'},
         };
         break;
       case 'initialized':
