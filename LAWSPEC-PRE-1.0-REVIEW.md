@@ -129,7 +129,7 @@ the solver, and every receipt says so.
 | `Rational`, `Decimal`, IEEE floats | Rational as integer over positive integer; Decimal exact (universal over Reals, witnesses multiples of 10^-18); Float32/Float64 as SMT FloatingPoint with IEEE equality | Translation and Z3 |
 | Counterexamples | `get-value`, then the reference evaluator re-checks; an unconfirmed model is never a refutation | Reference evaluator |
 | Law sets | Completeness, overlap, conflict, vacuity on by default; exhaustive for finite domains, Z3 otherwise; `laws for` claims and dated exemptions | Evaluator for refutations; translation and Z3 for proofs |
-| Model laws | In-house explicit-state LTL with weak and strong fairness (GPVW tableau, Tarjan, Lichtenstein–Pnueli), shared by native and WASM; deadlines in microsecond ticks | Evaluator, tableau and search |
+| Model laws | In-house explicit-state LTL with weak and strong fairness per command and argument value (GPVW tableau, Tarjan, Lichtenstein–Pnueli), partial references, an exact visited set and stubborn-set partial-order reduction (no symmetry reduction), shared by native and WASM; deadlines in microsecond ticks | Evaluator, tableau, footprint analysis and search |
 | Unbounded models | Z3 induction; Spacer proposes invariants that plain queries re-check; bounded runs replayed by the evaluator | Translation and Z3; Spacer is trusted for nothing |
 | Histories | Complete histories proved or refuted; open histories three-valued (LTL3) with `pending` | Evaluator and automata |
 

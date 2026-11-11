@@ -1612,15 +1612,15 @@ DEC-pekko-sample-suites:
 
     Gaps recorded, not worked around: the Hakker actor answers nothing and
     is driven by its timers, so it has no binding and its protocol is a
-    model whose adapters drive the real chopsticks; the explicit-state
-    checker takes minutes over five hakkers' 9,864 states, so the table
-    seats three; fairness is per command, not per argument, and model-law
-    references must be total, so "every hungry hakker eventually eats" is
-    stated only as a spec mutant that LawSpec refutes (the protocol livelocks
-    under every fairness); reference refinements on command arguments do
-    not guide model generation and a rejected step is skipped, so the cart's
-    item names are any text; the cart's laws over runs would be incomplete
-    (unbounded items), so its finality is checked against the real cart; the
+    model whose adapters drive the real chopsticks. The table seats the
+    sample's five hakkers (9,864 states, checked in seconds since
+    DEC-model-checker-reductions), with partial references and fairness per
+    hakker (DEC-model-fairness-per-value), so "every hungry hakker
+    eventually eats" is stated as a spec mutant that LawSpec refutes under
+    strong fairness for every hakker's every step (the protocol livelocks).
+    The cart's references refine its item names and quantities, which now
+    guide generation (DEC-honest-model-steps); the cart's finality is
+    checked against the real cart; the
     CQRS Java sample has no Pekko code upstream (its last code is Akka 2.6
     with Cassandra), so it has no suite. Scala variants wait for the Scala
     native binding.
@@ -1632,3 +1632,134 @@ DEC-pekko-sample-suites:
   opened: 0.33.0
   decided: 0.33.0
   refs: [apache-pekko-samples, pekko-cluster-sharding-typed, pekko-status-reply, pekko-typed-testing]
+
+DEC-honest-model-steps:
+  status: decided
+  question: How do generated model and actor runs avoid passing on steps the reference refuses?
+  answer: |
+    A run passes only on steps its reference accepted. Planning reads the
+    refinements of each command's adapter and of its reference (the j-th
+    reference parameter is the command's j-th argument): integer bounds
+    narrow an int descriptor, and a disjunction of equalities with constants
+    (x = "apple" || x = "pear") becomes a (oneof D v ...) descriptor, whose
+    generation picks an option, whose minimum is the first and whose shrinks
+    are the options before it. Conditions that also read the state stay with
+    the runtime. At each step every target lists the enabled commands
+    (typestate, when-precondition, a non-empty argument domain); a command
+    whose arguments have at most 64 values (FINITE_STEPS) is enabled with
+    the tuples its reference accepts in this state, or not at all when none
+    is accepted, and a drawn tuple is one of those; other commands draw up
+    to 8 times (STEP_ATTEMPTS), each refused draw counted. Every refused draw
+    is counted per run. A run whose refused draws outnumber its accepted
+    steps is incomplete, never passed: "incomplete model generation: model
+    m's run r of n drew x steps its reference rejected and y it accepted";
+    a failure names the run's refused draws; LAWSPEC_MODEL_REPORT names a
+    file to which each check appends one JSON line (model, check, runs,
+    steps, rejected, outcome), whose outcome is incomplete. In a target's
+    native test report the check is an error carrying that message; the
+    npm test command does not infer an incomplete status from error text
+    (as for every other status), so a structured incomplete test status
+    from each target's harness remains to be added. All targets draw the
+    same random numbers in the same
+    order for a seed, so runs stay identical across targets. This replaces
+    the earlier rule that one rejected dependent argument made a run
+    incomplete.
+
+    Precedent: QuickCheck discards a test case whose precondition fails and
+    gives up after maxDiscardRatio discards, reporting the property as not
+    passed rather than passed; quickcheck-state-machine and Hedgehog's
+    state machines filter commands by preconditions over the model state
+    and generate from it, so generation is constructive where possible.
+    LawSpec counts per run instead of per property, since a model check's
+    unit of evidence is a run of steps, and enumerates small domains so a
+    narrow refinement is never left to chance.
+
+    Trust boundary: the planner's reading of refinements (only conjuncts
+    that mention the argument alone), each runtime's enumeration and the
+    reference evaluator. Restoring the shopping cart's refinements is the
+    acceptance check; spec mutants whose references refuse almost every
+    draw must be reported incomplete.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [quickcheck-discards, quickcheck-state-machine, hedgehog-state-machines]
+
+DEC-model-fairness-per-value:
+  status: decided
+  question: What does fairness for a command with arguments assume, and how does a model say a step cannot happen now?
+  answer: |
+    Fairness is per step: per command and argument value. assuming fairness
+    for c is weak fairness for each step c v (TLA+ WF_vars(c(v)) for every
+    v), and strong fairness likewise; it is not WF_vars(\E v: c(v)), which
+    a run satisfies by taking c u for ever while c v stays enabled. The
+    checker labels each edge with its step and applies the Lichtenstein and
+    Pnueli component test per label. A reference is partial when its
+    parameters are refined, the state included: (s :: Seats where phase h s
+    = Eating). Outside its refinements a step is not enabled, as when a
+    precondition is false: the checker leaves it out and generation never
+    draws it. Before, a reference had to be total, and a step that cannot
+    happen was modelled as one that changes nothing, which also satisfied
+    fairness and hid starvation. The dining hakkers' "every hungry hakker
+    eats" is refuted under strong fairness for every hakker's every step,
+    with a lasso in which each hakker eats and Ghosh, hungry, never does.
+
+    Precedent: TLA+ writes per-value fairness as a conjunction of WF over
+    each instance and existential fairness as WF over the disjunction
+    (Lamport, Specifying Systems, chapter 8); TLC checks both. LawSpec
+    chooses per-value fairness because a command's argument usually names
+    an actor or a resource, and fairness to one of them is what liveness
+    claims about it need. Partial actions are TLA+ actions with enabling
+    conditions, and preconditions in quickcheck-state-machine.
+
+    Trust boundary: the reference evaluator (refinements are evaluated as
+    preconditions) and the checker's component search.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [tla-specifying-systems, lichtenstein-pnueli-fairness, quickcheck-state-machine]
+
+DEC-model-checker-reductions:
+  status: decided
+  question: How does the explicit-state model checker scale, and which reductions does it trust?
+  answer: |
+    The checker explores each model's reachable states once, for all its
+    laws, into a graph with an exact visited set: a state's key is its
+    value written flat (each constructor as a number, each integer as its
+    number) with its typestate indices, kept whole in a map, so states are
+    never conflated (SPIN's bitstate hashing and TLC's fingerprints trade
+    that for memory; here the state counts fit in memory, so a probabilistic
+    miss is not accepted). Model-check calls of the reference skip
+    re-validating states the reference returned and arguments enumerated
+    from their types (Core.Definitions.prepareTrustedDefinitions), and a
+    value of a constructor with nothing to check beyond its tag is
+    validated by finding it in the registry. The dining hakkers' five-seat
+    table (9,864 states) went from more than 12 CPU minutes to about 6
+    seconds.
+
+    Partial-order reduction: when no law about a model assumes fairness or
+    sets a deadline and the model has no typestate, each state explores a
+    stubborn set (Valmari) of its enabled steps: closed under dependence for
+    enabled steps and under possible enablers for disabled ones, with every
+    step invisible (writing no field the laws' predicates read; Peled's C2),
+    and used only when smaller than all enabled steps. Footprints come from
+    a small abstract interpretation of the reference, its precondition and
+    its refinements with the arguments known; anything it cannot follow
+    reads and writes every field. The cycle proviso is the breadth-first
+    one, conservatively: a state is cut only when every successor of its
+    set is new. Laws are LTL without next, so stuttering equivalence keeps
+    their results. Fairness assumptions are about particular steps that a
+    reduction postpones, so they disable it. The reason says how many
+    states took a reduced set. It does not help the hakkers, whose laws read
+    every seat.
+
+    Symmetry reduction is not implemented. TLC's SYMMETRY and Murphi's
+    scalarsets declare the permutable values; inferring them soundly here
+    would need the permutation to act on the state's representation (the
+    hakkers' Seats record names each hakker's field), and a verified
+    canonical form costs one state evaluation per permutation, as much as
+    exploring the orbit. A declaration such as "symmetric over hakkers" is
+    deferred until a model's state can be indexed by such a type.
+
+    Trust boundary: the reference evaluator, the footprint analysis, the
+    stubborn-set construction and the search.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [valmari-stubborn-sets, peled-ample-sets, holzmann-peled-por, tlc-symmetry, ip-dill-scalarsets]

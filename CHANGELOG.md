@@ -57,6 +57,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   their readings. A how-to, "Check Pekko actors with LawSpec", uses them as
   worked examples and lists what LawSpec cannot check yet, including the CQRS
   sample, which has no Pekko code upstream.
+- Partial model references: refine a reference's parameters, its state
+  included, and a step outside them is not enabled, in the model checker and
+  in generated runs, instead of being a step that changes nothing.
+- `LAWSPEC_MODEL_REPORT`: each model and actor check on every target appends
+  one JSON line with its runs, accepted steps, rejected steps and outcome.
+
+### Changed
+
+- Generated model and actor runs draw only steps the reference accepts where
+  they can: arguments follow the refinements of the reference as well as the
+  adapter (`(oneof ...)` descriptors for a choice of constants), and a
+  command whose arguments have at most 64 values draws from the tuples its
+  reference accepts in that state. Every refused draw is counted. A run
+  whose refused draws outnumber its accepted steps stops the check with an
+  "incomplete model generation" error instead of passing, and a failure
+  says how many draws its run had refused. Runs stay identical on every target for a seed. The shopping
+  cart's references refine its item names and quantities again.
+- `assuming fairness for c` is fair to each argument value of `c`, as TLA+'s
+  fairness for each `c(v)`: taking `c u` for ever no longer satisfies it
+  while `c v` stays enabled.
+- The model checker explores each model once for all its laws, with an exact
+  visited set of compact keys and cheaper reference calls. The dining
+  hakkers' five-seat table (9,864 states) takes about 6 seconds instead of
+  more than 12 minutes, so the `pekko-samples/fsm` suite seats the sample's
+  five hakkers, with partial references. A law with no fairness or deadline
+  is checked with partial-order reduction (stubborn sets), and its reason
+  says how many states took a reduced set of steps. Symmetry reduction is
+  not implemented.
 
 ## [0.32.0] - 2026-11-09
 

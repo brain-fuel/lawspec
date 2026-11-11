@@ -36,7 +36,9 @@ whether the cart is checked out. Each handler's reference says what the
 cart answers:
 
 ```lawspec fragment
-function modelAddItem (item :: Text) (quantity :: Int32)
+function modelAddItem
+    (item :: Text where item = "apple" || item = "pear" || item = "plum")
+    (quantity :: Int32 where quantity >= 0 && quantity <= 3)
     (b :: Basket) -> Pair Bool Basket is
   if b.checkedOut then Pair false b else
     first matching case of prelude.lookup item b.items :
@@ -156,8 +158,11 @@ law "|no deadlock| in model table is
 end law
 ```
 
-Both are proved over all 247 states of a table of three. "Every hungry
-hakker eventually eats" is not true of this protocol, even under fairness.
+Both are proved over all 9,864 states of the sample's table of five, in a
+few seconds. Each reference is partial: `modelFull`'s state is refined to
+`phase h s = Eating`, so the model has no step for a hakker that cannot
+take it. "Every hungry hakker eventually eats" is not true of this
+protocol, even under strong fairness for every hakker's every step.
 Hakkers can deny one another for ever: each takes one chopstick, is refused
 the other, puts it back and tries again. The sample's random thinking times
 only make that unlikely. The suite's `starvation` spec mutant states the
@@ -211,17 +216,13 @@ be caught.
   sends to others, such as the sample's `Hakker`, has no binding. Neither
   has an actor driven by its own timers. Its protocol can only be restated
   as a model.
-- **Large protocol models.** The model checker evaluates references
-  slowly: the sample's table of five hakkers has 9,864 states and takes
-  minutes, so the suite seats three.
-- **Fairness per hakker.** `assuming fairness for c` is per command, not per
-  argument. A model law's references must be total, so a hakker that cannot
-  move takes a step that changes nothing, which also satisfies fairness.
-- **Narrow command arguments.** A model generates each command's arguments
-  from its adapter's types, with integer bounds from the adapter's
-  preconditions. A refinement on a reference's argument, such as a regular
-  expression on a `Text`, does not guide generation. A step whose arguments
-  the reference rejects is skipped. So the cart's item names are any text.
+- **Large protocol models.** The model checker explores each state whole.
+  It has partial-order reduction, which does not help the hakkers, since
+  every law reads every seat. It has no symmetry reduction, so five hakkers
+  are not explored as one.
+- **Narrow command arguments.** A refinement that generation cannot read,
+  such as a regular expression on a `Text`, does not guide it. The draws it
+  rejects are counted, and a run of mostly rejected steps is incomplete.
 - **Laws over unbounded models.** The cart's items and quantities have no
   bound, so a law over its runs is incomplete. That a checked-out cart stays
   checked out is checked against the real cart instead.

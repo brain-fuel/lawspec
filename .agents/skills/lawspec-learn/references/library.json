@@ -5052,54 +5052,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:116: BEAM native APIs",
+      "id": "reference:docs/reference/language/actors.md:123: BEAM native APIs",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:116: BEAM native APIs",
+      "name": "docs/reference/language/actors.md:123: BEAM native APIs",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:176: Actors on other nodes",
+      "id": "reference:docs/reference/language/actors.md:183: Actors on other nodes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:176: Actors on other nodes",
+      "name": "docs/reference/language/actors.md:183: Actors on other nodes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:201: Mailboxes",
+      "id": "reference:docs/reference/language/actors.md:208: Mailboxes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:201: Mailboxes",
+      "name": "docs/reference/language/actors.md:208: Mailboxes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:220: Supervisors",
+      "id": "reference:docs/reference/language/actors.md:227: Supervisors",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:220: Supervisors",
+      "name": "docs/reference/language/actors.md:227: Supervisors",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:260: Runtimes",
+      "id": "reference:docs/reference/language/actors.md:267: Runtimes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:260: Runtimes",
+      "name": "docs/reference/language/actors.md:267: Runtimes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:272: Evidence",
+      "id": "reference:docs/reference/language/actors.md:279: Evidence",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:272: Evidence",
+      "name": "docs/reference/language/actors.md:279: Evidence",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5124,9 +5124,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:79: Typed actors in your code",
+      "id": "reference:docs/reference/language/actors.md:86: Typed actors in your code",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:79: Typed actors in your code",
+      "name": "docs/reference/language/actors.md:86: Typed actors in your code",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6582,54 +6582,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:165: Deadlines",
+      "id": "reference:docs/reference/language/models.md:195: Deadlines",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:165: Deadlines",
+      "name": "docs/reference/language/models.md:195: Deadlines",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:177: Unbounded models",
+      "id": "reference:docs/reference/language/models.md:207: Unbounded models",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:177: Unbounded models",
+      "name": "docs/reference/language/models.md:207: Unbounded models",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:193: Laws about histories",
+      "id": "reference:docs/reference/language/models.md:223: Laws about histories",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:193: Laws about histories",
+      "name": "docs/reference/language/models.md:223: Laws about histories",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:225: What LawSpec checks",
+      "id": "reference:docs/reference/language/models.md:255: What LawSpec checks",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:225: What LawSpec checks",
-      "source": "docs/reference/language/models.md",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "reference:docs/reference/language/models.md:257: BEAM model tests",
-      "kind": "reference",
-      "name": "docs/reference/language/models.md:257: BEAM model tests",
-      "source": "docs/reference/language/models.md",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "reference:docs/reference/language/models.md:279: Consistency",
-      "kind": "reference",
-      "name": "docs/reference/language/models.md:279: Consistency",
+      "name": "docs/reference/language/models.md:255: What LawSpec checks",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6645,45 +6627,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:309: Collections",
+      "id": "reference:docs/reference/language/models.md:299: BEAM model tests",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:309: Collections",
+      "name": "docs/reference/language/models.md:299: BEAM model tests",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:340: Handles",
+      "id": "reference:docs/reference/language/models.md:321: Consistency",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:340: Handles",
+      "name": "docs/reference/language/models.md:321: Consistency",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:365: Evidence",
+      "id": "reference:docs/reference/language/models.md:351: Collections",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:365: Evidence",
+      "name": "docs/reference/language/models.md:351: Collections",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:389: State-dependent argument domains",
+      "id": "reference:docs/reference/language/models.md:382: Handles",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:389: State-dependent argument domains",
+      "name": "docs/reference/language/models.md:382: Handles",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/models.md:423: Precedents and trust boundary",
+      "id": "reference:docs/reference/language/models.md:407: Evidence",
       "kind": "reference",
-      "name": "docs/reference/language/models.md:423: Precedents and trust boundary",
+      "name": "docs/reference/language/models.md:407: Evidence",
+      "source": "docs/reference/language/models.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/models.md:431: State-dependent argument domains",
+      "kind": "reference",
+      "name": "docs/reference/language/models.md:431: State-dependent argument domains",
+      "source": "docs/reference/language/models.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/models.md:466: Precedents and trust boundary",
+      "kind": "reference",
+      "name": "docs/reference/language/models.md:466: Precedents and trust boundary",
       "source": "docs/reference/language/models.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
