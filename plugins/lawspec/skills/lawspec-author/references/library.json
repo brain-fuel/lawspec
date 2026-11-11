@@ -4530,81 +4530,81 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:100: The compiler cache",
+      "id": "reference:docs/reference/cli.md:130: The compiler cache",
       "kind": "reference",
-      "name": "docs/reference/cli.md:100: The compiler cache",
+      "name": "docs/reference/cli.md:130: The compiler cache",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:121: `init`",
+      "id": "reference:docs/reference/cli.md:151: `init`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:121: `init`",
+      "name": "docs/reference/cli.md:151: `init`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:146: `check`",
+      "id": "reference:docs/reference/cli.md:176: `check`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:146: `check`",
+      "name": "docs/reference/cli.md:176: `check`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:156: `prove`",
+      "id": "reference:docs/reference/cli.md:186: `prove`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:156: `prove`",
+      "name": "docs/reference/cli.md:186: `prove`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:175: `evidence`",
+      "id": "reference:docs/reference/cli.md:205: `evidence`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:175: `evidence`",
+      "name": "docs/reference/cli.md:205: `evidence`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:217: `explain`",
+      "id": "reference:docs/reference/cli.md:247: `explain`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:217: `explain`",
+      "name": "docs/reference/cli.md:247: `explain`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:310: `doctor`",
+      "id": "reference:docs/reference/cli.md:340: `doctor`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:310: `doctor`",
+      "name": "docs/reference/cli.md:340: `doctor`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:319: `generate`",
+      "id": "reference:docs/reference/cli.md:349: `generate`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:319: `generate`",
+      "name": "docs/reference/cli.md:349: `generate`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:333: `test`",
+      "id": "reference:docs/reference/cli.md:363: `test`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:333: `test`",
+      "name": "docs/reference/cli.md:363: `test`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4620,81 +4620,90 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:442: The failure database",
+      "id": "reference:docs/reference/cli.md:472: The failure database",
       "kind": "reference",
-      "name": "docs/reference/cli.md:442: The failure database",
+      "name": "docs/reference/cli.md:472: The failure database",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:481: `package`",
+      "id": "reference:docs/reference/cli.md:49: Project setup",
       "kind": "reference",
-      "name": "docs/reference/cli.md:481: `package`",
+      "name": "docs/reference/cli.md:49: Project setup",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:492: `examples`",
+      "id": "reference:docs/reference/cli.md:511: `package`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:492: `examples`",
+      "name": "docs/reference/cli.md:511: `package`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:49: Optional match warnings",
+      "id": "reference:docs/reference/cli.md:522: `examples`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:49: Optional match warnings",
+      "name": "docs/reference/cli.md:522: `examples`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:510: Exit status",
+      "id": "reference:docs/reference/cli.md:540: Exit status",
       "kind": "reference",
-      "name": "docs/reference/cli.md:510: Exit status",
+      "name": "docs/reference/cli.md:540: Exit status",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:519: Project workflow and Learn",
+      "id": "reference:docs/reference/cli.md:549: Project workflow and Learn",
       "kind": "reference",
-      "name": "docs/reference/cli.md:519: Project workflow and Learn",
+      "name": "docs/reference/cli.md:549: Project workflow and Learn",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:533: Authoring discovery",
+      "id": "reference:docs/reference/cli.md:563: Authoring discovery",
       "kind": "reference",
-      "name": "docs/reference/cli.md:533: Authoring discovery",
+      "name": "docs/reference/cli.md:563: Authoring discovery",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:538: Mutation testing",
+      "id": "reference:docs/reference/cli.md:568: Mutation testing",
       "kind": "reference",
-      "name": "docs/reference/cli.md:538: Mutation testing",
+      "name": "docs/reference/cli.md:568: Mutation testing",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:69: `fmt`",
+      "id": "reference:docs/reference/cli.md:79: Optional match warnings",
       "kind": "reference",
-      "name": "docs/reference/cli.md:69: `fmt`",
+      "name": "docs/reference/cli.md:79: Optional match warnings",
+      "source": "docs/reference/cli.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/cli.md:99: `fmt`",
+      "kind": "reference",
+      "name": "docs/reference/cli.md:99: `fmt`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7698,9 +7707,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/prolog.md:164: Models and execution scope",
+      "id": "reference:docs/reference/prolog.md:163: Models and execution scope",
       "kind": "reference",
-      "name": "docs/reference/prolog.md:164: Models and execution scope",
+      "name": "docs/reference/prolog.md:163: Models and execution scope",
       "source": "docs/reference/prolog.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7716,18 +7725,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/prolog.md:56: Predicate interface",
+      "id": "reference:docs/reference/prolog.md:55: Predicate interface",
       "kind": "reference",
-      "name": "docs/reference/prolog.md:56: Predicate interface",
+      "name": "docs/reference/prolog.md:55: Predicate interface",
       "source": "docs/reference/prolog.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/prolog.md:99: Native bindings and generators",
+      "id": "reference:docs/reference/prolog.md:98: Native bindings and generators",
       "kind": "reference",
-      "name": "docs/reference/prolog.md:99: Native bindings and generators",
+      "name": "docs/reference/prolog.md:98: Native bindings and generators",
       "source": "docs/reference/prolog.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

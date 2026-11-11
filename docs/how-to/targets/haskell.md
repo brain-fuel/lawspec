@@ -17,8 +17,6 @@ title: Set up Haskell
 
 ```sh
 npx lawspec init --target haskell
-stack build --test --no-run-tests
-npx lawspec doctor
 npx lawspec generate
 stack test
 ```

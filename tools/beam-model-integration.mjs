@@ -134,6 +134,7 @@ async function call(verb, flags = [], options = {})
   };
 }
 await call('init', [
+  '--no-install',
   '--target',
   language,
   '--project',

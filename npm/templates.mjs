@@ -320,6 +320,202 @@ export const setup = {
   make: 'Run make to check the project, generate its configured targets and execute its program target tests using the installed lawspec CLI.',
 };
 
+// The commands lawspec init runs to fetch a new project's dependencies, and
+// the settings it adds to a JSON build file the project already has.
+export const prepareCommands = {
+  java: [
+    {
+      command: 'mvn',
+      args: ['-q', 'test-compile'],
+      environment: {},
+    },
+  ],
+  python: [
+    {
+      command: '{python}',
+      args: ['-m', 'pip', 'install', '-e', '.[test]'],
+      environment: {},
+    },
+  ],
+  javascript: [
+    {
+      command: 'npm',
+      args: ['install'],
+      environment: {},
+    },
+  ],
+  typescript: [
+    {
+      command: 'npm',
+      args: ['install'],
+      environment: {},
+    },
+  ],
+  go: [
+    {
+      command: 'go',
+      args: ['mod', 'download', 'all'],
+      environment: {},
+    },
+  ],
+  haskell: [
+    {
+      command: 'stack',
+      args: ['--no-terminal', 'build', '--test', '--only-dependencies'],
+      environment: {},
+    },
+  ],
+  kotlin: [
+    {
+      command: 'gradle',
+      args: ['testClasses', '--console=plain'],
+      environment: {},
+    },
+  ],
+  rust: [
+    {
+      command: 'cargo',
+      args: ['fetch'],
+      environment: {},
+    },
+  ],
+  erlang: [
+    {
+      command: 'rebar3',
+      args: ['as', 'test', 'compile'],
+      environment: {},
+    },
+  ],
+  elixir: [
+    {
+      command: 'mix',
+      args: ['deps.get'],
+      environment: {},
+    },
+    {
+      command: 'mix',
+      args: ['deps.compile'],
+      environment: {
+        MIX_ENV: 'test',
+      },
+    },
+  ],
+  gleam: [
+    {
+      command: 'gleam',
+      args: ['build'],
+      environment: {},
+    },
+  ],
+  fsharp: [],
+  csharp: [],
+  scala: [
+    {
+      command: 'scala',
+      args: ['compile', '--test', '.'],
+      environment: {},
+    },
+  ],
+  groovy: [
+    {
+      command: 'gradle',
+      args: ['testClasses', '--console=plain'],
+      environment: {},
+    },
+  ],
+  clojure: [
+    {
+      command: 'clojure',
+      args: ['-P', '-M:test'],
+      environment: {},
+    },
+  ],
+  swift: [
+    {
+      command: 'swift',
+      args: ['package', 'resolve'],
+      environment: {},
+    },
+  ],
+  prolog: [
+    {
+      command: '{python}',
+      args: ['-m', 'pip', 'install', '-e', '.[test]'],
+      environment: {},
+    },
+  ],
+};
+
+export const requirements = {
+  java: {},
+  python: {},
+  javascript: {
+    'package.json': [
+      {
+        path: ['type'],
+        value: 'module',
+      },
+      {
+        path: ['devDependencies', 'fast-check'],
+        value: '4.10.2',
+      },
+    ],
+  },
+  typescript: {
+    'package.json': [
+      {
+        path: ['type'],
+        value: 'module',
+      },
+      {
+        path: ['devDependencies', 'fast-check'],
+        value: '4.10.2',
+      },
+      {
+        path: ['devDependencies', 'typescript'],
+        value: '5.9.3',
+      },
+      {
+        path: ['devDependencies', '@types/node'],
+        value: '22.20.4',
+      },
+    ],
+    'tsconfig.json': [],
+  },
+  go: {},
+  haskell: {},
+  kotlin: {},
+  rust: {},
+  erlang: {},
+  elixir: {},
+  gleam: {},
+  fsharp: {
+    'global.json': [
+      {
+        path: ['test', 'runner'],
+        value: 'Microsoft.Testing.Platform',
+      },
+    ],
+  },
+  csharp: {
+    'global.json': [
+      {
+        path: ['test', 'runner'],
+        value: 'Microsoft.Testing.Platform',
+      },
+    ],
+  },
+  scala: {},
+  groovy: {},
+  clojure: {},
+  swift: {},
+  prolog: {},
+  hcl: {},
+  yaml: {},
+  antlr4: {},
+  make: {},
+};
+
 // Each target's build files in the readable and the compact (minified) layout.
 const scaffolds = {
   java: {

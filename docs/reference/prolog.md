@@ -22,13 +22,12 @@ runtime dependency and the pytest and Hypothesis test dependencies.
 
 ```sh
 lawspec init --target prolog
-uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python -e '.[test]'
 lawspec generate
 ```
 
-Set the target's `python` configuration field to the virtual environment's
-interpreter. Run `lawspec doctor`, implement the generated user-owned `.pl`
+`init` creates a virtual environment in `.venv`, installs the scaffold's
+dependencies into it and sets the target's `python` configuration field to its
+interpreter. Implement the generated user-owned `.pl`
 adapters, then run `lawspec test`. Direct execution uses
 `.venv/bin/python lawspec_test.py`. `lawspec examples --example payments
 --target prolog` exports an application-owned implementation with exact-decimal

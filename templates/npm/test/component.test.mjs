@@ -28,7 +28,7 @@ test('init forwards the compact layout to its EDN manifest', async t => {
   const {execFile} = await import('node:child_process');
   const {promisify} = await import('node:util');
   await promisify(execFile)(process.execPath, [path.resolve(import.meta.dirname, '../bin/lawspec.mjs'),
-    'init', '--target', 'javascript', '--machine-bits', '32', '--minify'], {cwd: root});
+    'init', '--no-install', '--target', 'javascript', '--machine-bits', '32', '--minify'], {cwd: root});
   const manifest = await readManifest(path.join(root, 'lawspec.edn'));
   const {readFile} = await import('node:fs/promises');
   const content = await readFile(path.join(root, 'lawspec.edn'), 'utf8');

@@ -43,13 +43,13 @@ for (const language of ['go', 'javascript', 'yaml', 'hcl'])
       path.join(root, 'laws', 'settings.lawspec'),
       'unit settings\nfunction port (unused :: Unit) -> UInt16 is 8080 end function\nend unit\n',
     );
-    const repaired = run(root, 'init', '--target', language);
+    const repaired = run(root, 'init', '--no-install', '--target', language);
     assert.equal(repaired.status, 0, repaired.stdout + repaired.stderr);
     assert.equal(
       await readFile(path.join(root, 'lawspec.edn'), 'utf8'),
       manifest,
     );
-    const again = run(root, 'init', '--target', language);
+    const again = run(root, 'init', '--no-install', '--target', language);
     assert.equal(again.status, 0, again.stdout + again.stderr);
     assert.equal(
       await readFile(path.join(root, 'lawspec.edn'), 'utf8'),
@@ -61,7 +61,7 @@ for (const language of ['go', 'javascript', 'yaml', 'hcl'])
       const file = path.join(root, target, name);
       const original = await readFile(file, 'utf8');
       await writeFile(file, original + '\n');
-      const preserved = run(root, 'init', '--target', language);
+      const preserved = run(root, 'init', '--no-install', '--target', language);
       assert.equal(preserved.status, 0, preserved.stdout + preserved.stderr);
       assert.equal(await readFile(file, 'utf8'), original + '\n');
     }
@@ -77,7 +77,7 @@ test('new starter specifications are editable and ambiguous target roots require
 {
   const root = await mkdtemp(path.join(tmpdir(), 'lawspec-starter-ownership-'));
   t.after(() => rm(root, {recursive: true, force: true}));
-  const initialized = run(root, 'init', '--target', 'go');
+  const initialized = run(root, 'init', '--no-install', '--target', 'go');
   assert.equal(initialized.status, 0, initialized.stdout + initialized.stderr);
   const starter = await readFile(
     path.join(root, 'laws', 'atoi_codec.lawspec'),
@@ -97,10 +97,10 @@ test('new starter specifications are editable and ambiguous target roots require
       ],
     }),
   );
-  const ambiguous = run(root, 'init', '--target', 'go');
+  const ambiguous = run(root, 'init', '--no-install', '--target', 'go');
   assert.notEqual(ambiguous.status, 0);
   assert.match(ambiguous.stderr, /Several go targets.*--project/);
-  const selected = run(root, 'init', '--target', 'go', '--project', 'second');
+  const selected = run(root, 'init', '--no-install', '--target', 'go', '--project', 'second');
   assert.equal(selected.status, 0, selected.stdout + selected.stderr);
   assert.match(
     await readFile(path.join(root, 'second', 'go.mod'), 'utf8'),

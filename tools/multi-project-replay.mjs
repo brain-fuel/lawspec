@@ -115,6 +115,7 @@ const projects = ['first project', 'second project'].map(name =>
 for (const project of projects)
 {
   await call('init', [
+    '--no-install',
     '--target',
     language,
     '--project',

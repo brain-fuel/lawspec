@@ -68,6 +68,7 @@ test('init forwards the compact layout to its EDN manifest', async t =>
     [
       path.resolve(import.meta.dirname, '../bin/lawspec.mjs'),
       'init',
+      '--no-install',
       '--target',
       'javascript',
       '--machine-bits',

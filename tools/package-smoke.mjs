@@ -281,7 +281,11 @@ try
       throw new Error('Missing packaged ' + document);
   const rust = path.join(root, 'rust');
   await mkdir(rust);
-  await run(process.execPath, [cli, 'init', '--target', 'rust'], rust);
+  await run(
+    process.execPath,
+    [cli, 'init', '--no-install', '--target', 'rust'],
+    rust,
+  );
   const rustConfigPath = path.join(rust, 'lawspec.edn');
   const rustConfig = parseManifest(await readFile(rustConfigPath, 'utf8'));
   rustConfig.verification = {layers: ['property', 'examples']};

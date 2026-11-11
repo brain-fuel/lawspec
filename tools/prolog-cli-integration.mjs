@@ -54,7 +54,13 @@ async function call(command, flags = [], pass = true, extraEnv = {})
   return flags.includes('--json') ? JSON.parse(result.stdout) : output;
 }
 
-await call('init', ['--target', 'prolog', '--machine-bits', String(bits)]);
+await call('init', [
+  '--no-install',
+  '--target',
+  'prolog',
+  '--machine-bits',
+  String(bits),
+]);
 const configFile = path.join(project, 'lawspec.edn');
 const config = parseManifest(await readFile(configFile, 'utf8'));
 config.sources = [
