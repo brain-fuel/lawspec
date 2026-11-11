@@ -110,6 +110,7 @@ runtimeNames =
   [ "outside", "narrow", "quot", "rem", "power", "unreachable", "cons", "length", "list_of", "items", "eq_list", "eq_list_plain"
   , "cmp_list", "cmp_plain", "cmp_unit", "eq_unit", "cmp_list_plain", "append", "slice_list", "slice_seq", "at_list", "at_bytes"
   , "range_list", "octets", "bytes_of", "utf8", "join", "regex_matches", "lookup", "member", "put", "delete", "lookup_by"
+  , "split", "trim", "words", "lines"
   , "member_by", "put_by", "delete_by", "entries", "keys_list", "values_list", "entries_list", "key_val_of", "key_val_of_by"
   , "set_of", "set_of_by", "set_insert", "set_insert_by", "set_union", "set_union_by", "set_intersection", "set_intersection_by"
   , "set_difference", "set_difference_by", "eq_map", "cmp_map", "eq_plain", "from_list", "to_list" ]
@@ -540,6 +541,10 @@ cexpr env scope e = case expressionNode e of
   Helper Utf8 [t] -> one "lsf_utf8" t
   Helper TextOf [n] -> one "str" n
   Helper Join [sep, parts] -> call2 "lsf_join" sep parts
+  Helper Split [sep, text] -> call2 "lsf_split" sep text
+  Helper Trim [text] -> one "lsf_trim" text
+  Helper Words [text] -> one "lsf_words" text
+  Helper Lines [text] -> one "lsf_lines" text
   _ -> lift' (Left ("typed Python: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     one f a = do

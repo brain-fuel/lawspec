@@ -123,3 +123,45 @@ utf8Units c
   | c < 0x800 = [0xC0 + c `div` 64, 0x80 + c `mod` 64]
   | c < 0x10000 = [0xE0 + c `div` 4096, 0x80 + (c `div` 64) `mod` 64, 0x80 + c `mod` 64]
   | otherwise = [0xF0 + c `div` 262144, 0x80 + (c `div` 4096) `mod` 64, 0x80 + (c `div` 64) `mod` 64, 0x80 + c `mod` 64]
+
+-- | White space for trim and words: Unicode's White_Space property, written
+-- out so that every target's runtime uses the same set whatever its own
+-- library calls a space. ref:DEC-text-pieces
+textWhiteSpace :: Int -> Bool
+textWhiteSpace point =
+  (point >= 0x09 && point <= 0x0D) || point == 0x20 || point == 0x85 || point == 0xA0 || point == 0x1680
+    || (point >= 0x2000 && point <= 0x200A) || point == 0x2028 || point == 0x2029 || point == 0x202F
+    || point == 0x205F || point == 0x3000
+
+-- | The pieces of a text between each occurrence of a separator, found from
+-- the left without overlap. Empty pieces are kept, so joining the pieces
+-- with the separator gives the text back. An empty separator divides nothing.
+splitText :: [Int] -> [Int] -> [[Int]]
+splitText [] text = [text]
+splitText separator text = go [] text
+  where
+    size = length separator
+    go piece rest
+      | take size rest == separator && length rest >= size = reverse piece : go [] (drop size rest)
+      | otherwise = case rest of
+          [] -> [reverse piece]
+          point : more -> go (point : piece) more
+
+-- | The text without the white space at its two ends.
+trimText :: [Int] -> [Int]
+trimText = dropEnd . dropWhile textWhiteSpace
+  where dropEnd = reverse . dropWhile textWhiteSpace . reverse
+
+-- | The runs of a text that hold no white space.
+wordsOfText :: [Int] -> [[Int]]
+wordsOfText text = case dropWhile textWhiteSpace text of
+  [] -> []
+  rest -> let (word, more) = break textWhiteSpace rest in word : wordsOfText more
+
+-- | The lines of a text: the pieces between line feeds, without a last empty
+-- piece when the text ends with a line feed. The empty text has no lines.
+linesOfText :: [Int] -> [[Int]]
+linesOfText [] = []
+linesOfText text = case break (== 0x0A) text of
+  (line, []) -> [line]
+  (line, _ : rest) -> line : linesOfText rest

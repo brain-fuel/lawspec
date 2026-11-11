@@ -189,6 +189,25 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "    and prelude.textOf 42 = \"42\" and prelude.join \", \" [\"a\", \"b\"] = \"a, b\""
         , "end definition end law" ]
         `shouldSatisfy` isRight
+    it "splits, trims and divides a text into words and lines" $
+      evaluated
+        [ "law \"|pieces| is definition :"
+        , "  prelude.split \",\" \"a,,b,\" = [\"a\", \"\", \"b\", \"\"] and prelude.split \"\" \"ab\" = [\"ab\"]"
+        , "    and prelude.split \"ab\" \"cabab\" = [\"c\", \"\", \"\"] and prelude.split \",\" \"\" = [\"\"]"
+        , "    and prelude.trim \" \\t a b\\n\" = \"a b\" and prelude.trim \"   \" = \"\""
+        , "    and prelude.words \" one  two\\tthree\\n\" = [\"one\", \"two\", \"three\"] and prelude.words \"  \" = []"
+        , "    and prelude.lines \"a\\n\\nb\\n\" = [\"a\", \"\", \"b\"] and prelude.lines \"a\\nb\" = [\"a\", \"b\"]"
+        , "    and prelude.lines \"\" = [] and prelude.lines \"\\n\" = [\"\"]"
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+    it "joins the pieces of a split back into the text" $
+      evaluated
+        [ "law \"|inverse| is definition : for all (separator :: Text) (text :: Text) =>"
+        , "  prelude.join separator (prelude.split separator text) = text end for all end definition end law" ]
+        `shouldSatisfy` isRight
+    it "refutes a split that drops an empty piece" $
+      evaluated [ "law \"|wrong| is definition : prelude.split \",\" \"a,\" = [\"a\"] end definition end law" ]
+        `shouldSatisfy` isLeft
     it "refutes a false sequence law" $
       evaluated [ "law \"|wrong| is definition : prelude.slice 0 2 \"abc\" = \"abc\" end definition end law" ]
         `shouldSatisfy` isLeft

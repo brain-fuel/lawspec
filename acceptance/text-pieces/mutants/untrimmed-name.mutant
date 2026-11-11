@@ -1,0 +1,7 @@
+expect: a setting's name has no spaces around it
+@@ examples/specs/text_pieces.lawspec
+<<<<<<<
+  when Cons name rest then prelude.trim name
+=======
+  when Cons name rest then name
+>>>>>>>

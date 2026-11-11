@@ -4342,8 +4342,80 @@ fn sequence_helper(name: &str, args: &[Value]) -> Result<Option<Value>>
                 .collect::<Result<Vec<String>>>()?
                 .join(separator),
         ),
+        ("split", [Text(separator), Text(text)]) => List(
+            text_split(separator, text)
+                .into_iter()
+                .map(|piece| Text(piece.to_string()))
+                .collect(),
+        ),
+        ("trim", [Text(text)]) => Text(text_trim(text).to_string()),
+        ("words", [Text(text)]) => List(
+            text_words(text)
+                .into_iter()
+                .map(|piece| Text(piece.to_string()))
+                .collect(),
+        ),
+        ("lines", [Text(text)]) => List(
+            text_lines(text)
+                .into_iter()
+                .map(|piece| Text(piece.to_string()))
+                .collect(),
+        ),
         _ => return Ok(None),
     }))
+}
+
+/// Unicode White_Space, the same set on every target.
+pub fn text_white_space(point: char) -> bool
+{
+    matches!(
+        point as u32,
+        0x09..=0x0D
+            | 0x20
+            | 0x85
+            | 0xA0
+            | 0x1680
+            | 0x2000..=0x200A
+            | 0x2028
+            | 0x2029
+            | 0x202F
+            | 0x205F
+            | 0x3000
+    )
+}
+
+/// The pieces between occurrences of a separator; an empty separator divides
+/// nothing.
+pub fn text_split<'a>(separator: &str, text: &'a str) -> Vec<&'a str>
+{
+    if separator.is_empty()
+    {
+        return vec![text];
+    }
+    text.split(separator).collect()
+}
+
+pub fn text_trim(text: &str) -> &str
+{
+    text.trim_matches(text_white_space)
+}
+
+pub fn text_words(text: &str) -> Vec<&str>
+{
+    text.split(text_white_space)
+        .filter(|piece| !piece.is_empty())
+        .collect()
+}
+
+/// The pieces between line feeds, without a last empty piece.
+pub fn text_lines(text: &str) -> Vec<&str>
+{
+    let mut pieces: Vec<&str> = text.split('\n').collect();
+    if pieces.last() == Some(&"")
+    {
+        pieces.pop();
+    }
+    pieces
 }
 
 fn matcher_helper(name: &str, args: &[Value]) -> Result<Option<Value>>
@@ -17381,6 +17453,31 @@ pub mod fast
     {
         let items: Vec<&str> = parts.iter().map(|t| &**t).collect();
         Arc::from(items.join(separator))
+    }
+
+    fn texts(pieces: Vec<&str>) -> List<Text>
+    {
+        List::from_vec(pieces.into_iter().map(Arc::from).collect())
+    }
+
+    pub fn split(separator: &str, text: &str) -> List<Text>
+    {
+        texts(super::text_split(separator, text))
+    }
+
+    pub fn trim(text: &str) -> Text
+    {
+        Arc::from(super::text_trim(text))
+    }
+
+    pub fn words(text: &str) -> List<Text>
+    {
+        texts(super::text_words(text))
+    }
+
+    pub fn lines(text: &str) -> List<Text>
+    {
+        texts(super::text_lines(text))
     }
 
     // A dynamic call of a typed definition: its arguments from Values, its

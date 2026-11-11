@@ -149,6 +149,27 @@ utf8 t = B.pack (concatMap encode (T.unpack t))
 join :: T.Text -> List T.Text -> T.Text
 join separator parts = T.intercalate separator (items parts)
 
+-- | The pieces of a text between occurrences of a separator; an empty
+-- separator divides nothing.
+split :: T.Text -> T.Text -> List T.Text
+split separator text = listOf (if T.null separator then [text] else T.splitOn separator text)
+
+-- | Without the white space at both ends (Unicode White_Space, the same set
+-- on every target).
+trim :: T.Text -> T.Text
+trim = T.dropAround (LS.textWhiteSpace . ord)
+
+words :: T.Text -> List T.Text
+words text = listOf (filter (not . T.null) (T.split (LS.textWhiteSpace . ord) text))
+
+-- | The pieces between line feeds, without a last empty piece.
+lines :: T.Text -> List T.Text
+lines text = listOf (if T.null text then [] else dropLastEmpty (T.splitOn (T.singleton '\n') text))
+  where
+    dropLastEmpty pieces = case reverse pieces of
+      final : rest | T.null final -> reverse rest
+      _ -> pieces
+
 regexMatches :: T.Text -> T.Text -> Bool
 regexMatches pattern text = either error id (LS.regexMatches (T.unpack pattern) (map ord (T.unpack text)))
 

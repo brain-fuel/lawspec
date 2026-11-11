@@ -1,0 +1,7 @@
+expect: a setting's name has no spaces around it
+@@ examples/specs/text_pieces.lawspec
+<<<<<<<
+  prelude.length (prelude.words text)
+=======
+  prelude.length (prelude.lines text)
+>>>>>>>

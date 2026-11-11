@@ -901,6 +901,12 @@ builtin env n args
       checkExpr env (Named "Text") sep
       checkExpr env (Applied "List" (Named "Text")) parts
       pure (Named "Text")
+  | n == "split", [sep,text] <- args = do
+      checkExpr env (Named "Text") sep
+      checkExpr env (Named "Text") text
+      pure (Applied "List" (Named "Text"))
+  | n == "trim", [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Text")
+  | n `elem` ["words","lines"], [text] <- args = checkExpr env (Named "Text") text >> pure (Applied "List" (Named "Text"))
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
   where
     patternArity value = case unlocated value of
@@ -1162,7 +1168,9 @@ typedExpressionWithSchemesContext context declarations bits env e = do
 fixedSignatures :: [(String, [Type])]
 fixedSignatures =
   [ ("prelude.octets", [Named "Bytes"]), ("prelude.bytesOf", [Applied "List" (Named "UInt8")])
-  , ("prelude.utf8", [Named "Text"]), ("prelude.join", [Named "Text", Applied "List" (Named "Text")]) ]
+  , ("prelude.utf8", [Named "Text"]), ("prelude.join", [Named "Text", Applied "List" (Named "Text")])
+  , ("prelude.split", [Named "Text", Named "Text"]), ("prelude.trim", [Named "Text"])
+  , ("prelude.words", [Named "Text"]), ("prelude.lines", [Named "Text"]) ]
 
 -- | Whether an expression reads or replaces a field (see fieldAccessPrefix).
 isFieldNode :: Expr -> Bool

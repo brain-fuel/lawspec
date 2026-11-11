@@ -394,7 +394,9 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   -- to another, the item at an index (a Maybe), the integers from one to
   -- another, a Bytes' octets and back, a Text's UTF-8 encoding, an integer
   -- in decimal, and texts joined by a separator.
-  | Append | Slice | At | Range | Octets | BytesOf | Utf8 | TextOf | Join deriving (Eq, Show, Generic)
+  | Append | Slice | At | Range | Octets | BytesOf | Utf8 | TextOf | Join
+  -- Text into pieces and without surrounding white space (see textWhiteSpace).
+  | Split | Trim | Words | Lines deriving (Eq, Show, Generic)
 -- | What a law asserts: equations, implications and conjunctions, each equation
 -- with the evidence of how its sides are compared.
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition]
@@ -807,6 +809,10 @@ builtinName BytesOf = "bytesOf"
 builtinName Utf8 = "utf8"
 builtinName TextOf = "textOf"
 builtinName Join = "join"
+builtinName Split = "split"
+builtinName Trim = "trim"
+builtinName Words = "words"
+builtinName Lines = "lines"
 
 -- | Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool

@@ -236,7 +236,13 @@ evaluateWithAdmissionM admitted tick registry bits adapter bindings = run (M.fro
     items <- listItems parts
     texts <- mapM (\v -> case v of ScalarValue (SSequence "Text" t) -> Right t; _ -> Left "join needs texts") items
     Right (ScalarValue (SSequence "Text" (intercalate separator texts)))
+  helper Split [ScalarValue (SSequence "Text" separator), ScalarValue (SSequence "Text" text)] =
+    Right (texts (splitText separator text))
+  helper Trim [ScalarValue (SSequence "Text" text)] = Right (ScalarValue (SSequence "Text" (trimText text)))
+  helper Words [ScalarValue (SSequence "Text" text)] = Right (texts (wordsOfText text))
+  helper Lines [ScalarValue (SSequence "Text" text)] = Right (texts (linesOfText text))
   helper builtin values = ScalarValue <$> (mapM toScalarValue values >>= helperValue bits (builtinName builtin))
+  texts = listValue (scalarType "Text") . map (ScalarValue . SSequence "Text")
   integerOf v = case v of
     ScalarValue (SInteger _ n) -> Right n
     _ -> Left "expected an integer"

@@ -328,7 +328,7 @@ proofExpression schema bits = proof
       -- Text tests and the sequence helpers are total functions of their
       -- values: atoms, so a field's regex is a fact a match knows and a
       -- rebuild of the same field proves.
-      Helper builtin values | builtin `elem` [StartsWith, EndsWith, TextContains, RegexMatches, Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join] ->
+      Helper builtin values | builtin `elem` [StartsWith, EndsWith, TextContains, RegexMatches, Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join, Split, Trim, Words, Lines] ->
         T.Opaque (builtinName builtin) (map proof values)
       Helper IsPresent [value] -> T.IsPresent (proof value)
       Helper PresentValue [value] -> T.PresentValue (proof value)

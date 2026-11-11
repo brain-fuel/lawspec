@@ -1451,6 +1451,28 @@ DEC-size-change-termination:
   decided: 0.33.0
   refs: [idris2-size-change, lean-termination, spark-subprogram-variant, why3-variant, rocq-fixpoint, REQ-honest-evidence]
 
+DEC-text-pieces:
+  status: decided
+  question: How does a checked definition divide a text into pieces, and what counts as white space?
+  answer: |
+    Four total built-ins beside join. split separator text gives the pieces
+    between occurrences of the separator, found left to right without overlap,
+    and keeps empty pieces, so join separator (split separator text) = text for
+    every separator and text; an empty separator divides nothing and gives the
+    one text. trim removes white space from both ends. words gives the maximal
+    runs without white space, never an empty one. lines gives the pieces
+    between line feeds (U+000A) without a last empty piece, so the empty text
+    has no lines; a carriage return stays in its line. White space is exactly
+    Unicode 17.0.0's White_Space property (25 code points), written out in the
+    reference semantics and in every runtime, because the targets' own trim
+    and split functions disagree about which characters are spaces. Texts are
+    compared by code point, as elsewhere. The built-ins are opaque to the
+    proof view, as join is: a law about them is tested and evaluated, and a
+    solver proof of one is an explicit unsupported result.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [unicode-white-space]
+
 DEC-s1j-evaluation-budget:
   status: decided
   question: How should optional compiler law evaluation be bounded?

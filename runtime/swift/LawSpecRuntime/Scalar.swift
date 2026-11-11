@@ -943,6 +943,16 @@ public enum Scalar {
       if case .text(let separator) = values[0], case .list(let parts) = values[1] {
         return .text(try parts.map(text).joined(separator: separator))
       }
+    case ("split", 2):
+      if case .text(let separator) = values[0], case .text(let t) = values[1] {
+        return .list(textSplit(separator, t).map { .text($0) })
+      }
+    case ("trim", 1):
+      if case .text(let t) = values[0] { return .text(textTrim(t)) }
+    case ("words", 1):
+      if case .text(let t) = values[0] { return .list(textWords(t).map { .text($0) }) }
+    case ("lines", 1):
+      if case .text(let t) = values[0] { return .list(textLines(t).map { .text($0) }) }
     case ("quot", 2), ("rem", 2), ("pow", 2):
       return try binary(name, values[0], values[1], types[0], types[1])
     default:
@@ -950,6 +960,66 @@ public enum Scalar {
     }
     if values.count == 1 { return try convert(values[0], typeOf(name), bits) }
     throw Fail.with("UnknownHelper", name)
+  }
+
+  /// Unicode White_Space, the same set on every target.
+  public static func textWhiteSpace(_ scalar: Unicode.Scalar) -> Bool {
+    switch scalar.value {
+    case 0x09...0x0D, 0x20, 0x85, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F,
+      0x3000:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private static func textOf(_ scalars: ArraySlice<Unicode.Scalar>) -> String {
+    var view = String.UnicodeScalarView()
+    view.append(contentsOf: scalars)
+    return String(view)
+  }
+
+  /// The pieces between occurrences of a separator; an empty separator divides
+  /// nothing.
+  public static func textSplit(_ separator: String, _ text: String) -> [String] {
+    let mark = Array(separator.unicodeScalars)
+    if mark.isEmpty { return [text] }
+    let scalars = Array(text.unicodeScalars)
+    var pieces: [String] = []
+    var start = 0
+    var at = 0
+    while at + mark.count <= scalars.count {
+      if scalars[at..<(at + mark.count)].elementsEqual(mark) {
+        pieces.append(textOf(scalars[start..<at]))
+        at += mark.count
+        start = at
+      } else {
+        at += 1
+      }
+    }
+    pieces.append(textOf(scalars[start...]))
+    return pieces
+  }
+
+  public static func textTrim(_ text: String) -> String {
+    let scalars = Array(text.unicodeScalars)
+    var first = 0
+    var last = scalars.count
+    while first < last && textWhiteSpace(scalars[first]) { first += 1 }
+    while last > first && textWhiteSpace(scalars[last - 1]) { last -= 1 }
+    return textOf(scalars[first..<last])
+  }
+
+  public static func textWords(_ text: String) -> [String] {
+    Array(text.unicodeScalars).split(whereSeparator: textWhiteSpace).map(textOf)
+  }
+
+  /// The pieces between line feeds, without a last empty piece.
+  public static func textLines(_ text: String) -> [String] {
+    var pieces = Array(text.unicodeScalars)
+      .split(separator: "\n", omittingEmptySubsequences: false).map(textOf)
+    if pieces.last == "" { pieces.removeLast() }
+    return pieces
   }
 
   // MARK: Symbols

@@ -238,6 +238,9 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     helperType Utf8 [t] | expressionTypeOf t == scalarType "Text" = Right (scalarType "Bytes")
     helperType TextOf [n] | Constructor name [] <- expressionTypeOf n, isInteger name = Right (scalarType "Text")
     helperType Join [sep, parts] | expressionTypeOf sep == scalarType "Text", expressionTypeOf parts == Constructor "List" [TypeArgument (scalarType "Text")] = Right (scalarType "Text")
+    helperType Split [sep, text] | all ((== scalarType "Text") . expressionTypeOf) [sep, text] = Right (Constructor "List" [TypeArgument (scalarType "Text")])
+    helperType Trim [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
+    helperType builtin [text] | builtin `elem` [Words, Lines], expressionTypeOf text == scalarType "Text" = Right (Constructor "List" [TypeArgument (scalarType "Text")])
     helperType b args = Left ("invalid arguments to " ++ builtinName b ++ ": " ++ show (map expressionTypeOf args))
     sequenceType t = t `elem` [scalarType "Text", scalarType "Bytes"] || case t of Constructor "List" [TypeArgument _] -> True; _ -> False
 

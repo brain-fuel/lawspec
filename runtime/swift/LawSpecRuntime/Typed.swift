@@ -142,6 +142,16 @@ public enum Typed {
   public static func join(_ separator: String, _ parts: PersistentList<String>) -> String {
     parts.joined(separator: separator)
   }
+  public static func split(_ separator: String, _ text: String) -> PersistentList<String> {
+    PersistentList(Scalar.textSplit(separator, text))
+  }
+  public static func trim(_ text: String) -> String { Scalar.textTrim(text) }
+  public static func words(_ text: String) -> PersistentList<String> {
+    PersistentList(Scalar.textWords(text))
+  }
+  public static func lines(_ text: String) -> PersistentList<String> {
+    PersistentList(Scalar.textLines(text))
+  }
 
   public static func startsWith(_ text: String, _ prefix: String) -> Bool {
     text.unicodeScalars.starts(with: prefix.unicodeScalars)

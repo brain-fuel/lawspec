@@ -30,6 +30,10 @@
     at_list/2,
     range/2,
     join/2,
+    split/2,
+    trim/1,
+    words/1,
+    lines/1,
     compare/2,
     sorted_pairs/1, sorted_pairs/2,
     sorted_items/1, sorted_items/2,
@@ -128,6 +132,11 @@ range(Lo, Hi) when Hi > Lo -> lists:seq(Lo, Hi - 1);
 range(_, _) -> [].
 
 join(Separator, Parts) -> iolist_to_binary(lists:join(Separator, Parts)).
+
+split(Separator, Text) -> lawspec_beam_scalar:text_split(Separator, Text).
+trim(Text) -> lawspec_beam_scalar:text_trim(Text).
+words(Text) -> lawspec_beam_scalar:text_words(Text).
+lines(Text) -> lawspec_beam_scalar:text_lines(Text).
 
 %% The portable order of values whose Erlang term order is it: scalars,
 %% lists, and data whose constructors sort as their tags do.

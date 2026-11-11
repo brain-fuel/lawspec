@@ -1658,6 +1658,14 @@ public final class LawSpecRuntime
         }
         return textValue(String.join(codePointsText(args[0]), parts));
       }
+      case "split":
+        return textList(textSplit(codePointsText(args[0]), codePointsText(args[1])));
+      case "trim":
+        return textValue(textTrim(codePointsText(args[0])));
+      case "words":
+        return textList(textWords(codePointsText(args[0])));
+      case "lines":
+        return textList(textLines(codePointsText(args[0])));
       default:
         return null;
     }
@@ -8919,6 +8927,106 @@ public final class LawSpecRuntime
   public static Value textValue(String text)
   {
     return sequence("Text", text.codePoints().toArray());
+  }
+
+  static Value textList(java.util.List<String> texts)
+  {
+    var values = new ArrayList<Value>();
+    for (String text : texts)
+    {
+      values.add(textValue(text));
+    }
+    return new Value("List Text", List.copyOf(values));
+  }
+
+  /** Unicode White_Space, the same set on every target. */
+  public static boolean textWhiteSpace(int point)
+  {
+    return (point >= 0x09 && point <= 0x0D)
+        || point == 0x20
+        || point == 0x85
+        || point == 0xA0
+        || point == 0x1680
+        || (point >= 0x2000 && point <= 0x200A)
+        || point == 0x2028
+        || point == 0x2029
+        || point == 0x202F
+        || point == 0x205F
+        || point == 0x3000;
+  }
+
+  /** The pieces between occurrences of a separator; an empty separator divides nothing. */
+  public static java.util.List<String> textSplit(String separator, String text)
+  {
+    var out = new ArrayList<String>();
+    if (separator.isEmpty())
+    {
+      out.add(text);
+      return out;
+    }
+    int from = 0;
+    for (int at = text.indexOf(separator, from); at >= 0; at = text.indexOf(separator, from))
+    {
+      out.add(text.substring(from, at));
+      from = at + separator.length();
+    }
+    out.add(text.substring(from));
+    return out;
+  }
+
+  /** The text without the white space at its two ends. */
+  public static String textTrim(String text)
+  {
+    int[] points = text.codePoints().toArray();
+    int start = 0;
+    int end = points.length;
+    while (start < end && textWhiteSpace(points[start]))
+    {
+      start++;
+    }
+    while (end > start && textWhiteSpace(points[end - 1]))
+    {
+      end--;
+    }
+    return new String(points, start, end - start);
+  }
+
+  /** The runs of a text that hold no white space. */
+  public static java.util.List<String> textWords(String text)
+  {
+    var out = new ArrayList<String>();
+    var word = new StringBuilder();
+    for (int point : text.codePoints().toArray())
+    {
+      if (textWhiteSpace(point))
+      {
+        if (word.length() > 0)
+        {
+          out.add(word.toString());
+          word.setLength(0);
+        }
+      }
+      else
+      {
+        word.appendCodePoint(point);
+      }
+    }
+    if (word.length() > 0)
+    {
+      out.add(word.toString());
+    }
+    return out;
+  }
+
+  /** The pieces between line feeds, without a last empty piece. */
+  public static java.util.List<String> textLines(String text)
+  {
+    java.util.List<String> pieces = textSplit("\n", text);
+    if (pieces.get(pieces.size() - 1).isEmpty())
+    {
+      pieces.remove(pieces.size() - 1);
+    }
+    return pieces;
   }
 
   @SuppressWarnings("unchecked")

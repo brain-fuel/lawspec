@@ -410,6 +410,10 @@ dotnet-format:
   kind: article
   title: dotnet format
   locator: https://learn.microsoft.com/dotnet/core/tools/dotnet-format
+unicode-white-space:
+  kind: article
+  title: Unicode Character Database 17.0.0, PropList.txt, the White_Space property
+  locator: https://www.unicode.org/Public/17.0.0/ucd/PropList.txt
 unicode-text-segmentation:
   kind: article
   title: Unicode Standard Annex 29, Unicode Text Segmentation

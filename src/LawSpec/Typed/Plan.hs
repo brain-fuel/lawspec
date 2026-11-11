@@ -381,7 +381,7 @@ failedWith ref = case ref of
 
 -- | The sequence helpers every typed target implements.
 sequenceBuiltins :: [Builtin]
-sequenceBuiltins = [Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join]
+sequenceBuiltins = [Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join, Split, Trim, Words, Lines]
 
 -- | The definitions that stay dynamic, by name, and why.
 typedFallbacks :: TypedPlan -> [(String, String)]

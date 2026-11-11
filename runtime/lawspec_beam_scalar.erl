@@ -6,6 +6,10 @@
 -module(lawspec_beam_scalar).
 -export([
     literal/1, literal/2,
+    text_split/2,
+    text_trim/1,
+    text_words/1,
+    text_lines/1,
     wire/2,
     validate/3,
     convert/3,
@@ -953,12 +957,68 @@ helper(<<"utf8">>, [T], _, _) when is_binary(T) -> T;
 helper(<<"textOf">>, [N], _, _) when is_integer(N) -> integer_to_binary(N);
 helper(<<"join">>, [Separator, Parts], _, _) when is_binary(Separator), is_list(Parts) ->
     iolist_to_binary(lists:join(Separator, Parts));
+helper(<<"split">>, [Separator, Text], _, _) when is_binary(Separator), is_binary(Text) ->
+    text_split(Separator, Text);
+helper(<<"trim">>, [Text], _, _) when is_binary(Text) -> text_trim(Text);
+helper(<<"words">>, [Text], _, _) when is_binary(Text) -> text_words(Text);
+helper(<<"lines">>, [Text], _, _) when is_binary(Text) -> text_lines(Text);
 helper(Op, [A, B], [TA, TB], _) when Op =:= <<"quot">>; Op =:= <<"rem">>; Op =:= <<"pow">> ->
     binary(Op, A, B, TA, TB);
 helper(Name, [V], _, Bits) ->
     convert(V, Name, Bits);
 helper(Name, _, _, _) ->
     fail({unknown_helper, Name}).
+
+%% Unicode White_Space, the same set on every target.
+text_white_space(C) when C >= 16#09, C =< 16#0D -> true;
+text_white_space(C) when C >= 16#2000, C =< 16#200A -> true;
+text_white_space(C) ->
+    lists:member(C, [16#20, 16#85, 16#A0, 16#1680, 16#2028, 16#2029, 16#202F, 16#205F, 16#3000]).
+
+%% The pieces between occurrences of a separator; an empty separator divides
+%% nothing.
+text_split(<<>>, Text) -> [Text];
+text_split(Separator, Text) -> binary:split(Text, Separator, [global]).
+
+text_trim(<<C/utf8, Rest/binary>> = Text) ->
+    case text_white_space(C) of
+        true -> text_trim(Rest);
+        false -> binary:part(Text, 0, text_end(Text, 0, 0))
+    end;
+text_trim(<<>>) ->
+    <<>>.
+
+%% The size in bytes up to the end of the last character that is not white
+%% space.
+text_end(<<C/utf8, Rest/binary>>, At, End) ->
+    Next = At + byte_size(<<C/utf8>>),
+    case text_white_space(C) of
+        true -> text_end(Rest, Next, End);
+        false -> text_end(Rest, Next, Next)
+    end;
+text_end(<<>>, _, End) ->
+    End.
+
+text_words(Text) -> text_words(Text, <<>>, []).
+
+text_words(<<C/utf8, Rest/binary>>, Word, Words) ->
+    case text_white_space(C) of
+        true when Word =:= <<>> -> text_words(Rest, <<>>, Words);
+        true -> text_words(Rest, <<>>, [Word | Words]);
+        false -> text_words(Rest, <<Word/binary, C/utf8>>, Words)
+    end;
+text_words(<<>>, <<>>, Words) ->
+    lists:reverse(Words);
+text_words(<<>>, Word, Words) ->
+    lists:reverse([Word | Words]).
+
+%% The pieces between line feeds, without a last empty piece.
+text_lines(Text) ->
+    Pieces = binary:split(Text, <<"\n">>, [global]),
+    case lists:last(Pieces) of
+        <<>> -> lists:droplast(Pieces);
+        _ -> Pieces
+    end.
 
 sequence_items(X, _) when is_list(X) -> X;
 sequence_items(X, <<"Text">>) when is_binary(X) -> unicode:characters_to_list(X);

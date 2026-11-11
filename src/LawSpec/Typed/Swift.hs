@@ -500,6 +500,10 @@ cexprWith position env scope e = case expressionNode e of
     (s, x) <- cexpr env scope n
     pure (s, callDoc "Typed.textOf" [exact (expressionType n) x])
   Helper Join [sep, parts] -> call2 "Typed.join" sep parts
+  Helper Split [sep, text] -> call2 "Typed.split" sep text
+  Helper Trim [text] -> one "Typed.trim" text
+  Helper Words [text] -> one "Typed.words" text
+  Helper Lines [text] -> one "Typed.lines" text
   _ -> lift' (Left ("typed Swift: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     wrap = if position == Inner then paren else id

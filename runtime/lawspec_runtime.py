@@ -724,6 +724,46 @@ def _at(x, i):
     return construct("Maybe::Absent", [])
 
 
+# Unicode White_Space, the same set on every target.
+_TEXT_WHITE_SPACE = frozenset(
+    [0x20, 0x85, 0xA0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000]
+    + list(range(0x09, 0x0E))
+    + list(range(0x2000, 0x200B))
+)
+
+
+def _text_split(separator, text):
+    return text.split(separator) if separator else [text]
+
+
+def _text_lines(text):
+    pieces = text.split("\n")
+    return pieces[:-1] if pieces[-1] == "" else pieces
+
+
+def _text_trim(text):
+    start, end = 0, len(text)
+    while start < end and ord(text[start]) in _TEXT_WHITE_SPACE:
+        start += 1
+    while end > start and ord(text[end - 1]) in _TEXT_WHITE_SPACE:
+        end -= 1
+    return text[start:end]
+
+
+def _text_words(text):
+    out, word = [], []
+    for character in text:
+        if ord(character) in _TEXT_WHITE_SPACE:
+            if word:
+                out.append("".join(word))
+                word = []
+        else:
+            word.append(character)
+    if word:
+        out.append("".join(word))
+    return out
+
+
 _SEQUENCE_HELPERS = {
     "append": _append,
     "slice": _slice,
@@ -734,6 +774,10 @@ _SEQUENCE_HELPERS = {
     "utf8": lambda t: t.encode("utf-8"),
     "textOf": lambda n: str(n),
     "join": lambda separator, parts: separator.join(parts),
+    "split": lambda separator, text: _text_split(separator, text),
+    "trim": lambda text: _text_trim(text),
+    "words": lambda text: _text_words(text),
+    "lines": lambda text: _text_lines(text),
 }
 
 

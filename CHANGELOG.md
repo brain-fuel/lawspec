@@ -23,6 +23,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Text built-ins `prelude.split`, `prelude.trim`, `prelude.words` and
+  `prelude.lines`, on every target. `split` keeps empty pieces, so `join`
+  gives the text back. White space is Unicode 17.0.0's `White_Space` property
+  on every target. See [Sequences](docs/reference/language/sequences.md#pieces-of-a-text).
+
 - Mutually recursive checked definitions. Termination is now inferred by
   size-change analysis over each cycle of calls, so definitions that call each
   other are admitted when every cycle keeps one argument and makes it strictly

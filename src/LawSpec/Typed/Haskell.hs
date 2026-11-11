@@ -630,6 +630,10 @@ cexpr env scope e = case expressionNode e of
   Helper Utf8 [t] -> one "LSF.utf8" t
   Helper TextOf [n] -> one "LSF.textOf" n
   Helper Join [sep, parts] -> call2 "LSF.join" sep parts
+  Helper Split [sep, text] -> call2 "LSF.split" sep text
+  Helper Trim [text] -> one "LSF.trim" text
+  Helper Words [text] -> one "LSF.words" text
+  Helper Lines [text] -> one "LSF.lines" text
   _ -> lift' (Left ("typed Haskell: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     one f a = do

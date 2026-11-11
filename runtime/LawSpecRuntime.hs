@@ -811,6 +811,10 @@ helper n args bits = case (n, args) of
   ("utf8", [SSequence _ t]) -> SSequence "Bytes" (map fromIntegral (B.unpack (TE.encodeUtf8 (T.pack (map chr t)))))
   ("textOf", [SInteger _ k]) -> textScalar (show k)
   ("join", [SSequence _ separator, SList parts]) -> SSequence "Text" (intercalate separator [p | SSequence _ p <- parts])
+  ("split", [SSequence _ separator, SSequence _ text]) -> SList (map (SSequence "Text") (splitText separator text))
+  ("trim", [SSequence _ text]) -> SSequence "Text" (trimText text)
+  ("words", [SSequence _ text]) -> SList (map (SSequence "Text") (wordsOfText text))
+  ("lines", [SSequence _ text]) -> SList (map (SSequence "Text") (linesOfText text))
   ("startsWith", [SSequence _ t, SSequence _ p]) -> SBool (p `isPrefixOf` t)
   ("endsWith", [SSequence _ t, SSequence _ p]) -> SBool (p `isSuffixOf` t)
   ("textContains", [SSequence _ t, SSequence _ p]) -> SBool (p `isInfixOf` t)
@@ -6947,3 +6951,43 @@ nativeFailures ability convert body mapped = unsafePerformIO $ do
 pairFields :: Scalar -> (Scalar, Scalar)
 pairFields (SData _ [result, next]) = (result, next)
 pairFields _ = error "a handler clause must give Pair result state"
+
+-- | Unicode White_Space, the same set on every target.
+textWhiteSpace :: Int -> Bool
+textWhiteSpace point =
+  (point >= 0x09 && point <= 0x0D)
+    || point == 0x20
+    || point == 0x85
+    || point == 0xA0
+    || point == 0x1680
+    || (point >= 0x2000 && point <= 0x200A)
+    || point == 0x2028
+    || point == 0x2029
+    || point == 0x202F
+    || point == 0x205F
+    || point == 0x3000
+
+splitText :: [Int] -> [Int] -> [[Int]]
+splitText [] text = [text]
+splitText separator text = go [] text
+  where
+    size = length separator
+    go piece rest
+      | length rest >= size && take size rest == separator = reverse piece : go [] (drop size rest)
+      | otherwise = case rest of
+          [] -> [reverse piece]
+          point : more -> go (point : piece) more
+
+trimText :: [Int] -> [Int]
+trimText = reverse . dropWhile textWhiteSpace . reverse . dropWhile textWhiteSpace
+
+wordsOfText :: [Int] -> [[Int]]
+wordsOfText text = case dropWhile textWhiteSpace text of
+  [] -> []
+  rest -> let (word, more) = break textWhiteSpace rest in word : wordsOfText more
+
+linesOfText :: [Int] -> [[Int]]
+linesOfText [] = []
+linesOfText text = case break (== 0x0A) text of
+  (line, []) -> [line]
+  (line, _ : rest) -> line : linesOfText rest

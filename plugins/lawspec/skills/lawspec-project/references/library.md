@@ -553,12 +553,54 @@ end unit
 | `prelude.utf8 t` | the UTF-8 encoding of a text, as `Bytes` |
 | `prelude.textOf n` | an integer, written in decimal |
 | `prelude.join separator texts` | a list of texts joined, the separator between each two |
+| `prelude.split separator text` | the pieces of a text between occurrences of the separator, a `List Text` |
+| `prelude.trim text` | the text without white space at its start and end |
+| `prelude.words text` | the runs of a text without white space, a `List Text` |
+| `prelude.lines text` | the pieces of a text between line feeds, a `List Text` |
 
 - Indices count from 0: code points of a text, octets of `Bytes`, items of a
   list.
 - `slice`, `take` and `drop` are clamped to the sequence: an index before its
   start or past its end stands for the start or the end, so they never fail.
 - Every operation is total, and means the same on every target.
+
+## Pieces of a text
+
+```lawspec
+unit guide.pieces
+
+-- A setting is a name, an equals sign and a value.
+function settingName (line :: Text) -> Text is
+  first matching case of prelude.split "=" line :
+    when Nil then ""
+    when Cons name rest then prelude.trim name
+  end case
+end function
+
+law "|pieces| is
+  definition :
+    settingName " retries = 3" = "retries"
+    and prelude.split "," "a,,b," = ["a", "", "b", ""]
+    and prelude.words " one  two\tthree\n" = ["one", "two", "three"]
+    and prelude.lines "a\n\nb\n" = ["a", "", "b"]
+  end definition
+end law
+end unit
+```
+
+- `split` finds the separator from left to right and keeps empty pieces, so
+  `prelude.join separator (prelude.split separator text)` is always `text`.
+  An empty separator divides nothing: the result is the one text.
+- `words` never gives an empty word. A text of white space only has none.
+- `lines` ends a line at each line feed and gives no empty last line, so the
+  empty text has no lines. A carriage return stays in its line; `trim`
+  removes it.
+- White space is the 25 code points of Unicode 17.0.0's `White_Space`
+  property: tab to carriage return, space, U+0085, no-break space, and the
+  spaces and separators U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F,
+  U+205F and U+3000. Every target uses this set, not its own library's.
+- A proof does not look inside these four: a law about them is evaluated
+  and tested, and a solver result for one is "unsupported".
 
 ## Case folding and substring predicates
 

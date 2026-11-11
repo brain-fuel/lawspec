@@ -539,6 +539,14 @@ func lsSequenceHelper(n string, args []LawSpecValue) (LawSpecValue, bool) {
 			parts = append(parts, lsCodePointsText(v.Data.([]int)))
 		}
 		return LawSpecValue{"Text", lsTextUnits(strings.Join(parts, lsCodePointsText(args[0].Data.([]int))))}, true
+	case "split":
+		return lsTextList(lsTextSplit(lsCodePointsText(args[0].Data.([]int)), lsCodePointsText(args[1].Data.([]int)))), true
+	case "trim":
+		return LawSpecValue{"Text", lsTextUnits(lsTextTrim(lsCodePointsText(args[0].Data.([]int))))}, true
+	case "words":
+		return lsTextList(lsTextWords(lsCodePointsText(args[0].Data.([]int)))), true
+	case "lines":
+		return lsTextList(lsTextLines(lsCodePointsText(args[0].Data.([]int)))), true
 	}
 	return LawSpecValue{}, false
 }
@@ -9490,4 +9498,45 @@ func lsPairFields(pair LawSpecValue) (LawSpecValue, LawSpecValue) {
 		panic("a handler clause must give Pair result state")
 	}
 	return data.fields[0], data.fields[1]
+}
+
+func lsTextList(texts []string) LawSpecValue {
+	values := []LawSpecValue{}
+	for _, text := range texts {
+		values = append(values, LawSpecValue{"Text", lsTextUnits(text)})
+	}
+	return lsList("List Text", values)
+}
+
+// lsTextWhiteSpace is Unicode White_Space, the same set on every target.
+func lsTextWhiteSpace(point rune) bool {
+	return (point >= 0x09 && point <= 0x0D) || point == 0x20 || point == 0x85 || point == 0xA0 ||
+		point == 0x1680 || (point >= 0x2000 && point <= 0x200A) || point == 0x2028 || point == 0x2029 ||
+		point == 0x202F || point == 0x205F || point == 0x3000
+}
+
+// lsTextSplit gives the pieces between occurrences of a separator; an empty
+// separator divides nothing.
+func lsTextSplit(separator, text string) []string {
+	if separator == "" {
+		return []string{text}
+	}
+	return strings.Split(text, separator)
+}
+
+func lsTextTrim(text string) string {
+	return strings.TrimFunc(text, lsTextWhiteSpace)
+}
+
+func lsTextWords(text string) []string {
+	return strings.FieldsFunc(text, lsTextWhiteSpace)
+}
+
+// lsTextLines gives the pieces between line feeds, without a last empty piece.
+func lsTextLines(text string) []string {
+	pieces := strings.Split(text, "\n")
+	if pieces[len(pieces)-1] == "" {
+		pieces = pieces[:len(pieces)-1]
+	}
+	return pieces
 }

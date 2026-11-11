@@ -50,7 +50,8 @@ simplePreludeHelpers =
 
 sequencePreludeHelpers :: [(String,C.Builtin)]
 sequencePreludeHelpers =
-  [("octets",C.Octets),("bytesOf",C.BytesOf),("utf8",C.Utf8),("textOf",C.TextOf),("join",C.Join)]
+  [("octets",C.Octets),("bytesOf",C.BytesOf),("utf8",C.Utf8),("textOf",C.TextOf),("join",C.Join)
+  ,("split",C.Split),("trim",C.Trim),("words",C.Words),("lines",C.Lines)]
 
 preludeValueName :: String -> Bool
 preludeValueName name = isNumeric name || name `elem` publicPreludeNames

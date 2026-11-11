@@ -615,6 +615,10 @@ cexpr env scope e = case expressionNode e of
   Helper Utf8 [t] -> one "lsf.utf8" t
   Helper TextOf [n] -> one "String" n
   Helper Join [sep, parts] -> call2 "lsf.join" sep parts
+  Helper Split [sep, text] -> call2 "lsf.split" sep text
+  Helper Trim [text] -> one "lsf.trim" text
+  Helper Words [text] -> one "lsf.words" text
+  Helper Lines [text] -> one "lsf.lines" text
   _ -> lift' (Left ("typed JavaScript: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     one f a = do

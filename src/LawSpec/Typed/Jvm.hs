@@ -783,6 +783,13 @@ cexpr env scope e
         (sa, a) <- cexpr env scope sep
         (sb, b) <- cexpr env scope parts
         pure (sa ++ sb, jcall "LawSpecFast.join" [a, b])
+      Helper Split [sep, text] -> do
+        (sa, a) <- cexpr env scope sep
+        (sb, b) <- cexpr env scope text
+        pure (sa ++ sb, jcall "LawSpecFast.split" [a, b])
+      Helper Trim [text] -> one "LawSpecFast.trim" text
+      Helper Words [text] -> one "LawSpecFast.words" text
+      Helper Lines [text] -> one "LawSpecFast.lines" text
       _ -> lift' (Left ("typed Java: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     one f a = do

@@ -644,6 +644,10 @@ cexpr env scope e = case expressionNode e of
       (s, x) <- cexpr env scope n
       pure (s, D.text "lsfTextOfLong(int64(" <> x <> D.text "))")
   Helper Join [sep, parts] -> twoText "lsfJoin" sep parts
+  Helper Split [sep, text] -> twoText "lsfSplit" sep text
+  Helper Trim [text] -> one "lsfTrim" text
+  Helper Words [text] -> one "lsfWords" text
+  Helper Lines [text] -> one "lsfLines" text
   _ -> lift' (Left ("typed Go: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     one f a = do

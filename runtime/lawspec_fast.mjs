@@ -410,6 +410,83 @@ export function join(separator, parts)
   return items(parts).join(separator);
 }
 
+// Unicode White_Space, the same set on every target.
+function isWhiteSpace(point)
+{
+  return (
+    (point >= 0x09 && point <= 0x0d) ||
+    point === 0x20 ||
+    point === 0x85 ||
+    point === 0xa0 ||
+    point === 0x1680 ||
+    (point >= 0x2000 && point <= 0x200a) ||
+    point === 0x2028 ||
+    point === 0x2029 ||
+    point === 0x202f ||
+    point === 0x205f ||
+    point === 0x3000
+  );
+}
+
+function splitText(separator, text)
+{
+  return separator === '' ? [text] : text.split(separator);
+}
+
+function trimText(text)
+{
+  const points = Array.from(text);
+  let start = 0;
+  let end = points.length;
+  while (start < end && isWhiteSpace(points[start].codePointAt(0))) start++;
+  while (end > start && isWhiteSpace(points[end - 1].codePointAt(0))) end--;
+  return points.slice(start, end).join('');
+}
+
+function wordsOfText(text)
+{
+  const out = [];
+  let word = '';
+  for (const character of text)
+  {
+    if (isWhiteSpace(character.codePointAt(0)))
+    {
+      if (word !== '') out.push(word);
+      word = '';
+    }
+    else word += character;
+  }
+  if (word !== '') out.push(word);
+  return out;
+}
+
+function linesOfText(text)
+{
+  const pieces = text.split('\n');
+  if (pieces[pieces.length - 1] === '') pieces.pop();
+  return pieces;
+}
+
+export function split(separator, text)
+{
+  return listOf(splitText(separator, text));
+}
+
+export function trim(text)
+{
+  return trimText(text);
+}
+
+export function words(text)
+{
+  return listOf(wordsOfText(text));
+}
+
+export function lines(text)
+{
+  return listOf(linesOfText(text));
+}
+
 export function regexMatches(pattern, text)
 {
   return ls.regexMatches(pattern, text);
