@@ -279,7 +279,11 @@ equalsBody header body
   -- its first line fits there.
   | '\n' `elem` flatBody = D.prefixChoice (D.render D.Compact header ++ " = " ++ takeWhile (/= '\n') flatBody)
       (header <> D.text " = " <> body) (header <> D.text " =" <> D.nest 2 (D.hardline <> body))
-  | otherwise = header <> D.group (D.text " =" <> D.nest 2 (D.softline <> body))
+  -- A body of one line stays after the = only when all of it fits there,
+  -- so a body that breaks on its own (actor.call[T] { s => ... }) goes on
+  -- the next line, as scalafmt puts it.
+  | otherwise = header <> D.prefixChoice (" = " ++ flatBody)
+      (D.group (D.text " =" <> D.nest 2 (D.softline <> body))) (D.text " =" <> D.nest 2 (D.hardline <> body))
   where flatBody = D.render D.Compact body
 
 -- | A line comment, wrapped at the page's width.
