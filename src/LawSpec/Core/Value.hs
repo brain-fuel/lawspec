@@ -14,7 +14,7 @@ import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, Binder, DataDeclaration(..), DataConstructor(..), declarationIndexGuards, binderId, binderType)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core.EqSet as EqSet
-import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsAt, constructorPredicatesFor, lookupData, constructorFieldPath, freeExistentials, matchType, substitute)
+import LawSpec.Core.Types (TypeRegistry, checkType, plainConstructor, constructorFieldsAt, constructorPredicatesFor, lookupData, constructorFieldPath, freeExistentials, matchType, substitute)
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), evaluateIndex, guardHolds)
 import LawSpec.Core.Semantics (binaryValue)
 import LawSpec.Scalar
@@ -110,10 +110,14 @@ checkValueAtM validatedFields tick evaluate registry bits expected value =
     field False ty inner = walk ty inner
     walk = walkWith (repeat walk)
     walkWith children expected value = do
+      lift tick
+      case value of
+        DataValue actual@(Constructor name []) tag [] | actual == expected && plainConstructor registry name tag -> pure value
+        _ -> walkChecked children expected value
+    walkChecked children expected value = do
       let child = case children of
             first : _ -> first
             [] -> walk
-      lift tick
       lift (liftEither (checkType registry expected))
       case value of
         ScalarValue scalar -> case fromScalarValue expected scalar of

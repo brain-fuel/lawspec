@@ -618,6 +618,29 @@ export interface NativeNetworkBinding
   trusted?: string;
 }
 
+export interface NativeActorHandlerBinding
+{
+  handler: string;
+  message?: NativeReference;
+  messageFactory?: NativeReference;
+  replyTo?: boolean;
+  caller?: boolean;
+  reply?: NativeReference;
+  replyArguments?: NativeReference[];
+  result?: string;
+  resultField?: string;
+}
+
+export interface NativeActorBinding
+{
+  actor: string;
+  behavior?: NativeReference;
+  spring?: NativeReference;
+  persistence?: 'event-sourced';
+  entity?: NativeReference;
+  handlers: NativeActorHandlerBinding[];
+}
+
 export interface NativeBindings
 {
   types?: NativeTypeBinding[];
@@ -630,6 +653,7 @@ export interface NativeBindings
   failures?: NativeFailureMapping[];
   network?: NativeNetworkBinding;
   erlangIncludes?: NativeErlangInclude[];
+  actors?: NativeActorBinding[];
 }
 
 export type DischargeStatus =
@@ -1003,6 +1027,7 @@ export interface GenerationRequest extends CheckRequest
   sourceDir?: string;
   testDir?: string;
   minify?: boolean;
+  actors?: {runtime?: 'lawspec' | 'pekko' | 'spring'; remote?: 'cluster'};
 }
 
 export type ProofTask =

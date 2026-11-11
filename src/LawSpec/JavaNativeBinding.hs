@@ -1,7 +1,7 @@
 -- | Typed application codecs keep validation in the shared logical schema.
 module LawSpec.JavaNativeBinding (emitBindings, emitBindingsProduct) where
 
-import Control.Monad (forM, unless)
+import Control.Monad (forM, unless, when)
 import Data.List (intercalate, find, nub, isPrefixOf)
 import Data.Char (toUpper, toLower)
 import qualified LawSpec.Core as C
@@ -17,6 +17,7 @@ import qualified LawSpec.JavaData as J
 import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
 import LawSpec.AbilityEmit.Java (abilitiesClassOf)
 import qualified LawSpec.JavaExpr as E
+import qualified LawSpec.JavaLayout as JL
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Scalar (nativeRepresentation)
 import qualified LawSpec.JavaDefinitions as Definitions
@@ -25,6 +26,8 @@ import qualified LawSpec.JavaTestingRuntime as JavaTestingRuntime
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Collections (collectionContainer)
 import LawSpec.Time (isDurationType)
+import LawSpec.ModelTests (modelTestProductWithBackends)
+import LawSpec.JvmNames (javadoc)
 
 -- | Bound adapters call the user's Java code directly, through generated
 -- conversions. ref:DEC-native-bindings-typed-identity
@@ -35,7 +38,8 @@ emitBindings minify plan testing files =
 emitBindingsProduct :: TestStyle -> Bool -> BindingPlan -> Plan -> Product.JvmProduct -> Either String Product.JvmProduct
 emitBindingsProduct javaStyle minify plan testing product = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")
-  unless (null mappings || not (null (bindingFunctions plan)) || not (null (bindingCalls plan)) || not (null generators))
+  unless (null mappings || not (null (bindingFunctions plan)) || not (null (bindingCalls plan)) || not (null generators)
+      || not (null (bindingActors plan)))
     (Left "native types require function or generator bindings")
   mapM_ J.identifier [name | (_,MethodCall name) <- bindingCalls plan]
   mapM_ (mapM_ J.identifier . referenceParts) ([ref | (_,ref) <- bindingFunctions plan] ++
@@ -56,10 +60,26 @@ emitBindingsProduct javaStyle minify plan testing product = do
         adapters = [d | d <- C.unitDeclarations unit,C.declarationId d `notElem` definitions]
         bound d = lookup (C.declarationId d) ([(C.declarationId a,StaticCall r) | (a,r) <- bindingFunctions plan] ++
           [(C.declarationId a,c) | (a,c) <- bindingCalls plan])
+        -- An adapter a native actor stands for: the actor runs it, so its
+        -- bridge only says so.
+        actorBound d = lookup (C.declarationId d)
+          [(adapter,actor) | actor <- bindingActors plan, adapter <- resolvedActorAdapters actor]
+        covered d = bound d /= Nothing || actorBound d /= Nothing
     mapM_ J.identifier (split '.' (unitName unit))
-    if not (any (maybe False (const True) . bound) adapters) then pure [] else do
-      unless (all (maybe False (const True) . bound) adapters) (Left "a Java bound unit must map every adapter")
-      bodies <- forM adapters $ \d -> do
+    if not (any covered adapters) then pure [] else do
+      unless (all covered adapters) (Left "a Java bound unit must map every adapter")
+      bodies <- forM adapters $ \d -> case actorBound d of
+       Just actor -> do
+        let (args,result) = C.functionType (C.declarationType d)
+        argTypes <- mapM (J.javaDataTypeDoc declarations) args
+        resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else J.javaDataTypeDoc declarations result
+        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+        pure (D.group (D.text "public static " <> resultType <>
+          D.nest 4 (D.softline <> call (C.declarationName d) [t <> D.text " " <> v | (t,v) <- zip argTypes values])) <>
+          D.hardline <> D.block 2 (D.text "throw " <> call "new UnsupportedOperationException"
+            [E.quoted (C.idText (C.declarationId d) ++ " runs in the native actor bound to " ++
+              actorIdentity actor ++ "; LawSpec checks it through that actor")] <> D.text ";"))
+       Nothing -> do
         let (args,result) = C.functionType (C.declarationType d)
             Just ref = bound d
         argTypes <- mapM (J.javaDataTypeDoc declarations) args
@@ -213,7 +233,8 @@ emitBindingsProduct javaStyle minify plan testing product = do
     pure (emitted { Product.jvmAdapters = [], Product.jvmArtifacts = helper : [file | file <- Product.jvmArtifacts emitted,artifactPlacement file == "test"] ++
       [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (JavaTestingRuntime.dataStrategies javaStyle) "generated" "test" |
         not (any ((== "src/test/java/lawspec/testing/LawSpecDataStrategies.java") . artifactPath) files)] })
-  let generatorFiles = Product.jvmArtifacts generatorProduct
+  (actorFiles, actorCases) <- nativeActors
+  let generatorFiles = Product.jvmArtifacts generatorProduct ++ actorFiles
       replaced = map artifactPath (bridges ++ generatorFiles)
   unless (all ((/= artifactPath support) . artifactPath) files) (Left "unit shadows native codec support")
   let runtime = [Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source" |
@@ -223,9 +244,198 @@ emitBindingsProduct javaStyle minify plan testing product = do
   pure (product
     { Product.jvmArtifacts = generated ++ stubs
     , Product.jvmAdapters = [(path, abi) | (path,abi) <- Product.jvmAdapters product, path `notElem` replaced]
-    , Product.jvmCases = [cases | cases <- Product.jvmCases product, Abi.casePath cases `notElem` replaced] ++ Product.jvmCases generatorProduct
+    , Product.jvmCases = [cases | cases <- Product.jvmCases product, Abi.casePath cases `notElem` replaced] ++ Product.jvmCases generatorProduct ++ actorCases
     })
   where
+    -- Existing Pekko actors stand in for LawSpec actors: each bound actor's
+    -- model test drives its behaviour through LawSpecPekkoNative, made by a
+    -- generated factory that builds each handler's message and reads its
+    -- reply through the native codecs. The factories live in the
+    -- behaviour's own package, so they can name messages that are not
+    -- public there (as the pekko-samples' are). ref:DEC-native-actor-binding
+    -- ref:DEC-pekko-sample-suites
+    nativeActors
+      | null (bindingActors plan) = pure ([], [])
+      | otherwise = do
+          factories <- forM (bindingActors plan) $ \actor -> do
+            source <- case resolvedActorSource actor of
+              BehaviorFactory ref -> do
+                mapM_ J.identifier (referenceParts ref)
+                unless (length (referenceParts ref) >= 2)
+                  (Left ("native actor " ++ actorIdentity actor ++ ": behavior names a class and its static factory"))
+                pure (methodReference ref)
+              -- A Spring starter actor: its component's behaviour, compiled by
+              -- the starter. ref:DEC-spring-actor-starter
+              SpringActorClass ref -> do
+                mapM_ J.identifier (referenceParts ref)
+                when (resolvedActorPersistence actor == Just EventSourced)
+                  (Left ("native actor " ++ actorIdentity actor ++ ": unsupported: event-sourced Spring starter actors are not checked yet; bind its Pekko behavior"))
+                when (resolvedActorEntity actor /= Nothing)
+                  (Left ("native actor " ++ actorIdentity actor ++ ": unsupported: sharded Spring starter actors are not checked yet; bind its Pekko behavior"))
+                pure (call "LawSpecSpringNative.behavior" [D.text (reference ref ++ ".class")])
+            handlers <- mapM (handlerLink actor) (resolvedActorHandlers actor)
+            -- Probes and text the behaviour's factory takes, in order.
+            -- ref:DEC-tell-only-actors
+            factoryArguments <- forM (resolvedActorArguments actor) $ \case
+              ProbeArgument p -> pure (call "LawSpecPekkoNative.address" [call "probes.get" [E.quoted p]])
+              TextArgument t -> pure (E.quoted t)
+            let probed = not (null (resolvedActorArguments actor))
+            start <- case resolvedActorEntity actor of
+              Nothing | probed, BehaviorFactory ref <- resolvedActorSource actor ->
+                pure (call "LawSpecPekkoNative.probed" [E.quoted (actorIdentity actor),
+                  call "java.util.List.of" (map E.quoted (actorProbes (resolvedActorArguments actor))),
+                  JL.lambdaValue ["probes"] (call (reference ref) factoryArguments)])
+              Nothing -> pure (call (case (resolvedActorPersistence actor, resolvedActorSource actor) of
+                  (Just EventSourced, _) -> "LawSpecPekkoNative.eventSourced"
+                  (_, SpringActorClass _) -> "LawSpecPekkoNative.identified"
+                  _ -> "LawSpecPekkoNative.behavior")
+                [E.quoted (actorIdentity actor), source])
+              -- A sharded entity: its handlers take the entity's id first.
+              Just key -> do
+                mapM_ J.identifier (referenceParts key)
+                text <- codec [] (D.text "SCHEMA") (D.text (show bits)) (C.scalarType "Text")
+                pure (call "LawSpecPekkoNative.sharded" [E.quoted (actorIdentity actor),
+                  call "lawspec.pekko.LawSpecPekkoSharding.of" [D.text (reference key)], source,
+                  JL.lambdaValue ["id"] (method text "decode" [D.text "id"])])
+            -- At two spaces' indentation within 100 columns.
+            pure (actorPackage actor, javadoc 98 (actorIdentity actor ++ ", run by the native " ++ (case resolvedActorSource actor of
+                    BehaviorFactory ref -> reference ref
+                    SpringActorClass ref -> reference ref) ++ ".") <> D.hardline <>
+              D.text ("public static LawSpecRuntime.ActorBackend " ++ actorMethod actor ++ "()") <> D.hardline <>
+              D.block 2 (D.text "return " <> start <> D.nest 4 (mconcat [D.hardline <> D.text "." <> h | h <- handlers ++
+                [D.text "timePasses()" | resolvedActorTime actor]]) <> D.text ";"))
+          let packages = nub (map fst factories)
+              wiring package = Artifact ("src/test/java/" ++ concatMap (++ "/") (split '.' package) ++ "LawSpecNativeActors.java") (render
+                (D.text ("package " ++ package ++ ";") <> D.hardline <> D.hardline <>
+                 D.text "import lawspec.pekko.LawSpecPekkoNative;" <> D.hardline <>
+                 (if spring then D.text "import lawspec.pekko.LawSpecSpringNative;" <> D.hardline else mempty) <>
+                 D.text "import lawspec.runtime.LawSpecRuntime;" <> D.hardline <>
+                 D.text "import lawspec.runtime.LawSpecSchema;" <> D.hardline <> D.hardline <>
+                 D.text "public final class LawSpecNativeActors" <> D.hardline <> D.block 2
+                  (D.joinWith (D.hardline <> D.hardline)
+                    ([D.group (D.text "private static final LawSpecSchema SCHEMA =" <>
+                       D.nest 4 (D.softline <> D.text "lawspec.runtime.LawSpecDataSchema.create();")),
+                      D.text "private LawSpecNativeActors() {}"] ++ [f | (p, f) <- factories, p == package])))) "generated" "test"
+              backend = Artifact "src/test/java/lawspec/pekko/LawSpecPekkoNative.java"
+                (runtimeSource "java-pekko-native") "generated" "test"
+              -- The crash interceptor, unless the generated actors on Pekko
+              -- already compile it with the program.
+              interceptor =
+                [ Artifact "src/test/java/lawspec/runtime/pekko/LawSpecCrashInterceptor.java"
+                    (runtimeSource "java-pekko-crash") "generated" "test"
+                | not (any ((== "src/main/java/lawspec/runtime/pekko/LawSpecCrashInterceptor.java") . artifactPath) files) ]
+              springSupport = [ Artifact "src/test/java/lawspec/pekko/LawSpecSpringNative.java"
+                  (runtimeSource "java-spring-native") "generated" "test" | spring ]
+              -- Cluster sharding only for a project that binds a sharded entity.
+              sharding = [Artifact "src/test/java/lawspec/pekko/LawSpecPekkoSharding.java"
+                (runtimeSource "java-pekko-sharding") "generated" "test" |
+                any ((/= Nothing) . resolvedActorEntity) (bindingActors plan)]
+          -- Each unit with a bound actor: its model test drives the native actor.
+          models <- fmap concat $ forM (plannedUnits testing) $ \p -> do
+            let unit = plannedUnit p
+                backends = [(resolvedActorName actor, D.text (actorPackage actor ++ ".LawSpecNativeActors." ++ actorMethod actor ++ "()")) |
+                  actor <- bindingActors plan, resolvedActorUnit actor == C.unitId unit]
+            if null backends then pure [] else do
+              product' <- either (Left . unwords . map message) Right
+                (modelTestProductWithBackends False backends javaStyle "java" bits declarations
+                  (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) (modelTestUnit testing unit))
+              pure [product']
+          pure (map wiring packages ++ [backend] ++ interceptor ++ springSupport ++ sharding ++ concatMap Product.jvmArtifacts models, concatMap Product.jvmCases models)
+    -- One handler as a link of the backend's chain: its message from the
+    -- arguments after the state, and its reply's result.
+    handlerLink actor handler = do
+      let binding = resolvedHandlerBinding handler
+          context message = Left ("native actor " ++ actorIdentity actor ++ ": handler " ++ boundHandlerName binding ++ ": " ++ message)
+          caller = handlerCaller binding
+      mapM_ J.identifier (referenceParts (handlerMessage binding))
+      mapM_ (mapM_ J.identifier . referenceParts) (maybe [] pure (handlerReply binding) ++ handlerReplyArguments binding)
+      mapM_ J.identifier (handlerResult binding)
+      mapM_ J.identifier (handlerResultField binding)
+      -- A caller, or a sharded entity's id, is the first argument; the
+      -- runtime reads it, and the message gets the rest.
+      let skipped = if caller || resolvedActorEntity actor /= Nothing then 1 else 0
+      decoded <- forM (drop skipped (zip [0::Int ..] (resolvedHandlerArguments handler))) $ \(i,ty) -> do
+        bridge <- either context Right (codec [] (D.text "SCHEMA") (D.text (show bits)) ty)
+        pure (method bridge "decode" [D.text ("arguments.get(" ++ show i ++ ")")])
+      let springActor = case resolvedActorSource actor of
+            SpringActorClass _ -> True
+            BehaviorFactory _ -> False
+          make = (if handlerMessageFactory binding then "" else "new ") ++ reference (handlerMessage binding)
+          -- A caller's, or an answering probe's, own address.
+          addressed = if caller || handlerAnswers binding /= Nothing then D.text "LawSpecPekkoNative.address(replyTo)" else D.text "replyTo"
+          -- A Spring starter command is an AskCommand whose reply address is
+          -- set as the starter's ask sets it.
+          messageOf replyTo
+            | handlerMessageValue binding = D.text (reference (handlerMessage binding))
+            | springActor && replyTo = call "LawSpecSpringNative.asked" [call make decoded, addressed]
+            | otherwise = call make (decoded ++ [addressed | replyTo])
+          -- Reply cases: the class a reply is, among the named ones beside
+          -- the reply (or heard) class, gives the result. ref:DEC-tell-only-actors
+          cases owner = call "LawSpecPekkoNative.replyCase" [D.text "reply", call "java.util.Map.of" (concat
+            [[D.text (reference (sibling owner key) ++ ".class"), caseValue value] | (key, value) <- handlerReplyCases binding])]
+          sibling (NativeRef parts) key = NativeRef (init parts ++ [key])
+          caseValue (CaseBool b) = D.text (if b then "true" else "false")
+          caseValue (CaseText t) = E.quoted t
+          resultOf owner
+            | not (null (handlerReplyCases binding)) = cases owner
+            | otherwise = case (handlerResult binding, handlerResultField binding) of
+                (Just accessor, _) -> D.text ("reply." ++ accessor ++ "()")
+                (_, Just field) -> D.text ("reply." ++ field)
+                _ -> D.text "reply"
+          name = E.quoted (boundHandlerName binding)
+          -- A reply class with type arguments: StatusReply<Summary>.
+          replyType reply = reference reply ++ (if null (handlerReplyArguments binding) then ""
+            else "<" ++ intercalate ", " (map reference (handlerReplyArguments binding)) ++ ">")
+          replyClass reply
+            | null (handlerReplyArguments binding) = D.text (reference reply ++ ".class")
+            | otherwise = call "LawSpecPekkoNative.replyClass" [D.text (reference reply ++ ".class")]
+          generic reply verb
+            | null (handlerReplyArguments binding) = verb
+            | otherwise = "<" ++ replyType reply ++ ">" ++ verb
+          asking = if caller then "callerAsk" else "ask"
+      let heard = handlerMessage binding
+          probe = E.quoted (maybe "" id (handlerProbe binding))
+      case (resolvedHandlerResult handler, handlerReply binding) of
+        -- A probe hears the actor's next message to it.
+        (result, _) | handlerHears binding -> case result of
+          Nothing -> pure (call "hears" [name, probe, D.text (reference heard ++ ".class")])
+          Just ty -> do
+            bridge <- either context Right (codec [] (D.text "SCHEMA") (D.text (show bits)) ty)
+            pure (call "hears" [name, probe, D.text (reference heard ++ ".class"),
+              JL.lambdaValue ["symbols", "reply"] (method bridge "encode" [resultOf heard])])
+        -- A probe answers the last message it heard.
+        (Nothing, _) | Just (answered, field) <- handlerAnswers binding ->
+          pure (call "answers" [name, probe, D.text (reference answered ++ ".class"),
+            JL.lambdaValue ["heard"] (D.text ("heard." ++ field)),
+            JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf (handlerReplyTo binding))])
+        (Just ty, Just reply) -> do
+          bridge <- either context Right (codec [] (D.text "SCHEMA") (D.text (show bits)) ty)
+          pure (call (generic reply asking) [name, JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf True),
+            replyClass reply, JL.lambdaValue ["symbols", "reply"] (method bridge "encode" [resultOf reply])])
+        (Nothing, Just reply)
+          | caller -> pure (call (generic reply "callerAsk") [name,
+              JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf True), replyClass reply,
+              JL.lambdaValue ["symbols", "reply"] (D.text "LawSpecRuntime.absent(\"Unit\")")])
+          | otherwise -> pure (call (generic reply "acknowledged") [name,
+              JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf True), replyClass reply])
+        (Nothing, Nothing)
+          | caller -> pure (call "callerTell" [name, JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf True)])
+          | otherwise -> pure (call "tell" [name, JL.lambdaValue ["symbols", "arguments"] (messageOf False)])
+        (Just _, Nothing) -> context "returns a result, so it needs a reply class"
+    actorIdentity actor = C.idText (resolvedActorUnit actor) ++ "::" ++ resolvedActorName actor
+    spring = or [True | actor <- bindingActors plan, SpringActorClass _ <- [resolvedActorSource actor]]
+    -- The behaviour's package: its reference's leading lower-case names, as
+    -- Java names packages (example.Account.create is in example).
+    actorPackage actor = case takeWhile (\part -> take 1 part /= map toUpper (take 1 part)) (init (referenceParts (case resolvedActorSource actor of
+        BehaviorFactory ref -> ref
+        SpringActorClass ref -> ref))) of
+      [] -> "lawspec.testing"
+      parts -> intercalate "." parts
+    -- unit example.bank, actor account: exampleBankAccount.
+    actorMethod actor = case concatMap (split '_') (split '.' (C.idText (resolvedActorUnit actor))) ++ [resolvedActorName actor] of
+      first : rest -> first ++ concatMap cap rest
+      [] -> resolvedActorName actor
+    methodReference ref = D.text (intercalate "." (init (referenceParts ref)) ++ "::" ++ last (referenceParts ref))
     files = Product.jvmArtifacts product
     boxed value = maybe value ("java.lang." ++) (lookup value
       [("byte","Byte"),("short","Short"),("int","Integer"),("long","Long"),

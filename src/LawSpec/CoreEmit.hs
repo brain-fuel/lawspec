@@ -11,10 +11,13 @@ import LawSpec.AbilityEmit (abilityArtifactsWithNativeBridge)
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName, goPackageAbilities)
 import LawSpec.Actors (actorArtifacts)
+import LawSpec.ActorRuntime (ActorRuntime(..), ActorSettings(..), defaultActorSettings)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
 import LawSpec.Mailboxes (mailboxArtifacts)
 import LawSpec.Core.Machine (Machine(..))
+import qualified LawSpec.Core.Machine as Machine
+import LawSpec.ModelTime (isTimeStep)
 import LawSpec.Core.Program (Program(..))
 import LawSpec.Backend
 import LawSpec.Common
@@ -659,7 +662,7 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
     lawKey law = D.fullKey graph (show planMachineBits) law
     emitUnit laws u = do
       let owned = filter ((== unitName u) . owner) laws
-          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
+          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks planActors) u
           -- Machine callbacks, scenarios and their argument descriptors are
           -- checked references in the graph. Bodies are emitted separately;
           -- their signatures still determine callback arity and public stubs.
@@ -689,7 +692,10 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
             D.fullKey graph "unit-interface" interface,D.fullKey graph "checked-interfaces" definitions,
             map lawKey owned,D.namedKey graph "unit-types" types,visibleNames,callNames,
             Native.dataBudget laws,globalFlags,collectionFlag,target == "haskell" && usesNetworkUnits (map plannedUnit plannedUnits))))
-      cached <- fmap unstoreProduct $ memoized emitTable key (fmap storeProduct (emitUnitWith laws testing))
+      -- The actor runtime changes a supervised unit's tests; the default keeps
+      -- its existing key.
+      let runtimeKey = if planActors == defaultActorSettings then key else digestHex (digestString (key ++ show planActors))
+      cached <- fmap unstoreProduct $ memoized emitTable runtimeKey (fmap storeProduct (emitUnitWith laws testing))
       companions <- if target == "go" then Native.goCompanionArtifacts [] False minify planDataDeclarations calls planMachineBits testing laws else pure []
       pure cached { Product.jvmArtifacts = companions ++ Product.jvmArtifacts cached }
     nativeNames = case target of
@@ -704,7 +710,7 @@ emitPlanProductWithNativeBridge sourceRoot nativeBridge javaStyle minify target 
       _ -> pure []
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
-          Native.nativeScalarUnitProductWithNetwork (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
+          Native.nativeScalarUnitProductOn (actorRuntime planActors) (usesNetworkUnits (map plannedUnit plannedUnits)) javaStyle [] False minify planDataDeclarations calls planMachineBits target u laws
       | otherwise = Product.files <$> Scalar.scalarEmitWithSourceRoot sourceRoot False minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
@@ -750,6 +756,18 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings plan | target
 emitPlanWithNativeOptions minify target sourceDir testDir bindings admitted = do
   checkDefinitionPlan admitted
   checkExecutionPlan admitted
+  -- Existing native actors are checked on Java and Scala so far; elsewhere the
+  -- binding is an error rather than a check silently skipped.
+  unless (target `elem` ["java", "scala"] || null (NB.bindingActors bindings))
+    (Left [Diagnostic "native-binding" ("unsupported: native actor bindings are checked on Java and Scala only, not yet on " ++ target) Nothing])
+  -- Time passes only on virtual time, which a natively bound Pekko actor
+  -- has and LawSpec's own actors (without timers) do not. ref:DEC-time-passes
+  let boundActors = [(NB.resolvedActorUnit a, NB.resolvedActorName a) | a <- NB.bindingActors bindings]
+      timed = [C.idText unitId ++ "::" ++ Machine.machineName m | u <- plannedUnits admitted, let unitId = C.unitId (plannedUnit u)
+              , m <- C.unitMachines (plannedUnit u), any (isTimeStep m) (Machine.machineCommands m)
+              , (unitId, Machine.machineName m) `notElem` boundActors]
+  unless (null timed)
+    (Left [Diagnostic "model" ("unsupported: actor " ++ actor ++ " lets time pass, which needs virtual time: bind it to a Pekko behaviour with a native actor binding (Java, Scala); LawSpec's own actors on " ++ target ++ " have no timers") Nothing | actor <- timed])
   let original = emittedPlanFor target admitted
   let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
         Just name -> declaration { C.declarationName = name }

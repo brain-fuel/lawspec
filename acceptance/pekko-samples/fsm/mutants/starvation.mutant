@@ -1,0 +1,15 @@
+rejected-at: generation
+expect: a run breaks it under strong fairness
+@@ acceptance/pekko-samples/fsm/hakkers.lawspec
+<<<<<<<
+law "|a hakker can eat| in model hakker is
+=======
+-- Mutant: every hungry hakker eats, even when every step is fair. The
+-- chopsticks can answer so that it never holds both, so LawSpec refutes it.
+law "|every hungry hakker eats| in model hakker assuming strong fairness for think, time passes,
+    asksLeft, putsDownLeft, asksRight, putsDownRight, leftTaken, leftBusy, rightTaken, rightBusy is
+  definition: every run holds whenever hungry, eventually eats end definition
+end law
+
+law "|a hakker can eat| in model hakker is
+>>>>>>>

@@ -1,0 +1,11 @@
+expect: model hakker fails at step
+@@ src/main/scala/sample/DiningHakkers.scala
+<<<<<<<
+      case HandleChopstickAnswer(Taken(chopstick)) =>
+        chopstick ! Put(adapter)
+        startThinking(ctx, 10.milliseconds)
+=======
+      case HandleChopstickAnswer(Taken(chopstick)) =>
+        // Mutant: a denied hakker keeps the chopstick it was given.
+        startThinking(ctx, 10.milliseconds)
+>>>>>>>

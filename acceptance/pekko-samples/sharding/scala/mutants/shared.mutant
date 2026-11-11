@@ -1,0 +1,17 @@
+expect: model stations fails at step
+@@ src/main/scala/sample/killrweather/WeatherStation.scala
+<<<<<<<
+  final case class TimeWindow(start: Long, end: Long, value: Double)
+=======
+  final case class TimeWindow(start: Long, end: Long, value: Double)
+
+  // Mutant: every station shares one list of readings.
+  private var shared = Vector.empty[Data]
+>>>>>>>
+@@ src/main/scala/sample/killrweather/WeatherStation.scala
+<<<<<<<
+        val updated = values :+ data
+=======
+        shared = shared :+ data
+        val updated = shared
+>>>>>>>

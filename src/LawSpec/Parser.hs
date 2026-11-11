@@ -21,7 +21,8 @@ import qualified LawSpec.SourceTokens as Tokens
 import LawSpec.Indexed
 import LawSpec.PreludeNames (preludeValueName)
 import LawSpec.DomainModel
-import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors)
+import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), ModelRestart(..), elaborateModels, checkSupervisors)
+import LawSpec.ModelTime (timeStep, timePasses)
 import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
 import LawSpec.Core.Program (Program(..))
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), SupervisionStrategy(..), Lifetime(..), Consistency(..))
@@ -822,7 +823,8 @@ modelP = blockP "model" $ do
 -- handles one message at a time. `on message by reference [when p]` pairs a
 -- handler (an adapter State -> args -> Pair Result State) with its
 -- reference; `start f [by value]` makes the state; `restart from f by g`
--- gives a restarted actor's state from its last one (g, the model's). Its handle type is the actor's
+-- gives a restarted actor's state from its last one (g, the model's), and
+-- `restart keeps state` keeps the state it had. Its handle type is the actor's
 -- name, capitalized, then Actor: actor account has an AccountActor.
 actorP :: P ModelDeclaration
 actorP = blockP "actor" $ do
@@ -841,6 +843,10 @@ actorP = blockP "actor" $ do
         c : cs -> toUpper c : cs ++ "Actor"
         [] -> []
       first xs = case xs of x : _ -> Just x; [] -> Nothing
+  when (length [() | Right (Right _) <- items] > 1)
+    (fail ("actor " ++ name ++ " says how it restarts more than once; keep one restart line"))
+  when (length [() | Right (Left c) <- items, modelCommand c == timeStep] > 1)
+    (fail ("actor " ++ name ++ " says how time passes more than once; keep one time passes line"))
   pure (ModelDeclaration name True (Named handle) model
     (first [s | Left (Left s) <- items])
     [c | Right (Left c) <- items]
@@ -853,8 +859,14 @@ actorP = blockP "actor" $ do
       [ (\f e -> Left (Left (f, e))) <$> (keyword "start" *> ident) <*> option (Var "") (modelledBy *> value)
       , Left . Right . Left <$> (keyword "abstract" *> qualifiedName)
       , Left . Right . Right <$> (keyword "invariant" *> qualifiedName)
-      , (\f g -> Right (Right (f, g))) <$> (keyword "restart" *> keyword "from" *> qualifiedName) <*> (modelledBy *> qualifiedName)
+      , keyword "restart" *> choice
+          [ (\f g -> Right (Right (RestartFrom f g))) <$> (keyword "from" *> qualifiedName) <*> (modelledBy *> qualifiedName)
+          , Right (Right RestartKeepsState) <$ (keyword "keeps" *> keyword "state") ]
       , (\c r w -> Right (Left (ModelCommand c r w False))) <$> (keyword "on" *> ident) <*> (modelledBy *> qualifiedName)
+          <*> optional (keyword "when" *> qualifiedName)
+      -- time passes by r [when p]: the actor's timers fire, as much time
+      -- passing as r says. ref:DEC-time-passes
+      , (\r w -> Right (Left (ModelCommand timeStep r w False))) <$> (try (keyword "time" *> keyword "passes") *> modelledBy *> qualifiedName)
           <*> optional (keyword "when" *> qualifiedName) ]
     value = parens expr
       <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ","))
@@ -3393,7 +3405,7 @@ modelLawP = sourceNode "law" (Just . modelLawName) $ blockP "law" $ do
       keyword "assuming"
       strong <- option False (True <$ keyword "strong")
       keyword "fairness" *> keyword "for"
-      commands <- ident `sepBy1` symbol ","
+      commands <- ((timePasses <$ try (keyword "time" *> keyword "passes")) <|> ident) `sepBy1` symbol ","
       pure [(strong, c) | c <- commands]
     keyword "is"
     (every, formula) <- block "definition" $ do

@@ -51,7 +51,7 @@ export function parseManifest(text, file) {
 
 export function writeManifest(value, options = {}) {
   if (options?.compact !== undefined && typeof options.compact !== 'boolean') throw new TypeError('compact must be a boolean');
-  const identifiers = new Set(['language', 'layers']);
+  const identifiers = new Set(['language', 'layers', 'runtime', 'remote']);
   function convert(value, parent) {
     if (Array.isArray(value)) return value.map(entry => convert(entry, parent));
     if (value && typeof value === 'object') return {map: Object.entries(value).filter(([,entry]) => entry !== undefined).map(([key, entry]) => [

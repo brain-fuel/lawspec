@@ -130,6 +130,20 @@ Constructor-contract properties run each case as a separate one-iteration
 JetCheck session, which keeps native shrinking. JetCheck does not guarantee
 the smallest counterexample.
 
+## Actor runtimes
+
+Generated actors run on LawSpec's runtime by default. `:actors {:runtime
+:pekko}` in `lawspec.edn` runs them on Apache Pekko 1.7.1, and
+`:actors {:runtime :spring}` through the Spring Boot actor starter 1.0.0,
+where each actor class has a `SpringActor` component and the generated
+supervision test is an `@ActorTest`. The `pom.xml` gains the pinned libraries.
+With either, `:remote :cluster` serves and calls actors across Pekko Cluster:
+`TallyActor.start().serve(node, "tally")` registers the actor with the
+cluster's receptionist, where `node` is a `LawSpecPekkoCluster.Node`, and
+`TallyActor.connect(other, address)` calls it from another member.
+See [actor runtimes](../../reference/configuration.md#actor-runtimes). Native bindings can also check an existing Pekko or Spring starter
+actor against a LawSpec actor; see [native actors](../../reference/native-bindings.md#native-actors).
+
 ## Formatting
 
 Output uses Allman braces with Google Java Style's other rules: two-space

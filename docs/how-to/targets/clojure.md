@@ -147,6 +147,14 @@ Spec handlers, actors, sessions, mailboxes and the network are the
 [Java classes](java.md), used from Clojure by interop; `ls/->clojure` turns a
 value of the model into Clojure data.
 
+## Actor runtimes
+
+Clojure uses the Java actor classes, so `:actors {:runtime :pekko}` and
+`:actors {:runtime :spring}` in `lawspec.edn` run them on Apache Pekko 1.7.1
+or through the Spring Boot actor starter 1.0.0, and `deps.edn` gains the
+pinned libraries. `:remote :cluster` gives the actors `serve` and `connect`
+over Pekko Cluster, with a `LawSpecPekkoCluster.Node` for the node. See [actor runtimes](../../reference/configuration.md#actor-runtimes).
+
 ## Tests
 
 Each unit's laws are a `clojure.test` namespace, a test per case, named after

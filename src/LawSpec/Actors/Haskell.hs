@@ -176,6 +176,7 @@ actorSource datas wire a = do
       restart = case actorRestart a of
         Just d | C.declarationAsync d -> "(\\previous -> " ++ field d ++ " handlers previous)"
         Just d -> "(\\previous -> P.pure (" ++ field d ++ " handlers previous))"
+        Nothing | actorKeepsState a -> "P.pure"
         Nothing -> "(\\_ -> " ++ starting ++ ")"
       startSignature extra = intercalate " -> " (extra ++ ty : map (parenthesize . snd) params ++ ["P.IO " ++ cls])
       text = unlines $
@@ -187,7 +188,7 @@ actorSource datas wire a = do
         , "data " ++ cls ++ " = " ++ cls ++ " " ++ ty ++ " (LS.Actor " ++ parenthesize state ++ ")"
         , ""
         , "-- | Makes the actor's state with " ++ C.declarationName (actorStart a) ++ " and starts the actor."
-        , "-- After a crash under a supervisor, it restarts " ++ maybe "from its start" (\d -> "from " ++ C.declarationName d) (actorRestart a) ++ "."
+        , "-- After a crash under a supervisor, it restarts " ++ maybe (if actorKeepsState a then "with the state it had" else "from its start") (\d -> "from " ++ C.declarationName d) (actorRestart a) ++ "."
         , "start" ++ cls ++ " :: " ++ startSignature []
         , "start" ++ cls ++ " handlers" ++ concatMap ((' ' :) . fst) params ++ " = do"
         , "  state <- " ++ starting

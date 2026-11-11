@@ -39,8 +39,20 @@ data Identity = Identity
 data Target = Target
   { targetKeys :: [String],
     targetLanguage :: Field String,
-    targetRoot :: Field String
+    targetRoot :: Field String,
+    targetActors :: Field Actors
   }
+  deriving (Eq, Show)
+
+-- | A JVM target's actor runtime choice (`:actors {:runtime :pekko}`).
+-- A present nil keeps the default runtime. ref:DEC-pekko-runtime
+data Actors
+  = NoActors
+  | Actors
+      { actorsKeys :: [String],
+        actorsRuntime :: Field String,
+        actorsRemote :: Field String
+      }
   deriving (Eq, Show)
 
 -- | Recursive source versions retain existing admission behavior, including

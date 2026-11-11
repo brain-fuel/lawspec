@@ -130,6 +130,192 @@ bridge returns a task that is already done. On BEAM, the constructor instead
 runs in the same monitored worker as other async native calls. On Kotlin, an async method binding
 needs its handle's type binding, since Kotlin calls the method itself.
 
+## Native actors
+
+`actors` binds an existing Pekko Typed actor, or a Spring Boot actor starter
+actor, to a LawSpec [actor](language/actors.md), so the actor's model checks
+the application's own actor instead of LawSpec's. The behaviour and its
+messages stay the application's; LawSpec generates the asks. Java and Scala
+check Pekko actors, sharded entities included, and Java checks Spring
+starter actors. Every other target rejects the field as unsupported.
+The [Pekko how-to](../how-to/check-pekko-actors.md) checks apache/pekko-samples
+this way.
+
+```json
+{
+  "actors": [{
+    "actor": "example.accounts::account",
+    "behavior": ["example", "Account", "create"],
+    "persistence": "event-sourced",
+    "handlers": [
+      {"handler": "deposit", "message": ["example", "Account", "Deposit"],
+       "replyTo": true, "reply": ["example", "Account", "Balance"], "result": "balance"},
+      {"handler": "close", "message": ["example", "Account", "Close"]}
+    ]
+  }]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `actor` | The LawSpec actor, as `<unit>::<actor>`. |
+| `behavior` | A static factory returning the actor's `Behavior<Command>`. It takes no arguments, or, for an event-sourced actor, its persistence id. |
+| `behaviorArguments` | The factory's arguments, in order: `{"text": "Ghosh"}` passes a string, `{"probe": "left"}` the address of a probe named `left`. Not for a Spring, event-sourced or sharded actor. |
+| `spring` | A Spring starter `SpringActor` component class, instead of `behavior`. Java only. |
+| `persistence` | `"event-sourced"`: the actor recovers its state from its journal. The checks give each run's actor a fresh persistence id on Pekko's in-memory journal. |
+| `entity` | The sharded entity's `EntityTypeKey`, a static field. The entity runs under Cluster Sharding, and every handler takes the entity's id, a `Text`, first. |
+| `handlers` | One entry for each of the actor's handlers, and no others. |
+
+Each handler entry gives:
+
+- `handler`: the handler's name in the actor.
+- `message`: the message class. Its constructor takes the handler's arguments
+  after the state, in order, converted by the native codecs, then the
+  `replyTo` address when `replyTo` is true.
+- `messageFactory`: instead of `message`, a static method that takes the same
+  arguments and returns the message. Use it when the message's constructor
+  takes the application's own classes that no codec makes.
+- `replyTo`: whether the message carries an `ActorRef` to answer. A handler
+  with a result must have one.
+- `reply`: the class of the answer, the type argument of the `replyTo`
+  address. A handler without a result may still name one, as an
+  acknowledgement whose content is ignored.
+- `replyArguments`: the reply class's type arguments, for a generic reply
+  such as `StatusReply<Summary>`. The message then gets a reply address of
+  that type, and the result accessor reads it.
+- `result`: the accessor on the reply that gives the handler's result,
+  converted by the native codecs. Without it, the reply itself is the result.
+- `resultField`: instead of `result`, a public field of the reply that holds
+  the result.
+- `caller`: when true, the handler's first argument is its caller, which the
+  actor knows by address, as the dining hakkers' chopstick knows its hakker.
+  Each caller gets one address for the whole run, and its messages carry it
+  in place of a fresh `replyTo`. With a `reply`, the result is the next
+  reply that address receives; without one, the message is sent with `tell`.
+  One caller's messages go one at a time.
+- `messageValue`: instead of `message`, a static field holding the message,
+  such as a Java enum constant or a Scala case object. The handler takes no
+  arguments and has no result.
+- `replyCases`: instead of `result`, the result from which class the reply
+  is, as `{"Taken": true, "Busy": false}`. Each key is a class beside the
+  `reply` class. The values are all `Bool` or all `Text`, the handler's
+  result type.
+
+An actor that answers nothing is observed through probes, as Pekko's
+`TestProbe` observes one. Each `{"probe": name}` behaviour argument is a
+probe: LawSpec spawns it before the actor and passes the actor its
+address, typed as the factory's parameter. A probe stands in for another
+actor, so the actor's messages to that actor reach the probe. A probe
+handler names its `probe` and one of:
+
+- `hears`: the class of the next message the probe receives, in place of
+  `message`. The step sends nothing; it fails when the probe receives
+  nothing within the ask timeout, or a message of another class. A handler
+  with a result reads it from the heard message with `result` or
+  `resultField`.
+- `answers`: a class the probe heard. The step sends `message` to the
+  address in the last such message's `answerField`, a public field or
+  accessor. With `replyTo`, the message's last argument is the probe's
+  address, so the actor sees the answer come from the probe. The handler
+  has no result.
+
+A model actor with a `time passes by r` line has the step `timePasses`,
+which needs no handler entry. Its actor runs on Pekko's `ManualTime`, its
+own test kit with a virtual clock, so its timers fire only when a step lets
+time pass. The step advances the clock by the `Duration` the reference
+returns for the model's state before it. Time passes only in sequential
+runs: parallel histories leave the step out. An actor with the line that is
+not bound to a Pekko behaviour, or is persistent or sharded, is reported
+`unsupported`. ref:DEC-tell-only-actors ref:DEC-time-passes
+
+The checks spawn the behaviour in Pekko's `ActorTestKit` and run the actor's
+model against it: generated runs with injected crashes, shrinking, model
+invariants, parallel histories and linearizability, and the actor's
+scenarios. Each handler is asked with `AskPattern`; a handler without a
+`replyTo` is sent with `tell`. A crash is a private message, handled after
+the messages sent before it: an interceptor around the behaviour turns it
+into an exception, so Pekko's supervision restarts the behaviour. An
+event-sourced actor is instead stopped and started again with the same
+persistence id, as Pekko's `EventSourcedBehaviorTestKit` restarts one, and
+recovers from its journal. A sharded entity runs in a one-node cluster in the
+test kit: LawSpec starts sharding for an entity type named after the bound
+key, with the bound behaviour wrapped in its crash interceptor, so the
+application's own sharding setup does not run. Each run's entities are its
+own, and a crash restarts every entity the run has started. The model's state then follows the actor's
+`restart from` reference, or its start without one; an event-sourced actor
+that keeps its state needs a reference that keeps the model's. A told
+message whose events are still being written when the crash comes may be
+lost, as in production, so bind an acknowledgement for a handler whose
+effect must survive a crash.
+
+A reply that does not arrive within the ask timeout fails the run with the
+handler and its arguments; it never passes. The timeout is
+`LAWSPEC_ASK_TIMEOUT_MS` milliseconds, 3000 by default.
+
+The native actor's state is private. An actor whose `abstract` function or
+invariants read its state cannot be bound; state the property over the model
+instead. Binding validation also rejects:
+
+- an unknown actor, a missing, unknown or repeated handler, and a native
+  function binding for one of the actor's adapters;
+- a handler with a result but no `replyTo` or `reply`, a `result` without a
+  `reply`, and a `reply` without a `replyTo`;
+- both `result` and `resultField`, not exactly one of `message`,
+  `messageFactory`, `messageValue` or `hears`, `replyArguments` without a
+  `reply`, and a `caller` with no argument or with a `replyTo`;
+- an unknown or repeated probe, a probe handler that neither hears nor
+  answers or that has a `caller`, `hears` or `answers` without a `probe`,
+  `hears` with arguments, `replyTo`, `reply` or `answers`, `answers` without
+  `answerField` or with a result or `reply`, a `messageValue` with
+  arguments, `replyTo`, `caller` or `reply`, and `replyCases` with `result`
+  or `resultField`, on a handler with no result, or with values that are not
+  all `Bool` or all `Text` as the result is;
+- an `entity` whose handlers do not take a `Text` first, an event-sourced
+  sharded entity, and a caller of a sharded entity (all unsupported);
+- several reply classes for one handler, including a stream of replies;
+- a start that takes arguments, and handlers that are async, use abilities,
+  or take or return functions or other actors' handles.
+
+On Scala, `behavior` names an object's factory, `example.Account.create`,
+which takes `()` or, for an event-sourced actor or a sharded entity, its
+persistence or entity id. Messages are built with `Message(arguments...,
+replyTo)`, so Scala case classes, Java classes and `messageFactory` methods
+all work, and a result accessor or `resultField` is read as `reply.balance`.
+`replyArguments` type the reply as `StatusReply[Summary]`, and an `entity`
+may name a Scala DSL `EntityTypeKey`. The generated wiring sits in the
+behaviour's package and calls the same Java checker, so the checks are the
+same as on Java. A Scala `spring` binding is rejected.
+
+A `spring` binding names a `SpringActor` component. A Spring context holds the
+starter's actor support and that component, so the component gets Spring's
+dependency injection; beans it needs from the rest of the application are not
+in that context. Each run's actor is the behaviour the component's `create`
+returns, with the run's actor id as its context's `actorId()`, compiled to Pekko
+by the starter's own compiler and run in the same `ActorTestKit`, with its own
+supervision strategy inside LawSpec's crash interceptor. Each handler's
+`message` is an `AskCommand` of the reply class: its constructor takes the
+handler's arguments, and the check sets its reply address as the starter's
+ask does, so `replyTo` is true for every handler with a reply. Event-sourced
+Spring starter actors are rejected as unsupported for now; bind the Pekko
+behaviour instead. The application's build supplies the starter 1.0.0 and
+`pekko-actor-testkit-typed_3` and `pekko-persistence-testkit_3` 1.7.1 for
+the tests, as for a Pekko actor. The checker uses the
+starter's internal `PekkoBehaviors` and `PekkoActorRef` classes, which have no
+compatibility promise across starter releases, so the starter is pinned.
+ref:DEC-spring-actor-starter
+
+The Java compiler checks the rest of the agreement: the generated wiring
+calls each message constructor with the codecs' native types and reads each
+result accessor into the result's codec, so a mismatched type does not
+compile. The actor's adapters become a generated bridge whose methods say the
+native actor runs them. The application's build supplies Pekko 1.7.1:
+`pekko-actor-typed_3` (and `pekko-persistence-typed_3` for an event-sourced
+actor, `pekko-cluster-sharding-typed_3` for a sharded entity), with
+`pekko-actor-testkit-typed_3` and `pekko-persistence-testkit_3` for the
+tests. The wiring is generated in the behaviour's own package (its
+reference's leading lower-case names), so it can name messages that are not
+public. ref:DEC-native-actor-binding ref:DEC-pekko-sample-suites
+
 ## Validation
 
 `check` resolves bindings once, against the typed declarations, and rejects:

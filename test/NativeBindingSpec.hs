@@ -3,6 +3,8 @@ module NativeBindingSpec (test_nativeBindingsResolveToOneUnambiguousIdentity) wh
 
 import Control.Monad (forM_)
 import Test.Hspec
+import Data.Aeson (eitherDecode)
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Either (isLeft)
 import Data.List (isInfixOf, sort)
 import qualified LawSpec.HaskellData as Haskell
@@ -12,6 +14,8 @@ import LawSpec.Common
 import LawSpec.Frontend (compileCore,compileCoreCanonical)
 import qualified LawSpec.NativeRequest as Request
 import qualified LawSpec.RustNativeBinding as Rust
+import LawSpec.CoreEmit (emitPlanWithNativeOptions)
+import LawSpec.Testing (planTesting)
 import LawSpec.NativeBinding
 
 source :: String
@@ -195,3 +199,151 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
         uses (chain "Int8") `shouldBe` False
         uses (chain "IntSize") `shouldBe` True
         uses (C.Constructor "machine::type::Native" []) `shouldBe` True
+  -- An existing Pekko actor stands in for a LawSpec actor only when its
+  -- binding covers exactly the actor's handlers, every result can be asked
+  -- for, and nothing reads the actor's private state.
+  -- ref:DEC-native-actor-binding
+  it "resolves native actor bindings against the actor's handlers" $ do
+    let actorSource abstract = unlines
+          [ "unit bank"
+          , "type Account is a record{ balance :: Int64 } end type"
+          , "openAccount :: Unit -> Account"
+          , "deposit :: Account -> UInt8 -> Pair Int64 Account"
+          , "close :: Account -> Account"
+          , "peek :: Account -> Int64"
+          , "function modelDeposit (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) -> Pair Int64 Int64 is Pair (n + amount) (n + amount) end function"
+          , "function modelClose (n :: Int64) -> Int64 is 0 end function"
+          , "actor account :: Account by Int64 is"
+          , "  start openAccount by 0"
+          , "  on deposit by modelDeposit"
+          , "  on close by modelClose"
+          , if abstract then "  abstract peek" else ""
+          , "end actor"
+          , "end unit" ]
+        deposit = Request.actorHandler "deposit" (ref "Deposit") True (Just (ref "Balance")) (Just "balance")
+        close = Request.actorHandler "close" (ref "Close") False Nothing Nothing
+        actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
+          Nothing Nothing handlers []
+        resolveActors abstract actors = case compileCore 64 defaultGeneration [Source "bank" (actorSource abstract)] of
+          Left diagnostics -> Left (show diagnostics)
+          Right program -> Request.resolveNativeRequest program Request.emptyNativeRequest { Request.requestActors = actors }
+    case resolveActors False [actor [deposit, close]] of
+      Left message -> expectationFailure message
+      Right plan -> case Request.bindingActors plan of
+        [bound] -> do
+          map Request.resolvedHandlerArguments (Request.resolvedActorHandlers bound)
+            `shouldBe` [[C.scalarType "UInt8"], []]
+          map Request.resolvedHandlerResult (Request.resolvedActorHandlers bound)
+            `shouldBe` [Just (C.scalarType "Int64"), Nothing]
+          sort (map C.idText (Request.resolvedActorAdapters bound))
+            `shouldBe` ["bank::close", "bank::deposit", "bank::openAccount"]
+        other -> expectationFailure (show other)
+    let rejected actors expected = case resolveActors False actors of
+          Left message -> message `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure ("accepted; expected " ++ expected)
+    rejected [actor [deposit]] "handler close has no message binding"
+    rejected [actor [deposit, close, close {Request.boundHandlerName = "open"}]] "there is no handler open"
+    rejected [actor [deposit {Request.handlerReplyTo = False}, close]] "needs a replyTo"
+    rejected [actor [deposit {Request.handlerReply = Nothing}, close]] "needs the reply class"
+    rejected [actor [deposit, close {Request.handlerResult = Just "value"}]] "returns no result"
+    rejected [(actor [deposit, close]) {Request.boundActorName = "bank::teller"}] "unknown actor"
+    rejected [actor [deposit, close], actor [deposit, close]] "duplicate native actor binding"
+    case resolveActors True [actor [deposit, close]] of
+      Left message -> message `shouldSatisfy` isInfixOf "unsupported: its abstract function"
+      Right _ -> expectationFailure "an abstraction over a native actor's state was accepted"
+  it "rejects several reply classes for one native actor handler" $ do
+    let parsed reply = eitherDecode (BL.pack ("{\"actors\": [{\"actor\": \"bank::account\", \"behavior\": [\"app\", \"create\"], " ++
+          "\"handlers\": [{\"handler\": \"deposit\", \"message\": [\"app\", \"Deposit\"], \"replyTo\": true, \"reply\": " ++ reply ++ "}]}]}"))
+          :: Either String Request.NativeRequest
+    parsed "[\"app\", \"Balance\"]" `shouldSatisfy` (not . isLeft)
+    either id (const "") (parsed "[[\"app\", \"Balance\"], [\"app\", \"Rejected\"]]")
+      `shouldSatisfy` isInfixOf "several replies"
+  -- The pekko-samples' own messages: a chopstick that knows its hakker by
+  -- address, a StatusReply, a public field and a sharded entity's id.
+  -- ref:DEC-pekko-sample-suites
+  it "resolves callers, sharded entities and reply fields of native actor handlers" $ do
+    let source = unlines
+          [ "unit bank"
+          , "type Account is a record{ balance :: Int64 } end type"
+          , "openAccount :: Unit -> Account"
+          , "deposit :: Account -> Text -> UInt8 -> Pair Int64 Account"
+          , "close :: Account -> Text -> Account"
+          , "function modelDeposit (who :: Text) (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) -> Pair Int64 Int64 is Pair (n + amount) (n + amount) end function"
+          , "function modelClose (who :: Text) (n :: Int64) -> Int64 is 0 end function"
+          , "actor account :: Account by Int64 is"
+          , "  start openAccount by 0"
+          , "  on deposit by modelDeposit"
+          , "  on close by modelClose"
+          , "end actor"
+          , "end unit" ]
+        deposit = (Request.actorHandler "deposit" (ref "Deposit") False (Just (ref "Balance")) Nothing)
+          { Request.handlerCaller = True, Request.handlerResultField = Just "balance" }
+        close = Request.actorHandler "close" (ref "Close") False Nothing Nothing
+        actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
+          Nothing Nothing handlers []
+        resolve actors = case compileCore 64 defaultGeneration [Source "bank" source] of
+          Left diagnostics -> Left (show diagnostics)
+          Right program -> Request.resolveNativeRequest program Request.emptyNativeRequest { Request.requestActors = actors }
+        rejected actors expected = case resolve actors of
+          Left message -> message `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure ("accepted; expected " ++ expected)
+        sharded = (actor [deposit { Request.handlerCaller = False, Request.handlerReplyTo = True }, close])
+          { Request.boundActorEntity = Just (ref "TypeKey") }
+    either expectationFailure (const (pure ())) (() <$ resolve [actor [deposit, close]])
+    either expectationFailure (const (pure ())) (() <$ resolve [sharded])
+    rejected [actor [deposit { Request.handlerReplyTo = True }, close]] "has no replyTo as well"
+    rejected [actor [deposit { Request.handlerResult = Just "balance" }, close]] "not both"
+    rejected [sharded { Request.boundActorPersistence = Just Request.EventSourced }] "event-sourced sharded entity"
+    rejected [(actor [deposit, close]) { Request.boundActorEntity = Just (ref "TypeKey") }] "a caller of a sharded entity"
+    rejected [actor [deposit { Request.handlerReplyArguments = [ref "Summary"], Request.handlerReply = Nothing }, close]] "type arguments need the reply class"
+    let parsed handler = eitherDecode (BL.pack ("{\"actors\": [{\"actor\": \"bank::account\", \"behavior\": [\"app\", \"create\"], " ++
+          "\"handlers\": [" ++ handler ++ "]}]}")) :: Either String Request.NativeRequest
+    case parsed "{\"handler\": \"deposit\", \"messageFactory\": [\"app\", \"Messages\", \"deposit\"], \"replyTo\": true, \"reply\": [\"app\", \"StatusReply\"], \"replyArguments\": [[\"app\", \"Balance\"]], \"result\": \"isSuccess\"}" of
+      Right request -> map Request.boundActorHandlers (Request.requestActors request) `shouldBe`
+        [[(Request.actorHandler "deposit" (NativeRef ["app","Messages","deposit"]) True (Just (ref "StatusReply")) (Just "isSuccess"))
+          { Request.handlerReplyArguments = [ref "Balance"], Request.handlerMessageFactory = True }]]
+      Left message -> expectationFailure message
+    either id (const "") (parsed "{\"handler\": \"close\", \"message\": [\"app\", \"Close\"], \"messageFactory\": [\"app\", \"close\"]}")
+      `shouldSatisfy` isInfixOf "exactly one of message, messageFactory"
+  -- A hakker answers nothing: probes stand in for its chopsticks, hear what
+  -- it sends and answer for them, and time passes on virtual time.
+  -- ref:DEC-tell-only-actors ref:DEC-time-passes
+  it "resolves probes, heard and answered messages, reply cases and time passes" $ do
+    source <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    sticks <- readFile "acceptance/pekko-samples/fsm/chopsticks.lawspec"
+    bindings <- BL.readFile "acceptance/pekko-samples/fsm/scala/bindings.json"
+    let request = either error id (eitherDecode bindings) :: Request.NativeRequest
+        resolve actors = case compileCore 64 defaultGeneration [Source "hakkers.lawspec" source, Source "chopsticks.lawspec" sticks] of
+          Left diagnostics -> Left (show diagnostics)
+          Right program -> Request.resolveNativeRequest program request { Request.requestActors = actors }
+        [chopstick, hakker] = Request.requestActors request
+        rejected actors expected = case resolve actors of
+          Left message -> message `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure ("accepted; expected " ++ expected)
+        handler name = head [h | h <- Request.boundActorHandlers hakker, Request.boundHandlerName h == name]
+        replaced name h = hakker { Request.boundActorHandlers = [if Request.boundHandlerName x == name then h else x | x <- Request.boundActorHandlers hakker] }
+    case resolve [chopstick, hakker] of
+      Left message -> expectationFailure message
+      Right plan -> do
+        [(Request.resolvedActorName a, Request.resolvedActorTime a) | a <- Request.bindingActors plan]
+          `shouldBe` [("chopstick", False), ("hakker", True)]
+        [C.idText i | a <- Request.bindingActors plan, i <- Request.resolvedActorAdapters a, Request.resolvedActorName a == "hakker"]
+          `shouldSatisfy` elem "sample.hakkers::hakkerTimePasses"
+    Request.handlerReplyCases (head (Request.boundActorHandlers chopstick))
+      `shouldBe` [("Busy", Request.CaseBool False), ("Taken", Request.CaseBool True)]
+    rejected [chopstick, replaced "asksLeft" ((handler "asksLeft") { Request.handlerProbe = Just "middle" })] "probe middle is not one of the behavior's probes"
+    rejected [chopstick, replaced "asksLeft" ((handler "asksLeft") { Request.handlerProbe = Nothing })] "names the probe it hears at"
+    rejected [chopstick, replaced "leftTaken" ((handler "leftTaken") { Request.handlerAnswers = Nothing, Request.handlerReplyTo = False })] "hears at it"
+    rejected [chopstick, replaced "think" ((handler "think") { Request.handlerReplyTo = True, Request.handlerReply = Just (NativeRef ["sample","Hakker","Think"]) })] "sends a message value"
+    rejected [chopstick { Request.boundActorHandlers = [h { Request.handlerReplyCases = [("Taken", Request.CaseText "yes")] } | h <- take 1 (Request.boundActorHandlers chopstick)] ++ drop 1 (Request.boundActorHandlers chopstick) }, hakker]
+      "reply cases give a Bool"
+    rejected [chopstick, hakker { Request.boundActorPersistence = Just Request.EventSourced }] "unsupported: behavior arguments"
+    rejected [chopstick, hakker { Request.boundActorArguments = [Request.ProbeArgument "left", Request.ProbeArgument "left"] }] "a probe is named twice"
+  it "reports time passes unsupported without a native Pekko actor" $ do
+    source <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" source] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> forM_ ["python", "java"] $ \target ->
+        case planTesting program >>= emitPlanWithNativeOptions False target Nothing Nothing Request.emptyBindingPlan of
+          Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "lets time pass, which needs virtual time"
+          Right _ -> expectationFailure ("time passes was emitted for " ++ target)

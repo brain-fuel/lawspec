@@ -7,6 +7,10 @@
     new/5,
     check/1, check/2,
     generate/5,
+    next_step/7,
+    report/6,
+    incomplete/3,
+    rejected_note/1,
     simulate/2,
     execute/2,
     shrink/4,
@@ -236,6 +240,7 @@ empty_arguments(Ds) ->
     lists:any(
         fun
             ([<<"int">>, _, Lo, Hi]) when is_integer(Lo), is_integer(Hi) -> Lo > Hi;
+            ([<<"oneof">>, _]) -> true;
             (_) -> false
         end,
         Ds
@@ -286,14 +291,30 @@ simulate_steps(Model, Context, [{I, Args} | Steps], Indices, State, States) ->
 
 %% Random state is explicit. The draw order, boundary values and rejected
 %% reference steps match the other runtimes, including one crash in eight.
+%%
+%% Generation honours the reference. A step is drawn among the commands
+%% enabled at the model state: typestate admits them, their precondition
+%% holds, and some arguments are inside the reference's refinements. When a
+%% command's argument tuples are few (FINITE_STEPS), each is tried against
+%% the reference and one valid tuple is chosen, as QuickCheck state machines
+%% generate from a precondition. Otherwise arguments are drawn and checked
+%% again, up to STEP_ATTEMPTS times, and every draw the reference rejects is
+%% counted. A run where the reference rejected more draws than it accepted
+%% shows little, so its check is incomplete, never passed.
+%% ref:DEC-honest-model-steps
+-define(FINITE_STEPS, 64).
+-define(STEP_ATTEMPTS, 8).
+
+%% A generated run, how many of its drawn steps the reference rejected, and
+%% the random state after it.
 generate(Model, Random, Length, Size, Crashes) ->
     {StartArgs, R1} = arguments(Model, maps:get(start_arguments, Model), Random, Size),
     with_context(Model, StartArgs, fun(Context) ->
         case attempt(fun() -> initial(Model, Context) end) of
             {error, _} ->
-                {{StartArgs, []}, R1};
+                {{StartArgs, []}, 0, R1};
             {ok, State} ->
-                {Steps, Last} = generate_steps(
+                {Steps, Rejected, Last} = generate_steps(
                     Model,
                     Context,
                     R1,
@@ -302,88 +323,202 @@ generate(Model, Random, Length, Size, Crashes) ->
                     Crashes,
                     maps:get(start_indices, Model),
                     State,
-                    []
+                    [],
+                    0
                 ),
-                {{StartArgs, Steps}, Last}
+                {{StartArgs, Steps}, Rejected, Last}
         end
     end).
 arguments(#{table := Table}, Ds, Random, Size) ->
     lists:mapfoldl(fun(D, R) -> lawspec_beam_values:generate(D, Table, R, Size) end, Random, Ds).
-generate_steps(_, _, Random, 0, _, _, _, _, Steps) ->
-    {lists:reverse(Steps), Random};
-generate_steps(Model, Context, Random, Remaining, Size, Crashes, Indices, State, Steps) ->
-    Allowed = [
-        I - 1
-     || {I, C} <- lists:enumerate(tuple_to_list(maps:get(commands, Model))),
-        admits(C, Indices),
-        not empty_arguments(model_arguments(C, Indices))
-    ],
-    case Allowed of
+generate_steps(_, _, Random, 0, _, _, _, _, Steps, Rejected) ->
+    {lists:reverse(Steps), Rejected, Random};
+generate_steps(Model, Context, Random, Remaining, Size, Crashes, Indices, State, Steps, Rejected) ->
+    {Taken, More, R1} = next_step(Model, Context, Random, State, Indices, Size, Crashes),
+    case Taken of
+        none_enabled ->
+            {lists:reverse(Steps), Rejected + More, R1};
+        no_step ->
+            generate_steps(
+                Model,
+                Context,
+                R1,
+                Remaining - 1,
+                Size,
+                Crashes,
+                Indices,
+                State,
+                Steps,
+                Rejected + More
+            );
+        {step, {Index, _} = Step, Next} ->
+            NextIndices =
+                case command(Model, Index) of
+                    #{kind := crash} -> Indices;
+                    Command -> shifted(Command, Indices)
+                end,
+            generate_steps(
+                Model,
+                Context,
+                R1,
+                Remaining - 1,
+                Size,
+                Crashes,
+                NextIndices,
+                Next,
+                [Step | Steps],
+                Rejected + More
+            )
+    end.
+
+%% The next step at a state: none_enabled when no command is enabled,
+%% no_step when every draw was rejected, else {step, Step, Next}; with how
+%% many drawn steps the reference rejected and the random state after it.
+next_step(Model, Context, Random, State, Indices, Size, Crashes) ->
+    case enabled_steps(Model, Context, State, Indices) of
         [] ->
-            {lists:reverse(Steps), Random};
-        _ ->
-            {Choice, R1} = lawspec_beam_random:below(length(Allowed), Random),
-            {Index, R2} =
+            {none_enabled, 0, Random};
+        Enabled ->
+            {Choice, R1} = lawspec_beam_random:below(length(Enabled), Random),
+            {Index, Tuples} = lists:nth(Choice + 1, Enabled),
+            {Crash, R2} =
                 case Crashes andalso maps:get(actor, Model) of
                     true ->
-                        {Crash, R} = lawspec_beam_random:below(8, R1),
-                        {
-                            case Crash of
-                                0 -> tuple_size(maps:get(commands, Model));
-                                _ -> lists:nth(Choice + 1, Allowed)
-                            end,
-                            R
-                        };
+                        {N, R} = lawspec_beam_random:below(8, R1),
+                        {N =:= 0, R};
                     false ->
-                        {lists:nth(Choice + 1, Allowed), R1}
+                        {false, R1}
                 end,
-            Command = command(Model, Index),
-            {Args, R3} = arguments(Model, model_arguments(Command, Indices), R2, Size),
-            case step(Command, Context, Args, State) of
-                invalid ->
-                    Dependent = lists:any(
-                        fun
-                            ([<<"dependent">> | _]) -> true;
-                            (_) -> false
-                        end,
-                        maps:get(arguments, Command)
-                    ),
-                    AllowedNow =
-                        case maps:get('when', Command, none) of
-                            none -> true;
-                            Guard -> callback(Guard, Context, [State])
-                        end,
-                    case Dependent andalso AllowedNow of
-                        true ->
-                            erlang:error(
-                                {incomplete_model_generation, dependent_arguments_rejected,
-                                    attempts, 1}
-                            );
-                        false ->
-                            generate_steps(
-                                Model,
-                                Context,
-                                R3,
-                                Remaining - 1,
-                                Size,
-                                Crashes,
-                                Indices,
-                                State,
-                                Steps
-                            )
+            case {Crash, Tuples} of
+                {true, _} ->
+                    CrashIndex = tuple_size(maps:get(commands, Model)),
+                    case step(command(Model, CrashIndex), Context, [], State) of
+                        invalid -> {no_step, 0, R2};
+                        {ok, Next, _} -> {{step, {CrashIndex, []}, Next}, 0, R2}
                     end;
-                {ok, Next, _} ->
-                    generate_steps(
-                        Model,
-                        Context,
-                        R3,
-                        Remaining - 1,
-                        Size,
-                        Crashes,
-                        shifted(Command, Indices),
-                        Next,
-                        [{Index, Args} | Steps]
-                    )
+                {false, none} ->
+                    draw_step(Model, Context, R2, State, Indices, Size, Index, ?STEP_ATTEMPTS, 0);
+                {false, [Args]} ->
+                    {ok, Next, _} = step(command(Model, Index), Context, Args, State),
+                    {{step, {Index, Args}, Next}, 0, R2};
+                {false, _} ->
+                    {K, R3} = lawspec_beam_random:below(length(Tuples), R2),
+                    Args = lists:nth(K + 1, Tuples),
+                    {ok, Next, _} = step(command(Model, Index), Context, Args, State),
+                    {{step, {Index, Args}, Next}, 0, R3}
+            end
+    end.
+draw_step(_, _, Random, _, _, _, _, 0, Rejected) ->
+    {no_step, Rejected, Random};
+draw_step(Model, Context, Random, State, Indices, Size, Index, Attempts, Rejected) ->
+    Command = command(Model, Index),
+    {Args, R1} = arguments(Model, model_arguments(Command, Indices), Random, Size),
+    case step(Command, Context, Args, State) of
+        invalid ->
+            draw_step(Model, Context, R1, State, Indices, Size, Index, Attempts - 1, Rejected + 1);
+        {ok, Next, _} ->
+            {{step, {Index, Args}, Next}, Rejected, R1}
+    end.
+
+%% The commands enabled at a state, each with its valid argument tuples, or
+%% none to draw them.
+enabled_steps(Model, Context, State, Indices) ->
+    lists:append([
+        enabled(Model, Context, State, Indices, I - 1, C)
+     || {I, C} <- lists:enumerate(tuple_to_list(maps:get(commands, Model)))
+    ]).
+enabled(Model, Context, State, Indices, Index, Command) ->
+    Ds = model_arguments(Command, Indices),
+    case
+        admits(Command, Indices) andalso not empty_arguments(Ds) andalso
+            holds(Command, Context, State)
+    of
+        false ->
+            [];
+        true ->
+            Table = maps:get(table, Model),
+            Domains = [lawspec_beam_values:finite(D, Table, ?FINITE_STEPS) || D <- Ds],
+            Tuples =
+                case lists:member(none, Domains) of
+                    true -> none;
+                    false -> lawspec_beam_values:product(Domains, ?FINITE_STEPS)
+                end,
+            case Tuples of
+                none ->
+                    [{Index, none}];
+                _ ->
+                    %% Outside the reference: not a step here.
+                    case [T || T <- Tuples, step(Command, Context, T, State) =/= invalid] of
+                        [] -> [];
+                        Valid -> [{Index, Valid}]
+                    end
+            end
+    end.
+holds(#{'when' := none}, _, _) ->
+    true;
+holds(#{'when' := When}, Context, State) ->
+    try
+        callback(When, Context, [State]) =:= true
+    catch
+        _:_ -> false
+    end.
+
+%% The error a run raises when the reference rejected more of its drawn
+%% steps than it accepted.
+incomplete(Model, Run, {Accepted, Rejected}) ->
+    iolist_to_binary([
+        <<"incomplete model generation: model ">>,
+        maps:get(name, Model),
+        <<"'s ">>,
+        Run,
+        <<" drew ">>,
+        integer_to_binary(Rejected),
+        <<" steps its reference rejected and ">>,
+        integer_to_binary(Accepted),
+        <<" it accepted; fewer than half of its steps are valid, so it shows little of the system">>
+    ]).
+
+%% How a failing run's rejected draws read after its failure.
+rejected_note(0) ->
+    <<>>;
+rejected_note(Rejected) ->
+    iolist_to_binary([
+        <<" (the reference rejected ">>,
+        integer_to_binary(Rejected),
+        <<" drawn steps of this run)">>
+    ]).
+
+%% One line of JSON per model check, appended to the file
+%% LAWSPEC_MODEL_REPORT names: how many runs and steps it checked, and how
+%% many drawn steps the reference rejected. The report is a side channel; the
+%% check's own result stands.
+report(Model, Check, Runs, Steps, Rejected, Outcome) ->
+    case os:getenv("LAWSPEC_MODEL_REPORT") of
+        false ->
+            ok;
+        "" ->
+            ok;
+        Path ->
+            try
+                Line = [
+                    <<"{\"model\":\"">>,
+                    maps:get(name, Model),
+                    <<"\",\"check\":\"">>,
+                    Check,
+                    <<"\",\"runs\":">>,
+                    integer_to_binary(Runs),
+                    <<",\"steps\":">>,
+                    integer_to_binary(Steps),
+                    <<",\"rejected\":">>,
+                    integer_to_binary(Rejected),
+                    <<",\"outcome\":\"">>,
+                    Outcome,
+                    <<"\"}\n">>
+                ],
+                _ = file:write_file(Path, Line, [append]),
+                ok
+            catch
+                _:_ -> ok
             end
     end.
 
@@ -636,25 +771,56 @@ check(Model, Options) ->
     require(is_integer(Cases) andalso Cases > 0, model_requires_cases),
     require(is_integer(MaxLength) andalso MaxLength >= 0, model_invalid_length),
     require(is_integer(Shrinks) andalso Shrinks >= 0, model_invalid_shrinks),
-    check_cases(Model, 0, Cases, MaxLength, Shrinks, Seed, Seed).
-check_cases(_, N, N, _, _, _, _) ->
-    ok;
-check_cases(Model, N, Cases, MaxLength, Shrinks, Seed, Random) ->
+    check_cases(Model, 0, Cases, MaxLength, Shrinks, Seed, Seed, {0, 0}).
+check_cases(Model, N, N, _, _, _, _, {Steps, Rejected}) ->
+    report(Model, <<"sequential">>, N, Steps, Rejected, <<"passed">>);
+check_cases(Model, N, Cases, MaxLength, Shrinks, Seed, Random, {Steps, Rejected}) ->
     {Length, R1} = lawspec_beam_random:below(MaxLength + 1, Random),
-    {Run, R2} = generate(Model, R1, Length, 1 + N rem 8, true),
+    {Run = {_, RunSteps}, RunRejected, R2} = generate(Model, R1, Length, 1 + N rem 8, true),
+    Accepted = length(RunSteps),
+    Totals = {AllSteps, AllRejected} = {Steps + Accepted, Rejected + RunRejected},
+    case RunRejected > Accepted of
+        true ->
+            report(Model, <<"sequential">>, N + 1, AllSteps, AllRejected, <<"incomplete">>),
+            Message = incomplete(
+                Model,
+                [<<"run ">>, integer_to_binary(N + 1), <<" of ">>, integer_to_binary(Cases)],
+                {Accepted, RunRejected}
+            ),
+            error(
+                {lawspec,
+                    {model_incomplete, maps:get(name, Model), #{
+                        seed => Seed,
+                        'case' => N,
+                        run => Run,
+                        accepted => Accepted,
+                        rejected => RunRejected,
+                        message => Message
+                    }}}
+            );
+        false ->
+            ok
+    end,
     case execute(Model, Run) of
         ok ->
-            check_cases(Model, N + 1, Cases, MaxLength, Shrinks, Seed, R2);
+            check_cases(Model, N + 1, Cases, MaxLength, Shrinks, Seed, R2, Totals);
         {error, Failure} ->
+            report(Model, <<"sequential">>, N + 1, AllSteps, AllRejected, <<"failed">>),
             {Smaller, Found} = shrink(Model, Run, Failure, Shrinks),
             error(
                 {lawspec,
-                    {model_failed, maps:get(name, Model), #{
-                        seed => Seed,
-                        'case' => N,
-                        run => Smaller,
-                        description => describe(Model, Smaller),
-                        failure => Found
-                    }}}
+                    {model_failed, maps:get(name, Model),
+                        rejected(RunRejected, #{
+                            seed => Seed,
+                            'case' => N,
+                            run => Smaller,
+                            description => describe(Model, Smaller),
+                            failure => Found
+                        })}}
             )
     end.
+
+%% A failing run's details, with how many of its drawn steps the reference
+%% rejected when there were any.
+rejected(0, Details) -> Details;
+rejected(Rejected, Details) -> Details#{rejected => Rejected, note => rejected_note(Rejected)}.

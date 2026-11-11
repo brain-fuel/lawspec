@@ -3,7 +3,7 @@
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations, assumingCapabilities
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements, keyedRequirements, keyedPrimitive
-  , constructorFieldPath
+  , constructorFieldPath, plainConstructor
   , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, constructorBindingsAt, freeExistentials, typeVariables, witnessPool
   ) where
 
@@ -14,6 +14,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Mem.StableName (StableName, makeStableName)
 import Data.Graph (SCC(..), stronglyConnComp)
 import Data.List (nub, sort)
+import Data.Maybe (isNothing)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified LawSpec.Core.EqSet as EqSet
@@ -33,6 +34,11 @@ data TypeRegistry = TypeRegistry
   , keyedFieldRules :: M.Map Id (Maybe [Id])
   , assumedEquality :: S.Set Id
   , assumedKeys :: S.Set Id
+    -- Constructors with nothing to check beyond their tag: no fields,
+    -- refinements, equations or index guards, of a declaration with no parameters or
+    -- index. Validating a value of one is only finding it here, which the
+    -- reference evaluator does for every enumeration value it builds.
+  , plainConstructors :: S.Set (String, Id)
   }
 
 -- Each scoped registry is an immutable view. The cached declaration registry
@@ -105,6 +111,10 @@ buildRegistry userDeclarations = do
         (deriveStoredFieldCapabilities everyPrimitive (const True) allDeclarations)
         (deriveStoredFieldCapabilities keyedPrimitive ((/= EqSet.eqSetTypeId) . dataId) allDeclarations)
         S.empty S.empty
+        (S.fromList [ (idText (dataId d), constructorId c) | d <- allDeclarations, null (dataParameters d)
+                    , isNothing (dataIndex d), not (dataHandle d), c <- dataConstructors d, null (constructorFields c)
+                    , null (constructorPredicates c), null (constructorEquations c), null (constructorExistentials c)
+                    , null (declarationIndexGuards d (constructorId c)) ])
   unique "type constructor identity" (map fst kinds)
   unique "data constructor identity" [constructorId c | d <- allDeclarations, c <- dataConstructors d]
   mapM_ EqSet.validateEqSetDeclaration allDeclarations
@@ -198,6 +208,10 @@ checkType :: TypeRegistry -> Type -> Either String ()
 checkType registry ty = do
   k <- kindWith (`M.lookup` registryKindMap registry) ty
   unless (k == TypeKind) (Left "unsaturated type constructor")
+
+-- | Whether a value with this tag of this type is valid by its tag alone.
+plainConstructor :: TypeRegistry -> String -> Id -> Bool
+plainConstructor registry name tag = S.member (name, tag) (plainConstructors registry)
 
 -- | An unknown data type is reported by name.
 lookupData :: TypeRegistry -> Id -> Either String DataDeclaration

@@ -1,0 +1,219 @@
+unit sample.hakkers
+
+-- The dining hakkers of apache/pekko-samples' pekko-sample-fsm-java: hakkers
+-- at a round table, a chopstick between each two. A hungry hakker sends Take
+-- to both its chopsticks at once and waits for both answers: with both it
+-- eats; with one, it puts that one back and thinks again (Hakker.java's
+-- hungry, waitForOtherChopstick and firstChopstickDenied). An eating hakker
+-- puts both down when it is full.
+--
+-- This model states that protocol for the whole table of five. It is the
+-- table model the pekko-samples/fsm suite used before the real Hakker could
+-- be bound, kept here to check the model checker: 9,864 states, partial
+-- references, and fairness per hakker (DEC-model-checker-reductions,
+-- DEC-model-fairness-per-value). The suite now binds the sample's Hakker.
+type Hakker is one of
+  | Ghosh
+  | Boner
+  | Klang
+  | Krasser
+  | Manie
+end type
+
+-- Where a hakker is in the protocol. A hungry hakker has asked for both
+-- chopsticks; HasLeft and DeniedLeft say how its left chopstick answered
+-- while it still waits for the right, and the same for the right.
+type Phase is one of
+  | Thinking
+  | Hungry
+  | HasLeft
+  | DeniedLeft
+  | HasRight
+  | DeniedRight
+  | Eating
+end type
+
+-- Hakker i's left chopstick is chopstick i, its right chopstick i + 1, as
+-- DiningHakkers.java seats them, around a table of five.
+type Seats is a record{
+    ghosh :: Phase
+    boner :: Phase
+    klang :: Phase
+    krasser :: Phase
+    manie :: Phase}
+end type
+
+handle Table
+
+openTable :: Unit -> Table
+-- A thinking hakker gets hungry and asks for both chopsticks.
+hungry :: Table -> Hakker -> Unit
+-- The hakker's left (or right) chopstick answers its Take: Taken (true) or
+-- Busy (false). The hakker then eats, or puts back what it holds.
+leftAnswers :: Table -> Hakker -> Bool
+rightAnswers :: Table -> Hakker -> Bool
+-- An eating hakker is full and puts both chopsticks down.
+full :: Table -> Hakker -> Unit
+
+function phase (h :: Hakker) (s :: Seats) -> Phase is
+  first matching case of h :
+    when Ghosh then s.ghosh
+    when Boner then s.boner
+    when Klang then s.klang
+    when Krasser then s.krasser
+    when Manie then s.manie
+  end case
+end function
+
+function seat (h :: Hakker) (p :: Phase) (s :: Seats) -> Seats is
+  first matching case of h :
+    when Ghosh then s with ghosh = p
+    when Boner then s with boner = p
+    when Klang then s with klang = p
+    when Krasser then s with krasser = p
+    when Manie then s with manie = p
+  end case
+end function
+
+function leftOf (h :: Hakker) -> Hakker is
+  first matching case of h :
+    when Ghosh then Manie
+    when Boner then Ghosh
+    when Klang then Boner
+    when Krasser then Klang
+    when Manie then Krasser
+  end case
+end function
+
+function rightOf (h :: Hakker) -> Hakker is
+  first matching case of h :
+    when Ghosh then Boner
+    when Boner then Klang
+    when Klang then Krasser
+    when Krasser then Manie
+    when Manie then Ghosh
+  end case
+end function
+
+function holdsLeft (p :: Phase) -> Bool is p = HasLeft || p = Eating end function
+function holdsRight (p :: Phase) -> Bool is p = HasRight || p = Eating end function
+
+-- Hakker h's left chopstick is also its left neighbour's right one.
+function leftTaken (h :: Hakker) (s :: Seats) -> Bool is
+  holdsLeft (phase h s) || holdsRight (phase (leftOf h) s)
+end function
+
+function rightTaken (h :: Hakker) (s :: Seats) -> Bool is
+  holdsRight (phase h s) || holdsLeft (phase (rightOf h) s)
+end function
+
+function startSeats (u :: Unit) -> Seats is
+  Seats record{
+    ghosh = Thinking,
+    boner = Thinking,
+    klang = Thinking,
+    krasser = Thinking,
+    manie = Thinking}
+end function
+
+-- Each reference is partial: its state parameter is refined to the phases
+-- where the hakker can take that step, so a step it cannot take now is not
+-- part of the model at all. The model checker does not explore it, and
+-- generated runs never draw it, as Hakker.java never sends it.
+function modelHungry (h :: Hakker) (s :: Seats where phase h s = Thinking) -> Seats is
+  seat h Hungry s
+end function
+
+function modelLeftAnswers (h :: Hakker)
+  (s :: Seats where phase h s = Hungry || phase h s = HasRight || phase h s = DeniedRight)
+  -> Pair Bool Seats is
+  let p = phase h s in
+    let taken = not (leftTaken h s) in
+      first matching case of p :
+        when Hungry then Pair taken (seat h (if taken then HasLeft else DeniedLeft end if) s)
+        when HasRight then Pair taken (seat h (if taken then Eating else Thinking end if) s)
+        when DeniedRight then Pair taken (seat h Thinking s)
+        when Thinking then Pair false s
+        when HasLeft then Pair false s
+        when DeniedLeft then Pair false s
+        when Eating then Pair false s
+      end case
+    end let
+  end let
+end function
+
+function modelRightAnswers (h :: Hakker)
+  (s :: Seats where phase h s = Hungry || phase h s = HasLeft || phase h s = DeniedLeft)
+  -> Pair Bool Seats is
+  let p = phase h s in
+    let taken = not (rightTaken h s) in
+      first matching case of p :
+        when Hungry then Pair taken (seat h (if taken then HasRight else DeniedRight end if) s)
+        when HasLeft then Pair taken (seat h (if taken then Eating else Thinking end if) s)
+        when DeniedLeft then Pair taken (seat h Thinking s)
+        when Thinking then Pair false s
+        when HasRight then Pair false s
+        when DeniedRight then Pair false s
+        when Eating then Pair false s
+      end case
+    end let
+  end let
+end function
+
+function modelFull (h :: Hakker) (s :: Seats where phase h s = Eating) -> Seats is
+  seat h Thinking s
+end function
+
+model table :: shared Table by Seats is
+  start openTable by (startSeats ())
+  hungry by modelHungry
+  leftAnswers by modelLeftAnswers
+  rightAnswers by modelRightAnswers
+  full by modelFull
+end model
+
+-- What the laws say about a table.
+function eats (p :: Phase) -> Bool is p = Eating end function
+
+function neighboursApart (s :: Seats) -> Bool is
+  not (eats s.ghosh && eats s.boner)
+    && not (eats s.boner && eats s.klang)
+    && not (eats s.klang && eats s.krasser)
+    && not (eats s.krasser && eats s.manie)
+    && not (eats s.manie && eats s.ghosh)
+end function
+
+-- A hakker never waits for nothing: in every state some hakker has a step
+-- to take, since a chopstick answers every Take (the chopstick's own checks
+-- hold the real chopstick to that) and a denied hakker puts back what it
+-- holds instead of waiting for it.
+function canStep (p :: Phase) -> Bool is
+  p = Thinking || p = Hungry || p = HasLeft || p = DeniedLeft || p = HasRight || p = DeniedRight || p = Eating
+end function
+
+function someoneCanStep (s :: Seats) -> Bool is
+  canStep s.ghosh || canStep s.boner || canStep s.klang
+    || canStep s.krasser || canStep s.manie
+end function
+
+function ghoshEats (s :: Seats) -> Bool is eats s.ghosh end function
+function ghoshHungry (s :: Seats) -> Bool is s.ghosh = Hungry end function
+
+law "|neighbours never eat at once| in model table is
+  definition: every run holds always neighboursApart end definition
+end law
+
+law "|no deadlock| in model table is
+  definition: every run holds always someoneCanStep end definition
+end law
+
+law "|a hakker can eat| in model table is
+  definition: some run holds eventually ghoshEats end definition
+end law
+
+-- Every hungry hakker eventually eating does not hold, even under
+-- fairness: the hakkers can deny one another for ever (each takes one
+-- chopstick, is refused the other, puts it back, and tries again), which
+-- the sample's random thinking times only make unlikely. The spec mutant
+-- starvation adds that law, and LawSpec refutes it with such a run.
+end unit

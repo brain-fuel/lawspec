@@ -1,10 +1,13 @@
 -- | Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
   ( NativeRequest(..), NetworkBinding(..), networkArtifacts, FunctionBinding(..), NameBinding(..), NativeCall(..), GoImport(..), ErlangInclude(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
+  , ActorBinding(..), ActorSource(..), ActorPersistence(..), ActorHandlerBinding(..), actorHandler
+  , FactoryArgument(..), CaseValue(..), actorProbes
+  , ResolvedActorBinding(..), ResolvedActorHandler(..), actorBoundAdapters
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, normalizedNativeRequest, hasBindings
   ) where
 
-import Control.Monad (unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Aeson.Key as K
@@ -12,6 +15,8 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAscii, isAlpha, isAlphaNum, isLower)
 import Data.List (find, nub, sortOn)
 import qualified LawSpec.Core as C
+import LawSpec.Core.Machine (Machine(..), MachineStart(..), Command(..), Invariant(..))
+import LawSpec.ModelTime (isTimeStep)
 import qualified LawSpec.Core.Types as Types
 import LawSpec.NativeBinding
 import LawSpec.AbilityNames (interfaceName)
@@ -31,7 +36,84 @@ data NativeRequest = NativeRequest
   -- Public generated names are presentation choices, independent of native
   -- implementations and of the declaration's semantic identity.
   , requestNames :: [NameBinding]
+  -- Existing native actors (Pekko Typed behaviours) checked against a
+  -- LawSpec actor's model, by "<unit>::<actor>".
+  , requestActors :: [ActorBinding]
   } deriving (Eq, Show)
+-- actors: [{"actor": "<unit>::<actor>", "behavior": [...], "handlers": [...]}]:
+-- an existing native actor that stands in for a LawSpec actor in its model
+-- checks. LawSpec spawns the behaviour, asks it each handler's message and
+-- compares the replies with the model; it never reads the actor's state.
+-- ref:DEC-native-actor-binding
+data ActorBinding = ActorBinding
+  { boundActorName :: String, boundActorSource :: ActorSource
+  , boundActorPersistence :: Maybe ActorPersistence, boundActorEntity :: Maybe NativeRef
+  , boundActorHandlers :: [ActorHandlerBinding]
+  -- The behaviour factory's arguments, in order: probes that stand in for
+  -- the actors it talks to, and text. ref:DEC-tell-only-actors
+  , boundActorArguments :: [FactoryArgument] } deriving (Eq, Show)
+-- | A behaviour factory's argument: a probe, an address of LawSpec's that
+-- stands in for another actor (as pekko-actor-testkit-typed's TestProbe
+-- does), or a text constant.
+data FactoryArgument = ProbeArgument String | TextArgument String deriving (Eq, Show)
+-- | A reply case's LawSpec result: a Bool or a Text.
+data CaseValue = CaseBool Bool | CaseText String deriving (Eq, Show)
+-- | The probes an actor's factory takes.
+actorProbes :: [FactoryArgument] -> [String]
+actorProbes arguments = [p | ProbeArgument p <- arguments]
+-- | Where the native actor comes from: a static factory returning the typed
+-- behaviour (Behavior<Command>), or a Spring starter SpringActor class.
+data ActorSource = BehaviorFactory NativeRef | SpringActorClass NativeRef deriving (Eq, Show)
+-- | An event-sourced actor recovers its state from its journal after a
+-- restart; the checks run it on an in-memory journal.
+data ActorPersistence = EventSourced deriving (Eq, Show)
+-- | A handler is one message class. Its constructor takes the handler's
+-- arguments (after the state), then the replyTo ActorRef when replyTo is
+-- true; the reply class's result accessor gives the LawSpec result.
+--
+-- For the samples' own messages (apache/pekko-samples), a handler may also
+-- give: the reply's type arguments (StatusReply<Summary>); a public field
+-- that holds the result instead of an accessor; a caller, its first
+-- argument, whose own reply address the message carries in place of a
+-- fresh replyTo, so that every message from one caller comes from one
+-- address; and a static factory that makes the message, for a message whose
+-- constructor takes values no codec makes. ref:DEC-pekko-sample-suites
+data ActorHandlerBinding = ActorHandlerBinding
+  { boundHandlerName :: String, handlerMessage :: NativeRef, handlerReplyTo :: Bool
+  , handlerReply :: Maybe NativeRef, handlerResult :: Maybe String
+  , handlerReplyArguments :: [NativeRef], handlerResultField :: Maybe String
+  , handlerCaller :: Bool, handlerMessageFactory :: Bool
+  -- Tell-only actors, observed through probes (ref:DEC-tell-only-actors):
+  -- the probe a handler hears at or answers from; whether handlerMessage
+  -- names the class the probe must hear next (the handler sends nothing);
+  -- the class of the heard message a handler answers, and its field that
+  -- holds the address to answer; whether handlerMessage names a message
+  -- value (an enum constant or case object) rather than a class; and the
+  -- result each reply class gives (Taken is true, Busy false).
+  , handlerProbe :: Maybe String, handlerHears :: Bool
+  , handlerAnswers :: Maybe (NativeRef, String), handlerMessageValue :: Bool
+  , handlerReplyCases :: [(String, CaseValue)] } deriving (Eq, Show)
+
+-- | A handler binding with only the original fields: a message class, its
+-- replyTo, reply class and result accessor.
+actorHandler :: String -> NativeRef -> Bool -> Maybe NativeRef -> Maybe String -> ActorHandlerBinding
+actorHandler name message replyTo reply result = ActorHandlerBinding name message replyTo reply result [] Nothing False False Nothing False Nothing False []
+-- | An actor binding checked against the actor's declaration: each handler
+-- with the adapter it stands for, its argument types after the state, and
+-- its result type (Nothing for Unit).
+data ResolvedActorBinding = ResolvedActorBinding
+  { resolvedActorUnit :: C.Id, resolvedActorName :: String, resolvedActorSource :: ActorSource
+  , resolvedActorPersistence :: Maybe ActorPersistence, resolvedActorEntity :: Maybe NativeRef
+  , resolvedActorHandlers :: [ResolvedActorHandler]
+  -- Every adapter the native actor stands for: its start, handlers and
+  -- restart. LawSpec never calls them.
+  , resolvedActorAdapters :: [C.Id]
+  -- The factory's arguments, and whether the actor has a time passes step,
+  -- which runs it on virtual time. ref:DEC-time-passes
+  , resolvedActorArguments :: [FactoryArgument], resolvedActorTime :: Bool } deriving (Eq, Show)
+data ResolvedActorHandler = ResolvedActorHandler
+  { resolvedHandlerBinding :: ActorHandlerBinding, resolvedHandlerAdapter :: C.Id
+  , resolvedHandlerArguments :: [C.Type], resolvedHandlerResult :: Maybe C.Type } deriving (Eq, Show)
 -- network: {"identity": "<file>", "trusted": "<file>"}: the file holding a
 -- node's ML-DSA-65 identity seed (64 hexadecimal digits), and the file
 -- listing the SHA3-256 fingerprints of the only peers to talk to, one per
@@ -81,19 +163,26 @@ data BindingPlan = BindingPlan
   -- The native exceptions that become failures.
   , bindingFailures :: [C.FailureBinding]
   , bindingNames :: [(C.Id, String)]
+  -- Native actors checked in place of LawSpec actors.
+  , bindingActors :: [ResolvedActorBinding]
   } deriving (Eq, Show)
 -- | A request without bindings.
 emptyNativeRequest :: NativeRequest
-emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] [] Nothing []
+emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] [] Nothing [] []
 -- | A plan without bindings, which emitters treat as the generated-types path.
 emptyBindingPlan :: BindingPlan
-emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] [] [] []
+emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] [] [] [] []
+
+-- | The adapters native actors stand for, which LawSpec never calls.
+actorBoundAdapters :: BindingPlan -> [C.Id]
+actorBoundAdapters = concatMap resolvedActorAdapters . bindingActors
 -- | Only resolver-independent configuration orders are normalized. Failure
 -- mappings retain their first-match precedence.
 normalizedNativeRequest :: NativeRequest -> BindingPlan -> NativeRequest
 normalizedNativeRequest request resolved=request{requestBindings=Bindings types generators,
   requestFunctions=sortOn functionDeclaration (requestFunctions request),requestNames=sortOn nameDeclaration (requestNames request),
   requestHandlers=sortOn boundAbility (requestHandlers request),
+  requestActors=sortOn boundActorName (requestActors request),
   requestGoImports=sortOn goImportAlias (requestGoImports request)}
   where
     types=[TypeBinding (C.dataId (resolvedDeclaration binding)) (resolvedNativeType binding)
@@ -137,9 +226,170 @@ resolveNativeRequest program NativeRequest{..} = do
   unless (length handlers == length (nub (map fst handlers))) (Left "duplicate native handler binding")
   failures <- mapM failureMapping requestFailures
   unless (length failures == length (nub (map C.failureNative failures))) (Left "duplicate native failure mapping")
+  unless (length requestActors == length (nub (map boundActorName requestActors))) (Left "duplicate native actor binding")
+  actors <- mapM actorBinding requestActors
+  let adapters = concatMap resolvedActorAdapters actors
+  unless (length adapters == length (nub adapters)) (Left "two native actor bindings stand for the same adapter")
+  forM_ adapters $ \identity -> when (identity `elem` map functionDeclaration requestFunctions)
+    (Left ("native function binding " ++ C.idText identity ++ ": the adapter belongs to a natively bound actor"))
   pure (BindingPlan representations [(d, ref) | (d, StaticCall ref) <- functions]
-    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports requestErlangIncludes handlers failures names)
+    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports requestErlangIncludes handlers failures names actors)
   where
+    -- A native actor stands for a LawSpec actor's start, handlers and
+    -- restart. Shapes LawSpec cannot ask or observe are explicit errors.
+    actorBinding ActorBinding{..} = do
+      let context message = Left ("native actor " ++ boundActorName ++ ": " ++ message)
+          (unitName, actorName) = breakOn boundActorName
+          found = [(u, m) | u <- C.programUnits program, C.idText (C.unitId u) == unitName,
+                    m <- C.unitMachines u, machineActor m, machineName m == actorName]
+      (u, machine) <- case found of
+        [x] -> pure x
+        _ -> Left ("unknown actor in a native actor binding: " ++ boundActorName ++ " (write <unit>::<actor>)")
+      case boundActorSource of
+        BehaviorFactory ref -> validReference ref
+        SpringActorClass ref -> validReference ref
+      mapM_ validReference boundActorEntity
+      when (boundActorEntity /= Nothing && boundActorPersistence /= Nothing)
+        (context "unsupported: an event-sourced sharded entity; check the entity without sharding, or without persistence")
+      let declarationOf identity = find ((== identity) . C.declarationId) (C.unitDeclarations u)
+          handlerCommands = [c | c <- machineCommands machine, not (commandRestart c), not (isTimeStep machine c)]
+          times = [c | c <- machineCommands machine, isTimeStep machine c]
+          probes = actorProbes boundActorArguments
+      -- Probes and virtual time run on the plain test kit. ref:DEC-tell-only-actors
+      unless (null boundActorArguments) $ do
+        case boundActorSource of
+          BehaviorFactory _ -> pure ()
+          SpringActorClass _ -> context "unsupported: behavior arguments for a Spring starter actor; bind its Pekko behavior"
+        when (boundActorPersistence /= Nothing || boundActorEntity /= Nothing)
+          (context "unsupported: behavior arguments for an event-sourced or sharded actor")
+      unless (length probes == length (nub probes)) (context "a probe is named twice")
+      mapM_ validIdentifier probes
+      unless (null times) $ do
+        case boundActorSource of
+          BehaviorFactory _ -> pure ()
+          SpringActorClass _ -> context "unsupported: time passes for a Spring starter actor; bind its Pekko behavior"
+        when (boundActorPersistence /= Nothing || boundActorEntity /= Nothing)
+          (context "unsupported: time passes for an event-sourced or sharded actor; its test kit has no virtual time yet")
+      let names = map commandName handlerCommands
+          given = map boundHandlerName boundActorHandlers
+      unless (length given == length (nub given)) (context "a handler is bound twice")
+      forM_ given $ \name -> unless (name `elem` names)
+        (context ("there is no handler " ++ name ++ "; the actor's handlers are " ++ unwords names))
+      forM_ names $ \name -> unless (name `elem` given)
+        (context ("handler " ++ name ++ " has no message binding"))
+      -- The native actor keeps its state to itself, so nothing may read it.
+      when (machineAbstractRun machine /= Nothing)
+        (context "unsupported: its abstract function reads the actor's state, which a native actor keeps private; state the property as a model invariant or a law over replies")
+      forM_ [p | OnState p <- machineInvariants machine] $ \p ->
+        context ("unsupported: invariant " ++ C.idText p ++ " reads the actor's state, which a native actor keeps private; state it over the model instead")
+      start <- case machineStart machine of
+        Nothing -> context "it has no start"
+        Just s -> pure s
+      startDeclaration <- maybe (context "its start is not an adapter") pure (declarationOf (startSystem start))
+      unless (all (== C.scalarType "Unit") (fst (C.functionType (C.declarationType startDeclaration))))
+        (context "unsupported: its start takes arguments; a native behaviour is spawned from its factory and its behavior arguments alone")
+      handlers <- forM handlerCommands $ \command -> do
+        let hcontext message = context ("handler " ++ commandName command ++ ": " ++ message)
+        binding <- maybe (hcontext "has no message binding") pure
+          (find ((== commandName command) . boundHandlerName) boundActorHandlers)
+        declaration <- maybe (hcontext "is not an adapter") pure (declarationOf (commandSystem command))
+        unless (null [a | a <- C.declarationUses declaration, not (C.isFail a)])
+          (hcontext "unsupported: it uses abilities, which a native message cannot carry")
+        when (C.declarationAsync declaration) (hcontext "unsupported: an async handler has no single reply to ask for")
+        let (arguments, declared) = C.functionType (C.declarationType declaration)
+            others = drop 1 arguments
+            result = if commandReturnsUnit command then Nothing else case declared of
+              C.Constructor name [C.TypeArgument r, _] | name `elem` ["Pair", "lawspec.collections::type::Pair"] -> Just r
+              other -> Just other
+            ActorHandlerBinding{..} = binding
+        validReference handlerMessage
+        mapM_ validReference handlerReply
+        mapM_ validReference handlerReplyArguments
+        mapM_ validIdentifier handlerResult
+        mapM_ validIdentifier handlerResultField
+        forM_ (others ++ maybe [] pure result) $ \ty -> unless (firstOrder ty)
+          (hcontext ("unsupported: " ++ typeText ty ++ " cannot cross a native message; use data types, collections and scalars"))
+        when (handlerResult /= Nothing && handlerResultField /= Nothing)
+          (hcontext "give the result's accessor (\"result\") or its field (\"resultField\"), not both")
+        let reads = handlerResult /= Nothing || handlerResultField /= Nothing || not (null handlerReplyCases)
+            -- A caller's own address, or a fresh replyTo, receives the reply;
+            -- a probe hears what the actor sends it.
+            answered = handlerReplyTo || handlerCaller || handlerHears
+            -- What a tell-only actor's handler must be: heard at a probe,
+            -- answered from one, or a message value told to the actor.
+            -- ref:DEC-tell-only-actors
+            observed result' = do
+              mapM_ (\p -> unless (p `elem` probes)
+                (hcontext ("probe " ++ p ++ " is not one of the behavior's probes" ++ (if null probes then "" else ": " ++ unwords probes)))) handlerProbe
+              when (handlerHears || handlerAnswers /= Nothing) $ do
+                when (handlerProbe == Nothing) (hcontext "names the probe it hears at or answers from (\"probe\")")
+                when (handlerCaller || boundActorEntity /= Nothing)
+                  (hcontext "a probe's handler has no caller and no entity")
+              when (handlerProbe /= Nothing && not handlerHears && handlerAnswers == Nothing)
+                (hcontext "a probe's handler hears at it (\"hears\") or answers from it (\"answers\")")
+              when handlerHears $ do
+                when (handlerReplyTo || handlerReply /= Nothing || handlerAnswers /= Nothing)
+                  (hcontext "hears a message the actor sends, so it has no replyTo, reply or answers")
+                unless (null others) (hcontext "hears a message the actor sends, so it takes no arguments")
+              forM_ handlerAnswers $ \(heard, field) -> do
+                validReference heard
+                validIdentifier field
+                when (result' /= Nothing) (hcontext "answers the actor, so it returns no result")
+                when (handlerReply /= Nothing) (hcontext "answers the actor, so its answer has no reply")
+              when handlerMessageValue $ do
+                unless (null others) (hcontext "sends a message value, so it takes no arguments")
+                when (handlerReplyTo || handlerCaller || handlerReply /= Nothing)
+                  (hcontext "sends a message value, which carries no address and has no reply")
+              unless (null handlerReplyCases) $ do
+                when (handlerResult /= Nothing || handlerResultField /= Nothing)
+                  (hcontext "give the result's accessor, its field or its reply cases, not more than one")
+                mapM_ (validIdentifier . fst) handlerReplyCases
+                case (result', [v | (_, v) <- handlerReplyCases]) of
+                  (Just (C.Constructor "Bool" []), values) | all (\case CaseBool _ -> True; _ -> False) values -> pure ()
+                  (Just (C.Constructor "Text" []), values) | all (\case CaseText _ -> True; _ -> False) values -> pure ()
+                  (Just ty, _) -> hcontext ("unsupported: reply cases give a Bool (true or false) or a Text, not " ++ typeText ty)
+                  (Nothing, _) -> hcontext "returns no result, so its reply has no cases"
+        -- The first argument names the caller, or the sharded entity.
+        when (handlerCaller && null others) (hcontext "a caller is its first argument, so it needs one")
+        when (handlerCaller && handlerReplyTo)
+          (hcontext "its message carries the caller's own address, so it has no replyTo as well")
+        when (handlerCaller && boundActorEntity /= Nothing)
+          (hcontext "unsupported: a caller of a sharded entity; the first argument names the entity")
+        when (boundActorEntity /= Nothing) $ case others of
+          C.Constructor "Text" [] : _ -> pure ()
+          _ -> hcontext "a sharded entity's handler takes the entity's id, a Text, first"
+        unless (null handlerReplyArguments || handlerReply /= Nothing)
+          (hcontext "reply type arguments need the reply class (\"reply\")")
+        case result of
+          Just ty -> do
+            unless answered
+              (hcontext ("returns " ++ typeText ty ++ ", so its message needs a replyTo to answer with (\"replyTo\": true)"))
+            when (handlerReply == Nothing && not handlerHears) (hcontext "returns a result, so it needs the reply class (\"reply\")")
+          Nothing -> do
+            when reads (hcontext "returns no result, so its reply has no result accessor")
+            when (handlerReply /= Nothing && not answered) (hcontext "names a reply class but its message has no replyTo")
+            when (handlerReplyTo && handlerReply == Nothing && handlerAnswers == Nothing) (hcontext "has a replyTo, so it needs the acknowledgement's reply class (\"reply\")")
+        when (reads && handlerReply == Nothing && not handlerHears) (hcontext "a result accessor needs a reply class")
+        observed result
+        pure (ResolvedActorHandler binding (commandSystem command) others result)
+      let restart = [commandSystem c | c <- machineCommands machine, commandRestart c]
+      pure (ResolvedActorBinding (C.unitId u) actorName boundActorSource boundActorPersistence boundActorEntity
+        handlers (startSystem start : map resolvedHandlerAdapter handlers ++ restart ++ map commandSystem times)
+        boundActorArguments (not (null times)))
+    typeText ty = case ty of
+      C.Constructor name [] -> name
+      C.Constructor name arguments -> "(" ++ unwords (name : [typeText t | C.TypeArgument t <- arguments]) ++ ")"
+      C.Arrow a b -> "(" ++ typeText a ++ " -> " ++ typeText b ++ ")"
+      other -> show other
+    -- Values cross a native message through the codecs: functions and
+    -- other actors' handles cannot.
+    firstOrder ty = case ty of
+      C.Arrow _ _ -> False
+      C.Constructor name arguments -> name `notElem` actorHandles &&
+        and [firstOrder t | C.TypeArgument t <- arguments]
+      _ -> True
+    actorHandles = [C.idText (C.dataId d) | d <- C.programDataDeclarations program, C.dataHandle d,
+      any (\u -> any (\m -> machineActor m && machineState m == C.idText (C.dataId d)) (C.unitMachines u)) (C.programUnits program)]
     resolveName NameBinding{..} = do
       unless (nameDeclaration `elem` [C.declarationId d | u <- C.programUnits program, d <- C.unitDeclarations u])
         (Left ("unknown declaration in native name override: " ++ C.idText nameDeclaration))
@@ -331,12 +581,72 @@ instance FromJSON FailureMapping where
 instance FromJSON NameBinding where
   parseJSON = strict "native name override" ["declaration","name"] $ \o ->
     NameBinding . C.Id <$> o .: "declaration" <*> o .: "name"
+instance FromJSON FactoryArgument where
+  parseJSON = strict "native actor behavior argument" ["probe","text"] $ \o -> do
+    probe <- o .:? "probe"
+    text <- o .:? "text"
+    case (probe, text) of
+      (Just p, Nothing) -> pure (ProbeArgument p)
+      (Nothing, Just t) -> pure (TextArgument t)
+      _ -> fail "native actor behavior argument: give exactly one of probe or text"
+instance FromJSON ActorBinding where
+  parseJSON = strict "native actor" ["actor","behavior","behaviorArguments","spring","persistence","entity","handlers"] $ \o -> do
+    name <- o .: "actor"
+    behavior <- o .:? "behavior"
+    spring <- o .:? "spring"
+    source <- case (behavior, spring) of
+      (Just ref, Nothing) -> pure (BehaviorFactory ref)
+      (Nothing, Just ref) -> pure (SpringActorClass ref)
+      _ -> fail ("native actor " ++ name ++ ": give exactly one of behavior or spring")
+    persistence <- (o .:? "persistence" :: Parser (Maybe String)) >>= \case
+      Nothing -> pure Nothing
+      Just "event-sourced" -> pure (Just EventSourced)
+      Just other -> fail ("native actor " ++ name ++ ": persistence must be \"event-sourced\", not " ++ show other)
+    ActorBinding name source persistence <$> o .:? "entity" <*> o .: "handlers" <*> o .:? "behaviorArguments" .!= []
+instance FromJSON ActorHandlerBinding where
+  parseJSON = strict "native actor handler" ["handler","message","messageFactory","messageValue","hears","replyTo","reply","replyArguments","result","resultField","replyCases","caller","probe","answers","answerField"] $ \o -> do
+    name <- o .: "handler"
+    -- One message, one reply: several replies or a stream of them have no
+    -- single result to compare with the model.
+    (o .:? "reply" :: Parser (Maybe Value)) >>= \case
+      -- A reference is an array of names; an array of references is several.
+      Just (Array items) | any (\case Array _ -> True; _ -> False) items -> fail ("native actor handler " ++ name ++ ": unsupported: one reply class per handler; several replies or a stream of replies cannot be compared with one model result")
+      _ -> pure ()
+    message <- o .:? "message"
+    factory <- o .:? "messageFactory"
+    value <- o .:? "messageValue"
+    heard <- o .:? "hears"
+    -- The message the handler sends, or, for "hears", the message a probe
+    -- must hear.
+    (ref, made, constant, hears) <- case (message, factory, value, heard) of
+      (Just ref, Nothing, Nothing, Nothing) -> pure (ref, False, False, False)
+      (Nothing, Just ref, Nothing, Nothing) -> pure (ref, True, False, False)
+      (Nothing, Nothing, Just ref, Nothing) -> pure (ref, False, True, False)
+      (Nothing, Nothing, Nothing, Just ref) -> pure (ref, False, False, True)
+      _ -> fail ("native actor handler " ++ name ++ ": give exactly one of message, messageFactory, messageValue or hears")
+    answers <- o .:? "answers"
+    field <- o .:? "answerField"
+    answering <- case (answers, field) of
+      (Nothing, Nothing) -> pure Nothing
+      (Just heardClass, Just f) -> pure (Just (heardClass, f))
+      _ -> fail ("native actor handler " ++ name ++ ": answers needs the answered message's field that holds the address (\"answerField\")")
+    cases <- (o .:? "replyCases" :: Parser (Maybe Object)) >>= \case
+      Nothing -> pure []
+      Just items -> forM (KM.toList items) $ \(key, item) -> case item of
+        Bool b -> pure (K.toString key, CaseBool b)
+        String _ -> (\text -> (K.toString key, CaseText text)) <$> parseJSON item
+        _ -> fail ("native actor handler " ++ name ++ ": a reply case gives true, false or a text")
+    binding <- ActorHandlerBinding name ref <$> o .:? "replyTo" .!= False <*> o .:? "reply" <*> o .:? "result"
+      <*> o .:? "replyArguments" .!= [] <*> o .:? "resultField" <*> o .:? "caller" .!= False
+    probe <- o .:? "probe"
+    pure (binding made probe hears answering constant cases)
 instance FromJSON NativeRequest where
-  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","erlangIncludes","handlers","failures","network","names"] $ \o -> do
+  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","erlangIncludes","handlers","failures","network","names","actors"] $ \o -> do
     types <- o .:? "types" .!= []
     generators <- o .:? "generators" .!= []
     NativeRequest (Bindings types generators) <$> o .:? "functions" .!= [] <*> o .:? "rustCrate" <*> o .:? "goImports" .!= []
       <*> o .:? "erlangIncludes" .!= [] <*> o .:? "handlers" .!= [] <*> o .:? "failures" .!= [] <*> o .:? "network" <*> o .:? "names" .!= []
+      <*> o .:? "actors" .!= []
 instance FromJSON NetworkBinding where
   parseJSON = strict "network" ["identity","trusted"] $ \o ->
     NetworkBinding <$> o .:? "identity" <*> o .:? "trusted"

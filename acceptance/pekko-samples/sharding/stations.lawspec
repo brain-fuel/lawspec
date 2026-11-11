@@ -1,0 +1,45 @@
+unit sample.killrweather.stations
+
+-- The weather station of apache/pekko-samples' pekko-sample-sharding-java
+-- (killrweather), checked as the sample wrote it: a sharded entity, one per
+-- station id, that records readings in memory and answers queries over
+-- them. LawSpec runs it under Cluster Sharding in a one-node cluster and
+-- sends every message through the station's EntityRef, so each handler
+-- takes the station's id first. The model keeps each station's readings
+-- apart: a station that saw another's would fail it.
+type Stations is a record{ id :: Int32 } end type
+
+openStations :: Unit -> Stations
+-- Record answers DataRecorded, with the id of the station that recorded.
+record :: Stations -> Text -> Int16 -> Pair Text Stations
+-- A query for the current temperature answers how many temperature
+-- readings the station holds.
+readings :: Stations -> Text -> Pair Int32 Stations
+
+function count (station :: Text) (seen :: KeyVal Text Int32) -> Int32 is
+  first matching case of prelude.lookup station seen :
+    when Present n then n
+    when Absent then 0
+  end case
+end function
+
+function modelRecord (station :: Text) (celsius :: Int16) (seen :: KeyVal Text Int32) -> Pair Text (KeyVal Text Int32) is
+  let n = count station seen in
+    Pair station (prelude.put station (if n < 1000000 then prelude.Int32 (n + 1) else n end if) seen)
+  end let
+end function
+
+function modelReadings (station :: Text) (seen :: KeyVal Text Int32) -> Pair Int32 (KeyVal Text Int32) is
+  Pair (count station seen) seen
+end function
+
+function noStations (u :: Unit) -> KeyVal Text Int32 is prelude.keyValOf [] end function
+
+-- A station keeps its readings only in memory, as the sample says: a crash
+-- restarts every station empty.
+actor stations :: Stations by KeyVal Text Int32 is
+  start openStations by (noStations ())
+  on record by modelRecord
+  on readings by modelReadings
+end actor
+end unit

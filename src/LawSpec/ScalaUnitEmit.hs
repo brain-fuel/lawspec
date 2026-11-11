@@ -1,12 +1,15 @@
 -- | A unit's Scala files: the user-owned adapter object and the generated
 -- ScalaTest suite of its laws (LawSpec.ScalaProperties), with the handlers,
 -- adapter calls and failures they need.
-module LawSpec.ScalaUnitEmit (emitScalaUnit) where
+module LawSpec.ScalaUnitEmit (emitScalaUnit, emitScalaUnitOn) where
 
 import LawSpec.Bounds ()
 import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName, unitAbility, ownAbilities, ownerName)
 import qualified LawSpec.AbilityEmit.Scala as ScalaAbilities
-import LawSpec.ModelTests (modelTestArtifacts)
+import LawSpec.ModelTests (modelTestProductOn)
+import LawSpec.JavaTestStyle (TestStyle(..))
+import LawSpec.ActorRuntime (ActorRuntime(..))
+import qualified LawSpec.JvmProduct as Product
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.ScalaData as ScalaData
 import qualified LawSpec.ScalaExpr as ScalaExpr
@@ -33,7 +36,12 @@ import LawSpec.Search (lawDescriptors, searchable)
 
 -- | The adapter object and test suite of one unit.
 emitScalaUnit :: Integer -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u allLaws = do
+emitScalaUnit = emitScalaUnitOn LawSpecActors
+
+-- | On the Pekko actor runtime, the unit's supervision test checks
+-- Pekko's supervisors. ref:DEC-pekko-otp-supervision
+emitScalaUnitOn :: ActorRuntime -> Integer -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+emitScalaUnitOn pekko budget nativeGenerators minify dataDeclarations definitions bits u allLaws = do
   covers <- mapM (either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure . caseCover) ls
   literalPlan <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure
     (Literals.planLiterals (concatMap Literals.coverLiterals covers ++ concatMap (concatMap generatorBoundaries . generatorRequirements) ls))
@@ -49,7 +57,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     pure (Artifact testPath (document suite) "generated" "test" :
       [Artifact ("src/test/scala/" ++ directory ++ name ++ ".scala") (document doc) "generated" "test" | (name, doc) <- traits])
   stub <- either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right stubDoc
-  models <- modelTestArtifacts "scala" bits dataDeclarations definitions u
+  models <- Product.jvmArtifacts <$> modelTestProductOn pekko False JUnit "scala" bits dataDeclarations definitions u
   pure (models ++ [Artifact stubPath stub "user" "source"] ++ testArtifacts)
   where
     document = Doc.render (Doc.selectLayout minify ScalaLayout.scalaStyle)

@@ -75,6 +75,12 @@ extra-source-files:
     runtime/LawSpecNetwork.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
+    runtime/pekko/LawSpecCrashInterceptor.java
+    runtime/pekko/LawSpecPekko.java
+    runtime/pekko/LawSpecPekkoCluster.java
+    runtime/pekko/LawSpecPekkoNative.java
+    runtime/pekko/LawSpecPekkoSharding.java
+    runtime/pekko/LawSpecPekkoSupervisor.java
     runtime/LawSpecDataStrategies.inc
     runtime/LawSpecKotlin.kt
     runtime/LawSpecKotlinCodecs.kt
@@ -295,6 +301,7 @@ extra-source-files:
     examples/specs/refinements.lawspec
     examples/specs/resilience.lawspec
     examples/specs/resources.lawspec
+    examples/specs/restarts.lawspec
     examples/specs/scalar_adapters.lawspec
     examples/specs/scalar_catalog.lawspec
     examples/specs/scalars.lawspec
@@ -381,6 +388,7 @@ extra-source-files:
     test/fixtures/constructor_properties.lawspec
     test/fixtures/definition_contracts.lawspec
     test/fixtures/dependent-model-arguments.lawspec
+    test/fixtures/dining-table.lawspec
     test/fixtures/effectful-attempt.lawspec
     test/fixtures/eq-set-foundation.lawspec
     test/fixtures/eq-set-operations-library.lawspec
@@ -631,13 +639,17 @@ library
       LawSpec.AbilityEmit.Scala
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames
+      LawSpec.ActorRuntime
       LawSpec.Actors
       LawSpec.Actors.Go
       LawSpec.Actors.Haskell
       LawSpec.Actors.Jvm
+      LawSpec.Actors.Pekko
+      LawSpec.Actors.PekkoScala
       LawSpec.Actors.Python
       LawSpec.Actors.Rust
       LawSpec.Actors.Scala
+      LawSpec.Actors.Spring
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
@@ -832,7 +844,9 @@ library
       LawSpec.ModelDomains
       LawSpec.ModelLaws
       LawSpec.ModelProof
+      LawSpec.ModelReduction
       LawSpec.ModelTests
+      LawSpec.ModelTime
       LawSpec.Naming
       LawSpec.NativeBinding
       LawSpec.NativeInterface

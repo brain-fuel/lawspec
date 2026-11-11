@@ -624,6 +624,7 @@ interface NativeBindings {
   rustCrate?: string;
   goImports?: {alias: string; path: string}[];
   erlangIncludes?: {path: string; library?: boolean}[];
+  actors?: NativeActorBinding[];                      // existing Pekko actors
 }
 type NativeReference = string[];
 
@@ -641,6 +642,24 @@ interface NativeTypeBinding {
 }
 
 interface NativeGeneratorBinding { type: string; factory: NativeReference; stub?: boolean }
+interface NativeActorBinding {
+  actor: string;                                      // e.g. "example.accounts::account"
+  behavior?: NativeReference;                         // a static factory of Behavior<Command>
+  spring?: NativeReference;                           // a SpringActor class (not yet checked)
+  persistence?: 'event-sourced';
+  entity?: NativeReference;                           // a sharded entity's EntityTypeKey
+  handlers: {
+    handler: string;
+    message?: NativeReference;                        // its arguments, then replyTo
+    messageFactory?: NativeReference;                 // or a static method making it
+    replyTo?: boolean;
+    caller?: boolean;                                 // the first argument is the caller
+    reply?: NativeReference;                          // one class; several are rejected
+    replyArguments?: NativeReference[];               // the reply's type arguments
+    result?: string;                                  // an accessor on the reply
+    resultField?: string;                             // or a public field of it
+  }[];
+}
 interface NativeFunctionBinding {
   declaration: string;
   native?: NativeReference;                           // a function
@@ -650,7 +669,7 @@ interface NativeFunctionBinding {
 ```
 
 Unknown fields are rejected. A type binding has either `constructors` or
-`codec`. `goImports` is accepted only for Go; `erlangIncludes` only for Erlang.
+`codec`. A native actor binding has either `behavior` or `spring`. `goImports` is accepted only for Go; `erlangIncludes` only for Erlang.
 An Erlang header uses `include`, or `include_lib` when `library` is true.
 `check` validates identities;
 `planGeneration` also checks target support. See

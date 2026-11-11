@@ -405,7 +405,12 @@ bumpCommand [new] = do
     exists <- doesFileExist file
     when exists $ do
       content <- readFile' file
-      let updated = replace ("lawspec@" ++ old) ("lawspec@" ++ new) (replace ("lawspec-" ++ old ++ ".tgz") ("lawspec-" ++ new ++ ".tgz") (replace (".artifacts/" ++ old) (".artifacts/" ++ new) (replace ("v" ++ old) ("v" ++ new) content)))
+      let installs = replace ("lawspec@" ++ old) ("lawspec@" ++ new) (replace ("lawspec-" ++ old ++ ".tgz") ("lawspec-" ++ new ++ ".tgz") (replace (".artifacts/" ++ old) (".artifacts/" ++ new) (replace ("v" ++ old) ("v" ++ new) content)))
+          -- The release how-to also names the version in its bump, commit and
+          -- tag messages; other pages keep historical "LawSpec x.y.z" mentions.
+          updated
+            | file == "docs" </> "how-to" </> "release.md" = replace ("VERSION=" ++ old) ("VERSION=" ++ new) (replace ("LawSpec " ++ old) ("LawSpec " ++ new) installs)
+            | otherwise = installs
       when (updated /= content) (writeFile file updated)
   generateCommand []
   putStrLn ("Version " ++ old ++ " -> " ++ new ++ ". Add a CHANGELOG.md section, then run make wasm and, after packing the native packages, make lock.")

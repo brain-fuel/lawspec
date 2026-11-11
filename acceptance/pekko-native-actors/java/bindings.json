@@ -1,0 +1,19 @@
+{
+  "actors": [
+    {
+      "actor": "example.accounts::account",
+      "behavior": ["example", "Account", "create"],
+      "persistence": "event-sourced",
+      "handlers": [
+        {"handler": "deposit", "message": ["example", "Account", "Deposit"], "replyTo": true,
+         "reply": ["example", "Account", "Balance"], "result": "balance"},
+        {"handler": "withdrawAll", "message": ["example", "Account", "WithdrawAll"], "replyTo": true,
+         "reply": ["example", "Account", "Balance"], "result": "balance"},
+        {"handler": "balance", "message": ["example", "Account", "GetBalance"], "replyTo": true,
+         "reply": ["example", "Account", "Balance"], "result": "balance"},
+        {"handler": "close", "message": ["example", "Account", "Close"], "replyTo": true,
+         "reply": ["org", "apache", "pekko", "Done"]}
+      ]
+    }
+  ]
+}

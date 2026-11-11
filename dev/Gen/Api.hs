@@ -448,6 +448,15 @@ declarations =
       interface "NativeFailureMapping" (fields [("failure", "string"), ("native", "NativeReference")]),
       interface "NativeNetworkBinding" (fields [("identity?", "string"), ("trusted?", "string")]),
       interface
+        "NativeActorHandlerBinding"
+        (fields [("handler", "string"), ("message?", "NativeReference"), ("messageFactory?", "NativeReference"), ("replyTo?", "boolean"), ("caller?", "boolean"), ("reply?", "NativeReference"), ("replyArguments?", "NativeReference[]"), ("result?", "string"), ("resultField?", "string")]),
+      interface
+        "NativeActorBinding"
+        ( fields [("actor", "string"), ("behavior?", "NativeReference"), ("spring?", "NativeReference")]
+            ++ [("persistence?", quoted "event-sourced")]
+            ++ fields [("entity?", "NativeReference"), ("handlers", "NativeActorHandlerBinding[]")]
+        ),
+      interface
         "NativeBindings"
         ( fields
             [ ("types?", "NativeTypeBinding[]"),
@@ -459,7 +468,8 @@ declarations =
               ("handlers?", "NativeHandlerBinding[]"),
               ("failures?", "NativeFailureMapping[]"),
               ("network?", "NativeNetworkBinding"),
-              ("erlangIncludes?", "NativeErlangInclude[]")
+              ("erlangIncludes?", "NativeErlangInclude[]"),
+              ("actors?", "NativeActorBinding[]")
             ]
         ),
       alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-discrepancy", "flaky", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"]),
@@ -620,7 +630,7 @@ declarations =
       interface "ExplanationSection" (fields [("kind", "ExplanationSectionKind"), ("lines", "string[]"), ("cases?", "ExplanationCase[]")]),
       interface "Explanation" (fields [("view", "ExplainView"), ("law", "string"), ("name", "string"), ("sections", "ExplanationSection[]")]),
       interface "ExplainResult" (fields [("schemaVersion?", "5"), ("diagnostics", "Diagnostic[]"), ("explanations?", "Explanation[]"), ("text?", "string")]),
-      interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")]),
+      interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean"), ("actors?", "{runtime?: 'lawspec' | 'pekko' | 'spring'; remote?: 'cluster'}")]),
       alias
         "ProofTask"
         [ record

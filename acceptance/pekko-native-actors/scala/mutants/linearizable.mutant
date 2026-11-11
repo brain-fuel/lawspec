@@ -1,0 +1,52 @@
+expect: is not linearizable
+@@ src/main/scala/example/Account.scala
+<<<<<<<
+*
+=======
+// Mutant: deposits update a ledger outside the actor, read and written in
+// two steps, so concurrent deposits can lose one another. The ledger is kept
+// per persistence id, so it survives a crash as the journal would, and one
+// caller at a time sees nothing wrong.
+package example
+
+import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
+import java.util.concurrent.atomic.AtomicLong
+import org.apache.pekko.Done
+import org.apache.pekko.actor.typed.{ActorRef, Behavior}
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+
+object Account {
+  sealed trait Command
+  final case class Deposit(amount: Short, replyTo: ActorRef[Balance]) extends Command
+  final case class WithdrawAll(replyTo: ActorRef[Balance]) extends Command
+  final case class GetBalance(replyTo: ActorRef[Balance]) extends Command
+  final case class Close(replyTo: ActorRef[Done]) extends Command
+  final case class Balance(balance: Long)
+
+  private val Ledgers = new ConcurrentHashMap[String, AtomicLong]()
+
+  def create(id: String): Behavior[Command] = {
+    val ledger = Ledgers.computeIfAbsent(id, _ => new AtomicLong())
+    Behaviors.receiveMessage {
+      case Deposit(amount, replyTo) =>
+        CompletableFuture.runAsync { () =>
+          val before = ledger.get()
+          Thread.sleep(2)
+          ledger.set(before + amount)
+          replyTo ! Balance(before + amount)
+        }
+        Behaviors.same
+      case WithdrawAll(replyTo) =>
+        replyTo ! Balance(ledger.getAndSet(0L))
+        Behaviors.same
+      case GetBalance(replyTo) =>
+        replyTo ! Balance(ledger.get())
+        Behaviors.same
+      case Close(replyTo) =>
+        ledger.set(0L)
+        replyTo ! Done
+        Behaviors.same
+    }
+  }
+}
+>>>>>>>

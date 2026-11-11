@@ -2,21 +2,37 @@
 -- native and WASM compilers share it (owner decision 12). A formula is
 -- translated to a generalized Büchi automaton by the on-the-fly tableau of
 -- Gerth, Peled, Vardi and Wolper ("Simple on-the-fly automatic verification
--- of linear temporal logic", 1995); the product with the system is explored
--- breadth first, and its strongly connected components (Tarjan) are searched
--- for an accepting, fair cycle, refining components for strong fairness as
--- Lichtenstein and Pnueli do. A run that ends stays in its last state.
--- ref:DEC-model-checking
+-- of linear temporal logic", 1995).
+--
+-- The system's reachable graph is explored once, breadth first, and each
+-- state is numbered by its key in an exact visited set. No hash compaction
+-- is used, so no state is lost to a collision, as it could be with SPIN's
+-- bitstate hashing or TLC's fingerprints. One graph serves every law about
+-- the same model. The product with a law's automaton is a graph of numbers.
+-- Its strongly connected components are searched for an accepting, fair
+-- cycle, and strong fairness refines a component as Lichtenstein and Pnueli
+-- do. Fairness is per step: a command with its arguments, as TLA+'s
+-- WF_vars(A(x)) for each x. A run that ends stays in its last state.
+--
+-- Two optional reductions shrink the graph. A symmetry explores one state of
+-- each orbit, and a persistent set explores some of a state's steps.
+-- LawSpec.ModelReduction says when each is sound and checks it.
+-- ref:DEC-model-checking ref:DEC-model-checker-reductions
 module LawSpec.Core.ModelCheck
   ( Formula(..), System(..), Fairness(..), Outcome(..), negation, search
+  , Graph(..), Reduction(..), noReduction, explore, searchGraph, formulaAtoms
   , Verdict(..), judge
   ) where
 
-import Data.List (foldl', nub, sortOn)
+import Data.Array (Array, listArray, (!))
+import qualified Data.Graph as G
+import qualified Data.IntMap.Strict as IM
+import qualified Data.IntSet as IS
+import Data.List (nub, sortOn)
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
 import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Sequence as Q
+import qualified Data.Set as S
 
 -- | LTL in negation normal form over named state predicates.
 data Formula
@@ -37,23 +53,107 @@ negation f = case f of
   FRelease a b -> FUntil (negation a) (negation b)
   FNext a -> FNext (negation a)
 
+-- | The state predicates a formula reads.
+formulaAtoms :: Formula -> [String]
+formulaAtoms f = nub $ case f of
+  FAtom a -> [a]
+  FNotAtom a -> [a]
+  FAnd a b -> formulaAtoms a ++ formulaAtoms b
+  FOr a b -> formulaAtoms a ++ formulaAtoms b
+  FUntil a b -> formulaAtoms a ++ formulaAtoms b
+  FRelease a b -> formulaAtoms a ++ formulaAtoms b
+  FNext a -> formulaAtoms a
+  _ -> []
+
 -- | A system: its first states, each state's steps (a command, how to show
--- the step, and the next state), and its predicates. States are compared by
--- a key.
-data System s = System
+-- the step with its arguments, and the next state), and its predicates.
+-- A key identifies a state exactly.
+data System k s = System
   { systemInitial :: [s]
   , systemSteps :: s -> Either String [(String, String, s)]
   , systemHolds :: String -> s -> Either String Bool
-  , systemKey :: s -> String }
+  , systemKey :: s -> k }
 
--- | Weak fairness: a command that stays enabled is taken; strong: one
--- enabled again and again is taken.
+-- | Weak fairness for a command: each of its steps (the command with some
+-- arguments) that stays enabled is taken. Strong fairness: each one enabled
+-- again and again is taken.
 data Fairness = Weak String | Strong String deriving (Eq, Show)
 
 -- | Every reachable product state explored with no accepting fair cycle; a
 -- lasso (the steps to the cycle, and the cycle); or a search that stopped
 -- at its bound.
 data Outcome = NoRun Int | Lasso [String] [String] | Bounded Int String deriving (Eq, Show)
+
+-- | Reductions of the explored graph. represent gives a state's
+-- representative under a symmetry. check is run on each explored state and
+-- its steps, and is Left when a reduction's condition fails there.
+-- persistent gives a subset of a state's steps that is enough to explore,
+-- or Nothing to explore them all.
+data Reduction s = Reduction
+  { reductionRepresent :: Maybe (s -> s)
+  , reductionCheck :: Maybe (s -> [(String, String, s)] -> Either String ())
+  , reductionPersistent :: Maybe (s -> [(String, String, s)] -> Maybe [(String, String, s)]) }
+
+noReduction :: Reduction s
+noReduction = Reduction Nothing Nothing Nothing
+
+-- | A system's reachable graph. States are numbered from 0 in the order
+-- they were found. Each state has its explored steps (label, target) and
+-- the labels it enables. A label is a (command, shown) pair.
+data Graph s = Graph
+  { graphStates :: Array Int s
+  , graphCount :: Int
+  , graphInitial :: [Int]
+  , graphMoves :: Array Int [(Int, Int)]
+  , graphEnabled :: Array Int IS.IntSet
+  , graphLabels :: Array Int (String, String)
+  -- How many states had their steps cut to a persistent subset.
+  , graphReduced :: Int }
+
+-- | Explore at most limit states of a system, breadth first. A cycle of
+-- states whose steps were all cut is avoided as SPIN's breadth-first
+-- partial-order reduction does: a state whose persistent steps reach a
+-- state already found takes all its steps.
+explore :: Ord k => Int -> System k s -> Reduction s -> Either Outcome (Graph s)
+explore limit system reduction
+  | length numbered > limit = Left (Bounded limit "the reachable-state search stops there")
+  | otherwise = go (Q.fromList numbered) (M.fromList [(systemKey system s, i) | (i, s) <- numbered]) (IM.fromList numbered) IM.empty IM.empty M.empty 0
+  where
+    represent = fromMaybe id (reductionRepresent reduction)
+    numbered = zip [0 ..] (firstOnly (map represent (systemInitial system)))
+    firstOnly = go' S.empty
+      where
+        go' _ [] = []
+        go' seen (x : xs) | systemKey system x `S.member` seen = go' seen xs
+                          | otherwise = x : go' (S.insert (systemKey system x) seen) xs
+    go queue seen states moves enabled labels reduced = case Q.viewl queue of
+      Q.EmptyL ->
+        let n = M.size seen
+            arr m = listArray (0, n - 1) [IM.findWithDefault mempty i m | i <- [0 .. n - 1]]
+        in Right (Graph (listArray (0, n - 1) (IM.elems states)) n (map fst numbered) (arr moves) (arr enabled)
+             (listArray (0, M.size labels - 1) (map fst (sortOn snd (M.toList labels)))) reduced)
+      (i, s) Q.:< rest -> case systemSteps system s of
+        Left why -> Left (Bounded (M.size seen) why)
+        Right steps -> do
+          either (Left . Bounded (M.size seen)) Right (maybe (Right ()) (\check -> check s steps) (reductionCheck reduction))
+          let labels' = foldl' (\m (c, shown, _) -> if M.member (c, shown) m then m else M.insert (c, shown) (M.size m) m) labels steps
+              label c shown = labels' M.! (c, shown)
+              -- A persistent subset whose steps all reach new states.
+              (taken, cut) = case reductionPersistent reduction >>= \p -> p s steps of
+                Just subset | length subset < length steps
+                            , all (\(_, _, t) -> systemKey system (represent t) `M.notMember` seen) subset -> (subset, True)
+                _ -> (steps, False)
+              -- Each target's key is computed once, and looked up once.
+              (seen', fresh, edges) = foldl' (\(m, acc, es) (c, shown, t0) ->
+                let t = represent t0
+                    k = systemKey system t
+                    l = label c shown
+                in case M.lookup k m of
+                     Just j -> (m, acc, (l, j) : es)
+                     Nothing -> let j = M.size m in (M.insert k j m, acc Q.|> (j, t), (l, j) : es)) (seen, Q.empty, []) taken
+          if M.size seen' > limit then Left (Bounded limit "the reachable-state search stops there") else
+            go (rest Q.>< fresh) seen' (foldl' (\m (j, t) -> IM.insert j t m) states fresh) (IM.insert i (reverse edges) moves)
+              (IM.insert i (IS.fromList [label c shown | (c, shown, _) <- steps]) enabled) labels' (if cut then reduced + 1 else reduced)
 
 -- The tableau: each node's literals (state predicates it requires), its
 -- obligations, and its successors' obligations.
@@ -109,163 +209,159 @@ acceptance formula nodes =
       _ -> S.empty
 
 -- | Whether the system has a run satisfying the formula under the fairness
--- assumptions, searching at most limit product states.
-search :: Int -> System s -> [Fairness] -> Formula -> Either String Outcome
-search limit system fairness formula = do
+-- assumptions, exploring at most limit states.
+search :: Ord k => Int -> System k s -> [Fairness] -> Formula -> Either String Outcome
+search limit system fairness formula = case explore limit system noReduction of
+  Left outcome -> Right outcome
+  Right graph -> searchGraph graph (systemHolds system) fairness formula
+
+-- The product of a graph and a law's automaton: vertex v is a (state, node)
+-- pair, with its steps (label, vertex). Label -1 is a run that ends,
+-- staying in its last state. The labels each vertex enables, whatever the
+-- automaton allows: fairness is about the system's steps.
+data Product = Product
+  { productNodes :: Array Int Int
+  , productStarts :: [Int]
+  , productEdges :: Array Int [(Int, Int)]
+  , productEnabled :: Int -> IS.IntSet }
+
+-- | A run of the explored graph satisfying the formula under the fairness
+-- assumptions, if any.
+searchGraph :: Graph s -> (String -> s -> Either String Bool) -> [Fairness] -> Formula -> Either String Outcome
+searchGraph graph holds fairness formula = either (Right . Bounded (graphCount graph)) Right $ do
   let (nodes, initials) = tableau formula
-      nodeTable = M.fromList nodes
       accepting = acceptance formula nodes
-      literals n = [(a, True) | FAtom a <- S.toList (nodeOld n)] ++ [(a, False) | FNotAtom a <- S.toList (nodeOld n)]
-      fits s n = and <$> mapM (\(a, want) -> (== want) <$> systemHolds system a s) (literals n)
-      successorsOf node = [i | (i, n) <- nodes, node `S.member` nodeIncoming n]
+      n = graphCount graph
+      -- Each atom's truth at every state, computed once and only when read.
+      tables = M.fromList [ (a, listArray (0, n - 1) [holds a (graphStates graph ! i) | i <- [0 .. n - 1]] :: Array Int (Either String Bool))
+                          | a <- formulaAtoms formula ]
+      truth a i = maybe (Left ("no predicate " ++ a)) (! i) (M.lookup a tables)
+      literals = M.fromList [ (i, [(a, True) | FAtom a <- S.toList (nodeOld nd)] ++ [(a, False) | FNotAtom a <- S.toList (nodeOld nd)]) | (i, nd) <- nodes ]
+      fits s q = and <$> mapM (\(a, want) -> (== want) <$> truth a s) (literals M.! q)
+      successors = M.fromListWith (flip (++)) [ (from, [i]) | (i, nd) <- nodes, from <- S.toList (nodeIncoming nd), from >= 0 ]
+      next q = M.findWithDefault [] q successors
+      moves s = case graphMoves graph ! s of
+        [] -> [(-1, s)]
+        ms -> ms
   starts <- fmap concat $ mapM (\s -> do
-      matches <- mapM (\i -> fits s (nodeTable M.! i)) initials
-      pure [(s, i) | (i, True) <- zip initials matches]) (systemInitial system)
-  -- Breadth-first exploration of the product: (state, node) pairs.
-  let key (s, i) = (systemKey system s, i)
-      explore queue0 seen edges states enabled count = case Q.viewl queue0 of
-       Q.EmptyL -> Right (seen, edges, states, enabled)
-       (p@(s, i)) Q.:< queue -> explore1 p s i queue seen edges states enabled count
-      explore1 p s i queue seen edges states enabled count
-        | count >= limit = Left (Bounded count "the search stops there")
-        | otherwise = case systemSteps system s of
-            Left why -> Left (Bounded count why)
-            Right steps -> do
-              let moves = if null steps then [("", "stays", s)] else steps
-              targets <- fmap concat $ either (Left . Bounded count) Right $ mapM (\(command, shown, s') -> do
-                ok <- mapM (\j -> fits s' (nodeTable M.! j)) (successorsOf i)
-                pure [((command, shown), (s', j)) | (j, True) <- zip (successorsOf i) ok]) moves
-              let new = [t | (_, t) <- targets, key t `M.notMember` seen]
-                  unique = M.elems (M.fromList [(key t, t) | t <- new])
-                  seen' = foldl' (\m t -> M.insert (key t) t m) seen unique
-                  edges' = M.insert (key p) [(label, key t) | (label, t) <- targets] edges
-              -- What the system may do here, whatever the property allows:
-              -- fairness is about the system's commands.
-              let enabled' = M.insert (key p) (S.fromList [command | (command, _, _) <- steps]) enabled
-              explore (queue Q.>< Q.fromList unique) seen' edges' (M.insert (key p) p states) enabled' (count + 1)
-  case explore (Q.fromList (nubOn key starts)) (M.fromList [(key p, p) | p <- starts]) M.empty M.empty M.empty (0 :: Int) of
-    Left outcome -> Right outcome
-    Right (_, edges, states, enabled) -> do
-      let allNodes = M.keys states
-          enabledAt k c = c `S.member` M.findWithDefault S.empty k enabled
-          explored = reachable (Q.fromList (systemInitial system)) (S.fromList (map (systemKey system) (systemInitial system)))
-          firsts = [key p | p <- nubOn key starts]
-      case listToMaybe [ fair | component <- sccs allNodes edges, Just fair <- [fairComponent accepting edges enabledAt fairness component] ] of
-        Nothing -> Right (either id NoRun explored)
-        Just component -> do
-          -- The shortest way into the cycle, then the cycle from there.
-          let prefix = fromMaybe [] (pathTo edges firsts component)
-              entry = case reverse prefix of
-                (k, _) : _ -> k
-                [] -> head ([k | k <- firsts, k `S.member` component] ++ [S.findMin component])
-          Right (Lasso (map snd prefix) (cycleThrough accepting edges enabledAt fairness component entry))
+      ok <- mapM (fits s) initials
+      pure [(s, q) | (q, True) <- zip initials ok]) (graphInitial graph)
+  -- Breadth first over pairs, numbered as found.
+  let build queue seen edges = case Q.viewl queue of
+        Q.EmptyL -> Right (seen, edges)
+        ((v, (s, q)) Q.:< rest) -> do
+          targets <- fmap concat $ mapM (\(l, t) -> do
+            ok <- mapM (fits t) (next q)
+            pure [(l, (t, q')) | (q', True) <- zip (next q) ok]) (moves s)
+          let (seen', fresh) = foldl' (\(m, acc) (_, p) -> if M.member p m then (m, acc)
+                else (M.insert p (M.size m) m, acc Q.|> (M.size m, p))) (seen, Q.empty) targets
+          build (rest Q.>< fresh) seen' (IM.insert v [(l, seen' M.! p) | (l, p) <- targets] edges)
+      startPairs = nub starts
+  (seen, edges) <- build (Q.fromList (zip [0 ..] startPairs)) (M.fromList (zip startPairs [0 ..])) IM.empty
+  let size = M.size seen
+      pairs = listArray (0, size - 1) (map fst (sortOn snd (M.toList seen))) :: Array Int (Int, Int)
+      product' = Product (fmap snd pairs) [0 .. length startPairs - 1]
+        (listArray (0, size - 1) [IM.findWithDefault [] v edges | v <- [0 .. size - 1]])
+        (\v -> graphEnabled graph ! fst (pairs ! v))
+      labelCommand l = if l < 0 then "" else fst (graphLabels graph ! l)
+      shown l = if l < 0 then "stays" else snd (graphLabels graph ! l)
+      fair = listToMaybe [ found | component <- components product' (IS.fromList [0 .. size - 1])
+                                 , Just found <- [fairComponent product' accepting labelCommand fairness component] ]
+  pure $ case fair of
+    Nothing -> NoRun n
+    Just component ->
+      -- The shortest way into the cycle, then the cycle from there.
+      let prefix = fromMaybe [] (pathTo (productEdges product') (productStarts product') (`IS.member` component))
+          entry = case reverse prefix of
+            (v, _) : _ -> v
+            [] -> case [v | v <- productStarts product', v `IS.member` component] of
+              v : _ -> v
+              [] -> IS.findMin component
+      in Lasso (map (shown . snd) prefix) (map shown (cycleThrough product' accepting labelCommand fairness component entry))
+
+-- | The strongly connected components of the product restricted to keep.
+components :: Product -> IS.IntSet -> [IS.IntSet]
+components product' keep =
+  let vertices = IS.toList keep
+      index = IM.fromList (zip vertices [0 ..])
+      back = listArray (0, length vertices - 1) vertices :: Array Int Int
+      graph = G.buildG (0, length vertices - 1)
+        [ (index IM.! v, j) | v <- vertices, (_, t) <- productEdges product' ! v, Just j <- [IM.lookup t index] ]
+  in [IS.fromList (map (back !) (flatten tree [])) | tree <- G.scc graph]
   where
-    nubOn f = M.elems . M.fromList . map (\x -> (f x, x))
-    -- How many states the system reaches: the states a proof covers.
-    reachable queue0 seen = case Q.viewl queue0 of
-      Q.EmptyL -> Right (S.size seen)
-      s Q.:< queue
-        | S.size seen > limit -> Left (Bounded limit "the reachable-state search stops there")
-        | otherwise -> case systemSteps system s of
-        Left why -> Left (Bounded (S.size seen) why)
-        Right moves ->
-          let new = nubOn (systemKey system) [t | (_, _, t) <- moves, systemKey system t `S.notMember` seen]
-          in reachable (queue Q.>< Q.fromList new) (foldl' (\acc t -> S.insert (systemKey system t) acc) seen new)
+    -- Accumulated, so a deep search tree flattens in linear time.
+    flatten (G.Node a ts) rest = a : foldr flatten rest ts
 
-type Key = (String, Int)
-type Edges = M.Map Key [((String, String), Key)]
+-- | The steps inside a set of vertices: (from, label, to).
+inside :: Product -> IS.IntSet -> [(Int, Int, Int)]
+inside product' component = [ (v, l, t) | v <- IS.toList component, (l, t) <- productEdges product' ! v, t `IS.member` component ]
 
--- | Strongly connected components of the explored product (Tarjan), as node
--- sets.
-sccs :: [Key] -> Edges -> [S.Set Key]
-sccs nodes edges = reverse (fst4 (foldl' visit ([], M.empty, M.empty, (0, [])) nodes))
-  where
-    fst4 (a, _, _, _) = a
-    next k = [t | (_, t) <- M.findWithDefault [] k edges]
-    visit acc@(_, indices, _, _) k
-      | k `M.member` indices = acc
-      | otherwise = strong acc k
-    strong (found, indices, lows, (counter, stack)) v =
-      let indices1 = M.insert v counter indices
-          lows1 = M.insert v counter lows
-          state1 = (found, indices1, lows1, (counter + 1, v : stack))
-          stateAfter = foldl' (\st@(f, idx, lw, (c, stk)) w ->
-            if w `M.notMember` idx
-              then let st'@(f', idx', lw', cs') = strong st w
-                   in (f', idx', M.insert v (min (lw' M.! v) (lw' M.! w)) lw', cs')
-              else if w `elem` stk
-                then (f, idx, M.insert v (min (lw M.! v) (idx M.! w)) lw, (c, stk))
-                else st) state1 (next v)
-          (found2, indices2, lows2, (counter2, stack2)) = stateAfter
-      in if lows2 M.! v == indices2 M.! v
-           then let (component, rest) = span (/= v) stack2
-                in (S.fromList (v : component) : found2, indices2, lows2, (counter2, drop 1 rest))
-           else (found2, indices2, lows2, (counter2, stack2))
+-- | The labels of each fair command enabled somewhere in the component.
+fairLabels :: Product -> (Int -> String) -> [Fairness] -> IS.IntSet -> ([Int], [Int])
+fairLabels product' labelCommand fairness component =
+  ( [l | l <- enabled, labelCommand l `elem` [c | Weak c <- fairness]]
+  , [l | l <- enabled, labelCommand l `elem` [c | Strong c <- fairness]] )
+  where enabled = IS.toList (IS.unions [productEnabled product' v | v <- IS.toList component])
 
--- | The part of a component holding an accepting, fair cycle, if any;
--- strong fairness refines the component, dropping states where an untaken
--- command is enabled.
-fairComponent :: [S.Set Int] -> Edges -> (Key -> String -> Bool) -> [Fairness] -> S.Set Key -> Maybe (S.Set Key)
-fairComponent accepting edges enabledAt fairness component
-  | null inside = Nothing
-  | not (all (\set -> any ((`S.member` set) . snd) (S.toList component)) accepting) = Nothing
-  | otherwise = case [c | Strong c <- fairness, not (taken c), any (`enabledAt` c) (S.toList component)] of
-      c : _ ->
-        let remaining = S.filter (\k -> not (enabledAt k c)) component
-            inner = restrict remaining edges
-        in listToMaybe [found | sub <- sccs (S.toList remaining) inner, Just found <- [fairComponent accepting inner enabledAt fairness sub]]
-      [] | any weakUnfair [c | Weak c <- fairness] -> Nothing
+-- | The part of a component holding an accepting, fair cycle, if any. Strong
+-- fairness refines the component, dropping states where an untaken step is
+-- enabled.
+fairComponent :: Product -> [S.Set Int] -> (Int -> String) -> [Fairness] -> IS.IntSet -> Maybe IS.IntSet
+fairComponent product' accepting labelCommand fairness component
+  | null steps' = Nothing
+  | not (all (\set -> any (\v -> (productNodes product' ! v) `S.member` set) members) accepting) = Nothing
+  | otherwise = case [l | l <- strong, not (taken l)] of
+      l : _ ->
+        let remaining = IS.filter (\v -> not (l `IS.member` productEnabled product' v)) component
+        in listToMaybe [found | sub <- components product' remaining, Just found <- [fairComponent product' accepting labelCommand fairness sub]]
+      [] | any (\l -> not (taken l) && all (\v -> l `IS.member` productEnabled product' v) members) weak -> Nothing
          | otherwise -> Just component
   where
-    inside = steps component edges
-    taken c = any (\(_, (command, _), _) -> command == c) inside
-    weakUnfair c = not (taken c) && all (`enabledAt` c) (S.toList component)
-
-restrict :: S.Set Key -> Edges -> Edges
-restrict keep edges = M.map (filter ((`S.member` keep) . snd)) (M.filterWithKey (\k _ -> k `S.member` keep) edges)
-
-steps :: S.Set Key -> Edges -> [(Key, (String, String), Key)]
-steps component edges = [(k, label, t) | k <- S.toList component, (label, t) <- M.findWithDefault [] k edges, t `S.member` component]
+    members = IS.toList component
+    steps' = inside product' component
+    takenLabels = IS.fromList [l | (_, l, _) <- steps']
+    taken l = l `IS.member` takenLabels
+    (weak, strong) = fairLabels product' labelCommand fairness component
 
 -- | A cycle from entry through a fair component: a state of each accepting
--- set, each fair command's step (or a state where it is not enabled), and
--- back.
-cycleThrough :: [S.Set Int] -> Edges -> (Key -> String -> Bool) -> [Fairness] -> S.Set Key -> Key -> [String]
-cycleThrough accepting edges enabledAt fairness component entry = map snd (if null walked then loop else walked)
+-- set, each fair step (or a state where it is not enabled), and back.
+cycleThrough :: Product -> [S.Set Int] -> (Int -> String) -> [Fairness] -> IS.IntSet -> Int -> [Int]
+cycleThrough product' accepting labelCommand fairness component entry = map snd (if null walked then loop else walked)
   where
-    local = restrict component edges
-    inside = steps component edges
+    local = fmap (filter ((`IS.member` component) . snd)) (productEdges product')
+    steps' = inside product' component
     pick xs = case xs of x : _ -> [x]; [] -> []
-    waypoints = concat [pick [Left k | k <- S.toList component, snd k `S.member` set] | set <- accepting] ++
-      concat [ case [(k, label, t) | (k, label@(command, _), t) <- inside, command == c] of
+    (weak, strong) = fairLabels product' labelCommand fairness component
+    waypoints = concat [pick [Left v | v <- IS.toList component, (productNodes product' ! v) `S.member` set] | set <- accepting] ++
+      concat [ case [(v, l, t) | (v, l, t) <- steps', l == wanted] of
                  step : _ -> [Right step]
-                 [] -> pick [Left k | k <- S.toList component, not (enabledAt k c)]
-             | c <- nub (map commandOf fairness) ]
-    to from k = fromMaybe [] (pathTo local [from] (S.singleton k))
+                 [] -> pick [Left v | v <- IS.toList component, not (wanted `IS.member` productEnabled product' v)]
+             | wanted <- nub (weak ++ strong) ]
+    to from v = fromMaybe [] (pathTo local [from] (== v))
     walk from targets = case targets of
       [] -> to from entry
-      Left k : more -> to from k ++ walk k more
-      Right (k, label, t) : more -> to from k ++ [(t, snd label)] ++ walk t more
+      Left v : more -> to from v ++ walk v more
+      Right (v, l, t) : more -> to from v ++ [(t, l)] ++ walk t more
     walked = walk entry waypoints
     -- At least one step: leave the entry and come back.
-    loop = case [(t, snd label) | (label, t) <- M.findWithDefault [] entry local] of
-      (t, shown) : _ -> (t, shown) : to t entry
+    loop = case [(t, l) | (l, t) <- local ! entry] of
+      (t, l) : _ -> (t, l) : to t entry
       [] -> []
-    commandOf (Weak c) = c
-    commandOf (Strong c) = c
 
 -- | A shortest path (breadth first) from any of the starts to a target, as
--- (state reached, step shown).
-pathTo :: Edges -> [Key] -> S.Set Key -> Maybe [(Key, String)]
-pathTo edges starts targets = go [(s, []) | s <- starts] (S.fromList starts)
+-- (vertex reached, label).
+pathTo :: Array Int [(Int, Int)] -> [Int] -> (Int -> Bool) -> Maybe [(Int, Int)]
+pathTo edges starts target = go (Q.fromList [(s, []) | s <- starts]) (IS.fromList starts)
   where
-    go [] _ = Nothing
-    go ((k, path) : queue) seen
-      | k `S.member` targets = Just (reverse path)
-      | otherwise =
-          let next = [ (t, (t, shown) : path) | ((_, shown), t) <- sortOn (fst . fst) (M.findWithDefault [] k edges), t `S.notMember` seen ]
-              seen' = foldl' (\s (t, _) -> S.insert t s) seen next
-          in go (queue ++ next) seen'
+    go queue seen = case Q.viewl queue of
+      Q.EmptyL -> Nothing
+      (v, path) Q.:< rest
+        | target v -> Just (reverse path)
+        | otherwise ->
+            let next = [ (t, (t, l) : path) | (l, t) <- edges ! v, t `IS.notMember` seen ]
+                seen' = foldl' (\s (t, _) -> IS.insert t s) seen next
+            in go (rest Q.>< Q.fromList (nubOn fst next)) seen'
+    nubOn f xs = M.elems (M.fromListWith (\_ old -> old) [(f x, x) | x <- xs])
 
 -- | A history's verdict: it holds (whatever comes next, for an open
 -- history), it breaks at an entry, or (open histories only) what comes
@@ -288,7 +384,7 @@ judge complete formula n holds
       firstBreak <- earliest formula
       if complete
         then do
-          let system = System [0] (\i -> Right [("", "next", i + 1) | i + 1 < n]) (\a i -> holds a i) show
+          let system = System [0] (\i -> Right [("", "next", i + 1) | i + 1 < n]) (\a i -> holds a i) id
           outcome <- search (max 1000 (4 * n)) system [] (negation formula)
           case outcome of
             NoRun _ -> Right Holds
@@ -309,10 +405,15 @@ judge complete formula n holds
           fits i q = and <$> mapM (\(a, want) -> (== want) <$> holds a i) (literals (table M.! q))
           next q = [j | (j, node) <- nodes, q `S.member` nodeIncoming node]
           accepting = acceptance f nodes
-          keyed = [(("", q), [(("", ""), ("", j)) | j <- next q]) | (q, _) <- nodes]
-          edges = M.fromList keyed
-          fairSets = [component | component <- sccs (map fst keyed) edges, Just component' <- [fairComponent accepting edges (\_ _ -> False) [] component], component' == component]
-          goodNodes = S.fromList [q | component <- fairSets, (_, q) <- S.toList component]
+          -- The automaton alone, as a product whose vertices are its nodes.
+          ids = map fst nodes
+          count = if null ids then 0 else maximum ids + 1
+          automaton = Product (listArray (0, count - 1) [0 .. count - 1]) []
+            (listArray (0, count - 1) [[(-1, j) | j <- next q] | q <- [0 .. count - 1]]) (const IS.empty)
+          present = IS.fromList ids
+          fairSets = [component | component <- components automaton present
+                                , fairComponent automaton accepting (const "") [] component == Just component]
+          goodNodes = S.fromList (concatMap IS.toList fairSets)
           live = backwards goodNodes
           backwards good = let more = S.fromList [q | (q, _) <- nodes, any (`S.member` good) (next q)]
                                grown = S.union good more

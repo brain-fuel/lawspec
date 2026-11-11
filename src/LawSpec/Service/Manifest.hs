@@ -5,6 +5,7 @@ module LawSpec.Service.Manifest (manifestProblems) where
 
 import Data.Char (isAlphaNum)
 import qualified Data.Text as T
+import LawSpec.ActorRuntime (actorFields)
 import LawSpec.Manifest.Types
 import LawSpec.Targets (targets)
 import LawSpec.Version (parseRange, parseVersion)
@@ -66,10 +67,20 @@ strings at values = [at ++ " must contain nonempty strings" | any (not . nonempt
 
 target :: Int -> Field Target -> [String]
 target index (Present value) =
-  unknown at ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings"] (targetKeys value)
+  unknown at ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings", "actors"] (targetKeys value)
     ++ [at ++ ".language is unsupported" | targetLanguage value `notElem` map Present targets]
     ++ [at ++ ".root must be a nonempty path" | not (nonempty (targetRoot value))]
+    ++ actors (targetActors value)
   where
+    language = case targetLanguage value of
+      Present name -> Just name
+      _ -> Nothing
+    actors (Present (Actors keys runtime remote)) = either id (const []) (actorFields (at ++ ".actors") language keys (field runtime) (field remote))
+    actors Invalid = [at ++ ".actors must be a map, such as {:runtime :pekko}"]
+    actors _ = []
+    field (Present text) = Just (Just text)
+    field Invalid = Just Nothing
+    field Absent = Nothing
     at = "targets[" ++ show index ++ "]"
 target index _ = ["targets[" ++ show index ++ "] must be a map"]
 

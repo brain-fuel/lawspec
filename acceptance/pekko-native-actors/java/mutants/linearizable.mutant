@@ -1,0 +1,89 @@
+expect: is not linearizable
+@@ src/main/java/example/Account.java
+<<<<<<<
+*
+=======
+// Mutant: deposits update a ledger outside the actor, read and written in
+// two steps, so concurrent deposits can lose one another. The ledger is kept
+// per persistence id, so it survives a crash as the journal would, and one
+// caller at a time sees nothing wrong.
+package example;
+
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import org.apache.pekko.Done;
+import org.apache.pekko.actor.typed.ActorRef;
+import org.apache.pekko.actor.typed.Behavior;
+import org.apache.pekko.actor.typed.javadsl.Behaviors;
+
+public final class Account
+{
+  public interface Command
+  {
+  }
+
+  public record Deposit(short amount, ActorRef<Balance> replyTo) implements Command
+  {
+  }
+
+  public record WithdrawAll(ActorRef<Balance> replyTo) implements Command
+  {
+  }
+
+  public record GetBalance(ActorRef<Balance> replyTo) implements Command
+  {
+  }
+
+  public record Close(ActorRef<Done> replyTo) implements Command
+  {
+  }
+
+  public record Balance(long balance)
+  {
+  }
+
+  private static final Map<String, AtomicLong> LEDGERS = new ConcurrentHashMap<>();
+
+  private Account()
+  {
+  }
+
+  public static Behavior<Command> create(String id)
+  {
+    var ledger = LEDGERS.computeIfAbsent(id, key -> new AtomicLong());
+    return Behaviors.receive(Command.class)
+        .onMessage(Deposit.class, command -> {
+          CompletableFuture.runAsync(() -> {
+            long before = ledger.get();
+            try
+            {
+              Thread.sleep(2);
+            }
+            catch (InterruptedException error)
+            {
+              Thread.currentThread().interrupt();
+            }
+            ledger.set(before + command.amount());
+            command.replyTo().tell(new Balance(before + command.amount()));
+          });
+          return Behaviors.same();
+        })
+        .onMessage(WithdrawAll.class, command -> {
+          command.replyTo().tell(new Balance(ledger.getAndSet(0L)));
+          return Behaviors.same();
+        })
+        .onMessage(GetBalance.class, command -> {
+          command.replyTo().tell(new Balance(ledger.get()));
+          return Behaviors.same();
+        })
+        .onMessage(Close.class, command -> {
+          ledger.set(0L);
+          command.replyTo().tell(Done.done());
+          return Behaviors.same();
+        })
+        .build();
+  }
+}
+>>>>>>>

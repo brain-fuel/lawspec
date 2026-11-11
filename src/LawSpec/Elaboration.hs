@@ -825,7 +825,8 @@ elaborateDefinitionUnitCollected scopes bits u = do
 -- that calls an adapter.
 machineBridges :: [C.Declaration] -> C.Machine C.Id -> Either String [C.Definition]
 machineBridges ds machine = mapM bridge
-  ([(C.commandRun c, C.commandSystem c) | c <- C.machineCommands machine] ++
+  -- restart keeps state runs a generated checked identity, not an adapter.
+  ([(C.commandRun c, C.commandSystem c) | c <- C.machineCommands machine, C.commandRun c /= C.commandSystem c] ++
    [(C.startRun s, C.startSystem s) | Just s <- [C.machineStart machine]] ++
    [(run, f) | (Just run, Just f) <- [(C.machineAbstractRun machine, C.machineAbstract machine)], run /= f])
   where

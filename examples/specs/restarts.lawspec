@@ -1,0 +1,39 @@
+unit example.restarts
+
+-- A tab keeps its total across a crash: `restart keeps state` says that a
+-- restarted actor resumes with the state it had before the crash, as an
+-- event-sourced actor recovers its state from its journal. Runs crash the
+-- tab between messages, and its total, and the model's, must survive.
+type Tab is a record{  total :: Int64} end type
+
+openTab :: Unit -> Tab
+add :: Tab -> UInt8 -> Pair Int64 Tab
+total :: Tab -> Pair Int64 Tab
+
+function modelAdd (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) -> Pair Int64 Int64 is
+  Pair (n + amount) (n + amount)
+end function
+
+function modelTotal (n :: Int64) -> Pair Int64 Int64 is Pair n n end function
+
+actor tab :: Tab by Int64 is
+  start openTab by 0
+  restart keeps state
+  on add by modelAdd
+  on total by modelTotal
+end actor
+
+-- A supervisor restarts the tab after a crash, keeping its total.
+supervisor bar is
+  one for one
+  permanent tab
+end supervisor
+
+-- keepsTotal starts the bar, adds to the tab, crashes it, and reads its total
+-- through the same handle.
+keepsTotal :: UInt8 -> Int64
+
+law "|a crashed tab keeps its total| is
+  definition : for all (x :: UInt8) => keepsTotal x = x end for all end definition
+end law
+end unit

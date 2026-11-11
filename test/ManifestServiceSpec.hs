@@ -36,6 +36,13 @@ spec = describe "manifest service reference compatibility" $ do
     case admitEDNManifest "{}" of
       Left problem -> expectationFailure (show problem)
       Right (_, problems) -> length problems `shouldBe` 4
+  it "checks a target's actor runtime in direct EDN admission" $ do
+    let admit actors = snd <$> admitEDNManifest ("{:manifest-version 1 :component {:name \"cart\" :version \"1.0.0\"} :language-profile \"1.0-rc.2\" :sources [\"cart.lawspec\"] :targets [{:language :python :root \"py\"} {:language :java :root \"java\" :actors " ++ actors ++ "}]}")
+    admit "{:runtime :pekko :remote :cluster}" `shouldBe` Right []
+    admit "nil" `shouldBe` Right []
+    admit "{:runtime :spring :mode 1}" `shouldBe` Right ["targets[1].actors: unknown field mode"]
+    admit "{:remote :cluster}" `shouldBe` Right ["targets[1].actors.remote :cluster is Pekko Cluster, so it needs :runtime :pekko or :spring"]
+    admit "[:pekko]" `shouldBe` Right ["targets[1].actors must be a map, such as {:runtime :pekko}"]
   where
     messages (Just (Object response)) = case M.lookup "diagnostics" response of
       Just value -> parseJSON value >>= mapM (withObject "diagnostic" (.: "message"))

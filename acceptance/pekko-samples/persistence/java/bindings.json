@@ -1,0 +1,27 @@
+{
+  "actors": [
+    {
+      "actor": "sample.persistence.cart::cart",
+      "behavior": ["sample", "persistence", "ShoppingCart", "create"],
+      "persistence": "event-sourced",
+      "handlers": [
+        {"handler": "addItem", "message": ["sample", "persistence", "ShoppingCart", "AddItem"], "replyTo": true,
+         "reply": ["org", "apache", "pekko", "pattern", "StatusReply"],
+         "replyArguments": [["sample", "persistence", "ShoppingCart", "Summary"]], "result": "isSuccess"},
+        {"handler": "removeItem", "message": ["sample", "persistence", "ShoppingCart", "RemoveItem"], "replyTo": true,
+         "reply": ["org", "apache", "pekko", "pattern", "StatusReply"],
+         "replyArguments": [["sample", "persistence", "ShoppingCart", "Summary"]], "result": "isSuccess"},
+        {"handler": "adjustItemQuantity", "message": ["sample", "persistence", "ShoppingCart", "AdjustItemQuantity"], "replyTo": true,
+         "reply": ["org", "apache", "pekko", "pattern", "StatusReply"],
+         "replyArguments": [["sample", "persistence", "ShoppingCart", "Summary"]], "result": "isSuccess"},
+        {"handler": "checkout", "message": ["sample", "persistence", "ShoppingCart", "Checkout"], "replyTo": true,
+         "reply": ["org", "apache", "pekko", "pattern", "StatusReply"],
+         "replyArguments": [["sample", "persistence", "ShoppingCart", "Summary"]], "result": "isSuccess"},
+        {"handler": "items", "message": ["sample", "persistence", "ShoppingCart", "Get"], "replyTo": true,
+         "reply": ["sample", "persistence", "ShoppingCart", "Summary"], "resultField": "items"},
+        {"handler": "checkedOut", "message": ["sample", "persistence", "ShoppingCart", "Get"], "replyTo": true,
+         "reply": ["sample", "persistence", "ShoppingCart", "Summary"], "resultField": "checkedOut"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+expect: model account fails at step
+@@ src/main/java/example/Account.java
+<<<<<<<
+            .thenReply(command.replyTo(), after -> new Balance(after.balance())))
+=======
+            .thenReply(command.replyTo(), after -> new Balance(state.balance())))
+>>>>>>>

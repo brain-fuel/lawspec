@@ -1567,6 +1567,409 @@ DEC-component-installation-preparation:
   decided: 0.31.3
   refs: []
 
+DEC-pekko-runtime:
+  status: decided
+  question: How do LawSpec's generated actors run on Apache Pekko, beside the LawSpec JVM runtime, and what is trusted?
+  answer: |
+    A JVM target chooses its actor runtime in lawspec.edn, `:actors {:runtime :lawspec|:pekko|:spring}`; the spec stays runtime-neutral, the LawSpec runtime (LawSpecRuntime.java's Actor and Supervisor) stays the default and its output is unchanged. :pekko and :spring are rejected with a diagnostic on a non-JVM target. On :pekko the generated <Name>Actor and <Name>Supervisor keep the public surface of the LawSpec runtime's (start, a blocking method per handler, tell<Handler>, crash, monitor, link, stop), so adapters, laws and the Groovy and Clojure reuse of the Java classes do not change. Scala on :pekko generates its own <Name>Actor and <Name>Supervisor over the same Java runtime classes, with no Scala copy of the runtime: Scala 3 converts its lambdas to the runtime's functional interfaces. Each actor is a Pekko Typed behaviour over the LawSpec state value whose messages carry the handler's adapter call; a blocking method is AskPattern.ask with a configurable timeout. Boilerplate lives once in runtime/pekko (LawSpecPekko for the system and the ask, LawSpecPekkoSupervisor, LawSpecCrashInterceptor) and generated code stays small. Pekko 1.7.1 (pekko-actor-typed_3 and the test kit, persistence, cluster and sharding modules) is pinned although 2.0.0 is the newest release, as the approved plan names it; it runs on Java 8 and later and brings the Scala 3.3 library and Typesafe Config.
+
+    Precedent. Pekko's supervise(...).onFailure(SupervisorStrategy.restart()) reinstalls the original behaviour, so the state is fresh unless kept elsewhere; the ActorRef and the mailbox survive a restart and the failing message is lost (pekko-supervision). PreRestart reaches the failing behaviour before it is replaced. resume() keeps the state. Behaviors.intercept with a BehaviorInterceptor sees every message of a class before the inner behaviour, which is how a crash is injected without changing user code. AskPattern.ask takes Pekko's japi Function, a timeout and the system's scheduler. Supervised failures log at ERROR by default; generated actors switch that logging off, since a crash is an expected test step. Trust boundary: Pekko's dispatcher, mailboxes and supervision run the actors; LawSpec checks the handlers against the model with its own Model runner and checks the supervision laws of DEC-pekko-otp-supervision against the Pekko implementation; neither is a proof of Pekko itself, and an ask that times out is reported, never passed. No obligation generator, solver or proof checker is involved.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-typed-fault-tolerance, pekko-supervision, pekko-typed-interceptors, pekko-typed-interaction-patterns, pekko-typed-testing, pekko-maven-central]
+
+DEC-pekko-otp-supervision:
+  status: decided
+  question: Pekko Typed supervises one actor at a time with restart limits per actor and no strategy across siblings. How do LawSpec supervisors keep OTP's meaning on Pekko?
+  answer: |
+    By emulation in one runtime class, LawSpecPekkoSupervisor, never duplicated per supervisor: generated supervisors add their children in order, each child a LawSpecPekko.Actor (a Pekko Typed behaviour under the actor system) or a nested supervisor, with a lifetime. The policy is a synchronized object, as LawSpecRuntime.Supervisor's is; a child tells it of a crash from Pekko's PreRestart signal, on the child's own turn, and of a stop when it ends, and it applies OTP's rules (erlang-otp-supervisor-behaviour): one for one restarts the child, one for all every child, rest for one the child and those after it; permanent children restart after a crash or a stop, transient after a crash only, temporary never; more restarts than allowed within the period stops every child in reverse start order and fails the supervisor, which its own supervisor restarts with all its siblings, or which, at the top, stops and tells its monitors. A restart is in place: the child keeps its address and pending messages, as LawSpec's runtime does, by restarting the child's state inside its own behaviour rather than spawning a new ActorRef. Pekko's own restart().withLimit is not used for the budget, because it stops only the failing actor and escalates nothing unless watched (pekko-typed-fault-tolerance); OTP counts restarts per supervisor. Monitors and links are LawSpec callbacks and crash signals (LawSpecCrashInterceptor) delivered on each actor's turn, as on LawSpec's runtime, rather than Pekko watch: watch reports a stop, never a restart in place, so it cannot carry OTP's exit of a restarted child. Trust boundary: the emulation is LawSpec code over Pekko's supervision and signals, so the same conformance check that LawSpecRuntime.checkSupervision() runs for the LawSpec runtime is run against it.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [erlang-otp-supervisors, erlang-otp-supervisor-behaviour, pekko-typed-fault-tolerance]
+
+DEC-restart-keeps-state:
+  status: decided
+  question: An event-sourced actor, or one whose state survives its worker, resumes after a crash with the state it had. How does a spec say so, readably and on every target?
+  answer: |
+    A new actor line, `restart keeps state`, beside `restart from f by g`; an actor has at most one. It means that after a crash the state is the state before it: the state committed by the last message handled, since a message that crashes commits nothing. The model's state is kept too. The compiler elaborates it into the actor's restart step with generated identity functions over the actor's state and the model's (<actor>KeepState and <actor>KeepModel), so every target's model runner, crash injection and shrinking work unchanged, and every actor emitter passes the identity as the runtime's restart function. Precedent: Pekko's resume() keeps the state and an EventSourcedBehavior recovers it from its journal (pekko-persistence-typed); OTP restarts from init, so a gen_server keeps state only by storing it outside the process. The phrase states the observable property, not the mechanism. For a bound native Pekko actor, the check expects the recovered state after an injected crash, so a native actor that loses state on restart fails. Nothing is assumed of the journal: recovery is checked by running it.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-persistence-typed, pekko-typed-fault-tolerance, erlang-otp-supervisors]
+
+DEC-pekko-cluster-remote:
+  status: decided
+  question: How do serve and connect work on the Pekko and Spring runtimes?
+  answer: |
+    Through Pekko Cluster, with `:actors {:runtime :pekko|:spring, :remote :cluster}` in lawspec.edn (Java, Kotlin, Groovy and Clojure on both, Scala on :pekko; :remote :cluster on :lawspec stays rejected, and that runtime keeps LawSpec's network layer). The generated <Name>Actor keeps its serve(node, name) and connect(node, address[, timeout]) and its Remote proxy, over LawSpecPekkoCluster.Node and LawSpecPekkoCluster.RemoteActor (runtime/pekko/LawSpecPekkoCluster.java, written once beside the actors) instead of LawSpecRuntime's; the build gains pekko-cluster-typed_3 1.7.1. A Node is a cluster member: Node.start() forms a cluster on 127.0.0.1 at a free port, Node.join(seed) joins it, Node.of(system) adopts an application's own cluster system that includes LawSpecPekkoCluster.config(), and close() leaves through CoordinatedShutdown and waits for the system to terminate. serve registers, per node and name, one receiving actor with the typed Receptionist under ServiceKey "lawspec-actor:<name>" and waits for the Registered acknowledgement; serving the name again serves the new actor through the same registration. It returns <member address>/<name>. connect asks the receptionist (Find) until a reachable instance on that member is listed, within the timeout, else Unreachable.
+
+    Wire. A call is the handler's name, each argument in LawSpec's canonical wire encoding (LawSpecRuntime.wireEncode with the signature's descriptors, DEC-distribution-canonical-wire) and the reply address; an answer is LawSpec's status (0 the reply in the canonical encoding, 1 crashed, 2 stopped, 3 refused) and body, as LawSpec's own network answers. Both are carried by WireSerializer, a SerializerWithStringManifest (identifier 0x4C530001, outside Pekko's reserved 0 to 40) bound to the Wire marker interface in pekko.actor.serialization-bindings; the reply address is written with ActorRefResolver, as Pekko's serialization guide does for typed references. Java serialization stays off (pekko.actor.allow-java-serialization = off). The receiving actor decodes with the served actor's own descriptors, so a value means the same on both runtimes and a mismatched message is refused (status 3), never coerced.
+
+    Failures map onto cluster membership where that is sound. A call waits for its answer while watching Cluster.state(): when the serving member is in the unreachable set (Pekko's phi accrual failure detector) or is exiting, down, removed or absent, the call throws Unreachable at once; a call not answered within its timeout throws Unreachable; ActorCrashed and ActorStopped cross as on LawSpec's network. Not mapped: MemoryNetwork's seeded loss, duplication, delay and partition have no public Pekko equivalent (Artery's blackhole is the internal test-mode of the multi-node test kit), so LawSpecPekkoCluster.Node.partition and heal throw UnsupportedOperationException saying so; LawSpec's resend-and-run-once of a lost call does not apply, since Artery delivers at most once and a lost call is Unreachable after its timeout. Scenario network runs are of channels, which stay on LawSpec's MemoryNetwork, and mailboxes, sessions and remote definitions keep LawSpec's network on every runtime. No downing provider is configured; an application sets its own (Pekko recommends the split brain resolver).
+
+    Testing. The distribution suite's remote law runs, with LAWSPEC_ACTORS=pekko (or spring) and LAWSPEC_REMOTE=cluster, on two ActorSystems in the test JVM on 127.0.0.1 with ephemeral ports, formed once per run (Artery TCP, real serialization through WireSerializer); a third member joins, serves, leaves, and a call to its actor must throw Unreachable. Its adapters are the suite's files-cluster variants, and its mutants are killed on every JVM target. The systems are daemonic and leave through Pekko's JVM shutdown hook, so no system or port outlives the test JVM.
+
+    Precedent: Pekko 1.7.1's typed cluster and receptionist (registrations replicate through Distributed Data, eventually consistent; Find lists only reachable instances), its serialization guide (SerializerWithStringManifest, serialization-bindings, ActorRefResolver, Java serialization disabled by default) and its reference.conf settings. Trust boundary: Pekko's membership, failure detector, receptionist replication and Artery transport are trusted, not checked. Artery TCP is plaintext unless the application configures tls-tcp; LawSpec's ML-DSA/ML-KEM handshake and sealed frames (lawspec.network) do not apply to cluster traffic, so a cluster belongs on a trusted network or behind Artery TLS. LawSpec checks the actor's handlers against its model as on the other runtimes; no obligation generator, solver or proof checker is involved, and an unanswered call is Unreachable, never a pass.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-cluster-typed, pekko-receptionist, pekko-serialization, pekko-cluster-membership]
+
+DEC-spring-actor-starter:
+  status: decided
+  question: How do LawSpec actors run in Spring Boot applications?
+  answer: |
+    Through the community starter io.github.seonwkim:actor-spring-boot-starter 1.0.0 with actor-test 1.0.0 (Java 21+, Spring Boot 3.5.x; its POM brings Spring Boot 3.5.16). Its public API has no Pekko types: actors implement SpringActor<Command> and are spawned with SpringActorSystem.actor(...).spawnAndWait(); an ask is handle.ask(command).withTimeout(d).execute(); supervision is SupervisionStrategy.restart().withLimit(n, d); tests use the @ActorTest slice. Generated actors on :spring keep the public surface of :lawspec and :pekko. Each Java or Kotlin actor class has a nested @Component SpringActor<Object> whose create returns SpringActorBehavior.wrap of the LawSpecPekko actor's behaviour (the starter's documented escape hatch for a behaviour written against Pekko, which gets none of the starter's own features); start spawns it with SpringActorSystem.actor(component).withId(id).withContext(...).spawnAndWait() and keeps the Pekko ActorRef from SpringActorRef.unwrap, so asks, restarts in place and LawSpecPekkoSupervisor's OTP emulation are those of :pekko and run in the starter's actor system (LawSpecPekko.use). Boilerplate lives once in runtime/spring/LawSpecSpring.java. Groovy and Clojure reuse the Java classes. The actor system is the one given to LawSpecSpring.use (an @ActorTest's or the application's) or else a Spring context LawSpecSpring starts with only @EnableActorSupport and the components in lawspec.actors, as the @ActorTest slice starts one (equivalent for Kotest, Spock and clojure.test, which have no SpringExtension, and for adapters that start actors outside a test); Java's generated supervision test is an @ActorTest with @ContextConfiguration(LawSpecSpring.Actors) that hands its autowired SpringActorSystem to the check. Scala with :spring is an explicit unsupported diagnostic: the starter is a Java and Kotlin library. The starter's actor-core pins Pekko 1.1.3; generated builds declare Pekko 1.7.1 directly, which Maven's nearest-wins and Gradle's highest-wins both select; Maven lists actor-test after JUnit so its JUnit 5.12 API does not displace JUnit 5.14's.
+
+    Checking an existing SpringActor (native bindings' "spring", Java only): a Spring context holds the starter's actor support and the bound component, whose create(context) gives the run's behaviour with the run's actor id; the starter's own compiler, io.github.seonwkim.actor.internal.PekkoBehaviors.toPekko, turns it into a Pekko behaviour with the component's supervision strategy inside, and LawSpecPekkoNative runs it in ActorTestKit with LawSpecCrashInterceptor as for a Pekko actor. A handler's command is an AskCommand whose reply address is set with withReplyTo(new PekkoActorRef(replyTo)), as the starter's ask sets it. Event-sourced starter actors (actor-persistence) are an explicit unsupported diagnostic for now.
+
+    Trust boundary: the starter and Spring's container start and wire the actors, and the starter's actor-core internals (PekkoBehaviors, PekkoActorRef) and its unwrap escape hatches carry no compatibility promise, so the starter is pinned at 1.0.0; LawSpec's checks (its Model runner, the supervision conformance check, linearizability) run against the result. No obligation generator, solver or proof checker is involved; an ask that times out fails.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [actor-spring-boot-starter, actor-spring-boot-starter-source]
+
+DEC-native-actor-binding:
+  status: decided
+  question: How is an existing hand-written Pekko actor checked against a LawSpec actor?
+  answer: |
+    Declaratively, by a native binding, never by changing the application's
+    actor. The binding names the behaviour factory and maps each handler to its
+    message class, its replyTo, the reply class and the reply's result
+    accessor; LawSpec generates the asks and converts every value with the
+    existing native codecs. The JVM model runner drives the actor through
+    LawSpecRuntime.ActorBackend (spawn, call a handler, crash and await the
+    restart, read state), which LawSpec's own actor implements too, so the same
+    run generation, crash injection, shrinking, invariants and
+    linearizability (Wing and Gong, as Jepsen's Knossos checks it) apply to
+    both. The native actor's state is private: abstractions and invariants on
+    it are rejected, and every check observes replies only.
+
+    Precedent, Pekko Typed 1.7.1: the behaviour runs in ActorTestKit (Pekko's
+    own test kit), each handler is asked with AskPattern and a timeout, and a
+    crash is a private message that a Behaviors.intercept interceptor turns
+    into an exception inside the actor, so SupervisorStrategy.restart restarts
+    it as Pekko's supervision would. An EventSourcedBehavior is instead stopped
+    at the crash and started again with the same persistence id, as Pekko's
+    EventSourcedBehaviorTestKit.restart does, and recovers from
+    PersistenceTestKit's in-memory journal: restarting it in place while it
+    recovers lets the old incarnation's journal replies reach the new one, which
+    then stops recovering (observed with Pekko 1.7.1). The interceptor and the
+    supervision around it are LawSpec's, not the application's own strategy,
+    which runs inside the behaviour and is not exercised by an injected crash.
+
+    Trust boundary: Pekko's dispatcher, mailbox ordering, ask, supervision and
+    journal are trusted as the system under test's platform; LawSpec's runner
+    and its linearizability check are the checker. A reply that does not come
+    within the ask timeout is a failure, never a pass. Scala binds a Pekko
+    behaviour written with either DSL: its generated wiring is Scala over the
+    same Java checker. Spring starter actors are checked on Java as
+    DEC-spring-actor-starter describes. Sharded entities and the other targets
+    are explicit unsupported diagnostics until their checkers land.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [herlihy-wing-linearizability, erlang-otp-supervisors, pekko-typed-testing]
+
+DEC-pekko-sample-suites:
+  status: decided
+  question: How are apache/pekko-samples checked, and what do they need from native actor bindings?
+  answer: |
+    The Java samples are vendored unchanged under acceptance/pekko-samples
+    from apache/pekko-samples at f9ce3d60a4f24b1844409e3153c7fbf361cc2506,
+    with each sample's LICENSE and COPYING (CC0) and the repository's Apache
+    LICENSE and NOTICE. Only each sample's build is LawSpec's: Pekko 1.7.1
+    instead of the samples' 1.5.0 (LawSpecPekkoNative is built against 1.7.1,
+    and its test kits must match the actor modules), Java 25, and the test
+    kits. Sample code is never reshaped. Where a sample could not be bound
+    as it is, the binding grew the smallest feature that binds it:
+
+    - The samples' messages are package-private, so the generated wiring is
+      placed in the behaviour's own package (its reference's leading
+      lower-case names) instead of lawspec.testing.
+    - The shopping cart answers StatusReply<Summary> (Pekko's generic
+      response wrapper): replyArguments types the reply address, and
+      resultField reads a public field (Summary.items), as accessors cannot.
+    - The chopstick knows its hakker by ActorRef and frees itself only for a
+      Put from the same address. A caller handler takes the caller first;
+      each caller value has one reply address for the run, its messages carry
+      it, a reply is the next message that address receives (TestProbe-like,
+      precedent: pekko-actor-testkit-typed's probes), and one caller's
+      messages go one at a time, as an actor's would.
+    - The weather station is a sharded entity. entity runs it under Cluster
+      Sharding in a one-node cluster (Cluster.manager joins itself), with
+      an EntityTypeKey named after the bound key and the bound behaviour in
+      LawSpec's crash interceptor, and asks through EntityRef; every handler
+      takes the entity id (Text) first, and each run's entity ids carry the
+      run, which the behaviour's factory does not see. Its Record message
+      carries the sample's Data, which no codec makes (native type bindings
+      expect records in public classes), so messageFactory names a static
+      method, here a ten-line suite helper in the sample's package.
+
+    The sharding backend (LawSpecPekkoSharding) is a separate runtime file,
+    written only when a binding has an entity, so projects without
+    pekko-cluster-sharding-typed are unchanged.
+
+    - The hakker answers nothing and is driven by its timers. It is bound
+      unchanged (DEC-tell-only-actors, DEC-time-passes): its chopsticks are
+      probes passed to Hakker.create, LawSpec hears its Take and Put and
+      answers Taken or Busy, and its timers run on ManualTime. The
+      hakker's laws (it eats only with both chopsticks; it can eat) are
+      proved over the one-hakker model and checked against the real
+      Hakker; with the chopstick's one-holder check against the real
+      Chopstick they give "neighbours never eat at once" compositionally.
+      The restated table model and its adapter (Hakkers.java), which drove
+      real chopsticks from a restated protocol, are replaced; the table had
+      been widened to the sample's five hakkers (9,864 states, checked in
+      seconds since DEC-model-checker-reductions) before the real Hakker
+      could be bound.
+
+    Gaps recorded, not worked around: no model of the five-hakker table is
+    checked against the running sample; "every hungry hakker eventually
+    eats" is stated only as a spec mutant that LawSpec refutes with a lasso
+    under strong fairness for every step of the one-hakker model (the
+    chopsticks can always answer one Taken and one Busy); the cart's
+    references refine its item names and quantities, which guide generation
+    (DEC-honest-model-steps), but a refinement generation cannot read, such
+    as a regular expression on a Text, does not guide it, and the draws the
+    reference refuses are counted, a run of mostly refused steps being
+    incomplete; the cart's laws over runs would be incomplete (unbounded
+    items), so its finality is checked against the real cart; the
+    CQRS Java sample has no Pekko code upstream (its last code is Akka 2.6
+    with Cassandra), so it has no suite.
+
+    The Scala persistence and sharding samples (pekko-sample-persistence-scala
+    and pekko-sample-sharding-scala's killrweather station) are vendored
+    unchanged at the same commit, with the same specs, the same bindings
+    (behavior names the objects' apply) and Scala mutants of the same
+    faults; their builds are Scala CLI project files with Pekko 1.7.1 and
+    the station's message factories are a Scala suite helper. The Scala
+    wiring takes the same fields as Java's and sits in the behaviour's
+    package too (the station is private[killrweather]); LawSpecPekkoSharding
+    takes the Scala DSL's EntityTypeKey as well. The Scala fsm sample
+    (DiningHakkers.scala) is vendored unchanged too, with the same specs
+    and Scala mutants of the same chopstick faults: its chopstick answers
+    Taken or Busy, two case classes with no accessor that says which, so
+    replyCases ({"Taken": true, "Busy": false}) reads take's Bool from the
+    reply's class, and its hakker is bound as the Java one is.
+
+    Trust boundary: as DEC-native-actor-binding, plus Pekko Cluster and
+    Cluster Sharding as the platform. LawSpec's sharding setup, not the
+    sample's initSharding, starts the entity, so the sample's own sharding
+    wiring is not exercised.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [apache-pekko-samples, pekko-cluster-sharding-typed, pekko-status-reply, pekko-typed-testing]
+
+DEC-tell-only-actors:
+  status: decided
+  question: How is a native actor that answers no message, and only sends to other actors, checked against a LawSpec actor?
+  answer: |
+    Through probes that stand in for the actors it sends to, as Pekko's
+    TestProbe and ActorTestKit observe one. A binding's behaviorArguments
+    pass the behaviour factory strings ({"text": ...}) and probe addresses
+    ({"probe": name}); LawSpec spawns each probe, a recording actor, before
+    the actor. A probe handler either hears (the next message the probe
+    receives must be of the named class, within the ask timeout; the step
+    sends nothing, and its result, if any, is read from that message) or
+    answers (it sends its message to the address in a field of the last
+    message of a class the probe heard, with the probe's own address as
+    replyTo, so the actor sees the answer come from the actor the probe
+    stands in for). messageValue tells a static message value, such as a
+    Java enum constant or a Scala case object. replyCases reads a Bool or a
+    Text result from the reply's class, for replies that are sealed case
+    classes with no accessor. So each model step is a send or an
+    observation, and the run's model replies are compared with them as with
+    an ask's.
+
+    Precedent: Pekko Typed's TestProbe (expectMessageClass, receiving a
+    message within a timeout) and ActorTestKit, and Behaviors.monitor,
+    which forwards an actor's messages to a probe. Erlang QuickCheck and
+    quickcheck-state-machine model an actor's outputs as observations of a
+    command's postcondition in the same way. A probe hears a message only
+    as the step that names it, so a message the model does not expect, or
+    one it expects that never comes, fails the run.
+
+    Trust boundary: as DEC-native-actor-binding. Probes are LawSpec's;
+    the actor's own messages and their order per receiver are Pekko's. A
+    probe handler has no caller and no entity, and a persistent, sharded or
+    Spring actor with behaviorArguments is unsupported. replyCases maps
+    classes beside the reply class to Bool or Text only; any other result
+    still needs an accessor.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-typed-testing, pekko-testing-async, quickcheck-state-machine]
+
+DEC-time-passes:
+  status: decided
+  question: How does a model step let time pass for an actor driven by its own timers, and where can it run?
+  answer: |
+    An actor may declare one step, written keyword first as `time passes
+    by r [when p]`. The reference r :: Model -> Pair Duration Model says how
+    much time passes and the model state after it, typically until the
+    actor's next timer, as a discrete-event simulation advances its clock
+    to the next event. LawSpec declares the step's adapter
+    (<actor>TimePasses :: State -> Pair Duration State) and names the
+    command timePasses in runs, traces and bindings; a law's fairness list
+    names it `time passes`. The runner gives the backend the model's
+    result for the step before running it (LawSpecRuntime.EXPECTED_RESULT),
+    and LawSpecPekkoNative advances Pekko's ManualTime by that Duration in
+    the actor's own virtual-time test kit. Time passes only in sequential
+    runs: a backend marks the step sequentialOnly and parallel branches
+    leave it out, since one clock is shared by every branch.
+
+    Precedent: TLA+ real-time specifications (Lamport, "Real Time is
+    Really Simple") keep time as an ordinary variable `now` advanced by a
+    Tick action, with timers as state, so a model checker treats time as
+    one more step; LawSpec's step is that Tick, with the model choosing
+    the amount (the next timer) instead of any amount up to a deadline, so
+    the explicit-state checker stays finite. QuickCheck state machines
+    (Hughes, "Experiences with QuickCheck") test timeouts with a command
+    that advances a simulated clock, which the model also advances. Pekko's
+    ManualTime (ExplicitlyTriggeredScheduler) is the established virtual
+    clock for Pekko tests, so the actor's timers run unchanged.
+
+    Unsupported, with explicit diagnostics: every actor not bound natively
+    to a Pekko behaviour (LawSpec's own actors on every target have no
+    timers), and persistent, sharded and Spring actors. A wall-clock
+    implementation is never run as if it were virtual. Trust boundary:
+    ManualTime's scheduler and Pekko's timers; the model's Durations are
+    the specification.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [lamport-real-time, hughes-quickcheck-experiences, pekko-testing-async]
+
+DEC-honest-model-steps:
+  status: decided
+  question: How do generated model and actor runs avoid passing on steps the reference refuses?
+  answer: |
+    A run passes only on steps its reference accepted. Planning reads the
+    refinements of each command's adapter and of its reference (the j-th
+    reference parameter is the command's j-th argument): integer bounds
+    narrow an int descriptor, and a disjunction of equalities with constants
+    (x = "apple" || x = "pear") becomes a (oneof D v ...) descriptor, whose
+    generation picks an option, whose minimum is the first and whose shrinks
+    are the options before it. Conditions that also read the state stay with
+    the runtime. At each step every target lists the enabled commands
+    (typestate, when-precondition, a non-empty argument domain); a command
+    whose arguments have at most 64 values (FINITE_STEPS) is enabled with
+    the tuples its reference accepts in this state, or not at all when none
+    is accepted, and a drawn tuple is one of those; other commands draw up
+    to 8 times (STEP_ATTEMPTS), each refused draw counted. Every refused draw
+    is counted per run. A run whose refused draws outnumber its accepted
+    steps is incomplete, never passed: "incomplete model generation: model
+    m's run r of n drew x steps its reference rejected and y it accepted";
+    a failure names the run's refused draws; LAWSPEC_MODEL_REPORT names a
+    file to which each check appends one JSON line (model, check, runs,
+    steps, rejected, outcome), whose outcome is incomplete. In a target's
+    native test report the check is an error carrying that message; the
+    npm test command does not infer an incomplete status from error text
+    (as for every other status), so a structured incomplete test status
+    from each target's harness remains to be added. All targets draw the
+    same random numbers in the same
+    order for a seed, so runs stay identical across targets. This replaces
+    the earlier rule that one rejected dependent argument made a run
+    incomplete.
+
+    Precedent: QuickCheck discards a test case whose precondition fails and
+    gives up after maxDiscardRatio discards, reporting the property as not
+    passed rather than passed; quickcheck-state-machine and Hedgehog's
+    state machines filter commands by preconditions over the model state
+    and generate from it, so generation is constructive where possible.
+    LawSpec counts per run instead of per property, since a model check's
+    unit of evidence is a run of steps, and enumerates small domains so a
+    narrow refinement is never left to chance.
+
+    Trust boundary: the planner's reading of refinements (only conjuncts
+    that mention the argument alone), each runtime's enumeration and the
+    reference evaluator. Restoring the shopping cart's refinements is the
+    acceptance check; spec mutants whose references refuse almost every
+    draw must be reported incomplete.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [quickcheck-discards, quickcheck-state-machine, hedgehog-state-machines]
+
+DEC-model-fairness-per-value:
+  status: decided
+  question: What does fairness for a command with arguments assume, and how does a model say a step cannot happen now?
+  answer: |
+    Fairness is per step: per command and argument value. assuming fairness
+    for c is weak fairness for each step c v (TLA+ WF_vars(c(v)) for every
+    v), and strong fairness likewise; it is not WF_vars(\E v: c(v)), which
+    a run satisfies by taking c u for ever while c v stays enabled. The
+    checker labels each edge with its step and applies the Lichtenstein and
+    Pnueli component test per label. A reference is partial when its
+    parameters are refined, the state included: (s :: Seats where phase h s
+    = Eating). Outside its refinements a step is not enabled, as when a
+    precondition is false: the checker leaves it out and generation never
+    draws it. Before, a reference had to be total, and a step that cannot
+    happen was modelled as one that changes nothing, which also satisfied
+    fairness and hid starvation. Over the restated five-seat table, the
+    dining hakkers' "every hungry hakker eats" was refuted under strong
+    fairness for every hakker's every step, with a lasso in which each
+    hakker eats and Ghosh, hungry, never does. The table is now replaced by
+    the real Hakker, bound through probes (DEC-pekko-sample-suites), and the
+    same law over its one-hakker model is refuted under strong fairness for
+    every step, its guards being the steps' enabling conditions.
+
+    Precedent: TLA+ writes per-value fairness as a conjunction of WF over
+    each instance and existential fairness as WF over the disjunction
+    (Lamport, Specifying Systems, chapter 8); TLC checks both. LawSpec
+    chooses per-value fairness because a command's argument usually names
+    an actor or a resource, and fairness to one of them is what liveness
+    claims about it need. Partial actions are TLA+ actions with enabling
+    conditions, and preconditions in quickcheck-state-machine.
+
+    Trust boundary: the reference evaluator (refinements are evaluated as
+    preconditions) and the checker's component search.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [tla-specifying-systems, lichtenstein-pnueli-fairness, quickcheck-state-machine]
+
+DEC-model-checker-reductions:
+  status: decided
+  question: How does the explicit-state model checker scale, and which reductions does it trust?
+  answer: |
+    The checker explores each model's reachable states once, for all its
+    laws, into a graph with an exact visited set: a state's key is its
+    value written flat (each constructor as a number, each integer as its
+    number) with its typestate indices, kept whole in a map, so states are
+    never conflated (SPIN's bitstate hashing and TLC's fingerprints trade
+    that for memory; here the state counts fit in memory, so a probabilistic
+    miss is not accepted). Model-check calls of the reference skip
+    re-validating states the reference returned and arguments enumerated
+    from their types (Core.Definitions.prepareTrustedDefinitions), and a
+    value of a constructor with nothing to check beyond its tag is
+    validated by finding it in the registry. The dining hakkers' restated
+    five-seat table (9,864 states, since replaced by the bound Hakker) went
+    from more than 12 CPU minutes to about 6 seconds.
+
+    Partial-order reduction: when no law about a model assumes fairness or
+    sets a deadline and the model has no typestate, each state explores a
+    stubborn set (Valmari) of its enabled steps: closed under dependence for
+    enabled steps and under possible enablers for disabled ones, with every
+    step invisible (writing no field the laws' predicates read; Peled's C2),
+    and used only when smaller than all enabled steps. Footprints come from
+    a small abstract interpretation of the reference, its precondition and
+    its refinements with the arguments known; anything it cannot follow
+    reads and writes every field. The cycle proviso is the breadth-first
+    one, conservatively: a state is cut only when every successor of its
+    set is new. Laws are LTL without next, so stuttering equivalence keeps
+    their results. Fairness assumptions are about particular steps that a
+    reduction postpones, so they disable it. The reason says how many
+    states took a reduced set. It did not help the five-seat table, whose
+    laws read every seat.
+
+    Symmetry reduction is not implemented. TLC's SYMMETRY and Murphi's
+    scalarsets declare the permutable values; inferring them soundly here
+    would need the permutation to act on the state's representation (the
+    hakkers' Seats record names each hakker's field), and a verified
+    canonical form costs one state evaluation per permutation, as much as
+    exploring the orbit. A declaration such as "symmetric over hakkers" is
+    deferred until a model's state can be indexed by such a type.
+
+    Trust boundary: the reference evaluator, the footprint analysis, the
+    stubborn-set construction and the search.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [valmari-stubborn-sets, peled-ample-sets, holzmann-peled-por, tlc-symmetry, ip-dill-scalarsets]
+
 DEC-application-controller-workers:
   status: decided
   question: How does the Haskell application retain UI state while compiler work is cancelled or running?

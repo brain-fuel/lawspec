@@ -47,6 +47,7 @@ import LawSpec.SourceSyntax (SourceSyntax (..))
 import LawSpec.SourceText (formatSourcesUsing)
 import LawSpec.Targets (artifactTargets)
 import LawSpec.TestManifest (BenchmarkEntry (..), TestEntry (..), benchmarkManifest, executableEntries, testManifestWithBindings)
+import LawSpec.ActorRuntime (actorSettings, defaultActorSettings)
 import LawSpec.Testing (Plan (..), PlannedProperty (..), PlannedUnit (..), finiteCases)
 import qualified LawSpec.Testing.Budget as Budget
 import System.IO.Unsafe (unsafePerformIO)
@@ -113,7 +114,9 @@ dispatch bytes
               -- Native bindings differ by target and change nothing before
               -- emission, so the compiled program is shared across targets
               -- and each request resolves its own bindings against it.
-              Right ((us, es, core, _, (lawEvidence, analysisRows), described, plan), syntax) ->
+              Right ((us, es, core, _, (lawEvidence, analysisRows), described, checkedPlan), syntax) ->
+                let plan = checkedPlan >>= withActorSettings target bytes
+                 in
                 either failure id $ (either (\message -> Left [Diagnostic "native-binding" message Nothing]) Right (resolveNativeRequest core native) >>=) $ \bindings ->
                   fmap
                     ( \analysed ->
@@ -218,7 +221,8 @@ dispatch bytes
                                               plan
                                               ( verificationKeys
                                                   verification
-                                                  ( nativeBudgetKeys
+                                                  . actorKeys plan
+                                                  $ ( nativeBudgetKeys
                                                       target
                                                       plan
                                                       ( either
@@ -501,6 +505,28 @@ nativeBudgetKeys target (Right plan) entries
   | Just budget <- Budget.sharedNativeBudget target plan =
       [entry {entryKey = digestHex (digestString (show (entryKey entry, "native-node-budget", budget)))} | entry <- entries]
 nativeBudgetKeys _ _ entries = entries
+
+-- | A target's actor runtime (lawspec.edn's :actors) is a generation choice:
+-- it changes the generated actors and scaffolds, never the checked program.
+-- ref:DEC-pekko-runtime
+withActorSettings :: String -> B.ByteString -> Plan -> Either [Diagnostic] Plan
+withActorSettings target bytes plan =
+  either
+    (\problems -> Left [Diagnostic "actors" problem Nothing | problem <- problems])
+    (\settings -> Right plan {planActors = settings})
+    (actorSettings "actors" (if null target then Nothing else Just target) given)
+  where
+    given = case decode bytes of
+      Just (Object o) -> KM.lookup "actors" o
+      _ -> Nothing
+
+-- | Results on another actor runtime are other results; the default keeps
+-- its existing keys.
+actorKeys :: Either [Diagnostic] Plan -> [TestEntry] -> [TestEntry]
+actorKeys (Right plan) entries
+  | planActors plan /= defaultActorSettings =
+      [entry {entryKey = digestHex (digestString (entryKey entry ++ show (planActors plan)))} | entry <- entries]
+actorKeys _ entries = entries
 
 verificationKeys :: Maybe V.Verification -> [TestEntry] -> [TestEntry]
 verificationKeys Nothing entries = entries

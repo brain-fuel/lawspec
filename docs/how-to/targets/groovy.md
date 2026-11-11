@@ -123,6 +123,14 @@ def count = lawspec.definitions.example.Total.size(symbols, [1 as byte, 2 as byt
 Spec handlers, actors, sessions, mailboxes, the network and the secure handler
 are the [Java ones](java.md); their wire format is the same on every target.
 
+## Actor runtimes
+
+Groovy uses the Java actor classes, so `:actors {:runtime :pekko}` and
+`:actors {:runtime :spring}` in `lawspec.edn` run them on Apache Pekko 1.7.1
+or through the Spring Boot actor starter 1.0.0, and `build.gradle` gains the
+pinned libraries. `:remote :cluster` gives the actors `serve` and `connect`
+over Pekko Cluster, with a `LawSpecPekkoCluster.Node` for the node. See [actor runtimes](../../reference/configuration.md#actor-runtimes).
+
 ## Tests
 
 Each unit's laws are a Spock specification. A feature is named after the law

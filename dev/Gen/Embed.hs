@@ -70,6 +70,13 @@ runtimeFiles =
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs"), ("web-fast", "lawspec_fast.mjs")
   , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java")
+  -- Generated actors on Apache Pekko (:actors {:runtime :pekko}).
+  , ("java-pekko", "pekko/LawSpecPekko.java"), ("java-pekko-supervisor", "pekko/LawSpecPekkoSupervisor.java")
+  , ("java-pekko-crash", "pekko/LawSpecCrashInterceptor.java")
+  -- serve and connect over Pekko Cluster, only with :remote :cluster.
+  , ("java-pekko-cluster", "pekko/LawSpecPekkoCluster.java")
+  -- Generated actors through the Spring Boot actor starter (:runtime :spring).
+  , ("java-spring", "spring/LawSpecSpring.java")
   , ("java-data-strategies-body", "LawSpecDataStrategies.inc"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")
   , ("go-schema", "lawspec_schema.go"), ("go-codecs", "lawspec_codecs.go")
   , ("go-data-strategies", "lawspec_data_strategies.go"), ("haskell", "LawSpecRuntime.hs")
@@ -91,7 +98,12 @@ runtimeFiles =
   -- lawspec.network (LawSpec.Network).
   , ("python-network", "lawspec_network.py"), ("javascript-network", "lawspec_network.mjs")
   , ("java-network", "LawSpecNetwork.java"), ("go-network", "lawspec_network.go")
-  , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs") ]
+  , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs")
+  -- The checker of existing Pekko actors, written only for JVM projects
+  -- whose native bindings bind actors (LawSpec.JavaNativeBinding).
+  , ("java-pekko-native", "pekko/LawSpecPekkoNative.java")
+  , ("java-spring-native", "spring/LawSpecSpringNative.java")
+  , ("java-pekko-sharding", "pekko/LawSpecPekkoSharding.java") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

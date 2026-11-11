@@ -199,6 +199,18 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
       "override def current()\n    : scala.util.Either[_root_.lawspec.data.Refusal, scala.Long] = result"
     D.render D.Compact doc `shouldBe`
       "override def current(): scala.util.Either[_root_.lawspec.data.Refusal, scala.Long] = result"
+  it "moves a Scala one-line body that breaks to the line after its =" $ do
+    let header = Scala.signature (D.text "def put") [D.text "value1: lawspec.data.Hakker"] (D.text "Unit")
+        body = Scala.trailingBelow "actor.call[Unit]" ["(s: lawspec.data.Stick)"]
+          [Scala.call "LawSpecRuntime.Next[Unit, lawspec.data.Stick]" [D.text "()", D.text "sample.Chopsticks.put(s, value1)"]]
+    D.render (D.Pretty 80) (Scala.equalsBody header body) `shouldBe` init (unlines
+      [ "def put(value1: lawspec.data.Hakker): Unit ="
+      , "  actor.call[Unit] { (s: lawspec.data.Stick) =>"
+      , "    LawSpecRuntime.Next[Unit, lawspec.data.Stick]("
+      , "      (),"
+      , "      sample.Chopsticks.put(s, value1)"
+      , "    )"
+      , "  }" ])
   it "keeps Scala receiver arguments structured through multiline chains" $ do
     let literal = Scala.scalaString "commas, brackets [)] and quotes \"stay\""
         argument = D.block 2 (D.text "val value = " <> literal <> D.hardline <> D.text "value")

@@ -1,17 +1,23 @@
 -- | Stateful models and their commands.
-module StatefulModelSpec (test_statefulModelsElaborateFromTypestate) where
+module StatefulModelSpec (test_statefulModelsElaborateFromTypestate, test_actorRuntimeSettings) where
 
 import FixtureSource (extendUnit)
 import Data.List (isInfixOf)
 import Control.Monad (forM_)
 import Test.Hspec
+import LawSpec.ActorRuntime
 import LawSpec.Compile
+import Data.Aeson (Value (..), object, (.=))
 import LawSpec.Core.Machine
 import qualified LawSpec.Core as C
-import LawSpec.Frontend (compileCore)
+import LawSpec.Frontend (compileCore, elaborateCanonical)
 import LawSpec.Model hiding (Expectation)
 import qualified LawSpec.ModelLaws as ML
 import qualified LawSpec.Core.ModelCheck as MC
+import LawSpec.Core.Evidence (Obligation(..), Status(..))
+import LawSpec.Common (Artifact (..))
+import LawSpec.CoreEmit (emitPlan)
+import LawSpec.Testing (Plan (..), planTesting)
 
 stack :: String
 stack = unlines
@@ -87,6 +93,67 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
           `shouldSatisfy` or
         [C.declarationUses d | (identity,d) <- declarations, identity `elem` map fst bridges]
           `shouldSatisfy` any (not . null)
+  -- ref:DEC-restart-keeps-state
+  it "elaborates restart keeps state into checked identities, not bridges" $ do
+    input <- readFile "examples/specs/restarts.lawspec"
+    case compileCore 64 defaultGeneration [Source "restarts.lawspec" input] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let units = C.programUnits program
+            declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
+            restarts = [c | u <- units, m <- C.unitMachines u, c <- machineCommands m, commandRestart c]
+            named identity = fmap C.declarationName (lookup identity declarations)
+        [(named (commandSystem c), commandRun c == commandSystem c) | c <- restarts]
+          `shouldBe` [(Just "tabKeepState", True)]
+  -- time passes by r: the actor's timePasses step, whose adapter LawSpec
+  -- declares; laws over its runs may assume it is fair. ref:DEC-time-passes
+  it "elaborates time passes into the actor's timePasses step" $ do
+    input <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" input] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let units = C.programUnits program
+            declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
+            steps = [c | u <- units, m <- C.unitMachines u, c <- machineCommands m, commandName c == "timePasses"]
+        [(fmap C.declarationName (lookup (commandSystem c) declarations), commandReturnsUnit c) | c <- steps]
+          `shouldBe` [(Just "hakkerTimePasses", False)]
+  it "rejects a second time passes line and a handler named timePasses" $ do
+    input <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    let line = "  time passes by modelTimePasses when timerSet"
+        twice = unlines (concatMap (\l -> if l == line then [l, l] else [l]) (lines input))
+        named = unlines (concatMap (\l -> if l == "  on think by modelThink when waiting" then ["  on timePasses by modelThink when waiting"]
+          else if l == "openDiner :: Unit -> Diner" then [l, "timePasses :: Diner -> Diner"] else [l]) (lines input))
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" twice] of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "says how time passes more than once"
+      Right _ -> expectationFailure "expected a rejection"
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" named] of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "timePasses names its time passes step"
+      Right _ -> expectationFailure "expected a rejection"
+  it "refutes every hungry hakker eating, with time passing fairly" $ do
+    input <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    let starving = unlines (concatMap (\l -> if l == "law \"|a hakker can eat| in model hakker is"
+          then [ "law \"|every hungry hakker eats| in model hakker assuming strong fairness for think, time passes,"
+               , "    asksLeft, putsDownLeft, asksRight, putsDownRight, leftTaken, leftBusy, rightTaken, rightBusy is"
+               , "  definition: every run holds whenever hungry, eventually eats end definition"
+               , "end law", l]
+          else [l]) (lines input))
+    case compileCanonical [Source "hakkers.lawspec" starving] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right (us, es) -> case elaborateCanonical 64 us es of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right core -> case ML.modelLawEvidence True us core of
+          Left diagnostics -> expectationFailure (show diagnostics)
+          Right obligations -> do
+            let verdict name = [(obligationStatus o, obligationReason o) | o <- obligations, C.idText (obligationDeclaration o) == "sample.hakkers::law::|" ++ name ++ "|"]
+            map fst (verdict "every hungry hakker eats") `shouldBe` [Refuted]
+            concatMap snd (verdict "every hungry hakker eats") `shouldSatisfy` isInfixOf "strong fairness for timePasses"
+            map fst (verdict "a hakker can eat") `shouldBe` [Proved]
+  it "rejects an actor with two restart lines" $ do
+    input <- readFile "examples/specs/restarts.lawspec"
+    let twice = unlines (concatMap (\line -> if line == "  restart keeps state" then [line, line] else [line]) (lines input))
+    case compileCore 64 defaultGeneration [Source "restarts.lawspec" twice] of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "says how it restarts more than once"
+      Right _ -> expectationFailure "expected a rejection"
   it "read each command's typestate from its flow parameter" $
     case machinesOf (extendUnit stack $ unlines
       [ "model stack :: Stack n by List Int8 is"
@@ -169,3 +236,59 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
     chosen one `shouldBe` ["chooseAt 0"]
     chosen two `shouldBe` ["chooseAt 0", "chooseAt 1"]
     chosen (next "clear" two) `shouldBe` []
+
+-- | A target's :actors settings pick its actor runtime; the JVM runtimes are
+-- refused elsewhere, and nothing unknown is ignored. ref:DEC-pekko-runtime
+test_actorRuntimeSettings :: Spec
+test_actorRuntimeSettings = describe "actor runtime settings" $ do
+  let settings target value = actorSettings "actors" (Just target) (Just value)
+  it "default to LawSpec's runtime" $
+    actorSettings "actors" (Just "java") Nothing `shouldBe` Right defaultActorSettings
+  it "select Pekko on a JVM target" $
+    settings "kotlin" (object ["runtime" .= ("pekko" :: String)])
+      `shouldBe` Right (ActorSettings PekkoActors LawSpecRemote)
+  it "reject Pekko off the JVM, unknown fields and cluster without a JVM runtime" $ do
+    settings "python" (object ["runtime" .= ("pekko" :: String)])
+      `shouldSatisfy` either (any (isInfixOf "runs on the JVM")) (const False)
+    settings "java" (object ["mailbox" .= ("x" :: String)])
+      `shouldSatisfy` either (any (isInfixOf "unknown field mailbox")) (const False)
+    settings "java" (object ["remote" .= ("cluster" :: String)])
+      `shouldSatisfy` either (any (isInfixOf "needs :runtime :pekko or :spring")) (const False)
+  -- serve and connect over Pekko Cluster only with :remote :cluster; LawSpec's
+  -- runtime keeps its own network. ref:DEC-pekko-cluster-remote
+  it "give Pekko actors serve and connect over Pekko Cluster only with :remote :cluster" $ do
+    let source = unlines
+          [ "unit example.tally"
+          , "type Tally is a record{ count :: Int64 } end type"
+          , "openTally :: Unit -> Tally"
+          , "add :: Tally -> UInt8 -> Pair Int64 Tally"
+          , "function modelAdd (n :: UInt8) (total :: Int64 where total >= 0 && total <= 1000000) -> Pair Int64 Int64 is"
+          , "  Pair (total + n) (total + n)"
+          , "end function"
+          , "actor tally :: Tally by Int64 is"
+          , "  start openTally by 0"
+          , "  on add by modelAdd"
+          , "end actor"
+          , "end unit" ]
+        files actors target = either (error . show) id $ do
+          core <- compileCore 64 defaultGeneration [Source "tally.lawspec" source]
+          plan <- planTesting core
+          emitPlan target plan {planActors = actors}
+        file actors target path = concat [artifactContent f | f <- files actors target, artifactPath f == path]
+        cluster runtime = ActorSettings runtime ClusterRemote
+        javaActor = "src/main/java/lawspec/actors/TallyActor.java"
+        runtimeFile = "src/main/java/lawspec/runtime/pekko/LawSpecPekkoCluster.java"
+    forM_ [(cluster PekkoActors, "java"), (cluster SpringActors, "java")] $ \(actors, target) -> do
+      let actor = file actors target javaActor
+      actor `shouldSatisfy` isInfixOf "public String serve(LawSpecPekkoCluster.Node node, String name)"
+      actor `shouldSatisfy` isInfixOf "import lawspec.runtime.pekko.LawSpecPekkoCluster;"
+      map artifactPath (files actors target) `shouldContain` [runtimeFile]
+    file (cluster PekkoActors) "kotlin" "src/main/kotlin/lawspec/actors/TallyActor.kt"
+      `shouldSatisfy` isInfixOf "fun serve(node: LawSpecPekkoCluster.Node, name: String): String"
+    file (cluster PekkoActors) "scala" "src/main/scala/lawspec/actors/TallyActor.scala"
+      `shouldSatisfy` isInfixOf "def serve(node: LawSpecPekkoCluster.Node, name: String): String"
+    let plain = ActorSettings PekkoActors LawSpecRemote
+    file plain "java" javaActor `shouldSatisfy` (not . isInfixOf "serve(")
+    map artifactPath (files plain "java") `shouldNotContain` [runtimeFile]
+    file defaultActorSettings "java" javaActor
+      `shouldSatisfy` isInfixOf "public String serve(LawSpecRuntime.Node node, String name)"

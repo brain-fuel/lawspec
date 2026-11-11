@@ -1,0 +1,10 @@
+expect: model chopstick fails at step
+@@ src/main/scala/sample/DiningHakkers.scala
+<<<<<<<
+      case (_, Put(`hakker`)) =>
+        available()
+=======
+      case (_, Put(`hakker`)) =>
+        // Mutant: the chopstick is never put down.
+        Behaviors.same
+>>>>>>>

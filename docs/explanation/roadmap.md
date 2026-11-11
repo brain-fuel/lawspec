@@ -33,6 +33,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.30 | Triple-quoted multiline text and known discrepancies | — |
 | 0.31 | Compact finite test plans and shared scoped searches on all 18 executable targets; unified EDN manifests and components | Teaching review of the learning course |
 | 0.32 | Shared compiler, generation and tooling corrections (S1.j): checked strategies, evaluation allowance and deferral, the `mutate` command, and an opt-in component runtime | Original-project confirmations; native x64 and WSL2 cache checks; default-runtime cutover; larger models and checked mutual recursion |
+| 0.33 | Planned: Apache Pekko and Spring actor runtimes for the JVM targets, checking hand-written Pekko and Spring actors against LawSpec actors, and `restart keeps state` | The LawSpec JVM runtime stays the default |
 
 0.16 in detail:
 
@@ -188,6 +189,21 @@ checked Python target, with the shared native acceptance matrix checked in
 both machine profiles. Artifact generation remains distinct from law execution.
 
 ## Planned
+
+### 0.33: Pekko and Spring actor runtimes
+
+Each JVM target (Java, Kotlin, Scala, Groovy and Clojure) chooses its actor
+runtime in `lawspec.edn` with `:actors {:runtime ...}`: LawSpec's own (the
+default, unchanged), Apache Pekko Typed, or Pekko through the Spring Boot actor
+starter. Generated actors keep their public methods on every runtime, and
+supervisors keep OTP's strategies, lifetimes, restart limits and escalation.
+Hand-written Pekko and Spring actors can be bound to a LawSpec `actor` and
+checked against its model, with injected crashes. A new phrase,
+`restart keeps state`, says a restarted actor resumes with the state it had,
+on every target. `serve` and `connect` map to Pekko Cluster on those runtimes,
+and four `apache/pekko-samples` become acceptance suites. The decisions are
+DEC-pekko-runtime, DEC-pekko-otp-supervision, DEC-restart-keeps-state,
+DEC-pekko-cluster-remote and DEC-spring-actor-starter.
 
 ### Haskell application port and default component runtime
 

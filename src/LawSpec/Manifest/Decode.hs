@@ -30,11 +30,12 @@ data Reader value = Reader
   { readObject :: value -> Maybe [(String, value)],
     readArray :: value -> Maybe [value],
     readString :: value -> Maybe String,
-    readVersion :: value -> Maybe ManifestVersion
+    readVersion :: value -> Maybe ManifestVersion,
+    readNull :: value -> Bool
   }
 
 jsonReader :: Reader JSON.Value
-jsonReader = Reader object array string version
+jsonReader = Reader object array string version (== JSON.Null)
   where
     object (JSON.Object values) = Just [(K.toString key, value) | (key, value) <- M.toList values]
     object _ = Nothing
@@ -46,7 +47,7 @@ jsonReader = Reader object array string version
     version _ = Nothing
 
 ednReader :: Reader ManifestValue
-ednReader = Reader object array string version
+ednReader = Reader object array string version (== ManifestNil)
   where
     object (ManifestMap values) = Just (sortOn fst values)
     object _ = Nothing
@@ -82,7 +83,10 @@ decodeManifest reader = object $ \fields ->
     version value = maybe Invalid Present (readVersion reader value)
     strings = array string
     identity = object $ \fields -> Identity (map fst fields) (field string "name" fields) (field string "version" fields)
-    target = object $ \fields -> Target (map fst fields) (field string "language" fields) (field string "root" fields)
+    target = object $ \fields -> Target (map fst fields) (field string "language" fields) (field string "root" fields) (field actors "actors" fields)
+    actors value
+      | readNull reader value = Present NoActors
+      | otherwise = object (\fields -> Actors (map fst fields) (field string "runtime" fields) (field string "remote" fields)) value
     dependency value = case readString reader value of
       Just range -> Present (VersionRange range)
       Nothing -> object (SourceDependency . source) value

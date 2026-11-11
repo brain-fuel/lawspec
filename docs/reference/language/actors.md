@@ -37,8 +37,9 @@ end actor
 ```text
 actor name :: State by Model is
   start f by value                  -- or ~ value
-  restart from g by reference       -- optional
+  restart from g by reference       -- optional; or: restart keeps state
   on handler by reference [when precondition]
+  time passes by reference [when precondition]   -- optional
   abstract function
   invariant predicate
 end actor
@@ -49,6 +50,8 @@ end actor
 | `start f by e` | `f` makes the actor's first state, and `e` is the model's, as in a [model](models.md). A supervised actor's start takes no arguments. |
 | `on h by r` | `h` is a handler: an adapter taking the state first, then the message's arguments, and returning `Pair Reply State`, or the `State` alone when there is no reply. `r` is its reference over the model state, as for a model's command. |
 | `restart from g by r` | After a crash, `g :: State -> State` makes the restarted state from the last one, and `r :: Model -> Model` does the same for the model. Without it, a restarted actor starts again from `start`. |
+| `restart keeps state` | After a crash, the actor and its model keep the state committed by the last message handled; the message that crashed commits nothing. Use it for an actor whose state outlives a crash, such as one recovered from a journal. An actor has at most one restart line. |
+| `time passes by r` | A step in which time passes, so the actor's timers fire. `r :: Model -> Pair Duration Model` says how long passes, typically until the next timer, and the model state after it, as a discrete-event simulation advances its clock. The step is the command `timePasses` in runs and traces, and `time passes` in a law's fairness list. Only a Pekko behaviour bound with a [native actor binding](../native-bindings.md#native-actors), on Java or Scala, runs it, on virtual time; LawSpec's own actors have no timers, so on every target without that binding the model is reported `unsupported`. An actor has at most one such line, and no handler named `timePasses`. ref:DEC-time-passes |
 | `abstract`, `invariant` | As in a model, over the actor's own state. |
 
 The actor's handle type is its name, capitalized, followed by `Actor`, so
@@ -69,6 +72,13 @@ the commands:
   returned 0; the model returns 4
   ```
 
+- **Honest steps.** Messages are drawn as a model's commands are: from the
+  refinements of the handler and its reference, listing the messages the
+  reference accepts when there are few enough. A message a reference
+  refuses is counted, and a run that is mostly refused messages is
+  `incomplete`, not passed, as for a [model](models.md#what-lawspec-checks).
+  A reference may be partial: a message outside its refinements is not
+  sent.
 - **In parallel.** Messages are sent from several threads at once, and every
   history must linearize, which checks that the actor runtime handles one
   message at a time.
@@ -177,7 +187,9 @@ to `link`.
 `serve(node, name)` lets other nodes call an actor, and
 `AccountActor.connect(node, address)` gives a proxy with the same handler
 methods. A call that gets no reply within the timeout fails with
-`Unreachable`. See [distribution](distribution.md).
+`Unreachable`. See [distribution](distribution.md). On the Pekko and Spring
+runtimes, `:remote :cluster` gives the same methods over Pekko Cluster (see
+[runtimes](#runtimes)).
 
 On BEAM targets, the local actor module exposes
 `serve(handle, node, name)`. A separate remote module provides
@@ -247,13 +259,33 @@ supervisor supervises itself.
 
 A restart happens **in place**: the actor keeps its address and the
 messages waiting for it, so handles held elsewhere keep working. Its state
-comes from `restart from`, or from `start`.
+comes from `restart from`, is kept by `restart keeps state`, or comes from
+`start`.
 
 Every supervisor becomes a class such as `BankSupervisor`. Its `start()`
 starts the children, which are then available by name: in Python,
 `bank = BankSupervisor.start()`, then `bank.account.deposit(5)`. It also
 has `stop()`, which stops the children, last first, without restarting
 them, and `monitor(f)`.
+
+## Runtimes
+
+On Java, Kotlin, Scala, Groovy and Clojure, a target can run its actors and
+supervisors on Apache Pekko with `:actors {:runtime :pekko}` in
+[`lawspec.edn`](../configuration.md#actor-runtimes). On Java, Kotlin,
+Groovy and Clojure, `:actors {:runtime :spring}` runs them through the Spring
+Boot actor starter instead: each actor class also has a `SpringActor`
+component, and its actors are spawned through the starter's actor system.
+Scala with `:spring` is rejected. Each actor is then a
+Pekko Typed behaviour, restarted in place by Pekko's supervision, and each
+supervisor keeps the strategies, lifetimes, restart limit and escalation
+above. The generated classes keep their methods, so adapters and laws do not
+change, and the same conformance check runs against the Pekko runtime. A call
+waits at most the configured ask timeout and then fails. `serve` and
+`connect` need `:remote :cluster`. The actors are then served and called
+across Pekko Cluster: a `LawSpecPekkoCluster.Node` is the node, and the
+cluster's receptionist finds served actors. See
+[actors across Pekko Cluster](../configuration.md#actors-across-pekko-cluster).
 
 ## Evidence
 
@@ -266,3 +298,6 @@ monitors, and runs in the generated tests of every unit with a supervisor.
 The [actors example](../../../examples/specs/actors.lawspec) has an
 account with a restart, a supervisor, and a scenario that survives a
 crashed process.
+
+The [restarts example](../../../examples/specs/restarts.lawspec) has a tab
+that keeps its total across a crash.

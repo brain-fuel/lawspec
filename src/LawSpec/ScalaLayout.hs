@@ -6,7 +6,7 @@
 -- each dot, and a lambda's body on lines of its own once it does not fit.
 -- Strings are Scala literals and never split.
 module LawSpec.ScalaLayout
-  ( scalaStyle, scalaString, arrow, Receiver, referenceReceiver, callReceiver, typedReceiver, chainedReceiver, trailingReceiver, receiverDoc, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingCall, signature, bind, bindControl, bindBlock, chain, block, statements
+  ( scalaStyle, scalaString, arrow, Receiver, referenceReceiver, callReceiver, typedReceiver, chainedReceiver, trailingReceiver, receiverDoc, chainWith, call, callThen, callWith, trailingChain, trailingChain', parameters, lambda, trailing, trailingBelow, trailingCall, signature, bind, bindControl, bindBlock, chain, block, statements
   , condition, conjunction, conjunctionStatement, equalsBody, comment
   ) where
 
@@ -45,7 +45,7 @@ call name values = case break (== '[') name of
   -- when its opening does not fit, and its type arguments break inside
   -- their brackets, as scalafmt breaks a chain.
   (path, typeArgs@('[' : _)) | not (null values) ->
-    let typed method = D.group (D.text (method ++ "[") <> D.nest 2 (D.softbreak <> D.text (init (drop 1 typeArgs))) <> D.softbreak <> D.text "]")
+    let typed method = D.text method <> typeArguments (init (drop 1 typeArgs))
     in case break (== '.') (reverse path) of
       (method@(_ : _), '.' : owner@(_ : _)) ->
         D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
@@ -56,6 +56,25 @@ call name values = case break (== '[') name of
       D.bestFit [callWith (D.text name) values, D.prefixChoice (name ++ "(") (callWith (D.text name) values)
         (D.text (reverse owner) <> D.nest 2 (D.hardline <> callWith (D.text ('.' : reverse method)) values))]
   _ -> callWith (D.text name) values
+
+-- | [A, B[C]]: type arguments, one a line when they do not fit, each
+-- nested list breaking inside its own brackets, as scalafmt breaks them.
+typeArguments :: String -> D.Doc
+typeArguments = D.delimit 2 "[" "]" . map typeArgument . topLevel
+  where
+    typeArgument t = case break (== '[') t of
+      (name, '[' : rest) | not (null rest), last rest == ']' -> D.text name <> typeArguments (init rest)
+      _ -> D.text t
+    -- Split at the commas outside brackets.
+    topLevel = go (0 :: Int) ""
+      where
+        go _ current [] = [trim (reverse current) | not (null (trim (reverse current)))]
+        go 0 current (',' : rest) = trim (reverse current) : go 0 "" rest
+        go depth current (c : rest) = go (depth + delta c) (c : current) rest
+        delta '[' = 1
+        delta ']' = -1
+        delta _ = 0
+        trim = dropWhile (== ' ') . reverse . dropWhile (== ' ') . reverse
 
 callWith :: D.Doc -> [D.Doc] -> D.Doc
 callWith name [] = name <> D.text "()"
@@ -99,6 +118,21 @@ lambda names body
 -- | f(args) { params => body }.
 trailing :: D.Doc -> [String] -> [D.Doc] -> D.Doc
 trailing invocation names body = invocation <> D.text " " <> lambda names body
+
+-- | name { params => body } after an invocation of one line with no break
+-- of its own (actor.call[T]): when the opening line with the parameters
+-- does not fit, the parameters go on the next line and the body below
+-- them, as scalafmt puts them.
+trailingBelow :: String -> [String] -> [D.Doc] -> D.Doc
+trailingBelow invocation [] body = trailing (D.text invocation) [] body
+trailingBelow invocation names body =
+  D.prefixChoice (invocation ++ " " ++ opening) (trailing (D.text invocation) names body)
+    (D.text (invocation ++ " {") <> D.nest 2 (D.hardline <> D.text (drop 2 opening) <>
+      D.nest 2 (D.hardline <> statements body)) <> D.hardline <> D.text "}")
+  where
+    opening = "{ " ++ (case names of
+      [one] -> one
+      many -> "(" ++ foldr1 (\a b -> a ++ ", " ++ b) many ++ ")") ++ " =>"
 
 trailingCall :: String -> [D.Doc] -> [String] -> [D.Doc] -> D.Doc
 trailingCall name args = trailing (call name args)
@@ -245,7 +279,11 @@ equalsBody header body
   -- its first line fits there.
   | '\n' `elem` flatBody = D.prefixChoice (D.render D.Compact header ++ " = " ++ takeWhile (/= '\n') flatBody)
       (header <> D.text " = " <> body) (header <> D.text " =" <> D.nest 2 (D.hardline <> body))
-  | otherwise = header <> D.group (D.text " =" <> D.nest 2 (D.softline <> body))
+  -- A body of one line stays after the = only when all of it fits there,
+  -- so a body that breaks on its own (actor.call[T] { s => ... }) goes on
+  -- the next line, as scalafmt puts it.
+  | otherwise = header <> D.prefixChoice (" = " ++ flatBody)
+      (D.group (D.text " =" <> D.nest 2 (D.softline <> body))) (D.text " =" <> D.nest 2 (D.hardline <> body))
   where flatBody = D.render D.Compact body
 
 -- | A line comment, wrapped at the page's width.

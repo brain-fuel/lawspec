@@ -350,6 +350,26 @@ ghc-wasm:
   kind: package
   title: ghc-wasm-meta, the GHC WebAssembly backend toolchain
   locator: https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta
+pekko-typed-testing:
+  kind: article
+  title: Apache Pekko Typed, Testing (ActorTestKit), Interaction Patterns (ask) and Persistence Testing
+  locator: https://pekko.apache.org/docs/pekko/current/typed/testing.html
+pekko-testing-async:
+  kind: article
+  title: Apache Pekko Typed, Asynchronous Testing (TestProbe, ManualTime and Behaviors.monitor)
+  locator: https://pekko.apache.org/docs/pekko/current/typed/testing-async.html
+lamport-real-time:
+  kind: paper
+  title: "Leslie Lamport, Real Time is Really Simple, Microsoft Research Technical Report MSR-TR-2005-30, 2005"
+  locator: https://www.microsoft.com/en-us/research/publication/real-time-is-really-simple/
+hughes-quickcheck-experiences:
+  kind: paper
+  title: "John Hughes, Experiences with QuickCheck: Testing the Hard Stuff and Staying Sane, LNCS 9600, 2016"
+  locator: https://doi.org/10.1007/978-3-319-30936-1_9
+quickcheck-state-machine:
+  kind: package
+  title: quickcheck-state-machine, property-based testing of stateful programs with QuickCheck
+  locator: https://hackage.haskell.org/package/quickcheck-state-machine
 erlang-otp-supervisors:
   kind: article
   title: Erlang/OTP Design Principles, Supervision Principles
@@ -899,3 +919,107 @@ rocq-recursive-definitions:
   kind: article
   title: Rocq inductive types and recursive functions
   locator: https://rocq-prover.org/doc/V9.0.0/refman/language/core/inductive.html
+erlang-otp-supervisor-behaviour:
+  kind: article
+  title: "Erlang/OTP stdlib: supervisor behaviour (strategies, restart types, intensity and period)"
+  locator: https://www.erlang.org/doc/apps/stdlib/supervisor.html
+pekko-typed-fault-tolerance:
+  kind: article
+  title: "Apache Pekko Typed: fault tolerance (supervise, restart withLimit, PreRestart, ChildFailed)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/fault-tolerance.html
+pekko-supervision:
+  kind: article
+  title: "Apache Pekko: supervision and monitoring (a restart keeps the ActorRef and the mailbox)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/general/supervision.html
+pekko-typed-interaction-patterns:
+  kind: article
+  title: "Apache Pekko Typed: interaction patterns (AskPattern.ask)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/interaction-patterns.html
+pekko-typed-interceptors:
+  kind: code
+  title: "Apache Pekko Typed: Behaviors.intercept and BehaviorInterceptor"
+  locator: https://github.com/apache/pekko/blob/v1.7.1/actor-typed/src/main/scala/org/apache/pekko/actor/typed/BehaviorInterceptor.scala
+pekko-typed-supervision-source:
+  kind: code
+  title: "Apache Pekko Typed: internal Supervision (restart limits, stash, logging)"
+  locator: https://github.com/apache/pekko/blob/v1.7.1/actor-typed/src/main/scala/org/apache/pekko/actor/typed/internal/Supervision.scala
+pekko-persistence-typed:
+  kind: article
+  title: "Apache Pekko Typed: event sourcing (EventSourcedBehavior) and the persistence test kit"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/persistence.html
+pekko-cluster-typed:
+  kind: article
+  title: "Apache Pekko Typed: cluster, receptionist and sharding"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster.html
+pekko-receptionist:
+  kind: article
+  title: "Apache Pekko Typed: actor discovery (Receptionist, ServiceKey, Find and Listing; the cluster receptionist over Distributed Data)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/actor-discovery.html
+pekko-serialization:
+  kind: article
+  title: "Apache Pekko: serialization (SerializerWithStringManifest, serialization-bindings, ActorRefResolver, Java serialization disabled)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/serialization.html
+pekko-cluster-membership:
+  kind: article
+  title: "Apache Pekko: cluster membership (member states, unreachable members, leaving through coordinated shutdown)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster-membership.html
+apache-pekko-samples:
+  kind: code
+  title: "apache/pekko-samples at f9ce3d60a4f24b1844409e3153c7fbf361cc2506: fsm, persistence and sharding (Java)"
+  locator: https://github.com/apache/pekko-samples/tree/f9ce3d60a4f24b1844409e3153c7fbf361cc2506
+pekko-cluster-sharding-typed:
+  kind: article
+  title: "Apache Pekko Typed: Cluster Sharding (EntityTypeKey, Entity.of, EntityRef)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster-sharding.html
+pekko-status-reply:
+  kind: article
+  title: "Apache Pekko Typed: request-response with StatusReply (askWithStatus)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/interaction-patterns.html#generic-response-wrapper
+pekko-maven-central:
+  kind: article
+  title: "Maven Central: org.apache.pekko pekko-actor-typed_3 releases"
+  locator: https://repo1.maven.org/maven2/org/apache/pekko/pekko-actor-typed_3/maven-metadata.xml
+actor-spring-boot-starter:
+  kind: article
+  title: "actor-spring-boot-starter: Pekko actors in Spring Boot (SpringActor, SpringActorSystem, @ActorTest)"
+  locator: https://seonwkim.github.io/actor-spring-boot-starter/
+actor-spring-boot-starter-source:
+  kind: code
+  title: "actor-spring-boot-starter source repository"
+  locator: https://github.com/seonWKim/actor-spring-boot-starter
+quickcheck-discards:
+  kind: documentation
+  title: "QuickCheck: Test.QuickCheck, maxDiscardRatio"
+  locator: https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck.html#v:maxDiscardRatio
+quickcheck-state-machine:
+  kind: code
+  title: "quickcheck-state-machine: test monadic programs using state machine based models"
+  locator: https://github.com/stevana/quickcheck-state-machine
+hedgehog-state-machines:
+  kind: documentation
+  title: "Hedgehog: Hedgehog.Internal.State (commands, Require preconditions)"
+  locator: https://hackage.haskell.org/package/hedgehog/docs/Hedgehog-Internal-State.html
+tla-specifying-systems:
+  kind: article
+  title: "Leslie Lamport, Specifying Systems, Addison-Wesley 2002, chapter 8 (Liveness and Fairness)"
+  locator: https://lamport.azurewebsites.net/tla/book.html
+valmari-stubborn-sets:
+  kind: paper
+  title: "Antti Valmari, Stubborn Sets for Reduced State Space Generation, Advances in Petri Nets 1990"
+  locator: https://doi.org/10.1007/3-540-53863-1_36
+peled-ample-sets:
+  kind: paper
+  title: "Doron Peled, All from One, One for All: on Model Checking Using Representatives, CAV 1993"
+  locator: https://doi.org/10.1007/3-540-56922-7_34
+holzmann-peled-por:
+  kind: paper
+  title: "Gerard J. Holzmann and Doron Peled, An Improvement in Formal Verification, FORTE 1994 (partial-order reduction in SPIN)"
+  locator: https://doi.org/10.1007/978-0-387-34878-0_13
+tlc-symmetry:
+  kind: documentation
+  title: "TLA+ tools: TLC model checker, SYMMETRY sets"
+  locator: https://lamport.azurewebsites.net/tla/tlc-options.html
+ip-dill-scalarsets:
+  kind: paper
+  title: "C. Norris Ip and David L. Dill, Better Verification Through Symmetry, Formal Methods in System Design 9, 1996"
+  locator: https://doi.org/10.1007/BF00625968

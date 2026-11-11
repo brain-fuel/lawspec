@@ -111,6 +111,7 @@ actorClassText datas wire a = do
       startCall = awaited (actorStart a) (E.call (impl (actorStart a)) (map D.text startValues))
       restartCall = case actorRestart a of
         Just d -> E.lambdaExpression [D.text "s"] (awaited d (E.call (impl d) [D.text "s"]))
+        Nothing | actorKeepsState a -> E.lambdaExpression [D.text "s"] (D.text "s")
         Nothing -> E.lambdaExpression [D.text "s"] startCall
       keywords = ["*", "supervisor: ls.Supervisor | None = None", "lifetime: str = \"permanent\""]
   pure $ unlines $

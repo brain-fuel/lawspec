@@ -2663,6 +2663,93 @@ export class Values
     const found = d.slice(2).filter(c => !c.slice(2).some(mentionsData));
     return found.length ? found : d.slice(2);
   }
+  /**
+   * One of a oneof descriptor's choices: an integer, or a text's code points
+   * (codes c ...).
+   */
+  choice(base, option)
+  {
+    if (!Array.isArray(option)) return BigInt(option);
+    return String.fromCodePoint(...option.slice(1).map(Number));
+  }
+  /**
+   * Every value of a descriptor, in a fixed order, when there are at most
+   * limit of them; null when there are more, or infinitely many. Integers
+   * ascend, false comes before true, and constructors come in their declared
+   * order with their fields' values varying last field fastest.
+   */
+  finite(d, limit, open = new Set())
+  {
+    if (d[0] === 'ref')
+    {
+      const name = d[1];
+      if (open.has(name)) return null;
+      open.add(name);
+      const out = this.finite(this.table.get(name), limit, open);
+      open.delete(name);
+      return out;
+    }
+    let out = [];
+    switch (d[0])
+    {
+      case 'int':
+      {
+        const lo = d[2],
+          hi = d[3];
+        if (lo === null || hi === null || hi - lo >= BigInt(limit)) return null;
+        for (let n = lo; n <= hi; n++) out.push(n);
+        break;
+      }
+      case 'bool':
+        out = [false, true];
+        break;
+      case 'unit':
+        out = [UNIT];
+        break;
+      case 'oneof':
+        out = d.slice(2).map(option => this.choice(d[1], option));
+        break;
+      case 'maybe':
+      {
+        const inner = this.finite(d[1], limit, open);
+        if (inner === null) return null;
+        out = [
+          new DataValue('Maybe::Absent', []),
+          ...inner.map(v => new DataValue('Maybe::Present', [v])),
+        ];
+        break;
+      }
+      case 'either':
+      {
+        const left = this.finite(d[1], limit, open);
+        const right = this.finite(d[2], limit, open);
+        if (left === null || right === null) return null;
+        out = [
+          ...left.map(v => new DataValue('Either::Left', [v])),
+          ...right.map(v => new DataValue('Either::Right', [v])),
+        ];
+        break;
+      }
+      case 'data':
+        for (const ctor of d.slice(2))
+        {
+          const fields = [];
+          for (const field of ctor.slice(2))
+          {
+            const values = this.finite(field, limit, open);
+            if (values === null) return null;
+            fields.push(values);
+          }
+          const tuples = product(fields, limit);
+          if (tuples === null) return null;
+          for (const t of tuples) out.push(new DataValue(String(ctor[1]), t));
+        }
+        break;
+      default:
+        return null;
+    }
+    return out.length > limit ? null : out;
+  }
   generate(d, random, size)
   {
     d = this.resolve(d);
@@ -2713,6 +2800,14 @@ export class Values
             this.generate(d[1], random, n),
           ]);
         return new DataValue('Either::Right', [this.generate(d[2], random, n)]);
+      case 'oneof':
+      {
+        const options = d.slice(2);
+        return this.choice(
+          d[1],
+          options[Number(random.below(BigInt(options.length)))],
+        );
+      }
       case 'data':
       {
         const choices = n <= 0n ? this.base(d) : d.slice(2);
@@ -2748,6 +2843,8 @@ export class Values
         return new DataValue('Maybe::Absent', []);
       case 'either':
         return new DataValue('Either::Left', [this.minimal(d[1])]);
+      case 'oneof':
+        return this.choice(d[1], d[2]);
     }
     const ctor = this.base(d)[0];
     return new DataValue(
@@ -2778,6 +2875,15 @@ export class Values
       }
       case 'bool':
         out = v ? [false] : [];
+        break;
+      case 'oneof':
+        // The choices before this one, first first.
+        for (const option of d.slice(2))
+        {
+          const c = this.choice(d[1], option);
+          if (render(c) === render(v)) break;
+          out.push(c);
+        }
         break;
       case 'text':
         if (v) out = smaller([...v]).map(cs => cs.join(''));
@@ -2846,6 +2952,26 @@ export class Values
       return true;
     });
   }
+}
+
+/**
+ * Every tuple of one value from each domain, the last varying fastest; null
+ * past limit.
+ */
+function product(domains, limit)
+{
+  let out = [[]];
+  for (const domain of domains)
+  {
+    const next = [];
+    for (const prefix of out)
+    {
+      for (const v of domain) next.push([...prefix, v]);
+      if (next.length > limit) return null;
+    }
+    out = next;
+  }
+  return out;
 }
 
 /** A value's canonical text, the same on every target. */
@@ -4508,7 +4634,9 @@ function modelArguments(command, indices)
 function emptyArguments(ds)
 {
   return ds.some(
-    d => d[0] === 'int' && d[2] !== null && d[3] !== null && d[2] > d[3],
+    d =>
+      (d[0] === 'int' && d[2] !== null && d[3] !== null && d[2] > d[3]) ||
+      (d[0] === 'oneof' && d.length === 2),
   );
 }
 function validArguments(command, indices, args)
@@ -4570,6 +4698,145 @@ async function stepModel(command, symbols, args, state)
   return [out.fields[1], out.fields[0]];
 }
 
+// Generation honours the reference. A step is drawn among the commands
+// enabled at the model state: typestate admits them, their precondition
+// holds, and some arguments are inside the reference's refinements. When a
+// command's argument tuples are few (FINITE_STEPS), each is tried against
+// the reference and one valid tuple is chosen, as QuickCheck state machines
+// generate from a precondition. Otherwise arguments are drawn and checked
+// again, up to STEP_ATTEMPTS times, and every draw the reference rejects is
+// counted. A run where the reference rejected more draws than it accepted
+// shows little, so its check is incomplete, never passed.
+// ref:DEC-honest-model-steps
+
+// The most argument tuples of one step that are enumerated instead of drawn.
+const FINITE_STEPS = 64;
+
+// How many times a step's arguments are drawn before the step is given up.
+const STEP_ATTEMPTS = 8;
+
+/**
+ * The commands enabled at a state, each as [index, tuples]: its valid
+ * argument tuples, or null to draw them.
+ */
+async function enabledSteps(model, symbols, state, indices)
+{
+  const out = [];
+  for (let i = 0; i < model.commands.length; i++)
+  {
+    const command = model.commands[i];
+    if (!command.admits(indices)) continue;
+    const descriptors = modelArguments(command, indices);
+    if (emptyArguments(descriptors)) continue;
+    if (command.when !== null && command.when !== undefined)
+    {
+      let holds;
+      try
+      {
+        holds = await command.when(symbols, state);
+      }
+      catch
+      {
+        holds = false;
+      }
+      if (!holds) continue;
+    }
+    let domains = [];
+    for (const d of descriptors)
+    {
+      const values = model.values.finite(d, FINITE_STEPS);
+      if (values === null)
+      {
+        domains = null;
+        break;
+      }
+      domains.push(values);
+    }
+    const tuples = domains === null ? null : product(domains, FINITE_STEPS);
+    if (tuples === null)
+    {
+      out.push([i, null]);
+      continue;
+    }
+    const valid = [];
+    for (const t of tuples)
+    {
+      try
+      {
+        await stepModel(command, symbols, t, state);
+        valid.push(t);
+      }
+      catch (error)
+      {
+        // Outside the reference: not a step here.
+        if (!(error instanceof Invalid)) throw error;
+      }
+    }
+    if (valid.length) out.push([i, valid]);
+  }
+  return out;
+}
+
+/**
+ * Null when no command is enabled; otherwise [step, state after it], the
+ * step null when every draw was rejected. rejected[0] counts the draws the
+ * reference rejects.
+ */
+async function nextStep(
+  model,
+  symbols,
+  random,
+  state,
+  indices,
+  size,
+  crashes,
+  rejected,
+)
+{
+  const enabled = await enabledSteps(model, symbols, state, indices);
+  if (!enabled.length) return null;
+  const [index, tuples] = enabled[Number(random.below(BigInt(enabled.length)))];
+  // One step in eight of an actor's run is a crash.
+  if (
+    crashes &&
+    model.steps.length > model.commands.length &&
+    random.below(8n) === 0n
+  )
+  {
+    const crash = model.steps[model.commands.length];
+    const [after] = await stepModel(crash, symbols, [], state);
+    return [[model.commands.length, []], after];
+  }
+  const command = model.steps[index];
+  if (tuples !== null)
+  {
+    const args =
+      tuples.length === 1
+        ? tuples[0]
+        : tuples[Number(random.below(BigInt(tuples.length)))];
+    const [after] = await stepModel(command, symbols, args, state);
+    return [[index, args], after];
+  }
+  for (let attempt = 0; attempt < STEP_ATTEMPTS; attempt++)
+  {
+    const args = modelArguments(command, indices).map(d =>
+      model.values.generate(d, random, size),
+    );
+    try
+    {
+      const [after] = await stepModel(command, symbols, args, state);
+      return [[index, args], after];
+    }
+    catch (error)
+    {
+      if (!(error instanceof Invalid)) throw error;
+      rejected[0]++;
+    }
+  }
+  return [null, state];
+}
+
+/** A generated run, and how many of its drawn steps the reference rejected. */
 async function generateRun(model, random, length, size, crashes = false)
 {
   const symbols = new Map();
@@ -4583,54 +4850,72 @@ async function generateRun(model, random, length, size, crashes = false)
   }
   catch
   {
-    return [startArgs, []];
+    return [[startArgs, []], 0];
   }
   let indices = [...model.startIndices];
   const steps = [];
+  const rejected = [0];
   for (let n = 0; n < length; n++)
   {
-    const allowed = [];
-    model.commands.forEach((c, i) =>
-    {
-      if (c.admits(indices) && !emptyArguments(modelArguments(c, indices)))
-        allowed.push(i);
-    });
-    if (!allowed.length) break;
-    let index = allowed[Number(random.below(BigInt(allowed.length)))];
-    // One step in eight of an actor's run is a crash.
-    if (
-      crashes &&
-      model.steps.length > model.commands.length &&
-      random.below(8n) === 0n
-    )
-      index = model.commands.length;
-    const command = model.steps[index];
-    const args = modelArguments(command, indices).map(d =>
-      model.values.generate(d, random, size),
+    const taken = await nextStep(
+      model,
+      symbols,
+      random,
+      state,
+      indices,
+      size,
+      crashes,
+      rejected,
     );
-    try
+    if (taken === null) break;
+    const [step, after] = taken;
+    if (step !== null)
     {
-      [state] = await stepModel(command, symbols, args, state);
+      steps.push(step);
+      state = after;
+      indices = model.steps[step[0]].shifted(indices);
     }
-    catch (error)
-    {
-      if (error instanceof Invalid)
-      {
-        if (
-          command.arguments.some(d => d[0] === 'dependent') &&
-          (command.when == null || (await command.when(symbols, state)))
-        )
-          throw new Error(
-            'incomplete model generation: dependent arguments rejected by the reference (1 attempt)',
-          );
-        continue;
-      }
-      throw error;
-    }
-    steps.push([index, args]);
-    indices = command.shifted(indices);
   }
-  return [startArgs, steps];
+  return [[startArgs, steps], rejected[0]];
+}
+
+/**
+ * Whether the reference rejected more of a run's drawn steps than it
+ * accepted.
+ */
+const mostlyRejected = (accepted, rejected) => rejected > accepted;
+
+const incompleteRun = (model, run, accepted, rejected) =>
+  `incomplete model generation: model ${model.name}'s ${run} drew ` +
+  `${rejected} steps its reference rejected and ${accepted} it accepted; ` +
+  'fewer than half of its steps are valid, so it shows little of the system';
+
+/** How a failing run's rejected draws read after its failure. */
+const rejectedNote = rejected =>
+  rejected === 0
+    ? ''
+    : ` (the reference rejected ${rejected} drawn steps of this run)`;
+
+/**
+ * One line of JSON per model check, appended to the file LAWSPEC_MODEL_REPORT
+ * names: how many runs and steps it checked, and how many drawn steps the
+ * reference rejected.
+ */
+function reportModel(model, check, runs, steps, rejected, outcome)
+{
+  const path = globalThis.process?.env?.LAWSPEC_MODEL_REPORT;
+  if (!path) return;
+  const line =
+    `{"model":"${model.name}","check":"${check}","runs":${runs},` +
+    `"steps":${steps},"rejected":${rejected},"outcome":"${outcome}"}\n`;
+  try
+  {
+    nodeModule('node:fs').appendFileSync(path, line);
+  }
+  catch
+  {
+    // The report is a side channel; the check's own result stands.
+  }
 }
 
 const errorName = error =>
@@ -4808,20 +5093,48 @@ export async function checkModelAsync(model, options = {})
   if (seed === undefined || seed === null)
     seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
   const random = new SplitMix64(BigInt(seed));
+  let steps = 0;
+  let rejectedTotal = 0;
   for (let c = 0; c < cases; c++)
   {
     const length = Number(random.below(BigInt(maxLength) + 1n));
-    let run = await generateRun(model, random, length, 1 + (c % 8), true);
+    let [run, rejected] = await generateRun(
+      model,
+      random,
+      length,
+      1 + (c % 8),
+      true,
+    );
+    const accepted = run[1].length;
+    steps += accepted;
+    rejectedTotal += rejected;
+    if (mostlyRejected(accepted, rejected))
+    {
+      reportModel(
+        model,
+        'sequential',
+        c + 1,
+        steps,
+        rejectedTotal,
+        'incomplete',
+      );
+      throw new Error(
+        incompleteRun(model, `run ${c + 1} of ${cases}`, accepted, rejected),
+      );
+    }
     const failure = await execute(model, run);
     if (failure !== null)
     {
+      reportModel(model, 'sequential', c + 1, steps, rejectedTotal, 'failed');
       let step, message;
       [run, [step, message]] = await shrinkRun(model, run, failure, maxShrinks);
       throw new Error(
-        `model ${model.name} fails at step ${step} of ${describeRun(model, run)}: ${message}`,
+        `model ${model.name} fails at step ${step} of ${describeRun(model, run)}: ${message}` +
+          rejectedNote(rejected),
       );
     }
   }
+  reportModel(model, 'sequential', cases, steps, rejectedTotal, 'passed');
 }
 
 // Parallel runs of a shared model. A case is a sequential prefix and one
@@ -4897,27 +5210,29 @@ async function parallelAllowed(model, prefix, branches)
   );
 }
 
-async function generateBranch(model, random, state, length, size)
+async function generateBranch(model, random, state, length, size, rejected)
 {
   const symbols = new Map();
   const steps = [];
   for (let n = 0; n < length; n++)
   {
-    const index = Number(random.below(BigInt(model.commands.length)));
-    const command = model.commands[index];
-    const args = command.arguments.map(d =>
-      model.values.generate(d, random, size),
+    const taken = await nextStep(
+      model,
+      symbols,
+      random,
+      state,
+      model.startIndices,
+      size,
+      false,
+      rejected,
     );
-    try
+    if (taken === null) break;
+    const [step, after] = taken;
+    if (step !== null)
     {
-      [state] = await stepModel(command, symbols, args, state);
+      steps.push(step);
+      state = after;
     }
-    catch (error)
-    {
-      if (error instanceof Invalid) continue;
-      throw error;
-    }
-    steps.push([index, args]);
   }
   return steps;
 }
@@ -4928,14 +5243,16 @@ async function generateParallel(
   size,
   threads = THREADS,
   branchLength = BRANCH,
+  rejected = [0],
 )
 {
-  const prefix = await generateRun(
+  const [prefix, prefixRejected] = await generateRun(
     model,
     random,
     Number(random.below(4n)),
     size,
   );
+  rejected[0] += prefixRejected;
   let state;
   try
   {
@@ -4957,6 +5274,7 @@ async function generateParallel(
         state,
         1 + Number(random.below(BigInt(branchLength))),
         size,
+        rejected,
       ),
     );
   // Drop the last step of the longest branch (the first, among equals)
@@ -5365,19 +5683,41 @@ export async function checkModelParallelAsync(model, options = {})
   if (seed === undefined || seed === null)
     seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
   const random = new SplitMix64(BigInt(seed) ^ 0x5bd1e995n);
+  let steps = 0;
+  let rejectedTotal = 0;
   for (let c = 0; c < cases; c++)
   {
+    const rejected = [0];
     let testCase = await generateParallel(
       model,
       random,
       1 + (c % 8),
       threads,
       branchLength,
+      rejected,
     );
+    const [prefix, branches] = testCase;
+    const accepted =
+      prefix[1].length + branches.reduce((n, b) => n + b.length, 0);
+    steps += accepted;
+    rejectedTotal += rejected[0];
+    if (mostlyRejected(accepted, rejected[0]))
+    {
+      reportModel(model, 'parallel', c + 1, steps, rejectedTotal, 'incomplete');
+      throw new Error(
+        incompleteRun(
+          model,
+          `parallel case ${c + 1} of ${cases}`,
+          accepted,
+          rejected[0],
+        ),
+      );
+    }
     const shake = random.next();
     let failure = await parallelFails(model, testCase, repeats, shake);
     if (failure !== null)
     {
+      reportModel(model, 'parallel', c + 1, steps, rejectedTotal, 'failed');
       [testCase, failure] = await shrinkParallel(
         model,
         testCase,
@@ -5387,10 +5727,12 @@ export async function checkModelParallelAsync(model, options = {})
         shake,
       );
       throw new Error(
-        `model ${model.name} is not ${CONSISTENT[model.consistency]}: ${describeParallel(model, testCase)}: ${failure}`,
+        `model ${model.name} is not ${CONSISTENT[model.consistency]}: ${describeParallel(model, testCase)}: ${failure}` +
+          rejectedNote(rejected[0]),
       );
     }
   }
+  reportModel(model, 'parallel', cases, steps, rejectedTotal, 'passed');
 }
 
 // Scenarios: processes that drive a shared model's commands at the same time

@@ -6,6 +6,109 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Prior-art decisions for 0.33's Pekko and Spring actor runtimes
+  (DEC-pekko-runtime, DEC-pekko-otp-supervision, DEC-restart-keeps-state,
+  DEC-pekko-cluster-remote, DEC-spring-actor-starter), and a planned 0.33
+  roadmap row.
+- `:actors {:runtime :lawspec|:pekko|:spring, :remote :cluster}` on a target in
+  `lawspec.edn`. `:lawspec` stays the default with unchanged output; `:pekko`
+  and `:spring` are rejected on non-JVM targets.
+- `restart keeps state`: an actor line saying that after a crash the actor and
+  its model keep the state committed by the last message handled. It is
+  implemented on every target, with the `restarts` acceptance suite and a
+  mutant that loses the state.
+- An Apache Pekko 1.7.1 actor runtime (`runtime/pekko`): `LawSpecPekko`,
+  `LawSpecPekkoSupervisor` (OTP strategies, lifetimes, restart limit and
+  escalation) and `LawSpecCrashInterceptor`. With `:runtime :pekko`, Java,
+  Kotlin, Groovy and Clojure actors run on it, and the build gains
+  `pekko-actor-typed_3`. Scala on `:pekko` reuses the Java runtime through
+  Scala 3's SAM conversion. Without `:remote :cluster`, actors on `:pekko`
+  have no `serve` and `connect`.
+- `:remote :cluster` on `:pekko` (Java, Kotlin, Scala, Groovy, Clojure) and
+  `:spring` (Java, Kotlin, Groovy, Clojure): generated actors' `serve` and
+  `connect` work across Pekko Cluster through `LawSpecPekkoCluster`
+  (`runtime/pekko`). A `LawSpecPekkoCluster.Node` is a cluster member; `serve`
+  registers the actor with the typed Receptionist, `connect` finds it there,
+  and calls cross Artery with LawSpec's canonical wire encoding in a Pekko
+  serializer (`WireSerializer`), never Java serialization. A call to a member
+  that is unreachable or has left throws `Unreachable` at once; partitions
+  are an explicit unsupported operation. The build gains
+  `pekko-cluster-typed_3` 1.7.1. The distribution suite runs its remote law
+  on a two-node cluster in one JVM (`LAWSPEC_REMOTE=cluster`, adapters in
+  `files-cluster`), on Pekko for every JVM target and through Spring for
+  Java, with mutants and `lawspec-dev ci` steps. DEC-pekko-cluster-remote is
+  decided.
+- A `:spring` actor runtime on Spring Boot 3.5.16 and
+  `io.github.seonwkim:actor-spring-boot-starter` 1.0.0 (`runtime/spring`).
+  Java and Kotlin actors gain a nested `@Component` `SpringActor` and are
+  spawned through the starter's `SpringActorSystem`; supervision is the
+  `:pekko` OTP emulation. Groovy and Clojure reuse the Java classes. Java's
+  generated supervision test is an `@ActorTest` (`actor-test` 1.0.0). Scala
+  on `:spring` is an explicit unsupported diagnostic.
+- Native bindings accept `actors`: an existing Pekko Typed actor, named by its
+  behaviour factory and each handler's message, `replyTo`, reply class and
+  result accessor, stands in for a LawSpec `actor`. On Java, the actor's model
+  checks drive it in Pekko's `ActorTestKit` through the new
+  `LawSpecRuntime.ActorBackend`: sequential runs with injected crashes,
+  shrinking, model invariants, linearizability and scenarios. Event-sourced
+  actors run on the in-memory journal and recover after a crash. Ask
+  timeouts fail the run. Shapes LawSpec cannot ask or observe (several
+  replies, a missing `replyTo`, invariants on the actor's state) are explicit
+  diagnostics, and other targets are rejected as unsupported. Scala binds
+  Pekko actors too, with generated Scala wiring over the Java checker and the
+  same binding fields as Java (callers, generic replies, result fields,
+  message factories and sharded entities). On Java, `"spring": "<class>"`
+  binds an existing starter `SpringActor` component (not event-sourced or
+  sharded ones yet). The
+  `pekko-native-actors` acceptance suite checks a hand-written event-sourced
+  account on Java and Scala, and `pekko-native-actors-spring` a Spring
+  account on Java, with mutants for a wrong reply, state lost on restart and
+  a non-linearizable implementation.
+- Native actor handlers accept `replyArguments` (a generic reply such as
+  `StatusReply<Summary>`), `resultField` (a public field of the reply),
+  `caller` (the first argument is a caller the actor knows by address, with
+  one reply address for the run) and `messageFactory` (a static method that
+  makes the message). An actor binding's `entity` now runs the actor as a
+  sharded entity in a one-node cluster (`LawSpecPekkoSharding`), each
+  handler taking the entity's id first. The generated wiring sits in the
+  behaviour's package, so package-private messages can be bound. An
+  event-sourced sharded entity, and a caller of one, are unsupported.
+- The `pekko-samples/persistence`, `pekko-samples/fsm` and
+  `pekko-samples/sharding` acceptance suites check apache/pekko-samples'
+  Java shopping cart, dining hakkers and weather station, vendored unchanged
+  at f9ce3d60 and built on Pekko 1.7.1, with mutants: an item lost after a
+  restart, a checkout that is not final, a chopstick granted twice, one never
+  put down, a starvation law that LawSpec refutes, and stations that share
+  their readings. A how-to, "Check Pekko actors with LawSpec", uses them as
+  worked examples and lists what LawSpec cannot check yet, including the CQRS
+  sample, which has no Pekko code upstream. The Scala persistence,
+  sharding and fsm samples are checked the same way.
+- Native actor bindings observe an actor that answers no message through
+  probes, as Pekko's `TestProbe` does. `behaviorArguments` pass the
+  behaviour strings and probe addresses; a probe handler `hears` the next
+  message the actor sends it, or `answers` the actor from the probe.
+  `messageValue` tells a static message value, and `replyCases` reads a
+  `Bool` or `Text` result from the reply's class, as `{"Taken": true,
+  "Busy": false}`.
+- `time passes by r [when p]`: an actor's step in which time passes by the
+  `Duration` its reference returns, so the actor's timers fire. A native
+  Pekko actor runs it on `ManualTime`; every other implementation is an
+  explicit unsupported diagnostic, and parallel runs leave the step out.
+  Fairness lists name it `time passes`.
+- The dining hakkers suite binds the sample's real `Hakker` instead of a
+  restated protocol: its chopsticks are probes, its timers run on virtual
+  time, and its laws are proved over a one-hakker model and checked against
+  it on Java and Scala. The starvation law is still refuted with a run, and
+  a mutant hakker that keeps a chopstick it was given after a refusal is
+  rejected.
+- Partial model references: refine a reference's parameters, its state
+  included, and a step outside them is not enabled, in the model checker and
+  in generated runs, instead of being a step that changes nothing.
+- `LAWSPEC_MODEL_REPORT`: each model and actor check on every target appends
+  one JSON line with its runs, accepted steps, rejected steps and outcome.
+
 ### Changed
 
 - A definition in which each call shrinks one of two arguments and keeps the
@@ -20,6 +123,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   proof for every input. A Haskell manifest EDN codec is included but is not
   connected to any public entrypoint. The existing runtime remains the default.
   See the [application port status](docs/reference/host-sdk.md#application-port-status).
+- Generated model and actor runs draw only steps the reference accepts where
+  they can: arguments follow the refinements of the reference as well as the
+  adapter (`(oneof ...)` descriptors for a choice of constants), and a
+  command whose arguments have at most 64 values draws from the tuples its
+  reference accepts in that state. Every refused draw is counted. A run
+  whose refused draws outnumber its accepted steps stops the check with an
+  "incomplete model generation" error instead of passing, and a failure
+  says how many draws its run had refused. Runs stay identical on every
+  target for a seed. The shopping cart's references refine its item names
+  and quantities again.
+- `assuming fairness for c` is fair to each argument value of `c`, as TLA+'s
+  fairness for each `c(v)`: taking `c u` for ever no longer satisfies it
+  while `c v` stays enabled.
+- The model checker explores each model once for all its laws, with an exact
+  visited set of compact keys and cheaper reference calls. A restated
+  five-seat dining hakkers table (9,864 states) took about 6 seconds instead
+  of more than 12 minutes; the `pekko-samples/fsm` suite now binds the real
+  `Hakker` instead. A law with no fairness or deadline is checked with
+  partial-order reduction (stubborn sets), and its reason says how many
+  states took a reduced set of steps. Symmetry reduction is not
+  implemented.
+
+### Fixed
+
+- Kotlin trailing lambdas whose parameters fit on the call line but whose
+  arrow does not are laid out as ktfmt does (`{ s` then `->` on the next
+  line).
+- Scala output follows scalafmt where long lines broke differently: nested
+  type arguments break inside their own brackets, one argument a line; an
+  actor's handler lambda puts its parameter below `actor.call[T] {` when the
+  line is full; an actor's restart lambda puts its body on the next line;
+  and a long model-test backend reference breaks before its method. A
+  definition whose one-line body does not fit after its `=` (an actor's
+  handler with no reply) moves the body to the next line.
 
 ### Added
 

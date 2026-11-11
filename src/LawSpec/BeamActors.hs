@@ -100,9 +100,11 @@ emit target layout bits declarations units = do
         allParams = signatures parameters ++ startParams
     start <- checked interfaces (actorStart a) values (bridge "to_native" (actorState a))
     restart <- case actorRestart a of
+      -- restart keeps state: the state after a crash is the one before it.
+      Nothing | actorKeepsState a -> pure (D.text "_State")
       Nothing -> pure start
       Just declaration -> checked interfaces declaration [D.text "_State"] (bridge "to_native" (actorState a))
-    let restartArg = D.text (if actorRestart a == Nothing then "_" else "_State")
+    let restartArg = D.text (if actorRestart a == Nothing && not (actorKeepsState a) then "_" else "_State")
         spec = E.record [(E.atom "kind",E.atom "actor"),(E.atom "start",E.lambda [] start),
           (E.atom "restart",E.lambda [restartArg] restart),
           (E.atom "context",E.remote "lawspec_beam_actors" "context" []),

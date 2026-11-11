@@ -73,7 +73,8 @@ import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraphWithBits, ide
 import LawSpec.Frontend (compileCore)
 import LawSpec.Memo (buildIdentity)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesWith)
+import LawSpec.ActorRuntime (ActorRemote(..), ActorRuntime(..), ActorSettings(ActorSettings))
+import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesForActors)
 import LawSpec.Targets (programTargets)
 import LawSpec.BuiltinDefaults (adapterPath)
 import Toolchain
@@ -102,6 +103,9 @@ main = do
       mutate = "--no-mutants" `notElem` flags
   bits <- maybe 64 read <$> lookupEnv "LAWSPEC_MACHINE_BITS"
   minify <- (== Just "1") <$> lookupEnv "LAWSPEC_MINIFY"
+  runtime <- actorRuntime
+  remote <- actorRemote
+  let settings = ActorSettings runtime remote
   manifest <- BL.readFile ("acceptance" </> suite </> "suite.json")
   specs <- case decode manifest >>= list . field "specs" of
     Just values -> pure [T.unpack s | String s <- values]
@@ -123,9 +127,12 @@ main = do
         _ -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", String "1.0-rc.2"),
               ("verification", object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])])]
       extra = protocol ++ [("packages", toJSON packages) | not (null packages)] ++
-        [("dependencies", dependencies) | dependencies /= Null]
+        [("dependencies", dependencies) | dependencies /= Null] ++
+        [("actors", object (["runtime" .= name] ++ ["remote" .= ("cluster" :: String) | remote == ClusterRemote]))
+        | Just name <- [runtimeName runtime]]
   let targets = if null selected then programTargets else selected
-      profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "")
+      profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "") ++ maybe "" ('-' :) (runtimeName runtime) ++
+        (if remote == ClusterRemote then "-cluster" else "")
   forM_ targets $ \target -> do
     let project = ".artifacts" </> (suite ++ profile) </> target
         bindingsFile = "acceptance" </> suite </> target </> "bindings.json"
@@ -143,15 +150,16 @@ main = do
       if mismatch then expectMismatch target bits project
       else do
         mode <- cacheMode
-        scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
+        scaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) minify target)
         suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
         formatInputs <- maybe [] formatterInputs <$> formatter target
-        let labels = [suite, target, profile, show mutate]
+        let labels = [suite, target, profile, show mutate] ++ maybe [] actorRuntimePins (runtimeName runtime) ++
+              ["org.apache.pekko:pekko-cluster-typed_3:1.7.1" | remote == ClusterRemote]
             inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
         key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
-        semanticScaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) False target)
+        semanticScaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) False target)
         meaning <- forM (semanticIdentities bits sources) $ \hashes ->
           meaningKey target [suite,target,show bits,show mutate] buildIdentity (hashes ++ map snd vectors ++ [show (extra ++ native)]) semanticScaffolds inputs
         exact <- if mode == Reuse then lookupResult key else pure Nothing
@@ -285,8 +293,40 @@ usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.cr
   || (target `elem` ["haskell", "rust"] && generatedPath g == adapterPath target "lawspec.randomness")
   || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"])
 
+-- | LAWSPEC_ACTORS=pekko (or spring) runs a suite's JVM targets with that
+-- actor runtime, as lawspec.edn's :actors {:runtime :pekko} would; the
+-- default is LawSpec's own runtime. ref:DEC-pekko-runtime
+actorRuntime :: IO ActorRuntime
+actorRuntime = lookupEnv "LAWSPEC_ACTORS" >>= \choice -> case choice of
+  Nothing -> pure LawSpecActors
+  Just "" -> pure LawSpecActors
+  Just "lawspec" -> pure LawSpecActors
+  Just "pekko" -> pure PekkoActors
+  Just "spring" -> pure SpringActors
+  Just other -> die ("LAWSPEC_ACTORS must be lawspec, pekko or spring, not " ++ other)
+
+-- | LAWSPEC_REMOTE=cluster serves the JVM targets' actors over Pekko Cluster,
+-- as lawspec.edn's :actors {:remote :cluster} would, with LAWSPEC_ACTORS=pekko
+-- or spring. A target's adapters then come from files-cluster where it has
+-- them (its nodes are cluster members), and from files otherwise.
+-- ref:DEC-pekko-cluster-remote
+actorRemote :: IO ActorRemote
+actorRemote = lookupEnv "LAWSPEC_REMOTE" >>= \choice -> case choice of
+  Nothing -> pure LawSpecRemote
+  Just "" -> pure LawSpecRemote
+  Just "cluster" -> pure ClusterRemote
+  Just other -> die ("LAWSPEC_REMOTE must be cluster, not " ++ other)
+
+runtimeName :: ActorRuntime -> Maybe String
+runtimeName runtime = case runtime of
+  LawSpecActors -> Nothing
+  PekkoActors -> Just "pekko"
+  SpringActors -> Just "spring"
+
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
+  runtime <- actorRuntime
+  remote <- actorRemote
   createDirectoryIfMissing True project
   forM_ ["src", "lib", "java", "test", "test-support", "tests", "example", "dist", "lawspec", "priv", "lawspec_crypto_build.escript"] $ \folder -> removePathForcibly (project </> folder)
   -- Clojure's Java model and reports must describe this generated project.
@@ -306,7 +346,7 @@ writeProject suite target project defaultProfile minify generated = do
   -- Deleting those fingerprints forces Hex resolution despite a valid lock.
   when (target == "gleam") $ forM_ ["dev", "prod", "lsp", "erlang-shipment"] $ \mode ->
     removePathForcibly (project </> "build" </> mode)
-  scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
+  scaffolds <- either die pure (scaffoldFilesForActors (ActorSettings runtime remote) (usesCrypto target generated) minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
   adapters <- suiteFiles suite target
@@ -555,7 +595,11 @@ runToolWith extra tool args project = do
 
 
 suiteFiles :: String -> String -> IO [(FilePath, FilePath)]
-suiteFiles suite target = suiteDirectory suite target "files"
+suiteFiles suite target = do
+  remote <- actorRemote
+  files <- suiteDirectory suite target "files"
+  overlay <- if remote == ClusterRemote then suiteDirectory suite target "files-cluster" else pure []
+  pure ([(relative, source) | (relative, source) <- files, relative `notElem` map fst overlay] ++ overlay)
 
 suiteDirectory :: String -> String -> FilePath -> IO [(FilePath, FilePath)]
 suiteDirectory suite target folder = do
@@ -615,8 +659,14 @@ expectMismatch target bits project = do
     (die (target ++ ": missing architecture mismatch diagnostic"))
   putStrLn (target ++ ": " ++ show bits ++ "-bit profile rejected for the native machine adapter")
 
+-- | With LAWSPEC_REMOTE=cluster, a mutant in mutants-cluster replaces the one
+-- of the same name, for adapters that files-cluster replaces.
 suiteMutants :: String -> String -> IO [Mutant]
-suiteMutants suite target = suiteMutantsIn ("acceptance" </> suite </> target </> "mutants")
+suiteMutants suite target = do
+  remote <- actorRemote
+  mutants <- suiteMutantsIn ("acceptance" </> suite </> target </> "mutants")
+  overlay <- if remote == ClusterRemote then suiteMutantsIn ("acceptance" </> suite </> target </> "mutants-cluster") else pure []
+  pure ([m | m <- mutants, mutantName m `notElem` map mutantName overlay] ++ overlay)
 
 suiteMutantsIn :: FilePath -> IO [Mutant]
 suiteMutantsIn base = do

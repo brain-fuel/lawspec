@@ -22,6 +22,9 @@ data Actor = Actor
   -- The adapter giving the state after a crash from the last one (restart
   -- from); without it the actor restarts from its start.
   , actorRestart :: Maybe C.Declaration
+  -- restart keeps state: after a crash the state is the state before it, so
+  -- the runtime's restart is the identity. ref:DEC-restart-keeps-state
+  , actorKeepsState :: Bool
   }
 
 -- | What a target needs of one supervisor.
@@ -60,13 +63,17 @@ actorsOf u =
   [ Actor u (machineName m) (lastSegment (machineState m))
       (C.Constructor (C.idText (C.unitId u) ++ "::type::" ++ lastSegment (machineState m)) []) own start (named start)
       [Handler (commandName c) d (drop 1 (named d)) (reply own d) | c <- machineCommands m, not (commandRestart c), Just d <- [declaration (commandSystem c)]]
-      (case [d | c <- machineCommands m, commandRestart c, Just d <- [declaration (commandSystem c)]] of
+      (case [d | c <- machineCommands m, commandRestart c, not (keeps c), Just d <- [declaration (commandSystem c)]] of
         d : _ -> Just d
         [] -> Nothing)
+      (any keeps [c | c <- machineCommands m, commandRestart c])
   | m <- C.unitMachines u, machineActor m
   , Just s <- [machineStart m], Just start <- [declaration (startSystem s)]
   , let own = snd (arrows (C.declarationType start)) ]
   where
+    -- A restart whose system is a checked definition is keeps state's
+    -- generated identity; a restart from runs an adapter.
+    keeps c = commandRestart c && commandSystem c `elem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)
     declaration i = case [d | d <- C.unitDeclarations u, C.declarationId d == i] of
       d : _ -> Just d
       [] -> Nothing

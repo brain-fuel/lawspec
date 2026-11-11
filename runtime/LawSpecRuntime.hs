@@ -21,7 +21,7 @@ module LawSpecRuntime where
 
 import Control.Concurrent (Chan, MVar, forkIO, killThread, modifyMVar, newChan, newEmptyMVar, newMVar, putMVar, readChan, readMVar, takeMVar, threadDelay, tryPutMVar, writeChan, yield)
 import Control.Exception (ErrorCall (..), Exception, SomeException (..), catch, displayException, evaluate, finally, fromException, throwIO, toException, try)
-import Control.Monad (foldM, forM, forM_, replicateM)
+import Control.Monad (filterM, foldM, forM, forM_, replicateM)
 import Data.Bits (bit, finiteBitSize, setBit, shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -2446,6 +2446,69 @@ descriptorArgument :: Int -> Descriptor -> Descriptor
 descriptorArgument i (DescList xs) | i < length xs = xs !! i
 descriptorArgument _ d = error ("invalid descriptor " ++ show d)
 
+-- | A oneof descriptor's choices, after its base descriptor.
+oneofOptions :: Descriptor -> [Descriptor]
+oneofOptions (DescList (_ : _ : options)) = options
+oneofOptions d = error ("invalid oneof descriptor " ++ show d)
+
+-- | One of a oneof descriptor's choices: an integer, or a text's code
+-- points (codes c ...).
+choiceValue :: Descriptor -> Descriptor -> Scalar
+choiceValue base (DescInteger n) = SInteger (descriptorName (descriptorArgument 1 base)) n
+choiceValue _ (DescList (DescAtom "codes" : codes)) = SSequence "Text" [fromInteger c | DescInteger c <- codes]
+choiceValue _ d = error ("invalid oneof choice " ++ show d)
+
+-- | Every value of a descriptor, in a fixed order, when there are at most
+-- limit of them; Nothing when there are more, or infinitely many. Integers
+-- ascend, false comes before true, and constructors come in their declared
+-- order with their fields' values varying last field fastest.
+finiteValues :: DataTable -> Int -> Descriptor -> Maybe [Scalar]
+finiteValues table limit = go []
+  where
+    go open ref@(DescList [DescAtom "ref", name])
+      | descriptorName name `elem` open = Nothing
+      | otherwise = go (descriptorName name : open) (resolveDescriptor table ref)
+    go open d = do
+      out <- case descriptorKind d of
+        "int" -> case d of
+          DescList (_ : t : DescInteger lo : DescInteger hi : _)
+            | hi - lo < toInteger limit -> Just [SInteger (descriptorName t) n | n <- [lo .. hi]]
+          _ -> Nothing
+        "bool" -> Just [SBool False, SBool True]
+        "unit" -> Just [SAbsent "Unit"]
+        "oneof" -> Just (map (choiceValue (arg 1)) (oneofOptions d))
+        "maybe" -> do
+          inner <- go open (arg 1)
+          Just (SData "Maybe::Absent" [] : [SData "Maybe::Present" [v] | v <- inner])
+        "either" -> do
+          left <- go open (arg 1)
+          right <- go open (arg 2)
+          Just ([SData "Either::Left" [v] | v <- left] ++ [SData "Either::Right" [v] | v <- right])
+        "data" ->
+          concat
+            <$> mapM
+              ( \ctor -> do
+                  let (tag, fields) = constructorParts ctor
+                  domains <- mapM (go open) fields
+                  tuples <- productWithin limit domains
+                  Just (map (SData tag) tuples)
+              )
+              (constructorsOf d)
+        _ -> Nothing
+      if length out > limit then Nothing else Just out
+      where
+        arg i = descriptorArgument i d
+
+-- | Every tuple of one value from each domain, the last varying fastest;
+-- Nothing past limit.
+productWithin :: Int -> [[a]] -> Maybe [[a]]
+productWithin limit = go [[]]
+  where
+    go out [] = Just out
+    go out (domain : rest) =
+      let next = [prefix ++ [v] | prefix <- out, v <- domain]
+       in if length (take (limit + 1) next) > limit then Nothing else go next rest
+
 generateValue :: DataTable -> Descriptor -> Integer -> Draw Scalar
 generateValue table d0 size = case descriptorKind d of
   "int" -> do
@@ -2474,6 +2537,10 @@ generateValue table d0 size = case descriptorKind d of
     if r == 0
       then (\v -> SData "Either::Left" [v]) <$> generateValue table (arg 1) size
       else (\v -> SData "Either::Right" [v]) <$> generateValue table (arg 2) size
+  "oneof" -> do
+    let options = oneofOptions d
+    i <- drawBelow (toInteger (length options))
+    pure (choiceValue (arg 1) (options !! fromInteger i))
   "data" -> do
     let choices = if size <= 0 then baseConstructors d else constructorsOf d
     i <- drawBelow (toInteger (length choices))
@@ -2494,6 +2561,9 @@ minimalValue table d0 = case descriptorKind d of
   "list" -> SList []
   "maybe" -> SData "Maybe::Absent" []
   "either" -> SData "Either::Left" [minimalValue table (arg 1)]
+  "oneof" -> case oneofOptions d of
+    option : _ -> choiceValue (arg 1) option
+    [] -> error ("oneof without choices " ++ show d)
   _ -> case baseConstructors d of
     ctor : _ -> let (tag, fields) = constructorParts ctor in SData tag (map (minimalValue table) fields)
     [] -> error ("data type without constructors " ++ show d)
@@ -2530,6 +2600,8 @@ shrinkValue table d0 v = uniqueRendered $ case (descriptorKind d, v) of
     SData "Maybe::Absent" [] : [SData "Maybe::Present" [c] | c <- shrinkValue table (arg 1) x]
   ("either", SData tag [x]) ->
     [SData tag [c] | c <- shrinkValue table (arg (if tag == "Either::Left" then 1 else 2)) x]
+  -- The choices before this one, first first.
+  ("oneof", _) -> takeWhile ((/= renderValue v) . renderValue) (map (choiceValue (arg 1)) (oneofOptions d))
   ("data", SData tag fields) ->
     let ctorFields = case find ((== tag) . fst) (map constructorParts (constructorsOf d)) of
           Just (_, fs) -> fs
@@ -2926,6 +2998,7 @@ emptyModelArguments =
   any
     ( \d -> case d of
         DescList [DescAtom "int", _, DescInteger lo, DescInteger hi] -> lo > hi
+        DescList [DescAtom "oneof", _] -> True
         _ -> False
     )
 
@@ -2975,52 +3048,166 @@ drawIO source draw = do
   writeIORef source next
   pure value
 
-generateRun :: ModelPlan -> IORef Word64 -> Integer -> Integer -> IO ModelRun
+-- Generation honours the reference. A step is drawn among the commands
+-- enabled at the model state: typestate admits them, their precondition
+-- holds, and some arguments are inside the reference's refinements. When a
+-- command's argument tuples are few (finiteSteps), each is tried against
+-- the reference and one valid tuple is chosen, as QuickCheck state machines
+-- generate from a precondition. Otherwise arguments are drawn and checked
+-- again, up to stepAttempts times, and every draw the reference rejects is
+-- counted. A run where the reference rejected more draws than it accepted
+-- shows little, so its check is incomplete, never passed.
+-- ref:DEC-honest-model-steps
+
+-- | The most argument tuples of one step that are enumerated instead of drawn.
+finiteSteps :: Int
+finiteSteps = 64
+
+-- | How many times a step's arguments are drawn before the step is given up.
+stepAttempts :: Int
+stepAttempts = 8
+
+-- | The commands enabled at a state, each with its valid argument tuples,
+-- or Nothing to draw them.
+enabledSteps :: ModelPlan -> SymbolContext -> Scalar -> [Integer] -> IO [(Int, Maybe [[Scalar]])]
+enabledSteps plan symbols state indices = concat <$> mapM enabled (zip [0 ..] (planCommands plan))
+  where
+    enabled (i, command) = do
+      let descriptors = map (modelArgument indices) (mcArguments command)
+      holds <-
+        if not (admits command indices) || emptyModelArguments descriptors
+          then pure False
+          else case mcWhen command of
+            Nothing -> pure True
+            Just guard -> either (const False) (== SBool True) <$> callModel guard symbols [state]
+      if not holds
+        then pure []
+        else case mapM (finiteValues (planTable plan) finiteSteps) descriptors >>= productWithin finiteSteps of
+          Nothing -> pure [(i, Nothing)]
+          Just tuples -> do
+            valid <- filterM (accepts command) tuples
+            pure [(i, Just valid) | not (null valid)]
+    -- Outside the reference: not a step here.
+    accepts command args = do
+      stepped <- try (stepModel command symbols args state)
+      pure (either (\(_ :: ModelStop) -> False) (const True) stepped)
+
+-- | A generated step and the model state after it; NoStep when every draw
+-- was rejected, NoneEnabled when no command is enabled.
+data Taken = NoneEnabled | NoStep | Taken (Int, [Scalar]) Scalar
+
+-- | The next step of a run; rejected counts the draws the reference rejects.
+nextStep :: ModelPlan -> SymbolContext -> IORef Word64 -> [Scalar] -> Scalar -> [Integer] -> Integer -> Bool -> IORef Int -> IO Taken
+nextStep plan symbols source startArgs state indices size crashes rejected = do
+  enabled <- enabledSteps plan symbols state indices
+  if null enabled
+    then pure NoneEnabled
+    else do
+      pick <- drawIO source (drawBelow (toInteger (length enabled)))
+      -- One step in eight of an actor's run is a crash.
+      crash <- case planCrash plan of
+        Just _ | crashes -> (== 0) <$> drawIO source (drawBelow 8)
+        _ -> pure False
+      let (index, choices) = enabled !! fromInteger pick
+          command = planCommands plan !! index
+          descriptors = map (modelArgument indices) (mcArguments command)
+          attempt 0 = pure NoStep
+          attempt k = do
+            args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) descriptors
+            stepped <- try (stepModel command symbols args state)
+            case stepped of
+              Left (_ :: ModelStop) -> modifyIORef' rejected (+ 1) >> attempt (k - 1)
+              Right (next, _) -> pure (Taken (index, args) next)
+      if crash
+        then do
+          stepped <- try (crashModelState plan startArgs symbols state)
+          case stepped of
+            Left (_ :: ModelStop) -> pure NoStep
+            Right next -> pure (Taken (length (planCommands plan), []) next)
+        else case choices of
+          Just tuples -> do
+            args <- case tuples of
+              [only] -> pure only
+              _ -> (tuples !!) . fromInteger <$> drawIO source (drawBelow (toInteger (length tuples)))
+            (next, _) <- stepModel command symbols args state
+            pure (Taken (index, args) next)
+          Nothing -> attempt stepAttempts
+
+generateRun :: ModelPlan -> IORef Word64 -> Integer -> Integer -> IO (ModelRun, Int)
 generateRun plan = generateRunWith False plan
 
--- | A generated run; with crashes, one step in eight of an actor's run is
--- an injected crash (drawn right after the command, as on every target).
-generateRunWith :: Bool -> ModelPlan -> IORef Word64 -> Integer -> Integer -> IO ModelRun
+-- | A generated run, and how many of its drawn steps the reference rejected;
+-- with crashes, one step in eight of an actor's run is an injected crash
+-- (drawn right after the command, as on every target).
+generateRunWith :: Bool -> ModelPlan -> IORef Word64 -> Integer -> Integer -> IO (ModelRun, Int)
 generateRunWith crashes plan source len size = do
   symbols <- newSymbolContext
   startArgs <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (planStartArguments plan)
   started <- callModel (planStartModel plan) symbols startArgs
   case started of
-    Left _ -> pure (startArgs, [])
+    Left _ -> pure ((startArgs, []), 0)
     Right state0 -> do
+      rejected <- newIORef 0
       let go 0 _ _ acc = pure (reverse acc)
           go n state indices acc = do
-            let allowed = [i | (i, c) <- zip [0 ..] (planCommands plan), admits c indices, not (emptyModelArguments (map (modelArgument indices) (mcArguments c)))]
-            if null allowed
-              then pure (reverse acc)
-              else do
-                pick <- drawIO source (drawBelow (toInteger (length allowed)))
-                crash <- case planCrash plan of
-                  Just _ | crashes -> (== 0) <$> drawIO source (drawBelow 8)
-                  _ -> pure False
-                let index = allowed !! fromInteger pick
-                    command = planCommands plan !! index
-                if crash
-                  then do
-                    stepped <- try (crashModelState plan startArgs symbols state)
-                    case stepped of
-                      Left (_ :: ModelStop) -> go (n - 1) state indices acc
-                      Right next -> go (n - 1) next indices ((length (planCommands plan), []) : acc)
-                  else do
-                    args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (map (modelArgument indices) (mcArguments command))
-                    stepped <- try (stepModel command symbols args state)
-                    case stepped of
-                      Left ModelInvalid -> do
-                        let dependent (DescList (DescAtom "dependent" : _)) = True
-                            dependent _ = False
-                        allowed <- maybe (pure True) (\guard -> either (const False) (== SBool True) <$> callModel guard symbols [state]) (mcWhen command)
-                        if any dependent (mcArguments command) && allowed
-                          then throwIO (ErrorCall "incomplete model generation: dependent arguments rejected by the reference (1 attempt)")
-                          else go (n - 1) state indices acc
-                      Left (ModelRaised _) -> go (n - 1) state indices acc
-                      Right (next, _) -> go (n - 1) next (shifted command indices) ((index, args) : acc)
+            taken <- nextStep plan symbols source startArgs state indices size crashes rejected
+            case taken of
+              NoneEnabled -> pure (reverse acc)
+              NoStep -> go (n - 1) state indices acc
+              Taken step@(index, _) next
+                | isCrashStep plan index -> go (n - 1) next indices (step : acc)
+                | otherwise -> go (n - 1) next (shifted (planCommands plan !! index) indices) (step : acc)
       steps <- go len state0 (planStartIndices plan) []
-      pure (startArgs, steps)
+      count <- readIORef rejected
+      pure ((startArgs, steps), count)
+
+-- | Whether the reference rejected more of a run's drawn steps than it accepted.
+mostlyRejected :: Int -> Int -> Bool
+mostlyRejected accepted rejected = rejected > accepted
+
+incompleteRun :: ModelPlan -> String -> Int -> Int -> String
+incompleteRun plan run accepted rejected =
+  "incomplete model generation: model "
+    ++ planName plan
+    ++ "'s "
+    ++ run
+    ++ " drew "
+    ++ show rejected
+    ++ " steps its reference rejected and "
+    ++ show accepted
+    ++ " it accepted; fewer than half of its steps are valid, so it shows little of the system"
+
+-- | How a failing run's rejected draws read after its failure.
+rejectedNote :: Int -> String
+rejectedNote 0 = ""
+rejectedNote rejected = " (the reference rejected " ++ show rejected ++ " drawn steps of this run)"
+
+-- | One line of JSON per model check, appended to the file
+-- LAWSPEC_MODEL_REPORT names: how many runs and steps it checked, and how
+-- many drawn steps the reference rejected.
+reportModel :: ModelPlan -> String -> Int -> Int -> Int -> String -> IO ()
+reportModel plan check runs steps rejected outcome = do
+  path <- lookupEnv "LAWSPEC_MODEL_REPORT"
+  case path of
+    Just file | not (null file) -> do
+      let line =
+            "{\"model\":\""
+              ++ planName plan
+              ++ "\",\"check\":\""
+              ++ check
+              ++ "\",\"runs\":"
+              ++ show runs
+              ++ ",\"steps\":"
+              ++ show steps
+              ++ ",\"rejected\":"
+              ++ show rejected
+              ++ ",\"outcome\":\""
+              ++ outcome
+              ++ "\"}\n"
+      -- The report is a side channel; the check's own result stands.
+      written <- try (appendFile file line)
+      either (\(_ :: SomeException) -> pure ()) pure written
+    _ -> pure ()
 
 -- | Nothing when the system agrees with the model along the run; otherwise
 -- the failing step's number and what went wrong.
@@ -3175,29 +3362,41 @@ checkModelWith cases maxLength maxShrinks seedOverride model = do
     Nothing -> maybe 0 (fromInteger . read) <$> lookupEnv "LAWSPEC_SEED"
   source <- newIORef seed
   let plan = modelPlan model
-      loop c
-        | c >= cases = pure Nothing
+      loop c steps rejected
+        | c >= cases = do
+            reportModel plan "sequential" cases steps rejected "passed"
+            pure Nothing
         | otherwise = do
             len <- drawIO source (drawBelow (toInteger maxLength + 1))
-            run <- generateRunWith True plan source len (1 + toInteger (c `mod` 8))
-            failure <- executeRun plan run
-            case failure of
-              Nothing -> loop (c + 1)
-              Just found -> do
-                (run', (step, message)) <- shrinkRun plan run found maxShrinks
-                pure
-                  ( Just
-                      ( "model "
-                          ++ planName plan
-                          ++ " fails at step "
-                          ++ show step
-                          ++ " of "
-                          ++ describeRun plan run'
-                          ++ ": "
-                          ++ message
+            (run, runRejected) <- generateRunWith True plan source len (1 + toInteger (c `mod` 8))
+            let accepted = length (snd run)
+                steps' = steps + accepted
+                rejected' = rejected + runRejected
+            if mostlyRejected accepted runRejected
+              then do
+                reportModel plan "sequential" (c + 1) steps' rejected' "incomplete"
+                throwIO (ErrorCall (incompleteRun plan ("run " ++ show (c + 1) ++ " of " ++ show cases) accepted runRejected))
+              else do
+                failure <- executeRun plan run
+                case failure of
+                  Nothing -> loop (c + 1) steps' rejected'
+                  Just found -> do
+                    reportModel plan "sequential" (c + 1) steps' rejected' "failed"
+                    (run', (step, message)) <- shrinkRun plan run found maxShrinks
+                    pure
+                      ( Just
+                          ( "model "
+                              ++ planName plan
+                              ++ " fails at step "
+                              ++ show step
+                              ++ " of "
+                              ++ describeRun plan run'
+                              ++ ": "
+                              ++ message
+                              ++ rejectedNote runRejected
+                          )
                       )
-                  )
-  loop 0
+  loop 0 0 0
 
 -- Parallel runs of a shared model. A case is a sequential prefix and one
 -- branch per thread, generated so that the model allows every interleaving
@@ -3261,26 +3460,23 @@ parallelAllowed plan (prefix, branches) = do
                   Right (next, _) -> visit (advanceAt i positions) next
       visit (map (const 0) branches) state0
 
-generateBranch :: ModelPlan -> IORef Word64 -> Scalar -> Integer -> Integer -> IO [(Int, [Scalar])]
-generateBranch plan source state0 len size = do
+generateBranch :: ModelPlan -> IORef Word64 -> Scalar -> Integer -> Integer -> IORef Int -> IO [(Int, [Scalar])]
+generateBranch plan source state0 len size rejected = do
   symbols <- newSymbolContext
   let go 0 _ acc = pure (reverse acc)
       go n state acc = do
-        pick <- drawIO source (drawBelow (toInteger (length (planCommands plan))))
-        let index = fromInteger pick
-            command = planCommands plan !! index
-        args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
-        stepped <- try (stepModel command symbols args state)
-        case stepped of
-          Left ModelInvalid -> go (n - 1) state acc
-          Left (ModelRaised _) -> go (n - 1) state acc
-          Right (next, _) -> go (n - 1) next ((index, args) : acc)
+        taken <- nextStep plan symbols source [] state (planStartIndices plan) size False rejected
+        case taken of
+          NoneEnabled -> pure (reverse acc)
+          NoStep -> go (n - 1) state acc
+          Taken step next -> go (n - 1) next (step : acc)
   go len state0 []
 
-generateParallel :: ModelPlan -> IORef Word64 -> Integer -> Int -> Int -> IO ParallelCase
-generateParallel plan source size threads branchLength = do
+generateParallel :: ModelPlan -> IORef Word64 -> Integer -> Int -> Int -> IORef Int -> IO ParallelCase
+generateParallel plan source size threads branchLength rejected = do
   prefixLength <- drawIO source (drawBelow 4)
-  prefix <- generateRun plan source prefixLength size
+  (prefix, prefixRejected) <- generateRun plan source prefixLength size
+  modifyIORef' rejected (+ prefixRejected)
   symbols <- newSymbolContext
   final <- simulateFinal plan symbols prefix
   case final of
@@ -3288,7 +3484,7 @@ generateParallel plan source size threads branchLength = do
     Just state -> do
       branches <- forM [1 .. threads] $ \_ -> do
         n <- drawIO source (drawBelow (toInteger branchLength))
-        generateBranch plan source state (1 + n) size
+        generateBranch plan source state (1 + n) size rejected
       -- Drop the last step of the longest branch (the first, among equals)
       -- until every interleaving is allowed.
       let trim bs = do
@@ -3623,29 +3819,43 @@ checkModelParallelWith cases repeats maxShrinks threads branchLength seedOverrid
     Nothing -> maybe 0 (fromInteger . read) <$> lookupEnv "LAWSPEC_SEED"
   source <- newIORef (seed `xor` 0x5BD1E995)
   let plan = modelPlan model
-      loop c
-        | c >= cases = pure Nothing
+      loop c steps rejectedTotal
+        | c >= cases = do
+            reportModel plan "parallel" cases steps rejectedTotal "passed"
+            pure Nothing
         | otherwise = do
-            parallelCase <- generateParallel plan source (1 + toInteger (c `mod` 8)) threads branchLength
-            shake <- drawIO source (Draw splitMix64)
-            failure <- parallelFails plan parallelCase repeats shake
-            case failure of
-              Nothing -> loop (c + 1)
-              Just found -> do
-                (parallelCase', message) <- shrinkParallel plan parallelCase found (max 2 (repeats `div` 2)) maxShrinks shake
-                pure
-                  ( Just
-                      ( "model "
-                          ++ planName plan
-                          ++ " is not "
-                          ++ consistentWord (planConsistency plan)
-                          ++ ": "
-                          ++ describeParallel plan parallelCase'
-                          ++ ": "
-                          ++ message
+            rejectedRef <- newIORef 0
+            parallelCase@((_, prefixSteps), branches) <- generateParallel plan source (1 + toInteger (c `mod` 8)) threads branchLength rejectedRef
+            rejected <- readIORef rejectedRef
+            let accepted = length prefixSteps + sum (map length branches)
+                steps' = steps + accepted
+                rejectedTotal' = rejectedTotal + rejected
+            if mostlyRejected accepted rejected
+              then do
+                reportModel plan "parallel" (c + 1) steps' rejectedTotal' "incomplete"
+                throwIO (ErrorCall (incompleteRun plan ("parallel case " ++ show (c + 1) ++ " of " ++ show cases) accepted rejected))
+              else do
+                shake <- drawIO source (Draw splitMix64)
+                failure <- parallelFails plan parallelCase repeats shake
+                case failure of
+                  Nothing -> loop (c + 1) steps' rejectedTotal'
+                  Just found -> do
+                    reportModel plan "parallel" (c + 1) steps' rejectedTotal' "failed"
+                    (parallelCase', message) <- shrinkParallel plan parallelCase found (max 2 (repeats `div` 2)) maxShrinks shake
+                    pure
+                      ( Just
+                          ( "model "
+                              ++ planName plan
+                              ++ " is not "
+                              ++ consistentWord (planConsistency plan)
+                              ++ ": "
+                              ++ describeParallel plan parallelCase'
+                              ++ ": "
+                              ++ message
+                              ++ rejectedNote rejected
+                          )
                       )
-                  )
-  loop 0
+  loop 0 0 0
 
 -- Scenarios: processes that drive a shared model's commands at the same time
 -- and talk over channels (see LawSpec.Core.Program for the spec). Each

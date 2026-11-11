@@ -85,6 +85,7 @@ actorStruct datas wire a = do
         [if unit ty then L.atom "()" else L.method (L.atom p) "clone" [] | (p, ty, _) <- startArgs])
       restart = case actorRestart a of
         Just d -> L.closure "move |state|" (L.call "Ok" [awaited d (adapter d [L.atom "state"])])
+        Nothing | actorKeepsState a -> L.closure "move |state|" (L.call "Ok" [L.atom "state"])
         Nothing -> L.closure "move |_|" (L.call "Ok" [startCall])
       supervision = ["supervisor: &ls::actors::Supervisor", "lifetime: ls::actors::Lifetime"]
       fixed =
@@ -94,6 +95,7 @@ actorStruct datas wire a = do
         , comment [ "Starts the actor under supervisor, which restarts it after a crash"
                   , case actorRestart a of
                       Just d -> "from its last state, with " ++ C.declarationName d ++ "."
+                      Nothing | actorKeepsState a -> "with the state it had."
                       Nothing -> "from its start." ]
             (L.function "pub fn start_under" (supervision ++ startParams) cls (L.stmts
               [ L.Let "actor" (L.call (cls ++ "::start") startNames)

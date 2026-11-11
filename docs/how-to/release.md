@@ -33,7 +33,7 @@ entry, so it cannot pass those new-version preconditions.
 ## 2. Bump the version
 
 ```sh
-make bump VERSION=0.31.3
+make bump VERSION=0.33.0
 ```
 
 `lawspec-dev bump` sets the version in `package.yaml`, `lawspec.cabal`,
@@ -69,7 +69,7 @@ their fingerprints in `npm/build.json`.
 
 ```sh
 git add -A
-git commit -m "Prepare LawSpec 0.31.3"
+git commit -m "Prepare LawSpec 0.33.0"
 make ci-fresh
 make docs-check
 make release-check
@@ -108,7 +108,7 @@ packed copy.
 ## 6. Tag and push
 
 ```sh
-git tag -a v0.33.0 -m "LawSpec 0.31.3"
+git tag -a v0.33.0 -m "LawSpec 0.33.0"
 git push --atomic origin main v0.33.0
 ```
 
