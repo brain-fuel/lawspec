@@ -16,6 +16,7 @@ import LawSpec.Core.Machine
 import LawSpec.Flow (flowTypeName)
 import LawSpec.Indexed (indexedRefinementName)
 import LawSpec.Model
+import LawSpec.ModelTime (timeStep, timePasses, timeAdapter, timeSignature)
 import LawSpec.Scalar (isInteger)
 
 -- | A model pairs a system's commands with a reference implementation over an
@@ -69,7 +70,14 @@ type Failure = (Maybe Span, String)
 -- state.
 elaborateModels :: [ModelDeclaration] -> Unit -> Either Failure Unit
 elaborateModels [] u = pure u
-elaborateModels declarations u = do
+elaborateModels written u = do
+  -- An actor's time passes line is a handler whose adapter LawSpec declares.
+  -- ref:DEC-time-passes
+  declarations <- mapM timeStepOf written
+  let clocks = [(timeAdapter (modelName m), timeSignature own, modelSpan m) | m <- written, Just own <- [modelActor m],
+                timeStep `elem` map modelCommand (modelCommands m)]
+  forM_ clocks $ \(n, _, range) -> when (n `elem` map fst (functions u))
+    (Left (Just range, "time passes generates " ++ n ++ ", which is already declared; rename it"))
   let names = map modelName declarations
   forM_ declarations $ \m -> when (length (filter (== modelName m) names) > 1)
     (Left (Just (modelSpan m), "model " ++ modelName m ++ " is declared twice"))
@@ -79,19 +87,23 @@ elaborateModels declarations u = do
   forM_ [m | m <- declarations, modelActor m /= Nothing] $ \m -> forM_ [n | Named n <- [modelState m], n `elem` declaredTypes] $ \n ->
     Left (Just (modelSpan m), "actor " ++ modelName m ++ "'s handle type is " ++ n ++ ", which is already declared; rename the actor or the type")
   let u0 = u { handles = handles u ++ map fst actorHandles
+             , functions = functions u ++ [(n, t) | (n, t, _) <- clocks]
+             , declarationSpans = declarationSpans u ++ [(n, range) | (n, _, range) <- clocks]
              , dataTypes = dataTypes u ++ [DataTypeDeclaration n [] [] range Nothing | (n, range) <- actorHandles] }
   expanded <- forM declarations (behaviour u0)
   let behaviours = concat [ds | (_, ds, _) <- expanded]
       signatureOf d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
-      u' = u0 { functionDefinitions = functionDefinitions u ++ behaviours, functions = functions u ++ map signatureOf behaviours }
+      u' = u0 { functionDefinitions = functionDefinitions u ++ behaviours, functions = functions u0 ++ map signatureOf behaviours }
   results <- forM [(m, keys) | (m, _, keys) <- expanded] $ \(m, keys) -> do
     (machine, start) <- elaborateModel u' m
-    let keyed = [c { commandKey = maybe Nothing id (lookup (commandName c) keys) } | c <- machineCommands machine]
+    let keyed = [c { commandKey = maybe Nothing id (lookup (commandName c) keys)
+                   , commandName = if commandSystem c == timeAdapter (modelName m) then timePasses else commandName c }
+                | c <- machineCommands machine]
         perKey = modelBehaves m && not (null keyed) && all ((/= Nothing) . commandKey) keyed
     pure (machine { machineCommands = keyed, machinePerKey = perKey }, start)
   -- Generated names (start states and the bridges that call adapters) must
   -- not clash with declared ones.
-  let taken = map fst (functions u)
+  let taken = map fst (functions u0)
   forM_ (zip declarations results) $ \(m, (machine, start)) ->
     forM_ (generatedNames machine ++ maybe [] (pure . functionName) start) $ \n -> when (n `elem` taken)
       (Left (Just (modelSpan m), "model " ++ modelName m ++ " generates " ++ n ++ ", which is already declared; rename one"))
@@ -103,8 +115,17 @@ elaborateModels declarations u = do
   pure u0
     { machines = machines u ++ map fst results
     , functionDefinitions = functionDefinitions u ++ starts
-    , functions = functions u ++ map signature starts
-    , declarationSpans = declarationSpans u ++ [(functionName d, functionSpan d) | d <- starts] }
+    , functions = functions u0 ++ map signature starts
+    , declarationSpans = declarationSpans u0 ++ [(functionName d, functionSpan d) | d <- starts] }
+
+-- | An actor's time step as the handler of the adapter LawSpec declares for
+-- it; timePasses itself names the step, so no handler may take that name.
+-- ref:DEC-time-passes
+timeStepOf :: ModelDeclaration -> Either Failure ModelDeclaration
+timeStepOf m = do
+  when (modelActor m /= Nothing && timePasses `elem` map modelCommand (modelCommands m))
+    (Left (Just (modelSpan m), "actor " ++ modelName m ++ ": timePasses names its time passes step; rename the handler"))
+  pure m { modelCommands = [if modelCommand c == timeStep then c { modelCommand = timeAdapter (modelName m) } else c | c <- modelCommands m] }
 
 -- | The checked identities `restart keeps state` restarts an actor and its
 -- model by. ref:DEC-restart-keeps-state

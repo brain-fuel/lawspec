@@ -10,10 +10,11 @@ import LawSpec.Compile
 import Data.Aeson (Value (..), object, (.=))
 import LawSpec.Core.Machine
 import qualified LawSpec.Core as C
-import LawSpec.Frontend (compileCore)
+import LawSpec.Frontend (compileCore, elaborateCanonical)
 import LawSpec.Model hiding (Expectation)
 import qualified LawSpec.ModelLaws as ML
 import qualified LawSpec.Core.ModelCheck as MC
+import LawSpec.Core.Evidence (Obligation(..), Status(..))
 
 stack :: String
 stack = unlines
@@ -101,6 +102,49 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
             named identity = fmap C.declarationName (lookup identity declarations)
         [(named (commandSystem c), commandRun c == commandSystem c) | c <- restarts]
           `shouldBe` [(Just "tabKeepState", True)]
+  -- time passes by r: the actor's timePasses step, whose adapter LawSpec
+  -- declares; laws over its runs may assume it is fair. ref:DEC-time-passes
+  it "elaborates time passes into the actor's timePasses step" $ do
+    input <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" input] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let units = C.programUnits program
+            declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
+            steps = [c | u <- units, m <- C.unitMachines u, c <- machineCommands m, commandName c == "timePasses"]
+        [(fmap C.declarationName (lookup (commandSystem c) declarations), commandReturnsUnit c) | c <- steps]
+          `shouldBe` [(Just "hakkerTimePasses", False)]
+  it "rejects a second time passes line and a handler named timePasses" $ do
+    input <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    let line = "  time passes by modelTimePasses when timerSet"
+        twice = unlines (concatMap (\l -> if l == line then [l, l] else [l]) (lines input))
+        named = unlines (concatMap (\l -> if l == "  on think by modelThink when waiting" then ["  on timePasses by modelThink when waiting"]
+          else if l == "openDiner :: Unit -> Diner" then [l, "timePasses :: Diner -> Diner"] else [l]) (lines input))
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" twice] of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "says how time passes more than once"
+      Right _ -> expectationFailure "expected a rejection"
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" named] of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "timePasses names its time passes step"
+      Right _ -> expectationFailure "expected a rejection"
+  it "refutes every hungry hakker eating, with time passing fairly" $ do
+    input <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    let starving = unlines (concatMap (\l -> if l == "law \"|a hakker can eat| in model hakker is"
+          then [ "law \"|every hungry hakker eats| in model hakker assuming strong fairness for think, time passes,"
+               , "    asksLeft, putsDownLeft, asksRight, putsDownRight, leftTaken, leftBusy, rightTaken, rightBusy is"
+               , "  definition: every run holds whenever hungry, eventually eats end definition"
+               , "end law", l]
+          else [l]) (lines input))
+    case compileCanonical [Source "hakkers.lawspec" starving] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right (us, es) -> case elaborateCanonical 64 us es of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right core -> case ML.modelLawEvidence True us core of
+          Left diagnostics -> expectationFailure (show diagnostics)
+          Right obligations -> do
+            let verdict name = [(obligationStatus o, obligationReason o) | o <- obligations, C.idText (obligationDeclaration o) == "sample.hakkers::law::|" ++ name ++ "|"]
+            map fst (verdict "every hungry hakker eats") `shouldBe` [Refuted]
+            concatMap snd (verdict "every hungry hakker eats") `shouldSatisfy` isInfixOf "strong fairness for timePasses"
+            map fst (verdict "a hakker can eat") `shouldBe` [Proved]
   it "rejects an actor with two restart lines" $ do
     input <- readFile "examples/specs/restarts.lawspec"
     let twice = unlines (concatMap (\line -> if line == "  restart keeps state" then [line, line] else [line]) (lines input))

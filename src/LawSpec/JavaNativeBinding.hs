@@ -274,7 +274,17 @@ emitBindingsProduct javaStyle minify plan testing product = do
                   (Left ("native actor " ++ actorIdentity actor ++ ": unsupported: sharded Spring starter actors are not checked yet; bind its Pekko behavior"))
                 pure (call "LawSpecSpringNative.behavior" [D.text (reference ref ++ ".class")])
             handlers <- mapM (handlerLink actor) (resolvedActorHandlers actor)
+            -- Probes and text the behaviour's factory takes, in order.
+            -- ref:DEC-tell-only-actors
+            factoryArguments <- forM (resolvedActorArguments actor) $ \case
+              ProbeArgument p -> pure (call "LawSpecPekkoNative.address" [call "probes.get" [E.quoted p]])
+              TextArgument t -> pure (E.quoted t)
+            let probed = not (null (resolvedActorArguments actor))
             start <- case resolvedActorEntity actor of
+              Nothing | probed, BehaviorFactory ref <- resolvedActorSource actor ->
+                pure (call "LawSpecPekkoNative.probed" [E.quoted (actorIdentity actor),
+                  call "java.util.List.of" (map E.quoted (actorProbes (resolvedActorArguments actor))),
+                  JL.lambdaValue ["probes"] (call (reference ref) factoryArguments)])
               Nothing -> pure (call (case (resolvedActorPersistence actor, resolvedActorSource actor) of
                   (Just EventSourced, _) -> "LawSpecPekkoNative.eventSourced"
                   (_, SpringActorClass _) -> "LawSpecPekkoNative.identified"
@@ -292,7 +302,8 @@ emitBindingsProduct javaStyle minify plan testing product = do
                     BehaviorFactory ref -> reference ref
                     SpringActorClass ref -> reference ref) ++ ".") <> D.hardline <>
               D.text ("public static LawSpecRuntime.ActorBackend " ++ actorMethod actor ++ "()") <> D.hardline <>
-              D.block 2 (D.text "return " <> start <> D.nest 4 (mconcat [D.hardline <> D.text "." <> h | h <- handlers]) <> D.text ";"))
+              D.block 2 (D.text "return " <> start <> D.nest 4 (mconcat [D.hardline <> D.text "." <> h | h <- handlers ++
+                [D.text "timePasses()" | resolvedActorTime actor]]) <> D.text ";"))
           let packages = nub (map fst factories)
               wiring package = Artifact ("src/test/java/" ++ concatMap (++ "/") (split '.' package) ++ "LawSpecNativeActors.java") (render
                 (D.text ("package " ++ package ++ ";") <> D.hardline <> D.hardline <>
@@ -350,12 +361,27 @@ emitBindingsProduct javaStyle minify plan testing product = do
             SpringActorClass _ -> True
             BehaviorFactory _ -> False
           make = (if handlerMessageFactory binding then "" else "new ") ++ reference (handlerMessage binding)
-          addressed = if caller then D.text "LawSpecPekkoNative.address(replyTo)" else D.text "replyTo"
+          -- A caller's, or an answering probe's, own address.
+          addressed = if caller || handlerAnswers binding /= Nothing then D.text "LawSpecPekkoNative.address(replyTo)" else D.text "replyTo"
           -- A Spring starter command is an AskCommand whose reply address is
           -- set as the starter's ask sets it.
           messageOf replyTo
+            | handlerMessageValue binding = D.text (reference (handlerMessage binding))
             | springActor && replyTo = call "LawSpecSpringNative.asked" [call make decoded, addressed]
             | otherwise = call make (decoded ++ [addressed | replyTo])
+          -- Reply cases: the class a reply is, among the named ones beside
+          -- the reply (or heard) class, gives the result. ref:DEC-tell-only-actors
+          cases owner = call "LawSpecPekkoNative.replyCase" [D.text "reply", call "java.util.Map.of" (concat
+            [[D.text (reference (sibling owner key) ++ ".class"), caseValue value] | (key, value) <- handlerReplyCases binding])]
+          sibling (NativeRef parts) key = NativeRef (init parts ++ [key])
+          caseValue (CaseBool b) = D.text (if b then "true" else "false")
+          caseValue (CaseText t) = E.quoted t
+          resultOf owner
+            | not (null (handlerReplyCases binding)) = cases owner
+            | otherwise = case (handlerResult binding, handlerResultField binding) of
+                (Just accessor, _) -> D.text ("reply." ++ accessor ++ "()")
+                (_, Just field) -> D.text ("reply." ++ field)
+                _ -> D.text "reply"
           name = E.quoted (boundHandlerName binding)
           -- A reply class with type arguments: StatusReply<Summary>.
           replyType reply = reference reply ++ (if null (handlerReplyArguments binding) then ""
@@ -367,15 +393,25 @@ emitBindingsProduct javaStyle minify plan testing product = do
             | null (handlerReplyArguments binding) = verb
             | otherwise = "<" ++ replyType reply ++ ">" ++ verb
           asking = if caller then "callerAsk" else "ask"
+      let heard = handlerMessage binding
+          probe = E.quoted (maybe "" id (handlerProbe binding))
       case (resolvedHandlerResult handler, handlerReply binding) of
+        -- A probe hears the actor's next message to it.
+        (result, _) | handlerHears binding -> case result of
+          Nothing -> pure (call "hears" [name, probe, D.text (reference heard ++ ".class")])
+          Just ty -> do
+            bridge <- either context Right (codec [] (D.text "SCHEMA") (D.text (show bits)) ty)
+            pure (call "hears" [name, probe, D.text (reference heard ++ ".class"),
+              JL.lambdaValue ["symbols", "reply"] (method bridge "encode" [resultOf heard])])
+        -- A probe answers the last message it heard.
+        (Nothing, _) | Just (answered, field) <- handlerAnswers binding ->
+          pure (call "answers" [name, probe, D.text (reference answered ++ ".class"),
+            JL.lambdaValue ["heard"] (D.text ("heard." ++ field)),
+            JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf (handlerReplyTo binding))])
         (Just ty, Just reply) -> do
           bridge <- either context Right (codec [] (D.text "SCHEMA") (D.text (show bits)) ty)
-          let value = case (handlerResult binding, handlerResultField binding) of
-                (Just accessor, _) -> D.text ("reply." ++ accessor ++ "()")
-                (_, Just field) -> D.text ("reply." ++ field)
-                _ -> D.text "reply"
           pure (call (generic reply asking) [name, JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf True),
-            replyClass reply, JL.lambdaValue ["symbols", "reply"] (method bridge "encode" [value])])
+            replyClass reply, JL.lambdaValue ["symbols", "reply"] (method bridge "encode" [resultOf reply])])
         (Nothing, Just reply)
           | caller -> pure (call (generic reply "callerAsk") [name,
               JL.lambdaValue ["symbols", "arguments", "replyTo"] (messageOf True), replyClass reply,

@@ -16,6 +16,8 @@ import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
 import LawSpec.Mailboxes (mailboxArtifacts)
 import LawSpec.Core.Machine (Machine(..))
+import qualified LawSpec.Core.Machine as Machine
+import LawSpec.ModelTime (isTimeStep)
 import LawSpec.Core.Program (Program(..))
 import LawSpec.Backend
 import LawSpec.Common
@@ -746,6 +748,14 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
   -- binding is an error rather than a check silently skipped.
   unless (target `elem` ["java", "scala"] || null (NB.bindingActors bindings))
     (Left [Diagnostic "native-binding" ("unsupported: native actor bindings are checked on Java and Scala only, not yet on " ++ target) Nothing])
+  -- Time passes only on virtual time, which a natively bound Pekko actor
+  -- has and LawSpec's own actors (without timers) do not. ref:DEC-time-passes
+  let boundActors = [(NB.resolvedActorUnit a, NB.resolvedActorName a) | a <- NB.bindingActors bindings]
+      timed = [C.idText unitId ++ "::" ++ Machine.machineName m | u <- plannedUnits original, let unitId = C.unitId (plannedUnit u)
+              , m <- C.unitMachines (plannedUnit u), any (isTimeStep m) (Machine.machineCommands m)
+              , (unitId, Machine.machineName m) `notElem` boundActors]
+  unless (null timed)
+    (Left [Diagnostic "model" ("unsupported: actor " ++ actor ++ " lets time pass, which needs virtual time: bind it to a Pekko behaviour with a native actor binding (Java, Scala); LawSpec's own actors on " ++ target ++ " have no timers") Nothing | actor <- timed])
   let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
         Just name -> declaration { C.declarationName = name }
         Nothing -> declaration

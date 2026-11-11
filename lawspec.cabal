@@ -833,6 +833,7 @@ library
       LawSpec.ModelLaws
       LawSpec.ModelProof
       LawSpec.ModelTests
+      LawSpec.ModelTime
       LawSpec.Naming
       LawSpec.NativeBinding
       LawSpec.NativeInterface

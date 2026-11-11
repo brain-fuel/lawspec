@@ -52,8 +52,17 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
  * entity's id first instead, and is sent through the entity's EntityRef (LawSpecPekkoSharding).
  *
  * <p>
+ * An actor that answers nothing, such as the dining hakkers' hakker, is observed through probes:
+ * addresses of LawSpec's that its factory takes in place of the actors it talks to, as
+ * pekko-actor-testkit-typed's TestProbe stands in for them. A handler hears the next message a
+ * probe receives, or answers, from the probe, the last message it heard. An actor with a time
+ * passes step runs on virtual time (Pekko's ManualTime): its timers fire only when a run's step
+ * lets as much time pass as the model says.
+ *
+ * <p>
  * The ask timeout is LAWSPEC_ASK_TIMEOUT_MS milliseconds (3000 when not set).
- * ref:DEC-native-actor-binding ref:DEC-pekko-sample-suites
+ * ref:DEC-native-actor-binding ref:DEC-pekko-sample-suites ref:DEC-tell-only-actors
+ * ref:DEC-time-passes
  */
 public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
 {
@@ -106,6 +115,7 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   }
 
   private static final String HANDLE = "lawspec.pekko";
+  private static final String TIME_PASSES = "timePasses";
   private static final AtomicLong IDENTITIES = new AtomicLong();
 
   private final String actor;
@@ -117,6 +127,10 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
   private final Function<Value, String> entityId;
   private final Map<String, AtomicReference<CompletableFuture<Void>>> restarts =
       new ConcurrentHashMap<>();
+  private final List<String> probes = new ArrayList<>();
+  private final Map<String, Map<String, ActorRef<Object>>> probed = new ConcurrentHashMap<>();
+  private boolean timed;
+  private ActorTestKit virtual;
 
   private LawSpecPekkoNative(String actor, Function<String, Behavior<C>> factory,
       boolean persistent, Entities entities, Function<Value, String> entityId)
@@ -170,11 +184,42 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     return new LawSpecPekkoNative<>(actor, factory, false, entities, entityId);
   }
 
+  /**
+   * An actor whose factory takes probes, in the given order of names: each run's actor gets its
+   * own, the same for each of its restarts.
+   */
+  public static <C> LawSpecPekkoNative<C> probed(String actor, List<String> probes,
+      Function<Map<String, ActorRef<Object>>, Behavior<C>> factory)
+  {
+    var made = new AtomicReference<LawSpecPekkoNative<C>>();
+    made.set(new LawSpecPekkoNative<>(actor,
+        identity -> factory.apply(made.get().probed.get(identity)), false));
+    made.get().probes.addAll(probes);
+    return made.get();
+  }
+
   /** A reply class with type arguments, such as StatusReply of a summary, as the class it is. */
   @SuppressWarnings("unchecked")
   public static <R> Class<R> replyClass(Class<?> raw)
   {
     return (Class<R>) raw;
+  }
+
+  /**
+   * The result a reply gives by its class, among a handler's reply cases (the chopstick's Taken is
+   * true, Busy false); a reply of any other class fails the run.
+   */
+  public static <T> T replyCase(Object reply, Map<? extends Class<?>, T> cases)
+  {
+    for (var entry : cases.entrySet())
+    {
+      if (entry.getKey().isInstance(reply))
+      {
+        return entry.getValue();
+      }
+    }
+    throw new NativeActorFailure("a native actor answered with " + reply.getClass().getName()
+        + ", which none of the handler's reply cases names");
   }
 
   /** A caller's address, as the message's address of whatever type it answers. */
@@ -302,6 +347,100 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     return ask(handler, message, reply, (symbols, answer) -> LawSpecRuntime.absent("Unit"));
   }
 
+  /**
+   * A handler that hears the next message a probe receives, which must be of the given class; its
+   * result is read from that message. Nothing is sent. A probe that hears nothing within the ask
+   * timeout fails the run.
+   */
+  public <H> LawSpecPekkoNative<C> hears(String handler, String probe, Class<H> heard,
+      Result<? super H> result)
+  {
+    handlers.put(handler, (symbols, spawned, arguments) -> {
+      var at = spawned.probe(probe);
+      synchronized (at)
+      {
+        Object message = await(at.next(timeout.toMillis() * 2), () -> "native actor " + actor
+            + " sent nothing to probe " + probe + " within " + timeout.toMillis() + " ms ("
+            + handler + ")");
+        at.heard = message;
+        if (!heard.isInstance(message))
+        {
+          throw new NativeActorFailure("native actor " + actor + " sent " + name(message)
+              + " to probe " + probe + ", not " + heard.getSimpleName() + " (" + handler + ")");
+        }
+        return result.of(symbols, heard.cast(message));
+      }
+    });
+    return this;
+  }
+
+  /** A handler without a result that hears a message of the given class at a probe. */
+  public <H> LawSpecPekkoNative<C> hears(String handler, String probe, Class<H> heard)
+  {
+    return hears(handler, probe, heard, (symbols, message) -> LawSpecRuntime.absent("Unit"));
+  }
+
+  /**
+   * A handler that answers, from a probe, the last message the probe heard: that message must be
+   * of the given class, and the answer goes to the address its field holds. The answer carries the
+   * probe's own address when the message takes one, as a chopstick's answer carries the
+   * chopstick.
+   */
+  public <H, A> LawSpecPekkoNative<C> answers(String handler, String probe, Class<H> heard,
+      Function<H, ActorRef<A>> to, Message<? extends A, Object> message)
+  {
+    handlers.put(handler, (symbols, spawned, arguments) -> {
+      var at = spawned.probe(probe);
+      synchronized (at)
+      {
+        Object last = at.heard;
+        if (!heard.isInstance(last))
+        {
+          throw new NativeActorFailure("probe " + probe + " of native actor " + actor
+              + " has heard no " + heard.getSimpleName() + " to answer (" + handler + ")");
+        }
+        to.apply(heard.cast(last)).tell(message.make(symbols, arguments, at.ref));
+      }
+      return LawSpecRuntime.absent("Unit");
+    });
+    return this;
+  }
+
+  /**
+   * The actor's time passes step: the actor runs on virtual time, and each step lets as much time
+   * pass as the model's reference says, so the actor's timers due by then fire. It runs only in
+   * sequential runs, where the model's result is known before the step.
+   */
+  public LawSpecPekkoNative<C> timePasses()
+  {
+    timed = true;
+    handlers.put(TIME_PASSES, (symbols, spawned, arguments) -> {
+      if (!(symbols.get(LawSpecRuntime.EXPECTED_RESULT) instanceof Value amount))
+      {
+        throw new NativeActorFailure("time passes for native actor " + actor
+            + " only in a sequential run, where the model says how long");
+      }
+      var micros = (java.math.BigInteger) ((LawSpecRuntime.Data) amount.data()).fields().get(0)
+          .data();
+      org.apache.pekko.actor.testkit.typed.javadsl.ManualTime.get(system())
+          .timePasses(Duration.ofNanos(micros.multiply(java.math.BigInteger.valueOf(1000))
+              .longValueExact()));
+      return amount;
+    });
+    return this;
+  }
+
+  @Override
+  public boolean sequentialOnly(String handler)
+  {
+    return timed && handler.equals(TIME_PASSES);
+  }
+
+  private static String name(Object message)
+  {
+    return message.getClass().getSimpleName();
+  }
+
   /** A handler without a result whose message is sent without waiting. */
   public LawSpecPekkoNative<C> tell(String handler, Notice<? extends C> message)
   {
@@ -323,8 +462,20 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     }
     var identity = actor + "-" + IDENTITIES.incrementAndGet();
     var restarted = new AtomicReference<CompletableFuture<Void>>();
-    return LawSpecRuntime.handle(HANDLE,
-        new Spawned(identity, restarted, start(identity, restarted), testKit()));
+    // A run's probes are made before its actor, whose factory takes them.
+    var own = new LinkedHashMap<String, Probe>();
+    var refs = new LinkedHashMap<String, ActorRef<Object>>();
+    for (var probe : probes)
+    {
+      var made = new Probe(testKit());
+      own.put(probe, made);
+      refs.put(probe, made.ref);
+    }
+    probed.put(identity, refs);
+    var spawned = new Spawned(identity, restarted, null, testKit());
+    spawned.probes.putAll(own);
+    spawned.ref = start(identity, restarted);
+    return LawSpecRuntime.handle(HANDLE, spawned);
   }
 
   /**
@@ -419,6 +570,7 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     final ActorTestKit kit;
     final Map<String, Caller> callers = new ConcurrentHashMap<>();
     final Set<String> entities = ConcurrentHashMap.newKeySet();
+    final Map<String, Probe> probes = new ConcurrentHashMap<>();
 
     Spawned(String identity, AtomicReference<CompletableFuture<Void>> restarted,
         ActorRef<Object> ref, ActorTestKit kit)
@@ -429,6 +581,17 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
       this.kit = kit;
     }
 
+    /** A probe of the run's actor, by name. */
+    Probe probe(String name)
+    {
+      var probe = probes.get(name);
+      if (probe == null)
+      {
+        throw new IllegalArgumentException("no probe " + name);
+      }
+      return probe;
+    }
+
     /** The caller a value names, with its own address for the rest of the run. */
     Caller caller(Value who)
     {
@@ -436,8 +599,19 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     }
   }
 
+  /** A probe: a caller's address that also keeps the last message it heard, to answer it. */
+  private static final class Probe extends Caller
+  {
+    volatile Object heard;
+
+    Probe(ActorTestKit kit)
+    {
+      super(kit);
+    }
+  }
+
   /** A caller's address, and what it has received there. */
-  private static final class Caller
+  private static class Caller
   {
     final BlockingQueue<Object> inbox = new LinkedBlockingQueue<>();
     final ActorRef<Object> ref;
@@ -520,12 +694,30 @@ public final class LawSpecPekkoNative<C> implements LawSpecRuntime.ActorBackend
     {
       return entities.testKit();
     }
+    if (timed)
+    {
+      return virtualTime();
+    }
     return persistent ? Journaled.KIT : Plain.KIT;
   }
 
   private org.apache.pekko.actor.typed.ActorSystem<Void> system()
   {
     return testKit().system();
+  }
+
+  /**
+   * The test kit of an actor with a time passes step, on virtual time: its own, so no other model's
+   * steps move its clock.
+   */
+  private synchronized ActorTestKit virtualTime()
+  {
+    if (virtual == null)
+    {
+      virtual = started("lawspec-native-timed",
+          org.apache.pekko.actor.testkit.typed.javadsl.ManualTime.config().withFallback(common()));
+    }
+    return virtual;
   }
 
   /** Settings both test kits share: daemon threads, and quiet restarts. */

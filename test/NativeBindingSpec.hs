@@ -14,6 +14,8 @@ import LawSpec.Common
 import LawSpec.Frontend (compileCore,compileCoreCanonical)
 import qualified LawSpec.NativeRequest as Request
 import qualified LawSpec.RustNativeBinding as Rust
+import LawSpec.CoreEmit (emitPlanWithNativeOptions)
+import LawSpec.Testing (planTesting)
 import LawSpec.NativeBinding
 
 source :: String
@@ -221,7 +223,7 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
         deposit = Request.actorHandler "deposit" (ref "Deposit") True (Just (ref "Balance")) (Just "balance")
         close = Request.actorHandler "close" (ref "Close") False Nothing Nothing
         actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
-          Nothing Nothing handlers
+          Nothing Nothing handlers []
         resolveActors abstract actors = case compileCore 64 defaultGeneration [Source "bank" (actorSource abstract)] of
           Left diagnostics -> Left (show diagnostics)
           Right program -> Request.resolveNativeRequest program Request.emptyNativeRequest { Request.requestActors = actors }
@@ -278,7 +280,7 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
           { Request.handlerCaller = True, Request.handlerResultField = Just "balance" }
         close = Request.actorHandler "close" (ref "Close") False Nothing Nothing
         actor handlers = Request.ActorBinding "bank::account" (Request.BehaviorFactory (NativeRef ["app","Account","create"]))
-          Nothing Nothing handlers
+          Nothing Nothing handlers []
         resolve actors = case compileCore 64 defaultGeneration [Source "bank" source] of
           Left diagnostics -> Left (show diagnostics)
           Right program -> Request.resolveNativeRequest program Request.emptyNativeRequest { Request.requestActors = actors }
@@ -302,4 +304,46 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
           { Request.handlerReplyArguments = [ref "Balance"], Request.handlerMessageFactory = True }]]
       Left message -> expectationFailure message
     either id (const "") (parsed "{\"handler\": \"close\", \"message\": [\"app\", \"Close\"], \"messageFactory\": [\"app\", \"close\"]}")
-      `shouldSatisfy` isInfixOf "exactly one of message or messageFactory"
+      `shouldSatisfy` isInfixOf "exactly one of message, messageFactory"
+  -- A hakker answers nothing: probes stand in for its chopsticks, hear what
+  -- it sends and answer for them, and time passes on virtual time.
+  -- ref:DEC-tell-only-actors ref:DEC-time-passes
+  it "resolves probes, heard and answered messages, reply cases and time passes" $ do
+    source <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    sticks <- readFile "acceptance/pekko-samples/fsm/chopsticks.lawspec"
+    bindings <- BL.readFile "acceptance/pekko-samples/fsm/scala/bindings.json"
+    let request = either error id (eitherDecode bindings) :: Request.NativeRequest
+        resolve actors = case compileCore 64 defaultGeneration [Source "hakkers.lawspec" source, Source "chopsticks.lawspec" sticks] of
+          Left diagnostics -> Left (show diagnostics)
+          Right program -> Request.resolveNativeRequest program request { Request.requestActors = actors }
+        [chopstick, hakker] = Request.requestActors request
+        rejected actors expected = case resolve actors of
+          Left message -> message `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure ("accepted; expected " ++ expected)
+        handler name = head [h | h <- Request.boundActorHandlers hakker, Request.boundHandlerName h == name]
+        replaced name h = hakker { Request.boundActorHandlers = [if Request.boundHandlerName x == name then h else x | x <- Request.boundActorHandlers hakker] }
+    case resolve [chopstick, hakker] of
+      Left message -> expectationFailure message
+      Right plan -> do
+        [(Request.resolvedActorName a, Request.resolvedActorTime a) | a <- Request.bindingActors plan]
+          `shouldBe` [("chopstick", False), ("hakker", True)]
+        [C.idText i | a <- Request.bindingActors plan, i <- Request.resolvedActorAdapters a, Request.resolvedActorName a == "hakker"]
+          `shouldSatisfy` elem "sample.hakkers::hakkerTimePasses"
+    Request.handlerReplyCases (head (Request.boundActorHandlers chopstick))
+      `shouldBe` [("Busy", Request.CaseBool False), ("Taken", Request.CaseBool True)]
+    rejected [chopstick, replaced "asksLeft" ((handler "asksLeft") { Request.handlerProbe = Just "middle" })] "probe middle is not one of the behavior's probes"
+    rejected [chopstick, replaced "asksLeft" ((handler "asksLeft") { Request.handlerProbe = Nothing })] "names the probe it hears at"
+    rejected [chopstick, replaced "leftTaken" ((handler "leftTaken") { Request.handlerAnswers = Nothing, Request.handlerReplyTo = False })] "hears at it"
+    rejected [chopstick, replaced "think" ((handler "think") { Request.handlerReplyTo = True, Request.handlerReply = Just (NativeRef ["sample","Hakker","Think"]) })] "sends a message value"
+    rejected [chopstick { Request.boundActorHandlers = [h { Request.handlerReplyCases = [("Taken", Request.CaseText "yes")] } | h <- take 1 (Request.boundActorHandlers chopstick)] ++ drop 1 (Request.boundActorHandlers chopstick) }, hakker]
+      "reply cases give a Bool"
+    rejected [chopstick, hakker { Request.boundActorPersistence = Just Request.EventSourced }] "unsupported: behavior arguments"
+    rejected [chopstick, hakker { Request.boundActorArguments = [Request.ProbeArgument "left", Request.ProbeArgument "left"] }] "a probe is named twice"
+  it "reports time passes unsupported without a native Pekko actor" $ do
+    source <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+    case compileCore 64 defaultGeneration [Source "hakkers.lawspec" source] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> forM_ ["python", "java"] $ \target ->
+        case planTesting program >>= emitPlanWithNativeOptions False target Nothing Nothing Request.emptyBindingPlan of
+          Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "lets time pass, which needs virtual time"
+          Right _ -> expectationFailure ("time passes was emitted for " ++ target)

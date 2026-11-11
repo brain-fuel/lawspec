@@ -4893,6 +4893,9 @@ public final class LawSpecRuntime
     /** The injected crash of an actor model (a step with no arguments). */
     final boolean crash;
 
+    /** A step only a sequential run takes, such as time passing for an actor on virtual time. */
+    boolean sequential;
+
     ModelCallback run;
     final ModelCallback reference;
     final ModelCallback when;
@@ -5124,6 +5127,7 @@ public final class LawSpecRuntime
         for (var c : built)
         {
           c.run = actorCommand(driven, c.name);
+          c.sequential = driven.sequentialOnly(c.name);
         }
         var steps = new ArrayList<ModelCommand>(built);
         steps.add(crashStep(driven, begin, restart));
@@ -5193,7 +5197,23 @@ public final class LawSpecRuntime
      * native actor keeps its state private and throws.
      */
     Value state(Value actor);
+
+    /**
+     * Whether a handler runs only in a sequential run, where the model's result for the step is
+     * known before it runs (under EXPECTED_RESULT), as time passing on virtual time needs.
+     * ref:DEC-time-passes
+     */
+    default boolean sequentialOnly(String handler)
+    {
+      return false;
+    }
   }
+
+  /**
+   * The symbol under which a sequential run gives a step's backend the model's result for it
+   * before the step runs: how long time passes, for an actor's time step.
+   */
+  public static final String EXPECTED_RESULT = "_lawspec_expected";
 
   private static final String ACTOR_HANDLE = "lawspec.actor";
 
@@ -5602,6 +5622,9 @@ public final class LawSpecRuntime
         var command = model.steps.get(s.index());
         var full = new ArrayList<Value>(s.args());
         full.add(command.state, state);
+        // The model steps first, so the step can see its result.
+        var stepped = stepModel(command, symbols, s.args(), expected);
+        symbols.put(EXPECTED_RESULT, stepped.result());
         var out = command.run.apply(symbols, full);
         Value result;
         if (model.shared)
@@ -5614,7 +5637,6 @@ public final class LawSpecRuntime
           result = command.unit ? absent("Unit") : fields.get(0);
           state = fields.get(fields.size() - 1);
         }
-        var stepped = stepModel(command, symbols, s.args(), expected);
         expected = stepped.state();
         var wanted = stepped.result();
         if (!command.unit && compareValues(result, wanted) != 0)
@@ -5901,6 +5923,10 @@ public final class LawSpecRuntime
     {
       int index = (int) random.below(model.commands.size());
       var command = model.commands.get(index);
+      if (command.sequential)
+      {
+        continue;
+      }
       var args = generateAll(model.values, command.arguments, random, size);
       try
       {
@@ -5992,11 +6018,15 @@ public final class LawSpecRuntime
     try
     {
       started = model.startRun.apply(symbols, prefix.startArgs());
+      var expected = model.startModel.apply(symbols, prefix.startArgs());
       for (var s : prefix.steps())
       {
         var command = model.commands.get(s.index());
         var full = new ArrayList<Value>(s.args());
         full.add(command.state, started);
+        var stepped = stepModel(command, symbols, s.args(), expected);
+        symbols.put(EXPECTED_RESULT, stepped.result());
+        expected = stepped.state();
         command.run.apply(symbols, full);
       }
     }

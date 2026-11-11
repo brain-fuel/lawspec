@@ -1,7 +1,8 @@
 -- | Documentary native request JSON, shared after typed resolution.
 module LawSpec.NativeRequestView (nativeRequestView) where
 
-import Data.Aeson (Value,object,(.=))
+import Data.Aeson (Value,object,toJSON,(.=))
+import qualified Data.Aeson.Key as K
 import qualified LawSpec.Core as C
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
@@ -43,12 +44,25 @@ nativeRequestView request=object
         SpringActorClass ref->["spring" .= referenceParts ref])++
       ["persistence" .= ("event-sourced"::String) | Just EventSourced<-[boundActorPersistence item]]++
       ["entity" .= referenceParts ref | Just ref<-[boundActorEntity item]]++
+      ["behaviorArguments" .= map argumentView (boundActorArguments item) | not (null (boundActorArguments item))]++
       ["handlers" .= map handlerView (boundActorHandlers item)])
-    handlerView item=object ([(if handlerMessageFactory item then "messageFactory" else "message") .= referenceParts (handlerMessage item),
+    argumentView (ProbeArgument name)=object ["probe" .= name]
+    argumentView (TextArgument text)=object ["text" .= text]
+    caseView (CaseBool b)=toJSON b
+    caseView (CaseText t)=toJSON t
+    messageKey item
+      | handlerHears item="hears"
+      | handlerMessageValue item="messageValue"
+      | handlerMessageFactory item="messageFactory"
+      | otherwise="message"::String
+    handlerView item=object ([K.fromString (messageKey item) .= referenceParts (handlerMessage item),
       "handler" .= boundHandlerName item,"replyTo" .= handlerReplyTo item]++["reply" .= referenceParts ref | Just ref<-[handlerReply item]]++
       ["replyArguments" .= map referenceParts (handlerReplyArguments item) | not (null (handlerReplyArguments item))]++
       ["result" .= name | Just name<-[handlerResult item]]++["resultField" .= name | Just name<-[handlerResultField item]]++
-      ["caller" .= True | handlerCaller item])
+      ["caller" .= True | handlerCaller item]++
+      ["probe" .= name | Just name<-[handlerProbe item]]++
+      concat [["answers" .= referenceParts heard,"answerField" .= field] | Just (heard,field)<-[handlerAnswers item]]++
+      ["replyCases" .= object [K.fromString key .= caseView value | (key,value)<-handlerReplyCases item] | not (null (handlerReplyCases item))])
     style RecordConstructor="record"::String
     style VariantConstructor="variant"
     style UnitConstructor="unit"
