@@ -73,6 +73,8 @@ runtimeFiles =
   -- Generated actors on Apache Pekko (:actors {:runtime :pekko}).
   , ("java-pekko", "pekko/LawSpecPekko.java"), ("java-pekko-supervisor", "pekko/LawSpecPekkoSupervisor.java")
   , ("java-pekko-crash", "pekko/LawSpecCrashInterceptor.java")
+  -- serve and connect over Pekko Cluster, only with :remote :cluster.
+  , ("java-pekko-cluster", "pekko/LawSpecPekkoCluster.java")
   -- Generated actors through the Spring Boot actor starter (:runtime :spring).
   , ("java-spring", "spring/LawSpecSpring.java")
   , ("java-data-strategies-body", "LawSpecDataStrategies.inc"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")

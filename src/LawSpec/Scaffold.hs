@@ -2,12 +2,12 @@
 -- structure only; they never reformat user source. The readable layout is the
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
-  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, pekkoVersion, springStarterVersion
+  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, scaffoldFilesForActors, pekkoVersion, springStarterVersion
   , PresentationCheck(..), presentationChecks, gleamTestPackage, rapidMinimum, rapidMaximum, rapidDefault
   ) where
 
 import Data.List (intercalate)
-import LawSpec.ActorRuntime (ActorRuntime (..))
+import LawSpec.ActorRuntime (ActorRemote (..), ActorRuntime (..), ActorSettings (..))
 import qualified LawSpec.Targets as Targets
 
 -- | Supported stable Rapid releases and the scaffold baseline.
@@ -145,7 +145,13 @@ scaffoldFilesWith = scaffoldFilesFor LawSpecActors
 -- join the dependencies only when :actors selects :pekko, so the default
 -- scaffolds are unchanged. ref:DEC-pekko-runtime
 scaffoldFilesFor :: ActorRuntime -> Bool -> Bool -> String -> Either String [(FilePath, String)]
-scaffoldFilesFor runtime crypto minify target = case target of
+scaffoldFilesFor runtime = scaffoldFilesForActors (ActorSettings runtime LawSpecRemote)
+
+-- | The same with the target's whole :actors settings: Pekko Cluster's typed
+-- API joins the dependencies only with :remote :cluster.
+-- ref:DEC-pekko-cluster-remote
+scaffoldFilesForActors :: ActorSettings -> Bool -> Bool -> String -> Either String [(FilePath, String)]
+scaffoldFilesForActors (ActorSettings runtime remote) crypto minify target = case target of
   "hcl" -> Right []
   "yaml" -> Right []
   "make" -> Right []
@@ -246,7 +252,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]
-  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto pekko spring) ++ "\n")]
+  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto pekko cluster spring) ++ "\n")]
   "go" -> Right [("go.mod", unlines $
     [ "module example.com/lawspec-example", "", "go 1.25.0", ""
     ] ++ (if crypto then
@@ -281,6 +287,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
             ([ "implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")" ] ++
              [ "implementation(\"org.bouncycastle:bcprov-jdk18on:1.86\")" | crypto ] ++
              [ "implementation(\"org.apache.pekko:pekko-actor-typed_3:" ++ pekkoVersion ++ "\")" | pekko ] ++
+             [ "implementation(\"org.apache.pekko:pekko-cluster-typed_3:" ++ pekkoVersion ++ "\")" | cluster ] ++
              [ "implementation(\"io.github.seonwkim:actor-spring-boot-starter:" ++ springStarterVersion ++ "\")" | spring ] ++
              [ "testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
@@ -296,6 +303,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
         , "//> using javaOpt --sun-misc-unsafe-memory-access=allow" ] ++
         [ "//> using dep org.bouncycastle:bcprov-jdk18on:1.86" | crypto ] ++
         [ "//> using dep org.apache.pekko::pekko-actor-typed:" ++ pekkoVersion | pekko ] ++
+        [ "//> using dep org.apache.pekko::pekko-cluster-typed:" ++ pekkoVersion | cluster ] ++
         [ "//> using test.dep org.scalacheck::scalacheck:1.20.0"
         , "//> using test.dep org.scalatest::scalatest-funsuite:3.2.20" ])) ]
   -- Groovy over the Java model: Gradle compiles both jointly (DEC-groovy-over-java).
@@ -314,6 +322,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
             ([ "implementation 'org.apache.groovy:groovy:5.0.8'" ] ++
              [ "implementation 'org.bouncycastle:bcprov-jdk18on:1.86'" | crypto ] ++
              [ "implementation 'org.apache.pekko:pekko-actor-typed_3:" ++ pekkoVersion ++ "'" | pekko ] ++
+             [ "implementation 'org.apache.pekko:pekko-cluster-typed_3:" ++ pekkoVersion ++ "'" | cluster ] ++
              [ "implementation 'io.github.seonwkim:actor-spring-boot-starter:" ++ springStarterVersion ++ "'" | spring ] ++
              [ "testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')"
              , "testImplementation 'org.spockframework:spock-core'"
@@ -329,6 +338,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
         , " :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}" ++
             (if crypto then "\n        org.bouncycastle/bcprov-jdk18on {:mvn/version \"1.86\"}" else "") ++
             (if pekko then "\n        org.apache.pekko/pekko-actor-typed_3 {:mvn/version \"" ++ pekkoVersion ++ "\"}" else "") ++
+            (if cluster then "\n        org.apache.pekko/pekko-cluster-typed_3 {:mvn/version \"" ++ pekkoVersion ++ "\"}" else "") ++
             (if spring then "\n        io.github.seonwkim/actor-spring-boot-starter {:mvn/version \"" ++ springStarterVersion ++ "\"}" else "") ++ "}"
         , " :aliases"
         , " {:test {:extra-paths [\"test\" \"target/test-classes\"]"
@@ -341,6 +351,7 @@ scaffoldFilesFor runtime crypto minify target = case target of
   where
     pekko = runtime /= LawSpecActors
     spring = runtime == SpringActors
+    cluster = pekko && remote == ClusterRemote
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
     commonPackage = [("name", Str "lawspec-example"), ("version", Str "0.1.0"), ("private", Bool True), ("type", Str "module")]
     kotlinBlock name statements
@@ -445,8 +456,8 @@ renderJson minify depth value = case value of
 
 data Xml = Element String [(String, String)] (Either String [Xml])
 
-mavenProject :: Bool -> Bool -> Bool -> Xml
-mavenProject crypto pekko spring = Element "project"
+mavenProject :: Bool -> Bool -> Bool -> Bool -> Xml
+mavenProject crypto pekko cluster spring = Element "project"
   [ ("xmlns", "http://maven.apache.org/POM/4.0.0")
   , ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
   , ("xsi:schemaLocation", "http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd") ]
@@ -455,6 +466,7 @@ mavenProject crypto pekko spring = Element "project"
     , node "dependencies"
         ([ compileDependency "org.bouncycastle" "bcprov-jdk18on" "1.86" | crypto ] ++
         [ compileDependency "org.apache.pekko" "pekko-actor-typed_3" pekkoVersion | pekko ] ++
+        [ compileDependency "org.apache.pekko" "pekko-cluster-typed_3" pekkoVersion | cluster ] ++
         [ compileDependency "io.github.seonwkim" "actor-spring-boot-starter" springStarterVersion | spring ] ++
         [ dependency "org.jetbrains" "jetCheck" "0.3.0"
         , dependency "org.junit.jupiter" "junit-jupiter" "5.14.0" ] ++

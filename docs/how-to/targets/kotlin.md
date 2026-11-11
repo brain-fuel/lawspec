@@ -130,7 +130,9 @@ Generated actors run on LawSpec's runtime by default. `:actors {:runtime
 :pekko}` in `lawspec.edn` runs them on Apache Pekko 1.7.1, and
 `:actors {:runtime :spring}` through the Spring Boot actor starter 1.0.0,
 where each actor class has a nested `SpringActor` component. `build.gradle.kts`
-gains the pinned libraries. See [actor runtimes](../../reference/configuration.md#actor-runtimes).
+gains the pinned libraries. With either, `:remote :cluster` gives `serve` and
+`connect` over Pekko Cluster, with a `LawSpecPekkoCluster.Node` for the node.
+See [actor runtimes](../../reference/configuration.md#actor-runtimes).
 
 ## Formatting
 

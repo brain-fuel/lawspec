@@ -315,7 +315,8 @@ acceptanceProject env command = do
   (suite, target) <- acceptanceSuite command
   let profile = (if lookup "LAWSPEC_MACHINE_BITS" env == Just "32" then "32" else "") ++
         (if lookup "LAWSPEC_MINIFY" env == Just "1" then "-compact" else "") ++
-        maybe "" ('-' :) (mfilter (`notElem` ["", "lawspec"]) (lookup "LAWSPEC_ACTORS" env))
+        maybe "" ('-' :) (mfilter (`notElem` ["", "lawspec"]) (lookup "LAWSPEC_ACTORS" env)) ++
+        (if lookup "LAWSPEC_REMOTE" env == Just "cluster" then "-cluster" else "")
   pure (suite ++ profile ++ "/" ++ target)
 
 -- | The console: in parallel, whole lines are printed as steps finish, and a
@@ -701,6 +702,14 @@ targetSteps target =
   -- ref:DEC-spring-actor-starter
   [ Step (target ++ "-" ++ suite ++ "-spring") [("LAWSPEC_ACTORS", "spring")] (acceptance [suite, target])
   | target `elem` ["java", "kotlin", "groovy", "clojure"], suite <- ["actors", "restarts"] ] ++
+  -- Actors served and called over Pekko Cluster (:remote :cluster): the
+  -- distribution suite's remote laws on a two-node cluster in one JVM, on
+  -- Pekko for every JVM target and through the Spring starter for Java.
+  -- ref:DEC-pekko-cluster-remote
+  [ Step (target ++ "-distribution-" ++ runtime ++ "-cluster") [("LAWSPEC_ACTORS", runtime), ("LAWSPEC_REMOTE", "cluster")]
+      (acceptance ["distribution", target])
+  | (runtime, targets) <- [("pekko", ["java", "kotlin", "scala", "groovy", "clojure"]), ("spring", ["java"])]
+  , target `elem` targets ] ++
   -- Scala's own suites: bound handlers whose operations fail answer Either.
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
   -- Existing Pekko actors checked against a LawSpec actor's model (Java and

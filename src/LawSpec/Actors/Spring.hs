@@ -8,7 +8,7 @@
 -- emulation. Groovy and Clojure reuse the Java classes. The runtime's files
 -- are written once beside the actors. ref:DEC-spring-actor-starter
 -- ref:DEC-pekko-otp-supervision
-module LawSpec.Actors.Spring (emit, runtimeFiles) where
+module LawSpec.Actors.Spring (emit, emitOn, springRuntime, runtimeFiles) where
 
 import LawSpec.Actors.Jvm (Runtime(..), emitWith)
 import qualified LawSpec.Actors.Pekko as Pekko
@@ -27,8 +27,13 @@ springRuntime = Pekko.pekkoRuntime
   }
 
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
-emit target minify bits datas actors supervisions =
-  (runtimeFiles ++) <$> emitWith springRuntime target minify bits datas actors supervisions
+emit = emitOn springRuntime
+
+-- | The actors over a Spring runtime, with LawSpecPekkoCluster when its
+-- actors serve over the cluster. ref:DEC-pekko-cluster-remote
+emitOn :: Runtime -> String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emitOn rt target minify bits datas actors supervisions =
+  ((runtimeFiles ++ [f | runtimeRemote rt /= Nothing, f <- Pekko.clusterFiles]) ++) <$> emitWith rt target minify bits datas actors supervisions
 
 -- | The Pekko runtime's Java sources and LawSpecSpring.
 runtimeFiles :: [Artifact]

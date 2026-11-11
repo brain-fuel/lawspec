@@ -128,7 +128,8 @@ are the [Java ones](java.md); their wire format is the same on every target.
 Groovy uses the Java actor classes, so `:actors {:runtime :pekko}` and
 `:actors {:runtime :spring}` in `lawspec.edn` run them on Apache Pekko 1.7.1
 or through the Spring Boot actor starter 1.0.0, and `build.gradle` gains the
-pinned libraries. See [actor runtimes](../../reference/configuration.md#actor-runtimes).
+pinned libraries. `:remote :cluster` gives the actors `serve` and `connect`
+over Pekko Cluster, with a `LawSpecPekkoCluster.Node` for the node. See [actor runtimes](../../reference/configuration.md#actor-runtimes).
 
 ## Tests
 

@@ -38,13 +38,14 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
     -- ref:DEC-pekko-runtime
     emitter t = case (actorRuntime settings, actorRemote settings) of
       (LawSpecActors, _) -> lawspecEmitter t
-      (_, ClusterRemote) -> unsupported "serve and connect over Pekko Cluster (:remote :cluster) are not implemented yet"
-      (PekkoActors, _) | t `elem` ["java", "kotlin"] -> Pekko.emit t
-      (PekkoActors, _) | t == "scala" -> PekkoScala.emit t
-      (SpringActors, _) | t `elem` ["java", "kotlin"] -> Spring.emit t
+      -- serve and connect over Pekko Cluster. ref:DEC-pekko-cluster-remote
+      (PekkoActors, remote) | t `elem` ["java", "kotlin"] -> Pekko.emitOn (cluster remote Pekko.pekkoRuntime) t
+      (PekkoActors, remote) | t == "scala" -> PekkoScala.emitOn (cluster remote Pekko.pekkoRuntime) t
+      (SpringActors, remote) | t `elem` ["java", "kotlin"] -> Spring.emitOn (cluster remote Spring.springRuntime) t
       (SpringActors, _) | t == "scala" -> unsupported "generated actors on :spring are not supported for Scala: the Spring Boot actor starter is a Java and Kotlin library; use :runtime :pekko"
       (runtime, _) -> unsupported ("generated actors on :" ++ actorRuntimeName runtime ++ " are not implemented for " ++ t ++ " yet")
     unsupported message = \_ _ _ _ _ -> Left message
+    cluster remote rt = if remote == ClusterRemote then Pekko.onCluster rt else rt
     lawspecEmitter t = case t of
       "python" -> Python.emit t
       "go" -> Go.emit t

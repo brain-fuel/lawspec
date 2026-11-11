@@ -4719,36 +4719,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:171: Generation",
+      "id": "reference:docs/reference/configuration.md:159: Actors across Pekko Cluster",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:171: Generation",
+      "name": "docs/reference/configuration.md:159: Actors across Pekko Cluster",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:184: `lawspec.edn`",
+      "id": "reference:docs/reference/configuration.md:210: Generation",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:184: `lawspec.edn`",
+      "name": "docs/reference/configuration.md:210: Generation",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:217: Generated state",
+      "id": "reference:docs/reference/configuration.md:223: `lawspec.edn`",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:217: Generated state",
+      "name": "docs/reference/configuration.md:223: `lawspec.edn`",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/configuration.md:224: Contract resolution and component descriptions",
+      "id": "reference:docs/reference/configuration.md:256: Generated state",
       "kind": "reference",
-      "name": "docs/reference/configuration.md:224: Contract resolution and component descriptions",
+      "name": "docs/reference/configuration.md:256: Generated state",
+      "source": "docs/reference/configuration.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/configuration.md:263: Contract resolution and component descriptions",
+      "kind": "reference",
+      "name": "docs/reference/configuration.md:263: Contract resolution and component descriptions",
       "source": "docs/reference/configuration.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5070,36 +5079,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:210: Mailboxes",
+      "id": "reference:docs/reference/language/actors.md:212: Mailboxes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:210: Mailboxes",
+      "name": "docs/reference/language/actors.md:212: Mailboxes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:229: Supervisors",
+      "id": "reference:docs/reference/language/actors.md:231: Supervisors",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:229: Supervisors",
+      "name": "docs/reference/language/actors.md:231: Supervisors",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:269: Runtimes",
+      "id": "reference:docs/reference/language/actors.md:271: Runtimes",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:269: Runtimes",
+      "name": "docs/reference/language/actors.md:271: Runtimes",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/actors.md:285: Evidence",
+      "id": "reference:docs/reference/language/actors.md:290: Evidence",
       "kind": "reference",
-      "name": "docs/reference/language/actors.md:285: Evidence",
+      "name": "docs/reference/language/actors.md:290: Evidence",
       "source": "docs/reference/language/actors.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

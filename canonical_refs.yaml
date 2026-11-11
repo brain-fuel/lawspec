@@ -915,6 +915,18 @@ pekko-cluster-typed:
   kind: article
   title: "Apache Pekko Typed: cluster, receptionist and sharding"
   locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster.html
+pekko-receptionist:
+  kind: article
+  title: "Apache Pekko Typed: actor discovery (Receptionist, ServiceKey, Find and Listing; the cluster receptionist over Distributed Data)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/actor-discovery.html
+pekko-serialization:
+  kind: article
+  title: "Apache Pekko: serialization (SerializerWithStringManifest, serialization-bindings, ActorRefResolver, Java serialization disabled)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/serialization.html
+pekko-cluster-membership:
+  kind: article
+  title: "Apache Pekko: cluster membership (member states, unreachable members, leaving through coordinated shutdown)"
+  locator: https://pekko.apache.org/docs/pekko/1.1/typed/cluster-membership.html
 apache-pekko-samples:
   kind: code
   title: "apache/pekko-samples at f9ce3d60a4f24b1844409e3153c7fbf361cc2506: fsm, persistence and sharding (Java)"
