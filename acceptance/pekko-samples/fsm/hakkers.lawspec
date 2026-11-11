@@ -1,192 +1,259 @@
 unit sample.hakkers
 
--- The dining hakkers of apache/pekko-samples' pekko-sample-fsm-java: hakkers
--- at a round table, a chopstick between each two. A hungry hakker sends Take
--- to both its chopsticks at once and waits for both answers: with both it
--- eats; with one, it puts that one back and thinks again (Hakker.java's
--- hungry, waitForOtherChopstick and firstChopstickDenied). An eating hakker
--- puts both down when it is full.
+-- The hakker of apache/pekko-samples' pekko-sample-fsm-java (the dining
+-- hakkers), checked as the sample wrote it. A hakker answers no message: it
+-- thinks, its timers make it hungry and full, and it talks only to its two
+-- chopsticks. So LawSpec stands in for the chopsticks. Each is a probe that
+-- hears what the hakker sends it and answers as the sample's Chopstick
+-- would, Taken or Busy. Time is virtual, so the hakker's timers fire only
+-- when the model says time passes.
 --
--- This model states that protocol. Its adapters run it against the
--- sample's real Chopstick actors, and its laws hold of every run of the
--- model. The sample seats five hakkers; this table seats three, because
--- the model checker explores five hakkers' 9,864 states too slowly for a
--- test suite (see the how-to). The sample's Hakker actor itself is driven
--- only by its own timers and answers nothing, so it is not bound.
-type Hakker is one of
-  | Ghosh
-  | Boner
-  | Klang
+-- What one hakker sends its chopsticks.
+type Said is one of
+  | Take
+  | Put
 end type
 
--- Where a hakker is in the protocol. A hungry hakker has asked for both
--- chopsticks; HasLeft and DeniedLeft say how its left chopstick answered
--- while it still waits for the right, and the same for the right.
+-- Where the hakker is in Hakker.java: waiting before its first Think,
+-- thinking (its Eat timer is set), hungry (it has asked for both
+-- chopsticks), holding its left (or right) chopstick and waiting for the
+-- other, denied (its first answer was Busy, and it waits for the second),
+-- and eating (its Think timer is set).
 type Phase is one of
+  | Waiting
   | Thinking
   | Hungry
   | HasLeft
-  | DeniedLeft
   | HasRight
-  | DeniedRight
+  | Denied
   | Eating
 end type
 
--- Hakker i's left chopstick is chopstick i, its right chopstick i + 1, as
--- DiningHakkers.java seats them, around a table of three.
-type Seats is a record{
-    ghosh :: Phase
-    boner :: Phase
-    klang :: Phase}
+-- One hakker: where it is, how long until its timer fires, what it has sent
+-- each chopstick that LawSpec has not heard yet, and whether it waits for
+-- each chopstick's answer.
+type Seat is a record{
+    phase :: Phase
+    timer :: Duration
+    left :: List Said
+    right :: List Said
+    leftAsked :: Bool
+    rightAsked :: Bool}
 end type
 
-handle Table
+type Diner is a record{ id :: Int32 } end type
 
-openTable :: Unit -> Table
--- A thinking hakker gets hungry and asks for both chopsticks.
-hungry :: Table -> Hakker -> Unit
--- The hakker's left (or right) chopstick answers its Take: Taken (true) or
--- Busy (false). The hakker then eats, or puts back what it holds.
-leftAnswers :: Table -> Hakker -> Bool
-rightAnswers :: Table -> Hakker -> Bool
--- An eating hakker is full and puts both chopsticks down.
-full :: Table -> Hakker -> Unit
+openDiner :: Unit -> Diner
+-- A crashed hakker starts again from its behaviour.
+restartDiner :: Diner -> Diner
+-- The hakker is told to think, as DiningHakkers starts every hakker.
+think :: Diner -> Diner
+-- The hakker's left (or right) chopstick hears it ask for it (Take), or put
+-- it down (Put).
+asksLeft :: Diner -> Diner
+putsDownLeft :: Diner -> Diner
+asksRight :: Diner -> Diner
+putsDownRight :: Diner -> Diner
+-- The hakker's left (or right) chopstick answers its Take: Taken or Busy.
+leftTaken :: Diner -> Diner
+leftBusy :: Diner -> Diner
+rightTaken :: Diner -> Diner
+rightBusy :: Diner -> Diner
 
-function phase (h :: Hakker) (s :: Seats) -> Phase is
-  first matching case of h :
-    when Ghosh then s.ghosh
-    when Boner then s.boner
-    when Klang then s.klang
+function startSeat (u :: Unit) -> Seat is
+  Seat record{ phase = Waiting, timer = 0s, left = Nil, right = Nil, leftAsked = false,
+    rightAsked = false}
+end function
+
+function later (said :: Said) (sent :: List Said) -> List Said is
+  first matching case of sent :
+    when Nil then Cons said Nil
+    when Cons first rest then Cons first (later said rest)
   end case
 end function
 
-function seat (h :: Hakker) (p :: Phase) (s :: Seats) -> Seats is
-  first matching case of h :
-    when Ghosh then s with ghosh = p
-    when Boner then s with boner = p
-    when Klang then s with klang = p
+-- Starts thinking for d: when its timer fires, it gets hungry.
+function thinkFor (d :: Duration) (s :: Seat) -> Seat is
+  s with phase = Thinking, timer = d
+end function
+
+-- Starts eating for 5 seconds: when its timer fires, it is full.
+function startEating (s :: Seat) -> Seat is
+  s with phase = Eating, timer = 5s
+end function
+
+function waiting (s :: Seat) -> Bool is s.phase = Waiting end function
+
+function timerSet (s :: Seat) -> Bool is s.phase = Thinking || s.phase = Eating end function
+
+function modelThink (s :: Seat) -> Seat is
+  thinkFor 5s s
+end function
+
+-- Time passes until the hakker's timer fires. A thinking hakker gets hungry
+-- and asks for both chopsticks; an eating one is full, puts both down and
+-- thinks for 5 seconds.
+function modelTimePasses (s :: Seat) -> Pair Duration Seat is
+  first matching case of s.phase :
+    when Thinking then Pair s.timer (s with phase = Hungry, timer = 0s, left = later Take s.left,
+        right = later Take s.right)
+    when Eating then Pair s.timer (thinkFor 5s (s with left = later Put s.left, right = later Put s.right))
+    when Waiting then Pair 0s s
+    when Hungry then Pair 0s s
+    when HasLeft then Pair 0s s
+    when HasRight then Pair 0s s
+    when Denied then Pair 0s s
   end case
 end function
 
-function leftOf (h :: Hakker) -> Hakker is
-  first matching case of h :
-    when Ghosh then Klang
-    when Boner then Ghosh
-    when Klang then Boner
+function nextLeft (said :: Said) (s :: Seat) -> Bool is
+  first matching case of s.left :
+    when Nil then false
+    when Cons first rest then first = said
   end case
 end function
 
-function rightOf (h :: Hakker) -> Hakker is
-  first matching case of h :
-    when Ghosh then Boner
-    when Boner then Klang
-    when Klang then Ghosh
+function nextRight (said :: Said) (s :: Seat) -> Bool is
+  first matching case of s.right :
+    when Nil then false
+    when Cons first rest then first = said
   end case
 end function
 
-function holdsLeft (p :: Phase) -> Bool is p = HasLeft || p = Eating end function
-function holdsRight (p :: Phase) -> Bool is p = HasRight || p = Eating end function
-
--- Hakker h's left chopstick is also its left neighbour's right one.
-function leftTaken (h :: Hakker) (s :: Seats) -> Bool is
-  holdsLeft (phase h s) || holdsRight (phase (leftOf h) s)
+function afterFirst (sent :: List Said) -> List Said is
+  first matching case of sent :
+    when Nil then Nil
+    when Cons first others then others
+  end case
 end function
 
-function rightTaken (h :: Hakker) (s :: Seats) -> Bool is
-  holdsRight (phase h s) || holdsLeft (phase (rightOf h) s)
-end function
+function leftTake (s :: Seat) -> Bool is nextLeft Take s end function
+function leftPut (s :: Seat) -> Bool is nextLeft Put s end function
+function rightTake (s :: Seat) -> Bool is nextRight Take s end function
+function rightPut (s :: Seat) -> Bool is nextRight Put s end function
+function awaitsLeft (s :: Seat) -> Bool is s.leftAsked end function
+function awaitsRight (s :: Seat) -> Bool is s.rightAsked end function
 
-function startSeats (u :: Unit) -> Seats is
-  Seats record{ ghosh = Thinking, boner = Thinking, klang = Thinking}
-end function
+function modelAsksLeft (s :: Seat) -> Seat is s with left = afterFirst s.left, leftAsked = true end function
+function modelPutsDownLeft (s :: Seat) -> Seat is s with left = afterFirst s.left end function
+function modelAsksRight (s :: Seat) -> Seat is s with right = afterFirst s.right, rightAsked = true end function
+function modelPutsDownRight (s :: Seat) -> Seat is s with right = afterFirst s.right end function
 
--- A step a hakker cannot take now changes nothing (and answers false).
-function modelHungry (h :: Hakker) (s :: Seats) -> Seats is
-  if phase h s = Thinking then seat h Hungry s else s end if
-end function
-
-function modelLeftAnswers (h :: Hakker) (s :: Seats) -> Pair Bool Seats is
-  let p = phase h s in
-    let taken = not (leftTaken h s) in
-      first matching case of p :
-        when Hungry then Pair taken (seat h (if taken then HasLeft else DeniedLeft end if) s)
-        when HasRight then Pair taken (seat h (if taken then Eating else Thinking end if) s)
-        when DeniedRight then Pair taken (seat h Thinking s)
-        when Thinking then Pair false s
-        when HasLeft then Pair false s
-        when DeniedLeft then Pair false s
-        when Eating then Pair false s
-      end case
-    end let
+-- The left chopstick answers Taken. A hungry hakker waits for its right
+-- one; one holding its right eats; a denied one puts the left back and
+-- thinks for 10 milliseconds.
+function modelLeftTaken (s :: Seat) -> Seat is
+  let answered = s with leftAsked = false in
+    first matching case of s.phase :
+      when Hungry then answered with phase = HasLeft
+      when HasRight then startEating answered
+      when Denied then thinkFor 10ms (answered with left = later Put s.left)
+      when Waiting then answered
+      when Thinking then answered
+      when HasLeft then answered
+      when Eating then answered
+    end case
   end let
 end function
 
-function modelRightAnswers (h :: Hakker) (s :: Seats) -> Pair Bool Seats is
-  let p = phase h s in
-    let taken = not (rightTaken h s) in
-      first matching case of p :
-        when Hungry then Pair taken (seat h (if taken then HasRight else DeniedRight end if) s)
-        when HasLeft then Pair taken (seat h (if taken then Eating else Thinking end if) s)
-        when DeniedLeft then Pair taken (seat h Thinking s)
-        when Thinking then Pair false s
-        when HasRight then Pair false s
-        when DeniedRight then Pair false s
-        when Eating then Pair false s
-      end case
-    end let
+-- The left chopstick answers Busy. A hungry hakker is denied; one holding
+-- its right puts it back; a denied one thinks; each thinks for 10
+-- milliseconds.
+function modelLeftBusy (s :: Seat) -> Seat is
+  let answered = s with leftAsked = false in
+    first matching case of s.phase :
+      when Hungry then answered with phase = Denied
+      when HasRight then thinkFor 10ms (answered with right = later Put s.right)
+      when Denied then thinkFor 10ms answered
+      when Waiting then answered
+      when Thinking then answered
+      when HasLeft then answered
+      when Eating then answered
+    end case
   end let
 end function
 
-function modelFull (h :: Hakker) (s :: Seats) -> Seats is
-  if phase h s = Eating then seat h Thinking s else s end if
+function modelRightTaken (s :: Seat) -> Seat is
+  let answered = s with rightAsked = false in
+    first matching case of s.phase :
+      when Hungry then answered with phase = HasRight
+      when HasLeft then startEating answered
+      when Denied then thinkFor 10ms (answered with right = later Put s.right)
+      when Waiting then answered
+      when Thinking then answered
+      when HasRight then answered
+      when Eating then answered
+    end case
+  end let
 end function
 
-model table :: shared Table by Seats is
-  start openTable by (startSeats ())
-  hungry by modelHungry
-  leftAnswers by modelLeftAnswers
-  rightAnswers by modelRightAnswers
-  full by modelFull
-end model
-
--- What the laws say about a table.
-function eats (p :: Phase) -> Bool is p = Eating end function
-
-function neighboursApart (s :: Seats) -> Bool is
-  not (eats s.ghosh && eats s.boner) && not (eats s.boner && eats s.klang)
-    && not (eats s.klang && eats s.ghosh)
+function modelRightBusy (s :: Seat) -> Seat is
+  let answered = s with rightAsked = false in
+    first matching case of s.phase :
+      when Hungry then answered with phase = Denied
+      when HasLeft then thinkFor 10ms (answered with left = later Put s.left)
+      when Denied then thinkFor 10ms answered
+      when Waiting then answered
+      when Thinking then answered
+      when HasRight then answered
+      when Eating then answered
+    end case
+  end let
 end function
 
--- A hakker never waits for nothing: in every state some hakker has a step
--- to take, since a chopstick answers every Take (the chopstick's own checks
--- hold the real chopstick to that) and a denied hakker puts back what it
--- holds instead of waiting for it.
-function canStep (p :: Phase) -> Bool is
-  p = Thinking || p = Hungry || p = HasLeft || p = DeniedLeft || p = HasRight || p = DeniedRight || p = Eating
+-- A crash restarts the hakker from its behaviour: it waits for Think again,
+-- and no answer reaches it. What it sent before stays sent.
+function modelRestart (s :: Seat) -> Seat is
+  s with phase = Waiting, timer = 0s, leftAsked = false, rightAsked = false
 end function
 
-function someoneCanStep (s :: Seats) -> Bool is
-  canStep s.ghosh || canStep s.boner || canStep s.klang
+actor hakker :: Diner by Seat is
+  start openDiner by (startSeat ())
+  restart from restartDiner by modelRestart
+  on think by modelThink when waiting
+  time passes by modelTimePasses when timerSet
+  on asksLeft by modelAsksLeft when leftTake
+  on putsDownLeft by modelPutsDownLeft when leftPut
+  on asksRight by modelAsksRight when rightTake
+  on putsDownRight by modelPutsDownRight when rightPut
+  on leftTaken by modelLeftTaken when awaitsLeft
+  on leftBusy by modelLeftBusy when awaitsLeft
+  on rightTaken by modelRightTaken when awaitsRight
+  on rightBusy by modelRightBusy when awaitsRight
+end actor
+
+-- What the laws say about a hakker.
+function eats (s :: Seat) -> Bool is s.phase = Eating end function
+function hungry (s :: Seat) -> Bool is s.phase = Hungry end function
+
+-- It holds a chopstick from the Taken answer until it puts it down.
+function holdsLeft (s :: Seat) -> Bool is
+  s.phase = HasLeft || s.phase = Eating
 end function
 
-function ghoshEats (s :: Seats) -> Bool is eats s.ghosh end function
-function ghoshHungry (s :: Seats) -> Bool is s.ghosh = Hungry end function
+function holdsRight (s :: Seat) -> Bool is
+  s.phase = HasRight || s.phase = Eating
+end function
 
-law "|neighbours never eat at once| in model table is
-  definition: every run holds always neighboursApart end definition
+function eatsWithBoth (s :: Seat) -> Bool is
+  not (eats s) || holdsLeft s && holdsRight s
+end function
+
+-- A hakker eats only with both chopsticks. The chopstick checks hold each
+-- chopstick to one holder at a time, so two neighbours, who share one,
+-- never eat at once.
+law "|a hakker eats only with both chopsticks| in model hakker is
+  definition: every run holds always eatsWithBoth end definition
 end law
 
-law "|no deadlock| in model table is
-  definition: every run holds always someoneCanStep end definition
+law "|a hakker can eat| in model hakker is
+  definition: some run holds eventually eats end definition
 end law
 
-law "|a hakker can eat| in model table is
-  definition: some run holds eventually ghoshEats end definition
-end law
-
--- Every hungry hakker eventually eating does not hold, even under
--- fairness: the hakkers can deny one another for ever (each takes one
--- chopstick, is refused the other, puts it back, and tries again), which
--- the sample's random thinking times only make unlikely. The spec mutant
--- starvation adds that law, and LawSpec refutes it with such a run.
+-- Every hungry hakker eventually eating does not hold, even when every
+-- step is fair: the chopsticks can answer so that the hakker always gets
+-- one and is refused the other, puts it back, and tries again. Its
+-- neighbours can answer that way for ever, and the sample's random thinking
+-- times only make it unlikely. The spec mutant starvation adds that law,
+-- and LawSpec refutes it with such a run.
 end unit

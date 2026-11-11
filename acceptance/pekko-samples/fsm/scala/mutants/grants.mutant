@@ -1,0 +1,12 @@
+expect: model chopstick fails at step
+@@ src/main/scala/sample/DiningHakkers.scala
+<<<<<<<
+      case (ctx, Take(otherHakker)) =>
+        otherHakker ! Busy(ctx.self)
+        Behaviors.same
+=======
+      case (ctx, Take(otherHakker)) =>
+        // Mutant: a taken chopstick is granted again.
+        otherHakker ! Taken(ctx.self)
+        takenBy(otherHakker)
+>>>>>>>

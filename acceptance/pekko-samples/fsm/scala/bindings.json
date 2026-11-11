@@ -1,0 +1,33 @@
+{
+  "actors": [
+    {
+      "actor": "sample.chopsticks::chopstick",
+      "behavior": ["sample", "Chopstick", "apply"],
+      "handlers": [
+        {"handler": "take", "message": ["sample", "Chopstick", "Take"], "caller": true,
+         "reply": ["sample", "Chopstick", "ChopstickAnswer"], "replyCases": {"Taken": true, "Busy": false}},
+        {"handler": "put", "message": ["sample", "Chopstick", "Put"], "caller": true}
+      ]
+    },
+    {
+      "actor": "sample.hakkers::hakker",
+      "behavior": ["sample", "Hakker", "apply"],
+      "behaviorArguments": [{"text": "Ghosh"}, {"probe": "left"}, {"probe": "right"}],
+      "handlers": [
+        {"handler": "think", "messageValue": ["sample", "Hakker", "Think"]},
+        {"handler": "asksLeft", "probe": "left", "hears": ["sample", "Chopstick", "Take"]},
+        {"handler": "putsDownLeft", "probe": "left", "hears": ["sample", "Chopstick", "Put"]},
+        {"handler": "asksRight", "probe": "right", "hears": ["sample", "Chopstick", "Take"]},
+        {"handler": "putsDownRight", "probe": "right", "hears": ["sample", "Chopstick", "Put"]},
+        {"handler": "leftTaken", "probe": "left", "answers": ["sample", "Chopstick", "Take"], "answerField": "ref",
+         "message": ["sample", "Chopstick", "Taken"], "replyTo": true},
+        {"handler": "leftBusy", "probe": "left", "answers": ["sample", "Chopstick", "Take"], "answerField": "ref",
+         "message": ["sample", "Chopstick", "Busy"], "replyTo": true},
+        {"handler": "rightTaken", "probe": "right", "answers": ["sample", "Chopstick", "Take"], "answerField": "ref",
+         "message": ["sample", "Chopstick", "Taken"], "replyTo": true},
+        {"handler": "rightBusy", "probe": "right", "answers": ["sample", "Chopstick", "Take"], "answerField": "ref",
+         "message": ["sample", "Chopstick", "Busy"], "replyTo": true}
+      ]
+    }
+  ]
+}

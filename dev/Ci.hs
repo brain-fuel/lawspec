@@ -708,10 +708,9 @@ targetSteps target =
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target `elem` ["java", "scala"], suite <- ["pekko-native-actors"] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "java", suite <- ["pekko-native-actors-spring"] ] ++
   -- apache/pekko-samples, vendored unchanged and checked through native
-  -- actor bindings: the Java samples, and the Scala persistence and
-  -- sharding samples. ref:DEC-pekko-sample-suites
+  -- actor bindings, on Java and Scala. ref:DEC-pekko-sample-suites
   [ step (target ++ "-pekko-sample-" ++ sample) (acceptance ["pekko-samples/" ++ sample, target])
-  | (target, samples) <- [("java", ["fsm", "persistence", "sharding"]), ("scala", ["persistence", "sharding"])]
+  | (target, samples) <- [("java", ["fsm", "persistence", "sharding"]), ("scala", ["fsm", "persistence", "sharding"])]
   , sample <- samples ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
