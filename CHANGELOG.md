@@ -70,9 +70,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   put down, a starvation law that LawSpec refutes, and stations that share
   their readings. A how-to, "Check Pekko actors with LawSpec", uses them as
   worked examples and lists what LawSpec cannot check yet, including the CQRS
-  sample, which has no Pekko code upstream. The Scala persistence and
-  sharding samples are checked the same way; the Scala fsm sample is not yet,
-  as its chopstick's `Taken` and `Busy` answers have no accessor to bind.
+  sample, which has no Pekko code upstream. The Scala persistence,
+  sharding and fsm samples are checked the same way.
+- Native actor bindings observe an actor that answers no message through
+  probes, as Pekko's `TestProbe` does. `behaviorArguments` pass the
+  behaviour strings and probe addresses; a probe handler `hears` the next
+  message the actor sends it, or `answers` the actor from the probe.
+  `messageValue` tells a static message value, and `replyCases` reads a
+  `Bool` or `Text` result from the reply's class, as `{"Taken": true,
+  "Busy": false}`.
+- `time passes by r [when p]`: an actor's step in which time passes by the
+  `Duration` its reference returns, so the actor's timers fire. A native
+  Pekko actor runs it on `ManualTime`; every other implementation is an
+  explicit unsupported diagnostic, and parallel runs leave the step out.
+  Fairness lists name it `time passes`.
+- The dining hakkers suite binds the sample's real `Hakker` instead of a
+  restated protocol: its chopsticks are probes, its timers run on virtual
+  time, and its laws are proved over a one-hakker model and checked against
+  it on Java and Scala. The starvation law is still refuted with a run.
 
 ### Fixed
 
@@ -83,7 +98,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   type arguments break inside their own brackets, one argument a line; an
   actor's handler lambda puts its parameter below `actor.call[T] {` when the
   line is full; an actor's restart lambda puts its body on the next line;
-  and a long model-test backend reference breaks before its method.
+  and a long model-test backend reference breaks before its method. A
+  definition whose one-line body does not fit after its `=` (an actor's
+  handler with no reply) moves the body to the next line.
 
 ## [0.32.0] - 2026-11-09
 

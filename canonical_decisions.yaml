@@ -1616,14 +1616,23 @@ DEC-pekko-sample-suites:
     written only when a binding has an entity, so projects without
     pekko-cluster-sharding-typed are unchanged.
 
-    Gaps recorded, not worked around: the Hakker actor answers nothing and
-    is driven by its timers, so it has no binding and its protocol is a
-    model whose adapters drive the real chopsticks; the explicit-state
-    checker takes minutes over five hakkers' 9,864 states, so the table
-    seats three; fairness is per command, not per argument, and model-law
-    references must be total, so "every hungry hakker eventually eats" is
-    stated only as a spec mutant that LawSpec refutes (the protocol livelocks
-    under every fairness); reference refinements on command arguments do
+    - The hakker answers nothing and is driven by its timers. It is bound
+      unchanged (DEC-tell-only-actors, DEC-time-passes): its chopsticks are
+      probes passed to Hakker.create, LawSpec hears its Take and Put and
+      answers Taken or Busy, and its timers run on ManualTime. The
+      hakker's laws (it eats only with both chopsticks; it can eat) are
+      proved over the one-hakker model and checked against the real
+      Hakker; with the chopstick's one-holder check against the real
+      Chopstick they give "neighbours never eat at once" compositionally.
+      The restated three-hakker table model and its adapter
+      (Hakkers.java), which drove real chopsticks from a restated
+      protocol, are replaced.
+
+    Gaps recorded, not worked around: no model of the five-hakker table is
+    checked against the running sample; "every hungry hakker eventually
+    eats" is stated only as a spec mutant that LawSpec refutes with a lasso
+    under strong fairness for every step (the chopsticks can always answer
+    one Taken and one Busy); reference refinements on command arguments do
     not guide model generation and a rejected step is skipped, so the cart's
     item names are any text; the cart's laws over runs would be incomplete
     (unbounded items), so its finality is checked against the real cart; the
@@ -1638,11 +1647,12 @@ DEC-pekko-sample-suites:
     the station's message factories are a Scala suite helper. The Scala
     wiring takes the same fields as Java's and sits in the behaviour's
     package too (the station is private[killrweather]); LawSpecPekkoSharding
-    takes the Scala DSL's EntityTypeKey as well. The Scala fsm sample has no
-    suite yet: its chopstick answers Taken or Busy, two case classes with no
-    accessor that says which, so binding take's Bool result needs a
-    reply-case result the binding does not have, and the hakkers' protocol
-    adapter would need a Scala port; both are recorded, not worked around.
+    takes the Scala DSL's EntityTypeKey as well. The Scala fsm sample
+    (DiningHakkers.scala) is vendored unchanged too, with the same specs
+    and Scala mutants of the same chopstick faults: its chopstick answers
+    Taken or Busy, two case classes with no accessor that says which, so
+    replyCases ({"Taken": true, "Busy": false}) reads take's Bool from the
+    reply's class, and its hakker is bound as the Java one is.
 
     Trust boundary: as DEC-native-actor-binding, plus Pekko Cluster and
     Cluster Sharding as the platform. LawSpec's sharding setup, not the
@@ -1651,3 +1661,81 @@ DEC-pekko-sample-suites:
   opened: 0.33.0
   decided: 0.33.0
   refs: [apache-pekko-samples, pekko-cluster-sharding-typed, pekko-status-reply, pekko-typed-testing]
+
+DEC-tell-only-actors:
+  status: decided
+  question: How is a native actor that answers no message, and only sends to other actors, checked against a LawSpec actor?
+  answer: |
+    Through probes that stand in for the actors it sends to, as Pekko's
+    TestProbe and ActorTestKit observe one. A binding's behaviorArguments
+    pass the behaviour factory strings ({"text": ...}) and probe addresses
+    ({"probe": name}); LawSpec spawns each probe, a recording actor, before
+    the actor. A probe handler either hears (the next message the probe
+    receives must be of the named class, within the ask timeout; the step
+    sends nothing, and its result, if any, is read from that message) or
+    answers (it sends its message to the address in a field of the last
+    message of a class the probe heard, with the probe's own address as
+    replyTo, so the actor sees the answer come from the actor the probe
+    stands in for). messageValue tells a static message value, such as a
+    Java enum constant or a Scala case object. replyCases reads a Bool or a
+    Text result from the reply's class, for replies that are sealed case
+    classes with no accessor. So each model step is a send or an
+    observation, and the run's model replies are compared with them as with
+    an ask's.
+
+    Precedent: Pekko Typed's TestProbe (expectMessageClass, receiving a
+    message within a timeout) and ActorTestKit, and Behaviors.monitor,
+    which forwards an actor's messages to a probe. Erlang QuickCheck and
+    quickcheck-state-machine model an actor's outputs as observations of a
+    command's postcondition in the same way. A probe hears a message only
+    as the step that names it, so a message the model does not expect, or
+    one it expects that never comes, fails the run.
+
+    Trust boundary: as DEC-native-actor-binding. Probes are LawSpec's;
+    the actor's own messages and their order per receiver are Pekko's. A
+    probe handler has no caller and no entity, and a persistent, sharded or
+    Spring actor with behaviorArguments is unsupported. replyCases maps
+    classes beside the reply class to Bool or Text only; any other result
+    still needs an accessor.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [pekko-typed-testing, pekko-testing-async, quickcheck-state-machine]
+
+DEC-time-passes:
+  status: decided
+  question: How does a model step let time pass for an actor driven by its own timers, and where can it run?
+  answer: |
+    An actor may declare one step, written keyword first as `time passes
+    by r [when p]`. The reference r :: Model -> Pair Duration Model says how
+    much time passes and the model state after it, typically until the
+    actor's next timer, as a discrete-event simulation advances its clock
+    to the next event. LawSpec declares the step's adapter
+    (<actor>TimePasses :: State -> Pair Duration State) and names the
+    command timePasses in runs, traces and bindings; a law's fairness list
+    names it `time passes`. The runner gives the backend the model's
+    result for the step before running it (LawSpecRuntime.EXPECTED_RESULT),
+    and LawSpecPekkoNative advances Pekko's ManualTime by that Duration in
+    the actor's own virtual-time test kit. Time passes only in sequential
+    runs: a backend marks the step sequentialOnly and parallel branches
+    leave it out, since one clock is shared by every branch.
+
+    Precedent: TLA+ real-time specifications (Lamport, "Real Time is
+    Really Simple") keep time as an ordinary variable `now` advanced by a
+    Tick action, with timers as state, so a model checker treats time as
+    one more step; LawSpec's step is that Tick, with the model choosing
+    the amount (the next timer) instead of any amount up to a deadline, so
+    the explicit-state checker stays finite. QuickCheck state machines
+    (Hughes, "Experiences with QuickCheck") test timeouts with a command
+    that advances a simulated clock, which the model also advances. Pekko's
+    ManualTime (ExplicitlyTriggeredScheduler) is the established virtual
+    clock for Pekko tests, so the actor's timers run unchanged.
+
+    Unsupported, with explicit diagnostics: every actor not bound natively
+    to a Pekko behaviour (LawSpec's own actors on every target have no
+    timers), and persistent, sharded and Spring actors. A wall-clock
+    implementation is never run as if it were virtual. Trust boundary:
+    ManualTime's scheduler and Pekko's timers; the model's Durations are
+    the specification.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [lamport-real-time, hughes-quickcheck-experiences, pekko-testing-async]

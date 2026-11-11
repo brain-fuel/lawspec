@@ -20,7 +20,8 @@ The samples' sources are vendored there unchanged, from upstream commit
 samples pin Pekko 1.5.0. The suites build them with Pekko 1.7.1, the version
 LawSpec's Pekko checker is built against.
 
-The checks run on Java. The field-by-field contract is in the
+The Scala samples are checked as the Java ones are, with the same specs.
+The field-by-field contract is in the
 [native bindings reference](../reference/native-bindings.md#native-actors).
 
 ## Bind an event-sourced actor: the shopping cart
@@ -136,32 +137,63 @@ A chopstick that grants itself twice fails at `take(Ghosh); take(Ghosh)`.
 One that is never put down fails at `take(Krasser); put(Krasser);
 take(Ghosh)`.
 
-## State laws over a protocol: the dining hakkers
+## Bind an actor that only sends: the hakker
 
-A sample's `Hakker` is driven by its own timers and answers no message, so
-it cannot be bound as an actor. State its protocol as a
-[model](../reference/language/models.md) instead. A hungry hakker asks for
-both chopsticks. With both, it eats. With one, it puts that one back and
-thinks again. In `acceptance/pekko-samples/fsm/hakkers.lawspec`, the model's
-adapters run this protocol against the sample's real chopsticks. Its laws
-hold of every run of the model:
+A sample's `Hakker` answers no message. It thinks, its timers make it
+hungry and then full, and it talks only to its two chopsticks. Bind it
+unchanged by standing in for the chopsticks. Each one is a probe: LawSpec
+passes the probe's address to the behaviour, hears what the hakker sends
+it, and answers as the chopstick would.
+
+```json
+{"actor": "sample.hakkers::hakker",
+ "behavior": ["sample", "Hakker", "create"],
+ "behaviorArguments": [{"text": "Ghosh"}, {"probe": "left"}, {"probe": "right"}],
+ "handlers": [
+   {"handler": "think", "messageValue": ["sample", "Hakker", "Think", "INSTANCE"]},
+   {"handler": "asksLeft", "probe": "left", "hears": ["sample", "Chopstick", "Take"]},
+   {"handler": "leftTaken", "probe": "left", "answers": ["sample", "Chopstick", "Take"],
+    "answerField": "hakker", "message": ["sample", "Chopstick", "Taken"], "replyTo": true}]}
+```
+
+`hears` checks that the next message the probe receives is a `Take`.
+`answers` sends `Taken` to the address in the `Take` the probe heard last,
+with the probe as the chopstick. `messageValue` sends the sample's `Think`
+singleton.
+
+The hakker's timers run on Pekko's
+[`ManualTime`](https://pekko.apache.org/docs/pekko/current/typed/testing-async.html),
+so they fire only when the model says time passes. The actor in
+`acceptance/pekko-samples/fsm/hakkers.lawspec` has a line for it:
 
 ```lawspec fragment
-law "|neighbours never eat at once| in model table is
-  definition: every run holds always neighboursApart end definition
-end law
+actor hakker :: Diner by Seat is
+  start openDiner by (startSeat ())
+  on think by modelThink when waiting
+  time passes by modelTimePasses when timerSet
+  on asksLeft by modelAsksLeft when leftTake
+  on leftTaken by modelLeftTaken when awaitsLeft
+end actor
+```
 
-law "|no deadlock| in model table is
-  definition: every run holds always someoneCanStep end definition
+`modelTimePasses` returns how long passes, which is how long the hakker's
+timer has left, and the state after it fires. LawSpec advances the virtual
+clock by that much, then checks the probes hear what the model says. Its
+laws hold of every run of the model:
+
+```lawspec fragment
+law "|a hakker eats only with both chopsticks| in model hakker is
+  definition: every run holds always eatsWithBoth end definition
 end law
 ```
 
-Both are proved over all 247 states of a table of three. "Every hungry
-hakker eventually eats" is not true of this protocol, even under fairness.
-Hakkers can deny one another for ever: each takes one chopstick, is refused
-the other, puts it back and tries again. The sample's random thinking times
-only make that unlikely. The suite's `starvation` spec mutant states the
-law, and LawSpec refutes it with such a run.
+The chopstick's own binding checks that it has one holder at a time. With
+this law, two neighbours, who share a chopstick, never eat at once.
+"Every hungry hakker eventually eats" is not true, even when every step is
+fair. The chopsticks can answer so that the hakker always gets one, is
+refused the other, puts it back and tries again. The sample's random
+thinking times only make that unlikely. The suite's `starvation` spec
+mutant states the law, and LawSpec refutes it with such a run.
 
 ## Bind a sharded entity: the weather station
 
@@ -199,6 +231,7 @@ package that makes the message from the handler's arguments instead.
 ```sh
 stack run lawspec-acceptance -- pekko-samples/persistence java
 stack run lawspec-acceptance -- pekko-samples/fsm java
+stack run lawspec-acceptance -- pekko-samples/fsm scala
 stack run lawspec-acceptance -- pekko-samples/sharding java
 ```
 
@@ -207,16 +240,14 @@ be caught.
 
 ## What LawSpec cannot check yet
 
-- **Actors with no replies.** An actor observed only through the messages it
-  sends to others, such as the sample's `Hakker`, has no binding. Neither
-  has an actor driven by its own timers. Its protocol can only be restated
-  as a model.
-- **Large protocol models.** The model checker evaluates references
-  slowly: the sample's table of five hakkers has 9,864 states and takes
-  minutes, so the suite seats three.
-- **Fairness per hakker.** `assuming fairness for c` is per command, not per
-  argument. A model law's references must be total, so a hakker that cannot
-  move takes a step that changes nothing, which also satisfies fairness.
+- **Time on other runtimes.** `time passes` runs only on a Pekko behaviour
+  with a native binding, on Java or Scala. Every other implementation, and
+  a persistent or sharded Pekko actor, is reported unsupported. A parallel
+  run never lets time pass.
+- **The whole table.** The laws are stated of one hakker and one
+  chopstick, each checked against its real behaviour. That neighbours never
+  eat at once follows from the two. No model of the table of five is
+  checked against the running sample.
 - **Narrow command arguments.** A model generates each command's arguments
   from its adapter's types, with integer bounds from the adapter's
   preconditions. A refinement on a reference's argument, such as a regular
@@ -232,8 +263,6 @@ be caught.
   points to the Akka Platform Guide. Its last code is from Akka 2.6, before
   the fork, and uses Akka's packages and Cassandra. So there is no Pekko
   write side to bind, and no read side, nor projection, to check.
-- **Scala samples.** The Scala persistence and sharding samples are checked
-  as the Java ones are, with the same specs. The Scala fsm sample is not: its
-  chopstick answers with two case classes, `Taken` or `Busy`, and no
-  accessor says which, so a binding cannot read `take`'s `Bool` from the
-  reply yet.
+- **Reply cases.** `replyCases` reads a `Bool` or a `Text` from which class
+  the reply is, as the Scala chopstick's `Taken` or `Busy`. Other result
+  types need a `result` accessor.

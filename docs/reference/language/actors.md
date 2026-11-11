@@ -39,6 +39,7 @@ actor name :: State by Model is
   start f by value                  -- or ~ value
   restart from g by reference       -- optional; or: restart keeps state
   on handler by reference [when precondition]
+  time passes by reference [when precondition]   -- optional
   abstract function
   invariant predicate
 end actor
@@ -50,6 +51,7 @@ end actor
 | `on h by r` | `h` is a handler: an adapter taking the state first, then the message's arguments, and returning `Pair Reply State`, or the `State` alone when there is no reply. `r` is its reference over the model state, as for a model's command. |
 | `restart from g by r` | After a crash, `g :: State -> State` makes the restarted state from the last one, and `r :: Model -> Model` does the same for the model. Without it, a restarted actor starts again from `start`. |
 | `restart keeps state` | After a crash, the actor and its model keep the state committed by the last message handled; the message that crashed commits nothing. Use it for an actor whose state outlives a crash, such as one recovered from a journal. An actor has at most one restart line. |
+| `time passes by r` | A step in which time passes, so the actor's timers fire. `r :: Model -> Pair Duration Model` says how long passes, typically until the next timer, and the model state after it, as a discrete-event simulation advances its clock. The step is the command `timePasses` in runs and traces, and `time passes` in a law's fairness list. Only a Pekko behaviour bound with a [native actor binding](../native-bindings.md#native-actors), on Java or Scala, runs it, on virtual time; LawSpec's own actors have no timers, so on every target without that binding the model is reported `unsupported`. An actor has at most one such line, and no handler named `timePasses`. ref:DEC-time-passes |
 | `abstract`, `invariant` | As in a model, over the actor's own state. |
 
 The actor's handle type is its name, capitalized, followed by `Actor`, so

@@ -160,6 +160,7 @@ this way.
 | --- | --- |
 | `actor` | The LawSpec actor, as `<unit>::<actor>`. |
 | `behavior` | A static factory returning the actor's `Behavior<Command>`. It takes no arguments, or, for an event-sourced actor, its persistence id. |
+| `behaviorArguments` | The factory's arguments, in order: `{"text": "Ghosh"}` passes a string, `{"probe": "left"}` the address of a probe named `left`. Not for a Spring, event-sourced or sharded actor. |
 | `spring` | A Spring starter `SpringActor` component class, instead of `behavior`. Java only. |
 | `persistence` | `"event-sourced"`: the actor recovers its state from its journal. The checks give each run's actor a fresh persistence id on Pekko's in-memory journal. |
 | `entity` | The sharded entity's `EntityTypeKey`, a static field. The entity runs under Cluster Sharding, and every handler takes the entity's id, a `Text`, first. |
@@ -192,6 +193,40 @@ Each handler entry gives:
   in place of a fresh `replyTo`. With a `reply`, the result is the next
   reply that address receives; without one, the message is sent with `tell`.
   One caller's messages go one at a time.
+- `messageValue`: instead of `message`, a static field holding the message,
+  such as a Java enum constant or a Scala case object. The handler takes no
+  arguments and has no result.
+- `replyCases`: instead of `result`, the result from which class the reply
+  is, as `{"Taken": true, "Busy": false}`. Each key is a class beside the
+  `reply` class. The values are all `Bool` or all `Text`, the handler's
+  result type.
+
+An actor that answers nothing is observed through probes, as Pekko's
+`TestProbe` observes one. Each `{"probe": name}` behaviour argument is a
+probe: LawSpec spawns it before the actor and passes the actor its
+address, typed as the factory's parameter. A probe stands in for another
+actor, so the actor's messages to that actor reach the probe. A probe
+handler names its `probe` and one of:
+
+- `hears`: the class of the next message the probe receives, in place of
+  `message`. The step sends nothing; it fails when the probe receives
+  nothing within the ask timeout, or a message of another class. A handler
+  with a result reads it from the heard message with `result` or
+  `resultField`.
+- `answers`: a class the probe heard. The step sends `message` to the
+  address in the last such message's `answerField`, a public field or
+  accessor. With `replyTo`, the message's last argument is the probe's
+  address, so the actor sees the answer come from the probe. The handler
+  has no result.
+
+A model actor with a `time passes by r` line has the step `timePasses`,
+which needs no handler entry. Its actor runs on Pekko's `ManualTime`, its
+own test kit with a virtual clock, so its timers fire only when a step lets
+time pass. The step advances the clock by the `Duration` the reference
+returns for the model's state before it. Time passes only in sequential
+runs: parallel histories leave the step out. An actor with the line that is
+not bound to a Pekko behaviour, or is persistent or sharded, is reported
+`unsupported`. ref:DEC-tell-only-actors ref:DEC-time-passes
 
 The checks spawn the behaviour in Pekko's `ActorTestKit` and run the actor's
 model against it: generated runs with injected crashes, shrinking, model
@@ -225,9 +260,16 @@ instead. Binding validation also rejects:
   function binding for one of the actor's adapters;
 - a handler with a result but no `replyTo` or `reply`, a `result` without a
   `reply`, and a `reply` without a `replyTo`;
-- both `result` and `resultField`, both `message` and `messageFactory`,
-  `replyArguments` without a `reply`, and a `caller` with no argument or with
-  a `replyTo`;
+- both `result` and `resultField`, not exactly one of `message`,
+  `messageFactory`, `messageValue` or `hears`, `replyArguments` without a
+  `reply`, and a `caller` with no argument or with a `replyTo`;
+- an unknown or repeated probe, a probe handler that neither hears nor
+  answers or that has a `caller`, `hears` or `answers` without a `probe`,
+  `hears` with arguments, `replyTo`, `reply` or `answers`, `answers` without
+  `answerField` or with a result or `reply`, a `messageValue` with
+  arguments, `replyTo`, `caller` or `reply`, and `replyCases` with `result`
+  or `resultField`, on a handler with no result, or with values that are not
+  all `Bool` or all `Text` as the result is;
 - an `entity` whose handlers do not take a `Text` first, an event-sourced
   sharded entity, and a caller of a sharded entity (all unsupported);
 - several reply classes for one handler, including a stream of replies;
