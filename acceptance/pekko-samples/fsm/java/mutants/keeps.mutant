@@ -1,0 +1,11 @@
+expect: model hakker fails at step
+@@ src/main/java/sample/Hakker.java
+<<<<<<<
+         .onMessage(HandleChopstickAnswer.class, m -> m.msg.isTaken(), msg -> {
+            msg.msg.chopstick.tell(new Chopstick.Put(adapter));
+            return startThinking(Duration.ofMillis(10));
+=======
+         .onMessage(HandleChopstickAnswer.class, m -> m.msg.isTaken(), msg -> {
+            // Mutant: a denied hakker keeps the chopstick it was given.
+            return startThinking(Duration.ofMillis(10));
+>>>>>>>
