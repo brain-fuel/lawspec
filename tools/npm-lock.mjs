@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Generated from templates/tools/npm-lock.mjs by lawspec-dev generate. Do not edit.
 // Keeps npm/package-lock.json complete, so `npm ci` in npm/ can verify every
 // package, including the optional native compiler packages.
 //
@@ -61,7 +62,9 @@ function compilerEntries(manifest, native)
       ([, record]) => record.name === name,
     );
     if (!found)
-      throw new Error(`${name} has no record in component/native-packages.json`);
+      throw new Error(
+        `${name} has no record in component/native-packages.json`,
+      );
     const [platform, record] = found;
     if (record.version !== version)
       throw new Error(
@@ -123,7 +126,10 @@ function problems(manifest, native, lock)
 {
   const found = [];
   const rootEntry = lock.packages?.[''] ?? {};
-  if (lock.version !== manifest.version || rootEntry.version !== manifest.version)
+  if (
+    lock.version !== manifest.version ||
+    rootEntry.version !== manifest.version
+  )
     found.push(
       `lock version ${lock.version} is not package.json's ${manifest.version}`,
     );
@@ -131,13 +137,11 @@ function problems(manifest, native, lock)
   {
     const wanted = JSON.stringify(sorted(manifest[field] ?? {}));
     const locked = JSON.stringify(sorted(rootEntry[field] ?? {}));
-    if (wanted !== locked)
-      found.push(`lock ${field} differ from package.json`);
+    if (wanted !== locked) found.push(`lock ${field} differ from package.json`);
     for (const [name, version] of Object.entries(manifest[field] ?? {}))
     {
       const entry = lock.packages?.[`node_modules/${name}`];
-      if (!entry)
-        found.push(`${name}@${version} is missing from the lock`);
+      if (!entry) found.push(`${name}@${version} is missing from the lock`);
       else if (entry.version !== version)
         found.push(`${name}: lock has ${entry.version}, not ${version}`);
       else if (!entry.integrity)
@@ -178,7 +182,6 @@ else
   const lock = await generate(manifest, native);
   await writeFile(lockPath, JSON.stringify(lock, null, 2) + '\n');
   const found = problems(manifest, native, lock);
-  if (found.length > 0)
-    throw new Error(found.join('; '));
+  if (found.length > 0) throw new Error(found.join('; '));
   console.log(`Wrote npm/package-lock.json for lawspec@${manifest.version}.`);
 }
