@@ -130,7 +130,7 @@ on Apache Pekko instead of LawSpec's own runtime:
 | Field | Values | Meaning |
 | --- | --- | --- |
 | `runtime` | `:lawspec` (default), `:pekko`, `:spring` | `:lawspec` is LawSpec's runtime, unchanged. `:pekko` runs each actor as a Pekko Typed behaviour and each supervisor as an OTP-style Pekko parent; the build gains `org.apache.pekko:pekko-actor-typed_3` 1.7.1. `:spring` runs the same actors through the Spring Boot actor starter (`io.github.seonwkim:actor-spring-boot-starter` 1.0.0, Spring Boot 3.5.16): each actor class has a `SpringActor` component and its actors are spawned through the starter's actor system; the build gains the starter, Pekko 1.7.1 and, on Java, the starter's `actor-test` slice. |
-| `remote` | `:cluster` | `serve` and `connect` use Pekko Cluster. Needs `:runtime :pekko` or `:spring`. |
+| `remote` | `:cluster` | `serve` and `connect` use Pekko Cluster; see [below](#actors-across-pekko-cluster). Needs `:runtime :pekko` or `:spring`; the build gains `pekko-cluster-typed_3` 1.7.1. |
 
 The spec does not change with the runtime. Generated actors keep the same
 methods, so adapters, laws and tests stay the same, and the same laws and
@@ -156,10 +156,49 @@ Set the `lawspec.pekko.ask-timeout` system property (for example `5s` or
 `500ms`) to change it. A call that times out throws
 `LawSpecPekko.AskTimedOut`; it is never treated as a reply.
 
-On `:pekko` and `:spring`, generated actors have no `serve` and `connect`
-methods until `:remote :cluster` is implemented. `:remote :cluster` and sharding
-are planned for a later 0.33 step and are not implemented yet; generation
-reports them as unsupported.
+#### Actors across Pekko Cluster
+
+Without `:remote`, actors on `:pekko` and `:spring` have no `serve` and
+`connect`. With `:remote :cluster` they serve and call each other across
+Pekko Cluster, on Java, Kotlin, Groovy, Clojure and Scala (Scala on `:pekko`
+only):
+
+```edn
+{
+  :language :java
+  :actors {
+    :runtime :pekko
+    :remote :cluster
+  }
+}
+```
+
+A node is a cluster member, a `LawSpecPekkoCluster.Node`:
+
+| Call | Meaning |
+| --- | --- |
+| `Node.start()` | A new cluster on 127.0.0.1 at a free port, with this node its first member. |
+| `Node.join(seed)` | A new node at a free port that joins the cluster of `seed` (a node or a member address). |
+| `Node.of(system)` | The node of an application's own cluster member, whose configuration includes `LawSpecPekkoCluster.config()`. |
+| `node.close()` | Leaves the cluster and stops the node's actor system. |
+
+`actor.serve(node, "tally")` registers the actor with Pekko's typed
+receptionist and returns `<member address>/tally`. `TallyActor.connect(other,
+address)` looks it up from another member and gives the usual proxy. Each
+call's values cross in LawSpec's canonical wire encoding, carried by
+LawSpec's Pekko serializer; Java serialization stays off.
+
+A call throws `Unreachable` when its answer does not come within the timeout,
+or as soon as the serving member is unreachable or has left the cluster.
+`ActorCrashed` and `ActorStopped` cross as on LawSpec's network. Pekko has no
+fault injection like a `MemoryNetwork`'s, so a node's `partition` and `heal`
+throw `UnsupportedOperationException`. Mailboxes, channels and remote
+definitions keep LawSpec's network. Cluster traffic is not sealed by
+`lawspec.network`: Artery's TCP is plain unless you configure its TLS, so run
+a cluster on a trusted network.
+
+`:remote :cluster` with `:runtime :lawspec` is rejected: LawSpec's runtime
+uses LawSpec's network.
 
 Directories must be relative paths whose segments contain only letters, digits,
 `_` and `-`. For Go, `source-dir` and `test-dir` must be equal.

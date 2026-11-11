@@ -178,7 +178,9 @@ to `link`.
 `serve(node, name)` lets other nodes call an actor, and
 `AccountActor.connect(node, address)` gives a proxy with the same handler
 methods. A call that gets no reply within the timeout fails with
-`Unreachable`. See [distribution](distribution.md).
+`Unreachable`. See [distribution](distribution.md). On the Pekko and Spring
+runtimes, `:remote :cluster` gives the same methods over Pekko Cluster (see
+[runtimes](#runtimes)).
 
 On BEAM targets, the local actor module exposes
 `serve(handle, node, name)`. A separate remote module provides
@@ -268,10 +270,13 @@ component, and its actors are spawned through the starter's actor system.
 Scala with `:spring` is rejected. Each actor is then a
 Pekko Typed behaviour, restarted in place by Pekko's supervision, and each
 supervisor keeps the strategies, lifetimes, restart limit and escalation
-above. The generated classes keep their methods, except `serve` and
-`connect`, so adapters and laws do not change, and the same conformance
-check runs against the Pekko runtime. A call waits at most the configured
-ask timeout and then fails.
+above. The generated classes keep their methods, so adapters and laws do not
+change, and the same conformance check runs against the Pekko runtime. A call
+waits at most the configured ask timeout and then fails. `serve` and
+`connect` need `:remote :cluster`. The actors are then served and called
+across Pekko Cluster: a `LawSpecPekkoCluster.Node` is the node, and the
+cluster's receptionist finds served actors. See
+[actors across Pekko Cluster](../configuration.md#actors-across-pekko-cluster).
 
 ## Evidence
 

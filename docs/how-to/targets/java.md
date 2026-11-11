@@ -137,6 +137,10 @@ Generated actors run on LawSpec's runtime by default. `:actors {:runtime
 `:actors {:runtime :spring}` through the Spring Boot actor starter 1.0.0,
 where each actor class has a `SpringActor` component and the generated
 supervision test is an `@ActorTest`. The `pom.xml` gains the pinned libraries.
+With either, `:remote :cluster` serves and calls actors across Pekko Cluster:
+`TallyActor.start().serve(node, "tally")` registers the actor with the
+cluster's receptionist, where `node` is a `LawSpecPekkoCluster.Node`, and
+`TallyActor.connect(other, address)` calls it from another member.
 See [actor runtimes](../../reference/configuration.md#actor-runtimes). Native bindings can also check an existing Pekko or Spring starter
 actor against a LawSpec actor; see [native actors](../../reference/native-bindings.md#native-actors).
 

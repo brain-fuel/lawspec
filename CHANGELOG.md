@@ -24,9 +24,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   escalation) and `LawSpecCrashInterceptor`. With `:runtime :pekko`, Java,
   Kotlin, Groovy and Clojure actors run on it, and the build gains
   `pekko-actor-typed_3`. Scala on `:pekko` reuses the Java runtime through
-  Scala 3's SAM conversion. `:remote :cluster` and sharding are not
-  implemented yet and are reported as unsupported; actors on `:pekko` have no
-  `serve` and `connect` yet.
+  Scala 3's SAM conversion. Without `:remote :cluster`, actors on `:pekko`
+  have no `serve` and `connect`.
+- `:remote :cluster` on `:pekko` (Java, Kotlin, Scala, Groovy, Clojure) and
+  `:spring` (Java, Kotlin, Groovy, Clojure): generated actors' `serve` and
+  `connect` work across Pekko Cluster through `LawSpecPekkoCluster`
+  (`runtime/pekko`). A `LawSpecPekkoCluster.Node` is a cluster member; `serve`
+  registers the actor with the typed Receptionist, `connect` finds it there,
+  and calls cross Artery with LawSpec's canonical wire encoding in a Pekko
+  serializer (`WireSerializer`), never Java serialization. A call to a member
+  that is unreachable or has left throws `Unreachable` at once; partitions
+  are an explicit unsupported operation. The build gains
+  `pekko-cluster-typed_3` 1.7.1. The distribution suite runs its remote law
+  on a two-node cluster in one JVM (`LAWSPEC_REMOTE=cluster`, adapters in
+  `files-cluster`), on Pekko for every JVM target and through Spring for
+  Java, with mutants and `lawspec-dev ci` steps. DEC-pekko-cluster-remote is
+  decided.
 - A `:spring` actor runtime on Spring Boot 3.5.16 and
   `io.github.seonwkim:actor-spring-boot-starter` 1.0.0 (`runtime/spring`).
   Java and Kotlin actors gain a nested `@Component` `SpringActor` and are

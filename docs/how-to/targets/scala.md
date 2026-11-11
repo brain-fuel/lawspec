@@ -159,7 +159,9 @@ Generated actors run on LawSpec's runtime by default. `:actors {:runtime
 :pekko}` in `lawspec.edn` runs them on Apache Pekko 1.7.1, with the same
 classes and methods, and `project.scala` gains `pekko-actor-typed`. The Spring
 Boot actor starter is a Java and Kotlin library, so `:runtime :spring` is
-rejected for Scala. Native bindings can check an existing Pekko actor written
+rejected for Scala. With `:pekko`, `:remote :cluster` gives `serve` and
+`connect` over Pekko Cluster, with a `LawSpecPekkoCluster.Node` for the node,
+and `project.scala` also gains `pekko-cluster-typed`. Native bindings can check an existing Pekko actor written
 with the Scala DSL against a LawSpec actor; see [native actors](../../reference/native-bindings.md#native-actors). See [actor runtimes](../../reference/configuration.md#actor-runtimes).
 
 ## Formatting
