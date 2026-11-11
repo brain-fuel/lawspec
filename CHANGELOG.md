@@ -87,7 +87,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The dining hakkers suite binds the sample's real `Hakker` instead of a
   restated protocol: its chopsticks are probes, its timers run on virtual
   time, and its laws are proved over a one-hakker model and checked against
-  it on Java and Scala. The starvation law is still refuted with a run.
+  it on Java and Scala. The starvation law is still refuted with a run, and
+  a mutant hakker that keeps a chopstick it was given after a refusal is
+  rejected.
 - Partial model references: refine a reference's parameters, its state
   included, and a step outside them is not enabled, in the model checker and
   in generated runs, instead of being a step that changes nothing.
