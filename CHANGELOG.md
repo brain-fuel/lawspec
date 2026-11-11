@@ -23,6 +23,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `npm ci` in a checkout's `npm/` verifies their integrity. The lock had stayed
   at 0.31.2. `make lock` regenerates it and CI checks it against
   `npm/package.json` and the recorded native package integrity.
+- `check` no longer takes exponential time on a chain of `let` bindings in
+  which each binding uses the previous one more than once. The totality proof
+  copied a bound conditional, match or sum into every use; it now keeps the
+  binder and assumes what it equals on each branch. A 14-deep chain that ran
+  past two minutes is admitted in under a second.
+- Totality diagnostics are reported for every rejected definition of a unit,
+  not only the first, so one slow or failing definition does not hide another.
 - Go: a bound handler's bridge is generated only in packages that use the
   ability: its owner, and units whose laws, declarations or spec handlers need
   it. A unit that only imported the declaring unit received

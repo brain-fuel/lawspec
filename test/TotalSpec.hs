@@ -7,7 +7,9 @@ import LawSpec.Core
 import LawSpec.Core.Total
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.Frontend (compileCore)
-import LawSpec.Common (Source(..), Artifact(..), defaultGeneration, ownership)
+import Control.Exception (evaluate)
+import LawSpec.Common (Source(..), Artifact(..), Diagnostic(..), defaultGeneration, ownership)
+import System.Timeout (timeout)
 import Data.List (isInfixOf)
 import qualified LawSpec.Core.Value as V
 import LawSpec.Core.Validate (operationEvidence, validateProgram)
@@ -371,6 +373,44 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
           (call "loop" [local "tailX" list, cons (local "ys" list)])
     validateDefinitions 64 [] [definition "loop" [("xs",list),("ys",list)] body]
       `shouldSatisfy` isLeft
+  -- S1.j report 17. ref:DEC-s1j-shared-failures
+  describe "shared strict bindings" $ do
+    let chain count step = unlines $
+          ["unit total.chain", "function render (x :: Integer) -> Integer is",
+           "let v0 = (if x > 0 then x else 0 end if) in"] ++
+          ["let v" ++ show index ++ " = " ++ step ("v" ++ show (index - 1 :: Int)) ++ " in" | index <- [1 .. count - 1]] ++
+          ["v" ++ show (count - 1), unwords (replicate count "end let"), "end function", "end unit"]
+        admitted text = isRight (compileCore 64 defaultGeneration [Source "chain.lawspec" text])
+        within text = timeout 60000000 (evaluate (admitted text))
+        boxed result = unlines
+          [ "unit total.boxed"
+          , "refinement Count is (n :: Integer where n >= 0) end refinement"
+          , "type Box is a record{n :: Count} end type"
+          , "function box (x :: Integer) -> Box is"
+          , "let v = (if x > 0 then x else 0 end if) in Box record{n = " ++ result ++ "} end let"
+          , "end function", "end unit" ]
+    it "admits a deep chain of conditionals that each use the last twice" $
+      within (chain 24 (\v -> "(if " ++ v ++ " > 1 then " ++ v ++ " - 1 else " ++ v ++ " + " ++ v ++ " end if)"))
+        `shouldReturn` Just True
+    it "admits a deep chain of matches that each use the last twice" $
+      within (chain 24 (\v -> "(first matching case of [" ++ v ++ "]: when Nil then " ++ v ++ " when Cons head tail then head + " ++ v ++ " end case)"))
+        `shouldReturn` Just True
+    it "admits a deep chain of sums that each use the last twice" $
+      within (chain 40 (\v -> v ++ " + " ++ v)) `shouldReturn` Just True
+    it "still proves a refinement from what a shared binding equals on each branch" $ do
+      admitted (boxed "v + v") `shouldBe` True
+      admitted (boxed "v + v - 1") `shouldBe` False
+    it "reports every rejected definition, not only the first" $ do
+      let text = unlines
+            [ "unit total.many"
+            , "function first (x :: Integer) -> Integer is first x end function"
+            , "function second (x :: Integer) -> Integer is second x end function"
+            , "end unit" ]
+      case compileCore 64 defaultGeneration [Source "many.lawspec" text] of
+        Right _ -> expectationFailure "nonterminating definitions were admitted"
+        Left problems -> do
+          filter (isInfixOf "first:" . message) problems `shouldSatisfy` (not . null)
+          filter (isInfixOf "second:" . message) problems `shouldSatisfy` (not . null)
   it "audits callees and rejects mutual recursion" $ do
     let f = definition "f" [("xs",list)] (call "g" [local "xs" list])
         g = definition "g" [("xs",list)] (call "f" [local "xs" list])

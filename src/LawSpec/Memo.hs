@@ -32,9 +32,18 @@ import LawSpec.Blake3 (blake3, hexOf)
 import LawSpec.Digest (digestHex, digestString)
 import Paths_lawspec (version)
 import System.Directory (createDirectoryIfMissing, getFileSize, getModificationTime, renameFile)
-import System.Environment (getExecutablePath)
+import System.CPUTime (getCPUTime)
+import System.Environment (getExecutablePath, lookupEnv)
 import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 import System.IO.Unsafe (unsafePerformIO)
+
+-- | LAWSPEC_CACHE_TRACE=1 reports each table miss on standard error: the
+-- table, whether the entry was read from disk, computed, or computed and too
+-- heavy to keep, its weight and its CPU time.
+cacheTrace :: IORef Bool
+cacheTrace = unsafePerformIO (lookupEnv "LAWSPEC_CACHE_TRACE" >>= newIORef . maybe False (not . null))
+{-# NOINLINE cacheTrace #-}
 
 data Entry a = Entry {entryValue :: a, entryWeight :: !Int, entryStamp :: !Int}
 
@@ -204,10 +213,21 @@ memoizedIO (Table budget weigh persistence ref) key value = do
               Just (d </> ("lawspec-" ++ showVersion version ++ buildIdentity) </> name, digestHex (digestString key))
             _ -> Nothing
       stored <- maybe (pure Nothing) readStored file
+      started <- getCPUTime
       computed <- maybe (evaluate value) pure stored
       -- Admission precedes serialization. Expanding a shared layout DAG
       -- just to persist an entry we cannot keep defeats the table's bound.
       weight <- evaluate (max 1 (weigh computed))
+      finished <- getCPUTime
+      traced <- readIORef cacheTrace
+      let tableName = maybe "(memory)" (\(Persistence name _ _) -> name) persistence
+          outcome
+            | weight > budget = "over-budget"
+            | Just _ <- stored = "disk"
+            | otherwise = "computed"
+      if traced
+        then hPutStrLn stderr (unwords ["lawspec-cache", tableName, outcome, show weight, show ((finished - started) `div` 1000000000) ++ "ms"])
+        else pure ()
       if weight > budget
         then pure computed
         else do

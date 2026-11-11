@@ -203,7 +203,9 @@ auditWithRecordInstances instances templates constructors contracts definitions 
             | all ((== fst (template (head group))) . fst . template) group -> pure ()
             | otherwise -> Left ("mutually recursive total definitions are not supported: " ++
                 unwords (map proofName group))
-  audited <- forM definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
+  -- Each definition is audited on its own, against signatures and contracts
+  -- alone, so one rejected definition does not hide the others' diagnostics.
+  audited <- collect $ flip map definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
     unless (length (proofArguments d) == length (nub (proofArguments d)))
       (Left "duplicate definition argument identity")
     unless (all (`elem` proofArguments d) (concatMap freeVariables (proofArgumentDomains d)))
@@ -250,6 +252,9 @@ auditWithRecordInstances instances templates constructors contracts definitions 
   where
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
     prefix name = either (Left . ((name ++ ": ") ++)) Right
+    collect results = case concat [problems | Left problems <- results] of
+      [] -> Right [value | Right value <- results]
+      problems -> Left problems
     -- Definitions whose bodies use non-linear arithmetic, directly or through
     -- calls, such as the measure of a family indexed by a product.
     bodies = M.fromList [(proofId d, proofBody d) | d <- definitions]
@@ -1200,7 +1205,8 @@ freeVariables expression = case expression of
 strictLet :: Id -> Proof -> Proof -> Proof
 strictLet binder value body = case value of
   Variable _ -> substituted
-  _ -> Match value [([], substituted)]
+  _ | shared -> Match value [([binder], TypedDomain [bindingFact binder result] body)]
+    | otherwise -> Match value [([], substituted)]
   where
     -- The strict prefix above is audited once. A product's result can be
     -- substituted without copying that prefix into every enclosing product;
@@ -1211,6 +1217,57 @@ strictLet binder value body = case value of
       product@(Construct _ _) -> product
       _ -> value
     substituted = substituteProof (M.singleton binder result) body
+    -- A branching or arithmetic value used more than once keeps its binder. Copying it into
+    -- each use multiplies the proof by the number of uses at every dependent
+    -- binding, as substitution does in verification-condition generation
+    -- (Flanagan and Saxe, "Avoiding exponential explosion", POPL 2001; Why3's
+    -- VC sharing). The body instead assumes what the binder equals on each
+    -- branch, which the strict prefix has already shown to be defined.
+    shared = (branching result || arithmetic result) && length (filter (== binder) (freeVariables body)) > 1
+    -- An arithmetic value doubles the same way when a binding uses the
+    -- previous binder twice. Its equation is exactly what substitution gave
+    -- the linear prover.
+    arithmetic expression = case expression of
+      ExactArithmetic {} -> True
+      Division {} -> True
+      NarrowInteger _ _ inner -> arithmetic inner
+      Integral inner -> arithmetic inner
+      Match _ [([], inner)] -> arithmetic inner
+      TypedDomain _ inner -> arithmetic inner
+      _ -> False
+    branching expression = case expression of
+      Conditional {} -> True
+      DataMatch {} -> True
+      ListMatch {} -> True
+      Match _ [([], inner)] -> branching inner
+      Match _ (_ : _ : _) -> True
+      TypedDomain _ inner -> branching inner
+      Integral inner -> branching inner
+      _ -> False
+
+-- | What a shared binder equals, branch by branch. A Boolean leaf is an
+-- equivalence, so a later guard on the binder still decides the leaf.
+bindingFact :: Id -> Proof -> Proof
+bindingFact binder = equalTo
+  where
+    equalTo expression = case expression of
+      Conditional condition yes no -> Conditional condition (equalTo yes) (equalTo no)
+      DataMatch scrutinee branches | all (\(_, names, _) -> binder `notElem` names) branches ->
+        DataMatch scrutinee [(tag, names, equalTo inner) | (tag, names, inner) <- branches]
+      Match prefix [([], inner)] -> Match prefix [([], equalTo inner)]
+      TypedDomain domains inner -> TypedDomain domains (equalTo inner)
+      Integral inner -> equalTo inner
+      leaf | truthValued leaf -> Logical Or (Logical And (Variable binder) leaf)
+               (Logical And (Negated (Variable binder)) (Negated leaf))
+           | otherwise -> ExactComparison Equal (Variable binder) leaf
+    truthValued expression = case expression of
+      Literal (SBool _) -> True
+      Comparison {} -> True
+      ExactComparison {} -> True
+      Logical {} -> True
+      Negated _ -> True
+      IsPresent _ -> True
+      _ -> False
 
 -- | let x = e in body, where e may be an ability operation's call. Its result
 -- is a value of its own: x names it, rather than standing for the opaque
