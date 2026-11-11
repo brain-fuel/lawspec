@@ -37,7 +37,9 @@ whether the cart is checked out. Each handler's reference says what the
 cart answers:
 
 ```lawspec fragment
-function modelAddItem (item :: Text) (quantity :: Int32)
+function modelAddItem
+    (item :: Text where item = "apple" || item = "pear" || item = "plum")
+    (quantity :: Int32 where quantity >= 0 && quantity <= 3)
     (b :: Basket) -> Pair Bool Basket is
   if b.checkedOut then Pair false b else
     first matching case of prelude.lookup item b.items :
@@ -248,11 +250,13 @@ be caught.
   chopstick, each checked against its real behaviour. That neighbours never
   eat at once follows from the two. No model of the table of five is
   checked against the running sample.
-- **Narrow command arguments.** A model generates each command's arguments
-  from its adapter's types, with integer bounds from the adapter's
-  preconditions. A refinement on a reference's argument, such as a regular
-  expression on a `Text`, does not guide generation. A step whose arguments
-  the reference rejects is skipped. So the cart's item names are any text.
+- **Large protocol models.** The model checker explores each state whole.
+  Partial-order reduction applies only to laws with no fairness or
+  deadline, and there is no symmetry reduction, so identical parts, such as
+  five hakkers at one table, are not explored as one.
+- **Narrow command arguments.** A refinement that generation cannot read,
+  such as a regular expression on a `Text`, does not guide it. The draws it
+  rejects are counted, and a run of mostly rejected steps is incomplete.
 - **Laws over unbounded models.** The cart's items and quantities have no
   bound, so a law over its runs is incomplete. That a checked-out cart stays
   checked out is checked against the real cart instead.

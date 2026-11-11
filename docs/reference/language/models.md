@@ -149,9 +149,27 @@ named by its quoted name.
 
 A law in a model says `every run holds P` or `some run holds P`. A run that
 ends stays in its last state. `assuming fairness for c` (weak fairness)
-considers only runs where a command `c` that stays enabled is taken;
-`assuming strong fairness for c` considers only runs where `c`, enabled again
-and again, is taken.
+considers only runs where a step of `c` that stays enabled is taken;
+`assuming strong fairness for c` considers only runs where a step of `c`,
+enabled again and again, is taken.
+
+Fairness is for each step of `c`: each of its argument values. A run that
+takes `seat Ghosh` for ever while `seat Boner` stays enabled is not fair to
+`seat Boner`. In TLA+ terms it is `WF_vars(c(v))` for every `v`, not
+`WF_vars(\E v: c(v))`. ref:DEC-model-fairness-per-value
+
+A reference may be partial. Refine its parameters, the state included, and a
+step outside them is not enabled, as when a precondition is false:
+
+```lawspec fragment
+function modelFull (h :: Hakker) (s :: Seats where phase h s = Eating) -> Seats is
+  seat h Thinking s
+end function
+```
+
+So a model need not invent a step that changes nothing for a command that
+cannot happen now. Such a step would also satisfy fairness, and hide a run
+that starves.
 
 Every reachable state is explored, with each command's arguments drawn from
 their finite types. The law is `proved` when no run breaks it (or a run holds
@@ -161,6 +179,18 @@ parentheses: `validate, decline, (decline)`. A model with more states than the
 search explores is `incomplete`: "no counterexample in the first 20000
 states". The check runs when the `proof`, `exhaustive` or `model` layer is
 selected.
+
+The search keeps every state it finds whole, so two states are never taken
+for one. Each model's states are explored once, for all its laws. When no law
+about a model assumes fairness or sets a deadline, and the model has no
+typestate, the search uses partial-order reduction. At a state where some
+steps cannot affect each other or the laws' predicates, it explores only those
+steps first, and leaves the others for later states. The reason then says so:
+"all 7 states explored (a partial-order reduction: 3 of them took only
+independent steps)". Which fields of the state a step reads and writes is
+worked out from its reference, precondition and refinements. Anything the
+analysis cannot follow counts as reading and writing every field, which only
+makes the reduction smaller. ref:DEC-model-checker-reductions
 
 ### Deadlines
 
@@ -227,6 +257,18 @@ covers its entries; an open history is `pending` while the future decides.
 **In sequence.**
 - LawSpec generates runs of up to 20 commands by simulating the model, so
   every step is allowed by typestate, its precondition and its reference.
+- Arguments come from the refinements of the adapter and of the reference:
+  `(item :: Text where item = "apple" || item = "pear")` draws one of those
+  names, and integer bounds narrow the range. When a command's arguments
+  have at most 64 values, the steps the reference accepts in the current
+  state are listed, and one is drawn. Otherwise up to 8 draws are tried.
+- Every step the reference rejects is counted. A run whose rejected steps
+  outnumber its accepted ones stops the check as incomplete, never passed:
+  "incomplete model generation: model cart's run 3 of 100 drew 41 steps its
+  reference rejected and 6 it accepted". A failure says how many steps of its run were
+  rejected. Set `LAWSPEC_MODEL_REPORT` to a file, and each model check
+  appends one JSON line with its runs, accepted steps, rejected steps and
+  outcome. ref:DEC-honest-model-steps
 - It runs each command against your adapters and compares the result, the
   abstracted state and the invariants with the model after every step.
 - A failing run is shrunk: commands are dropped and arguments made smaller
@@ -415,9 +457,10 @@ The implemented fragment is integer bounds using `<`, `<=`, `>`, `>=` and `=`,
 with constants and state indices combined by addition, subtraction and
 multiplication. Ordinary type bounds are intersected with these restrictions.
 Non-interval dependent predicates and dependent algebraic-data generators remain
-explicitly unsupported. Enumeration limits are incomplete. If a generated
-dependent argument is rejected by an otherwise enabled reference command, its
-bounded attempt is incomplete and cannot pass as an empty domain. Shared models
+explicitly unsupported. Enumeration limits are incomplete. A generated
+dependent argument that an otherwise enabled reference rejects counts as a
+rejected step, and a run of mostly rejected steps is incomplete, never an
+empty domain that passes. Shared models
 remain unindexed; no `Fin` primitive or OTP `gen_statem` adapter is added.
 
 ### Precedents and trust boundary
@@ -425,6 +468,7 @@ remain unindexed; no `Fin` primitive or OTP `gen_statem` adapter is added.
 | Primary source | Mapping to LawSpec |
 | --- | --- |
 | [PropEr proper_statem](https://proper.hexdocs.pm/proper_statem.html) and [implementation](https://github.com/proper-testing/proper/blob/master/src/proper_statem.erl) | Generate commands from the abstract state, advance the reference, and revalidate shrunk sequences. LawSpec retains its portable seeded generators and runtime callbacks instead of introducing a separate state machine framework. |
+| [QuickCheck's discard limit](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck.html#v:maxDiscardRatio), [quickcheck-state-machine](https://github.com/stevana/quickcheck-state-machine) and [Hedgehog's preconditions](https://hackage.haskell.org/package/hedgehog/docs/Hedgehog-Internal-State.html) | A command's precondition filters generated steps, and generators read the model state. A test that discards most of its candidates is reported, as QuickCheck gives up after too many discards. LawSpec counts the reference's rejections per run and reports a mostly-rejected run as incomplete. |
 | [Idris Data.Fin](https://idris-lang.org/Idris2/base/docs/Data.Fin.html) and [implementation](https://github.com/idris-lang/Idris2/blob/main/libs/base/Data/Fin.idr) | `Fin n` illustrates a finite domain below a bound, including an uninhabited zero case. Existing integer refinements express that domain here; no primitive is needed. |
 | [SPARK contracts](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html) and [Why3 VC generation](https://why3.org/doc/vcgen.html) | Preconditions define applicability; generating an obligation and discharging it are distinct. Argument generation is not solver discharge. |
 | [Lean verification conditions](https://lean-lang.org/doc/reference/latest/The--mvcgen--tactic/Verification-Conditions/) and [Rocq induction](https://docs.rocq-prover.org/master/refman/proofs/writing-proofs/reasoning-inductives.html) | Proof goals and checked proof terms have separate roles. This work does not integrate either proof kernel or add a proof tier. |

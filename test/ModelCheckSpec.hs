@@ -61,6 +61,48 @@ toggle law = unlines
   , law
   , "end unit" ]
 
+-- | A two-state model: poke 0 stays at 0, poke 1 moves to 1, and the
+-- reference refuses any other value.
+poke :: String -> String
+poke law = unlines
+  [ "unit portfolio.poke\n"
+  , "type Box is a record{ id :: Int32 } end type"
+  , "newBox :: Unit -> Box"
+  , "poke :: Box -> Int8 -> Unit"
+  , "function poked (i :: Int8 where i = 0 || i = 1) (s :: Int8) -> Int8 is if i = 1 then 1 else s end if end function"
+  , "function isOne (s :: Int8) -> Bool is s = 1 end function"
+  , "function isSmall (s :: Int8) -> Bool is s <= 1 end function"
+  , "model box :: shared Box by Int8 is"
+  , "  start newBox ~ 0"
+  , "  poke ~ poked"
+  , "end model\n"
+  , law
+  , "end unit" ]
+
+-- | Two counters from 0 to 3, each stepped by its own command.
+counters :: String -> String
+counters law = unlines
+  [ "unit portfolio.counters\n"
+  , "type Box is a record{ id :: Int32 } end type"
+  , "type Pair2 is a record{ a :: Int8, b :: Int8 } end type"
+  , "newBox :: Unit -> Box"
+  , "incA :: Box -> Unit"
+  , "incB :: Box -> Unit"
+  , "function startPair (u :: Unit) -> Pair2 is Pair2 record{ a = 0, b = 0 } end function"
+  , "function bumpA (s :: Pair2 where s.a < 3) -> Pair2 is s with a = s.a + 1 end function"
+  , "function bumpB (s :: Pair2 where s.b < 3) -> Pair2 is s with b = s.b + 1 end function"
+  , "function aSmall (s :: Pair2) -> Bool is s.a <= 3 end function"
+  , "function aTiny (s :: Pair2) -> Bool is s.a <= 1 end function"
+  , "function aDone (s :: Pair2) -> Bool is s.a = 3 end function"
+  , "function bothSmall (s :: Pair2) -> Bool is s.a <= 3 && s.b <= 3 end function"
+  , "model pair :: shared Box by Pair2 is"
+  , "  start newBox by (startPair ())"
+  , "  incA by bumpA"
+  , "  incB by bumpB"
+  , "end model\n"
+  , law
+  , "end unit" ]
+
 solver :: (FilePath -> IO ()) -> IO ()
 solver action = do
   explicit <- lookupEnv "LAWSPEC_Z3"
@@ -148,10 +190,21 @@ test_modelChecking = describe "model checking" $ do
   -- acceptance suite states them. ref:DEC-pekko-sample-suites
   describe "the dining hakkers of pekko-sample-fsm-java" $ do
     response <- runIO (check <$> readFile "acceptance/pekko-samples/fsm/hakkers.lawspec")
-    it "proves mutual exclusion and deadlock freedom over every reachable table" $ do
-      row "neighbours never eat at once" response `shouldBe` Just ("proved", "every run holds it: all 247 states explored")
-      row "no deadlock" response `shouldBe` Just ("proved", "every run holds it: all 247 states explored")
+    it "proves mutual exclusion and deadlock freedom over every reachable table of five" $ do
+      row "neighbours never eat at once" response `shouldBe` Just ("proved", "every run holds it: all 9864 states explored")
+      row "no deadlock" response `shouldBe` Just ("proved", "every run holds it: all 9864 states explored")
       fmap fst (row "a hakker can eat" response) `shouldBe` Just "proved"
+    it "takes only the steps a hakker can take: its references are partial" $
+      row "a hakker can eat" response `shouldSatisfy` maybe False (\(_, why) -> not ("hungry Ghosh, hungry Ghosh" `isInfixOf` why))
+    it "refutes that every hungry hakker eats under strong fairness for each hakker's steps, with the run" $ do
+      source <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+      let starving = replace "law \"|a hakker can eat|" (unlines
+            [ "law \"|every hungry hakker eats| in model table assuming strong fairness for hungry, leftAnswers, rightAnswers, full is"
+            , "  definition: every run holds whenever ghoshHungry, eventually ghoshEats end definition"
+            , "end law\n"
+            , "law \"|a hakker can eat|" ]) source
+      row "every hungry hakker eats" (check starving) `shouldSatisfy` maybe False (\(s, why) ->
+        s == "refuted" && "a run breaks it under strong fairness for hungry" `isInfixOf` why && "leftAnswers Ghosh" `isInfixOf` why)
   it "refutes a mutant that ships before payment, with the invalid steps" $ do
     source <- readFile "test/fixtures/order-workflow.lawspec"
     let mutant = replace "  fulfil ~ toFulfilled when isCaptured" "  fulfil ~ toFulfilled when isAuthorized" source
@@ -237,6 +290,34 @@ test_modelChecking = describe "model checking" $ do
     let backwards = replace "at = 2h, event = Use" "at = 1s, event = Use" source
     row "revoked sessions sign out within an hour" (check backwards) `shouldBe`
       Just ("unsupported", "a history's observation times must be nondecreasing")
+  -- A fair command is fair to each of its argument values, as TLA+'s
+  -- WF_vars(A(v)) for every v, not WF_vars(\\E v: A(v)): taking poke 0 for
+  -- ever is not fair to poke 1. ref:DEC-model-fairness-per-value
+  it "assumes fairness for each argument value of a command" $ do
+    let law fairness = "law \"|it moves| in model box" ++ fairness ++ " is\n  definition: every run holds eventually isOne end definition\nend law\n"
+    row "it moves" (check (poke (law ""))) `shouldSatisfy` maybe False (\(s, why) -> s == "refuted" && "(poke 0)" `isInfixOf` why)
+    row "it moves" (check (poke (law " assuming fairness for poke")))
+      `shouldBe` Just ("proved", "every run holds it under fairness for poke: all 2 states explored")
+  -- A reference's refined parameters make it partial: outside them a step is
+  -- not enabled, as a false precondition. ref:DEC-model-fairness-per-value
+  it "does not take a step outside a partial reference's refinements" $
+    row "it stays small" (check (poke "law \"|it stays small| in model box is\n  definition: every run holds always isSmall end definition\nend law\n"))
+      `shouldBe` Just ("proved", "every run holds it: all 2 states explored")
+  -- Two counters that never read each other: a law about one explores the
+  -- other's steps only where it must. ref:DEC-model-checker-reductions
+  describe "partial-order reduction" $ do
+    let law name formula = "law \"|" ++ name ++ "| in model pair is\n  definition: every run holds " ++ formula ++ " end definition\nend law\n"
+    it "proves a law over fewer states, saying so" $
+      row "a stays small" (check (counters (law "a stays small" "always aSmall"))) `shouldSatisfy` maybe False (\(s, why) ->
+        s == "proved" && "partial-order reduction" `isInfixOf` why && not ("all 16 states" `isInfixOf` why))
+    it "still refutes a law the full search refutes" $
+      fmap fst (row "a stays tiny" (check (counters (law "a stays tiny" "always aTiny")))) `shouldBe` Just "refuted"
+    it "explores every state for a law that reads both counters" $
+      row "both stay small" (check (counters (law "both stay small" "always bothSmall")))
+        `shouldBe` Just ("proved", "every run holds it: all 16 states explored")
+    it "explores every state for a law that assumes fairness" $
+      row "a ends" (check (counters ("law \"|a ends| in model pair assuming fairness for incA is\n  definition: every run holds eventually aDone end definition\nend law\n")))
+        `shouldBe` Just ("proved", "every run holds it under fairness for incA: all 16 states explored")
   it "refutes a some-run law no run holds, after exploring every state" $
     row "it never ends" (check (toggle "law \"|it never ends| in model box is\n  definition: some run holds always (isOne and not isOne) end definition\nend law\n"))
       `shouldBe` Just ("refuted", "no run holds it: all 3 states explored")

@@ -3480,8 +3480,141 @@ public final class LawSpecRuntime
         case "list" -> "List " + typeName(d.get(1));
         case "maybe" -> "Maybe " + typeName(d.get(1));
         case "either" -> "Either (" + typeName(d.get(1)) + ") (" + typeName(d.get(2)) + ")";
+        case "oneof" -> typeName(d.get(1));
         default -> atomText(d.get(1));
       };
+    }
+
+    /** One of a oneof descriptor's choices: an integer, or a text's code points (codes c ...). */
+    private Value choice(Object base, Object option)
+    {
+      if (option instanceof BigInteger n)
+      {
+        return new Value(typeName(base), n);
+      }
+      var units = new ArrayList<Integer>();
+      for (var c : form(option).subList(1, form(option).size()))
+      {
+        units.add(((BigInteger) c).intValueExact());
+      }
+      return text(units);
+    }
+
+    /**
+     * Every value of a descriptor, in a fixed order, when there are at most limit of them; null
+     * when there are more, or infinitely many. Integers ascend, false comes before true, and
+     * constructors come in their declared order with their fields' values varying last field
+     * fastest.
+     */
+    public List<Value> finite(Object descriptor, int limit)
+    {
+      return finite(descriptor, limit, new java.util.HashSet<String>());
+    }
+
+    private List<Value> finite(Object descriptor, int limit, java.util.Set<String> open)
+    {
+      var f = form(descriptor);
+      if (atomText(f.get(0)).equals("ref"))
+      {
+        var name = atomText(f.get(1));
+        if (!open.add(name))
+        {
+          return null;
+        }
+        var out = finite(table.get(name), limit, open);
+        open.remove(name);
+        return out;
+      }
+      var d = f;
+      var type = typeName(d);
+      var out = new ArrayList<Value>();
+      switch (atomText(d.get(0)))
+      {
+        case "int" -> {
+          if (d.get(2) == null || d.get(3) == null)
+          {
+            return null;
+          }
+          var lo = (BigInteger) d.get(2);
+          var hi = (BigInteger) d.get(3);
+          if (hi.subtract(lo).compareTo(BigInteger.valueOf(limit)) >= 0)
+          {
+            return null;
+          }
+          for (var n = lo; n.compareTo(hi) <= 0; n = n.add(BigInteger.ONE))
+          {
+            out.add(new Value(type, n));
+          }
+        }
+        case "bool" -> {
+          out.add(bool(false));
+          out.add(bool(true));
+        }
+        case "unit" -> out.add(absent("Unit"));
+        case "oneof" -> {
+          for (var option : d.subList(2, d.size()))
+          {
+            out.add(choice(d.get(1), option));
+          }
+        }
+        case "maybe" -> {
+          var inner = finite(d.get(1), limit, open);
+          if (inner == null)
+          {
+            return null;
+          }
+          out.add(data(type, "Maybe::Absent", List.of()));
+          for (var v : inner)
+          {
+            out.add(data(type, "Maybe::Present", List.of(v)));
+          }
+        }
+        case "either" -> {
+          var left = finite(d.get(1), limit, open);
+          var right = finite(d.get(2), limit, open);
+          if (left == null || right == null)
+          {
+            return null;
+          }
+          for (var v : left)
+          {
+            out.add(data(type, "Either::Left", List.of(v)));
+          }
+          for (var v : right)
+          {
+            out.add(data(type, "Either::Right", List.of(v)));
+          }
+        }
+        case "data" -> {
+          for (var c : d.subList(2, d.size()))
+          {
+            var ctor = form(c);
+            var fields = new ArrayList<List<Value>>();
+            for (var field : ctor.subList(2, ctor.size()))
+            {
+              var values = finite(field, limit, open);
+              if (values == null)
+              {
+                return null;
+              }
+              fields.add(values);
+            }
+            var tuples = product(fields, limit);
+            if (tuples == null)
+            {
+              return null;
+            }
+            for (var t : tuples)
+            {
+              out.add(data(type, atomText(ctor.get(1)), t));
+            }
+          }
+        }
+        default -> {
+          return null;
+        }
+      }
+      return out.size() > limit ? null : out;
     }
 
     private static Value text(List<Integer> units)
@@ -3550,6 +3683,10 @@ public final class LawSpecRuntime
           }
           return data(type, "Either::Right", List.of(generate(d.get(2), random, size)));
         }
+        case "oneof" -> {
+          var options = d.subList(2, d.size());
+          return choice(d.get(1), options.get((int) random.below(options.size())));
+        }
         case "data" -> {
           var choices = size <= 0 ? base(d) : d.subList(2, d.size());
           var ctor = form(choices.get((int) random.below(choices.size())));
@@ -3592,6 +3729,9 @@ public final class LawSpecRuntime
         case "either" -> {
           return data(type, "Either::Left", List.of(minimal(d.get(1))));
         }
+        case "oneof" -> {
+          return choice(d.get(1), d.get(2));
+        }
         default -> {
           var ctor = form(base(d).get(0));
           var fields = new ArrayList<Value>();
@@ -3628,6 +3768,18 @@ public final class LawSpecRuntime
           if ((Boolean) v.data())
           {
             out.add(bool(false));
+          }
+        }
+        case "oneof" -> {
+          // The choices before this one, first first.
+          for (var option : d.subList(2, d.size()))
+          {
+            var c = choice(d.get(1), option);
+            if (compareValues(c, v) == 0)
+            {
+              break;
+            }
+            out.add(c);
           }
         }
         case "text" -> {
@@ -5414,6 +5566,10 @@ public final class LawSpecRuntime
       {
         return true;
       }
+      if (atomText(d.get(0)).equals("oneof") && d.size() == 2)
+      {
+        return true;
+      }
     }
     return false;
   }
@@ -5535,12 +5691,183 @@ public final class LawSpecRuntime
     return out;
   }
 
-  private static ModelRun generateRun(Model model, SplitMix64 random, long length, long size)
+  // Generation honours the reference. A step is drawn among the commands
+  // enabled at the model state: typestate admits them, their precondition
+  // holds, and some arguments are inside the reference's refinements. When a
+  // command's argument tuples are few (FINITE_STEPS), each is tried against
+  // the reference and one valid tuple is chosen, as QuickCheck state machines
+  // generate from a precondition. Otherwise arguments are drawn and checked
+  // again, up to STEP_ATTEMPTS times, and every draw the reference rejects is
+  // counted. A run where the reference rejected more draws than it accepted
+  // shows little, so its check is incomplete, never passed.
+  // ref:DEC-honest-model-steps
+
+  /** The most argument tuples of one step that are enumerated instead of drawn. */
+  private static final int FINITE_STEPS = 64;
+
+  /** How many times a step's arguments are drawn before the step is given up. */
+  private static final int STEP_ATTEMPTS = 8;
+
+  /** Every tuple of one value from each domain, the last varying fastest; null past limit. */
+  private static <T> List<List<T>> product(List<List<T>> domains, int limit)
+  {
+    List<List<T>> out = new ArrayList<>();
+    out.add(List.of());
+    for (var domain : domains)
+    {
+      List<List<T>> next = new ArrayList<>();
+      for (var prefix : out)
+      {
+        for (var v : domain)
+        {
+          var tuple = new ArrayList<T>(prefix);
+          tuple.add(v);
+          next.add(List.copyOf(tuple));
+        }
+        if (next.size() > limit)
+        {
+          return null;
+        }
+      }
+      out = next;
+    }
+    return out;
+  }
+
+  /** A command enabled at a state, with its valid argument tuples, or null to draw them. */
+  private record Enabled(int index, List<List<Value>> tuples)
+  {
+  }
+
+  /** A branch of a parallel case never takes a sequential-only step. */
+  private static List<Enabled> enabledSteps(Model model, Map<String, Object> symbols, Value state,
+      List<BigInteger> indices, boolean branch)
+  {
+    var out = new ArrayList<Enabled>();
+    for (int i = 0; i < model.commands.size(); i++)
+    {
+      var command = model.commands.get(i);
+      if ((branch && command.sequential) || !command.admits(indices))
+      {
+        continue;
+      }
+      var descriptors = modelArguments(command, indices);
+      if (emptyArguments(descriptors))
+      {
+        continue;
+      }
+      if (command.when != null)
+      {
+        boolean holds;
+        try
+        {
+          holds = truth(command.when.apply(symbols, List.of(state)));
+        }
+        catch (Exception e)
+        {
+          holds = false;
+        }
+        if (!holds)
+        {
+          continue;
+        }
+      }
+      var domains = new ArrayList<List<Value>>();
+      for (var d : descriptors)
+      {
+        var values = model.values.finite(d, FINITE_STEPS);
+        if (values == null)
+        {
+          domains = null;
+          break;
+        }
+        domains.add(values);
+      }
+      var tuples = domains == null ? null : product(domains, FINITE_STEPS);
+      if (tuples == null)
+      {
+        out.add(new Enabled(i, null));
+        continue;
+      }
+      var valid = new ArrayList<List<Value>>();
+      for (var t : tuples)
+      {
+        try
+        {
+          stepModel(command, symbols, t, state);
+          valid.add(t);
+        }
+        catch (InvalidStep e)
+        {
+          // Outside the reference: not a step here.
+        }
+      }
+      if (!valid.isEmpty())
+      {
+        out.add(new Enabled(i, valid));
+      }
+    }
+    return out;
+  }
+
+  /** A generated step and the model state after it; step is null when every draw was rejected. */
+  private record Taken(ModelStep step, Value state)
+  {
+  }
+
+  /** Null when no command is enabled; rejected counts the draws the reference rejects. */
+  private static Taken nextStep(Model model, Map<String, Object> symbols, SplitMix64 random,
+      Value state, List<BigInteger> indices, long size, boolean crashes, boolean branch,
+      int[] rejected)
+  {
+    var enabled = enabledSteps(model, symbols, state, indices, branch);
+    if (enabled.isEmpty())
+    {
+      return null;
+    }
+    var chosen = enabled.get((int) random.below(enabled.size()));
+    // One step in eight of an actor's run is a crash.
+    if (crashes && model.steps.size() > model.commands.size() && random.below(8) == 0)
+    {
+      var crash = model.steps.get(model.commands.size());
+      return new Taken(new ModelStep(model.commands.size(), List.of()),
+          stepModel(crash, symbols, List.of(), state).state());
+    }
+    var command = model.steps.get(chosen.index());
+    var tuples = chosen.tuples();
+    if (tuples != null)
+    {
+      var args = tuples.size() == 1 ? tuples.get(0) : tuples.get((int) random.below(tuples.size()));
+      return new Taken(new ModelStep(chosen.index(), args),
+          stepModel(command, symbols, args, state).state());
+    }
+    for (int attempt = 0; attempt < STEP_ATTEMPTS; attempt++)
+    {
+      var args = generateAll(model.values, modelArguments(command, indices), random, size);
+      try
+      {
+        return new Taken(new ModelStep(chosen.index(), args),
+            stepModel(command, symbols, args, state).state());
+      }
+      catch (InvalidStep e)
+      {
+        rejected[0]++;
+      }
+    }
+    return new Taken(null, state);
+  }
+
+  /** A generated run, and how many of its drawn steps the reference rejected. */
+  private record Generated(ModelRun run, int rejected)
+  {
+  }
+
+  private static Generated generateRun(Model model, SplitMix64 random, long length, long size)
   {
     return generateRun(model, random, length, size, false);
   }
 
-  private static ModelRun generateRun(Model model, SplitMix64 random, long length, long size,
+  private static Generated generateRun(Model model, SplitMix64 random, long length, long size,
       boolean crashes)
   {
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
@@ -5552,51 +5879,74 @@ public final class LawSpecRuntime
     }
     catch (Exception e)
     {
-      return new ModelRun(startArgs, List.of());
+      return new Generated(new ModelRun(startArgs, List.of()), 0);
     }
     var indices = model.startIndices;
     var steps = new ArrayList<ModelStep>();
+    var rejected = new int[] {0};
     for (long n = 0; n < length; n++)
     {
-      var allowed = new ArrayList<Integer>();
-      for (int i = 0; i < model.commands.size(); i++)
-      {
-        if (model.commands.get(i).admits(indices)
-            && !emptyArguments(modelArguments(model.commands.get(i), indices)))
-        {
-          allowed.add(i);
-        }
-      }
-      if (allowed.isEmpty())
+      var taken =
+          nextStep(model, symbols, random, state, indices, size, crashes, false, rejected);
+      if (taken == null)
       {
         break;
       }
-      int index = allowed.get((int) random.below(allowed.size()));
-      // One step in eight of an actor's run is a crash.
-      if (crashes && model.steps.size() > model.commands.size() && random.below(8) == 0)
+      if (taken.step() != null)
       {
-        index = model.commands.size();
+        steps.add(taken.step());
+        state = taken.state();
+        indices = model.steps.get(taken.step().index()).shifted(indices);
       }
-      var command = model.steps.get(index);
-      var args = generateAll(model.values, modelArguments(command, indices), random, size);
-      try
-      {
-        state = stepModel(command, symbols, args, state).state();
-      }
-      catch (InvalidStep e)
-      {
-        if (command.arguments.stream().anyMatch(d -> atomText(form(d).get(0)).equals("dependent"))
-            && (command.when == null || truth(command.when.apply(symbols, List.of(state)))))
-        {
-          throw new IllegalStateException("incomplete model generation: dependent arguments "
-              + "rejected by the reference (1 attempt)");
-        }
-        continue;
-      }
-      steps.add(new ModelStep(index, args));
-      indices = command.shifted(indices);
     }
-    return new ModelRun(startArgs, steps);
+    return new Generated(new ModelRun(startArgs, steps), rejected[0]);
+  }
+
+  /** Whether the reference rejected more of a run's drawn steps than it accepted. */
+  private static boolean mostlyRejected(int accepted, int rejected)
+  {
+    return rejected > accepted;
+  }
+
+  private static String incompleteRun(Model model, String run, int accepted, int rejected)
+  {
+    return "incomplete model generation: model " + model.name + "'s " + run + " drew " + rejected
+        + " steps its reference rejected and " + accepted
+        + " it accepted; fewer than half of its steps are valid, so it shows little of the system";
+  }
+
+  /** How a failing run's rejected draws read after its failure. */
+  private static String rejectedNote(int rejected)
+  {
+    return rejected == 0
+        ? ""
+        : " (the reference rejected " + rejected + " drawn steps of this run)";
+  }
+
+  /**
+   * One line of JSON per model check, appended to the file LAWSPEC_MODEL_REPORT names: how many
+   * runs and steps it checked, and how many drawn steps the reference rejected.
+   */
+  private static void reportModel(Model model, String check, int runs, int steps, int rejected,
+      String outcome)
+  {
+    String path = System.getenv("LAWSPEC_MODEL_REPORT");
+    if (path == null || path.isEmpty())
+    {
+      return;
+    }
+    String line = "{\"model\":\"" + model.name + "\",\"check\":\"" + check + "\",\"runs\":" + runs
+        + ",\"steps\":" + steps + ",\"rejected\":" + rejected + ",\"outcome\":\"" + outcome
+        + "\"}\n";
+    try
+    {
+      java.nio.file.Files.writeString(java.nio.file.Path.of(path), line,
+          java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+    }
+    catch (java.io.IOException e)
+    {
+      // The report is a side channel; the check's own result stands.
+    }
   }
 
   /**
@@ -5814,18 +6164,32 @@ public final class LawSpecRuntime
   public static void checkModel(Model model, int cases, int maxLength, int maxShrinks, long seed)
   {
     var random = new SplitMix64(seed);
+    int steps = 0;
+    int rejected = 0;
     for (int c = 0; c < cases; c++)
     {
       long length = random.below((long) maxLength + 1);
-      var run = generateRun(model, random, length, 1 + c % 8, true);
+      var generated = generateRun(model, random, length, 1 + c % 8, true);
+      var run = generated.run();
+      steps += run.steps().size();
+      rejected += generated.rejected();
+      if (mostlyRejected(run.steps().size(), generated.rejected()))
+      {
+        reportModel(model, "sequential", c + 1, steps, rejected, "incomplete");
+        throw new IllegalStateException(incompleteRun(model, "run " + (c + 1) + " of " + cases,
+            run.steps().size(), generated.rejected()));
+      }
       var failure = execute(model, run);
       if (failure != null)
       {
+        reportModel(model, "sequential", c + 1, steps, rejected, "failed");
         var shrunk = shrinkRun(model, run, failure, maxShrinks);
         throw new AssertionError("model " + model.name + " fails at step " + shrunk.failure().step()
-            + " of " + describeRun(model, shrunk.run()) + ": " + shrunk.failure().message());
+            + " of " + describeRun(model, shrunk.run()) + ": " + shrunk.failure().message()
+            + rejectedNote(generated.rejected()));
       }
     }
+    reportModel(model, "sequential", cases, steps, rejected, "passed");
   }
 
   // Parallel runs of a shared model. A case is a sequential prefix and one
@@ -5915,36 +6279,33 @@ public final class LawSpecRuntime
   }
 
   private static List<ModelStep> generateBranch(Model model, SplitMix64 random, Value state,
-      long length, long size)
+      long length, long size, int[] rejected)
   {
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
     var steps = new ArrayList<ModelStep>();
     for (long n = 0; n < length; n++)
     {
-      int index = (int) random.below(model.commands.size());
-      var command = model.commands.get(index);
-      if (command.sequential)
+      var taken = nextStep(
+          model, symbols, random, state, model.startIndices, size, false, true, rejected);
+      if (taken == null)
       {
-        continue;
+        break;
       }
-      var args = generateAll(model.values, command.arguments, random, size);
-      try
+      if (taken.step() != null)
       {
-        state = stepModel(command, symbols, args, state).state();
+        steps.add(taken.step());
+        state = taken.state();
       }
-      catch (InvalidStep e)
-      {
-        continue;
-      }
-      steps.add(new ModelStep(index, args));
     }
     return steps;
   }
 
   private static ParallelCase generateParallel(Model model, SplitMix64 random, long size,
-      int threads, int branchLength)
+      int threads, int branchLength, int[] rejected)
   {
-    var prefix = generateRun(model, random, random.below(4), size);
+    var generated = generateRun(model, random, random.below(4), size);
+    var prefix = generated.run();
+    rejected[0] += generated.rejected();
     Value state;
     try
     {
@@ -5963,7 +6324,8 @@ public final class LawSpecRuntime
     var branches = new ArrayList<List<ModelStep>>();
     for (int i = 0; i < threads; i++)
     {
-      branches.add(generateBranch(model, random, state, 1 + random.below(branchLength), size));
+      branches.add(
+          generateBranch(model, random, state, 1 + random.below(branchLength), size, rejected));
     }
     // Drop the last step of the longest branch (the first, among equals)
     // until every interleaving is allowed.
@@ -6473,18 +6835,37 @@ public final class LawSpecRuntime
       long seed, int threads, int branchLength)
   {
     var random = new SplitMix64(seed ^ 0x5BD1E995L);
+    int steps = 0;
+    int rejectedTotal = 0;
     for (int n = 0; n < cases; n++)
     {
-      var c = generateParallel(model, random, 1 + n % 8, threads, branchLength);
+      var rejected = new int[] {0};
+      var c = generateParallel(model, random, 1 + n % 8, threads, branchLength, rejected);
+      int accepted = c.prefix().steps().size();
+      for (var b : c.branches())
+      {
+        accepted += b.size();
+      }
+      steps += accepted;
+      rejectedTotal += rejected[0];
+      if (mostlyRejected(accepted, rejected[0]))
+      {
+        reportModel(model, "parallel", n + 1, steps, rejectedTotal, "incomplete");
+        throw new IllegalStateException(incompleteRun(model,
+            "parallel case " + (n + 1) + " of " + cases, accepted, rejected[0]));
+      }
       long shake = random.next();
       var failure = parallelFails(model, c, repeats, shake);
       if (failure != null)
       {
+        reportModel(model, "parallel", n + 1, steps, rejectedTotal, "failed");
         var shrunk = shrinkParallel(model, c, failure, Math.max(2, repeats / 2), maxShrinks, shake);
         throw new AssertionError("model " + model.name + " is not " + consistent(model.consistency)
-            + ": " + describeParallel(model, shrunk.c()) + ": " + shrunk.failure());
+            + ": " + describeParallel(model, shrunk.c()) + ": " + shrunk.failure()
+            + rejectedNote(rejected[0]));
       }
     }
+    reportModel(model, "parallel", cases, steps, rejectedTotal, "passed");
   }
 
   // Scenarios: processes that drive a shared model's commands at the same time

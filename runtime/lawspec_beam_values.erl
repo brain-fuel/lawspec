@@ -9,6 +9,8 @@
     generate/4,
     minimal/2,
     shrink/3,
+    finite/3,
+    product/2,
     render/1,
     encode/3,
     decode/3,
@@ -126,6 +128,9 @@ generate_resolved([<<"either">>, A, B], Table, State, Size) ->
         end,
     {V, S2} = generate(D, Table, S1, Size),
     {{ls_data, Tag, [V]}, S2};
+generate_resolved([<<"oneof">>, Base | Options], _, State, _) ->
+    {I, S1} = lawspec_beam_random:below(length(Options), State),
+    {choice(Base, lists:nth(I + 1, Options)), S1};
 generate_resolved([<<"data">>, _ | Cs], Table, State, Size) ->
     Choices =
         case Size of
@@ -144,6 +149,10 @@ generation_bounds([<<"int">>, _, none, none]) -> {-1000000, 1000000};
 generation_bounds([<<"int">>, _, none, Hi]) -> {min(-1000000, Hi - 2000000), Hi};
 generation_bounds([<<"int">>, _, Lo, none]) -> {Lo, max(1000000, Lo + 2000000)};
 generation_bounds([<<"int">>, _, Lo, Hi]) -> {Lo, Hi}.
+%% One of a oneof descriptor's choices: an integer, or a text's code points
+%% (codes c ...).
+choice(_, N) when is_integer(N) -> N;
+choice(_, [<<"codes">> | Codes]) -> unicode:characters_to_binary(Codes).
 base(Cs) ->
     Found = [C || [<<"ctor">>, _ | Fields] = C <- Cs, not lists:any(fun mentions_data/1, Fields)],
     case Found of
@@ -171,6 +180,8 @@ minimal_resolved([<<"maybe">>, _], _) ->
     {ls_data, <<"Maybe::Absent">>, []};
 minimal_resolved([<<"either">>, A, _], Table) ->
     {ls_data, <<"Either::Left">>, [minimal(A, Table)]};
+minimal_resolved([<<"oneof">>, Base, First | _], _) ->
+    choice(Base, First);
 minimal_resolved([<<"data">>, _ | Cs], Table) ->
     [[<<"ctor">>, Tag | Ds] | _] = base(Cs),
     {ls_data, unquote(Tag), [minimal(D, Table) || D <- Ds]}.
@@ -226,6 +237,9 @@ shrink_resolved([<<"either">>, A, B], {ls_data, Tag, [V]}, Table) ->
             <<"Either::Right">> -> B
         end,
     [{ls_data, Tag, [C]} || C <- shrink(D, V, Table)];
+shrink_resolved([<<"oneof">>, Base | Options], V, _) ->
+    %% The choices before this one, first first.
+    lists:takewhile(fun(C) -> C =/= V end, [choice(Base, O) || O <- Options]);
 shrink_resolved([<<"data">>, Name | Cs] = D, {ls_data, Tag, Fields}, Table) ->
     [<<"ctor">>, _ | Ds] = constructor(Tag, Cs),
     [minimal(D, Table)] ++ [F || {F, FD} <- lists:zip(Fields, Ds), FD =:= [<<"ref">>, Name]] ++
@@ -251,6 +265,87 @@ field_shrinks(Vs, Ds, Table) ->
         {A, [V | Rest]} <- [lists:split(I, Vs)],
         C <- shrink(D, V, Table)
     ].
+
+%% @doc Every value of a descriptor, in a fixed order, when there are at most
+%% Limit of them; none when there are more, or infinitely many. Integers
+%% ascend, false comes before true, and constructors come in their declared
+%% order with their fields' values varying last field fastest.
+finite(D, Table, Limit) -> finite(D, Table, Limit, []).
+finite([<<"ref">>, Name], Table, Limit, Open) ->
+    Key = unquote(Name),
+    case lists:member(Key, Open) of
+        true -> none;
+        false -> finite(maps:get(Key, Table), Table, Limit, [Key | Open])
+    end;
+finite(D, Table, Limit, Open) ->
+    case finite_values(D, Table, Limit, Open) of
+        none -> none;
+        Values when length(Values) > Limit -> none;
+        Values -> Values
+    end.
+finite_values([<<"int">>, _, Lo, Hi], _, Limit, _) when
+    is_integer(Lo), is_integer(Hi), Hi - Lo < Limit
+->
+    case Hi < Lo of
+        true -> [];
+        false -> lists:seq(Lo, Hi)
+    end;
+finite_values([<<"bool">>], _, _, _) ->
+    [false, true];
+finite_values([<<"unit">>], _, _, _) ->
+    [ls_unit];
+finite_values([<<"oneof">>, Base | Options], _, _, _) ->
+    [choice(Base, O) || O <- Options];
+finite_values([<<"maybe">>, D], Table, Limit, Open) ->
+    case finite(D, Table, Limit, Open) of
+        none ->
+            none;
+        Vs ->
+            [{ls_data, <<"Maybe::Absent">>, []} | [{ls_data, <<"Maybe::Present">>, [V]} || V <- Vs]]
+    end;
+finite_values([<<"either">>, A, B], Table, Limit, Open) ->
+    case {finite(A, Table, Limit, Open), finite(B, Table, Limit, Open)} of
+        {none, _} ->
+            none;
+        {_, none} ->
+            none;
+        {Left, Right} ->
+            [{ls_data, <<"Either::Left">>, [V]} || V <- Left] ++
+                [{ls_data, <<"Either::Right">>, [V]} || V <- Right]
+    end;
+finite_values([<<"data">>, _ | Cs], Table, Limit, Open) ->
+    Ctors = [
+        finite_constructor(unquote(Tag), [finite(D, Table, Limit, Open) || D <- Ds], Limit)
+     || [<<"ctor">>, Tag | Ds] <- Cs
+    ],
+    case lists:member(none, Ctors) of
+        true -> none;
+        false -> lists:append(Ctors)
+    end;
+finite_values(_, _, _, _) ->
+    none.
+finite_constructor(Tag, Domains, Limit) ->
+    case lists:member(none, Domains) of
+        true ->
+            none;
+        false ->
+            case product(Domains, Limit) of
+                none -> none;
+                Tuples -> [{ls_data, Tag, T} || T <- Tuples]
+            end
+    end.
+
+%% @doc Every tuple of one value from each domain, the last varying fastest;
+%% none past Limit.
+product(Domains, Limit) -> product(Domains, Limit, [[]]).
+product([], _, Out) ->
+    Out;
+product([Domain | Rest], Limit, Out) ->
+    Next = [Prefix ++ [V] || Prefix <- Out, V <- Domain],
+    case length(Next) > Limit of
+        true -> none;
+        false -> product(Rest, Limit, Next)
+    end.
 
 render(V) -> iolist_to_binary(render_value(V)).
 render_value(true) ->

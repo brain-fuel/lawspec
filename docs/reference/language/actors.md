@@ -72,6 +72,13 @@ the commands:
   returned 0; the model returns 4
   ```
 
+- **Honest steps.** Messages are drawn as a model's commands are: from the
+  refinements of the handler and its reference, listing the messages the
+  reference accepts when there are few enough. A message a reference
+  refuses is counted, and a run that is mostly refused messages is
+  `incomplete`, not passed, as for a [model](models.md#what-lawspec-checks).
+  A reference may be partial: a message outside its refinements is not
+  sent.
 - **In parallel.** Messages are sent from several threads at once, and every
   history must linearize, which checks that the actor runtime handles one
   message at a time.

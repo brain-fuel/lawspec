@@ -163,6 +163,22 @@ public enum Descriptors {
     return (name, Array(parts.dropFirst()))
   }
 
+  /// One of a oneof descriptor's choices: an integer, or a text's code points
+  /// (codes c ...).
+  private static func choice(_ option: Descriptor) throws -> Value {
+    if case .number(let n) = option { return .int(n) }
+    guard let (head, codes) = shape(option), head == "codes" else {
+      throw fail("InvalidOneofDescriptor")
+    }
+    let points = try codes.map { c -> Int in
+      guard case .number(let n) = c, let point = n.exactly(Int.self) else {
+        throw fail("InvalidOneofDescriptor")
+      }
+      return point
+    }
+    return .text(try Scalar.textOfPoints(points))
+  }
+
   /// A value drawn from a descriptor at a size, and the next state. Every draw,
   /// including each boundary choice, follows the portable algorithm.
   public static func generate(_ d: Descriptor, _ table: Table, _ state: Random.Seed, _ size: Int)
@@ -220,6 +236,10 @@ public enum Descriptors {
       let (tag, inner) = choice.isZero ? ("Either::Left", args[0]) : ("Either::Right", args[1])
       let (v, s2) = try generate(inner, table, s1, size)
       return (.data(tag, [v]), s2)
+    case ("oneof", _) where args.count >= 1:
+      let options = Array(args.dropFirst())
+      let (i, s) = Random.below(BigInt(options.count), state)
+      return (try choice(options[i.exactly(Int.self)!]), s)
     case ("data", _) where args.count >= 1:
       let cs = Array(args.dropFirst())
       let choices = size == 0 ? baseConstructors(cs) : cs
@@ -258,6 +278,7 @@ public enum Descriptors {
     case ("list", 1): return .list([])
     case ("maybe", 1): return .data("Maybe::Absent", [])
     case ("either", 2): return .data("Either::Left", [try minimal(args[0], table)])
+    case ("oneof", _) where args.count >= 2: return try choice(args[1])
     case ("data", _) where args.count >= 1:
       guard let first = baseConstructors(Array(args.dropFirst())).first,
         let (head, parts) = shape(first), head == "ctor",
@@ -362,8 +383,91 @@ public enum Descriptors {
       }
       return result
     case ("unit", 0, .unit): return []
+    case ("oneof", _, let v) where args.count >= 1:
+      // The choices before this one, first first.
+      var result = [Value]()
+      for option in args.dropFirst() {
+        let c = try choice(option)
+        if try Scalar.compareValues(c, v) == 0 { break }
+        result.append(c)
+      }
+      return result
     default: throw fail("InvalidShrinkValue")
     }
+  }
+
+  /// Every tuple of one value from each domain, the last varying fastest; nil
+  /// past the limit.
+  public static func product<T>(_ domains: [[T]], _ limit: Int) -> [[T]]? {
+    var out: [[T]] = [[]]
+    for domain in domains {
+      var next = [[T]]()
+      for prefix in out {
+        for v in domain { next.append(prefix + [v]) }
+        if next.count > limit { return nil }
+      }
+      out = next
+    }
+    return out
+  }
+
+  /// Every value of a descriptor, in a fixed order, when there are at most
+  /// limit of them; nil when there are more, or infinitely many. Integers
+  /// ascend, false comes before true, and constructors come in their declared
+  /// order with their fields' values varying last field fastest.
+  public static func finite(_ d: Descriptor, _ table: Table, _ limit: Int) throws -> [Value]? {
+    var expanding = Set<String>()
+    return try finiteWithin(d, table, limit, &expanding)
+  }
+
+  private static func finiteWithin(
+    _ d: Descriptor, _ table: Table, _ limit: Int, _ expanding: inout Set<String>
+  ) throws -> [Value]? {
+    guard let (name, args) = shape(d) else { return nil }
+    if name == "ref" && args.count == 1 {
+      let key = try unquote(args[0])
+      if !expanding.insert(key).inserted { return nil }
+      defer { expanding.remove(key) }
+      return try finiteWithin(try resolve(d, table), table, limit, &expanding)
+    }
+    var out = [Value]()
+    switch (name, args.count) {
+    case ("int", 3):
+      guard case .number(let lo) = args[1], case .number(let hi) = args[2] else { return nil }
+      if hi - lo >= BigInt(limit) { return nil }
+      var n = lo
+      while n <= hi {
+        out.append(.int(n))
+        n = n + .one
+      }
+    case ("bool", 0): out = [.bool(false), .bool(true)]
+    case ("unit", 0): out = [.unit]
+    case ("oneof", _) where args.count >= 1: out = try args.dropFirst().map(choice)
+    case ("maybe", 1):
+      guard let inner = try finiteWithin(args[0], table, limit, &expanding) else { return nil }
+      out = [.data("Maybe::Absent", [])] + inner.map { .data("Maybe::Present", [$0]) }
+    case ("either", 2):
+      guard let left = try finiteWithin(args[0], table, limit, &expanding),
+        let right = try finiteWithin(args[1], table, limit, &expanding)
+      else { return nil }
+      out = left.map { .data("Either::Left", [$0]) } + right.map { .data("Either::Right", [$0]) }
+    case ("data", _) where args.count >= 1:
+      for c in args.dropFirst() {
+        guard let (head, parts) = shape(c), head == "ctor", let tag = parts.first else {
+          throw fail("InvalidConstructorDescriptor")
+        }
+        var fields = [[Value]]()
+        for field in parts.dropFirst() {
+          guard let values = try finiteWithin(field, table, limit, &expanding) else { return nil }
+          fields.append(values)
+        }
+        guard let tuples = product(fields, limit) else { return nil }
+        let ctor = try unquote(tag)
+        out += tuples.map { .data(ctor, $0) }
+      }
+    default: return nil
+    }
+    return out.count > limit ? nil : out
   }
 
   private static func quote(_ s: String) -> String {

@@ -1,0 +1,14 @@
+expect: incomplete model generation: model cart's run
+@@ acceptance/pekko-samples/persistence/cart.lawspec
+<<<<<<<
+function modelRemoveItem
+    (item :: Text where item = "apple" || item = "pear" || item = "plum")
+    (b :: Basket) -> Pair Bool Basket is
+=======
+-- Mutant: removing an item needs a cart of more than five items, which a
+-- cart of three item names never holds, and any text is drawn for the item.
+-- The reference rejects nearly every removal drawn, so the runs are
+-- incomplete, not passed.
+function modelRemoveItem (item :: Text)
+    (b :: Basket where prelude.size b.items > 5) -> Pair Bool Basket is
+>>>>>>>

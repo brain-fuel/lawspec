@@ -22,19 +22,37 @@ machineSpec bits datas declarations contracts machine = do
   let typeOf name = case filter ((== name) . C.declarationId) declarations of
         [d] -> Right (C.declarationType d)
         _ -> Left ("model " ++ machineName machine ++ ": no declaration for " ++ C.idText name)
-      describeAll types = foldr (\(t, range) acc -> do (ds, table) <- acc; (d, table') <- describe bits datas table t; pure (narrow range d : ds, table'))
+      describeAll types = foldr (\(t, (range, options)) acc -> do (ds, table) <- acc; (d, table') <- describe bits datas table t; pure (choose options (narrow range d) : ds, table'))
         (Right ([], [])) types
-      -- An argument's integer bounds from its adapter's preconditions.
-      rangeOf name i = case [c | c <- contracts, C.contractDeclaration c == name] of
-        [c] | i < length (C.contractArguments c) -> bounds (C.binderId (C.contractArguments c !! i)) (C.contractPreconditions c)
-        _ -> (Nothing, Nothing)
+      -- What an argument's refinements say: its integer bounds and its
+      -- finite choices, from the adapter's preconditions and from those of
+      -- the reference definition (whose j-th parameter is the command's
+      -- j-th argument), so generation draws only steps the reference
+      -- accepts. Conditions that also read the model state are left to the
+      -- runtime, which enumerates or retries. ref:DEC-honest-model-steps
+      refinementOf name i = case [c | c <- contracts, C.contractDeclaration c == name] of
+        [c] | i < length (C.contractArguments c) ->
+          let binder = C.binderId (C.contractArguments c !! i)
+              alone = [q | p <- C.contractPreconditions c, q <- conjunctsOf p, only binder q]
+          in (bounds binder alone, choices binder alone)
+        _ -> ((Nothing, Nothing), Nothing)
+      refinementAt c j position =
+        let ((alo, ahi), achoices) = refinementOf (commandSystem c) position
+            ((rlo, rhi), rchoices) = refinementOf (commandReference c) j
+        in ((tighter max alo rlo, tighter min ahi rhi), intersect achoices rchoices)
+      tighter f a b = case (a, b) of
+        (Just x, Just y) -> Just (f x y)
+        _ -> maybe b Just a
+      intersect a b = case (a, b) of
+        (Just xs, Just ys) -> Just [x | x <- xs, x `elem` ys]
+        _ -> maybe b Just a
   start <- forM (machineStart machine) $ \s -> do
     ty <- typeOf (startSystem s)
-    pure (s, [(t, rangeOf (startSystem s) i) | (i, t) <- zip [0 ..] (fst (C.functionType ty))])
+    pure (s, [(t, refinementOf (startSystem s) i) | (i, t) <- zip [0 ..] (fst (C.functionType ty))])
   commands <- forM (machineCommands machine) $ \c -> do
     ty <- typeOf (commandSystem c)
     let (args, _) = C.functionType ty
-    pure (c, [(args !! i, rangeOf (commandSystem c) i) | i <- commandArguments c])
+    pure (c, [(args !! i, refinementAt c j i) | (j, i) <- zip [0 ..] (commandArguments c)])
   -- One table of data types across the start and every command.
   (descriptors, table) <- describeAll (concat (maybe [] snd start : map snd commands))
   ranges <- mapM (dependentRanges datas contracts . fst) commands
@@ -101,6 +119,54 @@ narrow (lo, hi) d = case words (filter (`notElem` ("()" :: String)) d) of
       (Just n, [(o, "")]) -> show (f n o)
       (Just n, _) -> show n
       (Nothing, _) -> old
+
+-- | A descriptor drawing only the given choices (integers or texts, in the
+-- order the refinement lists them), within the descriptor's integer bounds:
+-- (oneof D v ...), where a text v is (codes c ...), its code points.
+choose :: Maybe [Scalar] -> String -> String
+choose Nothing d = d
+choose (Just options) d = case words (filter (`notElem` ("()" :: String)) d) of
+  ["int", _, l, h] | take 5 d == "(int " ->
+    let inside n = maybe True (n >=) (readInteger l) && maybe True (n <=) (readInteger h)
+    in "(oneof " ++ d ++ concat [' ' : show n | SInteger _ n <- options, inside n] ++ ")"
+  ["text"] -> "(oneof " ++ d ++ concat [" (codes" ++ concatMap ((' ' :) . show) cs ++ ")" | SSequence "Text" cs <- options] ++ ")"
+  _ -> d
+  where readInteger t = case reads t :: [(Integer, String)] of [(n, "")] -> Just n; _ -> Nothing
+
+-- | The constants a precondition conjunct allows a binder: x = a || x = b.
+choices :: C.Id -> [C.Expr] -> Maybe [Scalar]
+choices binder conditions = case [cs | p <- concatMap conjuncts conditions, Just cs <- [alternatives p]] of
+  [] -> Nothing
+  first : more -> Just (foldl (\acc cs -> [c | c <- acc, c `elem` cs]) first more)
+  where
+    conjuncts e = case C.expressionNode e of
+      C.ShortCircuit C.And a b -> conjuncts a ++ conjuncts b
+      _ -> [e]
+    alternatives e = case C.expressionNode e of
+      C.ShortCircuit C.Or a b -> (++) <$> alternatives a <*> alternatives b
+      C.Binary C.Equal _ a b | named a, Just c <- constant b -> Just [c]
+                             | named b, Just c <- constant a -> Just [c]
+      _ -> Nothing
+    named e = case C.expressionNode e of
+      C.Local i -> i == binder
+      C.Convert _ _ inner -> named inner
+      _ -> False
+    constant e = case C.expressionNode e of
+      C.Constant s@(SInteger _ _) -> Just s
+      C.Constant s@(SSequence "Text" _) -> Just s
+      C.Convert _ _ inner -> constant inner
+      _ -> Nothing
+
+conjunctsOf :: C.Expr -> [C.Expr]
+conjunctsOf e = case C.expressionNode e of
+  C.ShortCircuit C.And a b -> conjunctsOf a ++ conjunctsOf b
+  _ -> [e]
+
+-- | Whether a condition reads no local but the binder.
+only :: C.Id -> C.Expr -> Bool
+only binder e = case C.expressionNode e of
+  C.Local i -> i == binder
+  _ -> all (only binder) (C.children e)
 
 -- | A type's descriptor, adding the data types it reaches to the table (each
 -- once, by name, so recursion goes through (ref NAME)).

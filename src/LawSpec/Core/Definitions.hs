@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- | Closed execution of validated total definitions. The returned function has
 -- no adapter hook, so a definition cannot acquire effects during evaluation.
-module LawSpec.Core.Definitions (prepareDefinitions, prepareDefinitionsWithScopes, prepareResolvingDefinitions, prepareHookedDefinitions, prepareHookedDefinitionsM) where
+module LawSpec.Core.Definitions (prepareDefinitions, prepareDefinitionsWithScopes, prepareResolvingDefinitions, prepareHookedDefinitions, prepareHookedDefinitionsM, Trusted(..), prepareTrustedDefinitions) where
 
 import Control.Monad.Except (MonadError, throwError, catchError)
 import Control.Monad (unless)
@@ -9,7 +9,7 @@ import qualified Data.Map.Strict as M
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Core.Eval (evaluateValueM, evaluateAdmittedValueM, validateValueWithContractsM)
-import LawSpec.Core.Types (makeRegistry)
+import LawSpec.Core.Types (TypeRegistry, makeRegistry)
 import LawSpec.Core.Validate (validateProgram,validateProgramWithScopes)
 import LawSpec.Core.CapabilityScope (CapabilityScopes)
 import LawSpec.Core.DefinitionContracts (definitionContracts)
@@ -56,7 +56,32 @@ prepareHookedDefinitionsIn validate = prepareHookedDefinitionsWith validate (pur
 
 prepareHookedDefinitionsWith :: MonadError String m => (Program -> Either [Diagnostic] ()) -> m () -> Program -> Either [Diagnostic]
   (((Id -> [Value] -> m Value) -> Id -> Maybe ([Value] -> m Value)) -> Id -> [Value] -> m Value)
-prepareHookedDefinitionsWith validate tick program = do
+prepareHookedDefinitionsWith validate tick program =
+  (\(invoke, _, _) -> invoke False) <$> prepareInvoker validate tick program
+
+-- | Calls of checked definitions on values the caller already holds as
+-- checked: values a checked definition returned, or values enumerated from
+-- their types. The model checker calls a model's reference and predicates
+-- thousands of times on such states, and checking every state's contracts
+-- again at each call dominated its time. Both entry points keep the
+-- admitted-evaluation invariant: a definition's own preconditions and
+-- postconditions are still evaluated, and constructions are still checked.
+data Trusted = Trusted
+  { trustedCall :: Id -> [Value] -> Either String Value
+    -- ^ A definition's call on checked arguments.
+  , trustedEvaluate :: [(Id, Value)] -> Expr -> Either String Value
+    -- ^ An expression over checked values, such as a contract's condition.
+  }
+
+prepareTrustedDefinitions :: Program -> Either [Diagnostic] Trusted
+prepareTrustedDefinitions program = do
+  (invoke, registry, bits) <- prepareInvoker validateProgram (pure ()) program
+  let resolver _ _ = Nothing
+  pure (Trusted (invoke True resolver) (evaluateAdmittedValueM (pure ()) registry bits (invoke True resolver)))
+
+prepareInvoker :: MonadError String m => (Program -> Either [Diagnostic] ()) -> m () -> Program -> Either [Diagnostic]
+  (Bool -> ((Id -> [Value] -> m Value) -> Id -> Maybe ([Value] -> m Value)) -> Id -> [Value] -> m Value, TypeRegistry, Int)
+prepareInvoker validate tick program = do
   validate program
   let boundaries = definitionContracts (programUnits program)
   registry <- either (Left . pure . (\message -> Diagnostic "core" message Nothing)) Right
@@ -91,4 +116,4 @@ prepareHookedDefinitionsWith validate tick program = do
         mapM_ (\c -> mapM_ (require "postcondition"
           ((binderId (contractResult c),value) : contractScope c)) (contractPostconditions c ++ contractRuntimePostconditions c)) contract
         pure value
-  pure (invoke False)
+  pure (invoke, registry, bits)

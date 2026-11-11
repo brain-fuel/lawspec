@@ -939,3 +939,39 @@ actor-spring-boot-starter-source:
   kind: code
   title: "actor-spring-boot-starter source repository"
   locator: https://github.com/seonWKim/actor-spring-boot-starter
+quickcheck-discards:
+  kind: documentation
+  title: "QuickCheck: Test.QuickCheck, maxDiscardRatio"
+  locator: https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck.html#v:maxDiscardRatio
+quickcheck-state-machine:
+  kind: code
+  title: "quickcheck-state-machine: test monadic programs using state machine based models"
+  locator: https://github.com/stevana/quickcheck-state-machine
+hedgehog-state-machines:
+  kind: documentation
+  title: "Hedgehog: Hedgehog.Internal.State (commands, Require preconditions)"
+  locator: https://hackage.haskell.org/package/hedgehog/docs/Hedgehog-Internal-State.html
+tla-specifying-systems:
+  kind: article
+  title: "Leslie Lamport, Specifying Systems, Addison-Wesley 2002, chapter 8 (Liveness and Fairness)"
+  locator: https://lamport.azurewebsites.net/tla/book.html
+valmari-stubborn-sets:
+  kind: paper
+  title: "Antti Valmari, Stubborn Sets for Reduced State Space Generation, Advances in Petri Nets 1990"
+  locator: https://doi.org/10.1007/3-540-53863-1_36
+peled-ample-sets:
+  kind: paper
+  title: "Doron Peled, All from One, One for All: on Model Checking Using Representatives, CAV 1993"
+  locator: https://doi.org/10.1007/3-540-56922-7_34
+holzmann-peled-por:
+  kind: paper
+  title: "Gerard J. Holzmann and Doron Peled, An Improvement in Formal Verification, FORTE 1994 (partial-order reduction in SPIN)"
+  locator: https://doi.org/10.1007/978-0-387-34878-0_13
+tlc-symmetry:
+  kind: documentation
+  title: "TLA+ tools: TLC model checker, SYMMETRY sets"
+  locator: https://lamport.azurewebsites.net/tla/tlc-options.html
+ip-dill-scalarsets:
+  kind: paper
+  title: "C. Norris Ip and David L. Dill, Better Verification Through Symmetry, Formal Methods in System Design 9, 1996"
+  locator: https://doi.org/10.1007/BF00625968

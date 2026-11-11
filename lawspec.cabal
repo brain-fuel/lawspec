@@ -832,6 +832,7 @@ library
       LawSpec.ModelDomains
       LawSpec.ModelLaws
       LawSpec.ModelProof
+      LawSpec.ModelReduction
       LawSpec.ModelTests
       LawSpec.ModelTime
       LawSpec.Naming

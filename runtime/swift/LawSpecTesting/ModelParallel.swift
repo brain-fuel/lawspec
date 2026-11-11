@@ -62,28 +62,25 @@ public enum ModelParallel {
   private static func generateBranch(
     _ model: Model.Machine, _ context: Model.Context, _ random: Random.Seed, _ size: Int,
     _ count: Int, _ start: Value
-  ) throws -> ([(Int, [Value])], Random.Seed) {
+  ) throws -> ([(Int, [Value])], Int, Random.Seed) {
     var random = random
     var remaining = count
     var state = start
     var steps = [(Int, [Value])]()
-    while remaining != 0 && !model.commands.isEmpty {
-      let (index, r1) = Random.below(BigInt(model.commands.count), random)
-      let c = try Model.command(model, index.exactly(Int.self)!)
-      var r = r1
-      let args = try c.arguments.map { d -> Value in
-        let (v, next) = try Descriptors.generate(d, model.table, r, size)
-        r = next
-        return v
-      }
+    var rejected = 0
+    while remaining != 0 {
+      let (next, drawn, r) = try Model.nextStep(
+        model, context, random, state, model.startIndices, size, false)
       random = r
+      rejected += drawn
+      if case .noneEnabled = next { break }
       remaining -= 1
-      if let (next, _) = Model.step(c, context, args, state) {
-        state = next
-        steps.append((index.exactly(Int.self)!, args))
+      if case .taken(let s, let after) = next {
+        state = after
+        steps.append(s)
       }
     }
-    return (steps, random)
+    return (steps, rejected, random)
   }
 
   private static func trim(_ model: Model.Machine, _ c: Case) -> Case {
@@ -97,29 +94,33 @@ public enum ModelParallel {
   }
 
   /// A case drawn from a random state: a prefix of up to three steps, then a
-  /// branch for each thread of one to the branch length steps.
+  /// branch for each thread of one to the branch length steps. Also how many
+  /// of its drawn steps the reference rejected.
   public static func generateCase(
     _ model: Model.Machine, _ random: Random.Seed, _ size: Int, _ threads: Int, _ branchLength: Int
-  ) throws -> (Case, Random.Seed) {
+  ) throws -> (Case, Int, Random.Seed) {
     let (length, r1) = Random.below(4, random)
-    let (prefix, r2) = try Model.generateRun(model, r1, length.exactly(Int.self)!, size, false)
+    let (prefix, prefixRejected, r2) = try Model.generateRun(
+      model, r1, length.exactly(Int.self)!, size, false)
     guard let states = Model.simulate(model, prefix), let last = states.last else {
-      return ((prefix, Array(repeating: [], count: threads)), r2)
+      return ((prefix, Array(repeating: [], count: threads)), prefixRejected, r2)
     }
-    let (branches, r3) = try Model.withCase(model, prefix.0) {
-      context -> ([[(Int, [Value])]], Random.Seed) in
+    let (branches, rejected, r3) = try Model.withCase(model, prefix.0) {
+      context -> ([[(Int, [Value])]], Int, Random.Seed) in
       var r = r2
+      var rejected = prefixRejected
       var made = [[(Int, [Value])]]()
       for _ in 0..<threads {
         let (n, next) = Random.below(BigInt(branchLength), r)
-        let (branch, after) = try generateBranch(
+        let (branch, drawn, after) = try generateBranch(
           model, context, next, size, n.exactly(Int.self)! + 1, last)
         r = after
+        rejected += drawn
         made.append(branch)
       }
-      return (made, r)
+      return (made, rejected, r)
     }
-    return (trim(model, (prefix, branches)), r3)
+    return (trim(model, (prefix, branches)), rejected, r3)
   }
 
   private static func perturb(_ random: Random.Seed) -> Random.Seed {
@@ -449,20 +450,34 @@ public enum ModelParallel {
     }
     let start = Model.seed(options.seed)
     var random = Random.Seed(state: start.state ^ 0x5bd1_e995)
+    var steps = 0
+    var rejectedTotal = 0
     for n in 0..<options.cases {
-      let (c, r1) = try generateCase(
+      let (c, rejected, r1) = try generateCase(
         model, random, 1 + n % 8, options.threads, options.branchLength)
+      let accepted = c.0.1.count + c.1.reduce(0) { $0 + $1.count }
+      steps += accepted
+      rejectedTotal += rejected
+      if rejected > accepted {
+        Model.reportModel(model, "parallel", n + 1, steps, rejectedTotal, "incomplete")
+        throw Fail.with(
+          "IncompleteModelGeneration",
+          Model.incompleteRun(
+            model, "parallel case \(n + 1) of \(options.cases)", accepted, rejected))
+      }
       let (shake, r2) = Random.next(r1)
       if let failure = repeats(model, c, options.repeats, shake) {
+        Model.reportModel(model, "parallel", n + 1, steps, rejectedTotal, "failed")
         let (smaller, found) = try shrinkCase(
           model, c, failure, Swift.max(2, options.repeats / 2), options.maxShrinks, shake)
         throw Fail.with(
           "ModelInconsistent",
-          "model \(model.name) is not \(model.consistency): seed \(start.state) (LAWSPEC_SEED=\(start.state) replays it), case \(n), shake \(shake): \(describeCase(model, smaller)); \(found)"
+          "model \(model.name) is not \(model.consistency): seed \(start.state) (LAWSPEC_SEED=\(start.state) replays it), case \(n), shake \(shake): \(describeCase(model, smaller)); \(found)\(Model.rejectedNote(rejected))"
         )
       }
       random = r2
     }
+    Model.reportModel(model, "parallel", options.cases, steps, rejectedTotal, "passed")
   }
 
   /// Check a shared model's concurrent histories.
