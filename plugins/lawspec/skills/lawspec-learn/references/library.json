@@ -5439,9 +5439,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:120: Generic definitions",
+      "id": "reference:docs/reference/language/definitions.md:121: Generic definitions",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:120: Generic definitions",
+      "name": "docs/reference/language/definitions.md:121: Generic definitions",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5457,72 +5457,81 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:144: Refined parameters and results",
+      "id": "reference:docs/reference/language/definitions.md:145: A definition over a type constructor",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:144: Refined parameters and results",
+      "name": "docs/reference/language/definitions.md:145: A definition over a type constructor",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:151: Where definitions can be used",
+      "id": "reference:docs/reference/language/definitions.md:183: Refined parameters and results",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:151: Where definitions can be used",
+      "name": "docs/reference/language/definitions.md:183: Refined parameters and results",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:161: Generated code",
+      "id": "reference:docs/reference/language/definitions.md:190: Where definitions can be used",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:161: Generated code",
+      "name": "docs/reference/language/definitions.md:190: Where definitions can be used",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:182: Recursion that must end",
+      "id": "reference:docs/reference/language/definitions.md:200: Generated code",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:182: Recursion that must end",
+      "name": "docs/reference/language/definitions.md:200: Generated code",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:244: Stating what decreases",
+      "id": "reference:docs/reference/language/definitions.md:221: Recursion that must end",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:244: Stating what decreases",
+      "name": "docs/reference/language/definitions.md:221: Recursion that must end",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:289: Native calls",
+      "id": "reference:docs/reference/language/definitions.md:283: Stating what decreases",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:289: Native calls",
+      "name": "docs/reference/language/definitions.md:283: Stating what decreases",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:32: Totality",
+      "id": "reference:docs/reference/language/definitions.md:328: Native calls",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:32: Totality",
+      "name": "docs/reference/language/definitions.md:328: Native calls",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/definitions.md:94: Recursion on integers",
+      "id": "reference:docs/reference/language/definitions.md:33: Totality",
       "kind": "reference",
-      "name": "docs/reference/language/definitions.md:94: Recursion on integers",
+      "name": "docs/reference/language/definitions.md:33: Totality",
+      "source": "docs/reference/language/definitions.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/definitions.md:95: Recursion on integers",
+      "kind": "reference",
+      "name": "docs/reference/language/definitions.md:95: Recursion on integers",
       "source": "docs/reference/language/definitions.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

@@ -880,7 +880,12 @@ typeCheck sourceTypes declarations bits = case CoreTypes.makeRegistry declaratio
       CoreTypes.checkType extended ty
 
 validTypeWithData :: (Type -> Bool) -> Type -> Bool
-validTypeWithData check t = check t
+validTypeWithData check t = check (mapType (\ty -> case ty of
+  -- m a is a value type when List a is: a constructor variable stands for a
+  -- constructor that takes one value type, as List does.
+  Application n [Variable _, argument] | n == constructorApplicationName -> Applied "List" argument
+  Application n [Named ('@' : _), argument] | n == constructorApplicationName -> Applied "List" argument
+  _ -> ty) id t)
 
 valueType :: (Type -> Bool) -> Type -> Bool
 valueType _ (Arrow _ _) = False
@@ -945,7 +950,7 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
       unless (all (valueType checkTypes) (functionResult d : map snd parameters))
         (Left "definition parameters and result require value types")
       forM_ declared $ \(Capability name ty) -> do
-        unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed"])
+        unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"])
           (Left ("unknown capability: " ++ name))
         unless (valueType checkTypes ty && all (`elem` bound) (variables ty))
           (Left "capability mentions an invalid or unbound type")

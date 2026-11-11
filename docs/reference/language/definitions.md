@@ -23,7 +23,8 @@ end unit
 ```
 
 Parameters and the result have explicit types. The optional `requires` clause
-uses the same capabilities as laws: `Eq`, `Integer`, `Ordered` and `Bounded`.
+uses the same capabilities as laws: `Eq`, `Integer`, `Ordered` and `Bounded`,
+and `Mappable` for a [type constructor](#a-definition-over-a-type-constructor).
 Requirements are checked even when the definition is unused.
 
 Integer arithmetic keeps the mathematical result, so `increment` returns `128`
@@ -140,6 +141,44 @@ and definedness, even if unused. Each call specializes it to concrete types;
 different calls can use different types, but a recursive call must keep the
 same types. An ambiguous call needs an annotation, such as
 `count ([] :: List Int8)`. Unused generic definitions emit no code.
+
+### A definition over a type constructor
+
+A type variable can stand for a type constructor: `m a` is "some `m` of
+`a`". `requires Mappable m` says `prelude.map` works on it. `m` can be `List`
+or an `Either` with its failure type fixed, the two types `map` is defined on.
+
+```lawspec
+unit guide.mappable
+
+function double (n :: Integer) -> Integer is n * 2 end function
+
+function quadrupled (values :: m Integer) -> m Integer requires Mappable m is
+  prelude.map double (prelude.map double values)
+end function
+
+function halved (n :: Integer) -> Either Text Integer is
+  if prelude.rem n 2 = 0 then Right (prelude.quot n 2) else Left "odd" end if
+end function
+
+law "|one definition, two types| is
+  definition :
+    quadrupled [1, 2] = [4, 8]
+    and quadrupled (halved 6) = Right 12
+    and quadrupled (halved 3) = Left "odd"
+  end definition
+end law
+end unit
+```
+
+- Each call specializes the definition, as for any generic definition: the
+  generated code has one function for lists and one for the `Either`.
+- The variable takes one argument, written on the same line: `m a`,
+  `m Integer`, or `(m a)` inside another type.
+- `Mappable` is built in. A program cannot declare its own instance, and
+  `prelude.filter` takes a `List` only.
+- A call must fix what `m` is. A function result, an annotated value or a
+  list literal does; a bare `Right 1` leaves the failure type open.
 
 ## Refined parameters and results
 

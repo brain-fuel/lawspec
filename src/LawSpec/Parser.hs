@@ -477,7 +477,22 @@ parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type
 typeP = recovering (Named "Unit") $ sourceNode "type-expression" (Just . prettyType) $ do
-  a <- typeAtom
+  line <- sourceLine <$> getSourcePos
+  variable <- typeAtom
+  -- m a: a type variable applied, standing for a type constructor. The
+  -- argument is on the variable's line, so a signature's last type does not
+  -- take the next declaration's name.
+  a <- case variable of
+    Variable name | name /= "_" -> option variable (try (do
+      here <- sourceLine <$> getSourcePos
+      if here == line then pure () else fail "a type argument is on its constructor's line"
+      -- uses, fails and decreases open a signature clause and are not
+      -- reserved words, so they are never read as the argument.
+      notFollowedBy (choice (map keyword ["uses", "fails", "decreases"]))
+      argument <- typeAtom
+      notFollowedBy annotationP
+      pure (Application constructorApplicationName [variable, argument])))
+    _ -> pure variable
   -- A / A' is a flow parameter: the call takes the state at A to A'.
   a' <- option a (do void (symbol "/"); b <- typeAtom; pure (Application flowTypeName [a, b]))
   option a' (Arrow a' <$> (symbol "->" *> typeP))
@@ -556,8 +571,8 @@ param = sourceNode "parameter" (Just . fst) $ parens $ do
   pure (n,maybe t (\e -> Refined n t (Just e)) p)
 constraintsP :: P [Constraint]
 constraintsP = option [] (keyword "requires" *> some (sourceNode "capability" (\(Capability name _) -> Just name) $ do
-  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed"]]
-  Capability n <$> typeP))
+  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"]]
+  Capability n <$> typeAtom))
 refinementP :: P Refinement
 refinementP = blockP "refinement" $ do
   keyword "refinement"; n <- ident; ps <- many param; cs <- constraintsP

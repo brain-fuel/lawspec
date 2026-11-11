@@ -166,6 +166,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   recursive definition may map itself over the children of its argument.
   See [Sequences](docs/reference/language/sequences.md#mapping-and-filtering-a-list).
 
+- A definition can abstract over what `map` works on: `m a` is a type
+  constructor variable applied, and `requires Mappable m` allows `prelude.map`
+  on it. The instances are `List` and `Either` with its failure type fixed.
+  See [Definitions](docs/reference/language/definitions.md#a-definition-over-a-type-constructor).
+
 - Text built-ins `prelude.split`, `prelude.trim`, `prelude.words` and
   `prelude.lines`, on every target. `split` keeps empty pieces, so `join`
   gives the text back. White space is Unicode 17.0.0's `White_Space` property

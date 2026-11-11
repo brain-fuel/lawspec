@@ -1471,7 +1471,8 @@ DEC-list-map-filter:
     Either's success value, lowered to the same match as before. This is the
     behaviour of fmap in Haskell's Functor, Functor.map in Lean 4 and map in
     Idris 2's Functor interface, restricted to the two instances LawSpec
-    has; a program cannot yet abstract over the type constructor itself.
+    has. A definition abstracts over the constructor with the Mappable
+    capability (DEC-mappable-capability).
     Termination: the body is audited with the element bound as a part of the
     list, so a definition may map itself over the children of its argument.
     A proof treats a map or filter as an atom of its list and body, with the
@@ -1482,6 +1483,31 @@ DEC-list-map-filter:
   opened: 0.33.0
   decided: 0.33.0
   refs: [haskell-functor, lean-functor, idris2-functor, REQ-honest-evidence]
+
+DEC-mappable-capability:
+  status: decided
+  question: How does a definition abstract over the types map works on?
+  answer: |
+    A type variable applied to one argument, m a, stands for a type
+    constructor, and the capability Mappable m requires that map is defined
+    on it. This is a constructor class in Haskell's sense (Functor f with
+    f of kind Type -> Type), which Lean 4's Functor and Idris 2's Functor
+    interface share. LawSpec has exactly two instances, both built in: List,
+    and Either with its failure type fixed. There are no user instances, no
+    other constructor capabilities and no constructor variables of two or
+    more arguments.
+    Inference keeps m a as an application of a variable until unification
+    with a List or an Either type fixes the constructor; map over an
+    unresolved m a owes Mappable m, discharged by the definition's
+    requirement or, at a call, by the constructor chosen. Definitions are
+    specialized per call as every generic definition is, so no dictionary
+    and no constructor variable reaches Core or a target: each instance is
+    the List node or the Either match of DEC-list-map-filter.
+    The variable's kind is not declared; a variable used both applied and
+    bare fails as an ordinary type mismatch.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [haskell-functor, lean-functor, idris2-functor, DEC-list-map-filter]
 
 DEC-text-pieces:
   status: decided

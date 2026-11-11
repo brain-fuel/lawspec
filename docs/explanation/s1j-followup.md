@@ -21,7 +21,7 @@ passes. It does not mean the original project was run.
 | 18 | Changed | `npm/package-lock.json` pins the optional native packages, `tools/npm-lock.mjs` regenerates it, and CI checks it. | `npm ci` from a checkout needs the 0.33.0 native packages to be published. |
 | 19 | Changed | A Go unit receives a bound-handler bridge only for abilities it uses. | The original package layout. |
 | 20 | Partly changed | See [Cache and compile time](#cache-and-compile-time). | Reuse across runs, and the `generate` slowdown. |
-| 21 | Partly changed | `prelude.split`, `trim`, `words` and `lines` exist on every target ([sequences](../reference/language/sequences.md#pieces-of-a-text)). The `text-pieces` suite passes on all 18 program targets with both mutants rejected. | List `map` and `filter`, and the capability that gives one `map` for lists and `Either`, are not implemented. |
+| 21 | Changed | `prelude.split`, `trim`, `words` and `lines` exist on every target ([sequences](../reference/language/sequences.md#pieces-of-a-text)). `prelude.map` and `prelude.filter` work over lists on every target, and one `map` serves lists and `Either` ([sequences](../reference/language/sequences.md)). A definition can be written once over either with `requires Mappable m` ([definitions](../reference/language/definitions.md)). The `text-pieces` and `list-mapping` suites pass on all 18 program targets with every mutant rejected. | `Mappable` has two built-in instances, `List` and `Either`; projects cannot add their own. The typed fast-path backends run list `map` and `filter` through the portable runtime. Law proofs report a list `map` or `filter` as an explicit "unsupported" node. |
 
 ## Cache and compile time
 
