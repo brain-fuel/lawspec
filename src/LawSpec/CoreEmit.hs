@@ -298,7 +298,7 @@ wrappedHandlers target bindings plan
     boundUnit u = let definitions = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)
                       adapters = [d | d <- C.unitDeclarations u, C.declarationId d `notElem` definitions]
                       calls = map (C.declarationId . fst) (NB.bindingFunctions bindings) ++ map (C.declarationId . fst) (NB.bindingCalls bindings)
-                      boundAbility = target == "go" && any (\ability -> lookup
+                      boundAbility = target == "go" && any (\ability -> C.unitUsesAbility u ability && lookup
                         (C.Id (C.abilityKey (C.abilityInstance ability))) (NB.bindingHandlers bindings) /= Nothing) (C.unitAbilities u)
                   in (not (null adapters) || boundAbility) && all ((`elem` calls) . C.declarationId) adapters
     wrap unit = unit { C.unitAbilities = [ if C.abilityNative a /= Nothing && C.abilityOwner a `elem` bound

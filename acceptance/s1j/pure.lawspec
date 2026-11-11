@@ -1,0 +1,7 @@
+unit regression.pure
+import regression.provider as provider (Probe, Packet)
+function unwrap (packet :: Packet) -> Bool is packet.value end function
+law unwrapped is definition:
+  for all (value :: Bool) => unwrap (Packet record{value = value}) = value end for all
+end definition end law
+end unit

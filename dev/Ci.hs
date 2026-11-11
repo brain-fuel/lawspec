@@ -388,6 +388,7 @@ coreSteps =
     step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"],
     step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"],
     step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"],
+    step "npm-lock" ["node", "tools/npm-lock.mjs", "--check"],
     step "compiler-tests" ["stack", "--no-terminal", "test", "--test-arguments=--format=specdoc --no-color"],
     step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"],
     step "learn-assets" ["node", "tools/learn-build.mjs"],
@@ -436,6 +437,17 @@ stepInputs name = case name of
           ]
           []
           [["node", "tools/ci-artifact-key.mjs", "parity"]]
+      )
+  "npm-lock" ->
+    Just
+      ( Inputs
+          [ "tools/npm-lock.mjs",
+            "npm/package.json",
+            "npm/package-lock.json",
+            "component/native-packages.json"
+          ]
+          []
+          [["node", "--version"]]
       )
   "package-smoke" -> Nothing
   -- Native archives are ignored build products and can change independently of

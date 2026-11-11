@@ -2,6 +2,7 @@
 module BuiltinsSpec (test_builtInAbilitiesHaveLawfulDefaultHandlers) where
 
 import Control.Monad (forM_)
+import qualified Data.Aeson as Aeson
 import Data.Either (isRight)
 import Data.List (isInfixOf, isPrefixOf)
 import Test.Hspec
@@ -173,6 +174,17 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
       abilitiesOf "app/journal/lawspec_abilities.go" `shouldNotSatisfy` ("type Log interface" `isInfixOf`)
       abilitiesOf "app/audit/lawspec_abilities.go" `shouldSatisfy` ("type Log interface" `isInfixOf`)
       abilitiesOf "app/audit/lawspec_abilities.go" `shouldNotSatisfy` ("type AppJournalLog interface" `isInfixOf`)
+    -- ref:DEC-s1j-shared-failures
+    it "bridge a bound handler only into Go units that use the ability" $ do
+      let names = ["provider", "middle", "consumer", "pure"]
+      texts <- mapM (\name -> readFile ("acceptance/s1j/" ++ name ++ ".lawspec")) names
+      Just request <- Aeson.decodeFileStrict "acceptance/s1j/go/bindings.json"
+      let Right compiled = compileCore 64 defaultGeneration [Source (name ++ ".lawspec") text | (name, text) <- zip names texts]
+          Right bound = resolveNativeRequest compiled request
+          Right emitted = planTesting compiled >>= emitPlanWithNativeOptions False "go" Nothing Nothing bound
+          bridged = [takeWhile (/= '/') (drop 11 (artifactPath f)) | f <- emitted,
+            "/lawspec_bound_handlers.go" `isInfixOf` artifactPath f || "NewProbeBound" `isInfixOf` artifactContent f && "/adapter.go" `isInfixOf` artifactPath f]
+      bridged `shouldMatchList` ["provider", "middle", "consumer"]
     it "are reported as default-handler, or assumed when bound" $ do
       let Right compiled = program crypto
           statusOf name evidence = [obligationStatus o | o <- evidence, C.idText (obligationDeclaration o) == name]

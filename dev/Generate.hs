@@ -408,7 +408,7 @@ bumpCommand [new] = do
       let updated = replace ("lawspec@" ++ old) ("lawspec@" ++ new) (replace ("lawspec-" ++ old ++ ".tgz") ("lawspec-" ++ new ++ ".tgz") (replace (".artifacts/" ++ old) (".artifacts/" ++ new) (replace ("v" ++ old) ("v" ++ new) content)))
       when (updated /= content) (writeFile file updated)
   generateCommand []
-  putStrLn ("Version " ++ old ++ " -> " ++ new ++ ". Add a CHANGELOG.md section, then run make wasm.")
+  putStrLn ("Version " ++ old ++ " -> " ++ new ++ ". Add a CHANGELOG.md section, then run make wasm and, after packing the native packages, make lock.")
   where
     semver v = case splitDots v of
       [a, b, c] -> all (\p -> not (null p) && all isDigit p) [a, b, c]

@@ -16,6 +16,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   connected to any public entrypoint. The existing runtime remains the default.
   See the [application port status](docs/reference/host-sdk.md#application-port-status).
 
+### Fixed
+
+- `npm/package-lock.json` pins every package again, including the optional
+  native compiler packages and the Wasm Platform Kit platform packages, so
+  `npm ci` in a checkout's `npm/` verifies their integrity. The lock had stayed
+  at 0.31.2. `make lock` regenerates it and CI checks it against
+  `npm/package.json` and the recorded native package integrity.
+- Go: a bound handler's bridge is generated only in packages that use the
+  ability: its owner, and units whose laws, declarations or spec handlers need
+  it. A unit that only imported the declaring unit received
+  `lawspec_bound_handlers.go` too.
+
 ## [0.32.0] - 2026-11-09
 
 ### Added

@@ -10,7 +10,7 @@ SITE    := .artifacts/site
 PORT    ?= 8080
 
 .DEFAULT_GOAL := help
-.PHONY: help build generate generate-check wasm test integrity boundaries check parity artifact-targets \
+.PHONY: help build generate generate-check wasm test integrity boundaries check parity artifact-targets lock \
         smoke package acceptance lessons ci ci-fresh ci-core examples editor-test docs docs-check \
         docs-serve docs-deploy canon assess tax audit bump version release-check clean
 
@@ -50,7 +50,11 @@ artifact-targets: build ## Check configuration, grammar and build artifacts with
 smoke: ## Pack, install and exercise the npm package
 	node tools/package-smoke.mjs
 
+lock: ## Regenerate npm/package-lock.json, including the native compiler packages
+	node tools/npm-lock.mjs
+
 package: ## Pack the npm package into .artifacts/<version>/
+	node tools/npm-lock.mjs --check
 	mkdir -p .artifacts/$(VERSION)
 	npm pack ./npm --pack-destination .artifacts/$(VERSION)
 

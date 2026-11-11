@@ -52,7 +52,9 @@ The runtime package contains no LawSpec implementation, application artifacts,
 malicious test fixtures or authoring tools. Runtime consumers need no Haskell or
 Rust compiler. Application authors need the documented GHC Wasm toolchain.
 Platform execution evidence and outstanding acceptance gaps are recorded below.
-The packages are development artifacts, not published releases.
+The packages are published to npm. `npm/package.json` names the runtime
+version, and `npm/package-lock.json` pins its integrity and that of its
+platform packages.
 
 Build and pack in the SDK repository, then install those artifacts into LawSpec:
 

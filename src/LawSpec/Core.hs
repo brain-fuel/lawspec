@@ -232,6 +232,17 @@ findAbility units ref = case [(u, a) | (u, a) <- found, unitId u == abilityOwner
   [] -> Nothing
   where found = [(u, a) | u <- units, a <- unitAbilities u, abilityInstance a == ref]
 
+-- Whether a unit needs an ability's handler: it owns the ability, a law runs
+-- under one of its handlers, a declaration's row names it, or a spec handler
+-- answers it. Importing a unit copies its abilities, so membership of
+-- unitAbilities alone does not show use.
+unitUsesAbility :: Unit -> Ability -> Bool
+unitUsesAbility u a = abilityOwner a == unitId u || abilityInstance a `elem` used
+  where
+    used = concatMap (map fst . propertyHandlers) (unitProperties u) ++
+      concatMap declarationUses (unitDeclarations u) ++
+      concatMap handlerAbilities (unitHandlers u)
+
 -- The abilities a unit owns, at every type any unit uses them at, so each
 -- target generates every instance's pieces once, with the owner.
 ownedAbilities :: [Unit] -> Unit -> [Ability]

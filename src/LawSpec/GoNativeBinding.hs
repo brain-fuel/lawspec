@@ -88,7 +88,7 @@ externalArtifacts minify bindings plan = do
         failures = [(parts,name) | (parts,name) <- failureAliases bindings,
           any (\failure -> C.failureNative failure == [name] && C.failureType failure `elem` usedFailures)
             (C.unitFailureBindings unit)]
-        handlers = [(ability,parts,name) | ability <- C.unitAbilities unit,
+        handlers = [(ability,parts,name) | ability <- C.unitAbilities unit, C.unitUsesAbility unit ability,
           ((identity,parts),name) <- handlerAliases bindings,
           identity == C.Id (C.abilityKey (C.abilityInstance ability)), C.abilityNative ability == Just [name]]
         reference parts = intercalate "." (referenceParts (normalizeReference bindings (NativeRef parts)))
@@ -193,7 +193,7 @@ emitBindings minify plan testing files = do
         propertyRoots = [inputType i | property <- plannedProperties p,i <- inputs property]
     concrete <- if null generators then pure [] else reachableGeneratorTypes declarations representations propertyRoots
     let usedGenerators = [g | g <- generators, any (\case C.Constructor name _ -> C.Id name == resolvedGeneratorType g; _ -> False) concrete]
-    let boundAbilities = [ability | ability <- C.unitAbilities unit,
+    let boundAbilities = [ability | ability <- C.unitAbilities unit, C.unitUsesAbility unit ability,
           lookup (C.Id (C.abilityKey (C.abilityInstance ability))) (bindingHandlers plan) /= Nothing]
     if null boundAdapters && null usedGenerators && null boundAbilities then pure [] else do
       unless (null boundAdapters || all (maybe False (const True) . bound) adapters) (Left "a Go bound unit must map every adapter")
@@ -269,7 +269,7 @@ emitBindings minify plan testing files = do
            D.text "_, _, _ = schema, bits, symbols" <> D.hardline <> resultStatement))
       -- Each bound production handler, wrapped in the generated interface:
       -- its operations' values cross with the native codecs.
-      wrappers <- forM [(a, r) | a <- C.unitAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, original) -> do
+      wrappers <- forM [(a, r) | a <- boundAbilities, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, original) -> do
         let wrapper = lowerFirst (interfaceName a) ++ "Bound"
             r = normalize original
         resource <- traverse (G.goDataType declarations) (C.abilityResource a)
@@ -358,7 +358,7 @@ emitBindings minify plan testing files = do
             (E.goHeaderDoc <>
              D.text ("package " ++ package) <> D.hardline <> D.hardline <>
              importDocs ([r | d <- boundAdapters,Just r <- [bound d >>= callRef]] ++
-               [normalize ref | ability <- C.unitAbilities unit,
+               [normalize ref | ability <- boundAbilities,
                  Just ref <- [lookup (C.Id (C.abilityKey (C.abilityInstance ability))) (bindingHandlers plan)]]) <>
              D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers) <> D.hardline)) "generated" "source"
           support = Artifact (directory ++ "/lawspec_native_codecs.go") codecs "generated" "source"

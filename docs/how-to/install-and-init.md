@@ -25,6 +25,19 @@ locally; you do not need to build the Haskell compiler. For the released
 git clone https://github.com/brain-fuel/lawspec.git lawspec
 ```
 
+To run the CLI straight from the checkout, install its locked dependencies
+first. The lock pins the integrity of every package, including the optional
+native compiler package for each platform:
+
+```sh
+npm ci --ignore-scripts --prefix lawspec/npm
+node lawspec/npm/bin/lawspec.mjs --version
+```
+
+The default WASM runtime needs none of the optional packages, so
+`npm ci --omit=optional` also works. Between releases, `main` names native
+compiler packages that are not published yet; use `--omit=optional` there.
+
 ## Start in a new, empty directory
 
 In an empty directory, run `init` before you install local dependencies, so that
