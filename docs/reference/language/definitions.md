@@ -179,24 +179,114 @@ The [target guides](../../how-to/targets/index.md) give the details. See
 [the total-function example](../../../examples/specs/total_functions.lawspec)
 for recursive list counting and structural equality.
 
-## Mutual recursion and native calls
+## Recursion that must end
 
-Mutually recursive total definitions are not supported in this increment.
-Combine related traversals into one structurally recursive function, carrying a
-mode or returning the results together. For example, this single traversal
-computes list parity without calls between `even` and `odd`:
+Every checked definition must end on every input. The compiler works this out
+from the calls themselves; you write no annotation.
+
+For each recursive call it records how each argument relates to the caller's
+parameters: taken from inside a parameter's value (a field, or a name bound by
+a match), so strictly smaller; the parameter passed on unchanged; or an integer
+moved toward a bound, as [above](#recursion-on-integers). It then follows
+every way the calls can chain back to where they started. A definition is
+admitted when every such cycle keeps hold of some argument and makes it
+strictly smaller. This is the size-change principle (Lee, Jones and
+Ben-Amram, 2001), which Idris 2 and Agda use for the same purpose.
+
+That admits more than "one parameter shrinks in every call":
+
+- **Definitions that call each other.** The cycle is checked as a whole, so a
+  call that only passes its argument on is fine when another call in the cycle
+  makes it smaller.
+- **A second argument that takes over.** The first gets smaller, or it stays
+  the same and the second gets smaller. The second may grow when the first
+  shrinks.
+- **Arguments that change places**, as long as one of them loses something on
+  each round.
 
 ```lawspec
-unit guide.parity
-function evenLength (values :: List Bool) -> Bool is
-  first matching case of values:
-    when Nil then true
-    when Cons head tail then not (evenLength tail)
+unit guide.outline
+
+type Item is a record{
+  label :: Text,
+  children :: List Item
+}
+end type
+
+function itemLine (item :: Item) -> Integer is
+  1 + itemLines item.children
+end function
+
+function itemLines (items :: List Item) -> Integer is
+  first matching case of items:
+    when Nil then 0
+    when Cons head tail then itemLine head + itemLines tail
   end case
 end function
-law pairs is definition: evenLength [true, false] end definition end law
+
+law leaf is definition:
+  itemLine (Item record{label = "leaf", children = []}) must be 1
+end definition end law
 end unit
 ```
+
+`itemLine` passes on the item's children, which are inside the item.
+`itemLines` passes on the head and the tail of its list. Every cycle through
+the two definitions therefore makes its argument smaller.
+
+A cycle that makes nothing smaller is rejected, and the message names it:
+
+```text
+ping: recursion could not be shown to end: no argument is kept and made
+strictly smaller around the call cycle ping -> pong -> ping
+```
+
+### Stating what decreases
+
+When no argument shrinks in a way the compiler can see, state the measure: one
+or more integers that get smaller on every call back into the recursion.
+
+```lawspec
+unit guide.narrowing
+
+function narrowing (low :: Integer) (high :: Integer) -> Integer
+decreases high - low
+is
+  if low >= high then 0
+  else if prelude.rem low 2 = 0 then 1 + narrowing (low + 1) high
+  else 1 + narrowing low (high - 1) end if end if
+end function
+
+law steps is definition: narrowing 3 10 must be 7 end definition end law
+end unit
+```
+
+Sometimes `low` rises and sometimes `high` falls, so neither argument moves
+one way. The distance between them always shrinks.
+
+The clause is checked, never trusted. At every recursive call the compiler
+must prove, from what is known at that call, that the measure is smaller than
+it was and is still at least 0. If it cannot, the definition is rejected.
+The proof uses the compiler's own arithmetic reasoning, the same as for
+integer recursion; it does not depend on a solver being installed.
+
+- Several measures, separated by commas, are read in order of importance: an
+  earlier one gets smaller, or it stays the same and a later one gets smaller.
+- In a cycle of definitions, each states its measure, and a call is compared
+  place by place: the callee's first measure against the caller's first.
+- A measure may use only the definition's arguments. It is not part of the
+  generated code.
+- Only a `function` takes the clause. It follows `requires` and precedes `is`.
+
+The check accepts only recursion whose arguments shrink in one of the ways
+listed, or whose stated measure it can prove. A definition that ends for a reason the compiler cannot see is still
+rejected. The check is the compiler's own; no solver runs and no separate
+proof checker confirms it. The definitions of a cycle
+must be in one unit, because units cannot import each other in a circle.
+[The mutual-recursion example](../../../examples/specs/mutual_recursion.lawspec)
+has more cases. ref:DEC-size-change-termination
+
+## Native calls
 
 A native adapter is outside the checked definition system. To call native work
 from LawSpec, expose it as an ability operation and use a `procedure` declaring

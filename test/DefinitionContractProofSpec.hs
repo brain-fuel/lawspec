@@ -2,6 +2,7 @@
 module DefinitionContractProofSpec (test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts) where
 
 import Test.Hspec
+import Data.List (isInfixOf)
 import Data.Either (isLeft, isRight)
 import qualified Data.Map.Strict as M
 import LawSpec.Core
@@ -772,9 +773,11 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
             (T.Call other [T.Variable t,T.Variable ys])) []
         definitions = [definition a b "lawspec_shared_a",definition b a "lawspec_shared_b"]
         templates = M.fromList [(identity,(Id "scope::template","template")) | identity <- [a,b]]
-    T.audit definitions `shouldSatisfy` isLeft
+    -- Size-change analysis admits the cycle with or without the templates:
+    -- every call makes the first list smaller. ref:DEC-size-change-termination
+    T.audit definitions `shouldBe` Right ()
     T.auditDeferringWithTemplates templates [] [] definitions M.empty `shouldBe` Right []
-  it "requires one decreasing parameter across a specialized recursive cycle" $ do
+  it "requires a decrease around a specialized recursive cycle" $ do
     let a = Id "scope::instanceA"; b = Id "scope::instanceB"
         xs = Id "xs"; ys = Id "ys"; h = Id "head"; t = Id "tail"
         grow value = T.ListCons (T.Variable h) (T.Variable value)
@@ -786,5 +789,5 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
             (T.Call a [grow xs,T.Variable t])) []
         templates = M.fromList [(identity,(Id "scope::template","template")) | identity <- [a,b]]
     case T.auditDeferringWithTemplates templates [] [] [first,second] M.empty of
-      Left [diagnostic] -> S.message diagnostic `shouldBe` "no single parameter strictly decreases throughout the specialized recursive cycle"
+      Left [diagnostic] -> S.message diagnostic `shouldSatisfy` isInfixOf "recursion could not be shown to end: no argument is kept and made strictly smaller around the call cycle"
       other -> expectationFailure (show other)

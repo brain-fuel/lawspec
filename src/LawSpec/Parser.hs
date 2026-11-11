@@ -1813,6 +1813,9 @@ canonicalEqualityP = do
       when delimited empty
       False <$ try (symbol "=" <* notFollowedBy (oneOf ("=>" :: String)))
     wordedIs = do
+      -- A `decreases` measure ends at the `is` that opens the body.
+      measure <- asks (M.member "delimiter:definition-is")
+      when measure empty
       initial <- handlerInitialExpression <$> get
       -- A handler's declaration delimiter is followed by a clause header (or
       -- its close), not the right operand of an equality. Look ahead with the
@@ -2380,11 +2383,19 @@ definitionUsesP = do
         used = if kind == "function" then Just [] else fmap (map (replaceTypeValueVars allAliases)) used'
     when (kind == "function" && maybe False (not . null) used')
       (fail "a function is pure; declare a procedure for ability operations")
+    -- A stated termination measure: integers that get smaller, in order of
+    -- importance, on every call back into the definition's recursion. Each
+    -- is an ordinary checked binding at the head of the body, which the
+    -- totality audit reads and proves; it is never taken on trust.
+    measures <- option [] (keyword "decreases" *> (local (M.insert "delimiter:definition-is" AliasHeader) expr `sepBy1` symbol ","))
+    when (kind /= "function" && not (null measures)) (fail "only a function states what decreases")
     writtenBody <- keyword "is" *> expr <* closeP kind
     (modify' (\context -> context{openBlocks=frames}))
-    let body=foldr (\(argument,pattern,_,_) rest -> case pattern of
+    let measured = foldr (\(index,measure) rest -> MatchExpr measure [MatchBranch letTag [decreasesBinder index] rest])
+          writtenBody (zip [0 :: Int ..] measures)
+        body=foldr (\(argument,pattern,_,_) rest -> case pattern of
           SelectionBinding _ -> rest
-          _ -> selectionMatrix 0 [Var argument] [SelectionRow [pattern] [] Nothing rest]) writtenBody named
+          _ -> selectionMatrix 0 [Var argument] [SelectionRow [pattern] [] Nothing rest]) measured named
     pure (name, arguments, result, requirements, used, body)
   pure (FunctionDefinition name arguments result requirements body range, used)
 

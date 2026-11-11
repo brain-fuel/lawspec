@@ -133,6 +133,16 @@ data Origin = SourceSpan Span | GeneratedFrom Id deriving (Eq, Show, Generic)
 -- | Every expression carries its type and origin, so an emitter never infers a
 -- type and every diagnostic can point at source. ref:DEC-typed-core-boundary
 data Expr = Expr { expressionType :: Type, expressionNode :: Node, expressionOrigin :: Origin } deriving (Eq, Show, Generic)
+-- | The unit without its definitions' `decreases` measures. A measure is a
+-- binding at the head of a body that only the totality audit reads; once a
+-- program is admitted, generated code has no use for it.
+unitWithoutMeasures :: Unit -> Unit
+unitWithoutMeasures u = u { unitDefinitions = [d { definitionBody = body (definitionBody d) } | d <- unitDefinitions u] }
+  where
+    body expression = case expressionNode expression of
+      Let binder _ rest | isDecreasesBinder (binderName binder) -> body rest
+      _ -> expression
+
 -- | The closed set of operations a law or definition may perform; each target
 -- must implement every one. Source operations enter through the front end;
 -- checked execution planning may introduce its finite-search operation.

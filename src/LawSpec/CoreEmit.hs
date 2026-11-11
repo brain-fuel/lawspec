@@ -111,7 +111,17 @@ emitPlan = emitPlanWithFormat False
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target plan = do
   checkDefinitionPlan plan
-  emitMaterializedPlanWithFormat minify target plan
+  emitMaterializedPlanWithFormat minify target (emittedPlanFor target plan)
+
+-- | The plan as emitters see it: admitted, so without the `decreases`
+-- measures that only admission reads.
+emittedPlan :: Plan -> Plan
+emittedPlan plan = plan { plannedUnits = [u { plannedUnit = C.unitWithoutMeasures (plannedUnit u) } | u <- plannedUnits plan] }
+
+-- | Prolog admits the plan once more before it wraps the Python it is given,
+-- so it receives the measures and removes them from that Python itself.
+emittedPlanFor :: String -> Plan -> Plan
+emittedPlanFor target plan = if target == "prolog" then plan else emittedPlan plan
 
 -- Internal representation plans have already passed logical admission. Witness
 -- lowering is idempotent; native definition emitters check its logical view.
@@ -173,7 +183,7 @@ emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "clojure" given =
   Clojure.clojureFromProduct Clojure.noClojureBindings given =<< javaProduct PlainCases minify NB.emptyBindingPlan (escapePlan "clojure" given)
 emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "prolog" given = do
   let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
-  Prolog.prologFromPython plan =<< emitMaterializedPlanWithFormat minify "python" plan
+  Prolog.prologFromPython plan =<< emitMaterializedPlanWithFormat minify "python" (emittedPlan plan)
 emitPlanWithFormatUnchecked sourceRoot nativeBridge minify "swift" given = Swift.emitSwift minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 emitPlanWithFormatUnchecked sourceRoot nativeBridge minify target given = do
@@ -734,10 +744,13 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings plan | target
   checkDefinitionPlan plan
   unless (bindings == NB.emptyBindingPlan)
     (Left [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing])
+  -- Artifact targets evaluate definitions, which admits the program again,
+  -- so they keep the measures.
   ArtifactEmit.emitArtifacts minify target sourceDir testDir plan
-emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
-  checkDefinitionPlan original
-  checkExecutionPlan original
+emitPlanWithNativeOptions minify target sourceDir testDir bindings admitted = do
+  checkDefinitionPlan admitted
+  checkExecutionPlan admitted
+  let original = emittedPlanFor target admitted
   let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
         Just name -> declaration { C.declarationName = name }
         Nothing -> declaration
@@ -762,7 +775,7 @@ emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed
     javaProduct PlainCases minify (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
 emitPlanWithNativeNames minify "prolog" sourceDir testDir bindings given = do
   let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
-  Prolog.prologFromPythonWithBindings sourceDir testDir bindings plan =<< emitMaterializedPlanWithNativeBridge "../src" (not (null (Binding.resolvedGenerators (NB.bindingRepresentations bindings)))) minify "python" plan
+  Prolog.prologFromPythonWithBindings sourceDir testDir bindings plan =<< emitMaterializedPlanWithNativeBridge "../src" (not (null (Binding.resolvedGenerators (NB.bindingRepresentations bindings)))) minify "python" (emittedPlan plan)
 emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = do
   unless (target `elem` ["python","javascript","typescript","java","kotlin","scala","rust","go","haskell","fsharp","swift","erlang","elixir","gleam"] || all ((==Nothing) . Binding.resolvedFieldPaths)
     [constructor | mapping<-Binding.resolvedTypes (NB.bindingRepresentations unescaped),constructor<-Binding.resolvedConstructors mapping])

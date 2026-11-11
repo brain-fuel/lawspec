@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/specs/mutual_recursion.lawspec
+<<<<<<<
+if n <= 0 then false else isEven (n - 1) end if
+=======
+if n <= 0 then true else isEven (n - 1) end if
+>>>>>>>

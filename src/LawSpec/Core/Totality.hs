@@ -1,6 +1,7 @@
+{-# LANGUAGE PatternSynonyms #-}
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -17,6 +18,7 @@ import LawSpec.Core.Semantics (helperValue, scalarEqual)
 import Data.Ratio (denominator)
 import qualified LawSpec.Core.PayloadPlan as P
 import qualified LawSpec.Core.RecordInstances as Records
+import LawSpec.Core.SizeChange (Relation, Verdict(..), sizeChange)
 
 -- | Definitions are audited in a small proof language of their own, so the
 -- totality audit never depends on how a target would run the code.
@@ -66,10 +68,20 @@ data Proof
 
 -- | Each definition with the domains of its arguments, since a call is safe only
 -- inside them.
-data ProofDefinition = ProofDefinition
+data ProofDefinition = MeasuredDefinition
   { proofId :: Id, proofName :: String, proofLocation :: Maybe Location
   , proofArguments :: [Id], proofBody :: Proof, proofArgumentDomains :: [Proof]
+  -- The definition's stated `decreases` measures over its arguments, most
+  -- significant first. They are proof obligations at each recursive call,
+  -- never assumptions.
+  , proofMeasures :: [Proof]
   } deriving (Eq, Show)
+
+-- | A definition that states no measure.
+pattern ProofDefinition :: Id -> String -> Maybe Location -> [Id] -> Proof -> [Proof] -> ProofDefinition
+pattern ProofDefinition identity name location arguments body domains <- MeasuredDefinition identity name location arguments body domains _
+  where ProofDefinition identity name location arguments body domains = MeasuredDefinition identity name location arguments body domains []
+{-# COMPLETE ProofDefinition #-}
 
 -- | Contract argument identities are the definition's argument identities. The
 -- result binder is fresh and visible only in postconditions. Typed lowering is
@@ -142,7 +154,8 @@ auditWithRecordInstances instances templates constructors contracts definitions 
         subject == argument]
       template d = M.findWithDefault (proofId d,proofName d) (proofId d) templates
       components = stronglyConnComp [(d, proofId d,filter (/= proofId d) (concatMap calls (expressions d))) | d <- definitions]
-      cyclicGroups = [group | CyclicSCC group <- components]
+      -- Each definition's group: the definitions it reaches that reach it back.
+      cycles = M.fromList [(proofId d,S.fromList (map proofId group)) | CyclicSCC group <- components, d <- group]
       initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,recordInstances=instances,
         definitionTemplates=M.fromList [(proofId d,fst (template d)) | d <- definitions],
         resultBounds=results,
@@ -194,15 +207,6 @@ auditWithRecordInstances instances templates constructors contracts definitions 
         (Left "definition postcondition has an out-of-scope variable")
       unless (contractOwner c `notElem` concatMap calls (preconditions c ++ postconditions c))
         (Left "a definition contract cannot call its own definition")
-    forM_ components $ \component ->
-        case component of
-          AcyclicSCC _ -> pure ()
-          -- Instances of one generic definition (a GADT evaluator at several
-          -- type arguments) recurse into each other like a single definition.
-          CyclicSCC group
-            | all ((== fst (template (head group))) . fst . template) group -> pure ()
-            | otherwise -> Left ("mutually recursive total definitions are not supported: " ++
-                unwords (map proofName group))
   -- Each definition is audited on its own, against signatures and contracts
   -- alone, so one rejected definition does not hide the others' diagnostics.
   audited <- collect $ flip map definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
@@ -213,10 +217,14 @@ auditWithRecordInstances instances templates constructors contracts definitions 
     forM_ (concatMap calls (expressions d)) $ \callee -> unless (callee `S.member` known)
       (Left ("total definition calls an adapter or unknown definition: " ++ idText callee ++ "; expose native work as an ability operation and call it from an effectful procedure; total functions require checked definitions"))
     let roots = M.fromList [(name, (index, False)) | (index,name) <- zip [0..] (proofArguments d)]
-        bounded = initialFacts{parameterBounds=M.fromList [(name, domainBounds name (proofArgumentDomains d)) | name <- proofArguments d]}
+        bounded = initialFacts{parameterBounds=M.fromList [(name, domainBounds name (proofArgumentDomains d)) | name <- proofArguments d],
+          cycleMembers=M.findWithDefault (S.singleton (proofId d)) (proofId d) cycles,
+          statedMeasures=M.fromList [(proofId other,(proofArguments other,proofMeasures other)) | other <- definitions, not (null (proofMeasures other))]}
         visit facts expression = walk signatures contractTable (proofId d) roots facts
           (normalizeCalls (M.keys roots ++ S.toList (usedVariables facts)) expression)
         contract = M.lookup (proofId d) contractTable
+    unless (all (`elem` proofArguments d) (concatMap freeVariables (proofMeasures d)))
+      (Left "a decreases measure may use only the definition's arguments")
     (domains,domainCalls) <- foldM (\(facts,scans) condition -> do
       more <- visit facts condition
       pure (assume True condition facts,scans ++ more)) (bounded,[]) (proofArgumentDomains d)
@@ -226,8 +234,6 @@ auditWithRecordInstances instances templates constructors contracts definitions 
     let body = normalizeCalls (M.keys roots ++ S.toList (usedVariables facts)) (proofBody d)
     bodyCalls <- walk signatures contractTable (proofId d) roots facts body
     let decreases = domainCalls ++ preCalls ++ bodyCalls
-    unless (null decreases || not (S.null (foldl1 S.intersection decreases)))
-      (Left "no single parameter strictly decreases in every recursive call")
     postAudits <- fmap concat $ forM (maybe [] pure contract) $ \c ->
       fmap concat $ forM (resultCases signatures contractTable roots facts body) $ \(scope,branchFacts,result) ->
         forM (zip [0..] (postconditions c)) $ \(position,condition) -> do
@@ -240,14 +246,31 @@ auditWithRecordInstances instances templates constructors contracts definitions 
             else if nonlinear checked then pure [(proofId d, position)]
             else Left "definition result refinement could not be proved"
           pure (postCalls,deferred)
-    let allDecreases = decreases ++ concatMap fst postAudits
-    unless (null allDecreases || not (S.null (foldl1 S.intersection allDecreases)))
-      (Left "no single parameter strictly decreases across the definition and its checks")
-    pure (proofId d,allDecreases,nub (concatMap snd postAudits))
-  diagnostic Nothing $ forM_ cyclicGroups $ \group -> do
-    let scans = concat [decreases | (identity,decreases,_) <- audited,identity `elem` map proofId group]
-    unless (not (null scans) && not (S.null (foldl1 S.intersection scans)))
-      (Left "no single parameter strictly decreases throughout the specialized recursive cycle")
+    pure (proofId d,decreases ++ concatMap fst postAudits,nub (concatMap snd postAudits))
+  -- Termination is judged for each group of definitions that call each other,
+  -- from the size changes of all its calls together (LawSpec.Core.SizeChange).
+  -- One definition calling itself is a group of one. Mutual recursion, a
+  -- lexicographic order and arguments that change places need no annotation.
+  collect_ $ flip map components $ \component -> do
+    let group = case component of
+          AcyclicSCC d -> [d]
+          CyclicSCC ds -> ds
+        members = S.fromList (map proofId group)
+        edges = [(caller,callee,relation) | (caller,calls',_) <- audited, caller `S.member` members,
+          (callee,relation) <- calls', callee `S.member` members]
+        named identity = maybe (idText identity) proofName (M.lookup identity byId)
+        at = case group of
+          d : _ -> proofLocation d
+          [] -> Nothing
+    diagnostic at $ case sizeChange sizeChangeLimit edges of
+      Terminates -> Right ()
+      Loops start path -> Left (named start ++ ": recursion could not be shown to end: no argument is kept and made strictly smaller around the call cycle " ++
+        unwords (concatMap (\step -> ["->",named step]) path `startingAt` named start) ++
+        "; make one argument smaller on every cycle, or reorder the arguments so one is smaller before any other grows" ++
+        concat ["; the measure " ++ named caller ++ " states was not proved to decrease at its call of " ++ named callee
+          | (caller,callee,relation) <- take 1 [edge | edge@(caller,_,relation) <- edges,
+              maybe False (not . null . proofMeasures) (M.lookup caller byId), not (statedDescent relation)]])
+      Exhausted -> Left (unwords (map proofName group) ++ ": recursion could not be shown to end: these definitions call each other in too many different ways to analyse; this is a limit of the analysis, not a counterexample")
   pure (concat [deferred | (_,_,deferred) <- audited])
   where
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
@@ -255,6 +278,16 @@ auditWithRecordInstances instances templates constructors contracts definitions 
     collect results = case concat [problems | Left problems <- results] of
       [] -> Right [value | Right value <- results]
       problems -> Left problems
+    collect_ results = () <$ collect results
+    -- The stated measures get lexicographically smaller: the first place
+    -- that is not merely kept is strictly smaller.
+    statedDescent relation = go (0 :: Int)
+      where go place = case M.lookup (negate place - 1,negate place - 1) relation of
+              Just True -> True
+              Just False -> go (place + 1)
+              Nothing -> False
+    startingAt steps start = start : steps
+    byId = M.fromList [(proofId d,d) | d <- definitions]
     -- Definitions whose bodies use non-linear arithmetic, directly or through
     -- calls, such as the measure of a family indexed by a product.
     bodies = M.fromList [(proofId d, proofBody d) | d <- definitions]
@@ -374,9 +407,14 @@ data Facts = Facts
   , constraintSet :: S.Set R.Predicate
   , recordInstances :: Records.RecordInstances
   , recordTypes :: M.Map Id Id
+  -- The audited definition and the definitions mutually recursive with it:
+  -- a call of one of them is a recursive call, and its size change is kept.
+  , cycleMembers :: S.Set Id
+  -- Each definition's arguments and stated `decreases` measures.
+  , statedMeasures :: M.Map Id ([Id],[Proof])
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty Records.emptyInstances M.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty Records.emptyInstances M.empty S.empty M.empty
 
 -- | Only explicit template identities may share a recursion check.
 sameDefinition :: Facts -> Id -> Id -> Bool
@@ -424,7 +462,7 @@ siblingFacts facts tag fields = case M.lookup tag (constructorContracts facts) o
   Nothing -> facts
   Just contract -> foldl (flip (assume True)) facts (map snd (indexGuardConditions facts contract fields))
 
-walk :: M.Map Id [Id] -> M.Map Id ProofContract -> Id -> Provenance -> Facts -> Proof -> Either String [S.Set Int]
+walk :: M.Map Id [Id] -> M.Map Id ProofContract -> Id -> Provenance -> Facts -> Proof -> Either String [(Id,Relation)]
 walk signatures contracts self provenance facts expression = case expression of
   Construct tag fields -> do
     nested <- concat <$> mapM recur fields
@@ -520,12 +558,15 @@ walk signatures contracts self provenance facts expression = case expression of
       forM_ (preconditions contract) $ \condition ->
         unless (entails facts (substituteProof (M.fromList (zip parameters arguments)) condition))
           (Left ("definition call precondition could not be proved: " ++ idText callee))
-    let smaller index value = valueProvenance provenance value == Just (index, True)
-        structural = [index | (index,argument) <- zip [0..] arguments, smaller index argument]
-        descending = S.fromList (structural ++ numericDescent provenance facts arguments)
-    if not (sameDefinition facts callee self) then pure nested
-    else if S.null descending then Left "recursive call has no strict structural descent, and no integer argument moves strictly toward a bound"
-    else pure (descending : nested)
+    let relation = M.union (sizeChanges provenance facts arguments) (measureChanges facts self callee arguments)
+    if callee /= self && callee `S.notMember` cycleMembers facts then pure nested
+    -- A call of the definition itself that makes nothing smaller repeats
+    -- for ever whatever the other calls do.
+    else if callee == self && not (or (M.elems relation)) then Left
+      (if M.member self (statedMeasures facts)
+        then "the decreases measure was not proved to get smaller and stay at least 0 at a recursive call, and no argument gets smaller there either"
+        else "recursive call has no strict structural descent, and no integer argument moves strictly toward a bound")
+    else pure ((callee,relation) : nested)
   Logical op left right -> do
     before <- recur left
     after <- concat <$> mapM (\(scope,known) -> walk signatures contracts self scope known right)
@@ -572,32 +613,100 @@ walk signatures contracts self provenance facts expression = case expression of
     branch value (binders, body) =
       walk signatures contracts self (branchProvenance provenance value binders) facts body
 
--- | The measures of a recursive call on integers. An integer parameter
--- decreases when its argument is smaller and still at least the
--- parameter's lower bound (0 for a natural, the type's least value for a
--- bounded integer, or a proven 0); it increases when its argument is larger
--- and at most its upper bound, or at most another parameter passed on
--- unchanged. Each kind of measure is its own number, so calls that move a
--- parameter in different directions share none.
-numericDescent :: Provenance -> Facts -> [Proof] -> [Int]
-numericDescent provenance facts arguments =
-  [ measure
-  | (index, argument) <- zip [0..] arguments
-  , Just parameter <- [rootAt index]
-  , let (lower, upper) = M.findWithDefault (Nothing, Nothing) parameter (parameterBounds facts)
-        holds op a b = entails facts (ExactComparison op a b)
-        constant n = Literal (SInteger "Integer" n)
-        down = holds Less argument (Variable parameter) &&
-          (maybe False (holds GreaterEqual argument . constant) lower || holds GreaterEqual argument (constant 0))
-        upToType = holds Greater argument (Variable parameter) && maybe False (holds LessEqual argument . constant) upper
-        upToParameter = [ j | (j, other) <- zip [0..] arguments, j /= index, Just limit <- [rootAt j]
-                        , stripDomains other == Variable limit || other == Variable limit
-                        , holds Greater argument (Variable parameter), holds LessEqual argument (Variable limit) ]
-  , measure <- [1000 + index | down] ++ [2000 + index | upToType] ++ [3000 + 64 * j + index | j <- take 1 upToParameter] ]
+-- | How the arguments of a recursive call relate to the caller's parameters,
+-- as a size-change relation from the caller's measures to the callee's.
+--
+-- A parameter has four kinds of measure, each well founded on its own:
+--
+-- * its structural size: an argument taken from inside the parameter's value
+--   (a field, a matched binder) is strictly smaller, the parameter itself is
+--   no larger;
+-- * its integer value going down: the argument is smaller and still at least
+--   the parameter's lower bound (0 for a natural, the type's least value for
+--   a bounded integer) or a proven 0;
+-- * its integer value going up to its type's upper bound;
+-- * its distance below another parameter (a counter rising to a limit): the
+--   argument is larger, at most the limit, and the limit is passed on
+--   unchanged.
+--
+-- An integer measure never leaves a finite set of bounds while it strictly
+-- decreases, so no call path decreases it for ever. Each strict entry is a
+-- proved entailment from the facts at the call; none is assumed.
+sizeChanges :: Provenance -> Facts -> [Proof] -> Relation
+sizeChanges provenance facts arguments = M.fromListWith (||) (structural ++ numeric ++ limited)
   where
-    rootAt index = case [name | (name, (i, False)) <- M.toList provenance, i == index] of
-      name : _ -> Just name
-      [] -> Nothing
+    roots = [(index, name) | (name, (index, False)) <- M.toList provenance]
+    rootNames = S.fromList (map snd roots)
+    positioned = zip [0..] arguments
+    structural =
+      [ ((structuralMeasure from, structuralMeasure to), strict)
+      | (to, argument) <- positioned, Just (from, strict) <- [valueProvenance provenance argument] ]
+    holds op a b = entails facts (ExactComparison op a b)
+    constant n = Literal (SInteger "Integer" n)
+    unchanged parameter argument = stripDomains argument == Variable parameter || argument == Variable parameter
+    -- Comparing every argument with every parameter would ask many pointless
+    -- questions: an argument is compared with the parameter in its own
+    -- position, the parameters it mentions, and all of them when it mentions
+    -- a local binding, whose value the facts relate to the parameters.
+    related from parameter to argument =
+      from == to || any (\name -> name == parameter || name `S.notMember` rootNames) (freeVariables argument)
+    comparisons =
+      [ (from, parameter, to, argument, same)
+      | (to, argument) <- positioned, (from, parameter) <- roots
+      , let same = unchanged parameter argument
+      , same || related from parameter to argument ]
+    numeric = concat
+      [ [((downMeasure from, downMeasure to), down) | down || same || holds LessEqual argument (Variable parameter)] ++
+        [((upMeasure from, upMeasure to), up) | up || same || holds GreaterEqual argument (Variable parameter)]
+      | (from, parameter, to, argument, same) <- comparisons
+      , let (lower, upper) = M.findWithDefault (Nothing, Nothing) parameter (parameterBounds facts)
+            down = not same && holds Less argument (Variable parameter) &&
+              (maybe False (holds GreaterEqual argument . constant) lower || holds GreaterEqual argument (constant 0))
+            up = not same && holds Greater argument (Variable parameter) && maybe False (holds LessEqual argument . constant) upper ]
+    limited =
+      [ ((limitMeasure limitFrom from, limitMeasure limitTo to), strict)
+      | (limitTo, other) <- positioned, (limitFrom, limit) <- roots, unchanged limit other
+      , (from, parameter, to, argument, same) <- comparisons, to /= limitTo, from /= limitFrom
+      , let strict = not same && holds Greater argument (Variable parameter) && holds LessEqual argument (Variable limit)
+      , strict || same || holds GreaterEqual argument (Variable parameter) ]
+
+-- | How a call changes the stated `decreases` measures, compared place by
+-- place: the callee's measure at its arguments against the caller's at its
+-- parameters. A place is strictly smaller when that is proved and the new
+-- value is proved to be at least 0, and no larger when that is proved. The
+-- closure over call paths then gives the lexicographic reading: an earlier
+-- place gets smaller, or stays and a later one gets smaller.
+measureChanges :: Facts -> Id -> Id -> [Proof] -> Relation
+measureChanges facts caller callee arguments = M.fromList
+  [ ((statedMeasure place, statedMeasure place), strict)
+  | Just (_, before) <- [M.lookup caller (statedMeasures facts)]
+  , Just (parameters, after) <- [M.lookup callee (statedMeasures facts)]
+  , length parameters == length arguments
+  , (place, (old, template)) <- zip [0..] (zip before after)
+  , let new = substituteProof (M.fromList (zip parameters arguments)) template
+        holds op a b = entails facts (ExactComparison op a b)
+        strict = holds Less new old && holds GreaterEqual new (Literal (SInteger "Integer" 0))
+  , strict || holds LessEqual new old ]
+
+-- | Measure numbers: four kinds for each parameter position, and one for
+-- each ordered pair of positions.
+-- Stated measures are numbered below zero, apart from every inferred one.
+statedMeasure :: Int -> Int
+statedMeasure place = negate place - 1
+
+structuralMeasure, downMeasure, upMeasure :: Int -> Int
+structuralMeasure index = 4 * index
+downMeasure index = 4 * index + 1
+upMeasure index = 4 * index + 2
+
+limitMeasure :: Int -> Int -> Int
+limitMeasure limit index = 4 * (1048576 * (limit + 1) + index) + 3
+
+-- | Distinct composed relations a group's analysis may reach. Ordinary
+-- recursion needs a handful; the bound keeps a pathological group from
+-- taking exponential time, and reaching it is reported as incomplete.
+sizeChangeLimit :: Int
+sizeChangeLimit = 4096
 
 -- | The constant bounds a parameter's domain facts give it.
 domainBounds :: Id -> [Proof] -> (Maybe Integer, Maybe Integer)

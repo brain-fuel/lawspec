@@ -6723,10 +6723,13 @@ omitting constructor contracts. Compare shared expressions and Why3's
 strongest-postcondition VC technique before introducing new proof expansion.
 Obligation generation, solver execution and proof checking must remain distinct.
 
-Checked mutual recursion is a separate feature. Study SPARK/Ada subprogram
-variants and Why3 termination obligations, Lean 4 well-founded recursion,
-Idris 2 totality checking and Rocq's guarded mutual fixpoints. Specify a shared
-well-founded measure across every edge of a strongly connected call component
-and how any generated certificate is checked. None of those backend integrations
-or mutual-definition support is established by S1.j. Preserve explicit unknown,
-unsupported and incomplete outcomes while that work remains open.
+Checked mutual recursion was added in 0.33.0 (DEC-size-change-termination).
+Termination of each strongly connected call component is inferred by the
+size-change principle, following Idris 2's checker; a function may instead
+state a `decreases` measure, in the style of SPARK subprogram variants, Why3
+variants and Lean 4 `termination_by`, which the compiler proves at every call
+in the component. Obligation generation and discharge are both the compiler's
+own entailment; no solver is executed and no certificate is produced or
+checked, and none of those systems is integrated as a backend. An analysis
+that passes its bound is reported as incomplete. Mutual induction for law
+proofs remains an explicit unsupported outcome.

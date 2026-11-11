@@ -121,7 +121,7 @@ test('declarations, quantifiers, refinements, constraints, and match branches', 
 
 test('all keywords have theme-compatible keyword scopes', () =>
 {
-  for (const word of 'unit law requires is end definition description rationale example expect implies and references are where refinement type match with'.split(
+  for (const word of 'unit law requires decreases is end definition description rationale example expect implies and references are where refinement type match with'.split(
     ' ',
   ))
   {

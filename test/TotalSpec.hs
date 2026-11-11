@@ -11,6 +11,8 @@ import Control.Exception (evaluate)
 import LawSpec.Common (Source(..), Artifact(..), Diagnostic(..), defaultGeneration, ownership)
 import System.Timeout (timeout)
 import Data.List (isInfixOf)
+import qualified Data.Map.Strict as Map
+import LawSpec.Core.SizeChange (Verdict(..), sizeChange)
 import qualified LawSpec.Core.Value as V
 import LawSpec.Core.Validate (operationEvidence, validateProgram)
 import LawSpec.CoreEmit (emitPlan, targets)
@@ -373,6 +375,126 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
           (call "loop" [local "tailX" list, cons (local "ys" list)])
     validateDefinitions 64 [] [definition "loop" [("xs",list),("ys",list)] body]
       `shouldSatisfy` isLeft
+  -- S1.j report 14. ref:DEC-size-change-termination
+  describe "size-change termination" $ do
+    let checked name body = compileCore 64 defaultGeneration [Source (name ++ ".lawspec") (unlines (("unit recursion." ++ name) : body ++ ["end unit"]))]
+        admits name body = either (map message) (const []) (checked name body) `shouldBe` []
+        refuses name body expected = case checked name body of
+          Left diagnostics -> concatMap message diagnostics `shouldSatisfy` isInfixOf expected
+          Right _ -> expectationFailure (name ++ " was admitted")
+        relation = Map.fromList
+    it "closes call relations and requires a kept, strictly smaller measure on each loop" $ do
+      sizeChange 64 [("f", "f", relation [((0, 0), True)])] `shouldBe` Terminates
+      sizeChange 64 [("f", "f", relation [((0, 0), False)])] `shouldBe` Loops "f" ["f"]
+      -- A swap decreases one of two measures in turn: no single call keeps a
+      -- measure, the loop of two calls does.
+      sizeChange 64 [("f", "f", relation [((0, 1), False), ((1, 0), True)])] `shouldBe` Terminates
+      -- Lexicographic: the first is smaller, or the first is kept and the second smaller.
+      sizeChange 64 [("f", "f", relation [((0, 0), True)]), ("f", "f", relation [((0, 0), False), ((1, 1), True)])] `shouldBe` Terminates
+      -- One call shrinks the first and loses the second; the other the reverse.
+      sizeChange 64 [("f", "f", relation [((0, 0), True)]), ("f", "f", relation [((1, 1), True)])] `shouldBe` Loops "f" ["f", "f"]
+      sizeChange 64 [("f", "g", relation [((0, 0), False)]), ("g", "f", relation [((0, 0), True)])] `shouldBe` Terminates
+      sizeChange 64 [("f", "g", relation [((0, 0), False)]), ("g", "f", relation [((0, 0), False)])] `shouldBe` Loops "f" ["g", "f"]
+      -- A call out of the group is no loop.
+      sizeChange 64 [("f", "g", Map.empty)] `shouldBe` (Terminates :: Verdict String)
+    it "reports an analysis that passes its limit as incomplete, not as a loop" $
+      sizeChange 2 [("f", "f", relation [((i, j), True)]) | i <- [0 .. 3 :: Int], j <- [0 .. 3], i /= j] `shouldBe` Exhausted
+    it "admits two definitions that count down through each other" $
+      admits "parity"
+        [ "function isEven (n :: Whole) -> Bool is if n <= 0 then true else isOdd (n - 1) end if end function"
+        , "function isOdd (n :: Whole) -> Bool is if n <= 0 then false else isEven (n - 1) end if end function" ]
+    it "admits a record and its list of children traversed by two definitions" $
+      admits "items"
+        [ "type Item is a record{label :: Text, children :: List Item} end type"
+        , "function itemLine (item :: Item) -> Integer is 1 + itemLines item.children end function"
+        , "function itemLines (items :: List Item) -> Integer is"
+        , "  first matching case of items: when Nil then 0 when Cons head tail then itemLine head + itemLines tail end case"
+        , "end function" ]
+    it "admits a lexicographic order, nested calls and arguments that change places" $ do
+      admits "ackermann"
+        [ "function ack (m :: Whole) (n :: Whole) -> Whole is"
+        , "  if m <= 0 then n + 1 else if n <= 0 then ack (m - 1) 1 else ack (m - 1) (ack m (n - 1)) end if end if"
+        , "end function" ]
+      admits "swap"
+        [ "function swap (xs :: List Bool) (ys :: List Bool) -> Integer is"
+        , "  first matching case of xs: when Nil then 0 when Cons head tail then 1 + swap ys tail end case"
+        , "end function" ]
+      admits "grid"
+        [ "function cells (rows :: List Bool) (columns :: List Bool) (width :: List Bool) -> Integer is"
+        , "  first matching case of columns:"
+        , "    when Cons head tail then 1 + cells rows tail width"
+        , "    when Nil then first matching case of rows: when Nil then 0 when Cons head tail then cells tail width width end case"
+        , "  end case"
+        , "end function" ]
+    it "admits a counter rising to a limit through a second definition" $
+      admits "fill"
+        [ "function fill (index :: Integer) (limit :: Integer) -> Integer is"
+        , "  if index >= limit then 0 else 1 + rest (index + 1) limit end if"
+        , "end function"
+        , "function rest (index :: Integer) (limit :: Integer) -> Integer is"
+        , "  if index >= limit then 0 else fill index limit end if"
+        , "end function" ]
+    it "refuses a cycle that makes nothing smaller and names it" $ do
+      refuses "ping"
+        [ "function ping (n :: Whole) -> Bool is pong n end function"
+        , "function pong (n :: Whole) -> Bool is ping n end function" ]
+        "recursion could not be shown to end: no argument is kept and made strictly smaller around the call cycle ping -> pong -> ping"
+      refuses "seesaw"
+        [ "function up (n :: Whole) -> Bool is if n <= 0 then true else down (n - 1) end if end function"
+        , "function down (n :: Whole) -> Bool is up (n + 1) end function" ]
+        "recursion could not be shown to end"
+    it "refuses alternating descent on two arguments that each call undoes" $
+      refuses "undo"
+        [ "function loop (xs :: List Bool) (ys :: List Bool) -> Integer is"
+        , "  first matching case of xs:"
+        , "    when Nil then first matching case of ys: when Nil then 0 when Cons head tail then loop [true] tail end case"
+        , "    when Cons head tail then loop tail [true]"
+        , "  end case"
+        , "end function" ]
+        "recursion could not be shown to end"
+    describe "a stated decreases measure" $ do
+      let narrowing clause =
+            [ "function narrowing (low :: Integer) (high :: Integer) -> Integer"
+            , clause
+            , "is"
+            , "  if low >= high then 0"
+            , "  else if prelude.rem low 2 = 0 then 1 + narrowing (low + 1) high"
+            , "  else 1 + narrowing low (high - 1) end if end if"
+            , "end function" ]
+      it "admits recursion whose stated measure is proved to shrink and stay at least 0" $
+        admits "narrowing" (narrowing "decreases high - low")
+      it "refuses the same recursion without the measure" $
+        refuses "unstated" (narrowing "") "no integer argument moves strictly toward a bound"
+      it "checks the measure instead of trusting it" $ do
+        refuses "wrong" (narrowing "decreases low") "the decreases measure was not proved to get smaller"
+        -- Smaller on every call, but never shown to stay at least 0.
+        refuses "unbounded"
+          [ "function sink (n :: Integer) -> Integer decreases n is sink (n - 1) end function" ]
+          "the decreases measure was not proved to get smaller and stay at least 0"
+      it "compares measures across a cycle of definitions" $ do
+        let pair second =
+              [ "function left (low :: Integer) (high :: Integer) -> Integer decreases high - low is"
+              , "  if low >= high then 0 else right (low + 1) high end if"
+              , "end function"
+              , "function right (low :: Integer) (high :: Integer) -> Integer decreases high - low is"
+              , "  if low >= high then 0 else " ++ second ++ " end if"
+              , "end function" ]
+        admits "pair" (pair "left low (high - 1)")
+        refuses "widening" (pair "left low (high + 1)") "the measure right states was not proved to decrease at its call of left"
+      it "reads several measures in order of importance" $
+        admits "ordered"
+          [ "function settle (debt :: Integer) (step :: Integer) (spare :: Integer) -> Integer decreases debt, step is"
+          , "  if debt <= 0 || step <= 0 then 0"
+          , "  else if step > 1 then settle debt (step - 1) (spare + 1)"
+          , "  else settle (debt - 1) (debt + spare * spare + 5) spare end if end if"
+          , "end function" ]
+      it "leaves no trace of the measure in generated code" $
+        case checked "emitted" (narrowing "decreases high - low") >>= planTesting >>= emitPlan "python" of
+          Left diagnostics -> expectationFailure (show diagnostics)
+          Right files -> concatMap artifactContent files `shouldNotSatisfy` isInfixOf "ecreases"
+      it "allows only a function to state a measure, and keeps decreases usable as a name" $ do
+        admits "named" ["function plain (decreases :: Integer) -> Integer is decreases + 1 end function"]
+        checked "procedure" ["procedure run (n :: Integer) -> Integer decreases n is n end procedure"] `shouldSatisfy` isLeft
   -- S1.j report 17. ref:DEC-s1j-shared-failures
   describe "shared strict bindings" $ do
     let chain count step = unlines $

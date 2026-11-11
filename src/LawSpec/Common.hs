@@ -157,3 +157,14 @@ pythonUnitFile :: [String] -> String -> String
 pythonUnitFile units unit =
   let path = map (\c -> if c == '.' then '/' else c) unit
   in if any (\other -> (unit ++ ".") == take (length unit + 1) other) units then path ++ "/__init__.py" else path ++ ".py"
+
+-- The binders of a definition's `decreases` measures, in order. They head the
+-- body as ordinary bindings, so every pass types, renames and specializes a
+-- measure with the body; the totality audit reads them back by name.
+decreasesBinder :: Int -> String
+decreasesBinder index = "lawspecDecreases" ++ show index
+
+isDecreasesBinder :: String -> Bool
+isDecreasesBinder name = case splitAt 16 name of
+  ("lawspecDecreases", digits) -> not (null digits) && all (`elem` ['0' .. '9']) digits
+  _ -> False

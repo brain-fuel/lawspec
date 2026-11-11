@@ -161,13 +161,18 @@ definitionProof schema bits definition =
       location = case declarationOrigin declaration of
         SourceSpan span -> Just (spanStart span)
         GeneratedFrom _ -> Nothing
-  in T.ProofDefinition (declarationId declaration) (declarationName declaration)
+      -- The `decreases` measures: the bindings that head the body.
+      measures expression = case expressionNode expression of
+        Let binder value rest | isDecreasesBinder (binderName binder) -> value : measures rest
+        _ -> []
+  in T.MeasuredDefinition (declarationId declaration) (declarationName declaration)
     location (map binderId (definitionArguments definition))
     (proofExpression schema bits (definitionBody definition))
     (concat [T.integerAssumptions bits (binderId argument) name
       | argument <- definitionArguments definition, Constructor name [] <- [binderType argument]] ++
      [T.RecordType tag (T.Variable (binderId argument)) | argument<-definitionArguments definition,
        Just tag<-[Payload.recordTag schema (binderType argument)]])
+    (map (proofExpression schema bits) (measures (definitionBody definition)))
 
 -- | Shared checked constructor guarantees for Core and typed source templates.
 constructorProofContracts :: Int -> [DataDeclaration] -> Either [Diagnostic] [T.ProofConstructorContract]

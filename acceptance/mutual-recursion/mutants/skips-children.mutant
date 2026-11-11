@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/specs/mutual_recursion.lawspec
+<<<<<<<
+when Cons head tail then itemLine head + itemLines tail
+=======
+when Cons head tail then 1 + itemLines tail
+>>>>>>>

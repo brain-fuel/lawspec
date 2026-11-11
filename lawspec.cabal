@@ -283,6 +283,7 @@ extra-source-files:
     examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
     examples/specs/models.lawspec
+    examples/specs/mutual_recursion.lawspec
     examples/specs/parse_port.lawspec
     examples/specs/payments.lawspec
     examples/specs/railway.lawspec
@@ -716,6 +717,7 @@ library
       LawSpec.Core.Schema
       LawSpec.Core.Search
       LawSpec.Core.Semantics
+      LawSpec.Core.SizeChange
       LawSpec.Core.Smt
       LawSpec.Core.Stages
       LawSpec.Core.Total

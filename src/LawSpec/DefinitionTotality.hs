@@ -144,17 +144,25 @@ auditCollected context declarations constructors bits unit templates = do
       let result = C.Id (C.idText name ++ "::result")
           argumentScope = M.fromList parameters
           resultScope = M.insert (fst (S.contractResult contract)) result argumentScope
-      ((expression,pre,post),state) <- flip runStateT (ProofState 0 M.empty []) $ (,,)
+      ((expression,pre,post,measures),state) <- flip runStateT (ProofState 0 M.empty []) $ (,,,)
         <$> proof name integerVariables argumentScope body
         <*> mapM (proof name integerVariables argumentScope) preconditions
         <*> mapM (proof name integerVariables resultScope) postconditions
+        <*> mapM (proof name integerVariables argumentScope) (statedMeasures body)
       records <- concat <$> mapM (\((_,name),(_,ty)) -> recordDomain name ty) (zip parameters (S.functionArguments definition))
-      pure (T.ProofDefinition name (S.functionName definition)
+      pure (T.MeasuredDefinition name (S.functionName definition)
         (Just (spanStart (S.functionSpan definition))) (map snd parameters) expression
         (concat [T.integerAssumptions bits name primitive
           | ((_,name),(_,ty)) <- zip parameters (S.functionArguments definition)
-          , S.Named primitive <- [S.baseType ty]] ++ records),
+          , S.Named primitive <- [S.baseType ty]] ++ records) measures,
         T.ProofContract name result pre post,state)
+    -- The `decreases` measures the parser placed at the head of the body.
+    statedMeasures typed = case (S.unlocated (S.expression typed), S.operands typed, S.typedCases typed) of
+      (S.MatchExpr _ [S.MatchBranch tag _ _], [value], [S.TypedCase _ [(name, _)] rest])
+        | tag == S.letTag, S.isDecreasesBinder name -> value : statedMeasures rest
+      -- The body's result annotation wraps the bindings.
+      (S.Annotate _ _, [inner], []) -> statedMeasures inner
+      _ -> []
     recordDomain name ty = do
       lowered <- coreType ty
       pure [T.RecordType (C.constructorId constructor) (T.Variable name) |

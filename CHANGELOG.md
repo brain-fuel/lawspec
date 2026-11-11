@@ -8,6 +8,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- A definition in which each call shrinks one of two arguments and keeps the
+  other is now admitted. It was rejected with "no single parameter strictly
+  decreases in every recursive call". The three "no single parameter" messages
+  are replaced by one that names the call cycle.
+
 - Manifest admission and version selection now run in compiler-independent
   Haskell services, the first checkpoint of the Haskell application port.
   Recorded results from before the change (739 JSON requests and 647 EDN
@@ -15,6 +20,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   proof for every input. A Haskell manifest EDN codec is included but is not
   connected to any public entrypoint. The existing runtime remains the default.
   See the [application port status](docs/reference/host-sdk.md#application-port-status).
+
+### Added
+
+- Mutually recursive checked definitions. Termination is now inferred by
+  size-change analysis over each cycle of calls, so definitions that call each
+  other are admitted when every cycle keeps one argument and makes it strictly
+  smaller. The same analysis admits a second argument that takes over when
+  the first stays the same, and arguments that change places. No annotation
+  is needed. A cycle that makes nothing smaller is rejected with the cycle
+  named. This replaces "mutually recursive total definitions are not
+  supported" (S1.j report 14).
+- `decreases` on a function states a termination measure when no argument
+  shrinks visibly: `function f (low :: Integer) (high :: Integer) -> Integer
+  decreases high - low is ...`. The compiler proves at each recursive call
+  that the measure is smaller and at least 0, and rejects the definition
+  otherwise. Several measures are read in order of importance. The measure
+  does not appear in generated code.
 
 ### Fixed
 
@@ -44,6 +66,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An unchanged `check` no longer spends most of its time computing cache
   keys. Each unit was rendered and hashed three times on every run, which
   cost as much as the validation the cache saved.
+- Evaluating a nested or list literal takes work in proportion to its size.
+  Each constructor used to validate every value beneath it again, so the work
+  grew with the square of the size: a 64-element list literal took 5,197
+  evaluation steps and now takes 1,101. A value is still validated in full
+  when it is built or enters from outside; only the repeat is gone. Larger
+  models fit in the same evaluation allowance (S1.j report 6).
 - Go: a bound handler's bridge is generated only in packages that use the
   ability: its owner, and units whose laws, declarations or spec handlers need
   it. A unit that only imported the declaring unit received

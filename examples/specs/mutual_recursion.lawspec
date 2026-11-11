@@ -1,0 +1,92 @@
+unit example.mutualRecursion
+
+-- Two definitions that call each other. Each call passes a smaller number,
+-- so every chain of calls ends.
+function isEven (n :: Whole) -> Bool is
+  if n <= 0 then true else isOdd (n - 1) end if
+end function
+
+function isOdd (n :: Whole) -> Bool is
+  if n <= 0 then false else isEven (n - 1) end if
+end function
+
+-- An outline: an item, and the items under it.
+type Item is a record{
+  label :: Text,
+  children :: List Item
+}
+end type
+
+-- One line for the item, then the lines of everything under it.
+function itemLine (item :: Item) -> Integer is
+  first matching case of item:
+    when record{children = children} then 1 + itemLines children
+  end case
+end function
+
+function itemLines (items :: List Item) -> Integer is
+  first matching case of items:
+    when Nil then 0
+    when Cons head tail then itemLine head + itemLines tail
+  end case
+end function
+
+-- The first argument gets smaller, or it stays and the second gets smaller.
+function ackermann (m :: Whole) (n :: Whole) -> Whole is
+  if m <= 0 then n + 1
+  else if n <= 0 then ackermann (m - 1) 1
+  else ackermann (m - 1) (ackermann m (n - 1)) end if end if
+end function
+
+-- The two lists change places on every call, and one loses an element.
+function interleaved (xs :: List Bool) (ys :: List Bool) -> Integer is
+  first matching case of xs:
+    when Nil then 0
+    when Cons head tail then 1 + interleaved ys tail
+  end case
+end function
+
+-- Neither bound moves the same way on every call, so the compiler is told
+-- what gets smaller: the distance between them. It proves that the distance
+-- shrinks and stays at least 0 on each call; the clause is never taken on trust.
+function narrowing (low :: Integer) (high :: Integer) -> Integer
+decreases high - low
+is
+  if low >= high then 0
+  else if prelude.rem low 2 = 0 then 1 + narrowing (low + 1) high
+  else 1 + narrowing low (high - 1) end if end if
+end function
+
+law "|parity alternates| is
+  definition:
+    for all (n :: UInt8) =>
+      isEven n != isOdd n
+    end for all
+  end definition
+end law
+
+law "|ten is even| is
+  definition: isEven 10 && isOdd 9 end definition
+end law
+
+law "|an outline has one line for each item| is
+  definition:
+    itemLine (Item record{label = "root", children = [
+      Item record{label = "first", children = [Item record{label = "leaf", children = []}]},
+      Item record{label = "second", children = []}
+    ]}) must be 4
+  end definition
+end law
+
+law "|ackermann of two and three| is
+  definition: ackermann 2 3 must be 9 end definition
+end law
+
+law "|narrowing takes one step for each unit of distance| is
+  definition: narrowing 3 10 must be 7 end definition
+end law
+
+law "|interleaving stops when the first list is empty| is
+  definition: interleaved [true, false, true] [true] must be 3 end definition
+end law
+end unit

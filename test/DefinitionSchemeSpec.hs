@@ -181,10 +181,12 @@ test_definitionTemplatesAreAuditedBeforeSpecialization = describe "definition ca
     auditTotal "function loop (xs :: List a) -> Integer is loop xs end function\n" `shouldSatisfy` isLeft
     auditTotal ("function loop (xs :: List a) -> Integer is first matching case of xs: " ++
       "when Nil then 0 when Cons head tail then loop (Cons head tail) end case end function") `shouldSatisfy` isLeft
-  it "requires one common decreasing parameter in generic recursion" $
+  -- Each call shrinks one list and keeps the other, so every chain of calls
+  -- ends although no single parameter shrinks in both. ref:DEC-size-change-termination
+  it "admits generic recursion in which each call shrinks one of two lists" $
     auditTotal ("function loop (xs :: List a) (ys :: List a) -> Integer is first matching case of xs: " ++
       "when Nil then 0 when Cons head tail then first matching case of ys: when Nil then loop tail ys " ++
-      "when Cons other rest then loop xs rest end case end case end function") `shouldSatisfy` isLeft
+      "when Cons other rest then loop xs rest end case end case end function") `shouldBe` Right ()
   it "does not confuse same-named binders from different match roots" $
     auditTotal ("function loop (xs :: List a) (ys :: List a) -> Integer is first matching case of xs: " ++
       "when Nil then 0 when Cons head tail then first matching case of ys: when Nil then loop tail ys " ++
@@ -216,9 +218,12 @@ test_definitionTemplatesAreAuditedBeforeSpecialization = describe "definition ca
     auditTotal ("external :: Int8 -> Bool\n" ++
       "function safe (x :: a) -> Bool is false && external 0 end function\n") `shouldSatisfy` isLeft
     auditTotal "function safe (x :: a) -> Bool is false && safe x end function\n" `shouldBe` Right ()
-  it "rejects mutually recursive generic definitions" $
+  it "rejects mutually recursive generic definitions that make nothing smaller" $
     auditTotal ("function first (xs :: List a) -> Integer is second xs end function\n" ++
       "function second (xs :: List a) -> Integer is first xs end function\n") `shouldSatisfy` isLeft
+  it "admits mutually recursive generic definitions that shrink a list" $
+    auditTotal ("function first (xs :: List a) -> Integer is second xs end function\n" ++
+      "function second (xs :: List a) -> Integer is first matching case of xs: when Nil then 0 when Cons head tail then 1 + first tail end case end function\n") `shouldBe` Right ()
   it "audits unused generic templates without inventing concrete instances" $ do
     case compileCore 64 defaultGeneration [source "function identity (x :: a) -> a is x end function\n"] of
       Left ds -> expectationFailure (show ds)

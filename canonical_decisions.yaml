@@ -1416,12 +1416,40 @@ DEC-s1j-shared-failures:
     <1.4.0 and scaffold 1.3.0. Add universal prelude.all over existing iterable
     domains, FileSystem.createDirectories, and isolated user mutation runs with
     actual failing-law evidence. Preserve user-owned adapters and host-SDK work.
-    Mutual total recursion remains unsupported; document checked restructuring.
+    Mutual total recursion was unsupported in 0.32.0; DEC-size-change-termination
+    replaces that part.
     Original-project and cross-platform confirmation remain explicit release
     gates; reduced fixtures and local runs do not establish those results.
   opened: 0.32.0
   decided: 0.32.0
   refs: [rapid-go, REQ-honest-evidence]
+
+DEC-size-change-termination:
+  status: decided
+  question: How are recursive total definitions, including mutually recursive ones, shown to end?
+  answer: |
+    Infer termination by the size-change principle (Lee, Jones and Ben-Amram
+    2001), as Idris 2 does in Core/Termination/SizeChange.idr: each call
+    records which measures of the callee's arguments are strictly smaller than,
+    or no larger than, measures of the caller's parameters; the relations are
+    closed under composition; every idempotent loop must keep and strictly
+    decrease one measure. Measures are structural size, an integer moving down
+    or up to a bound, and a counter's distance below an unchanged limit. Each
+    entry is an entailment the totality audit proves; none is assumed. This
+    replaces the one-shrinking-parameter rule and admits mutual recursion,
+    lexicographic orders and permuted arguments without annotation.
+    As fallback a function may state `decreases e1, e2`: integer measures
+    compared place by place at each call in its cycle, proved smaller and at
+    least 0 by the same entailment, so mandatory admission does not depend on
+    Z3. This follows the stated-measure style of SPARK's Subprogram_Variant,
+    Why3's variant and Lean 4's termination_by; LawSpec generates and
+    discharges the obligation itself and has no separate proof checker or
+    certificate. The closure is bounded; reaching the bound is reported as
+    incomplete, not as a loop. Mutual induction for law proofs is unchanged
+    and remains an explicit unsupported result. Cycles stay within one unit.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [idris2-size-change, lean-termination, spark-subprogram-variant, why3-variant, rocq-fixpoint, REQ-honest-evidence]
 
 DEC-s1j-evaluation-budget:
   status: decided

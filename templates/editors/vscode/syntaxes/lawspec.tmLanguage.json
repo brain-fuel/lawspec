@@ -289,7 +289,7 @@
       }
     },
     {
-      "match": "\\b(?:unit|law|requires|is|end|definition|description|rationale|example|expect|implies|and|references|are|where|refinement|type|match|with)\\b",
+      "match": "\\b(?:unit|law|requires|decreases|is|end|definition|description|rationale|example|expect|implies|and|references|are|where|refinement|type|match|with)\\b",
       "name": "keyword.control.lawspec"
     },
     {

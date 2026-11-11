@@ -855,6 +855,26 @@ why3-vc-generation:
   kind: article
   title: Why3 verification condition generation and strongest postconditions
   locator: https://why3.org/doc/vcgen.html
+idris2-size-change:
+  kind: article
+  title: Idris 2 size-change termination checker (Core/Termination/SizeChange.idr)
+  locator: https://raw.githubusercontent.com/idris-lang/Idris2/main/src/Core/Termination/SizeChange.idr
+lean-termination:
+  kind: article
+  title: Lean 4 reference, recursive definitions, termination_by and decreasing_by
+  locator: https://lean-lang.org/doc/reference/latest/Definitions/Recursive-Definitions/
+spark-subprogram-variant:
+  kind: article
+  title: SPARK User's Guide, subprogram contracts, Subprogram_Variant
+  locator: https://docs.adacore.com/spark2014-docs/html/ug/en/source/subprogram_contracts.html
+why3-variant:
+  kind: article
+  title: Why3 language reference, variant clauses of recursive functions
+  locator: https://www.why3.org/doc/syntaxref.html
+rocq-fixpoint:
+  kind: article
+  title: Rocq reference manual, inductive types and recursive functions
+  locator: https://rocq-prover.org/doc/V9.0.0/refman/language/core/inductive.html
 idris2-totality:
   kind: article
   title: Idris 2 totality and mutually defined functions
