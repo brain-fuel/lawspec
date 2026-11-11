@@ -2,7 +2,7 @@
 -- | Structural values in the reference interpreter. Scalar encodings remain
 -- lossless leaves; algebraic constructors never share absence representations.
 module LawSpec.Core.Value
-  ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith, validateValueWithM, checkValueWithM
+  ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith, validateValueWithM, validateConstructionWithM, checkValueWithM
   , equalValues, compareValues, listValue, listItems, valueIndex, valueType, witnessFields, witnessKey, witnessKeys
   ) where
 
@@ -77,29 +77,61 @@ checkValueWith = checkValueWithM (pure ())
 
 checkValueWithM :: MonadError String m => m () -> ([(Id,Value)] -> Expr -> m Value)
   -> TypeRegistry -> Int -> Type -> Value -> m ValueCheck
-checkValueWithM tick evaluate registry bits expected value =
-  either RefinementRejected ValueAccepted <$> runExceptT (walk expected value)
+checkValueWithM = checkValueAtM Nothing
+
+-- | Validate a value the evaluator has just built. The flags say which of its
+-- fields were validated in full when they were produced; for those only the
+-- new constructor's own boundary is checked: its shape, its field
+-- refinements, its index guards and its collection order. Checking every
+-- field again at every level made a nested literal cost the square of its
+-- size (S1.j report 6). Scalars are always checked; a field that is not
+-- flagged, or is of another type than its declaration, is checked in full.
+validateConstructionWithM :: MonadError String m => [Bool] -> m () -> ([(Id,Value)] -> Expr -> m Value)
+  -> TypeRegistry -> Int -> Type -> Value -> m Value
+validateConstructionWithM validated tick evaluate registry bits expected value = do
+  result <- checkValueAtM (Just validated) tick evaluate registry bits expected value
+  case result of
+    ValueAccepted checked -> pure checked
+    RefinementRejected message -> throwError message
+
+checkValueAtM :: MonadError String m => Maybe [Bool] -> m () -> ([(Id,Value)] -> Expr -> m Value)
+  -> TypeRegistry -> Int -> Type -> Value -> m ValueCheck
+checkValueAtM validatedFields tick evaluate registry bits expected value =
+  either RefinementRejected ValueAccepted <$> runExceptT (top expected value)
   where
-    walk expected value = do
+    top ty outer = case (validatedFields, outer) of
+      (Just flags, DataValue _ _ _) -> walkWith (map field (flags ++ repeat False)) ty outer
+      _ -> walk ty outer
+    -- A field of the outermost constructor that is already validated.
+    field True ty inner = case inner of
+      DataValue actual _ _ | actual == ty -> pure inner
+      PresenceValue actual _ | actual == ty -> pure inner
+      _ -> walk ty inner
+    field False ty inner = walk ty inner
+    walk = walkWith (repeat walk)
+    walkWith children expected value = do
+      let child = case children of
+            first : _ -> first
+            [] -> walk
       lift tick
       lift (liftEither (checkType registry expected))
       case value of
         ScalarValue scalar -> case fromScalarValue expected scalar of
-          normalized@(PresenceValue _ _) -> walk expected normalized
+          normalized@(PresenceValue _ _) -> walkWith children expected normalized
           _ -> case expected of
             Constructor name [] | name == scalarName scalar ->
               ScalarValue <$> lift (liftEither (validateScalar bits scalar))
             _ -> lift (liftEither (Left "scalar value does not match its declared type"))
         PresenceValue actual payload -> case actual of
           Constructor name [TypeArgument element] | expected == actual && name `elem` ["Nullable", "Optional"] ->
-            PresenceValue actual <$> traverse (walk element) payload
+            PresenceValue actual <$> traverse (child element) payload
           _ -> lift (liftEither (Left "presence value does not match its declared type"))
         DataValue actual tag payload -> do
           lift . liftEither $ unless (actual == expected) (Left "data value does not match its declared type")
           fields <- lift (liftEither (constructorFieldsAt registry actual tag (map valueType payload)))
           lift . liftEither $ unless (length fields == length payload)
             (Left ("constructor payload arity mismatch: " ++ idText tag))
-          checked <- zipWithM walk (map binderType fields) payload
+          checked <- sequence (zipWith3 id children (map binderType fields) payload)
           predicates <- lift (liftEither (constructorPredicatesFor registry actual tag))
           let scope = zip (map binderId fields) checked
           mapM_ (\predicate -> do

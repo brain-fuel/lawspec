@@ -51,6 +51,10 @@ validateValueWithContractsM :: MonadError String m => m () -> TypeRegistry -> In
 validateValueWithContractsM tick registry bits =
   validateValueWithM tick (evaluateValueM tick registry bits (\name _ -> throwError ("external call in pure expression: " ++ idText name))) registry bits
 
+validateConstructionWithContractsM :: MonadError String m => [Bool] -> m () -> TypeRegistry -> Int -> Type -> Value -> m Value
+validateConstructionWithContractsM validated tick registry bits =
+  validateConstructionWithM validated tick (evaluateValueM tick registry bits (\name _ -> throwError ("external call in pure expression: " ++ idText name))) registry bits
+
 -- | The reference semantics of Core: every target must agree with it, and the
 -- compiler uses it to check examples and enumerate finite domains.
 -- ref:DEC-portable-exact-arithmetic
@@ -77,7 +81,14 @@ evaluateWithAdmissionM admitted tick registry bits adapter bindings = run (M.fro
     Constant s -> validateValueWithContractsM tick registry bits expressionType (fromScalarValue expressionType s)
     Construct tag args -> do
       fields <- mapM go args
-      validateValueWithContractsM tick registry bits expressionType (DataValue expressionType tag fields)
+      -- A field this run built or took from a constant was validated in full
+      -- a moment ago; an admitted definition's other values were validated
+      -- at its boundary. Anything else is validated here.
+      let built Expr{expressionNode = node} = case node of
+            Construct _ _ -> True
+            Constant _ -> True
+            _ -> admitted
+      validateConstructionWithContractsM (map built args) tick registry bits expressionType (DataValue expressionType tag fields)
     Match value cases -> do
       -- Program validation checks coverage and branch scopes; execution
       -- evaluates only the selected branch.

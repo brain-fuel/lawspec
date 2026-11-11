@@ -4,7 +4,7 @@ module DischargeSpec (test_lawsAreDischargedWithHonestEvidence) where
 import Data.Aeson (Value(..), decode, encode, toJSON, object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
-import Data.List (isInfixOf, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.Vector as V
 import Test.Hspec
 import LawSpec.Api (dispatch)
@@ -51,6 +51,19 @@ test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ d
         statuses (dischargeEvidenceWith (config [Verification.Proof] 1000000 ["d::|square|"]) program) `shouldBe` Right [Incomplete]
         statuses (dischargeEvidenceWith (config [Verification.Exhaustive] 1000000 ["d::|square|"]) program) `shouldBe` Right [Planned]
         dischargeEvidenceWith (config [] 1 ["d::absent"]) program `shouldSatisfy` isLeft
+  -- S1.j report 6: each level of a literal validated everything beneath it
+  -- again, so the work grew with the square of the literal's size.
+  it "evaluates a list literal in work proportional to its length" $ do
+    let text count = "unit d\nfunction size (values :: List Bool) -> Integer is first matching case of values: " ++
+          "when Nil then 0 when Cons head tail then 1 + size tail end case end function\n" ++
+          law "length" ("size [" ++ intercalate ", " (replicate count "true") ++ "] = " ++ show count) ++ "end unit"
+        config steps = Verification.VerificationEvaluation [Verification.Exhaustive] (Verification.Evaluation steps [])
+        status count steps = fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (compileCore 64 defaultGeneration [Source "literal.lawspec" (text count)] >>= dischargeEvidenceWith (config steps))
+    status 64 1200 `shouldBe` Right [ExhaustivelyChecked]
+    status 128 2400 `shouldBe` Right [ExhaustivelyChecked]
+    -- The allowance still binds: a refused constructor or an under-budget run is not a pass.
+    status 128 1200 `shouldBe` Right [Planned]
   it "never lets optional evaluation settings bypass invalid definitions" $ do
     let response = dispatch (encode (object ["schemaVersion" .= (5::Int), "method" .= ("check"::String),
           "languageProfile" .= ("1.0-rc.2"::String),
