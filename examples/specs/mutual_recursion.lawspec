@@ -49,7 +49,8 @@ end function
 -- Neither bound moves the same way on every call, so the compiler is told
 -- what gets smaller: the distance between them. It proves that the distance
 -- shrinks and stays at least 0 on each call; the clause is never taken on trust.
-function narrowing (low :: Integer) (high :: Integer) -> Integer
+-- The result is promised to be at least 0, which the compiler also proves.
+function narrowing (low :: Integer) (high :: Integer) -> (result :: Integer where result >= 0)
 decreases high - low
 is
   if low >= high then 0

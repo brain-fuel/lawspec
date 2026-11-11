@@ -1,5 +1,5 @@
 -- | Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, validateDefinitionContractsWithScopes, deferNonlinearPostconditions, deferProgramPostconditions, deferProgramPostconditionsWithScopes, constructorProofContracts, safeConversionTypes, proofExpression, definitionProof) where
+module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, validateDefinitionContractsWithScopes, validateErasedDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, deferProgramPostconditionsWithScopes, constructorProofContracts, safeConversionTypes, proofExpression, definitionProof) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM, foldM)
@@ -33,9 +33,20 @@ validateDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Cont
 validateDefinitionContracts = validateDefinitionContractsWithScopes M.empty
 
 validateDefinitionContractsWithScopes :: CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ()
-validateDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts = do
+validateDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts =
   -- Every remaining postcondition must be proved; only the frontend defers.
-  deferred <- auditDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts
+  undeferred (auditDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts)
+
+-- | The same audit for definitions whose `decreases` measures were erased
+-- after 'validateDefinitionContracts' admitted them: everything is checked
+-- again except termination, which was judged with the measures present.
+validateErasedDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ()
+validateErasedDefinitionContracts bits dataDeclarations definitions contracts =
+  undeferred (auditDefinitionContractsUncached False M.empty bits dataDeclarations definitions contracts)
+
+undeferred :: Either [Diagnostic] [(Id, Int)] -> Either [Diagnostic] ()
+undeferred audited = do
+  deferred <- audited
   case deferred of
     [] -> pure ()
     (owner, _) : _ -> Left [Diagnostic "total" (idText owner ++ ": definition result refinement could not be proved") Nothing]
@@ -83,7 +94,7 @@ auditDefinitionContractsWithScopes scopes bits dataDeclarations allDefinitions a
   case lookup key cached of
     Just result -> pure result
     Nothing -> do
-      let result = auditDefinitionContractsUncached scopes bits dataDeclarations allDefinitions allContracts
+      let result = auditDefinitionContractsUncached True scopes bits dataDeclarations allDefinitions allContracts
       writeIORef auditCache (take 4 ((key, result) : cached))
       pure result
 {-# NOINLINE auditDefinitionContractsWithScopes #-}
@@ -94,8 +105,8 @@ auditCache :: IORef [(AuditKey, Either [Diagnostic] [(Id, Int)])]
 auditCache = unsafePerformIO (newIORef [])
 {-# NOINLINE auditCache #-}
 
-auditDefinitionContractsUncached :: CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
-auditDefinitionContractsUncached scopes bits dataDeclarations allDefinitions allContracts = do
+auditDefinitionContractsUncached :: Bool -> CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
+auditDefinitionContractsUncached judged scopes bits dataDeclarations allDefinitions allContracts = do
   -- Orchestrations call adapters; they are run natively, not proved.
   let definitions = filter (not . definitionOrchestrates) allDefinitions
       orchestrated = [declarationId (definitionDeclaration d) | d <- allDefinitions, definitionOrchestrates d]
@@ -143,7 +154,7 @@ auditDefinitionContractsUncached scopes bits dataDeclarations allDefinitions all
     pure (T.ProofContract (contractDeclaration contract) freshResult
       (map lower (contractPreconditions contract)) (map lower (contractPostconditions contract)))
   constructorProofs <- constructorProofContracts bits dataDeclarations
-  T.auditWithRecordInstances (Payload.recordInstances (Payload.fromRegistry registry)) (M.fromList
+  (if judged then T.auditWithRecordInstances else T.auditErasedWithRecordInstances) (Payload.recordInstances (Payload.fromRegistry registry)) (M.fromList
     [(declarationId d,template) | definition <- definitions,let d=definitionDeclaration definition,Just template <- [declarationTemplate d]])
     constructorProofs proofs (map (definitionProof (Payload.fromRegistry registry) bits) definitions)
     (M.fromList [(declarationId d, resultBounds bits (snd (functionType (declarationType d)))) | d <- map definitionDeclaration definitions])

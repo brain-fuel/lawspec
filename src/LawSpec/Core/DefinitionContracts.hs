@@ -2,7 +2,8 @@
 module LawSpec.Core.DefinitionContracts (definitionContracts, checkedDefinitionContracts,validateEmissionDefinitions,validateNativeEmissionDefinitions) where
 
 import LawSpec.Core
-import LawSpec.Core.Total (validateDefinitionContracts)
+import LawSpec.Common (Diagnostic)
+import LawSpec.Core.Total (validateDefinitionContracts, validateErasedDefinitionContracts)
 import LawSpec.Core.Value (witnessKeys)
 import LawSpec.Scalar (textScalar)
 import Control.Monad (unless)
@@ -31,14 +32,20 @@ validateEmissionDefinitions bits declarations units =
 checkedDefinitionContracts :: Int -> [DataDeclaration] -> [Unit] -> Either String [Contract]
 checkedDefinitionContracts bits declarations units = do
   let contracts = definitionContracts units
-  if null contracts then pure () else validateNativeEmissionDefinitions bits declarations units
+  -- The emitters' units have no `decreases` measures left (CoreEmit erases
+  -- them once the plan is admitted), so termination is not judged again.
+  if null contracts then pure () else validateLogicalView validateErasedDefinitionContracts bits declarations units
   pure contracts
 
 -- | Validate a materialized plan independently of whether it has contracts.
 -- This uses the same checked witness erasure and mandatory definition checker
 -- as existing native contract emission. It does not accept extra logical fields.
 validateNativeEmissionDefinitions :: Int -> [DataDeclaration] -> [Unit] -> Either String ()
-validateNativeEmissionDefinitions bits declarations units = do
+validateNativeEmissionDefinitions = validateLogicalView validateDefinitionContracts
+
+validateLogicalView :: (Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ())
+  -> Int -> [DataDeclaration] -> [Unit] -> Either String ()
+validateLogicalView validate bits declarations units = do
   definitions<-mapM (\definition -> do
     body<-logical (definitionBody definition)
     pure definition{definitionBody=body}) (concatMap unitDefinitions units)
@@ -48,7 +55,7 @@ validateNativeEmissionDefinitions bits declarations units = do
     runtime<-mapM logical (contractRuntimePostconditions contract)
     pure contract{contractPreconditions=before,contractPostconditions=after,
       contractRuntimePostconditions=runtime}) (definitionContracts units)
-  either (Left . show) Right (validateDefinitionContracts bits declarations definitions conditions)
+  either (Left . show) Right (validate bits declarations definitions conditions)
   where
     logical original=do
       value<-traverseChildren logical original

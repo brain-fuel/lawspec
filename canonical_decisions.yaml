@@ -1447,6 +1447,11 @@ DEC-size-change-termination:
     certificate. The closure is bounded; reaching the bound is reported as
     incomplete, not as a loop. Mutual induction for law proofs is unchanged
     and remains an explicit unsupported result. Cycles stay within one unit.
+    A measure is read only by admission and is erased from an admitted plan
+    before code generation, as ghost code is in SPARK and Why3. The target
+    emitters check definedness, preconditions and result contracts once more
+    on what they are given; termination was judged with the measures present
+    and is not judged again there.
   opened: 0.33.0
   decided: 0.33.0
   refs: [idris2-size-change, lean-termination, spark-subprogram-variant, why3-variant, rocq-fixpoint, REQ-honest-evidence]

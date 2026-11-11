@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, auditErasedWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -144,7 +144,21 @@ auditDeferringWithTemplates = auditWithRecordInstances Records.emptyInstances
 
 auditWithRecordInstances :: Records.RecordInstances -> M.Map Id (Id,String) -> [ProofConstructorContract] -> [ProofContract]
   -> [ProofDefinition] -> M.Map Id (Maybe Integer,Maybe Integer) -> Either [Diagnostic] [(Id,Int)]
-auditWithRecordInstances instances templates constructors contracts definitions results = do
+auditWithRecordInstances = auditTermination True
+
+-- | The audit of definitions whose `decreases` measures have been erased for
+-- code generation. Their termination was judged with the measures present,
+-- by 'auditWithRecordInstances' on the same plan, and cannot be judged again
+-- without them; definedness, preconditions and result contracts are all
+-- checked again here. Verification conditions are discharged before ghost
+-- code is erased in SPARK and Why3 alike. ref:DEC-size-change-termination
+auditErasedWithRecordInstances :: Records.RecordInstances -> M.Map Id (Id,String) -> [ProofConstructorContract] -> [ProofContract]
+  -> [ProofDefinition] -> M.Map Id (Maybe Integer,Maybe Integer) -> Either [Diagnostic] [(Id,Int)]
+auditErasedWithRecordInstances = auditTermination False
+
+auditTermination :: Bool -> Records.RecordInstances -> M.Map Id (Id,String) -> [ProofConstructorContract] -> [ProofContract]
+  -> [ProofDefinition] -> M.Map Id (Maybe Integer,Maybe Integer) -> Either [Diagnostic] [(Id,Int)]
+auditTermination judged instances templates constructors contracts definitions results = do
   let ids = map proofId definitions
       known = S.fromList ids
       signatures = M.fromList [(proofId d,proofArguments d) | d <- definitions]
@@ -219,6 +233,7 @@ auditWithRecordInstances instances templates constructors contracts definitions 
     let roots = M.fromList [(name, (index, False)) | (index,name) <- zip [0..] (proofArguments d)]
         bounded = initialFacts{parameterBounds=M.fromList [(name, domainBounds name (proofArgumentDomains d)) | name <- proofArguments d],
           cycleMembers=M.findWithDefault (S.singleton (proofId d)) (proofId d) cycles,
+          terminationJudged=judged,
           statedMeasures=M.fromList [(proofId other,(proofArguments other,proofMeasures other)) | other <- definitions, not (null (proofMeasures other))]}
         visit facts expression = walk signatures contractTable (proofId d) roots facts
           (normalizeCalls (M.keys roots ++ S.toList (usedVariables facts)) expression)
@@ -262,7 +277,7 @@ auditWithRecordInstances instances templates constructors contracts definitions 
         at = case group of
           d : _ -> proofLocation d
           [] -> Nothing
-    diagnostic at $ case sizeChange sizeChangeLimit edges of
+    diagnostic at $ case if judged then sizeChange sizeChangeLimit edges else Terminates of
       Terminates -> Right ()
       Loops start path -> Left (named start ++ ": recursion could not be shown to end: no argument is kept and made strictly smaller around the call cycle " ++
         unwords (concatMap (\step -> ["->",named step]) path `startingAt` named start) ++
@@ -412,9 +427,12 @@ data Facts = Facts
   , cycleMembers :: S.Set Id
   -- Each definition's arguments and stated `decreases` measures.
   , statedMeasures :: M.Map Id ([Id],[Proof])
+  -- False when the measures were erased after an audit that judged
+  -- termination; see auditErasedWithRecordInstances.
+  , terminationJudged :: Bool
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty Records.emptyInstances M.empty S.empty M.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty Records.emptyInstances M.empty S.empty M.empty True
 
 -- | Only explicit template identities may share a recursion check.
 sameDefinition :: Facts -> Id -> Id -> Bool
@@ -562,7 +580,7 @@ walk signatures contracts self provenance facts expression = case expression of
     if callee /= self && callee `S.notMember` cycleMembers facts then pure nested
     -- A call of the definition itself that makes nothing smaller repeats
     -- for ever whatever the other calls do.
-    else if callee == self && not (or (M.elems relation)) then Left
+    else if terminationJudged facts && callee == self && not (or (M.elems relation)) then Left
       (if M.member self (statedMeasures facts)
         then "the decreases measure was not proved to get smaller and stay at least 0 at a recursive call, and no argument gets smaller there either"
         else "recursive call has no strict structural descent, and no integer argument moves strictly toward a bound")
