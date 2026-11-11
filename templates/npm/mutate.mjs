@@ -4,10 +4,12 @@ import {readManifest} from './component.mjs';
 import {
   cp,
   lstat,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
   realpath,
+  rename,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -285,8 +287,23 @@ export async function mutateProject({
     configRelative,
     ...(target ? ['--target', target] : []),
   ];
+  // The compiler cache is content-addressed, so every run shares one: a
+  // mutant that edits no specification compiles nothing again, and one that
+  // does misses only what its edit reaches. Native results are never shared.
+  const cache = path.join(directory, 'compiler-cache');
+  const copiedCache = path.join(copy, '.lawspec', 'cache');
+  await cp(path.join(root, '.lawspec', 'cache'), cache, {
+    recursive: true,
+  }).catch(error =>
+  {
+    if (error.code !== 'ENOENT') throw error;
+  });
   async function reset()
   {
+    await rename(copiedCache, cache).catch(error =>
+    {
+      if (error.code !== 'ENOENT') throw error;
+    });
     await rm(copy, {recursive: true, force: true});
     await cp(root, copy, {
       recursive: true,
@@ -298,6 +315,41 @@ export async function mutateProject({
           ['cache', 'results'].includes(path.basename(source))
         ),
     });
+    await mkdir(path.dirname(copiedCache), {recursive: true});
+    await rename(cache, copiedCache).catch(error =>
+    {
+      if (error.code !== 'ENOENT') throw error;
+    });
+  }
+  // The generated files a mutant edits, which its test run must not replace.
+  async function editedGenerated(mutant)
+  {
+    const owned = new Set();
+    for (const entry of manifest.targets ?? [])
+    {
+      const targetRoot = path.resolve(copy, entry.root ?? '.');
+      let recorded;
+      try
+      {
+        recorded = JSON.parse(
+          await readFile(
+            path.join(targetRoot, '.lawspec', 'generated.json'),
+            'utf8',
+          ),
+        );
+      }
+      catch (error)
+      {
+        if (error.code !== 'ENOENT') throw error;
+        continue;
+      }
+      for (const name of Object.keys(recorded.files ?? {}))
+        owned.add(path.resolve(targetRoot, name));
+    }
+    return mutant.edits
+      .map(edit => path.resolve(copy, edit.file))
+      .filter(file => owned.has(file))
+      .map(file => path.relative(copy, file));
   }
   try
   {
@@ -327,9 +379,16 @@ export async function mutateProject({
       {
         const mutant = parseMutant(await readFile(file, 'utf8'));
         await reset();
+        const generated = await editedGenerated(mutant);
         await applyMutant(copy, mutant);
         phase = 'errored';
-        const result = await run(copy, args, timeout);
+        const result = await run(
+          copy,
+          generated.length
+            ? [...args, '--mutated-generated', generated.join(',')]
+            : args,
+          timeout,
+        );
         mutations.push({name, ...classifyMutation(result, mutant)});
       }
       catch (error)

@@ -117,6 +117,70 @@ test('passing baseline, kill matrix and workspace preservation use independent c
   assert.equal(failed.mutations.length, 0);
 });
 
+test('copies share the compiler cache and name the generated files a mutant edits', async t =>
+{
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mutation-cache-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  await writeFile(
+    path.join(root, 'lawspec.edn'),
+    configEDN({
+      manifestVersion: 1,
+      languageProfile: '1.0-rc.2',
+      sources: [],
+      targets: [{language: 'python', root: 'out'}],
+    }),
+  );
+  await mkdir(path.join(root, 'mutants'));
+  await mkdir(path.join(root, 'out', '.lawspec'), {recursive: true});
+  await mkdir(path.join(root, '.lawspec', 'cache', 'build'), {recursive: true});
+  await mkdir(path.join(root, '.lawspec', 'results'), {recursive: true});
+  await writeFile(path.join(root, '.lawspec/cache/build/seeded'), 'seed');
+  await writeFile(path.join(root, '.lawspec/results/passed'), 'stale');
+  await writeFile(path.join(root, 'out/generated.py'), 'good');
+  await writeFile(path.join(root, 'out/adapter.py'), 'good');
+  await writeFile(
+    path.join(root, 'out/.lawspec/generated.json'),
+    JSON.stringify({version: 1, files: {'generated.py': 'digest'}}),
+  );
+  for (const name of ['adapter', 'generated'])
+    await writeFile(
+      path.join(root, 'mutants', `${name}.mutant`),
+      `@@ out/${name}.py\n<<<<<<<\ngood\n=======\nbad\n>>>>>>>\n`,
+    );
+  const runs = [];
+  const report = await mutateProject({
+    root,
+    run: async (copy, args) =>
+    {
+      const cache = path.join(copy, '.lawspec/cache/build');
+      runs.push({
+        args,
+        cached: (await readdir(cache)).sort(),
+        results: await readdir(path.join(copy, '.lawspec')),
+      });
+      await writeFile(path.join(cache, `run${runs.length}`), '');
+      return runs.length === 1
+        ? {code: 0, report: [{ok: true, ran: ['unit::one']}]}
+        : {code: 1, report: [{ok: false, failedLaws: ['unit::one']}]};
+    },
+  });
+  assert.equal(report.ok, true);
+  assert.deepEqual(
+    runs.map(row => row.cached),
+    [['seeded'], ['run1', 'seeded'], ['run1', 'run2', 'seeded']],
+  );
+  assert(runs.every(row => !row.results.includes('results')));
+  const named = runs.map(row =>
+  {
+    const index = row.args.indexOf('--mutated-generated');
+    return index < 0 ? null : row.args[index + 1];
+  });
+  assert.deepEqual(named, [null, null, path.join('out', 'generated.py')]);
+  assert.deepEqual(await readdir(path.join(root, '.lawspec/cache/build')), [
+    'seeded',
+  ]);
+});
+
 test('invalid edits never execute and other failures retain distinct outcomes', async t =>
 {
   const root = await mkdtemp(path.join(os.tmpdir(), 'mutation-outcomes-'));

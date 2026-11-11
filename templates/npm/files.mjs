@@ -134,7 +134,7 @@ export async function atomicWrite(file, content, exclusive = false)
 export async function planWrites(
   root,
   artifacts,
-  {manifest = '.lawspec/generated.json'} = {},
+  {manifest = '.lawspec/generated.json', edited = () => false} = {},
 )
 {
   const manifestPath = await safePath(root, manifest);
@@ -194,6 +194,13 @@ export async function planWrites(
     if (artifact.ownership !== 'generated')
       throw new Error('Unknown artifact ownership');
     const recorded = previous.files[artifact.path];
+    // A mutation run tests an owned generated file as its mutant edited it.
+    // The file is neither rewritten nor accepted as the generated content.
+    if (old !== null && recorded && edited(file))
+    {
+      next[artifact.path] = recorded;
+      continue;
+    }
     if (old !== null && (!recorded || digest(old) !== recorded))
       throw new Error(
         `Refusing to overwrite unowned or edited generated file: ${artifact.path}`,

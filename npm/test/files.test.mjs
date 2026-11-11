@@ -37,6 +37,29 @@ test('edited generated files and unowned identical files are protected', async t
   await writeFile(path.join(p, 'tests/test_law.py'), 'generated\n');
   await assert.rejects(planWrites(p, artifacts), /unowned/);
 });
+test('a mutation run keeps an edited owned file without accepting it', async t =>
+{
+  const p = await project(t);
+  await applyWrites([await planWrites(p, artifacts)]);
+  const before = await readFile(
+    path.join(p, '.lawspec/generated.json'),
+    'utf8',
+  );
+  const file = path.join(p, 'tests/test_law.py');
+  await writeFile(file, 'mutated\n');
+  const edited = candidate => candidate === file;
+  const plan = await planWrites(p, artifacts, {edited});
+  assert.equal(plan.changes.length, 0);
+  assert.equal(await readFile(file, 'utf8'), 'mutated\n');
+  await applyWrites([plan]);
+  assert.equal(
+    await readFile(path.join(p, '.lawspec/generated.json'), 'utf8'),
+    before,
+  );
+  // Without the ownership record the file is not the compiler's to leave.
+  await rm(path.join(p, '.lawspec'), {recursive: true});
+  await assert.rejects(planWrites(p, artifacts, {edited}), /unowned/);
+});
 test('stale owned tests are removed but user adapters remain', async t =>
 {
   const p = await project(t);

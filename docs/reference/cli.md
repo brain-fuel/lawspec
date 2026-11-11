@@ -556,6 +556,16 @@ separate temporary project copies, cleaned afterward. Files outside the project
 and external symbolic links are rejected. Native application code still has its
 normal host privileges; a temporary copy is not a process sandbox.
 
+The copies share one compiler cache, seeded from the project's
+`.lawspec/cache`, so a mutant that edits only native code compiles nothing
+again and one that edits a specification recompiles only what the edit reaches.
+Native test results are never reused between runs.
+
+A mutant may edit a generated file, such as the generated code of a checked
+definition. That run tests the file as edited: it is neither regenerated nor
+accepted as the generated content, and every other generated file must still
+be up to date.
+
 `--mutation-timeout 120000` sets a positive per-run timeout in milliseconds.
 Reports distinguish `killed`, `surviving`, `invalid`, `errored`, `timed-out` and
 `unsupported`. A compiler rejection is invalid, not a law kill. Unexpected

@@ -84,6 +84,7 @@ for (let i = 0; i < args.length; i++)
   if (
     [
       '--mutation-timeout',
+      '--mutated-generated',
       '--port',
       '--languages',
       '--target',
@@ -722,6 +723,17 @@ async function buildDigest()
 // harness plane chooses which: --tag and --exclude-tag select laws by their
 // harness tags, and a skipped law runs nothing. A law whose last run failed
 // runs first, and its failing inputs are replayed first (.lawspec/failures).
+// `lawspec mutate` names the generated files its mutant edited, relative to
+// the working directory. A test run leaves exactly those files as edited.
+function mutatedGenerated(file)
+{
+  const named = (options['mutated-generated'] ?? '')
+    .split(',')
+    .filter(Boolean)
+    .map(name => path.resolve(name));
+  return named.includes(path.resolve(file));
+}
+
 async function runTests(compiler, input, selected, roots, config)
 {
   // Recorded values live beside lawspec.edn, under recorded/<unit>/<name>.
@@ -766,7 +778,9 @@ async function runTests(compiler, input, selected, roots, config)
       });
       continue;
     }
-    const pending = await planWrites(root, planned.files);
+    const pending = await planWrites(root, planned.files, {
+      edited: mutatedGenerated,
+    });
     if (pending.changes.length)
       throw new Error(
         `${target.language}: generated files are out of date; run lawspec generate${options.minify ? ' --minify' : ''}`,

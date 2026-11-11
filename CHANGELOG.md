@@ -30,6 +30,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   past two minutes is admitted in under a second.
 - Totality diagnostics are reported for every rejected definition of a unit,
   not only the first, so one slow or failing definition does not hide another.
+- `lawspec mutate` keeps one compiler cache across its copies, seeded from
+  the project's `.lawspec/cache`. Each mutant used to compile the whole
+  project again from nothing.
+- `lawspec mutate` can judge a mutant that edits an owned generated file,
+  such as a checked definition's generated code. The run tests the file as
+  edited; it used to stop with "unowned or edited generated file".
 - Go: a bound handler's bridge is generated only in packages that use the
   ability: its owner, and units whose laws, declarations or spec handlers need
   it. A unit that only imported the declaring unit received
