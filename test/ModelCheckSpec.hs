@@ -186,10 +186,10 @@ test_modelChecking = describe "model checking" $ do
       diagnostics response `shouldSatisfy` any (isInfixOf "a run breaks it")
     it "shows a run that holds a some-run law" $
       row "an order can be fulfilled" response `shouldSatisfy` maybe False (\(s, why) -> s == "proved" && "validate, authorize, capture, fulfil" `isInfixOf` why)
-  -- apache/pekko-samples' dining hakkers, as the pekko-samples/fsm
-  -- acceptance suite states them. ref:DEC-pekko-sample-suites
+  -- apache/pekko-samples' dining hakkers, as a table of five, restated.
+  -- ref:DEC-model-checker-reductions ref:DEC-model-fairness-per-value
   describe "the dining hakkers of pekko-sample-fsm-java" $ do
-    response <- runIO (check <$> readFile "acceptance/pekko-samples/fsm/hakkers.lawspec")
+    response <- runIO (check <$> readFile "test/fixtures/dining-table.lawspec")
     it "proves mutual exclusion and deadlock freedom over every reachable table of five" $ do
       row "neighbours never eat at once" response `shouldBe` Just ("proved", "every run holds it: all 9864 states explored")
       row "no deadlock" response `shouldBe` Just ("proved", "every run holds it: all 9864 states explored")
@@ -197,7 +197,7 @@ test_modelChecking = describe "model checking" $ do
     it "takes only the steps a hakker can take: its references are partial" $
       row "a hakker can eat" response `shouldSatisfy` maybe False (\(_, why) -> not ("hungry Ghosh, hungry Ghosh" `isInfixOf` why))
     it "refutes that every hungry hakker eats under strong fairness for each hakker's steps, with the run" $ do
-      source <- readFile "acceptance/pekko-samples/fsm/hakkers.lawspec"
+      source <- readFile "test/fixtures/dining-table.lawspec"
       let starving = replace "law \"|a hakker can eat|" (unlines
             [ "law \"|every hungry hakker eats| in model table assuming strong fairness for hungry, leftAnswers, rightAnswers, full is"
             , "  definition: every run holds whenever ghoshHungry, eventually ghoshEats end definition"
