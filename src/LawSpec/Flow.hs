@@ -440,6 +440,14 @@ rewrite at flows sequential expression = case expression of
     (xs', bs) <- rewrite at flows sequential xs
     p' <- shadowed [n] (rewrite at flows False p)
     pure (AllElementsExpr xs' n p', bs)
+  MapElementsExpr xs n p -> do
+    (xs', bs) <- rewrite at flows sequential xs
+    p' <- shadowed [n] (rewrite at flows False p)
+    pure (MapElementsExpr xs' n p', bs)
+  FilterElementsExpr xs n p -> do
+    (xs', bs) <- rewrite at flows sequential xs
+    p' <- shadowed [n] (rewrite at flows False p)
+    pure (FilterElementsExpr xs' n p', bs)
   _ -> pure (expression, [])
   where
     two k a b = do

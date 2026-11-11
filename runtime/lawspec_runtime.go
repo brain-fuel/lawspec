@@ -405,6 +405,52 @@ func lsAllElements(value LawSpecValue, predicate func(LawSpecValue) LawSpecValue
 	return lsBool(true)
 }
 
+// lsMapElements gives the list of the body's value for each element.
+func lsMapElements(t string, value LawSpecValue, body func(LawSpecValue) LawSpecValue) LawSpecValue {
+	values, ok := value.Data.([]LawSpecValue)
+	if !ok {
+		panic("expected List in map")
+	}
+	index := 0
+	defer func() {
+		if failure := recover(); failure != nil {
+			if raised, ok := failure.(*LawSpecFailure); ok {
+				panic(raised)
+			}
+			panic(fmt.Sprintf("List element %d: %v", index, failure))
+		}
+	}()
+	results := make([]LawSpecValue, len(values))
+	for index = range values {
+		results[index] = body(values[index])
+	}
+	return LawSpecValue{t, results}
+}
+
+// lsFilterElements gives the elements the predicate accepts, in order.
+func lsFilterElements(value LawSpecValue, predicate func(LawSpecValue) LawSpecValue) LawSpecValue {
+	values, ok := value.Data.([]LawSpecValue)
+	if !ok {
+		panic("expected List in filter")
+	}
+	index := 0
+	defer func() {
+		if failure := recover(); failure != nil {
+			if raised, ok := failure.(*LawSpecFailure); ok {
+				panic(raised)
+			}
+			panic(fmt.Sprintf("List element %d: %v", index, failure))
+		}
+	}()
+	kept := []LawSpecValue{}
+	for index = range values {
+		if lsTruth(predicate(values[index])) {
+			kept = append(kept, values[index])
+		}
+	}
+	return LawSpecValue{value.Type, kept}
+}
+
 func lsSearchElements(universal bool, value LawSpecValue, predicate func(LawSpecValue) LawSpecValue) LawSpecValue {
 	decisive := int64(1)
 	if universal {

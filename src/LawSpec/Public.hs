@@ -86,6 +86,12 @@ viewIn names e = object ["type" .= typeView (C.expressionType e),"origin" .= ori
     C.AllElements value binder predicate -> object
       ["kind" .= str "allElements", "value" .= expr value, "binder" .= binderView binder,
        "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
+    C.MapElements value binder predicate -> object
+      ["kind" .= str "mapElements", "value" .= expr value, "binder" .= binderView binder,
+       "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
+    C.FilterElements value binder predicate -> object
+      ["kind" .= str "filterElements", "value" .= expr value, "binder" .= binderView binder,
+       "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
     C.SearchElements universal value binder predicate -> object
       ["kind" .= str "searchElements", "universal" .= universal, "value" .= expr value, "binder" .= binderView binder,
        "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
@@ -135,6 +141,10 @@ textIn names e = case C.expressionNode e of
      " then " ++ textIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch)
       | branch <- cases] ++ " end case"
   C.AllElements value binder predicate -> "allElements (" ++ go value ++ ") (" ++ C.binderName binder ++
+    " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
+  C.MapElements value binder predicate -> "mapElements (" ++ go value ++ ") (" ++ C.binderName binder ++
+    " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
+  C.FilterElements value binder predicate -> "filterElements (" ++ go value ++ ") (" ++ C.binderName binder ++
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
   C.SearchElements universal value binder predicate -> "searchElements " ++ show universal ++ " (" ++ go value ++ ") (" ++ C.binderName binder ++
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"

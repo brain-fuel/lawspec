@@ -71,6 +71,8 @@ witnessPlan plan@Plan{..}
         in e { expressionNode = Construct tag (args' ++ map text keys) }
       Match scrutinee cases -> e { expressionNode = Match (expr scrutinee) [c { caseBody = expr (caseBody c) } | c <- cases] }
       AllElements xs binder predicate -> e { expressionNode = AllElements (expr xs) binder (expr predicate) }
+      MapElements xs binder predicate -> e { expressionNode = MapElements (expr xs) binder (expr predicate) }
+      FilterElements xs binder predicate -> e { expressionNode = FilterElements (expr xs) binder (expr predicate) }
       AllPayloads x predicates -> e { expressionNode = AllPayloads (expr x) [(b, expr p) | (b, p) <- predicates] }
       ExternalCall name args -> e { expressionNode = ExternalCall name (map expr args) }
       Binary op evidence a b -> e { expressionNode = Binary op evidence (expr a) (expr b) }

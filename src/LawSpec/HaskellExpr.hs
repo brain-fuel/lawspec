@@ -152,6 +152,14 @@ renderExpressionWith declarations Context{..} = render
         argument <- render value
         body <- render predicate
         pure (H.call "LS.allElements" [argument, lam binder body])
+      MapElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (H.call "LS.mapElements" [argument, lam binder body])
+      FilterElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (H.call "LS.filterElements" [argument, lam binder body])
       SearchElements universal value binder predicate -> do
         argument <- render value
         body <- render predicate

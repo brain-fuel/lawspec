@@ -200,6 +200,43 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "    and prelude.lines \"\" = [] and prelude.lines \"\\n\" = [\"\"]"
         , "end definition end law" ]
         `shouldSatisfy` isRight
+    it "maps a function over a list and keeps the accepted elements" $
+      evaluated
+        [ "function double (n :: Integer) -> Integer is n * 2 end function"
+        , "function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function"
+        , "function scaled (factor :: Integer) (n :: Integer) -> Integer is factor * n end function"
+        , "law \"|mapping| is definition :"
+        , "  prelude.map double [1, 2, 3] = [2, 4, 6] and prelude.map (scaled 3) [1, 2] = [3, 6]"
+        , "    and prelude.filter isEven [1, 2, 3, 4] = [2, 4] and prelude.filter isEven [1] = []"
+        , "    and prelude.map prelude.length (prelude.words \"one three\") = [3, 5]"
+        , "    and (double <$> [4]) = [8]"
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+    it "keeps map over an Either as the map of its success value" $
+      evaluated
+        [ "function double (n :: Integer) -> Integer is n * 2 end function"
+        , "function half (n :: Integer) -> Either Text Integer is"
+        , "  if prelude.rem n 2 = 0 then Right (prelude.quot n 2) else Left \"odd\" end if end function"
+        , "law \"|either| is definition :"
+        , "  prelude.map double (half 4) = Right 4 and prelude.map double (half 3) = Left \"odd\""
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+    it "admits a definition that maps itself over the children of its argument" $
+      evaluated
+        [ "type Item is a record{ label :: Text, children :: List Item } end type"
+        , "function total (xs :: List Integer) -> Integer is"
+        , "  first matching case of xs: when Nil then 0 when Cons x rest then x + total rest end case end function"
+        , "function size (item :: Item) -> Integer is"
+        , "  first matching case of item: when record{children = children} then 1 + total (prelude.map size children) end case end function"
+        , "law \"|size| is definition :"
+        , "  size (Item record{label = \"a\", children = [Item record{label = \"b\", children = []}]}) = 2"
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+    it "refutes a filter that keeps a rejected element" $
+      evaluated
+        [ "function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function"
+        , "law \"|wrong| is definition : prelude.filter isEven [1, 2] = [1, 2] end definition end law" ]
+        `shouldSatisfy` isLeft
     it "joins the pieces of a split back into the text" $
       evaluated
         [ "law \"|inverse| is definition : for all (separator :: Text) (text :: Text) =>"

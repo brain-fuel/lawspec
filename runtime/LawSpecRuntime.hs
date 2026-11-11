@@ -498,6 +498,14 @@ allElements :: Scalar -> (Scalar -> Scalar) -> Scalar
 allElements (SList values) predicate = SBool (all (truth . predicate) values)
 allElements _ _ = error "expected List in element predicate"
 
+mapElements :: Scalar -> (Scalar -> Scalar) -> Scalar
+mapElements (SList values) body = SList (map body values)
+mapElements _ _ = error "expected List in map"
+
+filterElements :: Scalar -> (Scalar -> Scalar) -> Scalar
+filterElements (SList values) predicate = SList (filter (truth . predicate) values)
+filterElements _ _ = error "expected List in filter"
+
 -- | Ordered three-valued search. Unknown is retained unless an item decides
 -- the aggregate; a failed bounded inner search never proves absence.
 searchElements :: Bool -> Scalar -> (Scalar -> Scalar) -> Scalar

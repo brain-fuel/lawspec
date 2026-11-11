@@ -1729,6 +1729,34 @@ def construct(tag, fields):
     raise ValueError("invalid constructor or arity: " + tag)
 
 
+def map_elements(value, body):
+    if not isinstance(value, list):
+        raise TypeError("expected List in map")
+    results = []
+    for index, item in enumerate(value):
+        try:
+            results.append(body(item))
+        except Exception as error:
+            raise ValueError(f"List element {index}: {error}") from error
+    return results
+
+
+def filter_elements(value, predicate):
+    if not isinstance(value, list):
+        raise TypeError("expected List in filter")
+    kept = []
+    for index, item in enumerate(value):
+        try:
+            accepted = predicate(item)
+            if type(accepted) is not bool:
+                raise TypeError("element predicate must return Bool")
+            if accepted:
+                kept.append(item)
+        except Exception as error:
+            raise ValueError(f"List element {index}: {error}") from error
+    return kept
+
+
 def all_elements(value, predicate):
     if not isinstance(value, list):
         raise TypeError("expected List in element predicate")

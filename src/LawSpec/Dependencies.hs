@@ -347,6 +347,8 @@ exprRefs owners e = typeRefs (expressionType e) ++ case expressionNode e of
   Match scrutinee cases -> go scrutinee ++
     concat [ owner (caseConstructor c) ++ concatMap (typeRefs . binderType) (caseBinders c) ++ go (caseBody c) | c <- cases ]
   AllElements list binder body -> go list ++ typeRefs (binderType binder) ++ go body
+  MapElements list binder body -> go list ++ typeRefs (binderType binder) ++ go body
+  FilterElements list binder body -> go list ++ typeRefs (binderType binder) ++ go body
   SearchElements _ list binder body -> go list ++ typeRefs (binderType binder) ++ go body
   Project c _ value -> owner c ++ go value
   Update c _ value field -> owner c ++ go value ++ go field

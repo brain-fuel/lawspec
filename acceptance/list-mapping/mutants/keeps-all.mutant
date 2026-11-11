@@ -1,0 +1,7 @@
+expect: only positive elements are kept
+@@ examples/specs/list_mapping.lawspec
+<<<<<<<
+  prelude.filter isPositive xs
+=======
+  xs
+>>>>>>>

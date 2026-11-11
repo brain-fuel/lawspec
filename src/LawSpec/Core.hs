@@ -152,6 +152,10 @@ data Node
   | Construct Id [Expr]
   | Match Expr [MatchCase]
   | AllElements Expr Binder Expr
+  -- | A list of the body's value for each element, in order; and the
+  -- elements the Bool body accepts, in order. ref:DEC-list-map-filter
+  | MapElements Expr Binder Expr
+  | FilterElements Expr Binder Expr
   -- Execution-only finite search. The body returns -1 (false), 0 (unknown)
   -- or 1 (true); each item is evaluated once, stopping at a decisive result.
   | SearchElements Bool Expr Binder Expr
@@ -613,6 +617,8 @@ children :: Expr -> [Expr]
 children Expr{expressionNode=node} = case node of
   Match value cases -> value : map caseBody cases
   AllElements value _ predicate -> [value,predicate]
+  MapElements value _ body -> [value,body]
+  FilterElements value _ predicate -> [value,predicate]
   SearchElements _ value _ predicate -> [value,predicate]
   AllPayloads value predicates -> value : map snd predicates
   Construct _ es -> es
@@ -644,6 +650,8 @@ mapChildren f e = e { expressionNode = case expressionNode e of
   Construct n args -> Construct n (map f args)
   Match value cases -> Match (f value) [c { caseBody = f (caseBody c) } | c <- cases]
   AllElements value binder body -> AllElements (f value) binder (f body)
+  MapElements value binder body -> MapElements (f value) binder (f body)
+  FilterElements value binder body -> FilterElements (f value) binder (f body)
   SearchElements universal value binder body -> SearchElements universal (f value) binder (f body)
   AllPayloads value predicates -> AllPayloads (f value) [(b, f x) | (b, x) <- predicates]
   ExternalCall n args -> ExternalCall n (map f args)
@@ -713,6 +721,8 @@ traverseChildren f e = (\node -> e { expressionNode = node }) <$> case expressio
   Construct n args -> Construct n <$> traverse f args
   Match value cases -> Match <$> f value <*> traverse (\c -> (\b -> c { caseBody = b }) <$> f (caseBody c)) cases
   AllElements value binder body -> AllElements <$> f value <*> pure binder <*> f body
+  MapElements value binder body -> MapElements <$> f value <*> pure binder <*> f body
+  FilterElements value binder body -> FilterElements <$> f value <*> pure binder <*> f body
   SearchElements universal value binder body -> SearchElements universal <$> f value <*> pure binder <*> f body
   AllPayloads value predicates -> AllPayloads <$> f value <*> traverse (\(b, x) -> (,) b <$> f x) predicates
   ExternalCall n args -> ExternalCall n <$> traverse f args
@@ -753,6 +763,10 @@ performed e = case expressionNode e of
 freeBinders :: Expr -> [Id]
 freeBinders e = case expressionNode e of
   AllElements value binder predicate -> freeBinders value ++
+    filter (/= binderId binder) (freeBinders predicate)
+  MapElements value binder body -> freeBinders value ++
+    filter (/= binderId binder) (freeBinders body)
+  FilterElements value binder predicate -> freeBinders value ++
     filter (/= binderId binder) (freeBinders predicate)
   SearchElements _ value binder predicate -> freeBinders value ++
     filter (/= binderId binder) (freeBinders predicate)

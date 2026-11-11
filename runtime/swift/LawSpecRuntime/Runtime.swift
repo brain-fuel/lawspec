@@ -49,6 +49,22 @@ public enum Runtime {
     return .bool(true)
   }
 
+  /// The list of the body's value for each element, in order.
+  public static func mapElements(_ value: Value, _ body: (Value) throws -> Value) throws
+    -> Value
+  {
+    guard case .list(let items) = value else { throw Fail.with("ListRequired") }
+    return .list(try items.map(body))
+  }
+
+  /// The elements the predicate accepts, in order.
+  public static func filterElements(_ value: Value, _ predicate: (Value) throws -> Value) throws
+    -> Value
+  {
+    guard case .list(let items) = value else { throw Fail.with("ListRequired") }
+    return .list(try items.filter { try truth(predicate($0)) })
+  }
+
   /// Three-valued finite search, visiting every needed item exactly once.
   public static func searchElements(
     _ universal: Bool, _ value: Value, _ predicate: (Value) throws -> Value

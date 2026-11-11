@@ -159,6 +159,8 @@ renderExpressionWithContextAt atBody declarations width reference key outerLocal
     boundSet = Set.fromList boundIds
     collect term = (case expressionNode term of
       AllElements _ binder _ -> [binder]
+      MapElements _ binder _ -> [binder]
+      FilterElements _ binder _ -> [binder]
       SearchElements _ _ binder _ -> [binder]
       AllPayloads _ predicates -> map fst predicates
       Match _ cases -> concatMap caseBinders cases
@@ -212,6 +214,16 @@ renderExpressionWithContextAt atBody declarations width reference key outerLocal
         argument <- render value
         body <- renderBody predicate
         pure (runtime "all_elements" [argument,
+          lambdaExpression [D.text (local (binderId binder))] body])
+      MapElements value binder predicate -> do
+        argument <- render value
+        body <- renderBody predicate
+        pure (runtime "map_elements" [argument,
+          lambdaExpression [D.text (local (binderId binder))] body])
+      FilterElements value binder predicate -> do
+        argument <- render value
+        body <- renderBody predicate
+        pure (runtime "filter_elements" [argument,
           lambdaExpression [D.text (local (binderId binder))] body])
       SearchElements universal value binder predicate -> do
         argument <- render value

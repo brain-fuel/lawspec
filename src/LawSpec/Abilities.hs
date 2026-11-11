@@ -756,6 +756,8 @@ splitHandled e = case e of
         parts = [(MatchBranch tag names b', bs) | MatchBranch tag names body <- branches, let (b', bs) = splitHandled body]
     in (MatchExpr o (map fst parts), rs ++ concatMap snd parts)
   AllElementsExpr v b p -> let (o, rs) = splitHandled v; (p', ps) = splitHandled p in (AllElementsExpr o b p', rs ++ ps)
+  MapElementsExpr v b p -> let (o, rs) = splitHandled v; (p', ps) = splitHandled p in (MapElementsExpr o b p', rs ++ ps)
+  FilterElementsExpr v b p -> let (o, rs) = splitHandled v; (p', ps) = splitHandled p in (FilterElementsExpr o b p', rs ++ ps)
   _ -> (e, [])
   where
     both k a b = let (oa, ra) = splitHandled a; (ob, rb) = splitHandled b in (k oa ob, ra ++ rb)

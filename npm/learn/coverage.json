@@ -2901,6 +2901,15 @@
       "execution": "deferred"
     },
     {
+      "id": "prelude:filter",
+      "kind": "prelude",
+      "name": "filter",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "prelude:fromEither",
       "kind": "prelude",
       "name": "fromEither",
@@ -6951,27 +6960,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:103: Case folding and substring predicates",
+      "id": "reference:docs/reference/language/sequences.md:105: Mapping and filtering a list",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:103: Case folding and substring predicates",
+      "name": "docs/reference/language/sequences.md:105: Mapping and filtering a list",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:133: Limits",
+      "id": "reference:docs/reference/language/sequences.md:142: Case folding and substring predicates",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:133: Limits",
+      "name": "docs/reference/language/sequences.md:142: Case folding and substring predicates",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:65: Pieces of a text",
+      "id": "reference:docs/reference/language/sequences.md:172: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:65: Pieces of a text",
+      "name": "docs/reference/language/sequences.md:172: Limits",
+      "source": "docs/reference/language/sequences.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/sequences.md:67: Pieces of a text",
+      "kind": "reference",
+      "name": "docs/reference/language/sequences.md:67: Pieces of a text",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

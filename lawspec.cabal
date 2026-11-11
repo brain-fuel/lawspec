@@ -277,6 +277,7 @@ extra-source-files:
     examples/specs/keywords.lawspec
     examples/specs/limits.lawspec
     examples/specs/list_contracts.lawspec
+    examples/specs/list_mapping.lawspec
     examples/specs/list_refinements.lawspec
     examples/specs/lists.lawspec
     examples/specs/matchers.lawspec

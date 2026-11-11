@@ -38,6 +38,8 @@ renderExpressionWithConstruction width reference key construct initialSchema sym
   where
     binders = nubBy (\a b -> C.binderId a == C.binderId b) [binder | term <- terms root, binder <- case C.expressionNode term of
       C.AllElements _ b _ -> [b]
+      C.MapElements _ b _ -> [b]
+      C.FilterElements _ b _ -> [b]
       C.SearchElements _ _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
@@ -85,6 +87,14 @@ renderExpressionWithConstruction width reference key construct initialSchema sym
             argument <- render value
             body <- render predicate
             pure (E.remote "lists" "all" [E.lambda [bound body binder] body,argument])
+          C.MapElements value binder predicate -> do
+            argument <- render value
+            body <- render predicate
+            pure (E.remote "lists" "map" [E.lambda [bound body binder] body,argument])
+          C.FilterElements value binder predicate -> do
+            argument <- render value
+            body <- render predicate
+            pure (E.remote "lists" "filter" [E.lambda [bound body binder] body,argument])
           C.SearchElements universal value binder predicate -> do
             argument <- render value
             body <- render predicate

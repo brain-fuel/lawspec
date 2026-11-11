@@ -83,6 +83,10 @@ closedCheck definitions (AllPayloadsExpr value predicates) = closedCheck definit
   (\(binder,body) -> closedCheck definitions (replaceExprVars [(binder,BoolLit False)] body)) predicates
 closedCheck definitions (AllElementsExpr value binder predicate) = closedCheck definitions value &&
   closedCheck definitions (replaceExprVars [(binder,BoolLit False)] predicate)
+closedCheck definitions (MapElementsExpr value binder predicate) = closedCheck definitions value &&
+  closedCheck definitions (replaceExprVars [(binder,BoolLit False)] predicate)
+closedCheck definitions (FilterElementsExpr value binder predicate) = closedCheck definitions value &&
+  closedCheck definitions (replaceExprVars [(binder,BoolLit False)] predicate)
 closedCheck definitions (MatchExpr value branches) = closedCheck definitions value && all
   (\(MatchBranch _ names body) -> closedCheck definitions (replaceExprVars [(n, BoolLit False) | n <- names] body)) branches
 closedCheck definitions (ListLit xs) = all (closedCheck definitions) xs
@@ -287,6 +291,8 @@ checkRegexes u = do
       RecordLit fields -> map snd fields
       MatchExpr v branches -> v : [b | MatchBranch _ _ b <- branches]
       AllElementsExpr v _ p -> [v, p]
+      MapElementsExpr v _ p -> [v, p]
+      FilterElementsExpr v _ p -> [v, p]
       AllPayloadsExpr v ps -> v : map snd ps
       Binary _ a b -> [a, b]
       Unary _ a -> [a]
@@ -835,6 +841,8 @@ resolveExpr (ConstructLit name fields) = ConstructLit name <$> mapM resolveExpr 
 resolveExpr (RecordLit fields) = RecordLit <$> mapM (\(label,value) -> (,) label <$> resolveExpr value) fields
 resolveExpr (AllPayloadsExpr value predicates) = AllPayloadsExpr <$> resolveExpr value <*> mapM (\(binder,body) -> (,) binder <$> resolveExpr body) predicates
 resolveExpr (AllElementsExpr value binder predicate) = AllElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
+resolveExpr (MapElementsExpr value binder predicate) = MapElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
+resolveExpr (FilterElementsExpr value binder predicate) = FilterElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
 resolveExpr (MatchExpr value branches) = MatchExpr <$> resolveExpr value <*> mapM
   (\(MatchBranch tag names body) -> MatchBranch tag names <$> resolveExpr body) branches
 resolveExpr (ListLit xs) = ListLit <$> mapM resolveExpr xs
@@ -988,6 +996,8 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
       ListLit fields -> concatMap annotations fields
       AllPayloadsExpr value predicates -> annotations value ++ concatMap (annotations . snd) predicates
       AllElementsExpr value _ predicate -> annotations value ++ annotations predicate
+      MapElementsExpr value _ predicate -> annotations value ++ annotations predicate
+      FilterElementsExpr value _ predicate -> annotations value ++ annotations predicate
       MatchExpr value branches -> annotations value ++ concat
         [annotations body | MatchBranch _ _ body <- branches]
       _ -> []

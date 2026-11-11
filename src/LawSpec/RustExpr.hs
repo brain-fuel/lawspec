@@ -252,6 +252,20 @@ renderWith declarations bits schema typeReference typeKey callees = render
         pure (L.Block [L.Let "values" argument]
           (Just (tried (L.call "ls::all_elements" [L.atom "values",
             L.closure ("|" ++ unusedAs name (L.expr body) ++ "|") (L.Block [L.Let "accepted" body] (Just (L.call "Ok" [L.atom "accepted"])))]))))
+      MapElements value binder predicate -> do
+        argument <- render names value
+        let name = boundLocal names binder
+        body <- render ((binderId binder,name):names) predicate
+        pure (L.Block [L.Let "values" argument]
+          (Just (tried (L.call "ls::map_elements" [L.atom "values",
+            L.closure ("|" ++ unusedAs name (L.expr body) ++ "|") (L.Block [L.Let "accepted" body] (Just (L.call "Ok" [L.atom "accepted"])))]))))
+      FilterElements value binder predicate -> do
+        argument <- render names value
+        let name = boundLocal names binder
+        body <- render ((binderId binder,name):names) predicate
+        pure (L.Block [L.Let "values" argument]
+          (Just (tried (L.call "ls::filter_elements" [L.atom "values",
+            L.closure ("|" ++ unusedAs name (L.expr body) ++ "|") (L.Block [L.Let "accepted" body] (Just (L.call "Ok" [L.atom "accepted"])))]))))
       SearchElements universal value binder predicate -> do
         argument <- render names value
         let name = boundLocal names binder

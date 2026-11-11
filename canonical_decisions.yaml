@@ -1456,6 +1456,33 @@ DEC-size-change-termination:
   decided: 0.33.0
   refs: [idris2-size-change, lean-termination, spark-subprogram-variant, why3-variant, rocq-fixpoint, REQ-honest-evidence]
 
+DEC-list-map-filter:
+  status: decided
+  question: How does a checked definition map a function over a list or keep the elements a predicate accepts, and what does map mean when Either already has one?
+  answer: |
+    Two Core nodes beside the element predicate: MapElements gives the list of
+    a body's value for each element in order, FilterElements the elements a
+    Bool body accepts in order. Both bind one element, as AllElements does,
+    and take the same function forms as any and all: a definition, a
+    built-in, or either partly applied, with the given arguments evaluated
+    once before any element. Every target runs them natively in its runtime.
+    There is one map. Its operand's type decides its meaning after inference:
+    over a List it is MapElements; otherwise it is the existing map of an
+    Either's success value, lowered to the same match as before. This is the
+    behaviour of fmap in Haskell's Functor, Functor.map in Lean 4 and map in
+    Idris 2's Functor interface, restricted to the two instances LawSpec
+    has; a program cannot yet abstract over the type constructor itself.
+    Termination: the body is audited with the element bound as a part of the
+    list, so a definition may map itself over the children of its argument.
+    A proof treats a map or filter as an atom of its list and body, with the
+    body's definedness checked for every element; SMT reports it as
+    unsupported rather than introducing an uninterpreted function. The typed
+    fast-path backends do not implement the nodes yet: a definition that uses
+    one runs on the portable path of the same target.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [haskell-functor, lean-functor, idris2-functor, REQ-honest-evidence]
+
 DEC-text-pieces:
   status: decided
   question: How does a checked definition divide a text into pieces, and what counts as white space?

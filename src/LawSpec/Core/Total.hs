@@ -294,10 +294,11 @@ proofExpression schema bits = proof
           Constructor name _ -> T.payloadPredicate schema
             (Payload.Applied name (map Payload.Parameter [0 .. length callbacks - 1])) callbacks (proof value)
           _ -> T.Conversion False (T.Sequence [])
-      AllElements value binder predicate -> T.AllElements (proof value) (binderId binder)
-        (T.TypedDomain (case binderType binder of
-          Constructor name [] -> T.integerAssumptions bits (binderId binder) name
-          _ -> []) (proof predicate))
+      -- A map or filter is an atom of its list and body; the body is checked
+      -- for every element, as a predicate over the elements is.
+      MapElements value binder body -> T.Opaque "map-elements" [elements value binder body]
+      FilterElements value binder predicate -> T.Opaque "filter-elements" [elements value binder predicate]
+      AllElements value binder predicate -> elements value binder predicate
       -- Search is introduced only in an execution plan. It is never an
       -- admission shortcut or an uninterpreted replacement in a proof goal.
       SearchElements {} -> T.Absurd "execution-only finite search"
@@ -344,6 +345,10 @@ proofExpression schema bits = proof
       Helper IsPresent [value] -> T.IsPresent (proof value)
       Helper PresentValue [value] -> T.PresentValue (proof value)
       _ -> T.Sequence (map proof (children expression))
+    elements value binder body = T.AllElements (proof value) (binderId binder)
+      (T.TypedDomain (case binderType binder of
+        Constructor name [] -> T.integerAssumptions bits (binderId binder) name
+        _ -> []) (proof body))
     exact (Constructor name []) = isExact name
     exact _ = False
     performs value = case expressionNode value of

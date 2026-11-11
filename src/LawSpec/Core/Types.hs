@@ -359,6 +359,8 @@ instantiateExpression substitutions = go
       Match value branches -> Match (go value)
         [branch{caseBinders=map binder (caseBinders branch),caseBody=go (caseBody branch)} | branch <- branches]
       AllElements value field predicate -> AllElements (go value) (binder field) (go predicate)
+      MapElements value field predicate -> MapElements (go value) (binder field) (go predicate)
+      FilterElements value field predicate -> FilterElements (go value) (binder field) (go predicate)
       SearchElements universal value field predicate -> SearchElements universal (go value) (binder field) (go predicate)
       AllPayloads value predicates -> AllPayloads (go value)
         [(binder field,go predicate) | (field,predicate) <- predicates]

@@ -983,6 +983,8 @@ nodeName :: Node -> String
 nodeName node = case node of
   Helper builtin _ -> builtinName builtin
   AllElements {} -> "every element"
+  MapElements {} -> "map over a list"
+  FilterElements {} -> "filter of a list"
   AllPayloads {} -> "every payload"
   Perform operation _ -> "operation " ++ operationName operation
   Handle {} -> "handled ability"

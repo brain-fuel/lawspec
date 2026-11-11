@@ -639,7 +639,7 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
         "local" -> Just [(str "id" node, str "text" expression) | not (S.member (str "id" node) bound)]
         "let" -> (++) <$> visit (field "value" node) <*> children (scoped [field "binder" node]) (field "body" node)
         "match" -> (++) <$> visit (field "value" node) <*> (concat <$> traverse (\b -> children (scoped (arr (field "binders" b))) (field "body" b)) (arr (field "cases" node)))
-        "allElements" -> (++) <$> visit (field "value" node) <*> children (scoped [field "binder" node]) (field "predicate" node)
+        k | k `elem` ["allElements", "mapElements", "filterElements"] -> (++) <$> visit (field "value" node) <*> children (scoped [field "binder" node]) (field "predicate" node)
         "allPayloads" -> (++) <$> visit (field "value" node) <*> (concat <$> traverse (\q -> children (scoped [field "binder" q]) (field "predicate" q)) (arr (field "predicates" node)))
         "field" -> visit (field "value" node)
         "update" -> (++) <$> visit (field "value" node) <*> visit (field "field" node)
@@ -1017,6 +1017,16 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
         value <- go (field "value" node)
         predicate <- goIn inner (field "predicate" node)
         Just (plain ("every " <> name <> " in (" <> rText value <> ") satisfies (" <> rText predicate <> ")") False)
+      "mapElements" -> do
+        let (name, inner) = bind (field "binder" node) scope reserved
+        value <- go (field "value" node)
+        body <- goIn inner (field "predicate" node)
+        Just (plain ("for each " <> name <> " in (" <> rText value <> ") the value (" <> rText body <> ")") False)
+      "filterElements" -> do
+        let (name, inner) = bind (field "binder" node) scope reserved
+        value <- go (field "value" node)
+        predicate <- goIn inner (field "predicate" node)
+        Just (plain ("each " <> name <> " in (" <> rText value <> ") that satisfies (" <> rText predicate <> ")") False)
       "allPayloads" -> do
         value <- go (field "value" node)
         predicates <- traverse (\q -> do

@@ -1,0 +1,7 @@
+expect: a map has as many elements as its list
+@@ examples/specs/list_mapping.lawspec
+<<<<<<<
+  prelude.map (scaled 3) xs
+=======
+  prelude.map (scaled 3) (prelude.filter isPositive xs)
+>>>>>>>

@@ -23,6 +23,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `prelude.map` over a list and `prelude.filter`, on every target. There is
+  one `map`: over a list it gives the list of results, over an `Either` it
+  maps the success value as before, and the operand's type decides. A
+  recursive definition may map itself over the children of its argument.
+  See [Sequences](docs/reference/language/sequences.md#mapping-and-filtering-a-list).
+
 - Text built-ins `prelude.split`, `prelude.trim`, `prelude.words` and
   `prelude.lines`, on every target. `split` keeps empty pieces, so `join`
   gives the text back. White space is Unicode 17.0.0's `White_Space` property

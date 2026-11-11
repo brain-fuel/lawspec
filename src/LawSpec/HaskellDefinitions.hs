@@ -542,6 +542,8 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
           (checks ++ [Bind "result" invoke, Run (call "Codec.decode" [resultCodec, var "result"])]))])
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      MapElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      FilterElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
       AllPayloads value predicates -> nestedBinders value ++ concat
         [binder : nestedBinders predicate | (binder,predicate) <- predicates]

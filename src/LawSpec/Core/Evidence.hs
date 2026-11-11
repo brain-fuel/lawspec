@@ -141,6 +141,8 @@ mentions name e = case expressionNode e of
   Construct _ args -> any (mentions name) args
   Match value cases -> mentions name value || any (mentions name . caseBody) cases
   AllElements value _ body -> mentions name value || mentions name body
+  MapElements value _ body -> mentions name value || mentions name body
+  FilterElements value _ body -> mentions name value || mentions name body
   AllPayloads value predicates -> mentions name value || any (mentions name . snd) predicates
   Binary _ _ a b -> mentions name a || mentions name b
   Unary _ a -> mentions name a

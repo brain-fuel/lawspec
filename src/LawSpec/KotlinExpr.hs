@@ -153,6 +153,14 @@ renderExpressionIn scope@(schema, width) declarations named external expression 
         argument <- render value
         body <- render predicate
         pure (runtime "allElements" [argument, L.lambda [local (binderId binder)] [body]])
+      MapElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "mapElements" [key (expressionType term), argument, L.lambda [local (binderId binder)] [body]])
+      FilterElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "filterElements" [argument, L.lambda [local (binderId binder)] [body]])
       SearchElements universal value binder predicate -> do
         argument <- render value
         body <- render predicate

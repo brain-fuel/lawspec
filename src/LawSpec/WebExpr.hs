@@ -118,6 +118,8 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
     local identity = Map.findWithDefault (outerLocal identity) identity names
     collect term = (case expressionNode term of
       AllElements _ binder _ -> [binder]
+      MapElements _ binder _ -> [binder]
+      FilterElements _ binder _ -> [binder]
       SearchElements _ _ binder _ -> [binder]
       AllPayloads _ predicates -> map fst predicates
       Match _ cases -> concatMap caseBinders cases
@@ -160,6 +162,18 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
         argument <- render value
         body <- render predicate
         let invocation = runtime (if asynchronous then "allElementsAsync" else "allElements")
+              [argument, E.Arrow asynchronous [annotated (local (binderId binder)) "unknown"] Nothing (E.ExpressionBody body)]
+        pure (if asynchronous then E.Await invocation else invocation)
+      MapElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        let invocation = runtime (if asynchronous then "mapElementsAsync" else "mapElements")
+              [argument, E.Arrow asynchronous [annotated (local (binderId binder)) "unknown"] Nothing (E.ExpressionBody body)]
+        pure (if asynchronous then E.Await invocation else invocation)
+      FilterElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        let invocation = runtime (if asynchronous then "filterElementsAsync" else "filterElements")
               [argument, E.Arrow asynchronous [annotated (local (binderId binder)) "unknown"] Nothing (E.ExpressionBody body)]
         pure (if asynchronous then E.Await invocation else invocation)
       SearchElements universal value binder predicate -> do

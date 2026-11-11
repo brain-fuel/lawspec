@@ -2487,6 +2487,47 @@ pub fn all_elements(
     Ok(Value::Bool(true))
 }
 
+/// The list of the body's value for each element, in order.
+pub fn map_elements(value: Value, mut body: impl FnMut(Value) -> Result<Value>) -> Result<Value>
+{
+    let Value::List(values) = value
+    else
+    {
+        return Err("expected List in map".into());
+    };
+    let mut results = Vec::with_capacity(values.len());
+    for (index, item) in values.into_iter().enumerate()
+    {
+        results.push(body(item).map_err(|error| format!("List element {index}: {error}"))?);
+    }
+    Ok(Value::List(results))
+}
+
+/// The elements the predicate accepts, in order.
+pub fn filter_elements(
+    value: Value,
+    mut predicate: impl FnMut(Value) -> Result<Value>,
+) -> Result<Value>
+{
+    let Value::List(values) = value
+    else
+    {
+        return Err("expected List in filter".into());
+    };
+    let mut kept = Vec::new();
+    for (index, item) in values.into_iter().enumerate()
+    {
+        let accepted = predicate(item.clone())
+            .and_then(|result| result.boolean())
+            .map_err(|error| format!("List element {index}: {error}"))?;
+        if accepted
+        {
+            kept.push(item);
+        }
+    }
+    Ok(Value::List(kept))
+}
+
 pub fn search_elements(
     universal: bool,
     value: Value,

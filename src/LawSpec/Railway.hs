@@ -111,6 +111,8 @@ railwayExprWithShadowed shadowed e = evalState (go e) 0
       RecordLit fields -> RecordLit <$> mapM (\(label,value) -> (,) label <$> go value) fields
       MatchExpr s bs -> MatchExpr <$> go s <*> mapM (\(MatchBranch t ns b) -> MatchBranch t ns <$> go b) bs
       AllElementsExpr a n b -> (\x y -> AllElementsExpr x n y) <$> go a <*> go b
+      MapElementsExpr a n b -> (\x y -> MapElementsExpr x n y) <$> go a <*> go b
+      FilterElementsExpr a n b -> (\x y -> FilterElementsExpr x n y) <$> go a <*> go b
       AllPayloadsExpr a fs -> AllPayloadsExpr <$> go a <*> mapM (\(n, x) -> (,) n <$> go x) fs
       Binary op a b -> Binary op <$> go a <*> go b
       Unary op a -> Unary op <$> go a
@@ -168,7 +170,14 @@ railwayExprWithShadowed shadowed e = evalState (go e) 0
       r <- onRight (Var v)
       pure (MatchExpr m [MatchBranch "Either::Left" [e] l, MatchBranch "Either::Right" [v] r])
     bind m f = eitherMatchM m (pure . left) (apply f)
-    mapping f m = eitherMatchM m (pure . left) (fmap right . apply f)
+    -- A map is resolved by its operand's type once that is known: a List
+    -- gives the list of results, an Either maps its success value.
+    mapping f m
+      | ConstructLit tag [_] <- unlocated m, tag `elem` ["Either::Right","Either::Left"] ||
+          (tag `elem` ["Right","Left"] && tag `notElem` shadowed) = eitherMatchM m (pure . left) (fmap right . apply f)
+      | otherwise = do
+          v <- fresh "railwayValue"
+          MapElementsExpr m v <$> apply f (Var v)
     mapError g m = eitherMatchM m (fmap left . apply g) (pure . right)
     orElse m h = eitherMatchM m (apply h) (pure . right)
     fallback m v = eitherMatch m (const v) id
@@ -197,6 +206,8 @@ names expression = case expression of
   RecordLit fields -> concatMap (names . snd) fields
   MatchExpr s bs -> names s ++ concat [ns ++ names b | MatchBranch _ ns b <- bs]
   AllElementsExpr a n b -> n : names a ++ names b
+  MapElementsExpr a n b -> n : names a ++ names b
+  FilterElementsExpr a n b -> n : names a ++ names b
   AllPayloadsExpr a fs -> names a ++ concat [n : names x | (n, x) <- fs]
   Binary _ a b -> names a ++ names b
   Unary _ a -> names a

@@ -191,6 +191,10 @@ prettyExprWith readable local = prettyExpr' where
       " -> " ++ prettyExpr' (C.caseBody branch) | branch <- branches] ++ " }"
   C.AllElements value binder predicate -> "allElements (" ++ prettyExpr' value ++ ") (" ++
     local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
+  C.MapElements value binder predicate -> "mapElements (" ++ prettyExpr' value ++ ") (" ++
+    local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
+  C.FilterElements value binder predicate -> "filterElements (" ++ prettyExpr' value ++ ") (" ++
+    local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
   C.SearchElements universal value binder predicate -> "searchElements " ++ show universal ++ " (" ++ prettyExpr' value ++ ") (" ++
     local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ prettyExpr' value ++ ") [" ++
@@ -293,6 +297,8 @@ propertyBinders property =
 expressionBinders :: Expr -> [C.Binder]
 expressionBinders term = (case C.expressionNode term of
   C.AllElements _ binder _ -> [binder]
+  C.MapElements _ binder _ -> [binder]
+  C.FilterElements _ binder _ -> [binder]
   C.SearchElements _ _ binder _ -> [binder]
   C.AllPayloads _ predicates -> map fst predicates
   C.Match _ cases -> concatMap C.caseBinders cases

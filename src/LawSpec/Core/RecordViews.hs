@@ -147,6 +147,8 @@ runViews canonical declarations convert outer wanted source =
       Let bound value body -> uses name value + if binderId bound==name then 0 else uses name body
       Match value branches -> uses name value + sum [uses name (caseBody branch) | branch<-branches,name `notElem` map binderId (caseBinders branch)]
       AllElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
+      MapElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
+      FilterElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
       SearchElements _ value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
       AllPayloads value predicates -> uses name value + sum [uses name body | (bound,body)<-predicates,binderId bound/=name]
       _ -> sum (map (uses name) (children expression))
@@ -204,6 +206,14 @@ runViews canonical declarations convert outer wanted source =
         value'<-go scope value
         predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate
         pure original{expressionNode=AllElements value' bound predicate'}
+      MapElements value bound predicate -> do
+        value'<-go scope value
+        predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate
+        pure original{expressionNode=MapElements value' bound predicate'}
+      FilterElements value bound predicate -> do
+        value'<-go scope value
+        predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate
+        pure original{expressionNode=FilterElements value' bound predicate'}
       SearchElements universal value bound predicate -> do
         value'<-go scope value
         predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate

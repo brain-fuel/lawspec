@@ -246,6 +246,28 @@ auditCollected context declarations constructors bits unit templates = do
             body <- proof owner integers (M.insert name binder scope) predicate
             pure (T.AllElements scrutinee binder (T.TypedDomain domains body))
           _ -> lift (Left "invalid typed List predicate")
+        S.MapElementsExpr _ _ _ -> case (operands,S.typedCases typed) of
+          ([value],[S.TypedCase _ [(name,ty)] predicate]) -> do
+            scrutinee <- recur value
+            index <- nextProofSite
+            let binder = C.Id (C.idText owner ++ "::element::" ++ show (index :: Int))
+                domains = case S.baseType ty of
+                  S.Named primitive -> T.integerAssumptions bits binder primitive
+                  _ -> []
+            body <- proof owner integers (M.insert name binder scope) predicate
+            pure (T.Opaque "map-elements" [T.AllElements scrutinee binder (T.TypedDomain domains body)])
+          _ -> lift (Left "invalid typed List predicate")
+        S.FilterElementsExpr _ _ _ -> case (operands,S.typedCases typed) of
+          ([value],[S.TypedCase _ [(name,ty)] predicate]) -> do
+            scrutinee <- recur value
+            index <- nextProofSite
+            let binder = C.Id (C.idText owner ++ "::element::" ++ show (index :: Int))
+                domains = case S.baseType ty of
+                  S.Named primitive -> T.integerAssumptions bits binder primitive
+                  _ -> []
+            body <- proof owner integers (M.insert name binder scope) predicate
+            pure (T.Opaque "filter-elements" [T.AllElements scrutinee binder (T.TypedDomain domains body)])
+          _ -> lift (Left "invalid typed List predicate")
         -- let x = e in body: e is checked, and the body knows x is e.
         S.MatchExpr _ [S.MatchBranch tag _ _] | tag == S.letTag, [value] <- operands,
           [S.TypedCase _ [(name, _)] body] <- S.typedCases typed -> do

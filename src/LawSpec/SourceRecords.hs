@@ -95,6 +95,8 @@ expression source = case source of
   S.ListLit fields -> concatMap expression fields
   S.MatchExpr value branches -> expression value ++ concat [expression body | S.MatchBranch _ _ body <- branches]
   S.AllElementsExpr value _ predicate -> expression value ++ expression predicate
+  S.MapElementsExpr value _ predicate -> expression value ++ expression predicate
+  S.FilterElementsExpr value _ predicate -> expression value ++ expression predicate
   S.AllPayloadsExpr value predicates -> expression value ++ concatMap (expression . snd) predicates
   _ -> []
 

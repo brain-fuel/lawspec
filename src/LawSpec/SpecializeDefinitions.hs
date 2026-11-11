@@ -171,6 +171,16 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
                 AllElementsExpr <$> rewriteTree local value <*> pure name <*>
                   rewriteTree (Set.insert name local) predicate
               _ -> lift (Left "invalid typed List predicate during specialization")
+            MapElementsExpr _ _ _ -> case (operands tree,typedCases tree) of
+              ([value],[TypedCase _ [(name,_)] predicate]) ->
+                MapElementsExpr <$> rewriteTree local value <*> pure name <*>
+                  rewriteTree (Set.insert name local) predicate
+              _ -> lift (Left "invalid typed List predicate during specialization")
+            FilterElementsExpr _ _ _ -> case (operands tree,typedCases tree) of
+              ([value],[TypedCase _ [(name,_)] predicate]) ->
+                FilterElementsExpr <$> rewriteTree local value <*> pure name <*>
+                  rewriteTree (Set.insert name local) predicate
+              _ -> lift (Left "invalid typed List predicate during specialization")
             MatchExpr _ _ -> case operands tree of
               [value] -> do
                 value' <- rewriteTree local value

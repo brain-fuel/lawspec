@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/specs/list_mapping.lawspec
+<<<<<<<
+function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function
+=======
+function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 1 end function
+>>>>>>>

@@ -170,6 +170,14 @@ renderExpression declarations bits named external expression = render scopedTerm
         argument <- render value
         body <- render predicate
         pure (runtime "allElements" [argument, lambdaValue [(local (binderId binder), valueType)] predicate body])
+      MapElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "mapElements" [key (expressionType term), argument, lambdaValue [(local (binderId binder), valueType)] predicate body])
+      FilterElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "filterElements" [argument, lambdaValue [(local (binderId binder), valueType)] predicate body])
       SearchElements universal value binder predicate -> do
         argument <- render value
         body <- render predicate

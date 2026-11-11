@@ -1634,6 +1634,8 @@ expressionSyntax expression = case expression of
   ConstructLit name _ -> ("constructor",Just name)
   MatchExpr _ _ -> ("match",Nothing)
   AllElementsExpr _ _ _ -> ("all-elements",Nothing)
+  MapElementsExpr _ _ _ -> ("map-elements",Nothing)
+  FilterElementsExpr _ _ _ -> ("filter-elements",Nothing)
   AllPayloadsExpr _ _ -> ("all-payloads",Nothing)
   Binary operator _ _ -> ("binary",Just operator)
   Unary operator _ -> ("unary",Just operator)

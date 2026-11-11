@@ -59,7 +59,7 @@ data RecordField = RecordField
   { recordFieldLabel :: String, recordFieldBinding :: String, recordFieldType :: Type }
   deriving (Eq, Show, Generic)
 instance ToJSON RecordField
-data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | RecordLit [(String,Expr)] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
+data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | RecordLit [(String,Expr)] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | MapElementsExpr Expr String Expr | FilterElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
 data MatchBranch = MatchBranch String [String] Expr deriving (Eq, Show, Generic)
 data TypedCase = TypedCase String [(String,Type)] TypedExpr deriving (Eq, Show, Generic)
 data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] | Exists [(String, Type)] Definition | Not Definition deriving (Eq, Show, Generic)
@@ -573,6 +573,8 @@ prettyExpr (ScalarLit s) = prettyScalar s
 prettyExpr (ConstructLit name fields) = unwords (name : map ((\value -> "(" ++ prettyExpr value ++ ")")) fields)
 prettyExpr (AllPayloadsExpr value predicates) = "allPayloads (" ++ prettyExpr value ++ ") [" ++ intercalate ", " [binder ++ " -> " ++ prettyExpr body | (binder,body) <- predicates] ++ "]"
 prettyExpr (AllElementsExpr value binder predicate) = "allElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
+prettyExpr (MapElementsExpr value binder predicate) = "mapElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
+prettyExpr (FilterElementsExpr value binder predicate) = "filterElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
 prettyExpr (MatchExpr value [MatchBranch tag [name] body]) | tag == letTag =
   "let " ++ name ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body ++ " end let"
 prettyExpr (MatchExpr value branches) = "first matching case of " ++ prettyExpr value ++ ": " ++ concat
@@ -672,6 +674,12 @@ substituteExpr extra onType env expression = case expression of
   AllElementsExpr value binder predicate ->
     let (name,body) = bound binder predicate
     in AllElementsExpr (go value) name body
+  MapElementsExpr value binder predicate ->
+    let (name,body) = bound binder predicate
+    in MapElementsExpr (go value) name body
+  FilterElementsExpr value binder predicate ->
+    let (name,body) = bound binder predicate
+    in FilterElementsExpr (go value) name body
   MatchExpr value branches -> MatchExpr (go value)
     [let active = filter ((`notElem` names) . fst) env
          forbidden = extra ++ concatMap (exprVars . snd) active
@@ -805,6 +813,8 @@ mapExprTypes f e = case e of
   RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
   AllPayloadsExpr value predicates -> AllPayloadsExpr (go value) [(binder,go body) | (binder,body) <- predicates]
   AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
+  MapElementsExpr value binder predicate -> MapElementsExpr (go value) binder (go predicate)
+  FilterElementsExpr value binder predicate -> FilterElementsExpr (go value) binder (go predicate)
   MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
   ListLit xs -> ListLit (map go xs)
   Apply a b -> Apply (go a) (go b)
@@ -821,6 +831,8 @@ exprVars (ConstructLit _ fields) = concatMap exprVars fields
 exprVars (RecordLit fields) = concatMap (exprVars . snd) fields
 exprVars (AllPayloadsExpr value predicates) = exprVars value ++ concat [filter (/= binder) (exprVars body) | (binder,body) <- predicates]
 exprVars (AllElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
+exprVars (MapElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
+exprVars (FilterElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
 exprVars (MatchExpr value branches) = exprVars value ++ concat
   [[n | n <- exprVars body, n `notElem` names] | MatchBranch _ names body <- branches]
 exprVars (ListLit xs) = concatMap exprVars xs
@@ -908,6 +920,8 @@ stripLocations e = case unlocated e of
   RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
   AllPayloadsExpr value predicates -> AllPayloadsExpr (go value) [(binder,go body) | (binder,body) <- predicates]
   AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
+  MapElementsExpr value binder predicate -> MapElementsExpr (go value) binder (go predicate)
+  FilterElementsExpr value binder predicate -> FilterElementsExpr (go value) binder (go predicate)
   MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
   ListLit xs -> ListLit (map go xs)
   Apply a b -> Apply (go a) (go b)
@@ -959,6 +973,8 @@ typeVariableNames ty = nub $ case ty of
       ConstructLit _ values -> concatMap expressionVariables values
       MatchExpr value branches -> expressionVariables value ++ concat [expressionVariables body | MatchBranch _ _ body <- branches]
       AllElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
+      MapElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
+      FilterElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
       AllPayloadsExpr value predicates -> expressionVariables value ++ concatMap (expressionVariables . snd) predicates
       _ -> []
 

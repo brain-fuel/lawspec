@@ -1,0 +1,101 @@
+unit example.listMapping
+
+-- One map and one filter over a list, the same on every target.
+
+function double (n :: Integer) -> Integer is n * 2 end function
+
+function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function
+
+function scaled (factor :: Integer) (n :: Integer) -> Integer is factor * n end function
+
+function doubled (xs :: List Integer) -> List Integer is
+  prelude.map double xs
+end function
+
+function evens (xs :: List Integer) -> List Integer is
+  prelude.filter isEven xs
+end function
+
+function tripled (xs :: List Integer) -> List Integer is
+  prelude.map (scaled 3) xs
+end function
+
+function isPositive (n :: Integer) -> Bool is n > 0 end function
+
+function positives (xs :: List Integer) -> List Integer is
+  prelude.filter isPositive xs
+end function
+
+-- An outline: an item, and the items under it.
+type Outline is a record{
+  label :: Text,
+  children :: List Outline
+}
+end type
+
+function total (xs :: List Integer) -> Integer is
+  first matching case of xs:
+    when Nil then 0
+    when Cons x rest then x + total rest
+  end case
+end function
+
+-- An item counts itself and everything under it. The definition maps itself
+-- over the children, each of which is smaller than the item.
+function size (item :: Outline) -> Integer is
+  first matching case of item:
+    when record{children = children} then 1 + total (prelude.map size children)
+  end case
+end function
+
+function lengths (texts :: List Text) -> List Integer is
+  prelude.map prelude.length (prelude.map prelude.words texts)
+end function
+
+law "|map keeps the order and the length| is
+  definition :
+    doubled [1, 2, 3] = [2, 4, 6] and doubled [] = [] and
+    prelude.map (scaled 3) [1, 2] = [3, 6]
+  end definition
+end law
+
+law "|filter keeps the accepted elements in order| is
+  definition :
+    evens [1, 2, 3, 4] = [2, 4] and evens [1, 3] = [] and evens [] = []
+  end definition
+end law
+
+law "|a map has as many elements as its list| is
+  definition :
+    for all (xs :: List Integer) =>
+      prelude.length (tripled xs) = prelude.length xs end for all
+  end definition
+end law
+
+law "|every kept element is accepted| is
+  definition :
+    for all (xs :: List Integer) =>
+      prelude.all isEven (evens xs) end for all
+  end definition
+end law
+
+law "|only positive elements are kept| is
+  definition :
+    for all (xs :: List Integer) =>
+      prelude.all isPositive (positives xs) end for all
+  end definition
+end law
+
+law "|an outline counts every item| is
+  definition :
+    size (Outline record{label = "root", children = [
+      Outline record{label = "first", children = [Outline record{label = "leaf", children = []}]},
+      Outline record{label = "second", children = []}
+    ]}) = 4
+  end definition
+end law
+
+law "|map changes the element type| is
+  definition : lengths ["a b", "", "one two three"] = [2, 0, 3] end definition
+end law
+end unit

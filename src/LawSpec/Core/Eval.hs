@@ -6,6 +6,7 @@ module LawSpec.Core.Eval
   , evaluateValueM, evaluateAdmittedValueM, evaluateValuePropositionM, validateValueWithContractsM
   , evaluateValue, evaluateValuePure, evaluateValueProposition, validateValueWithContracts
   ) where
+import Control.Monad (forM)
 import Control.Monad.Except (MonadError, liftEither, throwError, catchError)
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Common (Location(..), Span(..))
@@ -124,6 +125,23 @@ evaluateWithAdmissionM admitted tick registry bits adapter bindings = run (M.fro
               (throwError . (("List element " ++ show index ++ ": ") ++))
             if accepted then every (index + 1) rest else pure (ScalarValue (SBool False))
       every (0 :: Int) items
+    MapElements value binder body -> do
+      items <- go value >>= liftEither . listItems
+      results <- forM (zip [0 :: Int ..] items) $ \(index,item) -> catchError (do
+        checked <- validateValueWithContractsM tick registry bits (binderType binder) item
+        run (M.insert (binderId binder) checked env) body)
+        (throwError . (("List element " ++ show index ++ ": ") ++))
+      case expressionType of
+        Constructor "List" [TypeArgument element] -> pure (listValue element results)
+        _ -> throwError "a map over elements that is not a List"
+    FilterElements value binder predicate -> do
+      items <- go value >>= liftEither . listItems
+      kept <- forM (zip [0 :: Int ..] items) $ \(index,item) -> catchError (do
+        checked <- validateValueWithContractsM tick registry bits (binderType binder) item
+        accepted <- run (M.insert (binderId binder) checked env) predicate >>= liftEither . valueBoolean
+        pure [checked | accepted])
+        (throwError . (("List element " ++ show index ++ ": ") ++))
+      pure (listValue (binderType binder) (concat kept))
     SearchElements universal value binder predicate -> do
       items <- go value >>= liftEither . listItems
       let decisive = if universal then -1 else 1

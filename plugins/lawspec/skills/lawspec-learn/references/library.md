@@ -557,6 +557,8 @@ end unit
 | `prelude.trim text` | the text without white space at its start and end |
 | `prelude.words text` | the runs of a text without white space, a `List Text` |
 | `prelude.lines text` | the pieces of a text between line feeds, a `List Text` |
+| `prelude.map function items` | the list of `function item` for each item of a list, in order |
+| `prelude.filter predicate items` | the items of a list the predicate accepts, in order |
 
 - Indices count from 0: code points of a text, octets of `Bytes`, items of a
   list.
@@ -601,6 +603,43 @@ end unit
   U+205F and U+3000. Every target uses this set, not its own library's.
 - A proof does not look inside these four: a law about them is evaluated
   and tested, and a solver result for one is "unsupported".
+
+## Mapping and filtering a list
+
+```lawspec
+unit guide.mapping
+
+function double (n :: Integer) -> Integer is n * 2 end function
+
+function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function
+
+function scaled (factor :: Integer) (n :: Integer) -> Integer is factor * n end function
+
+law "|mapping and filtering| is
+  definition :
+    prelude.map double [1, 2, 3] = [2, 4, 6]
+    and prelude.map (scaled 3) [1, 2] = [3, 6]
+    and prelude.filter isEven [1, 2, 3, 4] = [2, 4]
+    and prelude.map prelude.length (prelude.words "one three") = [3, 5]
+  end definition
+end law
+end unit
+```
+
+- The function is a definition, a built-in, or either with its first
+  arguments given, as for `prelude.any`. Arguments given this way are
+  evaluated once, before any item.
+- There is one `map`. Over a list it gives the list of results; over an
+  `Either` it maps the success value, as on the
+  [railway combinators](expressions-and-arithmetic.md#railway-combinators). The operand's type decides which. `f <$> xs`
+  is the same `map`.
+- `map` and `filter` take a `List`. Use `prelude.toList` first for another
+  collection.
+- A recursive definition may map itself over the parts of its argument, such
+  as the children of a tree: each element is smaller than the list it is in.
+- A proof does not look inside a `map` or `filter`: a law about one is
+  evaluated and tested, and a solver result for one is "unsupported". The
+  function's own definedness is still checked for every item.
 
 ## Case folding and substring predicates
 

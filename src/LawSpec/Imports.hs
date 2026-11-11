@@ -736,7 +736,7 @@ walkExpr names scope e
   -- Resolve the predicate before introducing its binder to avoid capture.
   Apply prefix collection | contextualArticles names,
       Apply function predicate <- unlocated prefix,
-      Var operation <- unlocated function, operation `elem` ["prelude.any", "prelude.all"] -> do
+      Var operation <- unlocated function, operation `elem` ["prelude.any", "prelude.all", "prelude.filter"] -> do
     predicate' <- walkExpr names scope predicate
     collection' <- walkExpr names scope collection
     let taken = scope ++ exprVars predicate' ++ exprVars collection'
@@ -744,7 +744,9 @@ walkExpr names scope e
           "~lawspecAnyItem" ++ replicate i '_' `notElem` taken]
         binder = head freshNames
         (function, captures, _) = preparePredicate predicate' (tail freshNames)
-        iteration = if operation == "prelude.all"
+        iteration = if operation == "prelude.filter"
+          then FilterElementsExpr collection' binder (Apply function (Var binder))
+          else if operation == "prelude.all"
           then AllElementsExpr collection' binder (Apply function (Var binder))
           else Unary "!" (AllElementsExpr collection' binder (Unary "!" (Apply function (Var binder))))
     -- Captured arguments are strict, even for an empty collection, and are
@@ -774,6 +776,10 @@ walkExpr names scope e
     MatchBranch <$> (if tag == "_" then pure tag else onConstructor names tag) <*> pure binders <*> walkExpr names (binders ++ scope) body)
   AllElementsExpr value binder predicate ->
     AllElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
+  MapElementsExpr value binder predicate ->
+    MapElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
+  FilterElementsExpr value binder predicate ->
+    FilterElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
   AllPayloadsExpr value predicates -> AllPayloadsExpr <$> walkExpr names scope value <*>
     forM predicates (\(binder, body) -> (,) binder <$> walkExpr names (binder : scope) body)
   Binary op a b -> do

@@ -111,6 +111,8 @@ render context root = evalStateT (go context root) 0
     external ctx term args = lift (contextExternal ctx ctx term args)
     binders = nubBy (\a b -> C.binderId a == C.binderId b) [binder | term <- terms root, binder <- case C.expressionNode term of
       C.AllElements _ b _ -> [b]
+      C.MapElements _ b _ -> [b]
+      C.FilterElements _ b _ -> [b]
       C.SearchElements _ _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
@@ -160,6 +162,14 @@ render context root = evalStateT (go context root) 0
         argument <- go ctx subject
         body <- go ctx predicate
         pure (call "Runtime" "allElements" [argument, Lambda [(local (C.binderId binder), tValue)] tValue body])
+      C.MapElements subject binder predicate -> do
+        argument <- go ctx subject
+        body <- go ctx predicate
+        pure (call "Runtime" "mapElements" [argument, Lambda [(local (C.binderId binder), tValue)] tValue body])
+      C.FilterElements subject binder predicate -> do
+        argument <- go ctx subject
+        body <- go ctx predicate
+        pure (call "Runtime" "filterElements" [argument, Lambda [(local (C.binderId binder), tValue)] tValue body])
       C.SearchElements universal subject binder predicate -> do
         argument <- go ctx subject
         body <- go ctx predicate

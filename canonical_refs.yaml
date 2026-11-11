@@ -414,6 +414,18 @@ unicode-white-space:
   kind: article
   title: Unicode Character Database 17.0.0, PropList.txt, the White_Space property
   locator: https://www.unicode.org/Public/17.0.0/ucd/PropList.txt
+haskell-functor:
+  kind: article
+  title: Haskell base, Data.Functor, the Functor class and its laws
+  locator: https://hackage.haskell.org/package/base/docs/Data-Functor.html
+lean-functor:
+  kind: article
+  title: Lean 4 core, Prelude.lean, class Functor
+  locator: https://raw.githubusercontent.com/leanprover/lean4/master/src/Init/Prelude.lean
+idris2-functor:
+  kind: article
+  title: Idris 2 prelude, Prelude/Interfaces.idr, interface Functor
+  locator: https://raw.githubusercontent.com/idris-lang/Idris2/main/libs/prelude/Prelude/Interfaces.idr
 unicode-text-segmentation:
   kind: article
   title: Unicode Standard Annex 29, Unicode Text Segmentation

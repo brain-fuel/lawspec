@@ -78,6 +78,26 @@ export async function allElementsAsync(values, evaluate)
   return true;
 }
 
+export async function mapElementsAsync(values, evaluate)
+{
+  const results = [];
+  for (const value of values)
+  {
+    results.push(await evaluate(value));
+  }
+  return results;
+}
+
+export async function filterElementsAsync(values, evaluate)
+{
+  const kept = [];
+  for (const value of values)
+  {
+    if (truth(await evaluate(value))) kept.push(value);
+  }
+  return kept;
+}
+
 export async function searchElementsAsync(universal, values, evaluate)
 {
   const decisive = universal ? -1 : 1;
@@ -1583,6 +1603,47 @@ export function allElements(value, predicate)
     }
   }
   return true;
+}
+
+export function mapElements(value, body)
+{
+  if (!Array.isArray(value)) throw new TypeError('expected List in map');
+  return value.map((item, index) =>
+  {
+    try
+    {
+      return body(item);
+    }
+    catch (error)
+    {
+      throw new Error(`List element ${index}: ${error.message}`, {
+        cause: error,
+      });
+    }
+  });
+}
+
+export function filterElements(value, predicate)
+{
+  if (!Array.isArray(value)) throw new TypeError('expected List in filter');
+  return value.filter((item, index) =>
+  {
+    try
+    {
+      const accepted = predicate(item);
+      if (typeof accepted !== 'boolean')
+      {
+        throw new TypeError('element predicate must return Bool');
+      }
+      return accepted;
+    }
+    catch (error)
+    {
+      throw new Error(`List element ${index}: ${error.message}`, {
+        cause: error,
+      });
+    }
+  });
 }
 
 export function matchList(value, branches)

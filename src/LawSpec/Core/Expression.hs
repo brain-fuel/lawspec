@@ -49,6 +49,8 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
   case expressionNode of
     Match value _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
+    MapElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
+    FilterElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     SearchElements _ value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllPayloads value _ -> validateExpressionWithRegistry registry bits declarations scope value
     -- A let's body sees its binder; the Let case below checks both.
@@ -89,6 +91,25 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
         (M.insert (binderId binder) (binderType binder) scope) predicate
       requireType "Bool" predicate
       pure (scalarType "Bool")
+    MapElements value binder body -> do
+      case expressionTypeOf value of
+        Constructor "List" [TypeArgument element] ->
+          unless (binderType binder == element) (Left "list map binder type mismatch")
+        _ -> Left "map over elements requires a List"
+      unless (M.notMember (binderId binder) scope) (Left "duplicate list map binder identity")
+      validateExpressionWithRegistry registry bits declarations
+        (M.insert (binderId binder) (binderType binder) scope) body
+      pure (Constructor "List" [TypeArgument (expressionTypeOf body)])
+    FilterElements value binder predicate -> do
+      case expressionTypeOf value of
+        Constructor "List" [TypeArgument element] ->
+          unless (binderType binder == element) (Left "list filter binder type mismatch")
+        _ -> Left "filter of elements requires a List"
+      unless (M.notMember (binderId binder) scope) (Left "duplicate list filter binder identity")
+      validateExpressionWithRegistry registry bits declarations
+        (M.insert (binderId binder) (binderType binder) scope) predicate
+      requireType "Bool" predicate
+      pure (expressionTypeOf value)
     SearchElements _ value binder predicate -> do
       case expressionTypeOf value of
         Constructor "List" [TypeArgument element] ->

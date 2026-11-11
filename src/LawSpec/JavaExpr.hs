@@ -186,6 +186,19 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey named 
         pure (runtime "allElements" [argument,
           D.group (D.text (local (binderId binder) ++ " ->") <>
             D.nest 4 (D.softline <> body))])
+      MapElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        key <- typeKey (expressionType term)
+        pure (runtime "mapElements" [key, argument,
+          D.group (D.text (local (binderId binder) ++ " ->") <>
+            D.nest 4 (D.softline <> body))])
+      FilterElements value binder predicate -> do
+        argument <- render value
+        body <- render predicate
+        pure (runtime "filterElements" [argument,
+          D.group (D.text (local (binderId binder) ++ " ->") <>
+            D.nest 4 (D.softline <> body))])
       SearchElements universal value binder predicate -> do
         argument <- render value
         body <- render predicate

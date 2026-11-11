@@ -793,6 +793,49 @@ public final class LawSpecRuntime
     return bool(true);
   }
 
+  /** The list of the body's value for each element, in order. */
+  public static Value mapElements(String type, Value value, Function<Value, Value> body)
+  {
+    var values = listElements(value);
+    var results = new ArrayList<Value>(values.size());
+    for (int index = 0; index < values.size(); index++)
+    {
+      try
+      {
+        results.add(body.apply(values.get(index)));
+      }
+      catch (RuntimeException error)
+      {
+        throw new IllegalArgumentException("List element " + index + ": " + error.getMessage(),
+            error);
+      }
+    }
+    return list(type, results);
+  }
+
+  /** The elements the predicate accepts, in order. */
+  public static Value filterElements(Value value, Function<Value, Value> predicate)
+  {
+    var values = listElements(value);
+    var kept = new ArrayList<Value>();
+    for (int index = 0; index < values.size(); index++)
+    {
+      try
+      {
+        if (truth(predicate.apply(values.get(index))))
+        {
+          kept.add(values.get(index));
+        }
+      }
+      catch (RuntimeException error)
+      {
+        throw new IllegalArgumentException("List element " + index + ": " + error.getMessage(),
+            error);
+      }
+    }
+    return list(value.type, kept);
+  }
+
   public static Value searchElements(boolean universal, Value value,
       Function<Value, Value> predicate)
   {

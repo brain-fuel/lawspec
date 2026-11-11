@@ -69,6 +69,8 @@ rewrite table bound expression = case expression of
   MatchExpr value branches -> MatchExpr (recur value)
     [MatchBranch tag names (rewrite table (names ++ bound) body) | MatchBranch tag names body <- branches]
   AllElementsExpr value binder body -> AllElementsExpr (recur value) binder (rewrite table (binder : bound) body)
+  MapElementsExpr value binder body -> MapElementsExpr (recur value) binder (rewrite table (binder : bound) body)
+  FilterElementsExpr value binder body -> FilterElementsExpr (recur value) binder (rewrite table (binder : bound) body)
   AllPayloadsExpr value predicates -> AllPayloadsExpr (recur value)
     [(binder, rewrite table (binder : bound) body) | (binder, body) <- predicates]
   Binary op a b -> Binary op (recur a) (recur b)

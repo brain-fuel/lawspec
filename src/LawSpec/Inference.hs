@@ -334,6 +334,22 @@ infer env (AllElementsExpr value binder predicate) = do
   (_,element) <- iterationTypes env value binder predicate
   checkExpr (M.insert binder (Monomorphic element) env) (Named "Bool") predicate
   pure (Named "Bool")
+-- One `map` for both shapes it is defined on, chosen by its operand's type:
+-- over a List it gives the list of results; otherwise it is the map of an
+-- Either's success value. ref:DEC-list-map-filter
+infer env e@(MapElementsExpr value binder body) = do
+  shape <- mappedElement env value
+  case shape of
+    Nothing -> infer env (eitherMap e)
+    Just element -> do
+      result <- infer (M.insert binder (Monomorphic element) env) body >>= resolve
+      pure (Applied "List" result)
+infer env (FilterElementsExpr value binder predicate) = do
+  element <- Variable . ("iteration:" ++) <$> fresh
+  checkExpr env (Applied "List" element) value
+  known <- resolve element
+  checkExpr (M.insert binder (Monomorphic known) env) (Named "Bool") predicate
+  Applied "List" <$> resolve known
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
   result <- Variable . ("match:" ++) <$> fresh
@@ -952,7 +968,11 @@ typedExpressionWithSchemesContext context declarations bits env e = do
     go context expected e | isFieldNode e = do
       direct <- fieldAccessTyped context expected e
       maybe (fieldDesugar context e >>= go context expected) pure direct
-    go context expected e = do
+    go context expected e@(MapElementsExpr value _ _) = do
+      shape <- mappedElement context value
+      maybe (go context expected (eitherMap e)) (const (node context expected e)) shape
+    go context expected e = node context expected e
+    node context expected e = do
       let descend = go context
       natural <- case (expected, e) of
         (Just targetType, RecordLit _) -> checkExpr context targetType e >> resolve targetType
@@ -993,6 +1013,10 @@ typedExpressionWithSchemesContext context declarations bits env e = do
         AllElementsExpr value binder predicate -> do
           (collection,_) <- iterationTypes context value binder predicate
           sequence [descend (Just collection) value]
+        MapElementsExpr value _ _ -> do
+          collection <- infer context value >>= resolve
+          sequence [descend (Just collection) value]
+        FilterElementsExpr value _ _ -> sequence [descend (Just t) value]
         MatchExpr value branches@[MatchBranch tag [name] _] | tag == letTag -> do
           scopes <- matchScopesWithResult context (Just t) value branches
           case scopes of
@@ -1088,6 +1112,18 @@ typedExpressionWithSchemesContext context declarations bits env e = do
           (_,element) <- iterationTypes context value binder predicate
           body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
           pure [TypedCase "" [(binder,element)] body]
+        MapElementsExpr value binder body -> do
+          shape <- mappedElement context value
+          case (shape,t) of
+            (Just element,Applied "List" result) -> do
+              mapped <- go (M.insert binder (Monomorphic element) context) (Just result) body
+              pure [TypedCase "" [(binder,element)] mapped]
+            _ -> throwC "map requires a List or an Either"
+        FilterElementsExpr _ binder predicate -> case t of
+          Applied "List" element -> do
+            body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
+            pure [TypedCase "" [(binder,element)] body]
+          _ -> throwC "filter requires a List"
         -- A let binds this occurrence's inferred value. Inferring it again
         -- would give a polymorphic constructor such as Nothing a different
         -- type variable, losing the body context that fixes its payload type.
@@ -1311,6 +1347,8 @@ normal (ConstructLit name fields) = ConstructLit name (map normal fields)
 normal (RecordLit fields) = RecordLit [(label,normal value) | (label,value) <- fields]
 normal (AllPayloadsExpr value predicates) = AllPayloadsExpr (normal value) [(binder,normal body) | (binder,body) <- predicates]
 normal (AllElementsExpr value binder predicate) = AllElementsExpr (normal value) binder (normal predicate)
+normal (MapElementsExpr value binder predicate) = MapElementsExpr (normal value) binder (normal predicate)
+normal (FilterElementsExpr value binder predicate) = FilterElementsExpr (normal value) binder (normal predicate)
 normal (MatchExpr value branches) = MatchExpr (normal value) [MatchBranch tag names (normal body) | MatchBranch tag names body <- branches]
 normal (ListLit xs) = ListLit (map normal xs)
 normal (Apply f x) | Compose a b <- unlocated f = normal (Apply a (Apply b x))
@@ -1726,6 +1764,22 @@ membershipTypes env value collection = do
   selected@(_,element) <- collectionTypesWith env collection hint
   checkExpr env element value
   pure selected
+
+-- | The element type when a `map`'s operand is a List.
+mappedElement :: Env -> Expr -> C (Maybe Type)
+mappedElement env value = do
+  collection <- infer env value >>= resolve
+  pure (case baseType collection of
+    Applied "List" element -> Just element
+    _ -> Nothing)
+
+-- | The map of an Either's success value, as a match: a failure is kept.
+eitherMap :: Expr -> Expr
+eitherMap (MapElementsExpr value binder body) =
+  let failure = head [name | n <- [0 :: Int ..], let name = "~lawspecMapFailure" ++ replicate n '_', name `notElem` binder : exprVars body]
+  in MatchExpr value [MatchBranch "Either::Left" [failure] (ConstructLit "Either::Left" [Var failure]),
+       MatchBranch "Either::Right" [binder] (ConstructLit "Either::Right" [body])]
+eitherMap expression = expression
 
 iterationTypes :: Env -> Expr -> String -> Expr -> C (Type,Type)
 iterationTypes env value binder predicate = do

@@ -484,6 +484,8 @@ callees e = case expressionNode e of
   Construct _ args -> concatMap callees args
   Match value cases -> callees value ++ concatMap (callees . caseBody) cases
   AllElements value _ body -> callees value ++ callees body
+  MapElements value _ body -> callees value ++ callees body
+  FilterElements value _ body -> callees value ++ callees body
   AllPayloads value predicates -> callees value ++ concatMap (callees . snd) predicates
   Binary _ _ a b -> callees a ++ callees b
   Unary _ a -> callees a
