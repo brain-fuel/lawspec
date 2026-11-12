@@ -44,7 +44,7 @@ strategy smallOrder :: Order is
 bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order record{ items = items , total = (items * 100)} end bind
 end strategy
 strategy bulkOrder :: Order is
-any such that itemsOf it > 10 && totalOf it >= 0 at most 1000 discards
+any such that itemsOf it > 10 && totalOf it >= 0 && totalOf it < 1000000 at most 1000 discards
 end strategy
 strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end strategy
 
