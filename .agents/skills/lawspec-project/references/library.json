@@ -4899,54 +4899,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/host-sdk.md:130: Trust and acceptance",
+      "id": "reference:docs/reference/host-sdk.md:134: Trust and acceptance",
       "kind": "reference",
-      "name": "docs/reference/host-sdk.md:130: Trust and acceptance",
+      "name": "docs/reference/host-sdk.md:134: Trust and acceptance",
       "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/host-sdk.md:176: Application port status",
+      "id": "reference:docs/reference/host-sdk.md:180: Application port status",
       "kind": "reference",
-      "name": "docs/reference/host-sdk.md:176: Application port status",
+      "name": "docs/reference/host-sdk.md:180: Application port status",
       "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/host-sdk.md:326: Helper memory investigation",
+      "id": "reference:docs/reference/host-sdk.md:330: Helper memory investigation",
       "kind": "reference",
-      "name": "docs/reference/host-sdk.md:326: Helper memory investigation",
+      "name": "docs/reference/host-sdk.md:330: Helper memory investigation",
       "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/host-sdk.md:401: Precompiled Node implementation",
+      "id": "reference:docs/reference/host-sdk.md:405: Precompiled Node implementation",
       "kind": "reference",
-      "name": "docs/reference/host-sdk.md:401: Precompiled Node implementation",
+      "name": "docs/reference/host-sdk.md:405: Precompiled Node implementation",
       "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/host-sdk.md:42: Package boundary",
+      "id": "reference:docs/reference/host-sdk.md:46: Package boundary",
       "kind": "reference",
-      "name": "docs/reference/host-sdk.md:42: Package boundary",
+      "name": "docs/reference/host-sdk.md:46: Package boundary",
       "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/host-sdk.md:85: Compiler API and formatter",
+      "id": "reference:docs/reference/host-sdk.md:89: Compiler API and formatter",
       "kind": "reference",
-      "name": "docs/reference/host-sdk.md:85: Compiler API and formatter",
+      "name": "docs/reference/host-sdk.md:89: Compiler API and formatter",
       "source": "docs/reference/host-sdk.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

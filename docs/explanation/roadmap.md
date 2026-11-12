@@ -33,7 +33,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.30 | Triple-quoted multiline text and known discrepancies | — |
 | 0.31 | Compact finite test plans and shared scoped searches on all 18 executable targets; unified EDN manifests and components | Teaching review of the learning course |
 | 0.32 | Shared compiler, generation and tooling corrections (S1.j): checked strategies, evaluation allowance and deferral, the `mutate` command, and an opt-in component runtime | Original-project confirmations; native x64 and WSL2 cache checks; default-runtime cutover; larger models and checked mutual recursion |
-| 0.33 | Apache Pekko and Spring actor runtimes for the JVM targets, checking hand-written Pekko and Spring actors against LawSpec actors, `restart keeps state`, Pekko Cluster `serve` and `connect`, faster model checking, checked mutual recursion, list `map` and `filter`, and the first application-port checkpoint | The LawSpec JVM runtime stays the default; no network partitions on Pekko Cluster, no symmetry reduction, no capability over type constructors |
+| 0.33 | Apache Pekko and Spring actor runtimes for the JVM targets, checking hand-written Pekko and Spring actors against LawSpec actors, `restart keeps state`, Pekko Cluster `serve` and `connect`, faster model checking, checked mutual recursion, list `map` and `filter`, `lawspec init` that leaves a project ready to test, and the first application-port checkpoint | The LawSpec JVM runtime stays the default; no network partitions on Pekko Cluster, no symmetry reduction, no capability over type constructors |
 
 0.16 in detail:
 
@@ -207,7 +207,8 @@ DEC-pekko-cluster-remote and DEC-spring-actor-starter.
 and text pieces on every target, checks larger actor models quickly (partial
 order reduction, per-value fairness, honest counts of refused steps), and
 ships the first application-port checkpoint: manifest admission and version
-selection in typed Haskell services.
+selection in typed Haskell services. `lawspec init` now leaves a project ready
+to generate and test: it fetches dependencies and runs the `doctor` checks.
 
 ## Planned
 
