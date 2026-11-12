@@ -60,7 +60,7 @@ for kind in ("stack", "counter", "actor", "guarded"):
         for length in (0, 1, 20):
             for size in (0, 1, 8):
                 random = ls.SplitMix64(seed)
-                run = ls._generate_run(m, random, length, size, crashes=True)
+                run, _rejected = ls._generate_run(m, random, length, size, crashes=True)
                 vectors.append({"kind": kind, "seed": seed, "length": length, "size": size,
                                 "end": random.state, "run": ls._describe_run(m, run),
                                 "shrinks": [ls._describe_run(m, r) for r in ls._shrink_candidates(m, run)]})
@@ -74,7 +74,7 @@ for kind in ("counter", "actor", "guarded"):
             for threads in (2, 3):
                 for length in (2, 5):
                     random = ls.SplitMix64(seed)
-                    case = ls._generate_parallel(m, random, size, threads, length)
+                    case = ls._generate_parallel(m, random, size, threads, length, [0])
                     prefix, branches = case
                     candidates = []
                     args, steps = prefix
