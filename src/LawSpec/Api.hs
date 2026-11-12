@@ -32,7 +32,7 @@ import LawSpec.Discharge (bindingEvidence, defaultHandlerEvidence, refutations, 
 import LawSpec.Explain (ExplainOptions (..), View (..), explainResult, parseView)
 import LawSpec.Frontend (sourcePropertyId)
 import LawSpec.LawClaims (Expiry (..), analysisEvidence, analysisTaskViews, elaborateClaims, settleAnalysis)
-import LawSpec.Memo (Table, memoized, newTable, withCacheDirectory)
+import LawSpec.Memo (CacheFailure (..), Progress (..), Table, memoized, newPersistentTable, newTable, noProgress, staged, withRequest)
 import LawSpec.Model
 import LawSpec.ModelLaws (ModelRun (..))
 import qualified LawSpec.ModelProof as ModelProof
@@ -64,7 +64,7 @@ dispatch bytes
         Just (String query) -> Authoring.PreludeMatching (T.unpack query)
         _ -> Authoring.PreludeInvalid
   | Just value <- decode bytes, Just result <- Component.componentRequest value = encode result
-  | otherwise = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
+  | otherwise = reportingCache $ withRequest cacheDirectory progress requestTitle $ staged "response" "" $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
       Left err -> failure [Diagnostic "request" err Nothing]
       Right (_, _, Left err) -> failure [Diagnostic "attestation" err Nothing]
       Right ((method, sources, _, _, _, _, _, _, _, _), (project, packages), Right _)
@@ -198,11 +198,22 @@ dispatch bytes
                                           failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
                                     "inspect" -> case plan of
                                       Left ds -> failure ds
-                                      Right selectedPlan -> case emitPlanWithNativeOptions False target sourceDir testDir bindings selectedPlan of
+                                      Right selectedPlan -> case staged "emit" target (emitPlanWithNativeOptions False target sourceDir testDir bindings selectedPlan) of
                                         Left ds -> failure ds
-                                        Right files -> case emitPlanWithNativeOptions True target sourceDir testDir bindings selectedPlan of
+                                        -- The compact layout only supplies digests, by which a host
+                                        -- recognizes a generated file written with --minify. They are
+                                        -- kept under a key of everything emission reads, so an
+                                        -- unchanged project lays its files out compactly once.
+                                        Right files -> case memoized
+                                          compactDigestTable
+                                          (digestHex (digestString (emissionRequest bytes)))
+                                          ( staged "emit-compact" target $
+                                              fmap
+                                                (\compact -> [(artifactPath file, digestHex (digestString (artifactContent file))) | file <- compact ++ networkArtifacts native])
+                                                (emitPlanWithNativeOptions True target sourceDir testDir bindings selectedPlan)
+                                          ) of
                                           Left ds -> failure ds
-                                          Right compact -> case NativeInterface.interfaceView target bindings selectedPlan (files ++ networkArtifacts native) (compact ++ networkArtifacts native) of
+                                          Right compact -> case NativeInterface.interfaceView target bindings selectedPlan (files ++ networkArtifacts native) compact of
                                             Left err -> failure [Diagnostic "native-interface" err Nothing]
                                             Right view -> case result (files ++ networkArtifacts native) of
                                               Object fields -> Object (KM.insert "interface" view fields)
@@ -241,7 +252,7 @@ dispatch bytes
                                               )
                                             . result
                                         )
-                                        ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
+                                        ((++ networkArtifacts native) <$> (plan >>= staged "emit" target . emitPlanWithNativeOptions minify target sourceDir testDir bindings))
                                     _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
                     )
                     ( analysisEvidence
@@ -286,11 +297,30 @@ dispatch bytes
       _ -> Object (KM.insert "advice" (Authoring.adviceView syntax core) fields)
     withAuthoring _ _ response = response
     -- Where the compiler may keep work between runs; the CLI names one per
-    -- project and compiler build.
+    -- project and compiler build. Every method uses the directory its
+    -- request names: the commands that promise to write nothing (lawspec
+    -- inspect, lawspec advise, MCP) name none.
     cacheDirectory = case decode bytes of
-      Just (Object o) | Just (String method) <- KM.lookup "method" o, method `elem` ["inspect", "advise"] -> Nothing
       Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
       _ -> Nothing
+    -- An entry the cache could not store changes no result. The response
+    -- names the first one, so a host can say why later runs stay cold.
+    reportingCache (response, Nothing) = response
+    reportingCache (response, Just (CacheFailure path reason)) = case decode response of
+      Just (Object fields) -> encode (Object (KM.insert "cacheFailure" (object ["path" .= path, "reason" .= reason]) fields))
+      _ -> response
+    -- "progress" names what to write on standard error while the request
+    -- runs: "lines", "terminal" and "timings", one of them or a list.
+    progress = case decode bytes of
+      Just (Object o) -> case KM.lookup "progress" o of
+        Just (String mode) -> progressOf [mode]
+        Just (Array modes) -> progressOf [mode | String mode <- toList modes]
+        _ -> noProgress
+      _ -> noProgress
+    progressOf modes = Progress ("lines" `elem` modes) ("terminal" `elem` modes) ("timings" `elem` modes)
+    requestTitle = case decode bytes of
+      Just (Object o) -> unwords [T.unpack value | key <- ["method", "target"], Just (String value) <- [KM.lookup key o]]
+      _ -> ""
     -- The host's counterexample values, each bound to a task it ran
     -- (LawSpec.Core.Counterexample). The compiler re-derives the query and
     -- re-checks the values; it trusts neither the host nor Z3.
@@ -730,11 +760,34 @@ sharedRequest bytes = case decode bytes of
               ( foldr
                   (KM.delete . K.fromString)
                   o
-                  ["method", "target", "sourceDir", "testDir", "minify", "nativeBindings", "cacheDirectory", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
+                  ["method", "target", "sourceDir", "testDir", "minify", "nativeBindings", "cacheDirectory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
               )
           )
       )
   _ -> BC.unpack bytes
+
+-- | The request without the fields that emission never reads: everything
+-- that decides the checked plan, with the target, its directories, its
+-- native bindings and its actor settings.
+emissionRequest :: B.ByteString -> String
+emissionRequest bytes = case decode bytes of
+  Just (Object o) ->
+    BC.unpack
+      ( encode
+          ( Object
+              ( foldr
+                  (KM.delete . K.fromString)
+                  o
+                  ["method", "minify", "cacheDirectory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
+              )
+          )
+      )
+  _ -> BC.unpack bytes
+
+-- | Each generated file's path and SHA-256 in the compact layout.
+compactDigestTable :: Table (Either [Diagnostic] [(FilePath, String)])
+compactDigestTable = unsafePerformIO (newPersistentTable "inspect-compact" 64 (const 1))
+{-# NOINLINE compactDigestTable #-}
 
 -- | Two entries: each holds a whole compiled program and its plan.
 stagesTable :: Table (Either [Diagnostic] Stages)

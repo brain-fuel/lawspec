@@ -166,6 +166,8 @@ declarations =
       interface "AdviceReport" (fields [("findings", "AdviceFinding[]"), ("checks", "AdviceCheck[]"), ("ok?", "boolean"), ("meaning?", "string")]),
       interface "AdviceException" (fields [("rule", "string"), ("declaration", "string"), ("reason", "string")]),
       interface "AdviceRequest extends CheckRequest" (fields [("target?", "Target"), ("nativeSources?", "Source[]"), ("sourceDir?", "string"), ("testDir?", "string"), ("exceptions?", "AdviceException[]")]),
+      alias "Progress" (map quoted ["lines", "terminal", "timings"]),
+      interface "CacheFailure" (fields [("path", "string"), ("reason", "string")]),
       alias "Target" (map quoted Targets.targets),
       interface "Source" (fields [("path", "string"), ("content", "string")]),
       interface "Location" (fields [("file", "string"), ("line", "number"), ("column", "number")]),
@@ -572,6 +574,7 @@ declarations =
           ("dependencies?", text "Record<string, string>"),
           ("packages?", text "Package[]"),
           ("cacheDirectory?", text "string"),
+          ("progress?", text "Progress | Progress[]"),
           ("attestation?", text "unknown"),
           ("proofCounterexamples?", text "ProofCounterexample[]"),
           ("analysisResults?", text "AnalysisResult[]"),
@@ -895,7 +898,7 @@ declarations =
         ),
       interface
         "Result"
-        ( [("advice?", text "AdviceReport"), ("interface?", text "NativeInterface"), ("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])]
+        ( [("advice?", text "AdviceReport"), ("interface?", text "NativeInterface"), ("cacheFailure?", text "CacheFailure"), ("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])]
             ++ fields [("languageProfile?", "\"1.0-rc.2\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]"), ("temporalLaws?", "TemporalLaw[]")]
             ++ [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))]
             ++ fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "CompilerWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"), ("tests?", "NativeTestEntry[]")]
