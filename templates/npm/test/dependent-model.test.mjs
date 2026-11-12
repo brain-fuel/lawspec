@@ -12,8 +12,8 @@ const spec = '(machine stack linear) (start (indices 0) (arguments (unit))) ' +
   '(command push (arguments) (state 0) (unit true) (when false) (needs (atleast 0)) (shifts (by 1)) (key none) (restart false)) ' +
   '(command choose (arguments (dependent (int Int8 0 127) (>= 0) (< (index 0)))) (state 0) (unit false) (when false) (needs (atleast 0)) (shifts (by 0)) (key none) (restart false)) ' +
   '(command clear (arguments) (state 0) (unit true) (when false) (needs (atleast 0)) (shifts (to 0)) (key none) (restart false)) (abstract false) (invariants)';
-function machine(observed, mutant=false) {
-  return new Model(spec,[()=>0n,()=>0n],[
+function machine(observed, mutant=false, source=spec) {
+  return new Model(source,[()=>0n,()=>0n],[
     [(s,n)=>new DataValue('flow',[n+1n]),(s,n)=>n+1n,null],
     [(s,n,i)=>{assert.ok(i>=0n && i<n,`invalid argument ${i} for ${n}`); observed.push([String(n),String(i)]); return new DataValue('flow',[i+(mutant?1n:0n),n]);},
       (s,i,n)=>new DataValue('Pair',[i,n]),null],
@@ -27,10 +27,16 @@ test('dependent sampled generation replays and shrinking never executes an inval
   assert.ok(first.length>100);assert.deepEqual(first,replay);
   await assert.rejects(checkModelAsync(machine([],true),{seed:12n,cases:100}),/push\(\); choose\(0\).*model returns 0/);
 });
-test('a rejected dependent generation attempt remains incomplete',async()=>{
-  const model=machine([]);
+// A domain of more than 64 values is drawn rather than listed, so every draw
+// the reference rejects is counted; a run that rejects more steps than it
+// accepts stops the check as incomplete. ref:DEC-honest-model-steps
+test('rejected dependent draws that outnumber accepted steps leave the check incomplete',async()=>{
+  const drawn=spec.replace('(dependent (int Int8 0 127) (>= 0) (< (index 0)))','(dependent (int Int8 0 127) (>= 0))');
+  assert.notEqual(drawn,spec);
+  const model=machine([],false,drawn);
   model.commands[1].reference=()=>{throw new Error('bounded miss');};
-  await assert.rejects(checkModelAsync(model,{seed:12n,cases:100}),/incomplete model generation/);
+  await assert.rejects(checkModelAsync(model,{seed:12n,cases:100}),
+    /incomplete model generation: model .* drew \d+ steps its reference rejected and \d+ it accepted/);
 });
 test('Python and JavaScript draw and replay the same dependent domains',async()=>{
   const expected=[];await checkModelAsync(machine(expected),{seed:12n,cases:100});

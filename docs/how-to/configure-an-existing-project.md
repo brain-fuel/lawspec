@@ -20,8 +20,16 @@ the target root:
 npx lawspec init --target java --project java
 ```
 
-Existing build files are never changed. `init` prints the dependencies and
-test-runner settings the target needs; add them to your build yourself.
+In a target root that already has build files, `init` adds the settings it can
+add safely: missing entries in `package.json` and `global.json`, and a missing
+`tsconfig.json`. It never edits other build files such as `pom.xml`, Gradle
+scripts, `Cargo.toml` or `mix.exs`. It then fetches dependencies with the
+target's build tool and runs the `doctor` checks. When your build still lacks
+something, `init` exits with status 1 and prints what is missing and the
+dependencies and test-runner settings the target needs; add them to your build
+and run `init` again. See [project setup](../reference/cli.md#project-setup).
+
+Pass `--no-install` to write files only, without running a build tool.
 
 To add another target, run `init` again with a different target and project
 directory:

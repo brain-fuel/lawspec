@@ -235,7 +235,7 @@ boundaries = do
         "Prolog.Emit"
       ]
     controllerRoots = ["Manifest.Types", "Manifest.Decode", "Service.Manifest", "Version"]
-    controllerModules = controllerRoots ++ ["Manifest.EDN", "Targets"]
+    controllerModules = controllerRoots ++ ["Manifest.EDN", "Targets", "ActorRuntime"]
     visitAll _ _ seen [] = pure seen
     visitAll rejected boundary seen ((name, trail) : rest) = do
       when

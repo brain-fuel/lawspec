@@ -3,6 +3,7 @@
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
   ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, scaffoldFilesForActors, pekkoVersion, springStarterVersion
+  , prepareCommands, scaffoldRequirements
   , PresentationCheck(..), presentationChecks, gleamTestPackage, rapidMinimum, rapidMaximum, rapidDefault
   ) where
 
@@ -90,6 +91,60 @@ presentationChecks target = case target of
     python = [PresentationCheck "python3"
       ["-B", "-c", "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(),filename=p) for p in sys.argv[1:]]"]
       (Just ".py") False []]
+
+-- | The commands that fetch a just-initialised project's dependencies, in
+-- order. lawspec init runs them so that lawspec doctor passes without further
+-- steps. Each was checked against the scaffold before any code is generated,
+-- which is why .NET has none: its projects restore only once lawspec generate
+-- has written the runtime projects they reference, and dotnet test restores
+-- then. The host replaces {python} with the target's interpreter.
+prepareCommands :: String -> [PresentationCheck]
+prepareCommands target = case target of
+  "java" -> one "mvn" ["-q", "test-compile"]
+  "python" -> python
+  "prolog" -> python
+  "javascript" -> one "npm" ["install"]
+  "typescript" -> one "npm" ["install"]
+  -- "all" also records the checksums of the packages go test will load.
+  "go" -> one "go" ["mod", "download", "all"]
+  "haskell" -> one "stack" ["--no-terminal", "build", "--test", "--only-dependencies"]
+  "kotlin" -> one "gradle" ["testClasses", "--console=plain"]
+  "groovy" -> one "gradle" ["testClasses", "--console=plain"]
+  "rust" -> one "cargo" ["fetch"]
+  "erlang" -> one "rebar3" ["as", "test", "compile"]
+  "elixir" -> [command "mix" ["deps.get"] [], command "mix" ["deps.compile"] [("MIX_ENV", "test")]]
+  "gleam" -> one "gleam" ["build"]
+  "scala" -> one "scala" ["compile", "--test", "."]
+  "clojure" -> one "clojure" ["-P", "-M:test"]
+  "swift" -> one "swift" ["package", "resolve"]
+  _ -> []
+  where
+    command name args environment = PresentationCheck name args Nothing False environment
+    one name args = [command name args []]
+    python = one "{python}" ["-m", "pip", "install", "-e", ".[test]"]
+
+-- | Settings an existing JSON build file must carry for the target, as key
+-- paths and values. lawspec init adds the missing ones to a project that
+-- already has the file and creates the file from the scaffold otherwise. Only
+-- JSON files are listed: they can be changed without disturbing the rest of
+-- the file, which a pom.xml or a Gradle script cannot.
+scaffoldRequirements :: String -> [(FilePath, [([String], String)])]
+scaffoldRequirements target = case target of
+  "javascript" -> [("package.json", esModule : development ["fast-check"])]
+  "typescript" ->
+    [ ("package.json", esModule : development ["fast-check", "typescript", "@types/node"])
+    , ("tsconfig.json", []) ]
+  "fsharp" -> testingPlatform
+  "csharp" -> testingPlatform
+  _ -> []
+  where
+    esModule = (["type"], "module")
+    development names = [(["devDependencies", name], version) | name <- names, Just version <- [lookup name nodeDevelopment]]
+    testingPlatform = [("global.json", [(["test", "runner"], "Microsoft.Testing.Platform")])]
+
+-- | The Node development packages the JavaScript and TypeScript scaffolds pin.
+nodeDevelopment :: [(String, String)]
+nodeDevelopment = [("fast-check", "4.10.2"), ("typescript", "5.9.3"), ("@types/node", "22.20.4")]
 
 -- | The pinned toolchain each target is verified against, stated once so doctor,
 -- the CLI and the docs give the same advice.
@@ -233,11 +288,11 @@ scaffoldFilesForActors (ActorSettings runtime remote) crypto minify target = cas
   "javascript" -> Right
     [ ("package.json", json (Obj (commonPackage ++
         [ ("scripts", Obj [("test", Str "node --test test/*.test.mjs")]) ] ++ noble ++
-        [ ("devDependencies", Obj [("fast-check", Str "4.10.2")]) ]))) ]
+        [ ("devDependencies", Obj (nodePackages ["fast-check"])) ]))) ]
   "typescript" -> Right
     [ ("package.json", json (Obj (commonPackage ++
         [ ("scripts", Obj [("test", Str "npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js")]) ] ++ noble ++
-        [ ("devDependencies", Obj [("fast-check", Str "4.10.2"), ("typescript", Str "5.9.3"), ("@types/node", Str "22.20.4")]) ])))
+        [ ("devDependencies", Obj (nodePackages ["fast-check", "typescript", "@types/node"])) ])))
     , ("tsconfig.json", json (Obj
         [ ("compilerOptions", Obj
             [ ("target", Str "ES2022"), ("module", Str "NodeNext"), ("rootDir", Str "."), ("outDir", Str "dist")
@@ -354,6 +409,7 @@ scaffoldFilesForActors (ActorSettings runtime remote) crypto minify target = cas
     cluster = pekko && remote == ClusterRemote
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
     commonPackage = [("name", Str "lawspec-example"), ("version", Str "0.1.0"), ("private", Bool True), ("type", Str "module")]
+    nodePackages names = [(name, Str version) | name <- names, Just version <- [lookup name nodeDevelopment]]
     kotlinBlock name statements
       | minify = name ++ " { " ++ intercalate "; " statements ++ " }"
       | otherwise = name ++ " {\n" ++ intercalate "\n" (map ("    " ++) statements) ++ "\n}"

@@ -8,14 +8,18 @@ title: Independent host SDK integration
 
 ## Release status
 
-**Released with 0.32.0 under the owner's 9 November 2026 decision.** The goal
-"ship trusted precompiled native artifacts for Node, with an option to build
-from source" ships with these platform statements. ref:DEC-component-release-acceptance
+**Released with 0.32.0 under the owner's 9 November 2026 decision; rebuilt for
+0.33.0.** The goal "ship trusted precompiled native artifacts for Node, with an
+option to build from source" ships with these platform statements.
+ref:DEC-component-release-acceptance
 
-- **macOS ARM64 and Linux ARM64:** native installation and execution recorded.
-- **Linux x64:** accepted on the precompiled application comparison and the
-  full installation lifecycle executed under x64 emulation. Native Linux x64
-  hardware and the complete Node-version matrix are not recorded.
+- **macOS ARM64:** native installation and execution recorded for 0.33.0 by the
+  local `component-native-acceptance` step.
+- **Linux ARM64:** for 0.33.0, the acceptance bundle passed under Node 22, 24
+  and 26 (Debian 12, glibc 2.36) in an ARM64 Linux VM on Apple silicon.
+- **Linux x64:** for 0.33.0, the same bundle passed under Node 22, 24 and 26
+  (Debian 12, glibc 2.36) under x64 emulation in that VM. This is functional
+  evidence, not native performance. Native Linux x64 hardware is not recorded.
 - **macOS x64: unverified.** The package is cross-built; this Mac cannot launch
   x64 executables and has no Rosetta installation, so no execution is recorded.
   The owner accepted shipping it with this note, to be corrected later.

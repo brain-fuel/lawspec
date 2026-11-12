@@ -8,6 +8,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A definition can abstract over what `map` works on: `m a` is a type
+  constructor variable applied, and `requires Mappable m` allows `prelude.map`
+  on it. The instances are `List` and `Either` with its failure type fixed.
+  See [Definitions](docs/reference/language/definitions.md#a-definition-over-a-type-constructor).
+
+### Changed
+
+- A second `check` of an unchanged project reads each source's stored parse
+  from the cache directory. On a 3,087-line probe it takes 2.2 s against
+  3.8 s for the first. Definition templates are no longer stored on disk:
+  reading them took longer than inferring them.
+
+## [0.33.0] - 2026-11-11
+
+### Added
+
 - Prior-art decisions for 0.33's Pekko and Spring actor runtimes
   (DEC-pekko-runtime, DEC-pekko-otp-supervision, DEC-restart-keeps-state,
   DEC-pekko-cluster-remote, DEC-spring-actor-starter), and a planned 0.33
@@ -111,6 +127,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `lawspec init` leaves the project ready to generate and test
+  (DEC-init-prepares-project). It adds missing settings to an existing
+  `package.json` or `global.json` and creates a missing `tsconfig.json`, fetches
+  dependencies with the target's build tool, creates `.venv` for a Python or
+  Prolog target that names no interpreter, and runs the `doctor` checks. It
+  exits with status 1 and doctor's message when the project is not ready.
+  Before, a project that already had a build file, which includes every
+  project where `lawspec` was installed with npm first, was left unchanged
+  with printed instructions. `init --no-install` keeps that offline behaviour.
+  Build files other than JSON are still never edited.
 - A definition in which each call shrinks one of two arguments and keeps the
   other is now admitted. It was rejected with "no single parameter strictly
   decreases in every recursive call". The three "no single parameter" messages
@@ -147,6 +173,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `lawspec test` runs a Kotlin or Groovy project's own `./gradlew` when the
+  manifest names no `:gradle`, as `lawspec init` already did. It used to
+  require `gradle` on PATH and failed with `spawn gradle ENOENT` without it.
 - Kotlin trailing lambdas whose parameters fit on the call line but whose
   arrow does not are laid out as ktfmt does (`{ s` then `->` on the next
   line).
@@ -165,11 +194,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   maps the success value as before, and the operand's type decides. A
   recursive definition may map itself over the children of its argument.
   See [Sequences](docs/reference/language/sequences.md#mapping-and-filtering-a-list).
-
-- A definition can abstract over what `map` works on: `m a` is a type
-  constructor variable applied, and `requires Mappable m` allows `prelude.map`
-  on it. The instances are `List` and `Either` with its failure type fixed.
-  See [Definitions](docs/reference/language/definitions.md#a-definition-over-a-type-constructor).
 
 - Text built-ins `prelude.split`, `prelude.trim`, `prelude.words` and
   `prelude.lines`, on every target. `split` keeps empty pieces, so `join`
@@ -219,10 +243,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An unchanged `check` no longer spends most of its time computing cache
   keys. Each unit was rendered and hashed three times on every run, which
   cost as much as the validation the cache saved.
-- A second `check` of an unchanged project reads each source's stored parse
-  from the cache directory. On a 3,087-line probe it takes 2.2 s against
-  3.8 s for the first. Definition templates are no longer stored on disk:
-  reading them took longer than inferring them.
 - Evaluating a nested or list literal takes work in proportion to its size.
   Each constructor used to validate every value beneath it again, so the work
   grew with the square of the size: a 64-element list literal took 5,197
@@ -2728,7 +2748,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/brain-fuel/lawspec/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...v0.32.0
 [0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3
 [0.31.2]: https://github.com/brain-fuel/lawspec/compare/v0.31.0...v0.31.2

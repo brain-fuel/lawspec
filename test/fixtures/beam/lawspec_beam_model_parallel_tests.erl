@@ -69,7 +69,7 @@ every_interleaving_must_be_reference_valid_test() ->
     ?assert(lawspec_beam_model_parallel:allowed(M, {Prefix, [[{1, []}], []]})),
     ?assertNot(lawspec_beam_model_parallel:allowed(M, {Prefix, [[{1, []}], [{1, []}]]})),
     lists:foreach(fun(Seed) ->
-        {Case, _} = lawspec_beam_model_parallel:generate(M, Seed, 4, 3, 5),
+        {Case, _, _} = lawspec_beam_model_parallel:generate(M, Seed, 4, 3, 5),
         ?assert(lawspec_beam_model_parallel:allowed(M, Case))
     end, lists:seq(0, 30)).
 
@@ -168,7 +168,7 @@ vectors(Path) ->
             <<"shrinks">> := Shrinks}) ->
         Model = case Kind of <<"counter">> -> counter(); <<"actor">> -> lawspec_beam_model_tests:counter(true);
             <<"guarded">> -> lawspec_beam_model_tests:guarded() end,
-        {Run, Last} = lawspec_beam_model_parallel:generate(Model, lawspec_beam_random:seed(Seed), Size, Threads, Length),
+        {Run, _Rejected, Last} = lawspec_beam_model_parallel:generate(Model, lawspec_beam_random:seed(Seed), Size, Threads, Length),
         ?assertEqual(End, Last), ?assertEqual(Expected, lawspec_beam_model_parallel:describe(Model, Run)),
         ?assertEqual(Shrinks, [lawspec_beam_model_parallel:describe(Model, R) || R <- lawspec_beam_model_parallel:candidates(Model, Run)])
     end, Cases),

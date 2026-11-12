@@ -2029,3 +2029,12 @@ DEC-application-port-performance-baseline:
   opened: 0.32.0
   decided: 0.32.0
   refs: []
+
+DEC-init-prepares-project:
+  status: decided
+  question: lawspec init left a project that already had a build file untouched and printed the settings and install commands to run by hand. Installing lawspec with npm creates package.json first, so every npm user met a generate that failed on type=module and a missing fast-check. How far does init go?
+  answer: |
+    init leaves the project ready. Into a JSON build file the project already has (package.json, tsconfig.json, global.json) it adds the settings the target needs and the file lacks; a setting that is present is kept for lawspec doctor to judge, except npm init's default type=commonjs, which is replaced when no .js or .ts source depends on it and refused with an explanation otherwise. Other build files (pom.xml, Gradle scripts, Cargo.toml, mix.exs and the like) cannot be changed without rewriting the owner's text, so init never edits them. init then fetches dependencies with the target's own tool, creates .venv for a Python or Prolog target that names no interpreter and records it as the target's python, and runs lawspec doctor. It exits non-zero with doctor's message when the project is not ready. --no-install keeps the offline behaviour: files only, with the setup advice printed. The settings and the commands are LawSpec.Scaffold's data (scaffoldRequirements, prepareCommands); the Node host reads, writes and runs. .NET has no command, because its projects restore only after lawspec generate has written the runtime projects they reference.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: []

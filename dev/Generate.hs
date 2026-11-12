@@ -35,7 +35,7 @@ import qualified LawSpec.Targets as Targets
 import LawSpec.Collections (collectionsSource)
 import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
-import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, rapidMinimum, rapidMaximum, scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
+import LawSpec.Scaffold (PresentationCheck(..), prepareCommands, presentationChecks, rapidMinimum, rapidMaximum, scaffoldFiles, scaffoldRequirements, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
 import qualified LawSpec.PreludeNames as PreludeNames
 import qualified LawSpec.Scalar as Scalar
@@ -318,6 +318,14 @@ factFills version =
         ("suffix", maybe Null String (checkSuffix c)), ("each", Bool (checkEach c)),
         ("environment", Object [(k, String v) | (k,v) <- checkEnvironment c])] | c <- presentationChecks t])
       | t <- Targets.programTargets])))
+  , ("prepare-commands", Inline (json (Object
+      [(t, Array [Object [("command", String (checkCommand c)), ("args", Array (map String (checkArguments c))),
+        ("environment", Object [(k, String v) | (k,v) <- checkEnvironment c])] | c <- prepareCommands t])
+      | t <- Targets.programTargets])))
+  , ("requirements", Inline (json (Object
+      [(t, Object [(file, Array [Object [("path", Array (map String keys)), ("value", String value)] | (keys, value) <- entries])
+        | (file, entries) <- scaffoldRequirements t])
+      | t <- scaffoldTargets])))
   , ("rapid-minimum", Inline (json (String rapidMinimum)))
   , ("rapid-maximum", Inline (json (String rapidMaximum)))
   , ("setup", Inline (json (Object [(t, String s) | t <- scaffoldTargets, Just s <- [setupAdvice t]])))

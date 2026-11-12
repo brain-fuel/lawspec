@@ -16,7 +16,7 @@ import LawSpec.Core.Machine
 import LawSpec.Flow (flowTypeName)
 import LawSpec.Indexed (indexedRefinementName)
 import LawSpec.Model
-import LawSpec.ModelTime (timeStep, timePasses, timeAdapter, timeSignature)
+import LawSpec.ModelTime (timeStep, timePasses, timeAdapter)
 import LawSpec.Scalar (isInteger)
 
 -- | A model pairs a system's commands with a reference implementation over an
@@ -518,3 +518,8 @@ checkSupervisors u = do
           c : cs -> toUpper c : cs ++ "Mailbox"
           [] -> "Mailbox"
     when (cls `elem` declared) (Left (Just range, "mailbox " ++ m ++ "'s class is " ++ cls ++ ", which is already declared as a type; rename one"))
+
+-- | The adapter signature of an actor's `time passes` step over its own state:
+-- State -> Pair Duration State. ref:DEC-time-passes
+timeSignature :: Type -> Type
+timeSignature own = Arrow own (Application "Pair" [Named "Duration", own])

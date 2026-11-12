@@ -100,7 +100,7 @@ actor_adapter_failure_closes_tree_test() ->
 references_and_preconditions_keep_generation_valid_test() ->
     M = guarded(),
     lists:foreach(fun(Seed) ->
-        {Run, _} = lawspec_beam_model:generate(M, Seed, 100, 4, true),
+        {Run, _, _} = lawspec_beam_model:generate(M, Seed, 100, 4, true),
         ?assertMatch({ok, _}, lawspec_beam_model:simulate(M, Run)),
         ?assertEqual(ok, lawspec_beam_model:execute(M, Run))
     end, lists:seq(0, 20)).
@@ -113,7 +113,7 @@ guarded() ->
 invalid_references_do_not_hide_implementation_failures_test() ->
     M0 = counter(false),
     BadStart = M0#{start_model := fun(_, _) -> error(invalid_start_reference) end},
-    {Run, _} = lawspec_beam_model:generate(BadStart, 0, 20, 2, true),
+    {Run, _, _} = lawspec_beam_model:generate(BadStart, 0, 20, 2, true),
     ?assertEqual({[ls_unit], []}, Run),
     ?assertMatch({error, #{step := 0, reason := {raised, error, invalid_start_reference}}},
         lawspec_beam_model:execute(BadStart, Run)),
@@ -209,7 +209,7 @@ vectors(Path) ->
             <<"size">> := Size, <<"end">> := End, <<"run">> := Expected, <<"shrinks">> := Shrinks}) ->
         Model = case Kind of <<"stack">> -> stack(); <<"counter">> -> counter(false);
             <<"actor">> -> counter(true); <<"guarded">> -> guarded() end,
-        {Run, Last} = lawspec_beam_model:generate(Model, lawspec_beam_random:seed(Seed), Length, Size, true),
+        {Run, _Rejected, Last} = lawspec_beam_model:generate(Model, lawspec_beam_random:seed(Seed), Length, Size, true),
         ?assertEqual(End, Last), ?assertEqual(Expected, lawspec_beam_model:describe(Model, Run)),
         ?assertEqual(Shrinks, [lawspec_beam_model:describe(Model, R) || R <- lawspec_beam_model:candidates(Model, Run)])
     end, Cases),
@@ -233,6 +233,6 @@ dependent_argument_domains_test() ->
     ?assertEqual(invalid, lawspec_beam_model:simulate(M, {[ls_unit], [{0, []}, {1, [1]}]})),
     ?assertEqual(invalid, lawspec_beam_model:simulate(M, {[ls_unit], [{0, []}, {2, []}, {1, [0]}]})),
     ?assertEqual(ok, lawspec_beam_model:check(M, #{seed => 12})),
-    {Run, Seed} = lawspec_beam_model:generate(M, 12, 100, 5, false),
-    ?assertEqual({Run, Seed}, lawspec_beam_model:generate(M, 12, 100, 5, false)),
+    {Run, Rejected, Seed} = lawspec_beam_model:generate(M, 12, 100, 5, false),
+    ?assertEqual({Run, Rejected, Seed}, lawspec_beam_model:generate(M, 12, 100, 5, false)),
     ?assertMatch({ok, _}, lawspec_beam_model:simulate(M, Run)).

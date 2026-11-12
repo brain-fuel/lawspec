@@ -141,6 +141,7 @@ async function call(verb, flags = [], options = {})
 }
 const layoutFlags = minify ? ['--minify'] : [];
 await call('init', [
+  '--no-install',
   '--target',
   language,
   '--project',

@@ -1,0 +1,69 @@
+unit example.textPieces
+
+-- A text divides into pieces: at a separator, at white space, or at line
+-- ends. The same pieces come back on every target.
+
+-- A setting is a name, an equals sign and a value, with spaces allowed
+-- around each.
+function settingName (line :: Text) -> Text is
+  first matching case of prelude.split "=" line :
+  when Nil then ""
+  when Cons name rest then prelude.trim name
+  end case
+end function
+
+-- How many words a text has.
+function wordCount (text :: Text) -> Integer is
+  prelude.length (prelude.words text)
+end function
+
+law "|joining the pieces gives the text back| is
+  definition :
+    for all (separator :: Text) (text :: Text) =>
+      prelude.join separator (prelude.split separator text) = text end for all
+  end definition
+end law
+
+law "|split keeps empty pieces| is
+  definition :
+    prelude.split "," "a,,b," = ["a", "", "b", ""] and prelude.split "" "ab" = ["ab"] and prelude.split "ab" "cabab" = ["c", "", ""]
+  end definition
+end law
+
+law "|a trimmed text stays trimmed| is
+  definition : for all (text :: Text) => prelude.trim (prelude.trim text) = prelude.trim text end for all end definition
+end law
+
+law "|trim removes white space at both ends only| is
+  definition : prelude.trim "  a b\t\n" = "a b" and prelude.trim "   " = "" and prelude.trim "é " = "é" end definition
+end law
+
+law "|words have no white space and are never empty| is
+  definition :
+    prelude.words " one  two\tthree\n" = ["one", "two", "three"] and prelude.words "  " = []
+  end definition
+end law
+
+law "|words are the same after trimming| is
+  definition : for all (text :: Text) => prelude.words (prelude.trim text) = prelude.words text end for all end definition
+end law
+
+law "|lines end at line feeds| is
+  definition :
+    prelude.lines "a\n\nb\n" = ["a", "", "b"] and prelude.lines "a\nb" = ["a", "b"] and prelude.lines "" = [] and prelude.lines "\n" = [""]
+  end definition
+end law
+
+law "|a setting's name has no spaces around it| is
+  definition :
+    for all (name :: Text) (value :: Text) =>
+      settingName (" " ++ prelude.trim name ++ " =" ++ value) = settingName (prelude.trim name ++ "=") end for all
+  end definition
+  example "|spaces around the name| :
+    name = "retries"
+    value = " 3"
+    expect settingName (" " ++ name ++ " =" ++ value) = "retries"
+    expect wordCount (" " ++ name ++ " =" ++ value) = 3
+  end example
+end law
+end unit

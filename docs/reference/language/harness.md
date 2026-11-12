@@ -43,8 +43,10 @@ harness guide.shop.testing for guide.shop is
 strategy smallOrder :: Order is
 bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order record{ items = items , total = (items * 100)} end bind
 end strategy
+strategy bulkItems :: (n :: Int32 where n >= 11 && n <= 1000) is any end strategy
+strategy bulkTotal :: (n :: Int32 where n >= 0 && n <= 999999) is any end strategy
 strategy bulkOrder :: Order is
-any such that itemsOf it > 10 && totalOf it >= 0 at most 1000 discards
+bind items :: Int32 from bulkItems in bind total :: Int32 from bulkTotal in one of Order record{ items = items , total = total} end bind end bind
 end strategy
 strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end strategy
 

@@ -33,7 +33,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.30 | Triple-quoted multiline text and known discrepancies | — |
 | 0.31 | Compact finite test plans and shared scoped searches on all 18 executable targets; unified EDN manifests and components | Teaching review of the learning course |
 | 0.32 | Shared compiler, generation and tooling corrections (S1.j): checked strategies, evaluation allowance and deferral, the `mutate` command, and an opt-in component runtime | Original-project confirmations; native x64 and WSL2 cache checks; default-runtime cutover; larger models and checked mutual recursion |
-| 0.33 | Planned: Apache Pekko and Spring actor runtimes for the JVM targets, checking hand-written Pekko and Spring actors against LawSpec actors, and `restart keeps state` | The LawSpec JVM runtime stays the default |
+| 0.33 | Apache Pekko and Spring actor runtimes for the JVM targets, checking hand-written Pekko and Spring actors against LawSpec actors, `restart keeps state`, Pekko Cluster `serve` and `connect`, faster model checking, checked mutual recursion, list `map` and `filter`, `lawspec init` that leaves a project ready to test, and the first application-port checkpoint | The LawSpec JVM runtime stays the default; no network partitions on Pekko Cluster, no symmetry reduction, no capability over type constructors |
 
 0.16 in detail:
 
@@ -188,8 +188,6 @@ Prolog now has public generation, Janus bindings and PLUnit execution over the
 checked Python target, with the shared native acceptance matrix checked in
 both machine profiles. Artifact generation remains distinct from law execution.
 
-## Planned
-
 ### 0.33: Pekko and Spring actor runtimes
 
 Each JVM target (Java, Kotlin, Scala, Groovy and Clojure) chooses its actor
@@ -205,11 +203,39 @@ and four `apache/pekko-samples` become acceptance suites. The decisions are
 DEC-pekko-runtime, DEC-pekko-otp-supervision, DEC-restart-keeps-state,
 DEC-pekko-cluster-remote and DEC-spring-actor-starter.
 
-### Haskell application port and default component runtime
+0.33 also admits mutually recursive definitions, adds list `map` and `filter`
+and text pieces on every target, checks larger actor models quickly (partial
+order reduction, per-value fairness, honest counts of refused steps), and
+ships the first application-port checkpoint: manifest admission and version
+selection in typed Haskell services. `lawspec init` now leaves a project ready
+to generate and test: it fetches dependencies and runs the `doctor` checks.
 
-The component runtime is opt-in. Porting the remaining application services to
-typed Haskell and making that runtime the default wait on the platform and
-application acceptance recorded in [the host SDK reference](../reference/host-sdk.md).
+## Planned
+
+### 0.33.x: S1.j follow-ups (in progress)
+
+The remaining S1.j reports, on branch `s1j-followup`: one `map` for lists and
+`Either` through a capability over type constructors (`requires Mappable m`,
+committed), stored parses and persisted definition admission so a repeated
+`check` is faster than the first (in progress), list `map` and `filter` in the
+typed fast-path backends, mutual tail calls as loops, constructor predicates
+that call recursive definitions, and the `generate` slowdown. The canon and
+Rice's Tax pin bump waits on their releases. See [the S1.j follow-up](s1j-followup.md).
+
+### 0.34: Haskell application port, with Maven, Gradle and Go hosts
+
+Every command runs end to end in the Haskell core; Node, the JVM and Go become
+thin hosts that only perform primitive effects (files, processes, fetch,
+environment, clock, standard streams and serving HTTP). LawSpec is published to
+Maven Central as `dev.goforge:lawspec`, with a Maven plugin and the Gradle
+plugin `dev.goforge.lawspec`, and as the Go module `goforge.dev/lawspec`. Go
+runs the WASM core on wazero. The JVM ships a natively compiled compiler in one
+jar per platform with a logic-free launcher, because the engine study (wazero
+1.22× V8; Chicory without SIMD support; GraalWasm 2.94× V8 on GraalVM only)
+found no pure-JVM engine that meets the bar yet. The opt-in component runtime
+becomes the default once the platform and application acceptance in
+[the host SDK reference](../reference/host-sdk.md) is met. The first port
+checkpoint, manifest admission and version selection, shipped in 0.33.
 
 ### Folio
 
@@ -253,5 +279,7 @@ analysis, with a checked `decreases` clause as fallback
 ([definitions](../reference/language/definitions.md#recursion-that-must-end)).
 The compiler generates and discharges these obligations itself; there is no
 solver run and no separate proof checker. Mutual induction in law proofs is
-still reported as unsupported. This work does not remove the teaching review
+still reported as unsupported. The model checker has no symmetry reduction
+yet, and the five-hakker table is checked as a model, not against the running
+Pekko sample. This work does not remove the teaching review
 or human/external release gates.
