@@ -15,6 +15,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `lawspec-dev ci` builds once, runs the compiler's tests in five parts and
+  each SDK test file as a step of its own, and reuses an SDK test's pass
+  while the files and tools it can read are unchanged. A step is stopped
+  after two hours, and on macOS the machine is kept awake while the check
+  runs. See [Contribute](docs/how-to/contribute.md).
+- Compiling a project with structural records no longer normalizes every
+  declaration again for each example and refinement check. The 70 bundled
+  example specs compile for their first target in 44 s, from 55 s.
 - A second `check` of an unchanged project reads each source's stored parse
   from the cache directory. On a 3,087-line probe it takes 2.2 s against
   3.8 s for the first. Definition templates are no longer stored on disk:

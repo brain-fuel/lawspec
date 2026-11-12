@@ -804,6 +804,15 @@ DEC-parallel-ci:
   opened: 0.23.0
   decided: 0.23.0
 
+DEC-ci-test-targets:
+  status: decided
+  question: The SDK tests ran as one uncached step that took 107 minutes of a full check, and the compiler's tests as one step of 14 to 18 minutes that also recompiled the library. How are they divided and reused?
+  answer: |
+    As a build system treats targets: each has declared inputs, and a target whose inputs are unchanged is not run again (Bazel's action cache keyed on input digests; Make's prerequisites). The build step builds the library, executables and test suite once (stack build --test --no-run-tests), and every other step runs what it built with stack exec; stack test and stack run configure the package differently, and each switch recompiled the library. The compiler's Hspec suite runs from the built executable in five parts chosen from measured times (compilerTestShards in dev/Ci.hs); the last part skips what the others select, so a new group is never left out. Each file in npm/test is a step keyed by the digests of the repository files it can read, its command and environment, and the presence and version of every tool an SDK test may start (tools/ci-artifact-key.mjs npm-tests). Bazel enforces a target's declared inputs with a sandbox; nothing here records what a test process opens, so the inputs are a declared over-approximation by repository root (sdkTestInputs): the SDK without the other test files, the environment locks, each root that the test file, a test helper or an SDK module names as a path segment, and the Haskell sources only when the file names stack, GHC or a repository executable. A test that reaches a root through a computed path must be added there. Keys leave out the variables a terminal or agent session sets for itself. A step is stopped after two hours (LAWSPEC_CI_STEP_MINUTES), and on macOS the check holds an idle-sleep assertion while it runs. The export of every bundled example and the Unicode folding checks are each split into two test files, so their halves run at once and are cached apart. package-smoke stays uncached.
+  opened: 0.33.1
+  decided: 0.33.1
+  refs: [bazel-remote-caching, salsa]
+
 DEC-scala-on-the-jvm-runtime:
   status: decided
   question: How does LawSpec reach Scala, with a runtime of its own or over the JVM runtime Java and Kotlin share, and which build tool runs a generated project?

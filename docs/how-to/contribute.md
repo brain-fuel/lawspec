@@ -144,10 +144,16 @@ resources exclusively:
 - Each acceptance suite holds its project directory,
   `.artifacts/<suite><profile>/<target>`. Suites for one target run together,
   each in its own project.
-- Steps that call `stack run`, `stack build` or `stack test` in the
-  repository run one at a time, since each may reconfigure and rebuild the
-  package. `compiler-tests` and `build-acceptance` also reinstall
-  `lawspec-acceptance`, so no suite runs beside them.
+- The `build` step builds the library, the executables and the test suite
+  once, and nothing that runs them starts before it. Every other step uses
+  `stack exec`. Switching between `stack test` and `stack run` recompiles the
+  library, so no step does either.
+- The compiler's tests run from the built test executable in five parts
+  (`compiler-tests-proof-receipts`, `-smt-text`, `-test-manifest`,
+  `-generation` and `-rest`). The last part skips what the others select, so
+  a new test group runs there without being listed. `sh
+  tools/compiler-tests.sh --match "SMT text"` runs one part by hand.
+- Each file in `npm/test` is a step, `npm-test-<name>`.
 - Haskell and Java suites follow the target's `crypto` suite, which fills
   Stack's snapshot database and Maven's repository alone; neither guards
   concurrent installation. Cargo, Go, Gradle, NuGet and npm lock their caches.
@@ -159,6 +165,11 @@ resources exclusively:
   runs with a command limit of one hour; the other commands retain their
   limits of 30 minutes.
 
+A step that runs past two hours is stopped and fails;
+`LAWSPEC_CI_STEP_MINUTES` changes the limit. On macOS the check holds an
+idle-sleep assertion (`caffeinate -i`) until it exits, since a sleeping
+machine stops every step.
+
 Ctrl-C stops every running step and everything it started. To add a step,
 declare what it follows and holds in `plan` in `dev/Ci.hs`.
 
@@ -169,9 +180,20 @@ Results are content-addressed, so a second run only repeats what changed:
   dependency locks and environment. A compiler change that leaves a target's
   generated files unchanged reuses that target's results; the console marks
   them `(cached)`.
-- The compiler, npm, parity, package, docs and Rust runtime steps are keyed by
-  the bytes of the repository files they read (tracked or untracked, not
-  ignored) and their tools' versions, and print `cached`.
+- The compiler, parity, docs and Rust runtime steps are keyed by the bytes of
+  the repository files they read (tracked or untracked, not ignored) and
+  their tools' versions, and print `cached`.
+- An `npm-test-<name>` step is keyed the same way, by what that file can
+  read: `npm/` without the other test files, the environment locks, each
+  repository root that the file, a test helper or an SDK module names as a
+  path, and the Haskell sources only if the file names `stack`, GHC or one of
+  the repository's executables. The key also holds the presence and version
+  of every tool a test may start. Editing one test file reruns that file;
+  editing documentation or an acceptance suite reruns none. These inputs are
+  declared, not observed: a test that reads a root through a computed path
+  must name it in a string, or `sdkTestInputs` in `dev/Ci.hs` must add it.
+- The keys ignore the variables a terminal or agent session sets for itself,
+  so a pass recorded in one terminal is reused in the next.
 
 Passes are recorded in `.artifacts/cache`; delete it to forget them.
 `--fresh` (or `make ci-fresh`) runs everything, as a release does.

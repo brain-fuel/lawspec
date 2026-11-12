@@ -110,26 +110,105 @@ async function compilerTestTools(root, environment)
   return {node, python, stack, ghc, z3};
 }
 
+// The variables a terminal, a login session or an agent session sets anew
+// each time. They name the session, not the check, so a pass recorded in one
+// terminal stays valid in the next. Every other variable is part of the key:
+// GHCRTS, HSPEC_OPTIONS, Node options, PATH and the LAWSPEC_ settings all
+// change what a check does.
+const sessionVariables = [
+  /^_$/,
+  /^(PWD|OLDPWD|SHLVL|WINDOWID|COLUMNS|LINES)$/,
+  /^(SECURITYSESSIONID|LaunchInstanceID|INVOCATION_ID|OSLogRateLimit)$/,
+  /^(SSH_|XPC_|TMUX|STY$|KITTY_|ITERM_|TERM_SESSION_ID$|TERM_PROGRAM)/,
+  /^(CLAUDE|AI_AGENT$|LAUNCHCTL_ENV_REEXEC$|__CF)/,
+];
+
+function stableEnvironment(environment)
+{
+  return Object.fromEntries(
+    Object.entries(environment)
+      .filter(([name]) => !sessionVariables.some(pattern => pattern.test(name)))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
+}
+
+// The tools an SDK test may start, each with the version it reports. The
+// tests choose optional tools by availability, so an absent tool is recorded
+// as absent and the key changes when it appears. The pinned environments in
+// .integration are identified by their lock files, which are repository
+// inputs of every SDK test step.
+const sdkTools = [
+  ['node', ['--version']],
+  ['npm', ['--version']],
+  ['python3', ['--version']],
+  ['java', ['-version']],
+  ['mvn', ['-v']],
+  ['gradle', ['--version', '--quiet']],
+  ['scala', ['version']],
+  ['clojure', ['--version']],
+  ['go', ['version']],
+  ['rustc', ['-Vv']],
+  ['cargo', ['-V']],
+  ['swift', ['--version']],
+  ['dotnet', ['--version']],
+  ['stack', ['--version']],
+  [
+    'erl',
+    [
+      '-noshell',
+      '-eval',
+      'io:format("~s~n", [erlang:system_info(system_version)]), halt().',
+    ],
+  ],
+  ['elixir', ['--version']],
+  ['gleam', ['--version']],
+  ['swipl', ['--version']],
+  ['z3', ['-version']],
+  ['tofu', ['version']],
+  ['make', ['--version']],
+];
+
+async function sdkTestTools(root, environment)
+{
+  return Promise.all(
+    sdkTools.map(async ([command, arguments_]) =>
+    {
+      const binary = await executable(command, root, environment, {
+        optional: true,
+      });
+      if (binary === null) return {command, present: false};
+      // A tool that is present but cannot report a version contributes its
+      // failure, so the key still changes when it is repaired.
+      const version = await exec(binary, arguments_, {
+        cwd: root,
+        env: environment,
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: 60000,
+      }).then(
+        result => result.stdout + result.stderr,
+        error => 'failed: ' + (error.stdout ?? '') + (error.stderr ?? ''),
+      );
+      return {command, present: true, binary, version};
+    }),
+  );
+}
+
 export async function artifactKey(
   mode,
   {root = repository, environment = process.env, nativeCompiler} = {},
 )
 {
-  if (!['parity', 'compiler-tests'].includes(mode))
+  if (!['parity', 'compiler-tests', 'npm-tests'].includes(mode))
     throw new Error(
       'This check has no certified reusable artifact context: ' + mode,
     );
   const sdk = path.join(root, 'npm');
-  // Hash the full effective environment without printing its values. In
+  // Hash the effective environment without printing its values. In
   // particular GHCRTS, HSPEC_OPTIONS and Node options affect these checks.
   const context = {
     host: await fingerprintNativeHost(sdk),
     versions: process.versions,
-    environment: Object.fromEntries(
-      Object.entries(environment).sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0,
-      ),
-    ),
+    environment: stableEnvironment(environment),
   };
   const files = (await readdir(sdk))
     .filter(
@@ -145,6 +224,12 @@ export async function artifactKey(
     ]),
   );
   const sdkDigest = digest(JSON.stringify(executableFiles));
+  if (mode === 'npm-tests')
+    return {
+      format: 'lawspec-npm-tests-key-1',
+      context: digest(JSON.stringify(context)),
+      tools: digest(JSON.stringify(await sdkTestTools(root, environment))),
+    };
   if (mode === 'compiler-tests')
     return {
       format: 'lawspec-compiler-tests-key-1',
