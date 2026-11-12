@@ -5,7 +5,7 @@ import Control.Monad (forM_)
 import Control.Exception (evaluate)
 import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
-import Data.List (find, isInfixOf, isPrefixOf)
+import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf)
 import Data.Char (toLower)
 import Data.Foldable (toList)
 import qualified LawSpec.Code.ECMAScript as ECMAScript
@@ -16,8 +16,6 @@ import qualified Data.Binary.Put as BinaryPut
 import Data.Either (isLeft)
 import Data.Int (Int64)
 import qualified Control.Monad.State.Strict as State
-import Data.Version (showVersion)
-import Paths_lawspec (version)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import qualified Data.Map.Strict as M
@@ -37,7 +35,7 @@ import LawSpec.Core.Evidence (Obligation(..))
 import qualified Data.ByteString.Lazy.Char8 as BC
 import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory, createDirectoryIfMissing, copyFile)
 import System.FilePath ((</>))
-import LawSpec.Memo (newPersistentTable, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withoutMemoization)
+import LawSpec.Memo (CacheFailure (..), Progress (..), buildIdentity, entryLocation, entryNameLength, temporaryName, newPersistentTable, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withRequest, withoutMemoization)
 import LawSpec.Discharge (dischargeEvidence)
 
 -- Read only the structured document prefix of a persisted (document,state)
@@ -47,6 +45,10 @@ documentPrefix bytes = case Binary.decodeOrFail bytes of
   Right (_,_,Right document) -> document
   Right (_,_,Left message) -> error ("cached document failed: " ++ (message :: String))
   Left (_,_,message) -> error message
+
+-- | Where a persistent table keeps its entries below a cache directory.
+tableFolder :: FilePath -> String -> FilePath
+tableFolder root table = fst (entryLocation root table "")
 
 cachedHelperDocuments :: String -> FilePath -> IO [String]
 cachedHelperDocuments target directory = do
@@ -125,6 +127,52 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     fresh <- newPersistentTable "bounded-entry" 4 length
     run fresh (error "normal persisted entry was not reused") `shouldBe` "ok"
     removePathForcibly root
+  it "keeps an entry within 54 characters of the cache directory, temporary file included" $ do
+    let (folder, name) = entryLocation "cache" "typed-jvm-function" (replicate 5000 'k')
+        below = drop (length ("cache" :: String) + 1) (folder </> name)
+    length name `shouldBe` entryNameLength
+    length below `shouldSatisfy` (<= 54)
+    length (temporaryName name) `shouldBe` length name
+    temporaryName name `shouldNotBe` name
+    all (`elem` ("abcdefghijklmnopqrstuvwxyz234567" :: String)) name `shouldBe` True
+    -- The table and the key are both in the name, so tables that shared a
+    -- folder would still keep their entries apart.
+    snd (entryLocation "cache" "plan" "same") `shouldNotBe` snd (entryLocation "cache" "expand" "same")
+    snd (entryLocation "cache" "plan" "same") `shouldNotBe` snd (entryLocation "cache" "plan" "other")
+    entryLocation "cache" "plan" "same" `shouldBe` entryLocation "cache" "plan" "same"
+  it "gives every persistent table its own folder" $ do
+    let modules directory = do
+          names <- listDirectory directory
+          concat <$> mapM (\name -> if ".hs" `isSuffixOf` name then pure [directory </> name]
+            else if '.' `elem` name then pure [] else modules (directory </> name)) names
+        tables text = case breakOn "newPersistentTable" text of
+          Nothing -> []
+          Just rest -> case dropWhile (/= '"') (takeWhile (/= '\n') rest) of
+            '"' : named -> takeWhile (/= '"') named : tables (drop 1 rest)
+            _ -> tables (drop 1 rest)
+        breakOn needle text
+          | null text = Nothing
+          | needle `isPrefixOf` text = Just (drop (length needle) text)
+          | otherwise = breakOn needle (drop 1 text)
+    sources <- modules "src" >>= mapM readFile
+    let names = S.toList (S.fromList (concatMap tables sources))
+    length names `shouldSatisfy` (> 30)
+    S.size (S.fromList (map (tableFolder "cache") names)) `shouldBe` length names
+  it "reports the first entry it could not store, and still returns the result" $ do
+    temporary <- getTemporaryDirectory
+    let blocked = temporary </> "lawspec-cache-is-a-file"
+    removePathForcibly blocked
+    writeFile blocked "not a directory"
+    table <- newPersistentTable "unwritable" 64 length
+    let (result, failure) = withRequest (Just blocked) (Progress False False False) "test"
+          (BC.pack (memoized table "first" "kept" ++ memoized table "second" "also"))
+    BC.unpack result `shouldBe` "keptalso"
+    fmap failurePath failure `shouldBe` Just (uncurry (</>) (entryLocation blocked "unwritable" "first"))
+    fmap (null . failureReason) failure `shouldBe` Just False
+    let (again, clean) = withRequest Nothing (Progress False False False) "test" (BC.pack (memoized table "first" "changed"))
+    BC.unpack again `shouldBe` "kept"
+    clean `shouldBe` Nothing
+    removePathForcibly blocked
   it "skips persistent encoding of an oversized shared layout" $ do
     temporary <- getTemporaryDirectory
     let root = temporary </> "lawspec-shared-document-cache-admission"
@@ -149,8 +197,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     run first (Doc.text "cached") `shouldBe` "cached"
     second <- newPersistentTableByShow "document" 256
     run second (error "small structured document was not persisted") `shouldBe` "cached"
-    [scope] <- listDirectory root
-    let folder = root </> scope </> "document"
+    let folder = tableFolder root "document"
     [entry] <- listDirectory folder
     B.writeFile (folder </> entry) (B.pack [1,0,0,0,0])
     rebuilt <- newPersistentTableByShow "document" 256
@@ -329,12 +376,11 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
           good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
           good _ = False
       run "1" `shouldSatisfy` good
-      [versioned] <- listDirectory root
       let tableName = "typed-" ++ (if target == "erlang" then "beam" else target) ++ "-function"
-      first <- listDirectory (root </> versioned </> tableName)
+      first <- listDirectory (tableFolder root tableName)
       length first `shouldBe` 2
       run "(if value >= 0 then 2 else -2 end if)" `shouldSatisfy` good
-      second <- listDirectory (root </> versioned </> tableName)
+      second <- listDirectory (tableFolder root tableName)
       length second `shouldBe` 3
       removePathForcibly root
     forM_ [("fsharp","typed-fsharp-function"),("haskell","typed-haskell-function")] $ \(target,table) ->
@@ -351,11 +397,10 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "value" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        first <- listDirectory (root </> versioned </> table)
+        first <- listDirectory (tableFolder root table)
         length first `shouldBe` 2
         run "bytes([1, 2, 3])" `shouldSatisfy` good
-        second <- listDirectory (root </> versioned </> table)
+        second <- listDirectory (tableFolder root table)
         length second `shouldBe` 3
         -- A cached function must replay its own request even if another function
         -- now introduces a distinct literal before it in the module.
@@ -374,11 +419,10 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "value + 1" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        first <- listDirectory (root </> versioned </> table)
+        first <- listDirectory (tableFolder root table)
         length first `shouldBe` 2
         run "if [\"x\"] = [\"x\"] then value else -value end if" `shouldSatisfy` good
-        second <- listDirectory (root </> versioned </> table)
+        second <- listDirectory (tableFolder root table)
         length second `shouldBe` 3
         removePathForcibly root
     it "separates Go operation plans by machine profile while reusing pure functions" $ do
@@ -394,11 +438,10 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
           good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
           good _ = False
       run 64 `shouldSatisfy` good
-      [versioned] <- listDirectory root
-      first <- listDirectory (root </> versioned </> "typed-go-function")
+      first <- listDirectory (tableFolder root "typed-go-function")
       length first `shouldBe` 2
       run 32 `shouldSatisfy` good
-      second <- listDirectory (root </> versioned </> "typed-go-function")
+      second <- listDirectory (tableFolder root "typed-go-function")
       length second `shouldBe` 3
       removePathForcibly root
     forM_ [("java","typed-jvm-data"),("kotlin","typed-jvm-data"),("scala","typed-jvm-data"),("go","typed-go-data"),("haskell","typed-haskell-data")] $ \(target,table) ->
@@ -416,11 +459,10 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "Integer" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        first <- listDirectory (root </> versioned </> table)
+        first <- listDirectory (tableFolder root table)
         length first `shouldSatisfy` (> 0)
         run "Int32" `shouldSatisfy` good
-        second <- listDirectory (root </> versioned </> table)
+        second <- listDirectory (tableFolder root table)
         length second `shouldBe` length first + 1
         removePathForcibly root
     forM_ [("java","typed-jvm-helper",2),("kotlin","typed-jvm-helper",2),("scala","typed-jvm-helper",2),("python","typed-python-helper",2),("javascript","typed-web-helper",2),("typescript","typed-web-helper",2),
@@ -440,8 +482,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "Integer" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        let directory = root </> versioned </> table
+        let directory = tableFolder root table
             documents name = filter (isInfixOf name)
         first <- cachedHelperDocuments target directory
         documents "independent" first `shouldSatisfy` (not . null)
@@ -470,8 +511,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "Integer" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        let directory = root </> versioned </> ("public-" ++ (if target `elem` ["javascript","typescript"] then "web" else target) ++ "-" ++ kind)
+        let directory = tableFolder root ("public-" ++ (if target `elem` ["javascript","typescript"] then "web" else target) ++ "-" ++ kind)
             documents name = filter (isInfixOf name)
         first <- cachedPublicDocuments target kind directory
         documents "independent" first `shouldSatisfy` (not . null)
@@ -500,8 +540,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       run added `shouldSatisfy` good
       cold <- evaluate (decode (withoutMemoization dispatch (input added)) :: Maybe Value)
       run added `shouldBe` cold
-      [versioned] <- listDirectory root
-      documents <- cachedPublicDocuments "fsharp" "codec" (root </> versioned </> "public-fsharp-codec")
+      documents <- cachedPublicDocuments "fsharp" "codec" (tableFolder root "public-fsharp-codec")
       length (filter (isInfixOf "compiledname(\"choice\")") documents) `shouldBe` 2
       removePathForcibly root
   describe "unit emission dependencies" $ do
@@ -523,8 +562,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "Unit" "1" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        let directory = root </> versioned </> "emit-product"
+        let directory = tableFolder root "emit-product"
         before <- listDirectory directory
         length before `shouldBe` 2
         run "Maybe Unit" "1" `shouldSatisfy` good
@@ -591,8 +629,7 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
             good (Just (Object result)) = KeyMap.lookup "diagnostics" result == Just (Array mempty)
             good _ = False
         run "Unit" "1" `shouldSatisfy` good
-        [versioned] <- listDirectory root
-        let directory = root </> versioned </> "emit-product"
+        let directory = tableFolder root "emit-product"
         first <- listDirectory directory
         length first `shouldBe` 2
         run "Text" "1" `shouldSatisfy` good
@@ -640,9 +677,8 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       -- A new table has an empty memory, as a new process would.
       second <- newPersistentTable "probe" 16 (const 1)
       run second (error "recomputed") `shouldBe` "stored"
-      [versioned] <- listDirectory root
-      [entry] <- listDirectory (root </> versioned </> "probe")
-      writeFile (root </> versioned </> "probe" </> entry) "not a cache entry"
+      [entry] <- listDirectory (tableFolder root "probe")
+      writeFile (tableFolder root "probe" </> entry) "not a cache entry"
       third <- newPersistentTable "probe" 16 (const 1)
       run third "recomputed" `shouldBe` "recomputed"
       fourth <- newPersistentTable "probe" 16 (const 1)
@@ -655,13 +691,17 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       let run table value = BC.unpack (withCacheDirectory (Just root) (BC.pack (memoized table "key" value)))
       run first "stored" `shouldBe` "stored"
       [build] <- listDirectory root
-      -- The folder names the version and, for a native compiler, the build.
-      build `shouldSatisfy` (("lawspec-" ++ showVersion version ++ "-") `isPrefixOf`)
-      -- An entry another build stored, under the folder of the version alone,
-      -- as compilers before this one kept them, is not read.
-      createDirectoryIfMissing True (root </> ("lawspec-" ++ showVersion version) </> "probe")
-      [entry] <- listDirectory (root </> build </> "probe")
-      copyFile (root </> build </> "probe" </> entry) (root </> ("lawspec-" ++ showVersion version) </> "probe" </> entry)
+      -- A native compiler keeps its entries in a folder for its own build.
+      build `shouldBe` drop 1 buildIdentity
+      length build `shouldBe` 16
+      let (folder, entry) = entryLocation root "probe" "key"
+          table = drop (length (root </> build) + 1) folder
+      listDirectory folder `shouldReturn` [entry]
+      -- The same entry under another build's folder, and under no build's
+      -- (where a host that names the build itself keeps them), is not read.
+      forM_ [root </> "0000000000000000" </> table, root </> table] $ \other -> do
+        createDirectoryIfMissing True other
+        copyFile (folder </> entry) (other </> entry)
       removePathForcibly (root </> build)
       second <- newPersistentTable "probe" 16 (const 1)
       run second "recomputed" `shouldBe` "recomputed"
