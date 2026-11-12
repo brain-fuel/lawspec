@@ -159,6 +159,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `lawspec test` runs a Kotlin or Groovy project's own `./gradlew` when the
+  manifest names no `:gradle`, as `lawspec init` already did. It used to
+  require `gradle` on PATH and failed with `spawn gradle ENOENT` without it.
 - Kotlin trailing lambdas whose parameters fit on the call line but whose
   arrow does not are laid out as ktfmt does (`{ s` then `->` on the next
   line).

@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {applyRequirements} from '../prepare.mjs';
+import {applyRequirements, gradleFor} from '../prepare.mjs';
 
 const cli = new URL('../bin/lawspec.mjs', import.meta.url).pathname;
 
@@ -210,4 +210,14 @@ test('--no-install applies to init only', async t =>
   const result = run(root, ['check', '--no-install']);
   assert.equal(result.status, 1);
   assert.match(result.stdout + result.stderr, /--no-install applies to init/);
+});
+
+test('gradle: the manifest field, then the project wrapper, then PATH', async t =>
+{
+  const root = await project(t, {});
+  const wrapper = process.platform === 'win32' ? 'gradlew.bat' : 'gradlew';
+  assert.equal(await gradleFor({}, root), 'gradle');
+  await writeFile(path.join(root, wrapper), '');
+  assert.equal(await gradleFor({}, root), path.join(root, wrapper));
+  assert.equal(await gradleFor({gradle: 'gw'}, root), 'gw');
 });

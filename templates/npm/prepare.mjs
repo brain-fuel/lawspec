@@ -187,16 +187,23 @@ const overrides = {
   swift: 'swift',
 };
 
-async function toolFor(command, target, root)
+// The Gradle command for a target: the manifest's gradle field, else the
+// project's own wrapper, else gradle on PATH. init, generate and test share
+// this choice.
+export async function gradleFor(target, root)
 {
-  const chosen = target[overrides[command]];
-  if (chosen) return chosen;
-  if (command !== 'gradle') return command;
+  if (target.gradle) return target.gradle;
   const wrapper = path.join(root, windows ? 'gradlew.bat' : 'gradlew');
   return access(wrapper).then(
     () => wrapper,
-    () => command,
+    () => 'gradle',
   );
+}
+
+async function toolFor(command, target, root)
+{
+  if (command === 'gradle') return gradleFor(target, root);
+  return target[overrides[command]] || command;
 }
 
 // Fetches the project's dependencies. For a Python target that init is adding

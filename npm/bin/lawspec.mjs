@@ -27,7 +27,7 @@ import {serveLanguage} from '../lsp.mjs';
 import {showScalar} from '../scalars.mjs';
 import {mutateProject} from '../mutate.mjs';
 import {doctor} from '../doctor.mjs';
-import {applyRequirements, prepareProject} from '../prepare.mjs';
+import {applyRequirements, gradleFor, prepareProject} from '../prepare.mjs';
 import {
   recordNativeAttempts,
   nativeSeed,
@@ -1885,6 +1885,10 @@ async function main()
   )
     throw new Error('No matching configured target');
   const roots = selected.map(t => path.resolve(configRoot, t.root));
+  // A project's Gradle wrapper runs its tests too, not only its preparation.
+  for (const [i, target] of selected.entries())
+    if (['kotlin', 'groovy'].includes(target.language))
+      target.gradle = await gradleFor(target, roots[i]);
   if (new Set(roots).size !== roots.length)
     throw new Error('Each configured target needs its own project root');
   if (verb === 'doctor')
