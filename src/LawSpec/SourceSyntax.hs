@@ -8,13 +8,14 @@ import LawSpec.Common (Span(..), Location(..))
 import Data.Aeson (ToJSON(..), object, (.=))
 import qualified Data.Set as Set
 import Data.List (sortOn)
+import GHC.Generics (Generic)
 
 data SyntaxNode = SyntaxNode
   { syntaxKind :: String, syntaxName :: Maybe String, syntaxSpan :: Span
   -- Checked declaration context, attached by the existing ability inference
   -- after validation. In particular, an unused template can still use effects.
   , syntaxUses :: Maybe [String] }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data SourceSyntax = SourceSyntax
   { syntaxPath :: FilePath, syntaxUnit :: String, syntaxNodes :: [SyntaxNode]
@@ -22,27 +23,27 @@ data SourceSyntax = SourceSyntax
   -- Private authoring findings; the public source inventory stays independent
   -- of optional diagnostics. They never become typed or executable terms.
   , syntaxMatchWarnings :: [MatchWarning] }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | Proven structural shadowing from the existing ordered pattern matrix.
 -- No finding asserts that every other branch is reachable.
 data MatchWarning = MatchWarning
   { matchWarningCode :: String, matchWarningMessage :: String
-  , matchWarningSpan :: Span } deriving (Eq, Show)
+  , matchWarningSpan :: Span } deriving (Eq, Show, Generic)
 
 -- Declaration/import namespace entries from Imports, in that resolver's
 -- portable naming convention. These are not lexical locals or typed terms.
 data SyntaxBinding = SyntaxBinding
   { bindingNamespace :: String, bindingName :: String, bindingTarget :: String
   , bindingDeclaration :: Maybe String }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- A free value occurrence observed by the existing import traversal with its
 -- actual lexical scope. Bound parameters, patterns and lets are excluded.
 data SyntaxReference = SyntaxReference
   { referenceName :: String, referenceTarget :: String, referenceSpan :: Span
   , referenceDeclaration :: Maybe String }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- Nested location wrappers may describe the same syntactic expression. Keep
 -- its first record without changing the grammar's order of distinct nodes.

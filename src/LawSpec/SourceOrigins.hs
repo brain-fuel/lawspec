@@ -9,7 +9,7 @@ import qualified Data.IntMap.Strict as IM
 import Data.List (find,sortOn)
 import Control.Monad (unless)
 
-data SourceOriginMap = SourceOriginMap Source (IM.IntMap Location)
+data SourceOriginMap = SourceOriginMap Source (IM.IntMap Location) deriving (Show)
 
 sourceOriginFor :: [SourceOriginMap] -> Source -> Maybe SourceOriginMap
 sourceOriginFor origins source = find same origins

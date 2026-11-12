@@ -219,6 +219,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An unchanged `check` no longer spends most of its time computing cache
   keys. Each unit was rendered and hashed three times on every run, which
   cost as much as the validation the cache saved.
+- A second `check` of an unchanged project reads each source's stored parse
+  from the cache directory. On a 3,087-line probe it takes 2.2 s against
+  3.8 s for the first. Definition templates are no longer stored on disk:
+  reading them took longer than inferring them.
 - Evaluating a nested or list literal takes work in proportion to its size.
   Each constructor used to validate every value beneath it again, so the work
   grew with the square of the size: a 64-element list literal took 5,197

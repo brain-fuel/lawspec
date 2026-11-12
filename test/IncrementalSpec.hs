@@ -31,6 +31,8 @@ import LawSpec.SourceContext (emptyContext)
 import qualified LawSpec.Model as Surface
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Frontend (compileCore)
+import LawSpec.Parser (parseSourcesWithBuiltinsAndSyntax)
+import LawSpec.Persist ()
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting)
 import LawSpec.Core.Evidence (Obligation(..))
@@ -666,6 +668,30 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       second <- newPersistentTable "probe" 16 (const 1)
       run second "recomputed" `shouldBe` "recomputed"
       removePathForcibly root
+    it "stores a source's parse and reads back the same units, syntax and locations" $ do
+      root <- (</> "lawspec-memo-parse-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      let source = Source "stored.lawspec" $ unlines
+            [ "unit incremental.stored"
+            , "type Score is a record{points :: Integer} end type"
+            , "function double (x :: Integer) -> Integer is x + x end function"
+            , "law \"|doubles| is definition : for all (x :: Integer) => double x = x * 2 end for all end definition end law"
+            , "end unit" ]
+          parsed = parseSourcesWithBuiltinsAndSyntax True [] [] [] [source]
+      parsed `shouldSatisfy` either (const False) (not . null . snd)
+      Binary.decode (Binary.encode parsed) `shouldBe` parsed
+      BC.unpack (withCacheDirectory (Just root) (BC.pack (show (either (error . show) (map (Surface.unitName . fst) . fst)
+        (parseSourcesWithBuiltinsAndSyntax True [] [] [] [Source "stored-on-disk.lawspec" (Surface.content source)])))))
+        `shouldBe` show ["incremental.stored"]
+      [build] <- listDirectory root
+      entries <- listDirectory (root </> build </> "parse")
+      length entries `shouldBe` 1
+      removePathForcibly root
+    it "lets a key consult the table it is looked up in" $ do
+      table <- newPersistentTable "nested-key-probe" 16 (const 1)
+      let inner = memoized table "inner" "a"
+      memoized table ("outer-" ++ inner) "b" `shouldBe` "b"
+      memoized table "outer-a" (error "recomputed") `shouldBe` "b"
     it "stays out of the way without a cache directory" $ do
       table <- newPersistentTable "unused" 16 (const 1)
       memoized table "key" (42 :: Int) `shouldBe` 42

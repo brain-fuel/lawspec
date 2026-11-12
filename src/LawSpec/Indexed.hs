@@ -9,6 +9,7 @@ module LawSpec.Indexed
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
+import GHC.Generics (Generic)
 import Data.List (elemIndex, intercalate, nub, nubBy, sortOn, (\\))
 import qualified Data.Map.Strict as M
 import LawSpec.IndexTerm
@@ -20,7 +21,7 @@ import LawSpec.Core.RecordIdentity (normalizeRecordIndexGuards)
 data IndexedConstructor = IndexedConstructor
   { indexedDeclaration :: ConstructorDeclaration
   , indexedEquations :: [(String, Expr)]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- | Parameters keep declaration order; True marks a type parameter and False a
 -- Natural index.
@@ -29,7 +30,7 @@ data IndexedFamily = IndexedFamily
   , familyParameters :: [(String, Bool)]
   , familyConstructors :: [IndexedConstructor]
   , familySpan :: Span
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- | '@' cannot occur in a source identifier, so generated refinements never
 -- collide with user declarations, including the erased data type itself.

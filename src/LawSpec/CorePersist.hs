@@ -7,7 +7,11 @@
 -- LawSpec.Persist, so Core and the backends never depend on syntax.
 module LawSpec.CorePersist () where
 
-import Data.Binary (Binary)
+import Data.Binary (Binary (..), Get)
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import qualified Data.Map.Strict as M
+import Data.Word (Word32)
+import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Core.Value (Value)
@@ -24,7 +28,27 @@ instance Binary LawMetadata
 instance Binary ReferenceSelector
 instance Binary DocumentaryTarget
 instance Binary target => Binary (DocumentaryReference target)
-instance Binary Location
+-- A parsed source names its file at every node. The file is stored once per
+-- location but decoded to one shared string, as the parser gives it, so a
+-- stored parse takes no more memory than a fresh one.
+instance Binary Location where
+  put (Location path row column) = put path >> put (fromIntegral row :: Word32) >> put (fromIntegral column :: Word32)
+  get = do
+    path <- get
+    row <- get :: Get Word32
+    column <- get :: Get Word32
+    pure (Location (sharedPath path) (fromIntegral row) (fromIntegral column))
+
+sharedPaths :: IORef (M.Map String String)
+sharedPaths = unsafePerformIO (newIORef M.empty)
+{-# NOINLINE sharedPaths #-}
+
+sharedPath :: String -> String
+sharedPath path = unsafePerformIO (atomicModifyIORef' sharedPaths (\known ->
+  case M.lookup path known of
+    Just shared -> (known, shared)
+    Nothing -> (M.insert path path known, path)))
+{-# NOINLINE sharedPath #-}
 instance Binary Diagnostic
 instance Binary Artifact
 instance Binary Span

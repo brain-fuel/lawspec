@@ -698,7 +698,9 @@ validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (cons
 {-# NOINLINE validationTable #-}
 
 definitionTemplatesTable :: Memo.Table (Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])])
-definitionTemplatesTable = unsafePerformIO (Memo.newPersistentTable "definition-templates" (32*1024) weight)
+-- In memory only: reading a unit's stored templates took longer than
+-- inferring them (docs/explanation/s1j-followup.md).
+definitionTemplatesTable = unsafePerformIO (Memo.newTable (32*1024) weight)
   where
     weight (Left _) = 1
     weight (Right values) = 1 + sum [sum (map nodes (body:pre ++ post)) | (_,body,pre,post)<-values]

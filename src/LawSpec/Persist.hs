@@ -6,6 +6,8 @@ module LawSpec.Persist () where
 import Data.Binary (Binary)
 import LawSpec.CorePersist ()
 import qualified LawSpec.Model as S
+import LawSpec.Indexed (IndexedConstructor, IndexedFamily)
+import LawSpec.SourceSyntax (MatchWarning, SourceSyntax, SyntaxBinding, SyntaxNode, SyntaxReference)
 
 instance Binary S.Assertion
 instance Binary S.Constraint
@@ -61,3 +63,11 @@ instance Binary S.ModelLaw
 instance Binary S.HistoryLaw
 instance Binary S.HarnessPlan
 instance Binary S.HarnessWitness
+-- What one source parses to (LawSpec.Parser's table).
+instance Binary IndexedConstructor
+instance Binary IndexedFamily
+instance Binary MatchWarning
+instance Binary SourceSyntax
+instance Binary SyntaxBinding
+instance Binary SyntaxNode
+instance Binary SyntaxReference
