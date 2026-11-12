@@ -84,7 +84,7 @@ import GHC.Conc (getNumProcessors)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, makeAbsolute, removePathForcibly)
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitFailure, exitSuccess, exitWith)
-import System.FilePath (takeFileName, (</>))
+import System.FilePath (takeDirectory, takeFileName, (</>))
 import GHC.IO.Handle.Lock (LockMode(..), hLock, hTryLock)
 import System.IO (Handle, IOMode(..), hClose, hFlush, hGetContents, hIsTerminalDevice, openFile, stdout)
 import System.Posix.Process (getProcessID)
@@ -727,7 +727,7 @@ stepInputs name = case name of
     hspecReads file =
       file == "templates/npm/starter-rc1.lawspec"
         || ( "acceptance/" `isPrefixOf` file
-               && (".lawspec" `isSuffixOf` file || ".hs" `isSuffixOf` file || takeFileName file == "bindings.json")
+               && (".lawspec" `isSuffixOf` file || takeDirectory file == "acceptance" || takeFileName file == "bindings.json")
            )
 
 -- | What a step reads, for --affected: its declared inputs, and the sources
