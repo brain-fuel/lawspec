@@ -741,10 +741,12 @@ stepReads (Step name _ command) = case stepInputs name of
 
 -- | Parity binds the native compiler and the SDK, and compiler-tests the
 -- SDK, through tools/ci-artifact-key.mjs rather than as repository files.
+-- The package holds the lesson assets learn-assets builds into npm/learn.
 artifactSource :: String -> FilePath -> Bool
 artifactSource name file = case name of
   "parity" -> sdk || any (`isPrefixOf` file) ["src/", "app/", "package.yaml", "stack.yaml"]
   "compiler-tests" -> sdk
+  "package-smoke" -> any (`isPrefixOf` file) ["learn/", "tools/learn-build.mjs"]
   _ -> False
   where sdk = "npm/" `isPrefixOf` file && not ("npm/test/" `isPrefixOf` file)
 
@@ -815,7 +817,7 @@ recordTiming run name started seconds cached passed =
   withMVar (lock (runConsole run)) $ \_ ->
     appendFile (logs </> "timings.jsonl") $
       printf "{\"step\":%s,\"started\":\"%s\",\"seconds\":%.3f,\"cached\":%s,\"passed\":%s}\n"
-        (show name) (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" started) seconds (json cached) (json passed)
+        (show name) (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S%3QZ" started) seconds (json cached) (json passed)
   where json value = if value then "true" else "false" :: String
 
 stepKey :: Run -> Step -> Inputs -> IO (Maybe String)
