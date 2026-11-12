@@ -12,6 +12,7 @@ import {
   rm,
   symlink,
 } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -84,11 +85,17 @@ const base = path.join(
 );
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
+// npm's and Go's caches are shared by every worktree (LAWSPEC_DEV_CACHE).
+const devCache = path.resolve(
+  root,
+  process.env.LAWSPEC_DEV_CACHE ||
+    path.join(os.homedir(), '.cache/lawspec-dev'),
+);
 const env = {
   ...process.env,
-  npm_config_cache: path.join(root, '.artifacts/npm-cache'),
+  npm_config_cache: path.join(devCache, 'npm'),
   PYTHONDONTWRITEBYTECODE: '1',
-  GOCACHE: path.join(root, '.artifacts/go-cache'),
+  GOCACHE: path.join(devCache, 'go-build'),
 };
 if (offline)
   Object.assign(env, {

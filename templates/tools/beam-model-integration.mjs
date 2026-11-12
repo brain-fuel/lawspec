@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {cp, mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
@@ -20,7 +21,9 @@ const base = path.join(repo, '.artifacts/beam-model-integration', `${language}-$
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
 const project = path.join(base, 'project with spaces');
-const env = {...process.env, npm_config_cache: path.join(repo, '.artifacts/npm-cache')};
+// npm's cache is shared by every worktree (LAWSPEC_DEV_CACHE).
+const devCache = path.resolve(repo, process.env.LAWSPEC_DEV_CACHE || path.join(os.homedir(), '.cache/lawspec-dev'));
+const env = {...process.env, npm_config_cache: path.join(devCache, 'npm')};
 if (env.LAWSPEC_OFFLINE === '1') env.HEX_OFFLINE = '1';
 let step = 0;
 async function run(command, args, cwd = project, {pass = true, environment = {}} = {}) {

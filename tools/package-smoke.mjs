@@ -8,10 +8,20 @@ import path from 'node:path';
 import {programTargets as targets} from '../npm/templates.mjs';
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, '..');
-const env = {
-  ...process.env,
-  npm_config_cache: path.join(repo, '.artifacts/npm-cache'),
-};
+// The export of every bundled example runs single-threaded for the better
+// part of an hour. It is a release check (docs/how-to/release.md), asked for
+// with --examples; the ordinary smoke test leaves it out.
+const options = process.argv.slice(2);
+if (options.some(option => option !== '--examples'))
+  throw new Error('usage: node tools/package-smoke.mjs [--examples]');
+const exportExamples = options.includes('--examples');
+// npm's cache is shared by every worktree (LAWSPEC_DEV_CACHE).
+const devCache = path.resolve(
+  repo,
+  process.env.LAWSPEC_DEV_CACHE ||
+    path.join(os.homedir(), '.cache/lawspec-dev'),
+);
+const env = {...process.env, npm_config_cache: path.join(devCache, 'npm')};
 const output =
   process.env.LAWSPEC_PACKAGE_DIR ??
   path.join(repo, '.artifacts/package-smoke');
@@ -164,37 +174,44 @@ try
   );
   await run('npm', ['test'], app);
   await run(process.execPath, [cli, 'generate', '--check'], app);
-  // Exporting the expanded corpus, including the portable Unicode tables,
-  // reached the old thirty-minute guard. Retain every export and assertion
-  // while allowing an hour for this operation; other commands keep their limit.
-  await run('npm', ['exec', '--no', '--', 'lawspec', 'examples'], app, {
-    timeout: 3600000,
-  });
-  const textTest = await readFile(
-    path.join(
-      app,
-      'example_artifacts/java/src/test/java/example/SlugLawSpecTest.java',
-    ),
-    'utf8',
-  );
-  if (
-    !textTest.includes('LawSpecRuntime.sample("Text"') ||
-    !textTest.includes('PropertyChecker')
-  )
-    throw new Error('Installed examples command omitted Text generation');
-  const portTest = await readFile(
-    path.join(
-      app,
-      'example_artifacts/java/src/test/java/example/ParsePortLawSpecTest.java',
-    ),
-    'utf8',
-  );
-  if (
-    !portTest.includes('if (') ||
-    !portTest.includes('ParsePort.validPort(') ||
-    !portTest.includes('ordinary port')
-  )
-    throw new Error('Installed examples omitted predicate checks');
+  if (exportExamples)
+  {
+    // Exporting the expanded corpus, including the portable Unicode tables,
+    // reached the old thirty-minute guard. Retain every export and assertion
+    // while allowing an hour for this operation; other commands keep their limit.
+    await run('npm', ['exec', '--no', '--', 'lawspec', 'examples'], app, {
+      timeout: 3600000,
+    });
+    const textTest = await readFile(
+      path.join(
+        app,
+        'example_artifacts/java/src/test/java/example/SlugLawSpecTest.java',
+      ),
+      'utf8',
+    );
+    if (
+      !textTest.includes('LawSpecRuntime.sample("Text"') ||
+      !textTest.includes('PropertyChecker')
+    )
+      throw new Error('Installed examples command omitted Text generation');
+    const portTest = await readFile(
+      path.join(
+        app,
+        'example_artifacts/java/src/test/java/example/ParsePortLawSpecTest.java',
+      ),
+      'utf8',
+    );
+    if (
+      !portTest.includes('if (') ||
+      !portTest.includes('ParsePort.validPort(') ||
+      !portTest.includes('ordinary port')
+    )
+      throw new Error('Installed examples omitted predicate checks');
+  }
+  else
+    console.log(
+      'Skipped the export of every bundled example; --examples runs it.',
+    );
   const api = await run(
     process.execPath,
     [
