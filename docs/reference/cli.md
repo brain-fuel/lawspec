@@ -9,7 +9,7 @@ title: CLI
 lawspec fmt [paths...] [--check] [--compile] [--json] [--config <path>]
 lawspec lsp --stdio
 lawspec mcp [--config <path>]
-lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
+lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--no-install] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -45,6 +45,36 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
 | `--minify` | Compact output. Used by `init`, `generate`, `test` generation and `examples`; required language line breaks remain. |
 | `--no-cache` | Do not read or write the compiler cache for this command. |
+
+## Project setup
+
+`lawspec init --target <language>` leaves the project ready to generate and
+test:
+
+1. It writes `lawspec.edn` and the starter specification, and the target's
+   build files when the target root has none.
+2. In a project that already has build files, it adds the settings the target
+   needs to an existing `package.json` or `global.json`, and creates
+   `tsconfig.json` or `global.json` when absent. A setting the project already
+   has is kept. The exception is `"type": "commonjs"` in `package.json`, which
+   becomes `"module"` when the project has no `.js` or `.ts` source that
+   depends on it; otherwise `init` stops and says which file does. Other build
+   files, such as `pom.xml`, Gradle scripts, `Cargo.toml` and `mix.exs`, are
+   never edited.
+3. It fetches dependencies with the target's own tool, for example
+   `npm install`, `mvn -q test-compile` or `go mod download all`. The tool's
+   output goes to standard error. A Python or Prolog target that names no
+   interpreter gets a virtual environment in `.venv`, recorded as the target's
+   `python`. The .NET targets fetch nothing at this point: their projects
+   restore when `dotnet test` first runs after `lawspec generate`.
+4. It runs the checks of `lawspec doctor`.
+
+`init` exits with status 1, after printing doctor's message and the target's
+setup advice, when a tool is missing, a command fails or doctor does not pass.
+The configuration it wrote stays in place, and running `init` again is safe.
+
+`--no-install` stops after step 2 and prints the setup advice. It runs no build
+tool and needs no network.
 
 ## Optional match warnings
 

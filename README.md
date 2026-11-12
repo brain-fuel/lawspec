@@ -81,8 +81,9 @@ export function atoi(value) { return Number(value); }
 ```
 
 In an existing project, install the checkout's `npm` directory first, then run
-`npx lawspec init --target javascript`. Existing build files are preserved;
-apply the printed setup instructions before generating. See
+`npx lawspec init --target javascript`. `init` adds `"type": "module"` and the
+`fast-check` development dependency to your `package.json`, installs
+dependencies and runs the `doctor` checks. See
 [Install LawSpec and create a project](docs/how-to/install-and-init.md).
 
 ## Codex and Claude Code plugin

@@ -34,7 +34,6 @@ mkdir coffee-shop && cd coffee-shop
 npm init -y
 npm install --save-dev ../lawspec/npm
 npx lawspec init --target java --project java
-npx lawspec doctor
 ```
 :::
 
@@ -47,12 +46,11 @@ mkdir coffee-shop && cd coffee-shop
 npm init -y
 npm install --save-dev ../lawspec/npm
 npx lawspec init --target python --project python
-python3 -m venv python/.venv
-python/.venv/bin/python -m pip install -e "python[test]"
 ```
 
-Point LawSpec at that interpreter: in `lawspec.edn`, give the Python target
-`"python": "python/.venv/bin/python"`. Then run `npx lawspec doctor`.
+`init` creates the virtual environment `python/.venv`, installs pytest and
+Hypothesis into it and records it as the Python target's interpreter in
+`lawspec.edn`.
 :::
 
 ::: only javascript
@@ -63,13 +61,12 @@ mkdir coffee-shop && cd coffee-shop
 npm init -y
 npm install --save-dev ../lawspec/npm
 npx lawspec init --target javascript --project javascript
-npm install --prefix javascript
-npx lawspec doctor
 ```
 :::
 
 `init` writes `lawspec.edn`, a starter specification in `laws/`, and the
-build files of the new project. `doctor` checks that your toolchain is ready.
+build files of the new project. It then installs the project's dependencies and
+checks that your toolchain is ready, as `npx lawspec doctor` does on its own.
 Delete the starter specification: you will write your own.
 
 ## Write the specification

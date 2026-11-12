@@ -113,6 +113,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `lawspec init` leaves the project ready to generate and test
+  (DEC-init-prepares-project). It adds missing settings to an existing
+  `package.json` or `global.json` and creates a missing `tsconfig.json`, fetches
+  dependencies with the target's build tool, creates `.venv` for a Python or
+  Prolog target that names no interpreter, and runs the `doctor` checks. It
+  exits with status 1 and doctor's message when the project is not ready.
+  Before, a project that already had a build file, which includes every
+  project where `lawspec` was installed with npm first, was left unchanged
+  with printed instructions. `init --no-install` keeps that offline behaviour.
+  Build files other than JSON are still never edited.
 - A definition in which each call shrinks one of two arguments and keeps the
   other is now admitted. It was rejected with "no single parameter strictly
   decreases in every recursive call". The three "no single parameter" messages

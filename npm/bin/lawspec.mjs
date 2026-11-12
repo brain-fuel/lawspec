@@ -19,6 +19,7 @@ import {
   templates,
   commands,
   setup,
+  prepareCommands,
 } from '../templates.mjs';
 import {generateExamples} from '../examples-command.mjs';
 import {proveWithZ3} from '../proof.mjs';
@@ -26,6 +27,7 @@ import {serveLanguage} from '../lsp.mjs';
 import {showScalar} from '../scalars.mjs';
 import {mutateProject} from '../mutate.mjs';
 import {doctor} from '../doctor.mjs';
+import {applyRequirements, prepareProject} from '../prepare.mjs';
 import {
   recordNativeAttempts,
   nativeSeed,
@@ -126,6 +128,7 @@ for (let i = 0; i < args.length; i++)
       '--json',
       '--minify',
       '--no-cache',
+      '--no-install',
       '--fresh',
       '--coverage',
       '--update-recorded',
@@ -398,12 +401,20 @@ async function init()
     'mix.exs',
     'gleam.toml',
   ];
-  const hasBuild = (await readdir(root)).some(
-    f => buildFiles.includes(f) || f.endsWith('.cabal'),
-  );
-  const additions = hasBuild
-    ? {}
-    : templates(language, {minify: options.minify === true});
+  const scaffold = templates(language, {minify: options.minify === true});
+  // A file init itself would write also marks the project as set up, so that
+  // running init again never stops on its own earlier output.
+  const scaffolded = (
+    await Promise.all(
+      Object.keys(scaffold).map(name => readOptional(path.join(root, name))),
+    )
+  ).some(content => content !== null);
+  const hasBuild =
+    scaffolded ||
+    (await readdir(root)).some(
+      f => buildFiles.includes(f) || f.endsWith('.cabal'),
+    );
+  const additions = hasBuild ? {} : scaffold;
   for (const name of Object.keys(additions))
   {
     const file = await safePath(root, name);
@@ -420,6 +431,11 @@ async function init()
     await mkdir(path.join(root, 'src'), {recursive: true});
   for (const [name, content] of Object.entries(additions))
     await atomicWrite(path.join(root, name), content, true);
+  // A project that already has build files keeps them; only the settings a
+  // JSON build file lacks are added. ref:DEC-init-prepares-project
+  const adjusted = hasBuild
+    ? await applyRequirements(language, root, {minify: options.minify === true})
+    : {created: [], updated: []};
   if (current === null)
     await atomicWrite(
       starter,
@@ -448,9 +464,60 @@ async function init()
       current === null,
     );
   }
-  output(
-    `Configured ${language}. ${hasBuild ? 'Existing build files preserved.' : 'Created missing project build files.'}\n${setup[language]}\nNext: lawspec doctor, then lawspec generate.`,
+  const changes = [
+    ...adjusted.created.map(file => `created ${file}`),
+    ...adjusted.updated.map(entry => `updated ${entry}`),
+  ];
+  const summary = `Configured ${language}. ${
+    hasBuild
+      ? `Existing build files preserved${changes.length ? `; ${changes.join('; ')}` : ''}.`
+      : 'Created missing project build files.'
+  }`;
+  if (options['no-install'])
+  {
+    output(
+      `${summary}\n${setup[language]}\nNext: lawspec doctor, then lawspec generate.`,
+    );
+    return;
+  }
+  const target = config.targets.find(
+    t => t.language === language && path.resolve(configRoot, t.root) === root,
   );
+  let report;
+  try
+  {
+    const prepared = await prepareProject(target, root, {added: !configured});
+    if (prepared.python !== undefined)
+    {
+      target.python = prepared.python;
+      await atomicWrite(
+        configFile,
+        writeManifest(config, {compact: options.minify === true}),
+      );
+    }
+    report = await doctor(target, root);
+  }
+  catch (error)
+  {
+    report = {ok: false, message: error.message, instructions: setup[language]};
+  }
+  if (report.ok)
+  {
+    output(
+      `${summary}\n${
+        report.kind === 'artifact'
+          ? setup[language]
+          : prepareCommands[language].length
+            ? 'Dependencies are installed and lawspec doctor passes.'
+            : 'lawspec doctor passes.'
+      }\nNext: lawspec generate${report.kind === 'artifact' ? '' : ', then lawspec test'}.`,
+    );
+    return;
+  }
+  output(
+    `${summary}\n${language} is not ready: ${report.message}\n${report.instructions}\nCorrect this and run lawspec init --target ${language} again, or lawspec doctor to check.`,
+  );
+  process.exitCode = 1;
 }
 function showAssertion(assertion)
 {
@@ -1514,7 +1581,7 @@ async function main()
     output(
       'LawSpec ' +
         VERSION +
-        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
+        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify] [--no-install]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
         targets.join(', '),
     );
     return;
@@ -1702,6 +1769,8 @@ async function main()
     throw new Error('--output is only supported by examples and package');
   if (options.example)
     throw new Error('--example is only supported by examples');
+  if (options['no-install'] && verb !== 'init')
+    throw new Error('--no-install applies to init');
   if (
     options.minify &&
     !['init', 'generate', 'examples', 'test'].includes(verb)

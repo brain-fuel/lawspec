@@ -42,7 +42,7 @@ const call = (verb, flags = [], pass = true) => run(process.execPath, [cli, verb
   ...(['generate', 'test'].includes(verb) && minify ? ['--minify'] : [])], base, pass);
 const projects = ['first project', 'second project'].map(name => path.join(base, name));
 for (const project of projects) {
-  await call('init', ['--target', language, '--project', project, '--machine-bits', String(bits), ...(minify ? ['--minify'] : [])]);
+  await call('init', ['--no-install', '--target', language, '--project', project, '--machine-bits', String(bits), ...(minify ? ['--minify'] : [])]);
   if (language === 'javascript') {
     if (env.LAWSPEC_NODE_MODULES)
       await symlink(path.resolve(env.LAWSPEC_NODE_MODULES), path.join(project, 'node_modules'));

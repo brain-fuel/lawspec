@@ -49,7 +49,7 @@ async function call(verb, flags = [], options = {}) {
   const result = await run(process.execPath, [cli, verb, '--config', configFile, ...flags], base, options);
   return {...result, ...(flags.includes('--json') ? {json: JSON.parse(result.stdout)} : {})};
 }
-await call('init', ['--target', language, '--project', project, '--machine-bits', String(bits), ...layoutFlags]);
+await call('init', ['--no-install', '--target', language, '--project', project, '--machine-bits', String(bits), ...layoutFlags]);
 const lock = {erlang: 'rebar.lock', elixir: 'mix.lock', gleam: 'manifest.toml'}[language];
 await cp(path.join(repo, 'test/locks', language, lock), path.join(project, lock));
 const dependencies = process.env.LAWSPEC_BEAM_DEPENDENCIES;

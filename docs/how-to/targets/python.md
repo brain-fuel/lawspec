@@ -14,9 +14,6 @@ title: Set up Python
 
 ```sh
 npx lawspec init --target python
-python3.13 -m venv .venv
-.venv/bin/python -m pip install -e ".[test]"
-npx lawspec doctor
 npx lawspec generate
 .venv/bin/python -m pytest
 ```
@@ -25,9 +22,13 @@ In a directory without build files, `init` creates a `pyproject.toml` with
 `requires-python = ">=3.13"`, a `test` extra with pytest and Hypothesis, and
 pytest settings `pythonpath = ["src"]` and `testpaths = ["tests"]`.
 
-Set the target's `python` field in `lawspec.edn` to the interpreter that has
-the test dependencies, for example `.venv/bin/python`. `doctor` and the printed
-test command use it.
+`init` creates a virtual environment in `.venv` with the first Python 3.13 or
+later on `PATH`, installs the `test` extra into it and sets the target's
+`python` field in `lawspec.edn` to `.venv/bin/python`. `doctor` and the printed
+test command use that field. To use another interpreter, set the field yourself
+and install the test dependencies with
+`<interpreter> -m pip install -e ".[test]"`; `init` leaves a `python` field that
+is already set alone.
 
 ## Layout
 

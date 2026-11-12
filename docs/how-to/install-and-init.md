@@ -61,6 +61,13 @@ npx lawspec doctor
   `itoa` and `atoi`, and a round-trip law with a three-row expectation table;
 - the target's build files, when the directory has none.
 
+`init` then installs the target's dependencies with its build tool and runs the
+`doctor` checks, so the project is ready for `generate`. In a directory that
+already has a `package.json`, for example one where you installed `lawspec`
+first, `init` adds `"type": "module"` and the `fast-check` development
+dependency to it. `init --no-install` writes files only. See
+[project setup](../reference/cli.md#project-setup).
+
 Choose any of the 17 supported targets. Each [target guide](targets/index.md)
 lists the build setup `init` creates and the toolchain it expects.
 
