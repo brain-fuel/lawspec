@@ -11,8 +11,8 @@ PORT    ?= 8080
 
 .DEFAULT_GOAL := help
 .PHONY: help build generate generate-check wasm test integrity boundaries check parity artifact-targets lock \
-        smoke package acceptance lessons ci ci-fresh ci-core examples editor-test docs docs-check \
-        docs-serve docs-deploy canon assess tax audit bump version release-check clean
+        smoke smoke-release package acceptance lessons ci ci-fresh ci-core ci-affected examples editor-test docs docs-check \
+        docs-serve docs-deploy canon assess tax audit bump version release-check clean clean-all
 
 help: ## List the tasks
 	@awk -F':.*## ' '/^[a-z-]+:.*## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -50,6 +50,9 @@ artifact-targets: build ## Check configuration, grammar and build artifacts with
 smoke: ## Pack, install and exercise the npm package
 	node tools/package-smoke.mjs
 
+smoke-release: ## The smoke test with the export of every bundled example (releases)
+	node tools/package-smoke.mjs --examples
+
 lock: ## Regenerate npm/package-lock.json, including the native compiler packages
 	node tools/npm-lock.mjs
 
@@ -74,6 +77,9 @@ ci-fresh: ## The complete check, ignoring recorded results (for releases)
 
 ci-core: ## The complete check without target toolchains
 	$(DEV) ci --core
+
+ci-affected: ## Only the steps that read what changed since main
+	$(DEV) ci --affected
 
 examples: ## Generate every bundled example into example_artifacts/
 	node npm/bin/lawspec.mjs examples
@@ -120,5 +126,8 @@ release-check: ## Preconditions for a release (see docs/how-to/release.md)
 	@! npm view "lawspec@$(VERSION)" version --registry https://registry.npmjs.org 2>/dev/null | grep -q . || (echo "lawspec@$(VERSION) is already published" && exit 1)
 	@echo "Ready to release $(VERSION)."
 
-clean: ## Remove CI logs and the built site
-	rm -rf .artifacts/ci $(SITE)
+clean: ## Remove build output under .artifacts; keep recorded passes
+	$(DEV) clean --artifacts --keep-cache
+
+clean-all: ## Remove build output and every recorded pass (all worktrees run again)
+	$(DEV) clean --artifacts

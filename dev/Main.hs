@@ -6,6 +6,9 @@
 --   lawspec-dev integrity --record  rewrite npm/build.json (tools/wasm.sh)
 --   lawspec-dev native-check       packed native/source acceptance on this host
 --   lawspec-dev ci [options]        the complete check; see dev/Ci.hs
+--   lawspec-dev clean --artifacts [--keep-cache]
+--                                   remove build output under .artifacts and,
+--                                   without --keep-cache, recorded passes
 --   lawspec-dev generate [--check]  generated JavaScript and runtimes; see dev/Generate.hs
 --   lawspec-dev version [--check]   the release version
 --   lawspec-dev bump <x.y.z>        set the release version everywhere
@@ -19,7 +22,7 @@ module Main (main) where
 import BeamVectors (writeVectors)
 import Bench (benchCommand)
 import Canon (canonCommand, taxCommand)
-import Ci (ci)
+import Ci (ci, clean)
 import Control.Exception (bracket, bracketOnError)
 import Control.Monad (forM, forM_, unless, when)
 import qualified Crypto.Hash.SHA256 as SHA256
@@ -54,6 +57,7 @@ main =
     ["native-check"] -> nativeCheck
     ["native-acceptance", "--package", receipt, "--out", output] -> nativeAcceptance receipt output
     "ci" : options -> ci options
+    "clean" : options -> clean options
     "generate" : options -> generateCommand options
     "version" : options -> versionCommand options
     "bump" : options -> bumpCommand options
@@ -61,7 +65,7 @@ main =
     "canon" : options -> canonCommand options
     "bench" : options -> benchCommand options
     "tax" : options -> taxCommand options
-    _ -> die "usage: lawspec-dev boundaries | integrity [--record] | native-check | native-acceptance --package <receipt.json> --out <new-directory> | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
+    _ -> die "usage: lawspec-dev boundaries | integrity [--record] | native-check | native-acceptance --package <receipt.json> --out <new-directory> | ci [options] | clean --artifacts [--keep-cache] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
 
 -- | Exercise the actual pinned distribution on the current host, uncached.
 -- Keep assembly controls, a fresh npm archive and both runtime modes together.

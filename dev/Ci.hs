@@ -4,6 +4,11 @@
 --   lawspec-dev ci                       everything, every target
 --   lawspec-dev ci --target rust --target go
 --   lawspec-dev ci --core                compiler, npm and editor checks only
+--   lawspec-dev ci --no-core             target checks only
+--   lawspec-dev ci --only 'rust-*'       steps by name (* and ?), and what they follow
+--   lawspec-dev ci --affected [base]     steps that read what changed since base
+--   lawspec-dev ci --exact               with --only or --affected: no prerequisites
+--   lawspec-dev ci --list                print the selected steps; run nothing
 --   lawspec-dev ci --fail-fast
 --   lawspec-dev ci --fresh               ignore recorded results; run every step
 --   lawspec-dev ci --rust-toolchains 1.85.0,stable --rust-targets i686-unknown-linux-gnu
@@ -12,9 +17,22 @@
 -- Each step's output goes to .artifacts/ci/<step>.log; the console shows one
 -- line per step and a summary. Every step runs even after a failure unless
 -- --fail-fast is given, and the exit status is non-zero if any step failed.
+-- Each step that finishes also appends a line to .artifacts/ci/timings.jsonl:
+-- its name, when it started, its seconds, whether a recorded pass stood in
+-- for it, and whether it passed.
 --
--- Steps run in parallel, --jobs at a time (LAWSPEC_CI_JOBS, or half the
--- processors by default; ref:DEC-parallel-ci). --jobs 1 runs them one after
+-- --affected selects the steps whose declared inputs (stepReads) include a
+-- file that differs from the base: the merge base with main by default, with
+-- uncommitted and untracked files counted. A step that declares no inputs
+-- may read anything, so any change selects it. --only and --affected also
+-- run the steps the selected ones must follow (a bootstrap, the harness
+-- build); most of those are answered from recorded passes.
+--
+-- Steps run in parallel, --jobs at a time (LAWSPEC_CI_JOBS, or the machine's
+-- budget by default; ref:DEC-parallel-ci). The budget is shared by every run
+-- on the machine (Ci.Budget): half the processors, or
+-- LAWSPEC_CI_MACHINE_JOBS, so two worktrees checking at once use the
+-- processors one run would. --jobs 1 runs them one after
 -- another, honoring the same prerequisites. In parallel, a line is printed as each step
 -- finishes, so the order is the order of completion, and a terminal also
 -- shows the running steps. Each step declares what it must follow and the
@@ -33,43 +51,57 @@
 -- Parity binds the native and WASM executables, SDK, effective environment
 -- and checked sources. Source/artifact correspondence is checked separately
 -- by integrity and generation validation (ref:DEC-content-identity). Package
--- smoke and the SDK suite remain uncached: fresh native dependency resolution
--- and optional tool availability do not have a frozen execution context.
--- Native law and project caches still apply within those checks.
--- Records live in .artifacts/cache; --fresh runs everything.
-module Ci (ci) where
+-- smoke and the SDK suite are keyed on the package and repository they read
+-- and on the optional tools present. What they resolve from registries is
+-- outside any key, so a release still runs them with --fresh.
+-- Records live in the machine's shared development cache (LAWSPEC_DEV_CACHE,
+-- by default ~/.cache/lawspec-dev), under ci/ and acceptance/. A key holds
+-- no path of the worktree, so worktrees at the same content share passes.
+-- --fresh runs everything.
+module Ci (ci, clean) where
 
 import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, withMVar)
-import Control.Exception (AsyncException(..), IOException, SomeException, evaluate, handle, mask, onException, throwIO, try)
+import Control.Exception (AsyncException(..), IOException, SomeException, evaluate, finally, handle, mask, onException, throwIO, try)
 import Control.Monad (filterM, forM, forM_, forever, mfilter, unless, void, when)
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Key as AesonKey
+import qualified Data.Aeson.KeyMap as AesonKeyMap
 import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import Data.Char (isAlphaNum, isDigit)
 import Data.IORef
-import Data.List (intercalate, isPrefixOf, sort, transpose)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, sort, transpose)
+import Data.Maybe (fromMaybe)
+import qualified Data.Text as T
+import qualified Data.Vector as V
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.Time.Clock (diffUTCTime, getCurrentTime)
+import Data.Time.Clock (UTCTime, diffUTCTime, getCurrentTime)
+import Data.Time.Format (defaultTimeLocale, formatTime)
 import GHC.Conc (getNumProcessors)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, makeAbsolute, removePathForcibly)
 import System.Environment (getEnvironment, lookupEnv)
-import System.Exit (ExitCode(..), exitFailure, exitWith)
-import System.FilePath ((</>))
+import System.Exit (ExitCode(..), exitFailure, exitSuccess, exitWith)
+import System.FilePath (takeFileName, (</>))
 import GHC.IO.Handle.Lock (LockMode(..), hLock, hTryLock)
 import System.IO (Handle, IOMode(..), hClose, hFlush, hGetContents, hIsTerminalDevice, openFile, stdout)
+import System.Posix.Process (getProcessID)
 import System.Posix.Signals (Handler(..), installHandler, signalProcessGroup, sigKILL, sigTERM)
 import System.Posix.Types (ProcessGroupID)
 import System.Process (CreateProcess(..), StdStream(..), createProcess, getPid, proc, readCreateProcessWithExitCode, waitForProcess)
 import Text.Printf (printf)
 import qualified LawSpec.Targets as Targets
 import Scheduler
-import Ci.Cache (CacheResult(..), cachedCheck)
+import Ci.Budget (Budget, newBudget, withEverySlot, withMachineLock, withSlot)
+import Ci.Cache (CacheResult(..), cachedCheck, sharedCache)
+import Ci.Select (Reads(..), affected, also, matches, reading, withPrerequisites)
 
 data Options = Options
-  { targets :: [String], coreOnly :: Bool, failFast :: Bool, fresh :: Bool
-  , rustToolchains :: [String], rustTargets :: [String], jobs :: Maybe Int }
+  { targets :: [String], coreOnly :: Bool, noCore :: Bool, failFast :: Bool, fresh :: Bool
+  , rustToolchains :: [String], rustTargets :: [String], jobs :: Maybe Int
+  , only :: [String], affectedSince :: Maybe (Maybe String), exact :: Bool, listOnly :: Bool }
 
 allTargets :: [String]
 allTargets = Targets.targets
@@ -80,29 +112,53 @@ data Step = Step String [(String, String)] [String]
 stepName :: Step -> String
 stepName (Step name _ _) = name
 
+-- | What every step of one run shares.
+data Run = Run
+  { runConsole :: Console
+  , runChildren :: Children
+  , runFresh :: Bool
+  , runRepository :: [FilePath]
+  , runCache :: FilePath  -- the machine's shared development cache
+  , runBudget :: Budget
+  , runFingerprints :: FilePath  -- tool fingerprints the steps of this run share
+  , runProbes :: IORef (M.Map ([String], [(String, String)]) String) }
+
 ci :: [String] -> IO ()
 ci args = do
   options <- either (\message -> putStrLn message >> exitFailure) pure (parse args)
-  workers <- maybe defaultJobs pure (jobs options)
-  createDirectoryIfMissing True logs
-  environments <- if coreOnly options then pure Nothing else Just <$> lockEnvironments
+  cache <- sharedCache
+  machine <- machineJobs (jobs options)
+  workers <- maybe (fromMaybe machine <$> positive "LAWSPEC_CI_JOBS") pure (jobs options)
   repository <- repositoryFiles
   editor <- doesDirectoryExist "editors/vscode/node_modules"
   let groups = stepGroups options editor
       ordered = concatMap snd groups
-      tasks = plan workers groups
+      planned = plan workers groups
+  chosen <- select options planned
+  let tasks = filter ((`S.member` chosen) . taskName) planned
+  when (listOnly options) $ mapM_ (putStrLn . taskName) tasks >> exitSuccess
+  when (null tasks) $ putStrLn "No step is selected." >> exitSuccess
+  createDirectoryIfMissing True logs
+  environments <- if coreOnly options then pure Nothing else Just <$> lockEnvironments
   console <- newConsole (workers == 1)
   when (parallel console) $
-    say console (show (length tasks) ++ " steps, at most " ++ show workers ++ " at once (--jobs).")
+    say console (show (length tasks) ++ " steps, at most " ++ show workers ++ " at once (--jobs), "
+      ++ show machine ++ " on this machine across runs.")
   children <- newIORef M.empty
+  budget <- newBudget cache machine
+  process <- getProcessID
+  fingerprints <- makeAbsolute (logs </> ("tool-fingerprints-" ++ show process))
+  createDirectoryIfMissing True fingerprints
+  probes <- newIORef M.empty
+  let run = Run console children (fresh options) repository cache budget fingerprints probes
   main' <- myThreadId
   -- SIGTERM stops the run as Ctrl-C does: every running step is stopped.
   _ <- installHandler sigTERM (Catch (throwTo main' UserInterrupt)) Nothing
   ticker <- if parallel console then Just <$> forkIO (forever (threadDelay 5000000 >> showRunning console)) else pure Nothing
-  results <- handle (interrupted children) $
+  results <- flip finally (removePathForcibly fingerprints) $ handle (interrupted children) $
     schedule workers (failFast options) tasks
       (\task -> handle (stepError console (taskName task))
-        (runCached console children (fresh options) repository (taskItem task)))
+        (runCached run (taskItem task)))
       (\t -> modifyIORef' (running console) (++ [taskName t]))
       (\t _ -> modifyIORef' (running console) (filter (/= taskName t)))
   mapM_ killThread ticker
@@ -119,6 +175,51 @@ ci args = do
       say console ("Logs: " ++ logs)
       exitWith (ExitFailure 1)
 
+-- | The steps to run, of those planned. --only names them, --affected keeps
+-- those that read a changed file, and both together keep the named steps
+-- that are affected. The steps they follow come with them unless --exact.
+select :: Options -> [Task Step] -> IO (S.Set String)
+select options tasks = do
+  let names = map taskName tasks
+      stop message = putStrLn message >> exitFailure
+  forM_ (only options) $ \pattern' ->
+    unless (any (matches pattern') names) (stop ("--only " ++ pattern' ++ " matches no step of this run"))
+  let named = S.fromList [n | n <- names, null (only options) || any (`matches` n) (only options)]
+  touched <- case affectedSince options of
+    Nothing -> pure named
+    Just requested -> do
+      base <- maybe defaultBase pure requested
+      changed <- changedFiles base >>= either stop pure
+      declared <- forM tasks $ \t -> (,) (taskName t) <$> stepReads (taskItem t)
+      let hit = S.intersection named (affected changed declared)
+      putStrLn (show (length changed) ++ " files differ from " ++ base ++ "; " ++ show (S.size hit)
+        ++ " of " ++ show (S.size named) ++ " steps read them.")
+      pure hit
+  pure (if exact options then touched else withPrerequisites [(taskName t, taskAfter t) | t <- tasks] touched)
+
+-- | Where this branch left main, or the last commit when there is no main.
+defaultBase :: IO String
+defaultBase = do
+  (code, out, _) <- readCreateProcessWithExitCode (proc "git" ["merge-base", "HEAD", "main"]) ""
+  pure (case (code, lines out) of
+    (ExitSuccess, [commit]) | not (null commit) -> commit
+    _ -> "HEAD")
+
+-- | Every path that differs from the base: committed since, staged, changed
+-- in the working tree, deleted, or untracked and not ignored.
+changedFiles :: String -> IO (Either String [FilePath])
+changedFiles base = do
+  (code, out, err) <- readCreateProcessWithExitCode (proc "git" ["diff", "--name-only", "-z", base, "--"]) ""
+  (code', out', err') <- readCreateProcessWithExitCode (proc "git" ["ls-files", "-z", "--others", "--exclude-standard"]) ""
+  pure $ if code /= ExitSuccess then Left ("--affected: " ++ err)
+    else if code' /= ExitSuccess then Left ("--affected: " ++ err')
+    else Right (S.toList (S.fromList (filter (not . null) (splitOn '\0' out ++ splitOn '\0' out'))))
+
+splitOn :: Char -> String -> [String]
+splitOn c s = case break (== c) s of
+  (a, _ : rest) -> a : splitOn c rest
+  (a, []) -> [a]
+
 -- | Worktrees may share .integration through a link, and two runs must not
 -- bootstrap or test in the same environments at once: a run holds an
 -- exclusive lock on a file inside it (wherever the link resolves) until it
@@ -134,21 +235,31 @@ lockEnvironments = do
     hLock h ExclusiveLock
   pure h
 
--- | Half the processors: many steps run compilers that use several cores.
-defaultJobs :: IO Int
-defaultJobs = do
-  configured <- lookupEnv "LAWSPEC_CI_JOBS"
-  case configured of
-    Just n | not (null n), all isDigit n, read n > (0 :: Int) -> pure (read n)
-    _ -> max 1 . (`div` 2) <$> getNumProcessors
+-- | The jobs every run on this machine shares: half the processors, since
+-- many steps run compilers that use several cores. LAWSPEC_CI_MACHINE_JOBS
+-- sets it; otherwise an explicit --jobs above it is honored, as it was when
+-- each run counted for itself.
+machineJobs :: Maybe Int -> IO Int
+machineJobs requested = do
+  configured <- positive "LAWSPEC_CI_MACHINE_JOBS"
+  half <- max 1 . (`div` 2) <$> getNumProcessors
+  pure (fromMaybe (maybe half (max half) requested) configured)
+
+positive :: String -> IO (Maybe Int)
+positive variable = do
+  configured <- lookupEnv variable
+  pure $ case configured of
+    Just n | not (null n), all isDigit n, read n > (0 :: Int) -> Just (read n)
+    _ -> Nothing
 
 -- | The steps in their sequential order, each group with the target whose
 -- environment it uses (Nothing for the repository-wide steps).
 stepGroups :: Options -> Bool -> [(Maybe String, [Step])]
 stepGroups options editor =
-  [(Nothing, coreSteps)] ++
-  [(Nothing, [step "editor-install" ["npm", "install", "--prefix", "editors/vscode", "--ignore-scripts", "--no-audit", "--no-fund"] | not editor]
-    ++ [step "editor-grammar" ["npm", "test", "--prefix", "editors/vscode"]])] ++
+  (if noCore options then [] else
+    [(Nothing, coreSteps)] ++
+    [(Nothing, [step "editor-install" ["npm", "install", "--prefix", "editors/vscode", "--ignore-scripts", "--no-audit", "--no-fund"] | not editor]
+      ++ [step "editor-grammar" ["npm", "test", "--prefix", "editors/vscode"]])]) ++
   (if coreOnly options then [] else
     [(Nothing, [step "build-acceptance" ["stack", "--no-terminal", "build", "lawspec:exe:lawspec-acceptance"]]
       ++ [step "artifact-bootstrap" ["sh", "tools/artifact-targets.sh", "--setup"] |
@@ -201,9 +312,11 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     alone = [s | s <- repositorySteps, stepName s `elem` aloneSteps]
     repositorySteps = buildEarly (concat [steps | (Nothing, steps) <- groups]) ++ concat [steps | (Just _, steps@(Step name _ _ : _)) <- groups, name `elem` beamFrameworks]
     -- Every suite waits for build-acceptance, so it comes straight after
-    -- compiler-tests rather than after docs and canon.
+    -- compiler-tests rather than after docs and canon (and stays where it
+    -- is in a run without compiler-tests).
     buildEarly steps = case break ((== "build-acceptance") . stepName) steps of
-      (before, build : after) -> concat [s : [build | stepName s == "compiler-tests"] | s <- before] ++ after
+      (before, build : after) | any ((== "compiler-tests") . stepName) before ->
+        concat [s : [build | stepName s == "compiler-tests"] | s <- before] ++ after
       _ -> steps
     interleaved = concat (transpose [warmFirst target steps | (target, steps) <- byTarget])
     byTarget = M.toList (M.fromListWith (flip (++)) [(target, filter ((`notElem` beamFrameworks) . stepName) steps) | (Just target, steps) <- groups])
@@ -275,13 +388,24 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
         || maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
     isJust' = maybe False (const True)
 
--- | Steps that run alone: package-smoke exports every bundled example under
--- a hang guard, single-threaded for minutes, and a loaded machine slows it
--- past any fixed guard. Component acceptance also performs full source
--- compilation, whose peak memory must not compete with other compiler jobs.
+-- | Steps that run alone, here and beside other runs on the machine:
+-- component acceptance performs full source compilation, whose peak memory
+-- must not compete with other compiler jobs. Package smoke no longer does:
+-- its export of every bundled example, single-threaded for minutes under a
+-- hang guard, is a release check (tools/package-smoke.mjs --examples).
 -- ref:DEC-node-precompiled-components
 aloneSteps :: [String]
-aloneSteps = ["package-smoke", "component-native-acceptance"]
+aloneSteps = ["component-native-acceptance"]
+
+-- | Work that concurrent runs must not do at once, by the machine-wide lock
+-- that orders it. The warm-up suites fill caches no tool guards: Stack's
+-- snapshot database, and the Maven repository Maven and the Clojure CLI
+-- both write.
+machineLocks :: String -> [String]
+machineLocks name
+  | name == warmUp "haskell" = ["stack-snapshot"]
+  | name `elem` [warmUp "java", warmUp "clojure"] = ["maven-repository"]
+  | otherwise = []
 
 -- | The BEAM steps that exercise a native property framework, bootstrapping
 -- its target when the framework is missing.
@@ -389,6 +513,7 @@ coreSteps =
     step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"],
     step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"],
     step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"],
+    step "ci-coordination" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-coordination-test/Main.hs"],
     step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"],
     step "npm-lock" ["node", "tools/npm-lock.mjs", "--check"],
     step "compiler-tests" ["stack", "--no-terminal", "test", "--test-arguments=--format=specdoc --no-color"],
@@ -406,28 +531,39 @@ coreSteps =
     step "canon" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "canon", "check"]
   ]
 
--- | The repository files a core step reads, as roots to keep or drop (an empty
--- keep list keeps every file), and the commands whose output names its tools.
-data Inputs = Inputs [FilePath] [FilePath] [[String]]
+-- | The repository files a core step reads, and the commands whose output
+-- names its tools and the built artifacts it runs.
+data Inputs = Inputs Reads [[String]]
+
+-- | Inputs by roots to keep or drop (an empty keep list keeps every file).
+inputs :: [FilePath] -> [FilePath] -> [[String]] -> Inputs
+inputs keep dropped = Inputs (reading keep dropped)
 
 stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures. Its context probe
   -- also binds the selected tools, optional solver and actual SDK artifacts.
+  -- Of acceptance/ it reads the suites' specifications and bindings.json
+  -- (stack test also compiles the harness), and of templates/ the one
+  -- starter specification; adapters, stubs, mutants and the JavaScript
+  -- templates are not its inputs.
   "compiler-tests" ->
     Just
       ( Inputs
-          []
-          (["npm/", "tools/", "docs/", "editors/"] ++ ledgers)
+          (also hspecReads (reading [] (["npm/", "tools/", "docs/", "editors/", "templates/", "acceptance/"] ++ ledgers)))
           [["node", "tools/ci-artifact-key.mjs", "compiler-tests"]]
       )
-  -- SDK tests select optional native tools by availability and environment,
-  -- and resolve dependencies for fresh projects. A whole-suite cached pass
-  -- must not bypass their actual toolchain and native-freshness checks.
-  "npm-tests" -> Nothing
+  -- The SDK tests read most of the repository (fixtures, templates,
+  -- runtimes, examples, documentation, the editor grammar, other suites'
+  -- files), so every file is an input. They select optional native tools by
+  -- availability and environment and use the bootstrapped environments in
+  -- .integration: the context probe binds each tool's presence and version,
+  -- those environments' locks, the SDK's installed dependencies and the
+  -- environment variables the tests honor.
+  "npm-tests" -> Just (inputs [] [] [["node", "tools/ci-artifact-key.mjs", "npm-tests"]])
   "parity" ->
     Just
-      ( Inputs
+      ( inputs
           [ "tools/parity.mjs",
             "tools/ci-artifact-key.mjs",
             "examples/specs/",
@@ -442,7 +578,7 @@ stepInputs name = case name of
       )
   "npm-lock" ->
     Just
-      ( Inputs
+      ( inputs
           [ "tools/npm-lock.mjs",
             "npm/package.json",
             "npm/package-lock.json",
@@ -451,14 +587,31 @@ stepInputs name = case name of
           []
           [["node", "--version"]]
       )
-  "package-smoke" -> Nothing
+  -- The package is what npm packs from npm/, and the smoke test drives it
+  -- with Node, npm, and Go and Cargo for the host-module and Rust checks.
+  -- Packing copies the root README.md and CHANGELOG.md into it first. The
+  -- dry run names every packed file and the archive's digest, so a packed
+  -- file git ignores is bound too.
+  "package-smoke" ->
+    Just
+      ( inputs
+          ["npm/", "tools/package-smoke.mjs", "README.md", "CHANGELOG.md"]
+          []
+          [ ["npm", "pack", "./npm", "--dry-run", "--json", "--ignore-scripts"],
+            ["node", "--version"],
+            ["npm", "--version"],
+            ["sh", "-c", "go version 2>/dev/null || echo 'go: absent'"],
+            ["rustc", "-Vv"],
+            ["cargo", "-V"]
+          ]
+      )
   -- Native archives are ignored build products and can change independently of
   -- tracked source. Never substitute a cached pass for executing this package.
   "component-native-acceptance" -> Nothing
-  "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
+  "docs" -> Just (inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rejection-examples" ->
     Just
-      ( Inputs
+      ( inputs
           [ "dev/Docs.hs",
             "src/",
             "package.yaml",
@@ -474,7 +627,7 @@ stepInputs name = case name of
   "rust-runtime-release" -> Just rustRuntime
   "beam-runtime" ->
     Just
-      ( Inputs
+      ( inputs
           [ "runtime/lawspec_beam_",
             "runtime/lawspec_network.erl",
             "runtime/lawspec_crypto_",
@@ -508,7 +661,7 @@ stepInputs name = case name of
       )
   "swift-network-interoperability" ->
     Just
-      ( Inputs
+      ( inputs
           [ "runtime/swift/LawSpecRuntime/",
             "runtime/lawspec_runtime.py",
             "runtime/lawspec_network.py",
@@ -521,7 +674,7 @@ stepInputs name = case name of
       )
   "beam-proper" ->
     Just
-      ( Inputs
+      ( inputs
           [ "runtime/lawspec_beam_",
             "test/fixtures/beam/",
             "tools/beam-proper.sh",
@@ -536,7 +689,7 @@ stepInputs name = case name of
       )
   "beam-stream-data" ->
     Just
-      ( Inputs
+      ( inputs
           [ "runtime/lawspec_beam_",
             "test/fixtures/beam/",
             "tools/beam-stream-data.sh",
@@ -549,7 +702,7 @@ stepInputs name = case name of
       )
   "beam-qcheck" ->
     Just
-      ( Inputs
+      ( inputs
           [ "runtime/lawspec_beam_",
             "test/fixtures/beam/",
             "tools/beam-qcheck.sh",
@@ -564,13 +717,64 @@ stepInputs name = case name of
   -- OpenTofu 1.13.1, whose version keys the step with the other tools.
   _
     | name `elem` [t ++ "-artifact-validation" | t <- Targets.artifactTargets] ->
-        Just (Inputs [] unread [["tofu", "version"], ["java", "-version"], ["make", "--version"], ["python3", "--version"]])
+        Just (inputs [] unread [["tofu", "version"], ["java", "-version"], ["make", "--version"], ["python3", "--version"]])
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"] ++ ledgers
     -- canon's ledgers and profile: only canon, docs and generate read them.
     ledgers = ["canon.yaml", "canonical_"]
-    rustRuntime = Inputs ["runtime/rust/", "runtime/lawspec_runtime.rs"] [] [["rustc", "-Vv"], ["cargo", "-V"]]
+    rustRuntime = inputs ["runtime/rust/", "runtime/lawspec_runtime.rs"] [] [["rustc", "-Vv"], ["cargo", "-V"]]
+    hspecReads file =
+      file == "templates/npm/starter-rc1.lawspec"
+        || ( "acceptance/" `isPrefixOf` file
+               && (".lawspec" `isSuffixOf` file || ".hs" `isSuffixOf` file || takeFileName file == "bindings.json")
+           )
+
+-- | What a step reads, for --affected: its declared inputs, and the sources
+-- of the built artifacts its key binds by their bytes; for an acceptance
+-- suite, what the harness reads for that suite and target. Nothing for a
+-- step that declares neither: it may read anything.
+stepReads :: Step -> IO (Maybe Reads)
+stepReads (Step name _ command) = case stepInputs name of
+  Just (Inputs declared _) -> pure (Just (also (artifactSource name) declared))
+  Nothing -> maybe (pure Nothing) (uncurry suiteReads) (acceptanceSuite command)
+
+-- | Parity binds the native compiler and the SDK, and compiler-tests the
+-- SDK, through tools/ci-artifact-key.mjs rather than as repository files.
+artifactSource :: String -> FilePath -> Bool
+artifactSource name file = case name of
+  "parity" -> sdk || any (`isPrefixOf` file) ["src/", "app/", "package.yaml", "stack.yaml"]
+  "compiler-tests" -> sdk
+  _ -> False
+  where sdk = "npm/" `isPrefixOf` file && not ("npm/test/" `isPrefixOf` file)
+
+-- | The files lawspec-acceptance reads for a suite and target (see
+-- acceptance/Main.hs, Toolchain.hs and Cache.hs): the compiler it is built
+-- from, the harness, the suite's own directory without the other targets'
+-- adapters, the specifications, vectors and packages its manifest names, and
+-- the pins of the formatters and dependencies. Nothing when the manifest
+-- cannot be read.
+suiteReads :: String -> String -> IO (Maybe Reads)
+suiteReads suite target = do
+  let home = "acceptance/" ++ suite ++ "/"
+  manifest <- try (B.readFile (home ++ "suite.json")) :: IO (Either IOException B.ByteString)
+  pure $ case either (const Nothing) Aeson.decodeStrict manifest of
+    Just (Aeson.Object fields) ->
+      let strings key = case AesonKeyMap.lookup (AesonKey.fromString key) fields of
+            Just (Aeson.Array values) -> [T.unpack text | Aeson.String text <- V.toList values]
+            Just (Aeson.String text) -> [T.unpack text]
+            _ -> []
+          packages = strings "packages"
+          roots =
+            ["src/", "runtime/", "package.yaml", "stack.yaml", "acceptance/Main.hs", "acceptance/Toolchain.hs", "acceptance/Cache.hs"]
+              ++ ["acceptance/formatters/", "test/locks/", "rustfmt.toml", ".prettierrc.json", "learn/package-lock.json"]
+              ++ ["tools/prolog-formatted.sh", "tools/prolog-layout.pl", "tools/scala-build-state.mjs", "npm/scala-build-state.mjs"]
+              ++ strings "specs" ++ strings "vectors" ++ map (++ "/") packages
+              -- Package manifests are read through the SDK (npm/component.mjs).
+              ++ ["npm/" | not (null packages)]
+          others = [home ++ other ++ "/" | other <- allTargets, other /= target]
+       in Just (Reads (\file -> any (`isPrefixOf` file) roots || (home `isPrefixOf` file && not (any (`isPrefixOf` file) others))))
+    _ -> Nothing
 
 -- | Every file git would commit: tracked or untracked, and not ignored.
 repositoryFiles :: IO [FilePath]
@@ -579,55 +783,76 @@ repositoryFiles = do
     (proc "git" ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]) ""
   if code /= ExitSuccess then pure [] else
     filterM doesFileExist (sort (filter (not . null) (splitOn '\0' out)))
-  where
-    splitOn c s = case break (== c) s of
-      (a, _ : rest) -> a : splitOn c rest
-      (a, []) -> [a]
-
-cacheStore :: FilePath
-cacheStore = ".artifacts/cache/ci"
 
 -- | Run a step unless a pass is recorded for its inputs. Under --fresh every
 -- step runs (acceptance suites with LAWSPEC_CACHE=refresh), and passes are
 -- still recorded for later runs.
-runCached :: Console -> Children -> Bool -> [FilePath] -> Step -> IO Bool
-runCached console children freshRun repository current@(Step name env command) =
+runCached :: Run -> Step -> IO Bool
+runCached run current@(Step name env command) = do
+  started <- getCurrentTime
   case stepInputs name of
-    Nothing -> runStep console children (if freshRun then refreshed else current)
-    Just inputs -> do
-      key <- stepKey repository current inputs
+    Nothing -> runStep run (if runFresh run then refreshed else current)
+    Just declared -> do
+      key <- stepKey run current declared
       case key of
-        Nothing -> runStep console children current
+        Nothing -> runStep run current
         Just digest -> do
-          result <- cachedCheck freshRun (cacheStore </> digest)
-            (logs </> map safeName name ++ ".log") (runStep console children current)
+          result <- cachedCheck (runFresh run) (runCache run </> "ci" </> digest)
+            (logs </> map safeName name ++ ".log") (runStep run current)
           case result of
-            CacheHit -> say console (printf "%-40s %s" name ("cached" :: String)) >> pure True
+            CacheHit -> do
+              finished <- getCurrentTime
+              recordTiming run name started (realToFrac (diffUTCTime finished started)) True True
+              say (runConsole run) (printf "%-40s %s" name ("cached" :: String))
+              pure True
             Checked passed -> pure passed
   where refreshed = Step name (("LAWSPEC_CACHE", "refresh") : env) command
 
-stepKey :: [FilePath] -> Step -> Inputs -> IO (Maybe String)
-stepKey repository (Step name env command) (Inputs keep drop' probes) = do
-  let selected = [ f | f <- repository
-                 , null keep || any (`isPrefixOf` f) keep
-                 , not (any (`isPrefixOf` f) drop') ]
+-- | One line of .artifacts/ci/timings.jsonl for a finished step: how long
+-- the step ran, or how long its recorded pass took to find.
+recordTiming :: Run -> String -> UTCTime -> Double -> Bool -> Bool -> IO ()
+recordTiming run name started seconds cached passed =
+  withMVar (lock (runConsole run)) $ \_ ->
+    appendFile (logs </> "timings.jsonl") $
+      printf "{\"step\":%s,\"started\":\"%s\",\"seconds\":%.3f,\"cached\":%s,\"passed\":%s}\n"
+        (show name) (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" started) seconds (json cached) (json passed)
+  where json value = if value then "true" else "false" :: String
+
+stepKey :: Run -> Step -> Inputs -> IO (Maybe String)
+stepKey run (Step name env command) (Inputs declared probes) = do
+  let selected = filter (readsFile declared) (runRepository run)
   contents <- forM selected $ \path -> (,) path <$> B.readFile path
-  effective <- stepEnvironment env
-  observations <- forM probes $ \probe -> case probe of
-    program : arguments -> do
-      result <- try (readCreateProcessWithExitCode ((proc program arguments){env = Just effective}) "") :: IO (Either IOException (ExitCode, String, String))
-      pure $ case result of
-        Right (ExitSuccess, out, err) -> Just (unwords probe ++ "\n" ++ out ++ err)
-        _ -> Nothing
-    [] -> pure (Just "")
+  observations <- mapM (probe run env) probes
   -- A missing or failed identity probe cannot certify a cached result. Run
   -- the actual check and leave it uncached rather than hash an error message.
   pure $ do
     tools <- sequence observations
-    let pieces = map BC.pack ("lawspec-ci-cache-1" : name : unwords command : show env : tools) ++
+    let pieces = map BC.pack ("lawspec-ci-cache-2" : name : unwords command : show env : tools) ++
           concat [[BC.pack path, bytes] | (path, bytes) <- contents]
         framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
     pure (concatMap (printf "%02x") (B.unpack (SHA.finalize (SHA.updates SHA.init (concatMap framed pieces)))))
+
+-- | What an identity probe prints, observed once per run for the same
+-- command and step environment: several steps name the same tools, and a
+-- tool does not change while the run lasts. A probe of a built artifact
+-- belongs to one step, so it is observed when that step starts. A failure is
+-- not remembered.
+probe :: Run -> [(String, String)] -> [String] -> IO (Maybe String)
+probe run env command = case command of
+  [] -> pure (Just "")
+  program : arguments -> do
+    known <- M.lookup (command, env) <$> readIORef (runProbes run)
+    case known of
+      Just observed -> pure (Just observed)
+      Nothing -> do
+        effective <- stepEnvironment run env
+        result <- try (readCreateProcessWithExitCode ((proc program arguments){env = Just effective}) "") :: IO (Either IOException (ExitCode, String, String))
+        case result of
+          Right (ExitSuccess, out, err) -> do
+            let observed = unwords command ++ "\n" ++ out ++ err
+            atomicModifyIORef' (runProbes run) (\seen -> (M.insert (command, env) observed seen, ()))
+            pure (Just observed)
+          _ -> pure Nothing
 
 -- | The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.
@@ -772,18 +997,27 @@ rustRuntimeSteps options =
 -- it and everything it started. Sequentially, the step's name is printed as it
 -- starts and its result when it ends, on one line; in parallel the whole line
 -- is printed when it ends.
-runStep :: Console -> Children -> Step -> IO Bool
-runStep console children (Step name env command) = do
+runStep :: Run -> Step -> IO Bool
+runStep run (Step name env command) = do
+  let console = runConsole run
+      children = runChildren run
   unless (parallel console) $ do
     printf "%-40s " name
     hFlush stdout
-  started <- getCurrentTime
-  environment <- stepEnvironment env
-  (code, out, err) <- case command of
-    program : arguments -> do
-      result <- try (runGroup children (proc program arguments) { env = Just environment })
-      pure (either (\e -> (ExitFailure 1, "", show (e :: SomeException))) id result)
-    [] -> pure (ExitFailure 1, "", "empty command")
+  environment <- stepEnvironment run env
+  let execute = do
+        started <- getCurrentTime
+        observed <- case command of
+          program : arguments -> do
+            result <- try (runGroup children (proc program arguments) { env = Just environment })
+            pure (either (\e -> (ExitFailure 1, "", show (e :: SomeException))) id result)
+          [] -> pure (ExitFailure 1, "", "empty command")
+        pure (started, observed)
+      -- A step waits for its machine-wide locks before it takes a job slot,
+      -- so a waiting step holds no slot another run could use. The time a
+      -- step waits is not counted as its own.
+      slotted = if name `elem` aloneSteps then withEverySlot (runBudget run) else withSlot (runBudget run)
+  (started, (code, out, err)) <- foldr (withMachineLock (runCache run)) (slotted execute) (machineLocks name)
   finished <- getCurrentTime
   let outcome = case code of
         ExitSuccess -> "Exit status: 0"
@@ -795,6 +1029,7 @@ runStep console children (Step name env command) = do
       result = printf "%s  %6.1fs" (if code == ExitSuccess then "ok  " else "FAIL" :: String) seconds :: String
       details = if code == ExitSuccess then [] else
         ("  " ++ outcome) : ["  " ++ lastLine (out ++ err) | not (null (out ++ err))]
+  recordTiming run name started seconds False (code == ExitSuccess)
   if parallel console
     then say console (intercalate "\n" (printf "%-40s %s" name result : details))
     else mapM_ (say console) (result : details)
@@ -805,15 +1040,18 @@ runStep console children (Step name env command) = do
       [] -> ""
 
 -- | Identity probes and checks receive exactly the same executable search
--- path and overrides, including the repository's pinned Gradle installation.
-stepEnvironment :: [(String, String)] -> IO [(String, String)]
-stepEnvironment env = do
+-- path and overrides, including the repository's pinned Gradle installation,
+-- the shared development cache, and where the steps of this run share their
+-- tool fingerprints (acceptance/Cache.hs).
+stepEnvironment :: Run -> [(String, String)] -> IO [(String, String)]
+stepEnvironment run env = do
   inherited <- getEnvironment
   root <- getCurrentDirectory
   gradle <- doesDirectoryExist localGradle
   -- A Gradle unpacked into .tools serves every step, not only the harness.
   let path = [(root </> localGradle) ++ ":" ++ maybe "" id (lookup "PATH" inherited) | gradle]
-      overrides = env ++ [("PATH", p) | p <- path, "PATH" `notElem` map fst env]
+      shared = [("LAWSPEC_DEV_CACHE", runCache run), ("LAWSPEC_CI_TOOL_FINGERPRINTS", runFingerprints run)]
+      overrides = env ++ [(k, v) | (k, v) <- [("PATH", p) | p <- path] ++ shared, k `notElem` map fst env]
       environment = overrides ++ [(k, v) | (k, v) <- inherited, k `notElem` map fst overrides]
   pure environment
 
@@ -848,13 +1086,22 @@ safeName :: Char -> Char
 safeName c = if isAlphaNum c || c `elem` ("-._" :: String) then c else '_'
 
 parse :: [String] -> Either String Options
-parse = go (Options [] False False False [] [] Nothing)
+parse = go (Options [] False False False False [] [] Nothing [] Nothing False False)
   where
-    go o [] = Right o { targets = if null (targets o) then allTargets else reverse (targets o) }
+    go o []
+      | coreOnly o && noCore o = Left "--core and --no-core leave nothing to run"
+      | exact o && null (only o) && affectedSince o == Nothing = Left "--exact goes with --only or --affected"
+      | otherwise = Right o { targets = if null (targets o) then allTargets else reverse (targets o) }
     go o ("--target" : t : rest)
       | t `elem` allTargets = go o { targets = t : targets o } rest
       | otherwise = Left ("unknown target: " ++ t)
     go o ("--core" : rest) = go o { coreOnly = True } rest
+    go o ("--no-core" : rest) = go o { noCore = True } rest
+    go o ("--only" : pattern' : rest) = go o { only = only o ++ [pattern'] } rest
+    go o ("--affected" : base : rest) | not ("--" `isPrefixOf` base) = go o { affectedSince = Just (Just base) } rest
+    go o ("--affected" : rest) = go o { affectedSince = Just Nothing } rest
+    go o ("--exact" : rest) = go o { exact = True } rest
+    go o ("--list" : rest) = go o { listOnly = True } rest
     go o ("--fail-fast" : rest) = go o { failFast = True } rest
     go o ("--fresh" : rest) = go o { fresh = True } rest
     go o ("--rust-toolchains" : list : rest) = go o { rustToolchains = splitComma list } rest
@@ -862,7 +1109,32 @@ parse = go (Options [] False False False [] [] Nothing)
     go o ("--jobs" : n : rest)
       | not (null n), all isDigit n, read n > (0 :: Int) = go o { jobs = Just (read n) } rest
       | otherwise = Left ("--jobs takes a positive number, not " ++ n)
-    go _ (flag : _) = Left ("unknown option: " ++ flag ++ "\nusage: lawspec-dev ci [--target T]... [--core] [--fail-fast] [--fresh] [--jobs N] [--rust-toolchains a,b] [--rust-targets t,u]")
+    go _ (flag : _) = Left ("unknown option: " ++ flag ++ "\nusage: lawspec-dev ci [--target T]... [--core | --no-core] [--only GLOB]... [--affected [BASE]] [--exact] [--list] [--fail-fast] [--fresh] [--jobs N] [--rust-toolchains a,b] [--rust-targets t,u]")
     splitComma s = case break (== ',') s of
       (a, _ : rest) -> a : splitComma rest
       (a, []) -> [a | not (null a)]
+
+-- | lawspec-dev clean --artifacts [--keep-cache]: remove this worktree's
+-- build output under .artifacts (acceptance projects, logs, the site) and,
+-- unless --keep-cache is given, the passes recorded in the shared
+-- development cache, which every worktree then runs again. The tools'
+-- download caches there are kept either way, as is a cache directory
+-- configured inside .artifacts when --keep-cache is given.
+clean :: [String] -> IO ()
+clean arguments = case arguments of
+  ["--artifacts"] -> remove False
+  ["--artifacts", "--keep-cache"] -> remove True
+  ["--keep-cache", "--artifacts"] -> remove True
+  _ -> putStrLn "usage: lawspec-dev clean --artifacts [--keep-cache]" >> exitFailure
+  where
+    remove keep = do
+      cache <- sharedCache
+      artifacts <- makeAbsolute ".artifacts"
+      present <- doesDirectoryExist artifacts
+      entries <- if present then sort <$> listDirectory artifacts else pure []
+      forM_ entries $ \entry -> do
+        let path = artifacts </> entry
+        unless (keep && (path == cache || (path ++ "/") `isPrefixOf` cache)) (removePathForcibly path)
+      unless keep $ forM_ ["ci", "acceptance"] (removePathForcibly . (cache </>))
+      putStrLn ("Removed build output in " ++ artifacts ++
+        (if keep then "; kept recorded passes in " else " and recorded passes in ") ++ cache)
