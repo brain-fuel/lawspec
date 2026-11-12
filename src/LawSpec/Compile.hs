@@ -45,7 +45,7 @@ import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock,
 import LawSpec.Refinement
 import LawSpec.Prelude
 import LawSpec.PreludeNames (preludeDiscoveryText,preludeDependencyText)
-import LawSpec.CaseFold (caseFoldUnit,caseFoldAlias,usesCaseFold,caseFoldSource)
+import LawSpec.CaseFold (caseFoldUnit,caseFoldAlias,caseFoldDemand,caseFoldSource)
 import Control.Monad.State.Strict
 import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import Data.Maybe (listToMaybe)
@@ -377,7 +377,8 @@ sourceParsingContext selected sources =
       resilience = any usesResilience [text | Source _ text <- sources]
       -- Programs that use matchers over lists, or regexes, get the matchers unit.
       matchers = any (providerUses usesMatchers) [text | Source _ text <- sources]
-      textFolding = any (providerUses usesCaseFold) [text | Source _ text <- sources]
+      textDemand text = caseFoldDemand text (preludeDependencyText text)
+      textFolding = any textDemand [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
       -- Built-in resources acquire and release through lawspec.host's
@@ -401,7 +402,7 @@ sourceParsingContext selected sources =
       implicit = [(timeUnit, timeAlias, timeTypes, providerUses usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
         [(matchersUnit, matchersAlias, matchersTypes, providerUses usesMatchers) | matchers] ++
-        [(caseFoldUnit, caseFoldAlias, [], providerUses usesCaseFold) | textFolding] ++
+        [(caseFoldUnit, caseFoldAlias, [], textDemand) | textFolding] ++
         [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources] ++
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.

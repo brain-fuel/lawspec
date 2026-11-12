@@ -7,12 +7,14 @@ import Data.Either (isLeft,isRight)
 import Data.List (isInfixOf)
 import Numeric (readHex)
 import Test.Hspec
+import qualified LawSpec.Core as C
 import LawSpec.Model (Source(..),defaultGeneration,message)
 import LawSpec.Frontend (compileCoreCanonical)
 import LawSpec.Discharge (dischargeEvidenceWith)
 import LawSpec.Core.Evidence (obligationStatus,obligationStage,Status(..))
 import qualified LawSpec.Core.Verification as V
-import LawSpec.CaseFold (caseFoldSource,usesCaseFold)
+import LawSpec.CaseFold (caseFoldDemand,caseFoldSource,usesCaseFold)
+import LawSpec.PreludeNames (preludeDependencyText)
 import LawSpec.CaseFoldData (caseFoldMappings)
 import LawSpec.Testing (planTestingWith)
 import LawSpec.CoreEmit (emitPlan)
@@ -44,6 +46,24 @@ test_caseFold = describe "pinned full default Unicode case folding" $ do
     usesCaseFold "function ordinary (x :: Text) -> Text is prelude.caseFold x end function\n" `shouldBe` True
     usesCaseFold "function ordinary (x :: Text) -> Text is x end function -- caseFold\n" `shouldBe` False
     usesCaseFold "law documented is description: \"caseFold\" end description definition: true end definition end law" `shouldBe` False
+  it "leaves the text unit out for a unit's own caseFold, unless it also names the prelude's" $ do
+    let own = "function caseFold (value :: Text) -> Text is value end function\n"
+        demand text = caseFoldDemand text (preludeDependencyText text)
+    demand (own ++ "function twice (x :: Text) -> Text is caseFold (caseFold x) end function\n") `shouldBe` False
+    demand (own ++ "function both (x :: Text) -> Text is prelude.caseFold (caseFold x) end function\n") `shouldBe` True
+    demand "function ordinary (x :: Text) -> Text is caseFold x end function\n" `shouldBe` True
+    demand (own ++ "function found (x :: Text) -> Bool is textContains x \"a\" end function\n") `shouldBe` True
+    demand "function ordinary (x :: Text) -> Text is x end function\n" `shouldBe` False
+    demand ("function textContains (a :: Text) (b :: Text) -> Bool is true end function\n" ++
+      "function found (x :: Text) -> Bool is x `prelude.textContains` \"a\" end function\n") `shouldBe` True
+    demand ("function textContains (a :: Text) (b :: Text) -> Bool is true end function\n" ++
+      "function found (x :: Text) -> Bool is x `textContains` \"a\" end function\n") `shouldBe` False
+    let compiled content = compileCoreCanonical 64 defaultGeneration [Source "own.lawspec" ("unit own\n\n" ++ content ++ "end unit\n")]
+        units = either (const []) (map (C.idText . C.unitId) . C.programUnits)
+    units (compiled (own ++ "law folded is definition: caseFold \"BRM\" = \"BRM\" end definition end law\n"))
+      `shouldSatisfy` (\names -> "own" `elem` names && "lawspec.text" `notElem` names)
+    units (compiled (own ++ "law folded is definition: prelude.caseFold \"BRM\" = \"brm\" and caseFold \"BRM\" = \"BRM\" end definition end law\n"))
+      `shouldSatisfy` (elem "lawspec.text")
   it "checks expansions, supplementary code points, default I, identity and no normalization" $ do
     let cases = [("Straße Σς ﬃ İ I 𐐀", "strasse σσ ffi i\x307 i 𐐨"),
           ("é e\x301", "é e\x301"),("🙂\NUL", "🙂\NUL"),("", "")]

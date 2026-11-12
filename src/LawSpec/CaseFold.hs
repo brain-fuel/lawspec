@@ -3,7 +3,7 @@
 -- No target's locale, Unicode library, normalization or lowercasing is used.
 -- ref:DEC-readable-notation
 module LawSpec.CaseFold
-  ( caseFoldUnit, caseFoldAlias, caseFoldOperation, usesCaseFold, caseFoldSource
+  ( caseFoldUnit, caseFoldAlias, caseFoldOperation, usesCaseFold, caseFoldDemand, caseFoldSource
   ) where
 
 import LawSpec.CaseFoldData (caseFoldMappings)
@@ -11,13 +11,35 @@ import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldAlias,caseFoldOperation)
 import LawSpec.SourceTokens (sourceTokens,Token(..),TokenKind(..))
 import Data.List (intercalate)
 
+-- | Whether a source names the text unit or one of its two public functions.
 usesCaseFold :: String -> Bool
 usesCaseFold text = any (`elem` ["caseFold","textContains"]) tokens ||
   any (== ["lawspec",".","text"]) [take 3 rest | rest <- suffixes tokens]
   where
-    tokens = [tokenText token | token <- sourceTokens text,tokenKind token `notElem` [TriviaToken,CommentToken]]
-    suffixes [] = []
-    suffixes rest@(_:tail') = rest : suffixes tail'
+    tokens = significant text
+
+-- | Whether a source needs the text unit, given the prelude names its bare
+-- words may stand for (LawSpec.PreludeNames.preludeDependencyText). A unit
+-- that declares its own function of one of these names means its own by the
+-- bare name, so there only @prelude.caseFold@ asks for the text unit: every
+-- program that gets it parses and admits 1,585 mappings. Any other mention
+-- keeps asking, which at worst provides a unit nothing uses.
+caseFoldDemand :: String -> String -> Bool
+caseFoldDemand text dependencies = any (== ["lawspec",".","text"]) (windows 3) || any demanded ["caseFold","textContains"]
+  where
+    tokens = significant text
+    windows size = [take size rest | rest <- suffixes tokens]
+    demanded name
+      | ["function",name] `elem` windows 2 =
+          ["prelude",".",name] `elem` windows 3 || ("`prelude." ++ name) `elem` tokens
+      | otherwise = name `elem` tokens || ("prelude." ++ name) `elem` words dependencies
+
+significant :: String -> [String]
+significant text = [tokenText token | token <- sourceTokens text,tokenKind token `notElem` [TriviaToken,CommentToken]]
+
+suffixes :: [a] -> [[a]]
+suffixes [] = []
+suffixes rest@(_:tail') = rest : suffixes tail'
 
 -- Recursion halves a positive span using the existing integer-descent checker.
 -- Both traversal and lookup have logarithmic stack depth, including Python.
