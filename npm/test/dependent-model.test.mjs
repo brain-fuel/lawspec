@@ -18,10 +18,10 @@ const spec =
   '(command push (arguments) (state 0) (unit true) (when false) (needs (atleast 0)) (shifts (by 1)) (key none) (restart false)) ' +
   '(command choose (arguments (dependent (int Int8 0 127) (>= 0) (< (index 0)))) (state 0) (unit false) (when false) (needs (atleast 0)) (shifts (by 0)) (key none) (restart false)) ' +
   '(command clear (arguments) (state 0) (unit true) (when false) (needs (atleast 0)) (shifts (to 0)) (key none) (restart false)) (abstract false) (invariants)';
-function machine(observed, mutant = false)
+function machine(observed, mutant = false, source = spec)
 {
   return new Model(
-    spec,
+    source,
     [() => 0n, () => 0n],
     [
       [(s, n) => new DataValue('flow', [n + 1n]), (s, n) => n + 1n, null],
@@ -52,16 +52,24 @@ test('dependent sampled generation replays and shrinking never executes an inval
     /push\(\); choose\(0\).*model returns 0/,
   );
 });
-test('a rejected dependent generation attempt remains incomplete', async () =>
+// A domain of more than 64 values is drawn rather than listed, so every draw
+// the reference rejects is counted; a run that rejects more steps than it
+// accepts stops the check as incomplete. ref:DEC-honest-model-steps
+test('rejected dependent draws that outnumber accepted steps leave the check incomplete', async () =>
 {
-  const model = machine([]);
+  const drawn = spec.replace(
+    '(dependent (int Int8 0 127) (>= 0) (< (index 0)))',
+    '(dependent (int Int8 0 127) (>= 0))',
+  );
+  assert.notEqual(drawn, spec);
+  const model = machine([], false, drawn);
   model.commands[1].reference = () =>
   {
     throw new Error('bounded miss');
   };
   await assert.rejects(
     checkModelAsync(model, {seed: 12n, cases: 100}),
-    /incomplete model generation/,
+    /incomplete model generation: model .* drew \d+ steps its reference rejected and \d+ it accepted/,
   );
 });
 test('Python and JavaScript draw and replay the same dependent domains', async () =>
