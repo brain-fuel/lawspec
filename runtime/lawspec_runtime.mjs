@@ -187,6 +187,48 @@ export class DataValue
     this.fields = Object.freeze([...fields]);
     Object.freeze(this);
   }
+
+  // fast-check prints a counterexample with this method when a value has
+  // one, so a masked field is not printed there either.
+  [Symbol.for('fast-check/toStringMethod')]()
+  {
+    return shown(this);
+  }
+}
+
+// The fields a masking block hides, by constructor tag and position. The
+// generated data module registers them (maskFields); everything this runtime
+// prints about a failure shows such a field as ***, whatever its mask. A
+// counterexample is replayed by its seed, never by what was printed.
+const MASKED_FIELDS = new Map();
+const CONCEALED = Object.freeze({
+  toString()
+  {
+    return '***';
+  },
+});
+
+export function maskFields(tag, positions)
+{
+  MASKED_FIELDS.set(tag, new Set(positions));
+}
+
+/** A value with every masked field replaced by a marker that prints as ***. */
+export function concealed(v)
+{
+  if (MASKED_FIELDS.size === 0) return v;
+  if (Array.isArray(v)) return v.map(concealed);
+  if (v instanceof DataValue && !isHandle(v))
+  {
+    const masked = MASKED_FIELDS.get(v.tag);
+    return new DataValue(
+      v.tag,
+      v.fields.map((field, i) =>
+        masked?.has(i) ? CONCEALED : concealed(field),
+      ),
+    );
+  }
+  return v;
 }
 export const UNIT = Object.freeze({kind: 'Unit'});
 export const integerType = t =>
@@ -3054,6 +3096,7 @@ export function render(v)
  */
 export function shown(v)
 {
+  if (v === CONCEALED) return '***';
   if (typeof v === 'string')
   {
     let out = '"';
@@ -3076,8 +3119,14 @@ export function shown(v)
   if (v instanceof DataValue && !isHandle(v))
   {
     const name = v.tag.split('::').pop();
+    const masked = MASKED_FIELDS.get(v.tag);
     return v.fields.length
-      ? name + '(' + v.fields.map(shown).join(', ') + ')'
+      ? name +
+          '(' +
+          v.fields
+            .map((field, i) => (masked?.has(i) ? '***' : shown(field)))
+            .join(', ') +
+          ')'
       : name;
   }
   return render(v);
@@ -3705,6 +3754,23 @@ export function freePort()
  * the portable rendering: '' when they agree or neither has parts.
  */
 export function difference(actual, expected)
+{
+  // Masked fields are compared as equal: a difference only in them is
+  // reported without saying where or what.
+  const a = concealed(actual);
+  const b = concealed(expected);
+  const found = differenceBetween(a, b);
+  if (
+    found === '' &&
+    MASKED_FIELDS.size > 0 &&
+    render(a) === render(b) &&
+    render(actual) !== render(expected)
+  )
+    return ' | the values differ only in masked fields';
+  return found;
+}
+
+function differenceBetween(actual, expected)
 {
   const path = [];
   let a = actual;
@@ -5072,7 +5138,7 @@ async function execute(model, run)
       if (!command.unit && compareValues(result, wanted) !== 0)
         return [
           step,
-          `returned ${render(result)}; the model returns ${render(wanted)}`,
+          `returned ${render(concealed(result))}; the model returns ${render(concealed(wanted))}`,
         ];
       failure = await checkState(model, symbols, state, expected);
       if (failure) return [step, failure];
@@ -5093,7 +5159,7 @@ async function checkState(model, symbols, state, expected)
   {
     const actual = await model.abstract(symbols, state);
     if (compareValues(actual, expected) !== 0)
-      return `the state is ${render(actual)}; the model is ${render(expected)}`;
+      return `the state is ${render(concealed(actual))}; the model is ${render(concealed(expected))}`;
   }
   for (const [kind, invariant] of model.invariants)
     if (!(await invariant(symbols, kind === 'model' ? expected : state)))
@@ -5494,7 +5560,7 @@ async function executeParallel(model, testCase, shake)
   branches.forEach((b, i) =>
     b.forEach(([index], k) =>
       observed.push(
-        `${branchName(i)}: ${model.commands[index].name}() returned ${render(history[i][k][2])}`,
+        `${branchName(i)}: ${model.commands[index].name}() returned ${render(concealed(history[i][k][2]))}`,
       ),
     ),
   );
@@ -6608,7 +6674,7 @@ async function runScenario(model, spec, shake, crash = false, network = false)
         )
         {
           failures.push(
-            `expect ${name} = ${render(wanted)} failed: ${name} is ${render(actual)}`,
+            `expect ${name} = ${render(concealed(wanted))} failed: ${name} is ${render(concealed(actual))}`,
           );
           return 'failed';
         }
@@ -6644,7 +6710,7 @@ async function runScenario(model, spec, shake, crash = false, network = false)
       .sort((a, b) => a[3] - b[3])
       .map(
         ([c, args, r]) =>
-          `${c.name}(${args.map(render).join(', ')}) returned ${render(r)}`,
+          `${c.name}(${args.map(x => render(concealed(x))).join(', ')}) returned ${render(concealed(r))}`,
       )
       .join('; ');
     return [

@@ -519,7 +519,7 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
       (die (target ++ ": mutant " ++ mutantName mutant ++
         (if mutantAtCompile mutant then " compiled" else " failed to compile") ++ " (see log)"))
     forM_ (mutantExpect mutant) $ \alternatives ->
-      unless (any (`isInfixOf` mutantOutput) alternatives)
+      unless (expectationMet mutantOutput alternatives)
         (die (target ++ ": mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
     let line = target ++ ": rejected " ++ mutantName mutant
     putStrLn line
@@ -552,7 +552,7 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
         writeGenerated generated
         pure mutantOutput
     forM_ (mutantExpect mutant) $ \alternatives ->
-      unless (any (`isInfixOf` output) alternatives)
+      unless (expectationMet output alternatives)
         (die (target ++ ": spec mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
     let line = target ++ ": rejected " ++ mutantName mutant
     putStrLn line
@@ -806,12 +806,23 @@ suiteMutantsIn base = do
 -- | rejected-at: compile                                (optional)
 -- expect: <text the failing output must contain>        (optional, repeatable)
 -- expect-any: <alternative> | <alternative>            (optional, repeatable)
+-- forbid: <text the failing output must not contain>   (optional, repeatable)
 -- @@ <path>
 -- <<<<<<<
 -- text to find (exactly once), or * to replace the whole file
 -- =======
 -- replacement
 -- >>>>>>>
+-- | Whether a mutant's output meets one expectation: it contains one of the
+-- alternatives, or lacks a forbidden text (a masked value, say).
+expectationMet :: String -> [String] -> Bool
+expectationMet output alternatives = case alternatives of
+  [marker, forbidden] | marker == forbidMarker -> not (forbidden `isInfixOf` output)
+  _ -> any (`isInfixOf` output) alternatives
+
+forbidMarker :: String
+forbidMarker = "\0forbid"
+
 parseMutant :: String -> Either String ([[String]], [(FilePath, String, String)])
 parseMutant content = do
   let (header, body) = span (not . ("@@ " `isPrefixOf`)) (lines content)
@@ -822,6 +833,7 @@ parseMutant content = do
     expectation line
       | Just text' <- stripPrefix "expect: " line = Right [text']
       | Just alternatives <- stripPrefix "expect-any: " line = Right (splitOn " | " alternatives)
+      | Just text' <- stripPrefix "forbid: " line = Right [forbidMarker, text']
       | otherwise = Left ("unexpected header line: " ++ line)
     splitOn separator = go' ""
       where go' current [] = [reverse current]

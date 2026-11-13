@@ -1,0 +1,10 @@
+expect: ***
+forbid: 4111111111111111
+forbid: Ann Lee
+forbid: ann@example.org
+@@ examples/specs/masking.lawspec
+<<<<<<<
+    for all (card :: Card) => maskedCard card = maskedCardDraft (draftOfCard card) end for all
+=======
+    for all (card :: Card) => draftOfCard card = sample () end for all
+>>>>>>>

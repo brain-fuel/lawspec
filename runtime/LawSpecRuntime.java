@@ -511,6 +511,40 @@ public final class LawSpecRuntime
     {
       fields = List.copyOf(fields);
     }
+
+    // What a failure prints, and what a test library prints for a counterexample.
+    @Override
+    public String toString()
+    {
+      var shown = new StringBuilder("Data[tag=").append(tag).append(", fields=[");
+      for (int i = 0; i < fields.size(); i++)
+      {
+        shown.append(i == 0 ? "" : ", ").append(masked(tag, i) ? "***" : fields.get(i));
+      }
+      return shown.append("]]").toString();
+    }
+  }
+
+  // The fields a masking block hides, by constructor tag and position. The generated schema
+  // class registers them; everything this runtime prints about a failure shows such a field as
+  // ***, whatever its mask. A counterexample is replayed by its seed, never by what was printed.
+  private static final Map<String, java.util.Set<Integer>> MASKED_FIELDS =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  public static void maskFields(String tag, int... positions)
+  {
+    var hidden = new java.util.HashSet<Integer>();
+    for (int position : positions)
+    {
+      hidden.add(position);
+    }
+    MASKED_FIELDS.put(tag, java.util.Set.copyOf(hidden));
+  }
+
+  static boolean masked(String tag, int position)
+  {
+    var hidden = MASKED_FIELDS.get(tag);
+    return hidden != null && hidden.contains(position);
   }
 
   public record Ratio(BigInteger n, BigInteger d)
@@ -4119,17 +4153,24 @@ public final class LawSpecRuntime
           && x.fields().size() == y.fields().size())
       {
         String name = x.tag().substring(x.tag().lastIndexOf("::") + 2);
+        boolean hiddenDiffers = false;
         for (int i = 0; i < x.fields().size(); i++)
         {
           if (!render(x.fields().get(i)).equals(render(y.fields().get(i))))
           {
+            // A masked field's values are not printed: the difference is reported without them.
+            if (masked(x.tag(), i))
+            {
+              hiddenDiffers = true;
+              continue;
+            }
             path.add("field " + (i + 1) + " of " + name);
             a = x.fields().get(i);
             b = y.fields().get(i);
             continue loop;
           }
         }
-        return "";
+        return hiddenDiffers ? " | the values differ only in masked fields" : "";
       }
       break;
     }

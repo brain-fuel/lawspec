@@ -8,6 +8,7 @@ import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Time (isDurationType)
 import Control.Monad (unless, forM)
 import qualified LawSpec.Core as C
+import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
@@ -74,6 +75,12 @@ emitPythonDataWithProfile bits layout declarations = do
          "import lawspec_runtime as ls", "import lawspec_schema as _schema"]
       factory = suite (D.text "def make_schema()")
         (D.joinWith (D.hardline <> D.hardline) (callbacks ++
+          -- What a masking block hides is hidden in everything the runtime
+          -- prints about a failure. ref:DEC-masking
+          [ D.joinWith D.hardline
+              [ invoke "ls.mask_fields" [D.text (q (C.idText tag)), array (map (D.text . show) positions)]
+              | (tag, positions) <- Backend.maskedPositions declarations ]
+          | not (null (Backend.maskedPositions declarations)) ] ++
           [D.text "return " <> invoke "_schema.Schema"
             [array metadata, array (map (D.text . q . primitiveName) primitives)]]))
       source = D.joinWith D.hardline header <> D.hardline <> D.hardline <> D.hardline <>

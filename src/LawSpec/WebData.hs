@@ -86,6 +86,10 @@ emitWebDataWithProfile ts bits layout declarations = do
                , E.ImportDecl False (E.ImportNamespace "schema") ("./lawspec_schema." ++ importExtension) ]
       factory = E.FunctionDecl True False "makeSchema" [] [] Nothing
         (concatMap (\c -> [c, E.Blank]) callbacks ++
+         -- What a masking block hides is hidden in everything the runtime
+         -- prints about a failure. ref:DEC-masking
+         [ E.ExprStmt (E.call "ls.maskFields" [E.Str (C.idText tag), E.Array (map (E.Num . show) positions)])
+         | (tag, positions) <- Backend.maskedPositions declarations ] ++
          [E.ret (E.new' "schema.Schema"
           [E.Array metadata, E.Array (map (E.Str . primitiveName) primitives),
            E.Object [E.Prop (E.KName k) (E.Ident v) | (k, v) <- [("absent","Absent"),("present","Present"),("left","Left"),("right","Right"),("presence","Presence")]]])])

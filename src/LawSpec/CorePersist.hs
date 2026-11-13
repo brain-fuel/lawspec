@@ -63,6 +63,8 @@ instance Binary C.Conversion
 instance Binary C.DataConstructor
 instance Binary C.DataDeclaration
 instance Binary C.StructuralRecord
+instance Binary C.Mask
+instance Binary C.Masking
 instance Binary C.ParameterNames
 instance Binary C.Declaration
 instance Binary C.Definition

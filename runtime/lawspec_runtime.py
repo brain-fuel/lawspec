@@ -98,13 +98,61 @@ class Presence:
     value: object = None
 
 
-@dataclass(eq=False, frozen=True)
+# The fields a masking block hides, by constructor tag and position. The
+# generated data module registers them (mask_fields); everything this runtime
+# prints about a failure shows such a field as ***, whatever its mask. A
+# counterexample is replayed by its seed or its kept inputs, never by what
+# was printed.
+_MASKED_FIELDS = {}
+
+
+class _Concealed:
+    def __repr__(self):
+        return "***"
+
+    __str__ = __repr__
+
+
+_CONCEALED = _Concealed()
+
+
+def mask_fields(tag, positions):
+    _MASKED_FIELDS[tag] = frozenset(positions)
+
+
+@dataclass(eq=False, frozen=True, repr=False)
 class DataValue:
     tag: str
     fields: tuple
 
     def __post_init__(self):
         object.__setattr__(self, "fields", tuple(self.fields))
+
+    # Hypothesis and pytest print a failing value with repr.
+    def __repr__(self):
+        hidden = concealed(self)
+        return f"DataValue(tag={hidden.tag!r}, fields={hidden.fields!r})"
+
+
+def concealed(v):
+    """A value with every masked field replaced by a marker that prints as
+    ***."""
+    if not _MASKED_FIELDS:
+        return v
+    if isinstance(v, list):
+        return [concealed(x) for x in v]
+    if isinstance(v, tuple):
+        return tuple(concealed(x) for x in v)
+    if isinstance(v, DataValue) and not is_handle(v):
+        masked = _MASKED_FIELDS.get(v.tag, ())
+        return DataValue(
+            v.tag,
+            tuple(
+                _CONCEALED if i in masked else concealed(x)
+                for i, x in enumerate(v.fields)
+            ),
+        )
+    return v
 
 
 @dataclass(frozen=True)
@@ -2806,7 +2854,22 @@ def render(v):
 
 def difference(actual, expected):
     """Where a structured actual value first differs from the expected one,
-    by the portable rendering: '' when they agree or neither has parts."""
+    by the portable rendering: '' when they agree or neither has parts.
+    Masked fields are compared as equal: a difference only in them is
+    reported without saying where or what."""
+    a, b = concealed(actual), concealed(expected)
+    found = _difference_between(a, b)
+    if (
+        found == ""
+        and _MASKED_FIELDS
+        and render(a) == render(b)
+        and render(actual) != render(expected)
+    ):
+        return " | the values differ only in masked fields"
+    return found
+
+
+def _difference_between(actual, expected):
     path = []
     a, b = actual, expected
     while True:
@@ -3875,7 +3938,7 @@ def _execute(model, run):
             if not command.unit and compare_values(result, wanted) != 0:
                 return (
                     step,
-                    f"returned {render(result)}; the model returns {render(wanted)}",
+                    f"returned {render(concealed(result))}; the model returns {render(concealed(wanted))}",
                 )
             failure = _check_state(model, symbols, state, expected)
             if failure:
@@ -3891,7 +3954,7 @@ def _check_state(model, symbols, state, expected):
     if model.abstract is not None:
         actual = model.abstract(symbols, state)
         if compare_values(actual, expected) != 0:
-            return f"the state is {render(actual)}; the model is {render(expected)}"
+            return f"the state is {render(concealed(actual))}; the model is {render(concealed(expected))}"
     for kind, invariant in model.invariants:
         if not invariant(symbols, expected if kind == "model" else state):
             return f"an invariant on the {kind} fails"
@@ -4177,7 +4240,7 @@ def _execute_parallel(model, case, shake):
     if _linearizable(model, symbols, branches, history, expected, final, state):
         return None
     observed = "; ".join(
-        f"{_branch_name(i)}: {model.commands[branches[i][k][0]].name}() returned {render(history[i][k][2])}"
+        f"{_branch_name(i)}: {model.commands[branches[i][k][0]].name}() returned {render(concealed(history[i][k][2]))}"
         for i in range(len(branches))
         for k in range(len(branches[i]))
     )
@@ -5002,7 +5065,7 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                 actual, wanted = env.get(str(act[1])), _constant(act[2])
                 if actual is None or compare_values(actual, wanted) != 0:
                     failures.append(
-                        f"expect {act[1]} = {render(wanted)} failed: {act[1]} is {render(actual)}"
+                        f"expect {act[1]} = {render(concealed(wanted))} failed: {act[1]} is {render(concealed(actual))}"
                     )
                     return "failed"
         if victim is not None and victim == (identity, len(acts)):
@@ -5026,7 +5089,7 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
     )
     if not _linearizes_history(model, symbols, history, expected, final, state):
         observed = "; ".join(
-            f"{c.name}({', '.join(render(a) for a in args)}) returned {render(r)}"
+            f"{c.name}({', '.join(render(concealed(a)) for a in args)}) returned {render(concealed(r))}"
             for c, args, r, *_ in sorted(history, key=lambda h: h[3])
         )
         return (
