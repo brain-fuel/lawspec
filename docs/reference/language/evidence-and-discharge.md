@@ -109,7 +109,10 @@ Current completion requires matching compiler, source, selection, binding,
 attested wiring, recording, native project and toolchain fingerprints. Tests
 must actually appear in the current runner report; exit status zero alone is
 insufficient. Pending attempts invalidate older cached successes before native
-execution. Skipped tests and expected failures do not verify a requirement.
+execution. A pending attempt has the outcome `not-run`, and keeps it when no
+native process was started for its check; an observation with that outcome
+leaves the status `incomplete` (or `partial`). Skipped tests and expected
+failures do not verify a requirement.
 JUnit failures retain their payloads; stale reports and testcase-like text
 inside comments or CDATA cannot count as fresh completions.
 

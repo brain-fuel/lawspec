@@ -4647,63 +4647,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:528: The failure database",
+      "id": "reference:docs/reference/cli.md:533: The failure database",
       "kind": "reference",
-      "name": "docs/reference/cli.md:528: The failure database",
+      "name": "docs/reference/cli.md:533: The failure database",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:567: `package`",
+      "id": "reference:docs/reference/cli.md:602: `package`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:567: `package`",
+      "name": "docs/reference/cli.md:602: `package`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:578: `examples`",
+      "id": "reference:docs/reference/cli.md:613: `examples`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:578: `examples`",
+      "name": "docs/reference/cli.md:613: `examples`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:596: Exit status",
+      "id": "reference:docs/reference/cli.md:631: Exit status",
       "kind": "reference",
-      "name": "docs/reference/cli.md:596: Exit status",
+      "name": "docs/reference/cli.md:631: Exit status",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:605: Project workflow and Learn",
+      "id": "reference:docs/reference/cli.md:640: Project workflow and Learn",
       "kind": "reference",
-      "name": "docs/reference/cli.md:605: Project workflow and Learn",
+      "name": "docs/reference/cli.md:640: Project workflow and Learn",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:619: Authoring discovery",
+      "id": "reference:docs/reference/cli.md:654: Authoring discovery",
       "kind": "reference",
-      "name": "docs/reference/cli.md:619: Authoring discovery",
+      "name": "docs/reference/cli.md:654: Authoring discovery",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:624: Mutation testing",
+      "id": "reference:docs/reference/cli.md:659: Mutation testing",
       "kind": "reference",
-      "name": "docs/reference/cli.md:624: Mutation testing",
+      "name": "docs/reference/cli.md:659: Mutation testing",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5754,63 +5754,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:139: Laws over checked definitions",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:142: Laws over checked definitions",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:139: Laws over checked definitions",
+      "name": "docs/reference/language/evidence-and-discharge.md:142: Laws over checked definitions",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:187: Non-linear definition indices",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:190: Non-linear definition indices",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:187: Non-linear definition indices",
+      "name": "docs/reference/language/evidence-and-discharge.md:190: Non-linear definition indices",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:195: Laws over adapters",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:198: Laws over adapters",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:195: Laws over adapters",
+      "name": "docs/reference/language/evidence-and-discharge.md:198: Laws over adapters",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:206: Adapters and native code",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:209: Adapters and native code",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:206: Adapters and native code",
+      "name": "docs/reference/language/evidence-and-discharge.md:209: Adapters and native code",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:214: Obligation stages",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:217: Obligation stages",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:214: Obligation stages",
+      "name": "docs/reference/language/evidence-and-discharge.md:217: Obligation stages",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:229: Where the tests ran",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:232: Where the tests ran",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:229: Where the tests ran",
+      "name": "docs/reference/language/evidence-and-discharge.md:232: Where the tests ran",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:322: Planned wiring and completed runs",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:325: Planned wiring and completed runs",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:322: Planned wiring and completed runs",
+      "name": "docs/reference/language/evidence-and-discharge.md:325: Planned wiring and completed runs",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5826,18 +5826,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:377: Reading the evidence",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:380: Reading the evidence",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:377: Reading the evidence",
+      "name": "docs/reference/language/evidence-and-discharge.md:380: Reading the evidence",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:389: Compiler evaluation allowance",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:392: Compiler evaluation allowance",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:389: Compiler evaluation allowance",
+      "name": "docs/reference/language/evidence-and-discharge.md:392: Compiler evaluation allowance",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

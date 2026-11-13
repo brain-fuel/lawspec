@@ -437,8 +437,9 @@ A law runs again when anything its result depends on changes:
 - for a law that calls adapters, any file in the target project that LawSpec
   did not generate, such as an adapter or a helper it imports.
 
-The generated files must be current; run `generate` first. A failing run
-records nothing for the laws it ran, so they run again next time. A law is
+The generated files must be current; run `generate` first. A failing native
+invocation records no pass for the laws it ran, so they run again next time.
+A law is
 recorded as passing only if the runner's own report shows that its tests ran:
 a test filter that matches nothing makes many runners succeed without running
 anything, so a selected law with no executed test fails the run instead.
@@ -513,9 +514,13 @@ them.
 - `--benchmarks`: after the laws, run the harness's
   [benchmarks](language/harness.md#benchmarks) with each target's test runner,
   every time (they are never cached), and print their measurements.
-- `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`, and
-  `flaky`, `unmetCover`, `benchmarks` and `coverage` when there are any); the
-  test runners' output goes to standard error.
+- `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`,
+  `batches`, and `notRun`, `flaky`, `unmetCover`, `benchmarks` and `coverage`
+  when there are any); the test runners' output goes to standard error. `seed`
+  is the run's fresh seed. `batches` lists each [batch](#the-failure-database)
+  in order with the `seed` it actually used, whether it was a `replay`, the
+  laws it `ran` and any laws it left `notRun`. `ran` leaves out the `notRun`
+  laws.
 
 A law's [harness](language/harness.md) shapes the run: a skipped law has no
 test to run, a known-discrepancy law's one test is expected to fail, flaky retries
@@ -527,13 +532,43 @@ results, and `lawspec evidence` shows them.
 
 ### The failure database
 
-A law whose run fails is recorded in
-`.lawspec/failures/<target>/<project-hash>/laws.json`
-with the seed that exposed it. The next `lawspec test` runs those laws first,
+A law is recorded in
+`.lawspec/failures/<target>/<project-hash>/laws.json` only when its own tests
+failed, with the seed that exposed the failure. A law that passed, or whose
+tests did not complete because another law in the same native invocation
+failed, is not recorded. The next `lawspec test` runs the recorded laws first,
 each with its failing seed, so the same inputs are generated again; a law
 leaves the database when it passes. `--seed` overrides it. The Python and Rust
 runtimes also keep their libraries' counterexamples there (Hypothesis's
 example database and proptest's regressions), which they replay first.
+
+A run is a sequence of batches: one replay batch for each recorded seed, then
+the remaining laws with a fresh seed. The summary names the seed each batch
+used:
+
+```text
+$ lawspec test
+java: ran 9 law(s): 1 replayed with seed 319946530, 8 with seed 1729797406, 61 unchanged since their last passing run. FAILED
+```
+
+A failed batch does not stop the later ones, so a law that keeps failing
+cannot keep new or changed laws from running. The one exception is a failed
+batch in which no test executed at all (the tool is missing, or the project
+does not compile): the later batches would fail the same way and are not
+started. The laws no native process was started for have the outcome
+`not-run` in `.lawspec/results`, in the JSON summary (`notRun`), in the text
+summary (`Not run: …`) and in `lawspec evidence`. `not-run` is distinct from
+`incomplete`, which means a native process ran for the law without
+establishing a result. Neither is a pass, and both run again next time.
+
+Each entry written by this rule has `"cause": "own-tests-failed"`. LawSpec
+0.33 and earlier recorded every law of a failing native invocation, passing
+or not, with that invocation's seed and no `cause`. An entry without a `cause`
+is therefore unverified. It is replayed once with its seed: if the law's own
+tests fail it is recorded again with a `cause`, and otherwise it is removed,
+so a passing law runs with a fresh seed from then on. An unverified entry is
+kept only while no test of its law has executed. There is nothing to migrate
+by hand.
 
 The project hash identifies its resolved root directory, as it does for cached
 results and reports. Projects using the same target language have independent
