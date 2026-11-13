@@ -23,7 +23,10 @@ The run says "pending"."""
 end function
 ```
 
-Both forms decode the same escapes, including `\n`, `\t`, `\\` and `\"`.
+Both forms decode the same escapes: `\\`, `\"`, `\'`, `\n`, `\t`, `\r`, `\0`,
+a decimal code point (`\955`) and a hexadecimal one (`\x3BB`). A backslash
+that starts none of them is an error reported at the backslash. A regex that
+needs a backslash writes two: `regex "\\s*"`.
 The first unescaped `"""` closes a triple-quoted literal; escape a quote to
 include that sequence in the value. Every physical newline, leading or trailing
 space, tab and Unicode character between the delimiters is part of the value.

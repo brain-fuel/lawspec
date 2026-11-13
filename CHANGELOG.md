@@ -31,6 +31,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- A backslash that starts no escape in a text or regex literal (`"\s*"`) is
+  reported alone, at the backslash, with the valid escapes and the spelling to
+  use (`"\\s*"`). It was reported after an unrelated "unexpected … expecting"
+  at the start of the expression.
 - One command compiles once. The advice in `check` and `generate` ran with no
   cache directory, which made the launcher start a new compiler instance and
   compile the project again, and a second time when the command went back to

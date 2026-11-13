@@ -469,10 +469,34 @@ quotedOrInfixToken = void namedInfixP
 quoted :: P String
 quoted = sourceNode "quoted-name" Just $ lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
-str = sourceNode "text" (const Nothing) $ lexeme $
-  (try (string "\"\"\"") *> manyTill L.charLiteral
+str = textLiteralWith textChar
+-- Header scanners only find where literals end; the parser proper reports a
+-- bad escape, once.
+scannedStr :: P String
+scannedStr = textLiteralWith L.charLiteral
+textLiteralWith :: P Char -> P String
+textLiteralWith character = sourceNode "text" (const Nothing) $ lexeme $
+  (try (string "\"\"\"") *> manyTill character
     (try (string "\"\"\"") <?> "closing triple quote (\"\"\")"))
-  <|> (try (char '"' *> notFollowedBy (char '|')) *> manyTill L.charLiteral (char '"'))
+  <|> (try (char '"' *> notFollowedBy (char '|')) *> manyTill character (char '"'))
+-- One character of a text literal. A backslash that starts no escape is a
+-- lexical error of its own: it is recorded at the backslash and the literal is
+-- read to its end, so no enclosing alternative reports a different failure at
+-- the start of the expression. Megaparsec's delayed errors
+-- (registerParseError) are that mechanism; a recorded error always fails the
+-- parse.
+textChar :: P Char
+textChar = try L.charLiteral <|> do
+  offset <- getOffset
+  escaped <- char '\\' *> anySingle
+  registerParseError (FancyError offset (S.singleton (ErrorFail (invalidEscape escaped))))
+  pure escaped
+invalidEscape :: Char -> String
+invalidEscape escaped =
+  "invalid escape \\" ++ shown ++ " in a text literal. Write \\\\" ++ shown
+  ++ " for a backslash followed by " ++ shown ++ " (a regex needs \"\\\\" ++ shown ++ "\")."
+  ++ " Valid escapes: \\\\ \\\" \\' \\n \\t \\r \\0, a decimal code point (\\955) and a hexadecimal one (\\x3BB)"
+  where shown = if isControl escaped || isSpace escaped then "<" ++ show (fromEnum escaped) ++ ">" else [escaped]
 parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type
@@ -3033,7 +3057,7 @@ headers = headersWithProfile True
 headersWithProfile :: Bool -> String -> M.Map String Header
 headersWithProfile _ source = M.fromList (scan tokens) where
   tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) (M.singleton "profile:canonical" AliasHeader)
-  token = try phraseNameRaw <|> ("<string>" <$ try str) <|> ("<quoted>" <$ try quotedOrInfixToken)
+  token = try phraseNameRaw <|> ("<string>" <$ try scannedStr) <|> ("<quoted>" <$ try quotedOrInfixToken)
       <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
       <|> symbol "::" <|> ((:[]) <$> lexeme anySingle)
   -- A named closer must not consume the next declaration as a type header.
@@ -3070,7 +3094,7 @@ constructorOwners extra source = either (const []) id $
     scan = spaceP *> (concat <$> many ((pure . owner <$> try dataTypeP)
       <|> ((\w -> [(wrapperName w, [wrapperName w])]) <$> try wrapperP) <|> ([] <$ token))) <* eof
     owner d = (dataTypeName d, map dataConstructorName (dataTypeConstructors d))
-    token = void (try phraseNameRaw) <|> void (try str) <|> try quotedOrInfixToken <|>
+    token = void (try phraseNameRaw) <|> void (try scannedStr) <|> try quotedOrInfixToken <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- | Reuse the declaration parser to discover fixture constructor arities. This
@@ -3094,7 +3118,7 @@ literalHeaders coordinates source initial = case runReader (runParserWithCoordin
     wrapped w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
       [ConstructorDeclaration (wrapperName w) [("value", wrapperBase w)] (wrapperSpan w) []] (wrapperSpan w) Nothing
     scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Just . wrapped <$> try wrapperP) <|> (Nothing <$ token)) <* eof
-    token = void (try phraseNameRaw) <|> void (try str) <|> try quotedOrInfixToken <|>
+    token = void (try phraseNameRaw) <|> void (try scannedStr) <|> try quotedOrInfixToken <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- Harness units (LawSpec.Harness). A harness is the implementation plane of
