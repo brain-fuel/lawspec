@@ -100,7 +100,9 @@ helperValue _ "slice" [SSequence t xs, from, to] = do
   i <- exactValue from
   j <- exactValue to
   let count = length xs
-      clamp r = max 0 (min count (fromInteger (floor r)))
+      -- Clamp before narrowing: drop passes 2^63 - 1 as the end, which a
+      -- 32-bit Int (the WASM core) would wrap to a negative index.
+      clamp r = fromInteger (max 0 (min (toInteger count) (floor r))) :: Int
       start = clamp i
   pure (SSequence t (take (max start (clamp j) - start) (drop start xs)))
 helperValue _ "utf8" [SSequence "Text" points] = Right (SSequence "Bytes" (concatMap utf8Units points))
