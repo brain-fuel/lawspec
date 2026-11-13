@@ -55,7 +55,9 @@ import Data.Char (isLower)
 import Data.List (isSuffixOf, isPrefixOf, isInfixOf, stripPrefix)
 import qualified Data.Set as Set
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Digest (digestHex, digestString)
+import qualified Data.Binary as Binary
+import qualified Data.ByteString.Lazy as BL
+import LawSpec.Digest (digest, digestHex, digestString)
 import qualified LawSpec.Memo as Memo
 import LawSpec.Persist ()
 
@@ -495,8 +497,10 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
        key parts = digestHex (digestString parts)
    -- A unit is rendered and hashed once; its three keys then hash the digest.
    -- Rendering and hashing dominated an unchanged check when each key
-   -- repeated them (S1.j report 20).
-   let unitDigests = map (key . show) us
+   -- repeated them (S1.j report 20). The rendering is the unit's binary
+   -- encoding, which names every field as Show does (it decodes back to the
+   -- unit) in a fraction of the text.
+   let unitDigests = map (digestHex . digest . BL.toStrict . Binary.encode) us
    mapM_ (\(u,unitDigest) -> Memo.staged "validate" (unitName u) (Memo.memoized validationTable (key (show ("unit", bits, dataDigest, unitDigest))) (validateUnit sourceTypes dataTypes bits u))) (zip us unitDigests)
    _ <- forM (zip3 beforeExpansion us unitDigests) $ \(original,u,unitDigest) -> do
      let checks=fieldDefinitionChecks original u
