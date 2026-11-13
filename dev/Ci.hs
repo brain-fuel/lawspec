@@ -1112,6 +1112,9 @@ targetSteps target =
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
   | target `elem` ["java", "javascript", "typescript", "python"]
   , suite <- ["contracts-validation", "contracts-masking", "contracts-primitives"] ] ++
+  -- BLAKE3's official vectors in all three modes and the digest masks, in
+  -- every target's own runtime. ref:DEC-blake3-port
+  [ step (target ++ "-contracts-digest") (acceptance ["contracts-digest", target]) ] ++
   -- Java at the other supported release, and on the JUnit release beyond the
   -- scaffold's, each on three suites. The switches change the build files,
   -- which are part of the harness's cache key, so each variant records its
