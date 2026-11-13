@@ -65,24 +65,29 @@ export async function loadCore()
       validCache && input.cacheDirectory
         ? path.resolve(input.cacheDirectory)
         : null;
+    let unusable = null;
     if (root)
       try
       {
         await mkdir(root, {recursive: true});
       }
-      catch
+      catch (error)
       {
+        unusable = {path: root, reason: error.message};
         root = null;
       }
     // The requested host directory is an explicit mount, rather than an
-    // absolute WASI path accidentally interpreted below cwd. The binary
-    // identity separates persisted memos even within one package version.
-    if (!invoke || root !== activeRoot)
+    // absolute WASI path accidentally interpreted below cwd. A mount is fixed
+    // when an instance starts, so only a request that names another
+    // directory starts a new one: a request that names none runs on the
+    // instance there is, without a cache, and keeps what it holds in memory.
+    if (!invoke || (root && root !== activeRoot))
     {
+      const trace = process.env.LAWSPEC_CACHE_TRACE;
       const wasi = new WASI({
         version: 'preview1',
         args: coreArguments,
-        env: {PWD: '/'},
+        env: {PWD: '/', ...(trace ? {LAWSPEC_CACHE_TRACE: trace} : {})},
         preopens: {
           '/': process.cwd(),
           ...(root ? {'/lawspec-cache': root} : {}),
@@ -93,12 +98,27 @@ export async function loadCore()
       );
       activeRoot = root;
     }
-    return invoke({
+    // The binary's identity separates persisted memos even within one
+    // package version. Sixteen characters keep the path short for Windows.
+    const result = await invoke({
       ...input,
       ...(validCache
-        ? {cacheDirectory: root ? `/lawspec-cache/${build}` : undefined}
+        ? {
+            cacheDirectory: root
+              ? `/lawspec-cache/${build.slice(0, 16)}`
+              : undefined,
+          }
         : {}),
     });
+    // The compiler names an entry it could not store by its mounted path.
+    if (result?.cacheFailure && root)
+      result.cacheFailure.path = path.join(
+        root,
+        ...result.cacheFailure.path.split('/').slice(2),
+      );
+    if (unusable && result && typeof result === 'object')
+      result.cacheFailure = unusable;
+    return result;
   };
   // Cache-root changes are serialized with calls on the active instance.
   return input =>
