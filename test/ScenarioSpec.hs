@@ -74,6 +74,20 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
       , "    send b m"
       , "  end"
        ++ " par", "end"  ++ " scenario"]) `shouldBe` Right ()
+  it "accept of type wherever a channel's protocol is annotated with ::" $
+    checks (unlines
+      [ "scenario `echo` in counter is"
+      , "  channel a of type Reply"
+      , "  channel b of type Back"
+      , "  par"
+      , "    n <- increment"
+      , "    send a n"
+      , "    receive b k"
+      , "  with"
+      , "    receive a m"
+      , "    send b m"
+      , "  end"
+       ++ " par", "end"  ++ " scenario"]) `shouldBe` Right ()
   it "accept a reply over a channel" $
     checks (unlines
       [ "scenario `a count is passed on` in counter is"

@@ -22,7 +22,7 @@ protocol Report is
 end protocol
 
 scenario `a count is passed on` in counter is
-  channel report :: Report
+  channel report of type Report
   par
     n <- increment
     send report n
@@ -54,10 +54,13 @@ that protocol. This is how a process hands a conversation to another
 
 ```text
 scenario `name` in model is
-  channel c :: Protocol
+  channel c of type Protocol
   statements
 end scenario
 ```
+
+A channel's protocol is annotated like any other name: `channel c of type
+Protocol` or, with the symbol, `channel c :: Protocol`.
 
 | Statement | Meaning |
 | --- | --- |

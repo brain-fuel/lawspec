@@ -26,6 +26,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   delimiters. A selector that matches no law lists the nearest law names of
   that unit, or the units that have laws. The CLI reference showed a selector
   that never matched; it is corrected.
+- `of type` is accepted wherever `::` annotates a name: a scenario's
+  `channel report of type Report` was the one site that took the symbol only.
 
 ### Changed
 

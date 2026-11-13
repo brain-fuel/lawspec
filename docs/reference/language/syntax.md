@@ -37,6 +37,21 @@ Formatting preserves the delimiters and the complete literal spelling,
 including whitespace on its opening line. An unterminated triple-quoted
 literal is a syntax error and prevents formatting writes.
 
+## Type annotations
+
+A name is given its type with `of type`; the symbol `::` is an alias and means
+the same everywhere. Every annotation site accepts both: parameters,
+signatures, record fields, quantified inputs, example bindings, ability
+operations, mapping and table headers, harness strategies, expression
+annotations and a scenario's channels.
+
+```text
+function add (left of type Int32) (right of type Int32) -> Int32 is
+add :: (left :: Int32) -> (right :: Int32) -> Int32
+channel report of type Report
+channel report :: Report
+```
+
 ## Blocks and endings
 
 | Construct | Required ending |

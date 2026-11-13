@@ -723,9 +723,9 @@ scenarioP = blockP "scenario" $ do
     keyword "in"
     model <- ident
     keyword "is"
-    -- channel c :: Protocol, or mailbox m of Type: many senders, one receiver.
+    -- channel c of type Protocol (or c :: Protocol), or mailbox m of Type: many senders, one receiver.
     declared <- many $ choice
-      [ do ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (symbol "::" *> ident))
+      [ do ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (annotationP *> ident))
            pure (Left (c, p, at))
       , do ((m, t), at) <- withSpan ((,) <$> (keyword "mailbox" *> ident) <*> (keyword "of" *> typeP))
            pure (Right (m, t, at)) ]
@@ -3180,7 +3180,7 @@ harnessItemP = forbidden *> choice
       [ "law" <$ keyword "law", "function" <$ keyword "function", "procedure" <$ keyword "procedure"
       , "definition" <$ keyword "definition", "ability" <$ keyword "ability"
       , "handler" <$ keyword "handler", "type" <$ keyword "type", "refinement" <$ keyword "refinement"
-      , "resource" <$ keyword "resource", "signature" <$ try (ident *> symbol "::") ]
+      , "resource" <$ keyword "resource", "signature" <$ try (ident *> annotationP) ]
     -- The declaration is consumed first, so the error is this one.
     forbidden = optional (lookAhead declaration) >>= \found -> case found of
         Nothing -> pure ()
