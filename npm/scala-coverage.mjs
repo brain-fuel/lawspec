@@ -3,8 +3,8 @@
 // (-coverage-out, in scoverage's format) and the scoverage reporter, which
 // Scala CLI fetches, writes Cobertura, scoverage XML and HTML reports.
 import {mkdir, readdir, writeFile} from 'node:fs/promises';
-import {spawn} from 'node:child_process';
 import path from 'node:path';
+import {describeSpawnError, spawnTool} from './spawn.mjs';
 
 export const scoverageReporter = '2.5.2';
 
@@ -64,11 +64,14 @@ export async function collectScalaCoverage({
   ];
   const status = await new Promise((resolve, reject) =>
   {
-    const child = spawn(command, args, {
+    const settings = {
       cwd: path.dirname(script),
       stdio: ['ignore', 'inherit', 'inherit'],
-    });
-    child.on('error', reject);
+    };
+    const child = spawnTool(command, args, settings);
+    child.on('error', error =>
+      reject(describeSpawnError(error, command, settings)),
+    );
     child.on('close', resolve);
   });
   if (status !== 0)

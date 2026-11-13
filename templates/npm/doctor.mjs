@@ -1,5 +1,3 @@
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
 import {
   readFile,
   readdir,
@@ -14,7 +12,8 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {setup, artifactTargets} from './templates.mjs';
 import {beamDoctor} from './beam-doctor.mjs';
-const exec = promisify(execFile);
+import {gradleFor} from './prepare.mjs';
+import {execTool} from './spawn.mjs';
 const profiles = JSON.parse(
   await readFile(new URL('./compatibility.json', import.meta.url), 'utf8'),
 ).targets;
@@ -45,7 +44,7 @@ export function supported(target, dependency, version)
 }
 export async function run(command, args, cwd, extra = {})
 {
-  const result = await exec(command, args, {
+  const result = await execTool(command, args, {
     cwd,
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
@@ -535,12 +534,7 @@ export async function doctor(target, root, plannedArtifacts = [])
     }
     else if (name === 'kotlin')
     {
-      const command =
-        target.gradle ||
-        (await access(path.join(root, 'gradlew')).then(
-          () => path.join(root, 'gradlew'),
-          () => 'gradle',
-        ));
+      const command = await gradleFor(target, root);
       const tmp = await mkdtemp(path.join(os.tmpdir(), 'lawspec-gradle-'));
       try
       {
@@ -697,12 +691,7 @@ export async function doctor(target, root, plannedArtifacts = [])
     {
       // Groovy over the Java model: Gradle's groovy plugin compiles both
       // jointly, Spock runs the specifications and JetCheck the properties.
-      const command =
-        target.gradle ||
-        (await access(path.join(root, 'gradlew')).then(
-          () => path.join(root, 'gradlew'),
-          () => 'gradle',
-        ));
+      const command = await gradleFor(target, root);
       const tmp = await mkdtemp(path.join(os.tmpdir(), 'lawspec-gradle-'));
       try
       {

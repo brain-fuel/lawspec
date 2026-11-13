@@ -8,6 +8,43 @@ title: Compatibility
 LawSpec needs Node 22 or later. The reference platforms are macOS and Linux.
 Each target also needs its own toolchain and test libraries.
 
+## Windows
+
+Native Windows is supported for the CLI with the Java, Kotlin, Groovy, Scala,
+JavaScript and TypeScript targets. The other targets are best-effort on native
+Windows; WSL runs every target as Linux does.
+
+The CLI finds a build tool the way Windows does: in the project directory, then
+in each `PATH` directory, with each `PATHEXT` extension. `mvn` therefore finds
+`mvn.cmd`, and a project's `gradlew.bat` is used when it exists. A manifest
+field such as `:maven "mvn.cmd"` or `:maven "C:/tools/maven/bin/mvn.cmd"`
+names the tool explicitly. Setting the `NoDefaultCurrentDirectoryInExePath`
+environment variable leaves the project directory out of the search.
+
+A batch file (`.cmd` or `.bat`: Maven, Gradle, npm, npx, Mix, Rebar3) runs
+through `cmd.exe /e:ON /v:OFF /d /s /c`. Each argument is quoted so that
+`cmd.exe` reads it as text: spaces, quotes, `%`, `^`, `&`, `|`, `<`, `>`,
+parentheses and `!` reach the tool unchanged. Three things cannot be quoted,
+and the CLI stops with a message without running anything: an argument that
+contains a line break or a NUL, a batch file whose path contains `"` or `%`,
+and a command line longer than the 8,191 characters `cmd.exe` accepts. Rebar3
+coverage collection passes a line break and is refused for that reason. An
+`.exe` is started directly and has none of these limits.
+
+A tool that cannot be found is reported by `doctor`, `generate` and `test`
+with the directories and extensions searched, the manifest field that names
+the tool, and what to install.
+
+The `Test:` line that `generate` prints has the form
+`cmd /d /s /c "cd /d <project> && <command>"`. It runs unchanged in `cmd` and
+in PowerShell when neither the project path nor the tool path needs quotes.
+A path that contains a space or another character outside letters, digits and
+`_ @ + - . / : \ =` is quoted inside that line, and the line is then valid in
+`cmd` only.
+
+Stopping the CLI while a batch file runs ends `cmd.exe`; the tool the batch
+file started can outlive it.
+
 ## Supported versions
 
 Ranges are inclusive minimum, exclusive maximum. `doctor` and `generate` reject
