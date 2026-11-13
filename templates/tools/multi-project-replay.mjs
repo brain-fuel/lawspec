@@ -192,7 +192,11 @@ if (language === 'elixir' && ['1', '2'].includes(maxFailures)) {
   const resultFile = path.join(base, '.lawspec/results', `${language}-${path.basename(directories[0])}.json`);
   assert.deepEqual(JSON.parse(await readFile(resultFile, 'utf8')).laws, {},
     'An interrupted native batch must invalidate every selected cached law');
-  assert.deepEqual(Object.keys(await database(directories[0])).sort(), [...selected].sort());
+  // Only the laws whose own cases failed before ExUnit stopped are recorded;
+  // the interrupted ones have no cached pass, so they run again regardless.
+  const recorded = Object.keys(await database(directories[0]));
+  assert.equal(recorded.length, Number(maxFailures));
+  assert.ok(recorded.every(law => selected.includes(law)), JSON.stringify(recorded));
   await new Promise(resolve => setTimeout(resolve, 1100));
   await writeFile(adapters[0], adapter);
   const resumed = JSON.parse((await call('test', ['--json'])).stdout);
@@ -201,5 +205,5 @@ if (language === 'elixir' && ['1', '2'].includes(maxFailures)) {
   assert.ok(resumed[1].ok && resumed[1].ran.length === 0);
   assert.deepEqual(await database(directories[0]), {});
   assert.ok(JSON.parse((await call('test', ['--json'])).stdout).every(result => result.ran.length === 0));
-  console.log(`PASS native max_failures=${maxFailures} reports only completed cases and replays every interrupted law before caching`);
+  console.log(`PASS native max_failures=${maxFailures} reports only completed cases, records only the failed laws and reruns every interrupted law before caching`);
 }

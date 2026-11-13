@@ -29,6 +29,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- One failing law no longer keeps other laws from running. After a failing
+  `lawspec test`, every law of the failing native invocation, passing or not,
+  was written to the failure database with that run's seed; the next run
+  replayed all of them in one batch with the old seed, the batch failed
+  again, and the run stopped before the fresh batch started. New laws never
+  ran, and the others stayed on the old seed. Now:
+  - a law is recorded in the failure database only when its own tests failed
+    (entries carry `"cause": "own-tests-failed"`);
+  - a failed batch does not stop the later batches, unless no test in it
+    executed at all (a missing tool, a project that does not compile);
+  - a law no native process was started for has the outcome `not-run`, not
+    `incomplete`, in `.lawspec/results`, in the JSON summary (`notRun`), in
+    the text summary and in `lawspec evidence`;
+  - the summary names the seed each batch used (`ran 9 law(s): 1 replayed
+    with seed 319946530, 8 with seed 1729797406`), and the JSON summary has a
+    `batches` list. `ran` no longer includes `notRun` laws.
+
+  Databases written by 0.33 and earlier need no manual step: an entry without
+  a `cause` is replayed once with its seed, then recorded again if the law's
+  own tests failed and removed otherwise.
 - On Windows the CLI could not start `mvn`, `gradle`, `gradlew.bat`, `npm`,
   `npx`, `mix` or `rebar3`: Node does not apply `PATHEXT` and refuses to start
   a batch file without a shell (`spawn mvn ENOENT`, `EINVAL`). The CLI now

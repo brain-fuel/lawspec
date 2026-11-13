@@ -205,6 +205,30 @@ test('an explicitly incomplete native result stays incomplete even when its proc
   assert.equal(rows.sequential.searchCompleteness, 'not-established');
 });
 
+test('a law no native process was started for is not-run, never incomplete or a result', () =>
+{
+  const pending = {laws: [first, {...supervisor, skip: true}], command: null};
+  const rows = recordNativeAttempts(pending, [], {
+    ...settings,
+    ok: false,
+    started: false,
+  });
+  assert.equal(rows.sequential.outcome, 'not-run');
+  assert.deepEqual(rows.sequential.tests, []);
+  assert.equal(rows.sequential.invocation.command, null);
+  // A skipped law has nothing to start.
+  assert.equal(rows.supervision.outcome, 'skipped');
+  // Tests in a report mean a process ran, whatever the caller says.
+  assert.equal(
+    recordNativeAttempts(run([first]), [{name: first.name, status: 'failed'}], {
+      ...settings,
+      ok: false,
+      started: false,
+    }).sequential.outcome,
+    'failed',
+  );
+});
+
 import {attachNativeEvidence, attestedKeys} from '../native-evidence.mjs';
 const obligation = {
   owner: 'bank',

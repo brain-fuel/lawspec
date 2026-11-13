@@ -42,6 +42,9 @@ export function recordNativeAttempts(
     output,
     allEntries = run.laws,
     at = new Date().toISOString(),
+    // False for a law no native process was started for: its outcome is
+    // not-run, which says less than incomplete (started, not completed).
+    started = true,
   },
 )
 {
@@ -69,7 +72,9 @@ export function recordNativeAttempts(
               : matched.length &&
                   matched.every(test => test.status === 'skipped')
                 ? 'skipped'
-                : 'incomplete';
+                : started || matched.length
+                  ? 'incomplete'
+                  : 'not-run';
       return [
         entry.law,
         {
@@ -504,6 +509,10 @@ export async function readNativeObservations({
           profile,
           at: attempt.at,
           allEntries: reuse ? [observedEntry] : current.generated.tests,
+          started: !(
+            attempt.outcome === 'not-run' &&
+            attempt.invocation?.command === null
+          ),
         })[observedEntry.law];
       if (
         !recomputed ||
@@ -541,7 +550,9 @@ export async function readNativeObservations({
           ? 'Original native completion reused for the current semantic law; no fresh invocation is claimed'
           : attempt.outcome === 'passed'
             ? 'Recorded native completion matches the current inputs'
-            : 'Recorded native attempt matches the current inputs',
+            : attempt.outcome === 'not-run'
+              ? 'The last run started no native process for this check'
+              : 'Recorded native attempt matches the current inputs',
       });
     }
     for (const [id, attempt] of Object.entries(attempts))

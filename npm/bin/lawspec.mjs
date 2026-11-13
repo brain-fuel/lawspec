@@ -53,6 +53,15 @@ import {
 } from '../scala-build-state.mjs';
 import {failureDatabase, projectKey} from '../failure-database.mjs';
 import {
+  afterInvocation,
+  batchSummaries,
+  continueRun,
+  planBatches,
+  ranText,
+  recordFailures,
+  startBatch,
+} from '../replay.mjs';
+import {
   describeSpawnError,
   shellHint,
   spawnTool,
@@ -991,25 +1000,14 @@ async function runTests(compiler, input, selected, roots, config)
       coverage: options.coverage,
       updateRecorded: options['update-recorded'],
     });
-    // The failure database: each law whose last run failed, with the seed
+    // The failure database: each law whose own tests failed, with the seed
     // that exposed it. Those laws run first, with that seed, so the failing
     // inputs are generated again; the runtimes keep their own counterexample
-    // databases beside it (Hypothesis, proptest).
-    const replayed =
-      options.seed === undefined
-        ? stale.filter(entry => database[entry.law])
-        : [];
-    const batches = [
-      ...[
-        ...new Set(replayed.map(entry => nativeSeed(database[entry.law].seed))),
-      ].map(s => ({
-        seed: String(s),
-        entries: replayed.filter(
-          entry => nativeSeed(database[entry.law].seed) === s,
-        ),
-      })),
-      {seed, entries: stale.filter(entry => !replayed.includes(entry))},
-    ].filter(batch => batch.entries.length);
+    // databases beside it (Hypothesis, proptest). See replay.mjs.
+    const batches = planBatches(stale, database, {
+      seed,
+      replay: options.seed === undefined,
+    });
     const profile = {
       target: target.language,
       root,
@@ -1019,16 +1017,18 @@ async function runTests(compiler, input, selected, roots, config)
     };
     // Persist pending attempts before starting a native process. Interrupted or
     // failed setup cannot leave an older passing cache entry looking completed.
-    for (const entry of stale)
+    // A law keeps this not-run attempt unless a native process starts for it.
+    for (const batch of batches)
     {
       Object.assign(
         attempts,
-        recordNativeAttempts({laws: [entry], command: null}, [], {
+        recordNativeAttempts({laws: batch.entries, command: null}, [], {
           keys,
-          seed,
+          seed: batch.seed,
           ok: false,
           profile,
           allEntries: planned.tests,
+          started: false,
         }),
       );
     }
@@ -1121,8 +1121,9 @@ async function runTests(compiler, input, selected, roots, config)
       }
     }
     const seedOf = new Map();
-    batches: for (const batch of batches)
+    for (const batch of batches)
     {
+      let progress = startBatch();
       for (const run of invocations(target, batch.entries, {
         offline,
         scratch,
@@ -1208,10 +1209,18 @@ async function runTests(compiler, input, selected, roots, config)
             target: `${target.language} (${target.root})`,
             xml: await junitOf(run, executed, root, since),
           });
-        if (!ok || executed.some(test => test.status === 'failed'))
+        // A failed batch stops neither its other invocations nor the later
+        // batches, unless nothing in it executed (see replay.mjs).
+        progress = afterInvocation(progress, {
+          ok,
+          tests: executed,
+          lawTests: executed.filter(test => run.matches?.(test).length).length,
+        });
+        if (progress.invocationFailed)
         {
           failed = true;
-          break batches;
+          if (!progress.continueBatch) break;
+          continue;
         }
         // A runner whose filter matched nothing reports success, so a law
         // counts as passed only if the runner's report shows its tests ran.
@@ -1221,6 +1230,7 @@ async function runTests(compiler, input, selected, roots, config)
           ),
         );
       }
+      if (!continueRun(progress)) break;
     }
     if (unrun.length) failed = true;
     if (useCoverage && target.language === 'scala' && !failed)
@@ -1317,25 +1327,20 @@ async function runTests(compiler, input, selected, roots, config)
           : {}),
       };
     }
-    // A law that failed is recorded with its seed; one that passed leaves.
+    // A law whose own tests failed is recorded with its seed; one that
+    // passed leaves (see replay.mjs).
     for (const entry of stale)
-    {
-      if (passed.includes(entry)) delete database[entry.law];
-      else
-      {
-        delete laws[entry.law];
-        if (!seedOf.has(entry.law)) continue;
-        database[entry.law] = {
-          seed: nativeSeed(seedOf.get(entry.law)),
-          failed: new Date().toISOString(),
-        };
-      }
-    }
+      if (!passed.includes(entry)) delete laws[entry.law];
+    const recorded = recordFailures(database, stale, {
+      passed: new Set(passed.map(entry => entry.law)),
+      attempts,
+      at: new Date().toISOString(),
+    });
     await writeFile(
       path.join(configRoot, '.lawspec', 'failures', '.gitignore'),
       '*\n',
     );
-    await writeFile(databaseFile, JSON.stringify(database, null, 2) + '\n');
+    await writeFile(databaseFile, JSON.stringify(recorded, null, 2) + '\n');
     await mkdir(path.dirname(resultsFile), {recursive: true});
     await writeFile(path.join(path.dirname(resultsFile), '.gitignore'), '*\n');
     // Each attempt at a law the attestation touches names the run it was
@@ -1388,11 +1393,18 @@ async function runTests(compiler, input, selected, roots, config)
     const parallelism = statistics
       .filter(s => s.parallel)
       .map(({parallel, mode, workers}) => ({unit: parallel, mode, workers}));
+    const batchRows = batchSummaries(batches, attempts).map(batch => ({
+      ...batch,
+      seed: nativeSeed(batch.seed),
+    }));
+    const notRun = batchRows.flatMap(batch => batch.notRun ?? []);
     summaries.push({
       target: target.language,
       root: target.root,
       seed: nativeSeed(seed),
-      ran: stale.map(e => e.law),
+      ran: stale.map(e => e.law).filter(law => !notRun.includes(law)),
+      batches: batchRows,
+      ...(notRun.length ? {notRun} : {}),
       ...(attestation ? {environment: attestation.environment} : {}),
       unchanged: chosen.length - stale.length,
       ok: !failed,
@@ -1430,12 +1442,15 @@ async function runTests(compiler, input, selected, roots, config)
       : summaries
           .map(
             s =>
-              `${s.target}${summaries.filter(other => other.target === s.target).length > 1 ? ` (${s.root})` : ''}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}${s.environment ? ` in environment ${s.environment}` : ''}` : 'nothing to run'}` +
+              `${s.target}${summaries.filter(other => other.target === s.target).length > 1 ? ` (${s.root})` : ''}: ${s.ran.length || s.notRun ? `${ranText(s.batches)}${s.environment ? ` in environment ${s.environment}` : ''}` : 'nothing to run'}` +
               (s.selection === 'no-selected-native-checks'
                 ? '; no native checks selected; intrinsic definition checks passed.'
                 : `, ${s.unchanged} unchanged since their last passing run.${s.ok ? '' : ' FAILED'}`) +
               (s.deselected
                 ? `\n${s.deselected} law(s) not selected by --tag or --exclude-tag.`
+                : '') +
+              (s.notRun
+                ? `\nNot run: ${s.notRun.join(', ')}; an earlier native invocation failed before any test executed.`
                 : '') +
               (s.unrun
                 ? `\nNo tests ran for ${s.unrun.join(', ')}; the runner matched none of their tests.`
