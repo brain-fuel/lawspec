@@ -786,6 +786,7 @@ library
       LawSpec.Eval
       LawSpec.Explain
       LawSpec.Flow
+      LawSpec.Formats
       LawSpec.Frontend
       LawSpec.GleamCode
       LawSpec.GleamNative
@@ -1076,6 +1077,7 @@ executable lawspec-dev
       Ci.Cache
       Ci.Select
       Docs
+      EmailVectors
       Gen.Api
       Gen.BoundedGenerators
       Gen.Embed
@@ -1162,6 +1164,7 @@ test-suite lawspec-test
       FiniteSearchLoopSpec
       FixtureSource
       FlowSpec
+      FormatsSpec
       GadtSpec
       GeneratedTestSizeSpec
       GenericDefinitionSpec

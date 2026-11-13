@@ -15,6 +15,8 @@
 --   lawspec-dev docs [--check]      the documentation site; see dev/Docs.hs
 --   lawspec-dev canon [arguments]   canon over the repository; see dev/Canon.hs
 --   lawspec-dev beam-vectors <file> scalar vectors from Core for BEAM conformance
+--   lawspec-dev email-vectors <Address.pm>
+--                                   the email format's vectors; see dev/EmailVectors.hs
 --   lawspec-dev bench <name> [...]  benchmarks of generated code; see dev/Bench.hs
 --   lawspec-dev tax <verb> [...]    Rice's Tax over the repository; see dev/Canon.hs
 module Main (main) where
@@ -37,6 +39,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Docs (docsCommand)
+import EmailVectors (emailVectorsCommand)
 import Generate (bumpCommand, generateCommand, versionCommand)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, doesPathExist, getTemporaryDirectory, listDirectory, makeAbsolute, pathIsSymbolicLink, removePathForcibly, renameDirectory)
 import System.Environment (getArgs)
@@ -64,8 +67,9 @@ main =
     "docs" : options -> docsCommand options
     "canon" : options -> canonCommand options
     "bench" : options -> benchCommand options
+    "email-vectors" : options -> emailVectorsCommand options
     "tax" : options -> taxCommand options
-    _ -> die "usage: lawspec-dev boundaries | integrity [--record] | native-check | native-acceptance --package <receipt.json> --out <new-directory> | ci [options] | clean --artifacts [--keep-cache] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
+    _ -> die "usage: lawspec-dev boundaries | integrity [--record] | native-check | native-acceptance --package <receipt.json> --out <new-directory> | ci [options] | clean --artifacts [--keep-cache] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | email-vectors [--check] <Address.pm> [corpus...] | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
 
 -- | Exercise the actual pinned distribution on the current host, uncached.
 -- Keep assembly controls, a fresh npm archive and both runtime modes together.
