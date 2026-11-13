@@ -33,16 +33,16 @@
 -- ref:DEC-record-rules ref:DEC-masking
 module LawSpec.ContractRules
   ( rulesUnit, rulesAlias, rulesTypes, rulesSource, usesRules, programUsesRules, ruleOperation, ruleOperations
-  , contractDemand, contractNames, draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName
+  , contractDemand, contractNames, draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName, maskedWithName, maskedDraftWithName
   , Rule(..), recordRules, maskSentinel, elaborateContracts
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
-import Data.Char (isAlphaNum, isLower, isUpper)
-import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, stripPrefix)
+import Data.Char (isAlphaNum, isLower, isUpper, toUpper)
+import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
-import LawSpec.Formats (formatDescription, formatNames, formatPattern)
+import LawSpec.Formats (formatDescription, formatNames)
 import LawSpec.Model
 import LawSpec.RuleNames (rulesAlias, rulesUnit)
 import LawSpec.Scalar (isInteger)
@@ -56,22 +56,34 @@ rulesTypes = ["Violation"]
 ruleOperations :: [(String, String)]
 ruleOperations =
   [ ("violatedRules", "rulesViolated"), ("failsWithRule", "rulesFailsWith")
-  , ("messagesHide", "rulesMessagesHide"), ("maskEmail", "rulesMaskEmail"), ("maskLast", "rulesMaskLast") ]
+  , ("messagesHide", "rulesMessagesHide"), ("maskEmail", "rulesMaskEmail"), ("maskLast", "rulesMaskLast")
+  , ("maskStar", "rulesMaskStar") ]
 
 ruleOperation :: String -> Maybe String
 ruleOperation name = lookup name ruleOperations
 
-draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName :: String -> String
+draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName, maskedWithName, maskedDraftWithName :: String -> String
 draftName record = record ++ "Draft"
 validatorName record = "validate" ++ record
 violationsName record = "violationsOf" ++ record
 draftOfName record = "draftOf" ++ record
 maskedName record = "masked" ++ record
 maskedDraftName record = "masked" ++ record ++ "Draft"
+-- The renderings that take the hash key: in them a hashed field shows its
+-- hash. ref:DEC-masking
+maskedWithName record = "masked" ++ record ++ "With"
+maskedDraftWithName record = "masked" ++ record ++ "DraftWith"
 
 -- | Every name generated for a record.
 contractNames :: String -> [String]
-contractNames record = map ($ record) [draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName]
+contractNames record = map ($ record)
+  [draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName, maskedWithName, maskedDraftWithName]
+
+-- | Whether a program names a rendering that takes the hash key. Every
+-- masked record then has one, so that a record inside another is rendered
+-- under the same key.
+keyedDemand :: [String] -> Bool
+keyedDemand = any (\word -> "masked" `isPrefixOf` word && "With" `isSuffixOf` word)
 
 -- | The words of a source outside its comments, texts and phrase names.
 codeWords :: String -> [String]
@@ -112,7 +124,7 @@ programUsesRules texts = any usesRules texts || any (`elem` declared) (concatMap
     declared = concat [[name | (keyword, name) <- zip tokens (drop 1 tokens), keyword == "type"] | text <- texts, let tokens = codeWords text]
     records name = [rest | prefix <- ["validate", "violationsOf", "draftOf", "masked"], Just rest <- [stripPrefix prefix name]] ++
       [reverse rest | Just rest <- [stripPrefix (reverse "Draft") (reverse name)]] ++
-      [reverse rest | Just masked <- [stripPrefix "masked" name], Just rest <- [stripPrefix (reverse "Draft") (reverse masked)]]
+      [reverse rest | Just masked <- [stripPrefix "masked" name], suffix <- ["Draft", "With", "DraftWith"], Just rest <- [stripPrefix (reverse suffix) (reverse masked)]]
 
 -- | The marker a no-leak law hides in a masked field. No rendering or
 -- message may show it.
@@ -177,6 +189,11 @@ rulesSource = unlines
   , "  end case"
   , "end function"
   , ""
+  , "-- A value not shown at all: three stars, whatever it is."
+  , "function rulesMaskStar (value :: Text) -> Text is"
+  , "  \"***\""
+  , "end function"
+  , ""
   , "-- A text shown as three stars and its last characters. A text no longer"
   , "-- than that is not shown at all."
   , "function rulesMaskLast (count :: Integer) (value :: Text) -> Text is"
@@ -221,7 +238,7 @@ recordRules declaration = do
     [constructor] | dataConstructorName constructor == dataTypeName declaration -> Right (dataConstructorFields constructor)
     _ -> Left (dataTypeName declaration ++ " is not a record")
   rules <- fmap concat $ forM fields $ \(label, ty) ->
-    forM (concatMap conjuncts (typePredicates (Var label) ty)) $ \conjunct -> case conjunct of
+    forM (formatRuns label (concatMap conjuncts (typePredicates (Var label) ty))) $ \conjunct -> case conjunct of
       Apply (Var marker) predicate
         | Just name <- stripPrefix recordRulePrefix marker ->
             Right (Rule name Nothing "record" ("the rule " ++ name ++ " must hold") predicate)
@@ -240,18 +257,34 @@ recordRules declaration = do
     kindOf suffix = if suffix `elem` ["min", "max", "equals", "notEquals", "pattern", "oneOf", "length", "minLength", "maxLength", "items"] ++ formatNames
       then suffix else "predicate"
 
+-- | The format a restriction of a field is, when it is exactly the checks
+-- `matches format` wrote (formatPredicate).
+formatOf :: String -> [Expr] -> Maybe String
+formatOf label parts = case [ name | name <- formatNames, Just expected <- [formatPredicate name (Var label)]
+                                   , map stripLocations (conjuncts expected) == map stripLocations parts ] of
+  name : _ -> Just name
+  [] -> Nothing
+
+-- | A field's conjuncts with the checks of one format put back together: a
+-- format is one rule, whatever number of checks it makes.
+formatRuns :: String -> [Expr] -> [Expr]
+formatRuns label parts = case parts of
+  [] -> []
+  first : rest -> case [ count | count <- [length parts, length parts - 1 .. 2], Just _ <- [formatOf label (take count parts)] ] of
+    count : _ -> foldr1 (Binary "&&") (take count parts) : formatRuns label (drop count parts)
+    [] -> first : formatRuns label rest
+
 -- | A restriction's default suffix and its message, from its shape.
 described :: String -> Type -> Expr -> Maybe (String, String)
 described label ty predicate = case predicate of
+  _ | Just name <- formatOf label (conjuncts predicate) -> Just (name, "must be " ++ formatDescription name)
   Binary op left right
     | subject left -> comparison op (prettyExpr right)
     | subject right -> comparison (mirrored op) (prettyExpr left)
     | lengthOf left -> measured op (prettyExpr right)
     | lengthOf right -> measured (mirrored op) (prettyExpr left)
   Apply (Apply (Var "prelude.regexMatches") pattern) value | subject value, StringLit text <- unlocated pattern ->
-    Just (case [name | name <- formatNames, formatPattern name == Just text] of
-      name : _ -> (name, "must be " ++ formatDescription name)
-      [] -> ("pattern", "must match the regex " ++ show text))
+    Just ("pattern", "must match the regex " ++ show text)
   Apply (Apply (Var "prelude.member") value) items | subject value -> Just ("oneOf", "must be one of " ++ prettyExpr items)
   AllElementsExpr value _ _ | subject value -> Just ("items", "must hold only items that meet its restriction")
   AllPayloadsExpr value _ | subject value -> Just ("payload", "must hold only a value that meets its restriction")
@@ -385,7 +418,7 @@ elaborateContracts demand unit = do
           failed ("masking " ++ record ++ ": the unit already declares " ++ name ++ ", which masking generates")
         unless (null (dataTypeParameters declaration))
           (failed (record ++ " has type parameters; a validator is generated for a record without them"))
-        generated <- either failed Right (generate unit definitions declaration rules masks)
+        generated <- either failed Right (generate (keyedDemand demand) unit definitions declaration rules masks)
         pure [(summary True, Just generated)]
   let additions = [generated | (_, Just generated) <- contracts]
       plain = unit { dataTypes = map plainDeclaration (dataTypes unit) }
@@ -406,13 +439,15 @@ elaborateContracts demand unit = do
 -- | What one record adds to its unit.
 data Generated = Generated [DataTypeDeclaration] [FunctionDefinition] [Law]
 
-generate :: Unit -> M.Map String FunctionDefinition -> DataTypeDeclaration -> [Rule] -> [(String, FieldMask)] -> Either String Generated
-generate unit definitions declaration rules masks = do
+generate :: Bool -> Unit -> M.Map String FunctionDefinition -> DataTypeDeclaration -> [Rule] -> [(String, FieldMask)] -> Either String Generated
+generate keyed unit definitions declaration rules masks = do
   forM_ fields $ \(label, ty) -> when (named ty)
     (Left (validatorName record ++ ": the field " ++ label ++ " has a named refinement, which is not validated yet; write its restriction in the record"))
   forM_ masks $ \(label, mask) -> do
     ty <- maybe (Left ("masking " ++ record ++ ": the record has no field " ++ label)) Right (lookup label drafted)
     case mask of
+      MaskHash (Just algorithm) | algorithm `notElem` hashAlgorithms ->
+        Left ("masking " ++ record ++ ": " ++ algorithm ++ " is not a hash this version has; write " ++ intercalate " or " (map ("hash " ++) hashAlgorithms))
       MaskLast count | count < 1 -> Left ("masking " ++ record ++ ": last " ++ show count ++ " shows nothing; write hidden")
       _ | mask /= MaskHidden && ty /= Named "Text" -> Left ("masking " ++ record ++ ": " ++ label ++ " is not a Text, so it can only be shown as hidden")
       _ -> Right ()
@@ -441,19 +476,26 @@ generate unit definitions declaration rules masks = do
       (ConstructLit (draftName record) [access label (Var value) | label <- labels]) range
     maskOf label = lookup label masks
     -- A field's value as a person may read it, where it has a text form.
-    shown label ty = case maskOf label of
+    shown = shownUnder Nothing
+    -- Under a key a hashed field shows its hash, and a record inside this
+    -- one is rendered under the same key.
+    shownUnder key label ty = case maskOf label of
       Just MaskHidden -> Just (StringLit "***")
       Just MaskEmail -> Just (call "prelude.maskEmail" [Var label])
       Just (MaskLast count) -> Just (call "prelude.maskLast" [Number count, Var label])
       -- A checked definition is pure and has no key, so maskedR hides a
       -- hashed field; a target's native rendering shows the keyed digest
       -- (Backend.maskedRenderingTargets). ref:DEC-masking
-      Just MaskHash -> Just (StringLit "***")
+      Just (MaskHash algorithm) -> Just (case key of
+        Nothing -> StringLit "***"
+        Just secret -> call ("prelude.maskHash" ++ maybe "" capitalised algorithm) [Var secret, Var label])
       Nothing -> case ty of
         Named "Text" -> Just (Var label)
         Named "Bool" -> Just (select (Var label) (StringLit "true") (StringLit "false"))
         Named name | isInteger name -> Just (call "prelude.textOf" [Var label])
-                   | name `elem` [maskingRecord masking | masking <- maskingDeclarations unit] -> Just (call (maskedName name) [Var label])
+                   | name `elem` [maskingRecord masking | masking <- maskingDeclarations unit] -> Just (case key of
+                       Nothing -> call (maskedName name) [Var label]
+                       Just secret -> call (maskedWithName name) [Var secret, Var label])
         _ -> Nothing
     violation rule = ConstructLit "Violation"
       [ StringLit (ruleId rule)
@@ -491,13 +533,25 @@ generate unit definitions declaration rules masks = do
       , let candidate = fresh "candidate"
             moved = replaceExprVars ((label, Var candidate) : [(other, access other (Var value)) | other <- labels, other /= label])
             others = [other | other <- rules, ruleId other /= ruleId rule, label `elem` exprVars (rulePredicate other)] ]
-    rendering subject = withFields subject (joined ([StringLit (record ++ "{")] ++
-      concat [[StringLit ((if index > 0 then ", " else "") ++ label ++ "="), fromMaybe (StringLit "_") (shown label ty)]
+    rendering = renderingUnder Nothing
+    renderingUnder key subject = withFields subject (joined ([StringLit (record ++ "{")] ++
+      concat [[StringLit ((if index > 0 then ", " else "") ++ label ++ "="), fromMaybe (StringLit "_") (shownUnder key label ty)]
              | (index, (label, ty)) <- zip [0 :: Int ..] drafted] ++ [StringLit "}"]))
     renderers = if null masks then [] else
       [ FunctionDefinition (maskedDraftName record) [(draft, Named (draftName record))] (Named "Text") [] (rendering draft) range
       , FunctionDefinition (maskedName record) [(value, Named record)] (Named "Text") []
-          (call (maskedDraftName record) [call (draftOfName record) [Var value]]) range ]
+          (call (maskedDraftName record) [call (draftOfName record) [Var value]]) range ] ++
+      if not keyed then [] else
+        [ FunctionDefinition (maskedDraftWithName record) [(secret, keyType), (draft, Named (draftName record))] (Named "Text") []
+            (renderingUnder (Just secret) draft) range
+        , FunctionDefinition (maskedWithName record) [(secret, keyType), (value, Named record)] (Named "Text") []
+            (call (maskedDraftWithName record) [Var secret, call (draftOfName record) [Var value]]) range ]
+    secret = fresh "key"
+    -- A hash key is 32 bytes; the definition asks it of its caller.
+    keyType = Refined secret (Named "Bytes") (Just (Binary "==" (call "prelude.length" [Var secret]) (Number 32)))
+    capitalised name = case name of
+      first : rest -> toUpper first : rest
+      [] -> []
     hiding =
       [ case (mask, ty) of
           (MaskHidden, other) | other /= Named "Text" ->

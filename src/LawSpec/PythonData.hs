@@ -147,7 +147,7 @@ emitPythonDataWithProfile bits layout declarations = do
               case if masked then lookup label masks else Nothing of
                 Just (C.MaskLast count) -> [D.text (q lead), D.text ("ls.mask_last(" ++ show count ++ ", self." ++ label ++ ")")]
                 Just C.MaskEmail -> [D.text (q lead), D.text ("ls.mask_email(self." ++ label ++ ")")]
-                Just C.MaskHash -> [D.text (q lead), D.text ("ls.mask_hash(self." ++ label ++ ")")]
+                Just (C.MaskHash algorithm) -> [D.text (q lead), D.text ("ls." ++ Backend.maskFunction "python" algorithm ++ "(self." ++ label ++ ")")]
                 Just _ -> [D.text (q (lead ++ "***"))]
                 Nothing -> [D.text (q lead), D.text ("ls.plain(self." ++ label ++ ")")]
             -- A joined list is laid out the same way whatever its length.

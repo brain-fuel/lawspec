@@ -22,8 +22,7 @@ import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified Data.Map.Strict as M
 import LawSpec.Scalar (Scalar(..), primitive, primitives, primitiveName, family, Family(..))
-import LawSpec.Testing (GeneratorRequirement(..), domainHints)
-import LawSpec.Regex (parseRegex, regexSamples)
+import LawSpec.Testing (GeneratorRequirement(..), domainHints, fieldRegexSamples)
 import LawSpec.Common (Artifact(..))
 import LawSpec.DotNet.Code hiding (Lines, linesDoc, pad, columns, pageWidth)
 import qualified LawSpec.DotNet.Layout as L
@@ -33,7 +32,7 @@ import qualified LawSpec.DotNet.Expr as X
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import LawSpec.NativeBinding (NativeRef(..), ConstructorStyle(..), ResolvedTypeBinding(..), ResolvedConstructorBinding(..), foldNativeLayoutM)
 import Control.Monad (forM)
-import Data.List (intercalate, nub, sortOn)
+import Data.List (intercalate, sortOn)
 
 -- A recursive group's keyword is an assembly choice, retained separately
 -- from its checked signature and expression tree. No emitted text is parsed
@@ -645,16 +644,4 @@ emitSchema lang layout bits crypto declarations = do
           (Ty "Schema.FieldHints" "Schema.FieldHints") (withEarlier i contract hint)]]
     regexHints binder predicates =
       [ C.Expr (C.scalarType "Text") (C.Constant (SSequence "Text" (map fromEnum sample))) (C.GeneratedFrom (C.binderId binder))
-      | C.binderType binder == C.scalarType "Text"
-      , pattern <- nub (concatMap (patterns [C.binderId binder]) predicates)
-      , Right regex <- [parseRegex pattern], sample <- regexSamples 24 regex ]
-    patterns names e = case C.expressionNode e of
-      C.ShortCircuit C.And a b -> patterns names a ++ patterns names b
-      C.Let b value body | aliases names value -> patterns (C.binderId b : names) body
-      C.Let _ value body -> patterns names value ++ patterns names body
-      C.Helper C.RegexMatches [C.Expr _ (C.Constant (SSequence _ pattern)) _, subject] | aliases names subject -> [map toEnum pattern]
-      _ -> []
-    aliases names e = case C.expressionNode e of
-      C.Local l -> l `elem` names
-      C.Convert C.CheckedArgument _ inner -> aliases names inner
-      _ -> False
+      | sample <- fieldRegexSamples binder predicates ]

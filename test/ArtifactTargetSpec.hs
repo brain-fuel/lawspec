@@ -97,6 +97,30 @@ test_artifactTargets = describe "artifact targets" $ do
         schema `shouldSatisfy` isInfixOf "\"enum\": [\n"
         schema `shouldSatisfy` isInfixOf "\"exclusiveMaximum\": 100"
         decode (B.pack schema) `shouldSatisfy` (\value -> case value of Just (Object _) -> True; _ -> False)
+  it "writes the email format exactly and refuses the strict one" $ do
+    let contact format mask = unlines
+          [ "unit configuration"
+          , "type Contact is a record{address :: (v :: Text where v matches format " ++ format ++ ")} end type"
+          , "masking Contact is"
+          , "  address shown as " ++ mask
+          , "end masking"
+          , "function contact (unused :: Unit) -> Contact is Contact record{address = \"ann@example.org\"} end function"
+          , "end unit" ]
+    case emit "yaml" (contact "email" "hash blake3") of
+      Left message -> expectationFailure message
+      Right files -> do
+        let schema = contents "configuration.schema.json" files
+        -- The format's three checks, each as its keyword: nothing weaker.
+        schema `shouldSatisfy` isInfixOf "\"pattern\": \"^(?:(?:[A-Za-z0-9!#$%&'*+/=?^_`{|}~\\\\-]+"
+        schema `shouldSatisfy` isInfixOf "\"pattern\": \"^(?:[\\\\s\\\\S]{1,64}@[^@]*)$\""
+        schema `shouldSatisfy` isInfixOf "\"maxLength\": 254"
+        schema `shouldSatisfy` isInfixOf "\"address\": \"hash blake3\""
+    case emit "yaml" (contact "email" "hash") of
+      Left message -> expectationFailure message
+      Right files -> contents "configuration.schema.json" files `shouldSatisfy` isInfixOf "\"address\": \"hash\""
+    case emit "yaml" (contact "rfc822Address" "hidden") of
+      Left message -> message `shouldSatisfy` isInfixOf "cannot express the format rfc822Address of address"
+      Right _ -> expectationFailure "expected the strict format to be refused"
   it "annotates a masked record's schema with how each field is shown" $ do
     let masked = unlines
           [ "unit configuration"

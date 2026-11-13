@@ -65,7 +65,7 @@ A field's restriction is split at `&&`; each part is one rule, with the id
 | `v == e`, `v != e` | `equals`, `notEquals` | must be `e`, must not be `e` |
 | `prelude.length v >= n`, `<= n`, `== n` | `minLength`, `maxLength`, `length` | must have at least `n` characters (items, for a list) |
 | `v matches regex "p"` | `pattern` | must match the regex `"p"` |
-| `v matches format email`, `uuid` | `email`, `uuid` | must be an RFC 822 address, a UUID |
+| `v matches format email`, `rfc822Address`, `uuid` | `email`, `rfc822Address`, `uuid` | must be an email address, an RFC 822 address, a UUID |
 | `v in [a, b]` | `oneOf` | must be one of `[a, b]` |
 | `check v` (a definition of the unit) | the definition's name | must satisfy `check` |
 | a list's or optional's item restriction | `items`, `payload` | |
@@ -120,23 +120,32 @@ validator that could let a broken value through is rejected at compile time.
 
 ## Formats
 
-`matches format <name>` restricts a text to a named format. A format is a
-regex of the [portable dialect](matchers.md), so every target checks it with
-the matcher it already has and generation draws matching texts from it.
+`matches format <name>` restricts a text to a named format. A format is one
+rule, whatever it checks, and generation draws matching texts from it.
 
-| Format | Accepts |
-| --- | --- |
-| `email` | an `address` of RFC 822, section 6.1: `ann@example.org`, `Ann Lee <ann@example.org>`, a routed address, a group (`team: a@x.example, b@y.example;`) |
-| `uuid` | 32 hexadecimal digits in groups of 8-4-4-4-12, in either case |
+| Format | Accepts | Targets |
+| --- | --- | --- |
+| `email` | one mailbox in ASCII: `ann@example.org`, `"Ann Lee"@example.org`, `ann@[10.0.0.1]`. A domain name has at least two labels. At most 64 characters before the `@` and 254 in all | all |
+| `rfc822Address` | an `address` of RFC 822, section 6.1, comments included: `ann@example.org (Ann Lee)`, `Ann Lee <ann@example.org>`, a routed address, a group (`team: a@x.example, b@y.example;`), `ann@localhost` | Java, JavaScript, TypeScript, Python |
+| `uuid` | 32 hexadecimal digits in groups of 8-4-4-4-12, in either case | all |
 
-`email` accepts exactly the texts the regex of the Perl module
-Mail::RFC822::Address 0.3 accepts. That is wider than a mailbox: it includes
-display names, routes and groups, quoted local parts, domain literals,
-domains of one label and one final line feed. A comment (`ann@example.org
-(Ann)`) is refused: the module's `valid` function removes comments before it
-matches, and the format does not, because nested comments are not regular.
-The agreement is tested against the module, not proved; the recorded
-verdicts are in `test/fixtures/formats/email-vectors.tsv`.
+Use `email` for an address a person types. It accepts nothing that
+Email::Valid 1.204 refuses (with `fqdn` on and its network checks off), and
+it is narrower than that module in six listed ways: no comment, no display
+name, no white space, no control character, no loose IP literal and no
+quoted string beside other words. Its two length limits are part of the
+rule `<field>.email`, not rules of their own.
+
+Use `rfc822Address` where a text must be accepted exactly when RFC 822
+allows it, a mail header for one. It accepts exactly the texts `valid()` of
+the Perl module Mail::RFC822::Address 0.3 accepts. Comments are removed
+before the match, which needs a runtime primitive; a program that uses the
+format on a target without it is refused with `target-unsupported`.
+
+[What each accepts, side by side](matchers.md#what-the-address-formats-accept)
+lists the differences and every deviation from Email::Valid. Both
+agreements are tested against recorded verdicts of the modules
+(`test/fixtures/formats/`), not proved.
 
 ## Masking
 
@@ -171,16 +180,42 @@ end law
 end unit
 ```
 
-| Mask | Shows |
-| --- | --- |
-| `hidden` | `***` |
-| `last <n>` | `***` and the last `n` characters; `***` alone for a text of `n` characters or fewer |
-| `email` | the first character, `***` and everything from the last `@`; `***` alone for a text without `@` |
-| `hash` | `hash:` and a keyed BLAKE3 digest in a native rendering; `***` in `maskedR` and in messages ([below](#the-hash-mask)) |
+| Mask | Shows | The mask as a function |
+| --- | --- | --- |
+| `hidden` | `***` | `maskStar` |
+| `last <n>` | `***` and the last `n` characters; `***` alone for a text of `n` characters or fewer | `maskLast` |
+| `email` | the first character, `***` and everything from the last `@`; `***` alone for a text without `@` | `maskEmail` |
+| `hash` | `hash:` and a keyed hash by this version's default algorithm, BLAKE3 ([below](#the-hash-mask)) | `maskHash` |
+| `hash blake3` | the same, with the algorithm named | `maskHashBlake3` |
 
 A masking block generates `maskedR :: R -> Text` and `maskedRDraft ::
 RDraft -> Text`, and violation messages show a masked field's value through
 its mask. Only a `Text` field takes `last`, `email` or `hash`.
+
+### The masks as functions
+
+Each mask is a function with one name everywhere, in the casing of the
+language it is called from.
+
+| | LawSpec | Java (`lawspec.runtime.LawSpecMasks`) | JavaScript, TypeScript (`lawspec_runtime`) | Python (`lawspec_runtime`) |
+| --- | --- | --- | --- | --- |
+| Nothing shown | `prelude.maskStar text` | `maskStar(value)` | `maskStar(value)` | `mask_star(value)` |
+| The last characters | `prelude.maskLast n text` | `maskLast(n, text)` | `maskLast(n, text)` | `mask_last(n, text)` |
+| An address | `prelude.maskEmail text` | `maskEmail(text)` | `maskEmail(text)` | `mask_email(text)` |
+| A hash, default algorithm | `prelude.maskHash key text` | `maskHash(text)` | `maskHash(text)` | `mask_hash(text)` |
+| A hash, BLAKE3 by name | `prelude.maskHashBlake3 key text` | `maskHashBlake3(text)` | `maskHashBlake3(text)` | `mask_hash_blake3(text)` |
+| A hash under a key given with the call | the two above | `maskHashWith(key, text)`, `maskHashBlake3With(key, text)` | `maskHashWith(key, text)`, `maskHashBlake3With(key, text)` | `mask_hash_with(key, text)`, `mask_hash_blake3_with(key, text)` |
+
+`maskHash` is `maskHashBlake3` in this version: the same function under two
+names. A later version may change which algorithm `maskHash` and `shown as
+hash` mean, and will say so as a breaking change, because the hashes in old
+logs would stop matching new ones. Write `maskHashBlake3` and `shown as hash
+blake3` where hashes must stay comparable across versions.
+
+`maskStar`, `maskLast` and `maskEmail` are checked LawSpec definitions and
+work on every target. The hash functions are a primitive of the Java,
+JavaScript, TypeScript and Python runtimes; a program that calls
+`prelude.maskHash` on another target is refused with `target-unsupported`.
 
 For each masked field LawSpec generates a law. `R masks <field>`: a marker
 placed in the part of the field the mask hides appears in no rendering and
@@ -224,12 +259,59 @@ control.
 ### The hash mask
 
 `shown as hash` shows `hash:` and the 64 hexadecimal digits of the keyed
-BLAKE3-256 digest of the text's UTF-8 bytes. Equal values show the same
-digest, so a log can be searched for one value without holding it, and the
-value cannot be recovered without the key.
+BLAKE3-256 hash of the text's UTF-8 bytes. `shown as hash blake3` is the
+same with the algorithm named. Equal values show the same hash, so a log
+can be searched for one value without holding it, and the value cannot be
+recovered without the key.
 
-The key is 32 secret bytes. The application sets it once, when it starts,
-from wherever it keeps secrets:
+The key is 32 secret bytes. Where it comes from depends on who renders:
+
+| Rendering | Key | A hashed field shows |
+| --- | --- | --- |
+| The record's own text form on Java, JavaScript, TypeScript and Python (`toString()`, `repr()`, a logger) | the one the application set | its hash; an exception if no key is set |
+| The runtime's `maskHash(text)` | the one the application set | the hash; an exception if no key is set |
+| `maskedRWith key r`, `maskedRDraftWith key draft` | given with the call | its hash |
+| `prelude.maskHash key text`, the runtime's `maskHashWith(key, text)` | given with the call | the hash |
+| `maskedR r`, `maskedRDraft draft` | none | `***` |
+| A violation's message | none | `***` |
+| Output of a failed generated test | none | `***` |
+
+A checked definition is pure, so it cannot read a key the application set:
+in a specification the key is an argument. `maskedRWith` and
+`maskedRDraftWith` are generated for every masked record of a program that
+names one of them. Their key is typed `(key :: Bytes where prelude.length
+key = 32)`, so a caller must show that its key has 32 bytes, and under the
+same key they give exactly the record's own text form.
+
+```lawspec
+unit guide.sessions
+
+type Session is a record{
+  user :: Text,
+  token :: Text}
+end type
+
+masking Session is
+  token shown as hash
+end masking
+
+function fingerprint (key :: (k :: Bytes where prelude.length k = 32)) (token :: Text) -> Text is
+  prelude.maskHash key token
+end function
+
+law "|a session shows its token's hash under the key| is
+  definition :
+    for all (key :: Bytes where prelude.length key = 32) (session :: Session) =>
+      maskedSessionWith key session
+        = "Session{user=" ++ session.user ++ ", token=" ++ fingerprint key session.token ++ "}"
+    end for all
+  end definition
+end law
+end unit
+```
+
+The application sets its key once, when it starts, from wherever it keeps
+secrets:
 
 | Target | Call |
 | --- | --- |
@@ -242,14 +324,19 @@ rendering asked for before the key is set throws (`IllegalStateException`,
 `Error`, `RuntimeError`); it never shows the value and never falls back to
 `***`. Set the key before the first log line.
 
-`maskedR`, violation messages and failed-test output show `***` for a
-hashed field: a checked definition is pure and has no key. Other targets
-have no keyed digest; there the field is hidden by `maskedR` and the
-generation warning says so.
+A text is hashed as its UTF-8 bytes. Half of a surrogate pair, which a Java
+or JavaScript string can hold and UTF-8 cannot, is hashed as U+FFFD on
+every target.
 
-The three runtimes' digests are tested against LawSpec's Haskell port of
+Other targets have no keyed hash. There `maskedR` hides the field, the
+generation warning says so, and `maskedRWith` and `prelude.maskHash` are
+refused.
+
+The three runtimes' hashes are tested against LawSpec's Haskell port of
 BLAKE3 on texts that cross block, chunk and tree boundaries
-(`test/fixtures/blake3-keyed-text.json`). That port's unkeyed mode is
+(`test/fixtures/blake3-keyed-text.json`), and `prelude.maskHash key text`
+is tested equal to each runtime's `maskHash(text)` under the same key
+(`acceptance/contracts-primitives/keyed_masking.lawspec`). That port's unkeyed mode is
 tested against BLAKE3's published vectors. The repository holds no copy of
 the published keyed vectors, so the keyed mode is checked against the port
 only.
@@ -288,11 +375,11 @@ and `LawSpecMasked.of`.
 
 - A field whose type is a named refinement, and a record with type
   parameters, are refused by the validator generator.
-- Native renderings, failed-test output and the hash digest are masked on
-  Java, JavaScript, TypeScript and Python only
-  ([above](#where-a-masked-field-is-hidden)). Those four are the targets
-  the `contracts-validation` and `contracts-masking` suites run on; no
-  other target has run them.
+- Native renderings, failed-test output, the keyed hash and the
+  `rfc822Address` format exist on Java, JavaScript, TypeScript and Python
+  only ([above](#where-a-masked-field-is-hidden)). Those four are the
+  targets the `contracts-validation`, `contracts-masking` and
+  `contracts-primitives` suites run on; no other target has run them.
 - A masked field inside a message your own code builds (string
   concatenation of `order.number()`, say) is not masked: the mask is on the
   record's rendering, not on the value.
@@ -300,4 +387,6 @@ and `LawSpecMasked.of`.
   `maxItems`, `enum` and numeric bounds; a rule it cannot express, such as a
   rule of the whole record, is refused as `target-unsupported`
   ([artifact targets](../artifact-targets.md)). A masked field is marked
-  `"x-lawspec-masking": "hidden" | "last <n>" | "email" | "hash"`.
+  `"x-lawspec-masking": "hidden" | "last <n>" | "email" | "hash" | "hash blake3"`.
+  `email` is written exactly, as two `pattern`s and `maxLength`;
+  `rfc822Address` is refused, since no keyword removes comments.

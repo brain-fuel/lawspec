@@ -1,0 +1,5 @@
+{
+  "languageProfile": "1.0-rc.2",
+  "verification": {"layers": ["exhaustive", "property", "examples"]},
+  "specs": ["acceptance/contracts-primitives/keyed_masking.lawspec", "acceptance/contracts-primitives/strict_address.lawspec"]
+}

@@ -10,7 +10,7 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamNames as Names
 import qualified LawSpec.BeamGenerators as Generators
-import LawSpec.Testing (GeneratorRequirement(..), domainHints)
+import LawSpec.Testing (GeneratorRequirement(..), domainHints, fieldRegexSamples)
 import LawSpec.CorePersist ()
 import qualified LawSpec.Dependencies as Identity
 import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
@@ -19,7 +19,6 @@ import qualified Data.Set as Set
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Scalar (Scalar(..), primitives, primitiveName)
-import LawSpec.Regex (parseRegex, regexSamples)
 import LawSpec.Common (Artifact(..))
 import Control.Monad (forM, unless)
 import Data.List (nub)
@@ -141,19 +140,7 @@ emitData target layout bits declarations = do
     -- pattern is built rather than filtered. ref:DEC-shrink-within-domain
     regexHints binder predicates =
       [ C.Expr (C.scalarType "Text") (C.Constant (SSequence "Text" (map fromEnum sample))) (C.GeneratedFrom (C.binderId binder))
-      | C.binderType binder == C.scalarType "Text"
-      , pattern <- nub (concatMap (patterns [C.binderId binder]) predicates)
-      , Right regex <- [parseRegex pattern], sample <- regexSamples 24 regex ]
-    patterns names e = case C.expressionNode e of
-      C.ShortCircuit C.And a b -> patterns names a ++ patterns names b
-      C.Let b value body | aliases names value -> patterns (C.binderId b : names) body
-      C.Let _ value body -> patterns names value ++ patterns names body
-      C.Helper C.RegexMatches [C.Expr _ (C.Constant (SSequence _ pattern)) _, subject] | aliases names subject -> [map toEnum pattern]
-      _ -> []
-    aliases names e = case C.expressionNode e of
-      C.Local l -> l `elem` names
-      C.Convert C.CheckedArgument _ inner -> aliases names inner
-      _ -> False
+      | sample <- fieldRegexSamples binder predicates ]
     contractCode contract build = do
       let local identity = maybe (error "unbound BEAM constructor field") id
             (lookup identity [(C.binderId b,"lists:nth(" ++ show i ++ ", _Fields)") | (i,b) <- zip [1::Int ..] (S.contractFields contract)])

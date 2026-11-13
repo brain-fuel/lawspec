@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, auditErasedWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, auditErasedWithRecordInstances, strictLet, operationLet, substituteProof, keyedBy, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -65,6 +65,18 @@ data Proof
   -- an atom of the arithmetic, so a guard on b.f is a fact about it.
   | Field Id Int (Maybe Integer, Maybe Integer) Proof
   deriving (Eq, Ord, Show)
+
+-- | A call that needs a key of 32 bytes: it is checked where the facts say
+-- the key has that length, and nowhere else.
+keyedBy :: Proof -> Proof -> Proof
+keyedBy key call = Conditional
+  (ExactComparison Equal (Opaque "length" [key]) (Literal (SInteger "Integer" 32)))
+  call (Absurd unknownKeyLength)
+
+-- | What the audit names where a keyed hash is called and nothing says its
+-- key has 32 bytes.
+unknownKeyLength :: String
+unknownKeyLength = "a hash key that is not known to be 32 bytes"
 
 -- | Each definition with the domains of its arguments, since a call is safe only
 -- inside them.
@@ -596,7 +608,9 @@ walk signatures contracts self provenance facts expression = case expression of
     let saturated = foldl (\known fact -> foldl (flip (assumeOnce True)) known
           [derived | derived <- derivedFacts known fact, faithful derived, derived `S.notMember` truthSet known]) facts (truths facts)
     unless (entails saturated (Literal (SBool False)))
-      (Left ("a match leaves out " ++ name ++ ", which its value's index allows; add a branch for " ++ name))
+      (Left (if name == unknownKeyLength
+        then "maskHash is given a key that is not known to be 32 bytes; say so where the key comes from: (key :: Bytes where prelude.length key = 32)"
+        else "a match leaves out " ++ name ++ ", which its value's index allows; add a branch for " ++ name))
     pure []
   Conditional condition yes no -> do
     before <- recur condition
@@ -1125,6 +1139,10 @@ textPredicate name values = case mapM literalValue values of
   where
     literalValue value = case value of
       Literal scalar -> Just scalar
+      -- A literal address without its comments (the rfc822Address format)
+      -- is a literal as well.
+      Opaque "rfc822Uncommented" [Literal scalar]
+        | Right uncommented <- helperValue 64 "rfc822Uncommented" [scalar] -> Just uncommented
       _ -> Nothing
 
 integral :: Proof -> Bool

@@ -14,15 +14,18 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Test.Hspec
 import LawSpec.Api (dispatch)
+import qualified LawSpec.Backend as Backend
 import LawSpec.Blake3 (blake3Keyed, hexOf)
 import LawSpec.Compile
 import LawSpec.ContractRules
 import qualified LawSpec.Core as C
+import LawSpec.Core.Semantics (helperValue)
 import LawSpec.Core.Types (makeRegistry)
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Scalar as V
 import LawSpec.Data (elaborateDataDeclarations)
 import LawSpec.Model hiding (Expectation)
+import LawSpec.PreludeNames (sequencePreludeHelpers)
 import LawSpec.Regex (parseRegex, regexMatches, regexSamples)
 import LawSpec.Testing (constrainedBoundaries)
 
@@ -51,6 +54,21 @@ planned target body = case decode (dispatch (encode (object
   _ -> ([], ["no response"])
   where
     look name fields = KM.lookup (K.fromString name) fields
+    text value = case value of
+      Just (String content) -> T.unpack content
+      _ -> ""
+
+-- | The diagnostics of a generation request for one target.
+diagnosed :: String -> [String] -> [String]
+diagnosed target body = case decode (dispatch (encode (object
+    [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String), "method" .= ("planGeneration" :: String)
+    , "target" .= target
+    , "verification" .= object ["layers" .= (["property", "examples"] :: [String])]
+    , "sources" .= [object ["path" .= ("probe.lawspec" :: String), "content" .= unlines (["unit probe.rules", ""] ++ body ++ ["end unit"])]] ]))) of
+  Just (Object response) ->
+    [ text (KM.lookup "code" row) ++ ": " ++ text (KM.lookup "message" row) | Just (Array rows) <- [KM.lookup "diagnostics" response], Object row <- toList rows ]
+  _ -> ["no response"]
+  where
     text value = case value of
       Just (String content) -> T.unpack content
       _ -> ""
@@ -98,7 +116,7 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
     sort (contractDemand "f (d :: CardDraft) = other.maskedCard (draftOfCard d) <> violationsOfCard d")
       `shouldBe` ["CardDraft", "draftOfCard", "maskedCard", "violationsOfCard"]
     contractDemand "-- validateAccount\nfunction validate (masked :: Text) -> Text is \"draftOfCard\" end function" `shouldBe` []
-    contractNames "Card" `shouldBe` ["CardDraft", "validateCard", "violationsOfCard", "draftOfCard", "maskedCard", "maskedCardDraft"]
+    contractNames "Card" `shouldBe` ["CardDraft", "validateCard", "violationsOfCard", "draftOfCard", "maskedCard", "maskedCardDraft", "maskedCardWith", "maskedCardDraftWith"]
   it "join the built-in unit only to a program that uses them" $ do
     usesRules "type T is one of | A end type" `shouldBe` False
     usesRules "masking Card is pin shown as hidden end masking" `shouldBe` True
@@ -167,7 +185,7 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
         record = concat [content | (path, content) <- files, "lawspec/data/Card.java" `isInfixOf` path]
     warnings `shouldBe` []
     record `shouldSatisfy` isInfixOf "public String toString()"
-    record `shouldSatisfy` isInfixOf "\"Card{number=\" + lawspec.runtime.LawSpecMasks.last(4, number)"
+    record `shouldSatisfy` isInfixOf "\"Card{number=\" + lawspec.runtime.LawSpecMasks.maskLast(4, number)"
     record `shouldSatisfy` isInfixOf "+ \", pin=***\""
     record `shouldSatisfy` isInfixOf "public String toUnmaskedString()"
     map fst files `shouldSatisfy` any (isInfixOf "lawspec-logback/lawspec/logging/LawSpecMaskedConverter.java")
@@ -194,7 +212,7 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
   it "show a hashed field as a keyed digest natively and hide it in the checked rendering" $ do
     let masks = card ["  number shown as hash"]
         file target name = concat [content | (path, content) <- fst (planned target masks), name `isInfixOf` path]
-    file "java" "lawspec/data/Card.java" `shouldSatisfy` isInfixOf "\"Card{number=\" + lawspec.runtime.LawSpecMasks.hash(number)"
+    file "java" "lawspec/data/Card.java" `shouldSatisfy` isInfixOf "\"Card{number=\" + lawspec.runtime.LawSpecMasks.maskHash(number)"
     file "javascript" "lawspec_data.mjs" `shouldSatisfy` isInfixOf "ls.maskHash(this.number)"
     file "typescript" "lawspec_data.ts" `shouldSatisfy` isInfixOf "ls.maskHash(this.number)"
     file "python" "lawspec_data.py" `shouldSatisfy` isInfixOf "ls.mask_hash(self.number)"
@@ -226,6 +244,94 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
           , "acceptance/contracts-masking/python/native/tests/test_masked_rendering.py" ] $ \path -> do
       native <- readFile path
       [hash | (_, hash) <- rows "letters" ++ rows "mixed", not (hash `isInfixOf` native)] `shouldBe` []
+  it "name the masks in each target's casing, with maskHash the BLAKE3 one" $ do
+    [Backend.maskFunction target algorithm | target <- ["java", "javascript", "python"], algorithm <- [Nothing, Just "blake3"]]
+      `shouldBe` ["maskHash", "maskHashBlake3", "maskHash", "maskHashBlake3", "mask_hash", "mask_hash_blake3"]
+    let masks = card ["  number shown as hash blake3"]
+        file target name = concat [content | (path, content) <- fst (planned target masks), name `isInfixOf` path]
+    file "java" "lawspec/data/Card.java" `shouldSatisfy` isInfixOf "lawspec.runtime.LawSpecMasks.maskHashBlake3(number)"
+    file "javascript" "lawspec_data.mjs" `shouldSatisfy` isInfixOf "ls.maskHashBlake3(this.number)"
+    file "typescript" "lawspec_data.ts" `shouldSatisfy` isInfixOf "ls.maskHashBlake3(this.number)"
+    file "python" "lawspec_data.py" `shouldSatisfy` isInfixOf "ls.mask_hash_blake3(self.number)"
+    refused (card ["  number shown as hash sha256"]) "sha256 is not a hash this version has; write hash blake3"
+    -- Each runtime has every mask under its name, and maskHash is the
+    -- BLAKE3 function itself, not a copy of it.
+    web <- readFile "runtime/lawspec_runtime.mjs"
+    python <- readFile "runtime/lawspec_runtime.py"
+    java <- readFile "runtime/LawSpecMasks.java"
+    forM_ [ "export function maskStar(", "export function maskLast(", "export function maskEmail(", "export function maskHashBlake3("
+          , "export const maskHash = maskHashBlake3;", "export function maskHashBlake3With(", "export const maskHashWith = maskHashBlake3With;" ] $ \name ->
+      web `shouldSatisfy` isInfixOf name
+    forM_ [ "def mask_star(", "def mask_last(", "def mask_email(", "def mask_hash_blake3(", "\nmask_hash = mask_hash_blake3\n"
+          , "def mask_hash_blake3_with(", "\nmask_hash_with = mask_hash_blake3_with\n" ] $ \name ->
+      python `shouldSatisfy` isInfixOf name
+    forM_ [ "public static String maskStar(Object value)", "public static String maskLast(", "public static String maskEmail("
+          , "public static String maskHashBlake3(String value)", "public static String maskHash(String value)"
+          , "public static String maskHashBlake3With(byte[] key, String value)", "public static String maskHashWith(byte[] key, String value)" ] $ \name ->
+      java `shouldSatisfy` isInfixOf name
+    -- In a specification both names are one primitive.
+    lookup "maskHash" sequencePreludeHelpers `shouldBe` Just C.MaskHashBlake3
+    lookup "maskHashBlake3" sequencePreludeHelpers `shouldBe` Just C.MaskHashBlake3
+  it "render a record under a key only where a specification names that rendering" $ do
+    let masks = card ["  number shown as hash"]
+        keyed = masks ++
+          [ "function shownWith (key :: (k :: Bytes where prelude.length k = 32)) (c :: Card) -> Text is maskedCardWith key c end function" ]
+        names body = either (const []) (\(units, _) -> map functionName (functionDefinitions (probe units))) (check body)
+    names masks `shouldSatisfy` elem "maskedCard"
+    names masks `shouldSatisfy` notElem "maskedCardWith"
+    names keyed `shouldSatisfy` \found -> all (`elem` found) ["maskedCard", "maskedCardWith", "maskedCardDraftWith"]
+    -- A key that nothing says is 32 bytes is refused where it is used.
+    refused (masks ++ ["function shownWith (key :: Bytes) (c :: Card) -> Text is maskedCardWith key c end function"])
+      "precondition could not be proved: probe.rules::maskedCardWith"
+    refused ["function hashed (key :: Bytes) (t :: Text) -> Text is prelude.maskHash key t end function"]
+      "maskHash is given a key that is not known to be 32 bytes"
+  it "hash in a specification as every runtime does, a half surrogate as U+FFFD" $ do
+    fixture <- BL.readFile "test/fixtures/blake3-keyed-text.json"
+    let rows = case decode fixture of
+          Just (Object fields) | Just (Array cases) <- KM.lookup "texts" fields ->
+            [ ([truncate point | A.Number point <- toList points] :: [Int], T.unpack hash)
+            | Object row <- toList cases, Just (Array points) <- [KM.lookup "points" row], Just (String hash) <- [KM.lookup "hash" row] ]
+          _ -> []
+        key = V.SSequence "Bytes" (map fromEnum "whats the Elvish word for friend")
+        hashed points = helperValue 64 "maskHashBlake3" [key, V.SSequence "Text" points]
+        text content = Right (V.SSequence "Text" (map fromEnum (content :: String)))
+    length rows `shouldBe` 2
+    forM_ rows $ \(points, hash) -> hashed points `shouldBe` text ("hash:" ++ hash)
+    hashed [0xD800] `shouldBe` hashed [0xFFFD]
+    hashed [97, 0xDC00] `shouldBe` hashed [97, 0xFFFD]
+    helperValue 64 "maskHashBlake3" [V.SSequence "Bytes" [1, 2, 3], V.SSequence "Text" [97]] `shouldBe` Left "maskHashBlake3: the key is 32 bytes"
+    -- Each runtime's own test compares the specification's hash with these.
+    forM_ [ "acceptance/contracts-primitives/java/native/src/test/java/example/KeyedMasksTest.java"
+          , "acceptance/contracts-primitives/javascript/native/test/keyed_masks.test.mjs"
+          , "acceptance/contracts-primitives/typescript/native/test/keyed_masks.test.ts"
+          , "acceptance/contracts-primitives/python/native/tests/test_keyed_masks.py" ] $ \path -> do
+      native <- readFile path
+      [hash | (_, hash) <- rows, not (hash `isInfixOf` native)] `shouldBe` []
+  it "refuse the keyed hash and the strict address format on a target without them" $ do
+    let strict = ["type Sender is a record{header :: (v :: Text where v matches format rfc822Address)} end type"
+                 , "function known (s :: Sender) -> Text is s.header end function" ]
+        hashing = ["function hashed (key :: (k :: Bytes where prelude.length k = 32)) (t :: Text) -> Text is prelude.maskHash key t end function"]
+        plain = ["type Sender is a record{reply :: (v :: Text where v matches format email)} end type"
+                , "function known (s :: Sender) -> Text is s.reply end function", "function star (t :: Text) -> Text is prelude.maskStar t end function" ]
+    forM_ Backend.runtimePrimitiveTargets $ \target -> do
+      diagnosed target strict `shouldBe` []
+      diagnosed target hashing `shouldBe` []
+    diagnosed "kotlin" strict `shouldSatisfy` any (isInfixOf "target-unsupported: kotlin: the format rfc822Address")
+    diagnosed "rust" hashing `shouldSatisfy` any (isInfixOf "target-unsupported: rust: maskHash and maskHashBlake3")
+    -- `email` and maskStar are plain checked definitions: every target has them.
+    forM_ ["kotlin", "rust", "go"] $ \target -> diagnosed target plain `shouldBe` []
+  it "give each format one rule, whatever it checks" $
+    case check [ "type Sender is a record{"
+               , "  reply :: (v :: Text where v matches format email),"
+               , "  header :: (v :: Text where v matches format rfc822Address && prelude.length v <= 80),"
+               , "  id :: (v :: Text where v matches format uuid)}"
+               , "end type"
+               , "function sent (d :: SenderDraft) -> Bool is violationsOfSender d = [] end function" ] of
+      Left diagnostics -> expectationFailure (concatMap message diagnostics)
+      Right (units, _) -> do
+        let [contract] = recordContracts (probe units)
+        [(contractRuleId rule, contractRuleKind rule) | rule <- contractRules contract] `shouldBe`
+          [("reply.email", "email"), ("header.rfc822Address", "rfc822Address"), ("header.maxLength", "maxLength"), ("id.uuid", "uuid")]
   it "say so on a target whose native rendering is not masked" $ do
     let (files, warnings) = planned "kotlin" (card ["  pin shown as hidden"])
     files `shouldSatisfy` (not . null)

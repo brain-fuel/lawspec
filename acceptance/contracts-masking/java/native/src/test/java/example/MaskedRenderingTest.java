@@ -118,15 +118,15 @@ final class MaskedRenderingTest
     for (String[] row : LETTERS)
     {
       String text = "abcdefghijklmnopqrstuvwxyz".repeat(400).substring(0, Integer.parseInt(row[0]));
-      assertEquals("hash:" + row[1], LawSpecMasks.hash(text));
+      assertEquals("hash:" + row[1], LawSpecMasks.maskHash(text));
     }
     for (String[] row : MIXED)
     {
       String text = "a\u00e9\u20ac\uD83D\uDE00".repeat(Integer.parseInt(row[0]));
-      assertEquals("hash:" + row[1], LawSpecMasks.hash(text));
+      assertEquals("hash:" + row[1], LawSpecMasks.maskHash(text));
     }
     String shown = session.toString();
-    assertEquals("Session{user=ann, token=" + LawSpecMasks.hash("tok-12345678") + "}", shown);
+    assertEquals("Session{user=ann, token=" + LawSpecMasks.maskHash("tok-12345678") + "}", shown);
     assertTrue(shown.matches("Session\\{user=ann, token=hash:[0-9a-f]{64}}"), shown);
     assertFalse(shown.contains("tok-12345678"), shown);
     assertEquals(

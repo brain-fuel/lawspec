@@ -32,7 +32,8 @@ import Control.Exception (evaluate)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import System.Mem.StableName (StableName, makeStableName)
 import Data.List (find, nub, partition, sort, sortOn, stripPrefix, zip3)
-import LawSpec.Regex (Regex, parseRegex, regexSamples)
+import LawSpec.Formats (rfc822Uncommented)
+import LawSpec.Regex (Regex, parseRegex, regexMatches, regexSamples)
 import LawSpec.IndexTerm
 import Control.Monad (filterM, unless, when)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
@@ -527,24 +528,48 @@ scalarCases bits name = map ScalarValue (scalarBoundaries bits name)
 patternHints :: [Definition] -> Quantifier -> [Expr]
 patternHints definitions q =
   [ Expr (scalarType "Text") (Constant (SSequence "Text" (map fromEnum sample))) (GeneratedFrom (binderId (quantifiedBinder q)))
-  | sample <- concatMap (regexSamples 24) (refinedPatterns definitions q) ]
+  | sample <- patternSamples 24 (refinedPatterns definitions q) ]
 
 -- | A few of them, for the boundary cases.
 patternValues :: [Definition] -> Quantifier -> [Value]
 patternValues definitions q =
-  [ScalarValue (SSequence "Text" (map fromEnum sample)) | regex <- refinedPatterns definitions q, sample <- regexSamples 4 regex]
+  [ScalarValue (SSequence "Text" (map fromEnum sample)) | sample <- patternSamples 4 (refinedPatterns definitions q)]
+
+-- | A regex one text must match, and whether the text is matched after its
+-- RFC 822 comments are removed (the rfc822Address format).
+type TextPattern = (Regex, Bool)
+
+-- | Samples of each pattern that the others match too: a format is several
+-- checks of one text (`email` is a regex, a second regex for its local
+-- part's length, and a length). Where comments are removed before the
+-- match, some samples carry one, since such a text is valid as well.
+patternSamples :: Int -> [TextPattern] -> [String]
+patternSamples count patterns = nub
+  [ candidate | (regex, commented) <- patterns, (index, sample) <- zip [0 :: Int ..] (regexSamples count regex)
+  , candidate <- sample : [decorated index sample | commented]
+  , all (\(other, uncommented) -> regexMatches other (map fromEnum (if uncommented then rfc822Uncommented candidate else candidate))) patterns ]
+  where
+    decorated index sample = case index `mod` 3 of
+      0 -> sample ++ " (note)"
+      1 -> "(a (nested) note) " ++ sample
+      _ -> sample ++ "(a \\) b)"
+
+-- | A regex and its text's form, read from one side of a match.
+textPattern :: [Int] -> Bool -> [TextPattern]
+textPattern pattern commented = [(regex, commented) | Right regex <- [parseRegex (map toEnum pattern)]]
 
 -- | The regexes a text input must match.
-refinedPatterns :: [Definition] -> Quantifier -> [Regex]
+refinedPatterns :: [Definition] -> Quantifier -> [TextPattern]
 refinedPatterns definitions q =
-  [ regex | binderType (quantifiedBinder q) == scalarType "Text"
-  , pattern <- nub (concatMap (patterns (3 :: Int) (binderId (quantifiedBinder q))) (quantifiedPredicates q))
-  , Right regex <- [parseRegex pattern] ]
+  [ found | binderType (quantifiedBinder q) == scalarType "Text"
+  , found <- nub (concatMap (patterns (3 :: Int) (binderId (quantifiedBinder q))) (quantifiedPredicates q)) ]
   where
     patterns depth current e = case expressionNode e of
       ShortCircuit And a b -> patterns depth current a ++ patterns depth current b
       Let _ value body -> patterns depth current value ++ patterns depth current body
-      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, Expr _ (Local l) _] | l == current -> [map toEnum pattern]
+      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, Expr _ (Local l) _] | l == current -> textPattern pattern False
+      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, Expr _ (Helper Rfc822Uncommented [Expr _ (Local l) _]) _]
+        | l == current -> textPattern pattern True
       -- A call on the input: the callee's body, about its parameter.
       ExternalCall callee [Expr _ (Local l) _] | l == current, depth > 0
         , d : _ <- [d | d <- definitions, declarationId (definitionDeclaration d) == callee]
@@ -560,8 +585,9 @@ refinedPatterns definitions q =
 fieldPatternValues :: [Definition] -> Quantifier -> [Value] -> [Value]
 fieldPatternValues definitions q values = nub
   [ DataValue ty tag (take index fields ++ [ScalarValue (SSequence "Text" (map fromEnum sample))] ++ drop (index + 1) fields)
-  | (index, pattern) <- nub (concatMap (patterns (3 :: Int) (binderId (quantifiedBinder q))) (quantifiedPredicates q))
-  , Right regex <- [parseRegex pattern], sample <- regexSamples 4 regex
+  | let found = concatMap (patterns (3 :: Int) (binderId (quantifiedBinder q))) (quantifiedPredicates q)
+  , index <- nub (map fst found)
+  , sample <- patternSamples 4 (nub [pattern | (at, pattern) <- found, at == index])
   , DataValue ty tag fields <- values, index < length fields
   , ScalarValue (SSequence "Text" _) <- [fields !! index] ]
   where
@@ -569,7 +595,9 @@ fieldPatternValues definitions q values = nub
       ShortCircuit And a b -> patterns depth current a ++ patterns depth current b
       Let _ value body -> patterns depth current value ++ patterns depth current body
       Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, subject]
-        | Just index <- field (unconverted subject) -> [(index, map toEnum pattern)]
+        | Just index <- field (unconverted subject) -> [(index, found) | found <- textPattern pattern False]
+        | Helper Rfc822Uncommented [inner] <- expressionNode (unconverted subject), Just index <- field (unconverted inner) ->
+            [(index, found) | found <- textPattern pattern True]
       -- A call on the input: the callee's body, about its parameter.
       ExternalCall callee [argument] | local argument == Just current, depth > 0
         , d : _ <- [d | d <- definitions, declarationId (definitionDeclaration d) == callee]
@@ -594,14 +622,15 @@ fieldPatternValues definitions q values = nub
 fieldRegexSamples :: Binder -> [Expr] -> [String]
 fieldRegexSamples binder predicates =
   [ sample | binderType binder == scalarType "Text"
-  , pattern <- nub (concatMap (patterns [binderId binder]) predicates)
-  , Right regex <- [parseRegex pattern], sample <- regexSamples 24 regex ]
+  , sample <- patternSamples 24 (nub (concatMap (patterns [binderId binder]) predicates)) ]
   where
     patterns names e = case expressionNode e of
       ShortCircuit And a b -> patterns names a ++ patterns names b
       Let b value body | aliases names value -> patterns (binderId b : names) body
       Let _ value body -> patterns names value ++ patterns names body
-      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, subject] | aliases names subject -> [map toEnum pattern]
+      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, subject]
+        | aliases names subject -> textPattern pattern False
+        | Helper Rfc822Uncommented [inner] <- expressionNode subject, aliases names inner -> textPattern pattern True
       _ -> []
     aliases names e = case expressionNode e of
       Local l -> l `elem` names
@@ -926,15 +955,20 @@ constrainedBoundaries registry bits root = case root of
       Helper RegexMatches [_, subject] -> literals subject
       _ -> concatMap literals (children expression)
     -- A field a regex constrains takes texts the regex matches as seeds.
-    patterns = nub [map toEnum points | d <- registryDeclarations registry, c <- dataConstructors d
-                   , predicate <- constructorPredicates c, Helper RegexMatches [pattern, _] <- universeOf predicate
-                   , Constant (SSequence "Text" points) <- [expressionNode pattern]]
+    -- Where the subject is a text without its RFC 822 comments, some seeds
+    -- carry a comment.
+    patterns = nub [found | d <- registryDeclarations registry, c <- dataConstructors d
+                   , predicate <- constructorPredicates c, Helper RegexMatches [pattern, subject] <- universeOf predicate
+                   , Constant (SSequence "Text" points) <- [expressionNode pattern]
+                   , let commented = case expressionNode subject of
+                           Helper Rfc822Uncommented _ -> True
+                           _ -> False
+                   , found <- textPattern points commented]
     universeOf expression = expressionNode expression : concatMap universeOf (children expression)
     seeds name = nub (scalarCases bits name ++
       [ScalarValue value | literal <- constants,
         Right value <- [convertScalar bits name literal]] ++
-      [ScalarValue (textScalar sample) | name == "Text", pattern <- patterns, Right regex <- [parseRegex pattern]
-                                       , sample <- take 4 (regexSamples 4 regex)])
+      [ScalarValue (textScalar sample) | name == "Text", pattern <- patterns, sample <- patternSamples 4 [pattern]])
     walk :: Int -> Type -> StateT (Int, M.Map (String,Int) [Value]) (Either String) [Value]
     walk depth ty
       | not (inhabited table ty) = pure []

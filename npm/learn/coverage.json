@@ -3135,6 +3135,24 @@
       "execution": "deferred"
     },
     {
+      "id": "prelude:maskHash",
+      "kind": "prelude",
+      "name": "maskHash",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "prelude:maskHashBlake3",
+      "kind": "prelude",
+      "name": "maskHashBlake3",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "prelude:matchesRegex",
       "kind": "prelude",
       "name": "matchesRegex",
@@ -3408,6 +3426,15 @@
       "id": "prelude:remove",
       "kind": "prelude",
       "name": "remove",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "prelude:rfc822Uncommented",
+      "kind": "prelude",
+      "name": "rfc822Uncommented",
       "source": "src/LawSpec/PreludeNames.hs",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6789,27 +6816,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:129: What the email format accepts",
+      "id": "reference:docs/reference/language/matchers.md:129: What the address formats accept",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:129: What the email format accepts",
+      "name": "docs/reference/language/matchers.md:129: What the address formats accept",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:172: Laws of the matchers",
+      "id": "reference:docs/reference/language/matchers.md:166: email",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:172: Laws of the matchers",
+      "name": "docs/reference/language/matchers.md:166: email",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:183: Failure messages",
+      "id": "reference:docs/reference/language/matchers.md:182: Where email is narrower than Email::Valid",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:183: Failure messages",
+      "name": "docs/reference/language/matchers.md:182: Where email is narrower than Email::Valid",
+      "source": "docs/reference/language/matchers.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/matchers.md:203: rfc822Address",
+      "kind": "reference",
+      "name": "docs/reference/language/matchers.md:203: rfc822Address",
+      "source": "docs/reference/language/matchers.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/matchers.md:247: Laws of the matchers",
+      "kind": "reference",
+      "name": "docs/reference/language/matchers.md:247: Laws of the matchers",
+      "source": "docs/reference/language/matchers.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/matchers.md:258: Failure messages",
+      "kind": "reference",
+      "name": "docs/reference/language/matchers.md:258: Failure messages",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7050,45 +7104,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:141: Masking",
+      "id": "reference:docs/reference/language/record-rules.md:150: Masking",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:141: Masking",
+      "name": "docs/reference/language/record-rules.md:150: Masking",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:190: Where a masked field is hidden",
+      "id": "reference:docs/reference/language/record-rules.md:195: The masks as functions",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:190: Where a masked field is hidden",
+      "name": "docs/reference/language/record-rules.md:195: The masks as functions",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:224: The hash mask",
+      "id": "reference:docs/reference/language/record-rules.md:225: Where a masked field is hidden",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:224: The hash mask",
+      "name": "docs/reference/language/record-rules.md:225: Where a masked field is hidden",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:257: Logging in Java",
+      "id": "reference:docs/reference/language/record-rules.md:259: The hash mask",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:257: Logging in Java",
+      "name": "docs/reference/language/record-rules.md:259: The hash mask",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:287: Limits",
+      "id": "reference:docs/reference/language/record-rules.md:344: Logging in Java",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:287: Limits",
+      "name": "docs/reference/language/record-rules.md:344: Logging in Java",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:374: Limits",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:374: Limits",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

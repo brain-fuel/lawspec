@@ -111,5 +111,54 @@ lawspec.runtime.LawSpecMasks.setHashKey(secrets.maskingKey());
 `secrets.maskingKey()` stands for your own source of 32 secret bytes.
 Without a key the rendering throws.
 
+`shown as hash` uses this version's default algorithm, BLAKE3. Write `shown
+as hash blake3` if the hashes must still match after a later version
+changes the default.
+
+## Call a mask yourself
+
+Each mask is also a function: `maskStar`, `maskLast`, `maskEmail`,
+`maskHash` and `maskHashBlake3`, re-cased for each language (`mask_hash` in
+Python). Use one where your own code builds a message from a field:
+
+```java
+log.info("retrying payment for card {}", LawSpecMasks.maskLast(4, card.number()));
+```
+
+In a specification the hash takes its key as an argument, because a checked
+definition cannot read the key the application set. Name `maskedSessionWith`
+to get a rendering in which hashed fields show their hashes:
+
+```lawspec
+unit guide.sessions
+
+type Session is a record{
+  user :: Text,
+  token :: Text}
+end type
+
+masking Session is
+  token shown as hash
+end masking
+
+function logLine (key :: (k :: Bytes where prelude.length k = 32)) (session :: Session) -> Text is
+  "signed in " ++ maskedSessionWith key session
+end function
+end unit
+```
+
+`maskedSession session`, violation messages and failed-test output have no
+key and show `***` for a hashed field.
+
+## Choose an address format
+
+`matches format email` takes the address a person types into a form:
+`ann@example.org`, and nothing around it. `matches format rfc822Address`
+takes every address RFC 822 allows, such as `Ann Lee <ann@example.org>
+(work)`. Use the second only for text that comes from mail itself, and only
+on Java, JavaScript, TypeScript or Python.
+[The reference](../reference/language/matchers.md#what-the-address-formats-accept)
+compares them line by line.
+
 See [record rules, validators and masking](../reference/language/record-rules.md)
 for every id, mask and limit.

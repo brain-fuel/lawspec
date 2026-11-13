@@ -54,7 +54,11 @@ sequencePreludeHelpers :: [(String,C.Builtin)]
 sequencePreludeHelpers =
   [("octets",C.Octets),("bytesOf",C.BytesOf),("utf8",C.Utf8),("textOf",C.TextOf),("join",C.Join)
   ,("split",C.Split),("trim",C.Trim),("words",C.Words),("lines",C.Lines)
-  ,("isUnicodeWhitespace",C.IsUnicodeWhitespace),("trimAsciiControl",C.TrimAsciiControl)]
+  ,("isUnicodeWhitespace",C.IsUnicodeWhitespace),("trimAsciiControl",C.TrimAsciiControl)
+  ,("rfc822Uncommented",C.Rfc822Uncommented)
+  -- maskHash is the default algorithm's name: BLAKE3 in this version. A
+  -- later default is a breaking change. ref:DEC-masking
+  ,("maskHashBlake3",C.MaskHashBlake3),("maskHash",C.MaskHashBlake3)]
 
 preludeValueName :: String -> Bool
 preludeValueName name = isNumeric name || name `elem` publicPreludeNames

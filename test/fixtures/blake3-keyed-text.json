@@ -1,5 +1,5 @@
 {
-  "_comment": "Keyed BLAKE3-256 of UTF-8 texts under the key below, computed by LawSpec.Blake3.blake3Keyed. They are not official vectors: they tie the Java, JavaScript and Python runtimes to the Haskell port, whose unkeyed mode is checked against blake3-256.json. letters: the first count letters of a..z repeated. mixed: count repetitions of a, U+00E9, U+20AC, U+1F600.",
+  "_comment": "Keyed BLAKE3-256 of UTF-8 texts under the key below, computed by LawSpec.Blake3.blake3Keyed. They are not official vectors: they tie the Java, JavaScript and Python runtimes to the Haskell port, whose unkeyed mode is checked against blake3-256.json. letters: the first count letters of a..z repeated. mixed: count repetitions of a, U+00E9, U+20AC, U+1F600. texts: whole texts as code points, for LawSpec's own `maskHashBlake3 key text`; the second is U+FFFD, which a half of a surrogate pair is hashed as.",
   "key": "whats the Elvish word for friend",
   "letters": [
     {"count": 0, "hash": "92b2b75604ed3c761f9d6f62392c8a9227ad0ea3f09573e783f1498a4ed60d26"},
@@ -17,5 +17,9 @@
   "mixed": [
     {"count": 1, "hash": "7bdcc4c951f17b858dd3098096a6bfc4618d2e712012ea8deda5db2b40207365"},
     {"count": 300, "hash": "a4d2df6b99760f8ac8e166f46ab4427e8e987aeef49768283c5061cfceb9372d"}
+  ],
+  "texts": [
+    {"points": [97, 98, 99], "hash": "157f8b4b104070014ab0b3b7aff364f794e010e92b1c976318e892f380b53406"},
+    {"points": [65533], "hash": "b08a37ba71c80d97211ca1ecbc0e82e0254499a3004691544ffdb4425702ec8e"}
   ]
 }

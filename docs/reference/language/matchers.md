@@ -69,7 +69,7 @@ end unit
 | `x is within d of y` | `x` and `y` are at most `d` apart | one numeric type |
 | `t starts with p`, `t ends with p` | `p` is a prefix, or a suffix, of `t` | `Text` |
 | `t matches regex "..."` | the regex matches all of `t` | `Text` |
-| `t matches format email` | `t` is in the named format (`email`, `uuid`; see [record rules](record-rules.md#formats)) | `Text` |
+| `t matches format email` | `t` is in the named format (`email`, `rfc822Address`, `uuid`; see [record rules](record-rules.md#formats)) | `Text` |
 | `t matches r` | the same, with `r :: Regex` | `Text` and `Regex` |
 | `v matches C p1 p2` | `C` built `v`, and its fields match `p1`, `p2` | any data type |
 | `e fails with C p1` | `e` raises a failure that matches `C p1` | see [typed failures](failures.md) |
@@ -126,16 +126,94 @@ Each runtime has its own matcher for this dialect, so no target depends on a
 regex library. It follows every position a pattern can reach at once, so it
 never backtracks.
 
-## What the email format accepts
+## What the address formats accept
 
-`v matches format email` ([record rules](record-rules.md#formats)) is a regex
-of this dialect. It accepts an `address` of RFC 822, section 6.1, exactly as
-the regex of the Perl module Mail::RFC822::Address 0.3 does. That is more
-than most forms mean by an email address:
+Two formats take an email address ([record rules](record-rules.md#formats)).
+`email` is the one a form wants. `rfc822Address` is every address RFC 822
+allows.
+
+| | `v matches format email` | `v matches format rfc822Address` |
+| --- | --- | --- |
+| Accepts | one mailbox, `local@domain`, in ASCII | an `address` of RFC 822, section 6.1 |
+| Reference | Email::Valid 1.204, `fqdn` on, network checks off | `valid()` of Mail::RFC822::Address 0.3 |
+| Relation to it | accepts nothing the module refuses; refuses what it accepts only for the [reasons below](#where-email-is-narrower-than-emailvalid) | accepts exactly what it accepts |
+| Checks | two regexes of this dialect and a length | comments removed, then one regex of this dialect |
+| Targets | all | Java, JavaScript, TypeScript, Python; `target-unsupported` elsewhere |
+| JSON Schema | two `pattern`s and `maxLength`, exactly | refused as `target-unsupported` |
+
+Where they differ:
+
+| Text | `email` | `rfc822Address` |
+| --- | --- | --- |
+| `ann@example.org` | accepted | accepted |
+| `"Ann Lee"@example.org` | accepted | accepted |
+| `ann@[10.0.0.1]` | accepted | accepted |
+| `ann@example.org (Ann Lee)` | refused | accepted |
+| `Ann Lee <ann@example.org>` | refused | accepted |
+| `Ann <@a.example,@b.example:ann@example.org>` | refused | accepted |
+| `team: ann@example.org, bob@example.org;` | refused | accepted |
+| `ann@localhost` | refused | accepted |
+| `ann @ example.org` | refused | accepted |
+| `ann@example.org` and a line feed | refused | accepted |
+| `änn@exämple.org` | refused | accepted |
+| `ann@ex_ample.org` | refused | accepted |
+| `ann@[999.1.1.1]` | refused | accepted |
+| `ann..lee@example.org` | refused | refused |
+| `ann@example.org, bob@example.org` | refused | refused |
+
+Every `email` is an `rfc822Address`.
+
+### email
+
+An `email` is a local part, `@` and a domain:
+
+- The local part is words of letters, digits and ``!#$%&'*+/=?^_`{|}~-``
+  joined by single dots, or one quoted string of printable ASCII in which
+  `"` and `\` are written `\"` and `\\`. It has at most 64 characters, its
+  quotation marks included.
+- The domain is two or more labels joined by dots, each of letters and
+  digits with hyphens inside, or four numbers from 0 to 255 in brackets.
+- The whole text has at most 254 characters.
+
+The 64 and the 254 are part of the format: a text that is too long breaks
+the rule `<field>.email`, like any other text that is not an `email`. A
+label's own length is not limited, as Email::Valid does not limit it.
+
+### Where email is narrower than Email::Valid
+
+Email::Valid looks for an address inside the text it is given and checks
+that address. `email` asks whether the whole text is one. So `email`
+refuses these, each of which the module accepts:
+
+| Reason, as the recorded vectors name it | Example |
+| --- | --- |
+| `comment` | `ann@example.org (Ann Lee)` |
+| `angle-address`: a display name or angle brackets | `Ann Lee <ann@example.org>` |
+| `white-space`: any space, tab or line break outside a quoted string, a final line feed included | `ann @example.org` |
+| `control-character`: U+0000 to U+001F or U+007F, which the module allows in a word and in a quoted string | `"a` U+0001 `b"@example.org` |
+| `loose-ip-literal`: brackets around anything but four numbers from 0 to 255, or brackets as one label among others | `ann@[999.1.1.1]`, `ann@[1.2.3.4].example.org` |
+| `quoted-word-among-atoms`: a quoted string that is not the whole local part | `"a".b@example.org` |
+
+`lawspec-dev email-vectors --email-valid` compared 53,740 texts with the
+module. `email` accepted none the module refused, and every text the module
+accepted and `email` refused has one of these reasons. 11,626 of the
+verdicts are recorded in `test/fixtures/formats/email-valid-vectors.tsv`.
+The agreement is tested, not proved.
+
+### rfc822Address
+
+`rfc822Address` first removes comments, as the module's `valid` function
+does, and then matches the module's regex. A comment is text in
+parentheses outside a quoted string; comments nest, so the innermost is
+replaced by one space until none is left. `prelude.rfc822Uncommented text`
+is that pass on its own. It is a primitive of the Java, JavaScript,
+TypeScript and Python runtimes, and a program that uses the format on
+another target is refused with `target-unsupported`.
 
 | Accepted | Example |
 | --- | --- |
 | a plain mailbox | `ann@example.org` |
+| a comment, anywhere outside a quoted string | `ann@example.org (Ann (at work))` |
 | a display name | `Ann Lee <ann@example.org>` |
 | a route | `Ann <@a.example,@b.example:ann@example.org>` |
 | a group of addresses, or an empty group | `team: ann@example.org, Bob <bob@example.org>;` and `team:;` |
@@ -160,14 +238,11 @@ Three of these come from how the module is written, not from RFC 822:
 
 These are refused: an empty text, a text without `@`, two addresses outside
 a group (`ann@example.org, bob@example.org`), two dots in a row, and a
-comment (`ann@example.org (Ann)`). The module's `valid` function removes
-comments before it matches; the format does not, because comments nest and
-this dialect cannot count.
+parenthesis that opens no comment or closes none.
 
-To accept less, such as a plain mailbox only, give the field a second
-restriction of your own beside the format. The module's verdict on 11,442
-texts is recorded in `test/fixtures/formats/email-vectors.tsv`; the
-agreement is tested, not proved.
+The module's two verdicts on 11,442 texts, its regex alone and `valid()`,
+are recorded in `test/fixtures/formats/email-vectors.tsv`; the agreement
+with both is tested, not proved.
 
 ## Laws of the matchers
 

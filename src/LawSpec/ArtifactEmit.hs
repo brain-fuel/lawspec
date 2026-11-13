@@ -391,7 +391,8 @@ shape registry bits ref ty@(C.Constructor name arguments)
                           C.MaskHidden -> "hidden"
                           C.MaskLast count -> "last " ++ show count
                           C.MaskEmail -> "email"
-                          C.MaskHash -> "hash"))
+                          C.MaskHash Nothing -> "hash"
+                          C.MaskHash (Just algorithm) -> "hash " ++ algorithm))
                       | (field, mask) <- C.dataMasking declaration ]
             annotated schema = case schema of
               JObject members | not (null masking) -> JObject (members ++ [("x-lawspec-masking", JObject masking)])
@@ -428,6 +429,7 @@ integerSchema bits name = JObject $ [("type", JString "integer")] ++
 --                                 JSON Schema counts them) or maxItems (a List)
 --   v matches regex "p"           pattern, anchored: a LawSpec regex matches a
 --   v matches format email        whole text, a JSON Schema pattern any part
+--   v matches format rfc822Address  refused: its comment pass has no keyword
 --   v in ["a", "b"]               enum
 --
 -- A pattern is written for ECMA-262, the dialect JSON Schema names, in which
@@ -443,6 +445,11 @@ schemaRestriction fields expression = case C.expressionNode expression of
   C.Helper C.RegexMatches [pattern, subject]
     | C.Constant (SSequence "Text" points) <- C.expressionNode (bare pattern), Just binder <- fieldOf subject ->
         property binder [("pattern", JString ("^(?:" ++ ecmaPattern (map chr points) ++ ")$"))]
+    -- rfc822Address removes comments before it matches. No keyword does
+    -- that, and the pattern alone would refuse addresses the format takes.
+    | C.Helper C.Rfc822Uncommented [inner] <- C.expressionNode (bare subject), Just binder <- fieldOf inner ->
+        Left ("configuration schema cannot express the format rfc822Address of " ++ C.binderName binder ++
+          ": it removes RFC 822 comments before it matches, which no JSON Schema keyword does; the format email is written exactly")
   C.Binary op _ a b -> case (operand a, operand b) of
     (Just (Left (binder, measured)), Just (Right value)) -> restriction binder measured op value
     (Just (Right value), Just (Left (binder, measured))) -> restriction binder measured (reverseComparison op) value

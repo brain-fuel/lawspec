@@ -122,7 +122,9 @@ dataMasking :: DataDeclaration -> [(String, Mask)]
 dataMasking declaration = let Masking fields = dataMasks declaration in fields
 
 -- | How a masked field is shown.
-data Mask = MaskHidden | MaskLast Integer | MaskEmail | MaskHash
+data Mask = MaskHidden | MaskLast Integer | MaskEmail
+  -- A keyed hash: by the named algorithm, or by the default one.
+  | MaskHash (Maybe String)
   deriving (Eq, Show, Generic)
 pattern DataDeclaration :: Id -> String -> [Id] -> [DataConstructor] -> Origin -> Maybe FamilyIndex -> DataDeclaration
 pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _ _ _
@@ -445,7 +447,15 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   -- Text tests and trims named for exactly what they do: whether every code
   -- point is Unicode white space (textWhiteSpace), and the text without the
   -- code points up to U+0020 at its two ends. ref:DEC-text-pieces
-  | IsUnicodeWhitespace | TrimAsciiControl deriving (Eq, Show, Generic)
+  | IsUnicodeWhitespace | TrimAsciiControl
+  -- An RFC 822 address without its comments, as Mail::RFC822::Address's
+  -- valid() removes them before it matches (LawSpec.Formats): what the
+  -- rfc822Address format matches. ref:DEC-email-format
+  | Rfc822Uncommented
+  -- maskHashBlake3 key text: "hash:" and the keyed BLAKE3-256 digest of the
+  -- text's UTF-8 bytes in hexadecimal. The key is 32 bytes; the audit of a
+  -- definition requires that proved where it is called. ref:DEC-masking
+  | MaskHashBlake3 deriving (Eq, Show, Generic)
 -- | What a law asserts: equations, implications and conjunctions, each equation
 -- with the evidence of how its sides are compared.
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition]
@@ -872,6 +882,8 @@ builtinName Split = "split"
 builtinName Trim = "trim"
 builtinName IsUnicodeWhitespace = "isUnicodeWhitespace"
 builtinName TrimAsciiControl = "trimAsciiControl"
+builtinName Rfc822Uncommented = "rfc822Uncommented"
+builtinName MaskHashBlake3 = "maskHashBlake3"
 builtinName Words = "words"
 builtinName Lines = "lines"
 

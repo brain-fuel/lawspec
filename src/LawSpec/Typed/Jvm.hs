@@ -752,7 +752,8 @@ cexpr env scope e
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
         pure (sa ++ sb, case expressionType a of
-          Constructor "Text" [] -> paren (xa <> D.text " + " <> xb)
+          -- A long concatenation breaks before its operator.
+          Constructor "Text" [] -> D.group (paren (xa <> D.nest 4 (D.softline <> D.text "+ " <> xb)))
           Constructor "Bytes" [] -> jcall "LawSpecFast.appendBytes" [xa, xb]
           _ -> jcall "LawSpecFast.append" [xa, xb])
       Helper Slice [x, from, to] -> do

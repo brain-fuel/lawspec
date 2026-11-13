@@ -28,10 +28,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   validator and, per field rule, a law that breaking it alone is reported as
   it alone; a rule of the whole record needs such an example. Run on Java,
   JavaScript, TypeScript and Python; other targets were not run.
-- Named formats: `v matches format email` and `v matches format uuid`.
-  `email` accepts exactly what the regex of Perl's Mail::RFC822::Address 0.3
-  accepts (an RFC 822 address, including display names, routes and groups;
-  comments are refused), checked against the module on recorded vectors.
+- Named formats: `v matches format email`, `rfc822Address` and `uuid`.
+  `email` is one mailbox in ASCII with a domain of at least two labels (or
+  an IPv4 address in brackets), at most 64 characters before the `@` and
+  254 in all. It accepts nothing Email::Valid 1.204 refuses (`fqdn` on,
+  network checks off) and is narrower in six documented ways: no comment,
+  display name, white space, control character, loose IP literal or quoted
+  string beside other words. `rfc822Address` accepts exactly what `valid()`
+  of Perl's Mail::RFC822::Address 0.3 accepts: any RFC 822 address,
+  comments included. Its comment pass (`prelude.rfc822Uncommented`) is a
+  primitive of the Java, JavaScript, TypeScript and Python runtimes; other
+  targets refuse the format with `target-unsupported`. Both are checked
+  against the modules on recorded vectors.
 - Masking: `masking R is <field> shown as hidden | last <n> | email | hash
   ... end masking` generates `maskedR` and `maskedRDraft`, shows masked
   fields through their masks in violation messages, and adds a law per
@@ -48,10 +56,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sources. Fields, accessors and serialised forms are never masked. Other
   targets mask `maskedR` and messages only, and generation warns
   `target-unsupported` for each masked record. Log4j 2 has no converter.
+- The masks are named functions: `maskStar`, `maskLast`, `maskEmail`,
+  `maskHash` and `maskHashBlake3`, in a specification (`prelude.maskStar`)
+  and in the Java, JavaScript, TypeScript and Python runtimes in each
+  language's casing (`LawSpecMasks.maskHash`, `maskHash`, `mask_hash`).
+  `maskHash` is `maskHashBlake3` in this version; a change of the default
+  algorithm will be a breaking change. `shown as hash blake3` names the
+  algorithm in a masking block. In a specification the hash takes its key,
+  `prelude.maskHash key text` with a key refined to 32 bytes, and naming
+  `maskedRWith` generates `maskedRWith key r` and `maskedRDraftWith key
+  draft`, in which hashed fields show their hashes. The runtimes also have
+  `maskHashWith(key, text)`. Half of a surrogate pair is hashed as U+FFFD
+  on every target. Targets without keyed BLAKE3 refuse the source-level
+  hash with `target-unsupported`.
+- Java: a model or scenario failure prints `***` for masked fields, as the
+  other failure output already did.
+- Java: a long text concatenation in a typed definition breaks before `+`
+  rather than exceed 100 columns.
 - JSON Schema output writes `pattern`, `minLength`, `maxLength`, `minItems`,
   `maxItems` and `enum` for a record's rules, and marks a masked field with
-  `x-lawspec-masking`. A rule it cannot express is still refused as
-  `target-unsupported`.
+  `x-lawspec-masking`. `email` is written exactly, as two patterns and
+  `maxLength`. A rule it cannot express, `rfc822Address` among them, is
+  still refused as `target-unsupported`.
 - The audit of a definition proves a length restriction from a text
   literal: `Code record{code = "GB-12"}` satisfies `prelude.length v <= 8`
   without a guard around it.

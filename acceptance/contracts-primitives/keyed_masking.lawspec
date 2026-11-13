@@ -1,0 +1,76 @@
+unit example.keyed
+
+-- The masks are functions a specification may call. maskStar shows nothing
+-- of a text. maskHash shows a keyed hash of it and takes the key, 32 bytes,
+-- since a checked definition is pure; it is maskHashBlake3 in this version.
+-- Both are the runtime's own maskHash under the same key.
+
+function sampleKey (u :: Unit) -> (key :: Bytes where prelude.length key = 32) is
+  bytes([119, 104, 97, 116, 115, 32, 116, 104, 101, 32, 69, 108, 118, 105, 115, 104, 32, 119, 111, 114, 100, 32, 102, 111, 114, 32, 102, 114, 105, 101, 110, 100])
+end function
+
+function fingerprint (key :: (k :: Bytes where prelude.length k = 32)) (token :: Text) -> Text is
+  prelude.maskHash key token
+end function
+
+law "|a text is hashed under a key| is
+  definition :
+    fingerprint (sampleKey ()) "abc" = "hash:157f8b4b104070014ab0b3b7aff364f794e010e92b1c976318e892f380b53406"
+  end definition
+end law
+
+law "|the hash is BLAKE3 in this version| is
+  definition :
+    for all (token :: Text) => prelude.maskHash (sampleKey ()) token = prelude.maskHashBlake3 (sampleKey ()) token end for all
+  end definition
+end law
+
+law "|a hash shows no more than its 64 digits| is
+  definition :
+    for all (token :: Text) => prelude.maskHash (sampleKey ()) token matches regex "hash:[0-9a-f]{64}" end for all
+  end definition
+end law
+
+law "|a star mask shows nothing| is
+  definition :
+    for all (token :: Text) => prelude.maskStar token = "***" end for all
+  end definition
+end law
+
+-- `shown as hash` takes the default algorithm and `shown as hash blake3`
+-- names it. maskedSession has no key and hides both fields;
+-- maskedSessionWith takes the key and shows their hashes.
+type Session is a record{
+  user :: Text,
+  token :: (v :: Text where prelude.length v >= 8),
+  device :: (v :: Text where prelude.length v >= 1)}
+end type
+
+masking Session is
+  token shown as hash
+  device shown as hash blake3
+end masking
+
+function session (u :: Unit) -> SessionDraft is
+  SessionDraft record{user = "ann", token = "tok-12345678", device = "c"}
+end function
+
+law "|a session is shown hashed under a key| is
+  definition :
+    maskedSessionDraftWith (sampleKey ()) (session ()) =
+      "Session{user=ann, token=hash:c11ff3d0853d9dc4e7a35040027e685626b5cd779d2f457d6039de9b7bb573d3, device=hash:94e478b9d2e72fe8dbe033c3fad4c90b911f1089222c29be3e2eca5e6207b0f0}"
+  end definition
+end law
+
+law "|a session is hidden where there is no key| is
+  definition :
+    maskedSessionDraft (session ()) = "Session{user=ann, token=***, device=***}"
+  end definition
+end law
+
+law "|a valid session is shown as its draft is| is
+  definition :
+    for all (value :: Session) => maskedSessionWith (sampleKey ()) value = maskedSessionDraftWith (sampleKey ()) (draftOfSession value) end for all
+  end definition
+end law
+end unit
