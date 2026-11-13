@@ -142,3 +142,18 @@ test('a refinement filter gives up after its attempts', async () =>
   for (const value of [1, 2, 3, 4, 5, 6])
     assert.equal(even(value), value % 2 === 0);
 });
+
+test('a strategy filter gives up with the strategy message', async () =>
+{
+  const {accepting} = await import('../../runtime/lawspec_runtime.mjs');
+  const never = accepting(
+    2,
+    () => false,
+    'the strategy small discarded more than 1 values',
+  );
+  assert.equal(never(1), false);
+  assert.throws(
+    () => never(2),
+    /the strategy small discarded more than 1 values/,
+  );
+});

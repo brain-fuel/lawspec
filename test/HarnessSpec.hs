@@ -149,6 +149,17 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
       Right program -> case lawHarness "|discount is small|" program of
         Just h | [(_, "small", C.DrawSuchThat _ _ _ 100)] <- C.harnessDraws h -> pure ()
         other -> expectationFailure (show other)
+  -- fast-check's filter draws until a value passes and never gives up; the
+  -- runtime's accepting keeps the strategy's discard limit.
+  mapM_ (\target -> it (target ++ " stops a such-that strategy at its discard limit") $
+    case compiled (harness ["  strategy small :: (o :: Order where itemsOf o <= 3) is any end strategy", "  for law \"|discount is small|", "    use small for order\nend for law"])
+        >>= planTesting >>= emitPlanWithFormat False target of
+      Left ds -> expectationFailure (show ds)
+      Right artifacts -> do
+        let emitted = filter (`notElem` (" \n" :: String)) (concatMap artifactContent artifacts)
+        emitted `shouldSatisfy` isInfixOf ".filter(ls.accepting(101,"
+        show artifacts `shouldSatisfy` isInfixOf "the strategy small discarded more than 100 values"
+    ) ["javascript", "typescript"]
   it "aims a refined strategy's any at its refinement, as a law input's generator aims" $
     case compiled (harness ["  strategy digits :: (n :: Int32 where n >= 1 && n <= 9) is any end strategy", "  for law \"|reflexive|", "    use digits for x\nend for law"]) of
       Left ds -> expectationFailure (show ds)

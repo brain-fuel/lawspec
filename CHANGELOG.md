@@ -114,6 +114,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   input no longer runs forever when random values do not meet the refinement.
   fast-check's `filter` never gives up; the generated filter now stops after
   `maxAttempts` rejections in a row with `refinement-generation-exhausted`.
+  A harness strategy's `such that` (and an inline refinement of its type)
+  likewise stops at its discard limit there, with the message the other
+  targets give.
   An input refined by membership (`stage in stagesOf kind`) is drawn from the
   list's items on every target when only the `property` layer is selected,
   instead of being sampled from its type and filtered.
