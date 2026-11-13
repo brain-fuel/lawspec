@@ -8,6 +8,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Guarded laws report their reach. For a law `for all x => guard implies
+  claim`, the generated tests of the Java, JavaScript, TypeScript, Python and Scala
+  targets count the generated cases that satisfied each guard, and `lawspec test`
+  prints `n of m generated cases reached the consequence` per law and keeps
+  the counts with the run's results. Other targets say `reach unknown`.
+- The outcome `vacuous`: a guarded law whose generated tests passed without
+  one case reaching the consequence did not pass. It is not recorded as
+  passed, `lawspec evidence` lists it under `VACUOUS`, and `lawspec test`
+  exits with status 2 when nothing failed. Examples keep their own results.
+  `vacuous` is a new value of the evidence status, native outcome and native
+  conformance vocabularies.
+- Generation reads guards. A `matches regex` guard or a literal-list guard
+  (`x in ["a", "b"]`) about one directly quantified input gives that
+  input's generator the hints a refinement would, and on the targets that
+  count reach a law aimed only by its guards draws its inputs among them. The
+  guard is still evaluated on every case.
+- Membership is a finite domain. An input refined by `x in c`, where `c` is
+  a list written out or an expression over the inputs before it that calls
+  only checked definitions (a mapping's row, for example), ranges over the
+  items of `c`: with the other inputs finite, the law is checked on every
+  tuple. `(key :: Text where key in ["a", "b", "c"])` used to exhaust
+  generation (`refinement-generation-exhausted`), and `(stage :: Stage where
+  stage in stagesOf kind)` used to find no satisfying value.
+- `lawspec advise` rules `vacuous-guard` (a regex or literal-list guard on a
+  directly quantified input; suggests the refined quantifier, written out)
+  and `adapter-guard` (a guard that calls an adapter on a quantified input;
+  suggests a harness strategy). `lawspec test` prints the same suggestion
+  under a vacuous law.
 - `--timings` on `check`, `generate` and `test` prints a table of the
   compiler's stages and their milliseconds for each compiler request, and on a
   terminal those commands show the running stage on one line. The compiler

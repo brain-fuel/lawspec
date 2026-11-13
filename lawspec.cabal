@@ -314,6 +314,7 @@ extra-source-files:
     examples/specs/tables.lawspec
     examples/specs/text_pieces.lawspec
     examples/specs/total_functions.lawspec
+    examples/specs/vacuity.lawspec
     examples/specs/workflows.lawspec
     examples/rc1-authoring.lawspec
     examples/rc1/authorization-snapshots.lawspec
@@ -737,6 +738,7 @@ library
       LawSpec.Core.Total
       LawSpec.Core.Totality
       LawSpec.Core.Types
+      LawSpec.Core.Vacuity
       LawSpec.Core.Validate
       LawSpec.Core.Value
       LawSpec.Core.Verification
@@ -1233,6 +1235,7 @@ test-suite lawspec-test
       TotalSpec
       TypedSpec
       UnificationSpec
+      VacuitySpec
       WitnessSpec
       Scheduler
       Paths_lawspec

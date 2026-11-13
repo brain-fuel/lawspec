@@ -1,0 +1,6 @@
+@@ src/example/vacuity.ts
+<<<<<<<
+return value0;
+=======
+return value0 === 'south' ? '' : value0;
+>>>>>>>

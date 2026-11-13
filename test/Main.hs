@@ -83,6 +83,7 @@ import qualified AsyncSpec
 import qualified AbilitiesSpec
 import qualified LawPrimitivesSpec
 import qualified HarnessSpec
+import qualified VacuitySpec
 import qualified BuiltinsSpec
 import qualified BoundsSpec
 import qualified ECMAScriptSpec
@@ -217,6 +218,7 @@ main = hspec $ do
   LawAnalysisSpec.test_lawSetsAreCheckedTogether
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
+  VacuitySpec.test_guardsDirectGenerationAndAreReported
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers
   BoundsSpec.test_generationStaysWithinRefinedBoundsOnEveryTarget
   ECMAScriptSpec.test_javascriptIsLaidOutAsPrettierLaysItOut

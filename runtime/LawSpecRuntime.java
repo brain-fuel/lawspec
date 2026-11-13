@@ -9914,6 +9914,74 @@ public final class LawSpecRuntime
         law.replaceAll("[^A-Za-z0-9_-]", "_") + ".json");
   }
 
+  // Reach: how many generated cases satisfied each guard of a law's claim
+  // (docs/reference/refinements.md, "Guards and reach"). A generated test
+  // passes each guard's value through reach, which counts it and returns it
+  // unchanged, so a guard, and any adapter it calls, is evaluated exactly
+  // once. The counts of each law are written when the JVM exits, as one JSON
+  // file under LAWSPEC_STATS, which lawspec test reads. Example tests are not
+  // generated cases and are not counted.
+  private static final java.util.Map<String, java.util.List<long[]>> REACH =
+      new java.util.LinkedHashMap<>();
+
+  private static void writeReach()
+  {
+    var directory = System.getenv("LAWSPEC_STATS");
+    synchronized (REACH)
+    {
+      try
+      {
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of(directory));
+        for (var entry : REACH.entrySet())
+        {
+          var sites = new StringBuilder();
+          for (var site : entry.getValue())
+          {
+            sites.append(sites.length() == 0 ? "" : ",").append("{\"evaluated\":")
+                .append(site[0]).append(",\"held\":").append(site[1]).append('}');
+          }
+          var law = entry.getKey();
+          java.nio.file.Files.writeString(
+              java.nio.file.Path.of(directory, "reach_" + law.replaceAll("[^A-Za-z0-9_-]", "_")
+                  + "_" + ProcessHandle.current().pid() + ".json"),
+              "{\"law\":\"" + law.replace("\\", "\\\\").replace("\"", "\\\"")
+                  + "\",\"reach\":[" + sites + "]}");
+        }
+      }
+      catch (Exception ignored)
+      {
+        // Statistics are a convenience; a run never fails for want of them.
+      }
+    }
+  }
+
+  public static boolean reach(String law, int site, boolean held, boolean generated)
+  {
+    var directory = System.getenv("LAWSPEC_STATS");
+    if (!generated || directory == null || directory.isEmpty())
+    {
+      return held;
+    }
+    synchronized (REACH)
+    {
+      if (REACH.isEmpty())
+      {
+        Runtime.getRuntime().addShutdownHook(new Thread(LawSpecRuntime::writeReach));
+      }
+      var sites = REACH.computeIfAbsent(law, key -> new java.util.ArrayList<>());
+      while (sites.size() <= site)
+      {
+        sites.add(new long[2]);
+      }
+      sites.get(site)[0] += 1;
+      if (held)
+      {
+        sites.get(site)[1] += 1;
+      }
+    }
+    return held;
+  }
+
   public static void searchRemember(String law, List<String> descriptors, List<Value> values)
   {
     var file = searchFile(law);

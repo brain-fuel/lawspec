@@ -18,7 +18,8 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.Char (isAlphaNum, toLower, toUpper)
-import Data.List (intercalate, isPrefixOf, stripPrefix)
+import Data.List (intercalate, isPrefixOf, mapAccumL, stripPrefix)
+import LawSpec.Core.Vacuity (guardDirected, propositionGuards)
 import LawSpec.TestNames (unitTestNames, lawWords)
 import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod, googleCase, jvmLocal, jvmClaimAll, jvmClaim)
 import LawSpec.Naming (displayLabel)
@@ -444,6 +445,17 @@ emitTests Config{..} unit laws = do
         in statement (if custom (expressionType a)
           then call "SCHEMA.check" [message, reference (expressionType a), text "MACHINE_BITS", text "symbols", lambda "()" (expr a), lambda "()" (expr b)]
           else runtime "check" [message, lambda "()" (expr a), lambda "()" (expr b)])
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through LawSpecRuntime.reach, which returns it, so lawspec test
+    -- can say how many reached the consequence. ref:DEC-vacuous-outcome
+    reachingAssertion label context = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll ps -> let (after, docs) = mapAccumL site next ps in (after, statements docs)
+          AssertImplies guard body ->
+            let (after, inner) = site (next + 1) body
+            in (after, braced (text "if (" <> runtime "reach" [quoted label, number next, truth (expr guard), text "generated"] <> text ")") inner)
+          _ -> (next, contextualAssertion context proposition)
     expressionLink a = case originLocation (C.expressionOrigin a) of
       Just l | take 1 (file l) /= "<" -> Just (locationLink l)
       _ -> Nothing
@@ -495,7 +507,11 @@ emitTests Config{..} unit laws = do
           exampleSuffixes = exampleSuffixesOf e
           checkNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
-          lawAssertion context = statement (call (member base "Check") [context, text "symbols", E.array (map text checkNames)])
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
+          lawAssertion = claimAssertion True
+          claimAssertion generated context = statement (call (member base "Check")
+            ([context, text "symbols", E.array (map text checkNames)] ++ [text (if generated then "true" else "false") | guarded]))
           -- A failing case says what it was given: its inputs by their
           -- source names, added to the failure where the law is checked.
           namedInputs body
@@ -508,7 +524,7 @@ emitTests Config{..} unit laws = do
         testFunction (fn ++ "_" ++ suffix) (withSymbols
         (handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (\p -> contextualAssertion (\l -> quoted (labelled (shown ++ " example " ++ displayLabel (exampleName ex)) l)) p) (expectations ex) ++
-          [lawAssertion (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
+          [claimAssertion False (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
       cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
       (coverDeclarations, coverData) <- Finite.coverBindings call (lambda "symbols") literal
         finiteDeclaration (constantName base "_CASES") cover
@@ -529,9 +545,9 @@ emitTests Config{..} unit laws = do
                   | otherwise = caseCall
           sharedBoundaryDocs = [declaration | C.harnessSkip h == Nothing, declaration <- coverDeclarations] ++
             concat [[braced (call ("private void " ++ member base "Check")
-              [text "String context", text "Map<String, Object> symbols", text "Value[] values"])
+              ([text "String context", text "Map<String, Object> symbols", text "Value[] values"] ++ [text "boolean generated" | guarded]))
               (namedInputs (statements ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] checkNames] ++
-                [contextualAssertion (const (text "context")) (assertion e)]))),
+                [(if guarded then reachingAssertion label else contextualAssertion) (const (text "context")) (assertion e)]))),
              braced (D.group (text "public static Iterable<LawSpecRuntime.FiniteCase>" <> D.nest 4 (D.softline <> call source [])))
               (returned (if testStyle == Style.SpockCases
                 then runtime "selectedFiniteCases" [coverData, quoted (show (Cover.coverCount cover))]
@@ -580,7 +596,7 @@ emitTests Config{..} unit laws = do
       property <- if finiteCases e /= Nothing then pure []
         else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
         else if nativeGenerators || any (structural . inputType) (inputs e) then (:[]) <$> structuralProperty fn e check
-        else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
+        else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" || guardDirected (inputs e) (map generatorHints (generationPlan e))
           then (:[]) <$> refinedProperty fn label e check
           else pure [testFunction (fn ++ "_property") $ statement $ call "checker().forAll"
             [text "Generator.integers()",closure "seed" $ withSymbols (handlerInstalls e ++

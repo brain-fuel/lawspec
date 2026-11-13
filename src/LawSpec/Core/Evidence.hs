@@ -24,14 +24,17 @@ import qualified LawSpec.Core.Program as P
 -- its harness skips, or acknowledges as a discrepancy, is still an obligation;
 -- a discrepancy assigns no fault to the specification or implementation. Flaky
 -- is a run's outcome (a test that failed, then passed on a retry), which
--- lawspec evidence reads from the last run.
+-- lawspec evidence reads from the last run. Vacuous is a run's outcome too:
+-- the law's generated tests passed, but none of their cases satisfied a guard
+-- of its claim, so the run says nothing about what the guard protects.
+-- ref:DEC-vacuous-outcome
 -- Refuted is no evidence for a law: a confirmed counterexample shows it
 -- false (the compiler's exhaustive check, or a Z3 model the reference
 -- evaluator confirms), and the build fails.
 -- Exempted is a law-set check a `laws for` block excuses, with a reason and
 -- maybe an expiry: weaker than assumed, it keeps its counterexample.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | Exempted | Refuted | KnownDiscrepancy | Flaky | Skipped | Pending | Planned | NotVerified | Incomplete | Unsupported
+  | Exempted | Refuted | KnownDiscrepancy | Flaky | Vacuous | Skipped | Pending | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -53,6 +56,7 @@ statusName Refuted = "refuted"
 statusName Exempted = "exempted"
 statusName KnownDiscrepancy = "known-discrepancy"
 statusName Flaky = "flaky"
+statusName Vacuous = "vacuous"
 statusName Skipped = "skipped"
 statusName Pending = "pending"
 statusName Planned = "planned"

@@ -7245,6 +7245,52 @@ function searchFile(law)
   );
 }
 
+// Reach: how many generated cases satisfied each guard of a law's claim
+// (docs/reference/refinements.md, "Guards and reach"). A generated test
+// passes each guard's value through reach, which counts it and returns it
+// unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+// The counts of each law are written when the process exits, as one JSON
+// file under LAWSPEC_STATS, which lawspec test reads. Example tests are not
+// generated cases and are not counted.
+const reachCounts = new Map();
+
+function writeReach()
+{
+  const directory = globalThis.process.env.LAWSPEC_STATS;
+  try
+  {
+    const fs = nodeModule('node:fs');
+    fs.mkdirSync(directory, {recursive: true});
+    for (const [law, sites] of reachCounts)
+    {
+      const safe = law.replace(/[^A-Za-z0-9_-]/g, '_');
+      fs.writeFileSync(
+        nodeModule('node:path').join(
+          directory,
+          `reach_${safe}_${globalThis.process.pid}.json`,
+        ),
+        JSON.stringify({law, reach: sites}),
+      );
+    }
+  }
+  catch
+  {
+    // Statistics are a convenience; a run never fails for want of them.
+  }
+}
+
+export function reach(law, site, held, generated)
+{
+  if (!generated || !globalThis.process?.env?.LAWSPEC_STATS) return held;
+  if (reachCounts.size === 0) globalThis.process.once('exit', writeReach);
+  const sites = reachCounts.get(law) ?? [];
+  reachCounts.set(law, sites);
+  while (sites.length <= site) sites.push({evaluated: 0, held: 0});
+  sites[site].evaluated += 1;
+  if (held) sites[site].held += 1;
+  return held;
+}
+
 export function searchRemember(law, descriptors, values)
 {
   const file = searchFile(law);

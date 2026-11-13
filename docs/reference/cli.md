@@ -519,12 +519,21 @@ them.
   [benchmarks](language/harness.md#benchmarks) with each target's test runner,
   every time (they are never cached), and print their measurements.
 - `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`,
-  `batches`, and `notRun`, `flaky`, `unmetCover`, `benchmarks` and `coverage`
-  when there are any); the test runners' output goes to standard error. `seed`
+  `batches`, and `notRun`, `flaky`, `unmetCover`, `reach`, `vacuous`,
+  `benchmarks` and `coverage` when there are any); the test runners' output
+  goes to standard error. `seed`
   is the run's fresh seed. `batches` lists each [batch](#the-failure-database)
   in order with the `seed` it actually used, whether it was a `replay`, the
   laws it `ran` and any laws it left `notRun`. `ran` leaves out the `notRun`
   laws.
+
+`lawspec test` exits with status 0 when every selected law passed, 1 when a
+test or the run failed, and 2 when nothing failed but a law was
+[vacuous](refinements.md#guards-and-reach): its generated tests passed
+without one case reaching a guarded consequence. Each guarded law is listed
+after the summary with `n of m generated cases reached the consequence`, or
+`reach unknown` on a target whose tests do not count it. A vacuous law is not
+recorded as passed, so the next run tests it again.
 
 A law's [harness](language/harness.md) shapes the run: a skipped law has no
 test to run, a known-discrepancy law's one test is expected to fail, flaky retries

@@ -4539,6 +4539,15 @@
       "execution": "deferred"
     },
     {
+      "id": "reference:docs/reference/authoring-advisories.md:115: SDK and MCP",
+      "kind": "reference",
+      "name": "docs/reference/authoring-advisories.md:115: SDK and MCP",
+      "source": "docs/reference/authoring-advisories.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "reference:docs/reference/authoring-advisories.md:32: Bounded checks",
       "kind": "reference",
       "name": "docs/reference/authoring-advisories.md:32: Bounded checks",
@@ -4548,18 +4557,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:71: Migration and explicit exceptions",
+      "id": "reference:docs/reference/authoring-advisories.md:72: Guards",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:71: Migration and explicit exceptions",
+      "name": "docs/reference/authoring-advisories.md:72: Guards",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:93: SDK and MCP",
+      "id": "reference:docs/reference/authoring-advisories.md:93: Migration and explicit exceptions",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:93: SDK and MCP",
+      "name": "docs/reference/authoring-advisories.md:93: Migration and explicit exceptions",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4683,63 +4692,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:532: The failure database",
+      "id": "reference:docs/reference/cli.md:546: The failure database",
       "kind": "reference",
-      "name": "docs/reference/cli.md:532: The failure database",
+      "name": "docs/reference/cli.md:546: The failure database",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:571: `package`",
+      "id": "reference:docs/reference/cli.md:615: `package`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:571: `package`",
+      "name": "docs/reference/cli.md:615: `package`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:582: `examples`",
+      "id": "reference:docs/reference/cli.md:626: `examples`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:582: `examples`",
+      "name": "docs/reference/cli.md:626: `examples`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:600: Exit status",
+      "id": "reference:docs/reference/cli.md:644: Exit status",
       "kind": "reference",
-      "name": "docs/reference/cli.md:600: Exit status",
+      "name": "docs/reference/cli.md:644: Exit status",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:609: Project workflow and Learn",
+      "id": "reference:docs/reference/cli.md:653: Project workflow and Learn",
       "kind": "reference",
-      "name": "docs/reference/cli.md:609: Project workflow and Learn",
+      "name": "docs/reference/cli.md:653: Project workflow and Learn",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:623: Authoring discovery",
+      "id": "reference:docs/reference/cli.md:667: Authoring discovery",
       "kind": "reference",
-      "name": "docs/reference/cli.md:623: Authoring discovery",
+      "name": "docs/reference/cli.md:667: Authoring discovery",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:628: Mutation testing",
+      "id": "reference:docs/reference/cli.md:672: Mutation testing",
       "kind": "reference",
-      "name": "docs/reference/cli.md:628: Mutation testing",
+      "name": "docs/reference/cli.md:672: Mutation testing",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4755,54 +4764,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:103: C# over F#",
+      "id": "reference:docs/reference/compatibility.md:11: Windows",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:103: C# over F#",
+      "name": "docs/reference/compatibility.md:11: Windows",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:11: Supported versions",
+      "id": "reference:docs/reference/compatibility.md:140: C# over F#",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:11: Supported versions",
+      "name": "docs/reference/compatibility.md:140: C# over F#",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:122: Groovy over Java",
+      "id": "reference:docs/reference/compatibility.md:159: Groovy over Java",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:122: Groovy over Java",
+      "name": "docs/reference/compatibility.md:159: Groovy over Java",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:131: Clojure over Java",
+      "id": "reference:docs/reference/compatibility.md:168: Clojure over Java",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:131: Clojure over Java",
+      "name": "docs/reference/compatibility.md:168: Clojure over Java",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:139: Versions pinned by `init`",
+      "id": "reference:docs/reference/compatibility.md:176: Versions pinned by `init`",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:139: Versions pinned by `init`",
+      "name": "docs/reference/compatibility.md:176: Versions pinned by `init`",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:164: What the checks inspect",
+      "id": "reference:docs/reference/compatibility.md:201: What the checks inspect",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:164: What the checks inspect",
+      "name": "docs/reference/compatibility.md:201: What the checks inspect",
+      "source": "docs/reference/compatibility.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/compatibility.md:48: Supported versions",
+      "kind": "reference",
+      "name": "docs/reference/compatibility.md:48: Supported versions",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5781,63 +5799,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:139: Laws over checked definitions",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:143: Laws over checked definitions",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:139: Laws over checked definitions",
+      "name": "docs/reference/language/evidence-and-discharge.md:143: Laws over checked definitions",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:187: Non-linear definition indices",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:191: Non-linear definition indices",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:187: Non-linear definition indices",
+      "name": "docs/reference/language/evidence-and-discharge.md:191: Non-linear definition indices",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:195: Laws over adapters",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:199: Laws over adapters",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:195: Laws over adapters",
+      "name": "docs/reference/language/evidence-and-discharge.md:199: Laws over adapters",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:206: Adapters and native code",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:210: Adapters and native code",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:206: Adapters and native code",
+      "name": "docs/reference/language/evidence-and-discharge.md:210: Adapters and native code",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:214: Obligation stages",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:218: Obligation stages",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:214: Obligation stages",
+      "name": "docs/reference/language/evidence-and-discharge.md:218: Obligation stages",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:229: Where the tests ran",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:233: Where the tests ran",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:229: Where the tests ran",
+      "name": "docs/reference/language/evidence-and-discharge.md:233: Where the tests ran",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:322: Planned wiring and completed runs",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:326: Planned wiring and completed runs",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:322: Planned wiring and completed runs",
+      "name": "docs/reference/language/evidence-and-discharge.md:326: Planned wiring and completed runs",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5853,18 +5871,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:377: Reading the evidence",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:381: Reading the evidence",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:377: Reading the evidence",
+      "name": "docs/reference/language/evidence-and-discharge.md:381: Reading the evidence",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:389: Compiler evaluation allowance",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:393: Compiler evaluation allowance",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:389: Compiler evaluation allowance",
+      "name": "docs/reference/language/evidence-and-discharge.md:393: Compiler evaluation allowance",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5898,18 +5916,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:85: Planned and incomplete checks",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:86: Planned and incomplete checks",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:85: Planned and incomplete checks",
+      "name": "docs/reference/language/evidence-and-discharge.md:86: Planned and incomplete checks",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/evidence-and-discharge.md:98: Recorded native conformance",
+      "id": "reference:docs/reference/language/evidence-and-discharge.md:99: Recorded native conformance",
       "kind": "reference",
-      "name": "docs/reference/language/evidence-and-discharge.md:98: Recorded native conformance",
+      "name": "docs/reference/language/evidence-and-discharge.md:99: Recorded native conformance",
       "source": "docs/reference/language/evidence-and-discharge.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7851,81 +7869,81 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:176: Dependent generation and shrinking",
+      "id": "reference:docs/reference/refinements.md:177: Dependent generation and shrinking",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:176: Dependent generation and shrinking",
+      "name": "docs/reference/refinements.md:177: Dependent generation and shrinking",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:209: Refined definitions",
+      "id": "reference:docs/reference/refinements.md:210: Guards and reach",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:209: Refined definitions",
+      "name": "docs/reference/refinements.md:210: Guards and reach",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:242: Results of helpers",
+      "id": "reference:docs/reference/refinements.md:285: Refined definitions",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:242: Results of helpers",
+      "name": "docs/reference/refinements.md:285: Refined definitions",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:267: Sum payloads",
+      "id": "reference:docs/reference/refinements.md:318: Results of helpers",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:267: Sum payloads",
+      "name": "docs/reference/refinements.md:318: Results of helpers",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:277: List payloads",
+      "id": "reference:docs/reference/refinements.md:343: Sum payloads",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:277: List payloads",
+      "name": "docs/reference/refinements.md:343: Sum payloads",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:306: Whole-value refinements on products",
+      "id": "reference:docs/reference/refinements.md:353: List payloads",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:306: Whole-value refinements on products",
+      "name": "docs/reference/refinements.md:353: List payloads",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:328: Named data payloads",
+      "id": "reference:docs/reference/refinements.md:382: Whole-value refinements on products",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:328: Named data payloads",
+      "name": "docs/reference/refinements.md:382: Whole-value refinements on products",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:376: Constructor field contracts",
+      "id": "reference:docs/reference/refinements.md:404: Named data payloads",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:376: Constructor field contracts",
+      "name": "docs/reference/refinements.md:404: Named data payloads",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:405: Target generation limits",
+      "id": "reference:docs/reference/refinements.md:452: Constructor field contracts",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:405: Target generation limits",
+      "name": "docs/reference/refinements.md:452: Constructor field contracts",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7935,6 +7953,15 @@
       "id": "reference:docs/reference/refinements.md:45: Inline refinements",
       "kind": "reference",
       "name": "docs/reference/refinements.md:45: Inline refinements",
+      "source": "docs/reference/refinements.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/refinements.md:481: Target generation limits",
+      "kind": "reference",
+      "name": "docs/reference/refinements.md:481: Target generation limits",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

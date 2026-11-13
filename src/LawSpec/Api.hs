@@ -46,6 +46,7 @@ import LawSpec.Service.Formatting (formatCompiled, formatSyntax)
 import LawSpec.SourceSyntax (SourceSyntax (..))
 import LawSpec.SourceText (formatSourcesUsing)
 import LawSpec.Targets (artifactTargets)
+import qualified LawSpec.Core.Vacuity as Vacuity
 import LawSpec.TestManifest (BenchmarkEntry (..), TestEntry (..), benchmarkManifest, executableEntries, testManifestWithBindings)
 import LawSpec.ActorRuntime (actorSettings, defaultActorSettings)
 import LawSpec.Testing (Plan (..), PlannedProperty (..), PlannedUnit (..), finiteCases)
@@ -228,6 +229,7 @@ dispatch bytes
                                         failure
                                         ( withBenchmarks (benchmarkManifest target testDir core)
                                             . withTests
+                                              target
                                               core
                                               verification
                                               plan
@@ -675,9 +677,27 @@ withAttestation (Just (attestation, outcomes)) core obligations (Object o) =
 withAttestation _ _ _ value = value
 
 -- | Which generated tests check each law, for running a subset of them.
-withTests :: C.Program -> Maybe V.Verification -> Either [Diagnostic] Plan -> [TestEntry] -> Value -> Value
-withTests original verification testing entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
+withTests :: String -> C.Program -> Maybe V.Verification -> Either [Diagnostic] Plan -> [TestEntry] -> Value -> Value
+withTests target original verification testing entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
   where
+    -- A law whose claim sits behind guards: how many, whether this target's
+    -- generated tests count the cases that reach the consequence, and what
+    -- to suggest when none does. ref:DEC-vacuous-outcome
+    reach e =
+      [ "reach"
+          .= object
+            [ "guards" .= length guards,
+              "measured" .= (target `elem` Vacuity.reachTargets),
+              "advice"
+                .= [ object ["rule" .= Vacuity.adviceRule advice, "input" .= Vacuity.adviceInput advice, "message" .= Vacuity.adviceMessage advice]
+                   | advice <- Vacuity.programGuardAdvice original property
+                   ]
+            ]
+      | null (entryObligations e),
+        property : _ <- [[p | unit <- C.programUnits original, p <- C.unitProperties unit, C.propertyId p == entryLaw e]],
+        let guards = Vacuity.propositionGuards (C.propertyBody property),
+        not (null guards)
+      ]
     entry e =
       object $
         [ "law" .= C.idText (entryLaw e),
@@ -694,6 +714,7 @@ withTests original verification testing entries (Object o) = Object (KM.insert "
           "parallel" .= entryParallel e
         ]
           ++ ["coverage" .= coverage e]
+          ++ reach e
           ++ ["kind" .= kind | Just kind <- [entryKind e]]
           ++ ["scope" .= scope | Just scope <- [entryScope e]]
           ++ [ "obligations"
@@ -740,7 +761,7 @@ withTests original verification testing entries (Object o) = Object (KM.insert "
                         ] of
       value : _ -> value
       [] -> True
-withTests _ _ _ _ value = value
+withTests _ _ _ _ _ value = value
 
 -- The harness's benchmarks and the tests that measure them.
 withBenchmarks :: [BenchmarkEntry] -> Value -> Value
