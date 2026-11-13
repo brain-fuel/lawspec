@@ -78,6 +78,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   operations is found once per unit, not once per importer. Each unit that
   uses `prelude.caseFold` carries a copy of the 1,585 mappings, so both
   were paid again for every such unit.
+- `ricestax` is an optional dependency. A registry that lacks it no longer
+  stops `lawspec` from installing, and `--omit=optional` leaves it out. Only
+  `lawspec project` uses it: without it, `project init` and `adopt` (when
+  there is no `canon.yaml` yet) stop before writing anything and say to
+  install `ricestax@0.3.2`, and `project status` and `validate` report Canon
+  as incomplete with the same instruction, or use the executable named by
+  `CANON`. Every other command works without it.
+
+### Fixed
+
+- `npm install <checkout>/npm` no longer fails in `postinstall` with
+  `MODULE_NOT_FOUND`. The step does nothing where there is no
+  `host-component` directory, as in a git checkout. Where
+  `wasm-platform-kit` or its package for the platform is not installed
+  (`--omit=optional`, a mirror without it, Windows), it prints one line and
+  succeeds. A native component runtime that is present and fails its
+  preparation still fails the installation.
+- The installation guide named the 0.24.0 package as the current release, and
+  the README's checkout steps left out `npm ci --prefix lawspec/npm`, without
+  which a new clone has none of the CLI's dependencies. The guide now also
+  covers installing the `lawspec-<version>.tgz` attached to a GitHub release,
+  for registries that lag, and the release procedure attaches it.
 
 ## [0.33.0] - 2026-11-11
 

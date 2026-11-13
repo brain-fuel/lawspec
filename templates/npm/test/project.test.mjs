@@ -164,3 +164,77 @@ test(
       assert.equal(projectExitCode(report), 0);
     }),
 );
+// Runs a script against project.mjs in a process where ricestax cannot be
+// resolved, as after an installation that omitted the optional package.
+function withoutRicestax(root, body)
+{
+  const script = `
+    import {registerHooks} from 'node:module';
+    registerHooks({
+      resolve(specifier, context, next)
+      {
+        if (specifier === 'ricestax' || specifier.startsWith('ricestax/'))
+        {
+          const error = new Error("Cannot find package 'ricestax'");
+          error.code = 'ERR_MODULE_NOT_FOUND';
+          throw error;
+        }
+        return next(specifier, context);
+      },
+    });
+    const {setupProject, inspectProject, projectExitCode} = await import(
+      ${JSON.stringify(new URL('../project.mjs', import.meta.url).href)}
+    );
+    const root = ${JSON.stringify(root)};
+    ${body}
+  `;
+  const {CANON: _, ...env} = process.env;
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '--eval', script],
+    {encoding: 'utf8', env},
+  );
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+test('without the optional ricestax package, project setup says how to install it and writes nothing', async () =>
+  fixture(async root =>
+  {
+    const outcome = withoutRicestax(
+      root,
+      `console.log(JSON.stringify(
+        await setupProject(root).then(() => 'created', error => error.message),
+      ));`,
+    );
+    assert.match(outcome, /optional package ricestax, which is not installed/);
+    assert.match(outcome, /npm install --save-dev ricestax@0\.3\.2/);
+    assert.doesNotMatch(outcome, /CANON/);
+    assert.deepEqual(await readdir(root), []);
+  }));
+test('without the optional ricestax package, adoption keeps existing Canon metadata and status reports Canon as incomplete', async () =>
+  fixture(async root =>
+  {
+    await setupProject(root);
+    await rm(path.join(root, 'lawspec.edn'));
+    const {adopted, report, exitCode} = withoutRicestax(
+      root,
+      `const adopted = await setupProject(root, {adopt: true});
+      const report = await inspectProject(root);
+      console.log(JSON.stringify(
+        {adopted, report, exitCode: projectExitCode(report)},
+      ));`,
+    );
+    assert.equal(adopted.canon, 'preserved');
+    assert.equal(adopted.manifest, 'created');
+    assert.equal(report.canon.status, 'incomplete');
+    assert.match(
+      report.canon.detail,
+      /npm install --save-dev ricestax@0\.3\.2/,
+    );
+    assert.match(
+      report.canon.detail,
+      /or set CANON to a matching canon executable/,
+    );
+    assert.equal(report.definitions.status, 'passed');
+    assert.equal(exitCode, 2);
+  }));

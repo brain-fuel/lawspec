@@ -6,7 +6,8 @@ title: Release LawSpec
 # Releasing LawSpec
 
 A release moves one version of the npm package `lawspec` from `main` to the npm
-registry. Every step runs on your machine; there is no hosted CI.
+registry and attaches the same archive to the GitHub release. Every step runs
+on your machine; there is no hosted CI.
 
 ## Rules
 
@@ -144,7 +145,24 @@ shasum -a 512 .artifacts/0.33.0/lawspec-0.33.0.tgz | awk '{print $1}' | xxd -r -
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and
 `latest` must name the new version.
 
-## 9. Publish the documentation (optional)
+## 9. Attach the archive to the GitHub release
+
+Registry mirrors can lag behind npm, so each release also offers the archive
+for download. Use the GitHub website, not the GitHub CLI:
+
+1. Open <https://github.com/brain-fuel/lawspec/releases/new?tag=v0.33.0>. The
+   tag pushed in step 6 is selected.
+2. Set the title to `LawSpec 0.33.0` and paste the version's `CHANGELOG.md`
+   section as the description.
+3. Drag `.artifacts/0.33.0/lawspec-0.33.0.tgz` into the box for attaching
+   binaries. Attach the archive you published in step 7, not a new pack.
+4. Publish the release, then download the attached file and check that
+   `shasum -a 512` prints the digest of the local archive.
+
+[Install from a release tarball](install-and-init.md#install-from-a-release-tarball)
+tells users how to install it.
+
+## 10. Publish the documentation (optional)
 
 ```sh
 make docs-deploy

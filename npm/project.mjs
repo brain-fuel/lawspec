@@ -3,14 +3,34 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {lstat, mkdir, readFile} from 'node:fs/promises';
 import {spawnToolSync} from './spawn.mjs';
-import {initialize} from 'ricestax/setup.mjs';
 import {createCompiler} from './api.mjs';
 import {readManifest, writeManifest, dependencyRanges} from './component.mjs';
 import {resolveDependencies} from './component-packages.mjs';
 import {atomicWrite, collectSources, safePath} from './files.mjs';
 // Rice's Tax owns Canon setup and grammars; its exact npm version is pinned.
+// It is an optional dependency that only `lawspec project` loads, on demand:
+// a registry without it must not stop the rest of the CLI from installing.
 export const canonSetupVersion = '0.3.2';
-const rice = fileURLToPath(import.meta.resolve('ricestax/bin/ricestax.mjs'));
+function riceModule(file, purpose, alternative = '')
+{
+  try
+  {
+    return import.meta.resolve(`ricestax/${file}`);
+  }
+  catch (cause)
+  {
+    if (cause.code !== 'ERR_MODULE_NOT_FOUND')
+    {
+      throw cause;
+    }
+    throw new Error(
+      `${purpose} needs the optional package ricestax, which is not installed. ` +
+        `Install the pinned version beside lawspec: npm install --save-dev ricestax@${canonSetupVersion} ` +
+        `(npm install --global ricestax@${canonSetupVersion} beside a global lawspec)${alternative}.`,
+      {cause},
+    );
+  }
+}
 const cli = fileURLToPath(new URL('./bin/lawspec.mjs', import.meta.url));
 async function exists(file)
 {
@@ -74,6 +94,15 @@ async function inspectCanon(root, validate)
     config.match(/^canon:\s*["']?([\d.x]+)/m)?.[1] ??
     config.match(/"canon"\s*:\s*"([\d.x]+)"/)?.[1];
   const binary = process.env.CANON;
+  const rice = binary
+    ? undefined
+    : fileURLToPath(
+        riceModule(
+          'bin/ricestax.mjs',
+          'Checking Canon',
+          ', or set CANON to a matching canon executable',
+        ),
+      );
   const version = binary
     ? run(root, binary, ['version'], false)
     : run(root, rice, ['canon', 'version']);
@@ -134,6 +163,10 @@ export async function setupProject(
       '.ricestax exists without canon.yaml; review the incomplete Canon setup',
     );
   }
+  // Resolved during preflight, so that a missing package writes nothing.
+  const setup = hasCanon
+    ? undefined
+    : riceModule('setup.mjs', 'Setting Canon up');
   const manifest = {
     manifestVersion: 1,
     component: {
@@ -150,6 +183,7 @@ export async function setupProject(
   await mkdir(root, {recursive: true});
   if (!hasCanon)
   {
+    const {initialize} = await import(setup);
     await initialize(root, languages);
     // Upstream setup does not create a decision ledger. Never replace an existing one.
     for (const name of [
