@@ -63,13 +63,14 @@ evidence, and not a failure; the reason says whether it holds so far.
 ## Harness statuses
 
 A law's [harness](harness.md) decides how its tests run, never what the law
-claims, so three more statuses come from the harness plane. The law stays an
+claims, so four more statuses come from the harness plane and the last run. The law stays an
 obligation under each:
 
 | Status | API value | Obligations | How |
 | --- | --- | --- | --- |
 | `KNOWN DISCREPANCY` | `known-discrepancy` | Laws the harness marks `known discrepancy` | Checks must reproduce the mismatch; a passing run requests human review |
 | `FLAKY` | `flaky` | Laws whose last run failed, then passed on a retry (`retry flaky`) | Read by `lawspec evidence` from the last `lawspec test` |
+| `VACUOUS` | `vacuous` | Laws whose last run passed without one generated case reaching a guarded consequence | Read by `lawspec evidence` from the last `lawspec test`; see [guards and reach](../refinements.md#guards-and-reach) |
 | `SKIPPED` | `skipped` | Laws the harness skips, and handler variants `test with` leaves out | Not run; the reason says why |
 
 The reasoning behind these categories is in
@@ -99,7 +100,7 @@ current plan's status; this is not evidence that the current sources passed.
 
 The CLI attaches `nativeEvidence` to the same obligation in all explanation
 views. `kind` is `native-conformance`; `status` distinguishes `passed`, `failed`,
-`partial`, `incomplete`, `skipped`, `known-discrepancy`, `stale`, `unavailable` and
+`partial`, `incomplete`, `skipped`, `known-discrepancy`, `vacuous`, `stale`, `unavailable` and
 `not-selected`. Each observation records its target/project scope, freshness,
 coverage and actual attempt. Seeds outside JavaScript's safe integer range
 remain exact decimal strings for replay. A native framework may impose its own

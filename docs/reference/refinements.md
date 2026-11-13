@@ -171,7 +171,8 @@ whenever a law calls a refined adapter, the generated test:
 4. checks the postconditions against that same result.
 
 Calling a function outside its precondition is a test failure, not a discarded
-example. `implies` guards in laws keep their ordinary conditional meaning.
+example. `implies` guards in laws keep their ordinary conditional meaning; see
+[guards and reach](#guards-and-reach) for what the tests report about them.
 
 ## Dependent generation and shrinking
 
@@ -205,6 +206,81 @@ See the [refinement examples](../../examples/specs/refinements.lawspec) for
 overflow, abstract integers, dependent bounds, optional refinements, float
 classification and byte lengths. The design is discussed in
 [generation and shrinking](../explanation/generation-and-shrinking.md).
+
+## Guards and reach
+
+A law can state its condition as a guard instead of a refinement:
+
+```lawspec fragment
+for all (name :: Text) => name matches regex "[A-Za-z]{2,40}" implies claim name end for all
+for all (name :: Text where name matches regex "[A-Za-z]{2,40}") => claim name end for all
+```
+
+Both are true of the same programs, but they are tested differently. A
+refinement is the input's domain: every generated case, boundary case, example
+and shrunk counterexample satisfies it. A guard only skips the claim. A case
+that fails the guard makes the implication true and says nothing about the
+claim, so a law whose guard no generated case satisfies would pass without
+testing anything. ref:DEC-vacuous-outcome
+
+LawSpec handles guards in three ways.
+
+**Generation reads them.** A part of a guard that speaks about one directly
+quantified input alone gives that input's generator the hints its refinement
+would: texts a `matches regex` guard accepts and the items of `x in [a, b, c]`.
+A law aimed only by its guards draws each input among those hints and unbiased
+values. Comparisons are left out: unbiased generation satisfies them often.
+The guard is still evaluated on every case; hints only make matching values
+likely.
+
+A refinement that says `x in c` is stronger than a hint: every value of the
+input is an item of `c`. When `c` does not name `x` and calls only checked
+definitions, the items of `c` are the input's complete domain. `c` may be
+written out, `(key :: Text where key in ["a", "b", "c"])`, or computed from
+the inputs before it, `(kind :: Kind) (stage :: Stage where stage in stagesOf
+kind)`, where `stagesOf` is a mapping or a function. With every other input
+finite and the product within `exhaustiveLimit`, the law is checked on every
+tuple instead of sampled. Each item is still checked against the whole
+refinement. Nothing of the kind is inferred from a guard, from `or`, or for
+floating-point items, and a list that calls an adapter is left to sampling.
+
+**Tests count them.** At every guard of a law's claim (each `implies` reached
+through `and` and other `implies`), the generated boundary and property tests
+count the cases that satisfied it. The guard's value is passed through the
+counter, so the guard, and any adapter it calls, runs once per case. `lawspec
+test` prints one line per guarded law:
+
+```text
+Guarded laws:
+  example.vacuity::a guarded name keeps its length: 67 of 113 generated cases reached the consequence
+  example.vacuity::an accepted offer is described by its code: 0 of 108 generated cases reached the consequence — VACUOUS
+    Consider a harness strategy that builds values of offer the guard accepts ...
+```
+
+With several guards the count is that of the least reached one. Example tests
+are not generated cases: they are not counted, and they keep their own
+results. The counts are kept with each attempt in `.lawspec/results/`
+(`reach`), and `lawspec evidence` shows them.
+
+**No reached case is not a pass.** When no generated case reached the
+consequence, the law's outcome is `vacuous`. It is not recorded as passed, it
+runs again on the next `lawspec test`, `lawspec evidence` lists it under
+`VACUOUS`, and `lawspec test` exits with status 2 when nothing failed. The
+native test itself does not fail: the meaning of `implies` is unchanged.
+
+Reach is counted on the Java, JavaScript, TypeScript, Python and Scala
+targets. On the other
+targets a guarded law's line reads `reach unknown`, and its outcome is whatever
+its tests gave; it is never reported as measured. An implication under a nested
+quantifier or `not` is part of a searched expression and is not counted.
+
+`lawspec advise` reports guards before any test runs; see the
+[`vacuous-guard` and `adapter-guard` rules](authoring-advisories.md#guards).
+To require more than one reached case, state the share with the harness's
+[`cover`](language/harness.md) setting, which fails the test when it is not
+met; `cover` reads checked definitions only, so it cannot measure a guard that
+calls an adapter. The [vacuity examples](../../examples/specs/vacuity.lawspec)
+show each form.
 
 ## Refined definitions
 

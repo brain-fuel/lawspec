@@ -46,6 +46,23 @@ rejected. A type with no values cannot supply an argument, while containers
 such as `List Empty` can still contain the empty list.
 ref:DEC-never-pass-vacuously
 
+A law can also pass every case and still test nothing: `for all x => guard x
+implies claim x` is true of each case that fails the guard. Property-testing
+tools treat that as missing evidence, not success. QuickCheck's `==>` discards
+such a case and gives up when too many are discarded; Hypothesis's `assume`
+marks it bad, and a health check fails a test that filters too much;
+fast-check's `fc.pre` drops it; Why3's smoke detector and GNATprove's proof
+warnings look for goals that hold only because their context is contradictory
+or unreachable. LawSpec keeps the logical meaning of `implies`, because a law
+is also a proof obligation, and reports the missing evidence instead: the
+generated tests count the cases that reached each guarded consequence, and a
+law none reached has the outcome `vacuous` rather than passed. Before that,
+the compiler reads a guard about one input as it reads a refinement, so that
+generation builds values the guard accepts; a guard it cannot read, such as a
+call to an adapter, needs a harness strategy, which `lawspec advise` says. See
+[guards and reach](../reference/refinements.md#guards-and-reach).
+ref:DEC-vacuous-outcome
+
 In the canonical `1.0-rc.2` profile, universal propositions retain their
 mathematical meaning over empty domains. When the compiler establishes that
 the entire input domain is empty, selected proof or exhaustive verification
@@ -77,6 +94,14 @@ and uses a few as boundary cases, also when the law has record or list
 inputs beside the text. Almost no random text matches a regex, so
 filtering would reject nearly every draw. The whole refinement is still
 checked on every value.
+
+The same holds when the regex is a guard on a directly quantified input,
+`for all (t :: Text) => t matches regex "[a-z]+" implies ...`, and for the
+items of a list written out, `t in ["north", "south"]`, in a refinement or a
+guard: the texts and items are hints and boundary cases for that input.
+Hints from a guard do not narrow the domain. Cases that fail the guard are
+still generated, and the tests count those that reach the claim.
+ref:DEC-vacuous-outcome
 
 ## Dependent refinements
 

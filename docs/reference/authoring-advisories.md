@@ -36,7 +36,8 @@ instantiated Core definitions and reported under their authored identity; a
 definition template without an executable Core instance is explicitly incomplete.
 Initial helper patterns are
 recursive List length and membership. Initial law patterns are unrestricted
-unary idempotence and left inverse equations. Existing template applications
+unary idempotence and left inverse equations, and the two
+[guard rules](#guards). Existing template applications
 retain their trace and do not trigger the expanded-equation suggestion. A helper
 with different recursion, bounds or domain meaning is outside these shapes;
 absence of a finding does not establish optimal authoring or equivalent meaning.
@@ -67,6 +68,27 @@ archives, digests and build commands are recorded in `npm/native-parsers/lock.js
 each grammar has its upstream license. Tree-sitter owns parsing; LawSpec owns the
 bounded extraction and comparison rules. No new obligation generator, solver
 executor, proof checker or custom language parser is introduced.
+
+## Guards
+
+Two compiler rules report laws whose claim sits behind a guard that generated
+cases cannot be expected to satisfy. Such a law passes without testing its
+claim, and `lawspec test` reports it as `vacuous`; see
+[guards and reach](refinements.md#guards-and-reach). ref:DEC-vacuous-outcome
+
+| Rule | Reports | Suggests |
+| --- | --- | --- |
+| `vacuous-guard` | A `matches regex` or literal-list (`x in [...]`) guard on a directly quantified input | The refined quantifier, written out: `(name :: Text where name matches regex "[A-Za-z]{2,40}")` in place of the guard |
+| `adapter-guard` | A guard that calls an adapter on a quantified input | A harness strategy that builds values the guard accepts, and `use` of it for that input |
+
+The compiler already reads a `vacuous-guard` guard to direct generation, so
+the law usually reaches its claim; the refinement is suggested because it also
+governs examples, boundary cases and shrinking, and makes the domain explicit.
+An `adapter-guard` cannot be helped by the compiler: it cannot see which
+values native code accepts. `lawspec test` prints the same message under a
+law it reports vacuous. Both rules are structural: a guard written another way
+(a comparison chain, a helper around the regex on a field) is outside them,
+and no finding does not mean a guard is reached.
 
 ## Migration and explicit exceptions
 
