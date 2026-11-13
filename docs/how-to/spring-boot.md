@@ -210,6 +210,43 @@ second as a test resource root as well, for the JUnit configuration a
 [harness](../reference/language/harness.md) generates. The same `init` command
 prints the block again at any time; it never edits `pom.xml`.
 
+### Mask records in the log
+
+A record with a [masking block](../reference/language/record-rules.md#masking)
+generates a `toString()` that shows what the block allows, so Spring's
+default Logback pattern already prints it masked. For arrays of records and
+for a pattern that cannot print an argument any other way, LawSpec also
+generates a Logback converter, in `lawspec-logback/` beside `pom.xml`. It is
+outside the compiled roots so that a service without Logback still
+compiles. Spring Boot has Logback, so add the directory:
+
+```xml
+<execution>
+  <id>add-lawspec-logback</id>
+  <phase>generate-sources</phase>
+  <goals>
+    <goal>add-source</goal>
+  </goals>
+  <configuration>
+    <sources>
+      <source>lawspec-logback</source>
+    </sources>
+  </configuration>
+</execution>
+```
+
+and use the converter in `logback-spring.xml`:
+
+```xml
+<conversionRule conversionWord="maskedMsg"
+    converterClass="lawspec.logging.LawSpecMaskedConverter" />
+```
+
+with `%maskedMsg` in place of `%msg` in the pattern. `init` does not print
+this block and `doctor` does not check it. A field `shown as hash` needs
+`LawSpecMasks.setHashKey` called with 32 secret bytes before the first log
+line, for example from an `ApplicationContextInitializer`.
+
 ## Generate and test
 
 ```sh

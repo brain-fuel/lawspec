@@ -91,9 +91,25 @@ field's value through its mask.
 
 ## 4. Log the masked rendering
 
-Pass `maskedOrder(order)` or `maskedOrderDraft(draft)` to the logger, not the
-record. The record's native rendering, such as Java's `toString()`, is not
-masked.
+On Java, JavaScript, TypeScript and Python a record with a masking block
+renders itself masked: `log.info("placed {}", order)`, `console.log(order)`
+and `logger.info("placed %s", order)` print what the block allows. The real
+text is behind an explicit name, `toUnmaskedString()` or `unmasked_repr()`.
+Field access and serialisation are not masked.
+
+On any other target, pass `maskedOrder(order)` or `maskedOrderDraft(draft)`
+to the logger, not the record; generation warns that the native rendering
+there shows every field.
+
+A field `shown as hash` needs a key before the first rendering. Set it when
+the application starts, for example in Java:
+
+```java
+lawspec.runtime.LawSpecMasks.setHashKey(secrets.maskingKey());
+```
+
+`secrets.maskingKey()` stands for your own source of 32 secret bytes.
+Without a key the rendering throws.
 
 See [record rules, validators and masking](../reference/language/record-rules.md)
 for every id, mask and limit.

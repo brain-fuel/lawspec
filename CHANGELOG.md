@@ -23,15 +23,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `email` accepts exactly what the regex of Perl's Mail::RFC822::Address 0.3
   accepts (an RFC 822 address, including display names, routes and groups;
   comments are refused), checked against the module on recorded vectors.
-- Masking: `masking R is <field> shown as hidden | last <n> | email ... end
-  masking` generates `maskedR` and `maskedRDraft`, shows masked fields
-  through their masks in violation messages, and adds a law per masked field
-  that what the mask hides appears in no rendering and no message. `hash` is
-  parsed and refused by name; a target's native rendering (Java's
-  `toString()`) and logging hooks are not masked yet.
+- Masking: `masking R is <field> shown as hidden | last <n> | email | hash
+  ... end masking` generates `maskedR` and `maskedRDraft`, shows masked
+  fields through their masks in violation messages, and adds a law per
+  masked field that what the mask hides appears in no rendering and no
+  message. On Java, JavaScript, TypeScript and Python a record with a
+  masking block also renders itself masked (`toString()`, `util.inspect`,
+  `repr()`), with the real text behind `toUnmaskedString()` or
+  `unmasked_repr()`; the output of a failed generated test shows `***` for
+  every masked field; and `hash` shows a keyed BLAKE3-256 digest under a key
+  the application sets at start (`LawSpecMasks.setHashKey`, `setMaskKey`,
+  `set_mask_key`). No key is generated or embedded, and a rendering without
+  one throws. Java also gets `LawSpecMasked.of` for logging arguments and a
+  Logback converter, generated in `lawspec-logback/` outside the compiled
+  sources. Fields, accessors and serialised forms are never masked. Other
+  targets mask `maskedR` and messages only, and generation warns
+  `target-unsupported` for each masked record. Log4j 2 has no converter.
 - JSON Schema output writes `pattern`, `minLength`, `maxLength`, `minItems`,
-  `maxItems` and `enum` for a record's rules. A rule it cannot express is
-  still refused as `target-unsupported`.
+  `maxItems` and `enum` for a record's rules, and marks a masked field with
+  `x-lawspec-masking`. A rule it cannot express is still refused as
+  `target-unsupported`.
+- The audit of a definition proves a length restriction from a text
+  literal: `Code record{code = "GB-12"}` satisfies `prelude.length v <= 8`
+  without a guard around it.
 - Guarded laws report their reach. For a law `for all x => guard implies
   claim`, the generated tests of the Java, JavaScript, TypeScript, Python and Scala
   targets count the generated cases that satisfied each guard, and `lawspec test`
