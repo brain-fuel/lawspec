@@ -404,7 +404,14 @@ sectionP name body = sourceNode "section" (const (Just name)) $ blockP name $ do
 phraseNameRaw :: P String
 phraseNameRaw = do
   try (string "\"|")
+  -- "|" and "|x|" are attempts at text that begins with a pipe. Read as a
+  -- phrase name they swallow the rest of the line, and the error surfaces at
+  -- some later block, so they are refused here.
+  textAttempt <- option False (True <$ lookAhead (char '"'))
+  when textAttempt (fail pipeTextHint)
   body <- manyTill character (char '|')
+  closedAsText <- option False (True <$ lookAhead (char '"'))
+  when closedAsText (fail pipeTextHint)
   when (null body || isSpace (head body) || isSpace (last body))
     (fail "a phrase name must be nonempty without leading or trailing whitespace")
   pure ("\"|" ++ concatMap escape body ++ "|")
@@ -413,6 +420,10 @@ phraseNameRaw = do
       <|> satisfy (\c -> c /= '|' && c /= '\\' && c /= '\n' && c /= '\r')
     escape c | c == '|' || c == '\\' = ['\\', c]
              | otherwise = [c]
+
+-- | What to write instead of text that begins with a pipe.
+pipeTextHint :: String
+pipeTextHint = "\"| begins a phrase name, which ends at the next |. For text that begins with a pipe, use triple quotes: \"\"\"|\"\"\""
 
 -- | A name without the space after it, so a field access can follow it.
 identRaw :: P String

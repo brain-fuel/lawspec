@@ -368,6 +368,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which a new clone has none of the CLI's dependencies. The guide now also
   covers installing the `lawspec-<version>.tgz` attached to a GitHub release,
   for registries that lag, and the release procedure attaches it.
+- Text that begins with a pipe, written `"|"` or `"|x|"`, is refused at the
+  literal with the triple-quote spelling to use. `"|` opens a phrase name, so
+  such text used to swallow the rest of its line and fail at a later block
+  with `block-unclosed`.
+- `lawspec generate`, `test` and `doctor` on a Haskell project that has never
+  been built say so in one line and name the command to run. They used to
+  print a long Stack and hpack trace with that advice at the end.
 
 ## [0.33.1] - 2026-11-13
 

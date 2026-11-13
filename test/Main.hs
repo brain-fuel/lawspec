@@ -69,6 +69,7 @@ import qualified ParameterNamesSpec
 import qualified CalendarSpec
 import qualified ContractRulesSpec
 import qualified FormatsSpec
+import qualified PipeTextSpec
 import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
@@ -205,6 +206,7 @@ main = hspec $ do
   CalendarSpec.test_calendarDatesAreCheckedDefinitions
   FormatsSpec.test_formatsAreTheRecordedGrammars
   ContractRulesSpec.test_recordRulesBecomeCheckedValidators
+  PipeTextSpec.test_pipeTextIsDiagnosedWhereItIsWritten
   ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence
   AttestationSpec.test_attestationReportsWhereTestsRanWithoutChangingEvidence
