@@ -56,6 +56,12 @@ untouched. Rebar and Mix must configure the bridge's build hook. See the
 - **A dependency is missing or has the wrong version.** Install the version in
   the printed setup instructions. The [target guide](targets/index.md) lists
   them too.
+- **A build tool was not found.** The message lists the directories searched,
+  and on Windows the `PATHEXT` extensions tried. Install the tool, add its
+  directory to `PATH`, or name it in `lawspec.edn` with the field the message
+  gives, such as `:maven "C:/tools/maven/bin/mvn.cmd"`. On Windows a batch
+  file is run through `cmd.exe`; see
+  [compatibility](../reference/compatibility.md#windows).
 - **Source or test directories do not match.** Either change your build to
   compile the directories in `lawspec.edn`, or change `sourceDir` and
   `testDir` to match your build.

@@ -4719,54 +4719,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:103: C# over F#",
+      "id": "reference:docs/reference/compatibility.md:11: Windows",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:103: C# over F#",
+      "name": "docs/reference/compatibility.md:11: Windows",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:11: Supported versions",
+      "id": "reference:docs/reference/compatibility.md:140: C# over F#",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:11: Supported versions",
+      "name": "docs/reference/compatibility.md:140: C# over F#",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:122: Groovy over Java",
+      "id": "reference:docs/reference/compatibility.md:159: Groovy over Java",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:122: Groovy over Java",
+      "name": "docs/reference/compatibility.md:159: Groovy over Java",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:131: Clojure over Java",
+      "id": "reference:docs/reference/compatibility.md:168: Clojure over Java",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:131: Clojure over Java",
+      "name": "docs/reference/compatibility.md:168: Clojure over Java",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:139: Versions pinned by `init`",
+      "id": "reference:docs/reference/compatibility.md:176: Versions pinned by `init`",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:139: Versions pinned by `init`",
+      "name": "docs/reference/compatibility.md:176: Versions pinned by `init`",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:164: What the checks inspect",
+      "id": "reference:docs/reference/compatibility.md:201: What the checks inspect",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:164: What the checks inspect",
+      "name": "docs/reference/compatibility.md:201: What the checks inspect",
+      "source": "docs/reference/compatibility.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/compatibility.md:48: Supported versions",
+      "kind": "reference",
+      "name": "docs/reference/compatibility.md:48: Supported versions",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

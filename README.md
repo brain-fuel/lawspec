@@ -41,7 +41,10 @@ includes the compiler and learning track; no Haskell installation is needed.
 ## Install
 
 Node 22+ and the selected target's build tools are required. No Haskell
-toolchain is needed. The reference platforms are macOS and Linux.
+toolchain is needed. The reference platforms are macOS and Linux. Native
+Windows is supported for the CLI with the Java, Kotlin, Groovy, Scala,
+JavaScript and TypeScript targets; the other targets are best-effort there, and
+WSL runs all of them. See [compatibility](docs/reference/compatibility.md#windows).
 
 To open the learning track locally:
 

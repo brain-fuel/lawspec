@@ -21,6 +21,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   deepest path the compiler would write, and on Windows reports
   `LongPathsEnabled`.
 - `LAWSPEC_CACHE_TRACE` reaches the WebAssembly compiler.
+- Native Windows is supported for the CLI with the Java, Kotlin, Groovy,
+  Scala, JavaScript and TypeScript targets. Other targets are best-effort
+  there; WSL runs all of them. The Windows code paths are tested on macOS
+  against Windows path and quoting rules, and have not yet been run on
+  Windows.
+
+### Fixed
+
+- On Windows the CLI could not start `mvn`, `gradle`, `gradlew.bat`, `npm`,
+  `npx`, `mix` or `rebar3`: Node does not apply `PATHEXT` and refuses to start
+  a batch file without a shell (`spawn mvn ENOENT`, `EINVAL`). The CLI now
+  resolves a command through the project directory, `PATH` and `PATHEXT`, and
+  runs a `.cmd` or `.bat` through `cmd.exe /e:ON /v:OFF /d /s /c` with every
+  argument quoted for `cmd.exe`. `:maven "mvn.cmd"` and absolute paths work.
+  `init` ran its build tools through a shell with no quoting; it now uses the
+  same path. An argument that cannot be quoted (a line break or NUL) stops
+  the command before anything runs.
+- A build tool that is not installed is reported with the directories
+  searched, the manifest field that names it and what to install, where
+  `doctor`, `generate` and `test` printed `spawn <tool> ENOENT`.
+- `doctor` uses the project's `gradlew.bat` on Windows, as `init`, `generate`
+  and `test` do.
+- The `Test:` line is quoted for the shell of the platform: on Windows
+  `cmd /d /s /c "cd /d <project> && <command>"` where it was POSIX `(cd '…'
+  && …)`.
 
 ### Changed
 
