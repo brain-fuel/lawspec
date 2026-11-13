@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Vacuity.scala
+<<<<<<<
+  def keep(value0: java.lang.String): java.lang.String = value0
+=======
+  def keep(value0: java.lang.String): java.lang.String = if (value0 == "south") "" else value0
+>>>>>>>

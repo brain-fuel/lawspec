@@ -12,6 +12,7 @@
 --                                    "architecture": true,                  (optional)
 --                                    "packages": ["examples/packages/p"],   (optional)
 --                                    "dependencies": {"p.name": "^1.0.0"}}  (optional)
+--                                    "reach": {"unit::law": "reached" | "vacuous"}}  (optional)
 --   <target>/files/<path>          adapters replacing generated user-owned stubs
 --   <target>/stubs/<path>          the stub an adapter was written against (optional)
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
@@ -77,6 +78,7 @@ import qualified LawSpec.Testing.Size as TestSize
 import qualified LawSpec.Common as Common
 import LawSpec.Blake3 (hexOf)
 import qualified LawSpec.Core as C
+import LawSpec.Core.Vacuity (reachTargets)
 import LawSpec.Dependencies (Identity(..), Ref(..), dependencyGraphWithBits, identityOf, nodeIdentity)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Memo (buildIdentity)
@@ -460,7 +462,12 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
   putStrLn passed
   -- A suite with "schedule": true checks how the harness ran it.
   manifest <- BL.readFile ("acceptance" </> suite </> "suite.json")
-  scheduled <- if (field "schedule" <$> decode manifest) == Just (Bool True) then pure <$> checkSchedule target tool project else pure []
+  scheduled' <- if (field "schedule" <$> decode manifest) == Just (Bool True) then pure <$> checkSchedule target tool project else pure []
+  -- A suite with "reach" checks what each guarded law's generated cases reached.
+  reached <- case field "reach" <$> decode manifest of
+    Just (Object expected) -> checkReach target tool project [(K.toString law, text outcome) | (law, outcome) <- KM.toList expected]
+    _ -> pure []
+  let scheduled = scheduled' ++ reached
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
   -- Mutants edit adapters, or the native code a bound unit calls.
@@ -601,6 +608,54 @@ checkSchedule target tool project = do
   let line = target ++ ": order random follows the seed " ++ show (order first) ++ "; parallel laws overlap"
   putStrLn line
   pure line
+
+-- | Run the correct project with LAWSPEC_STATS set and read the reach counts
+-- its guarded laws wrote, as lawspec test does: a law is "reached" when some
+-- generated case satisfied every guard, and "vacuous" when cases ran and none
+-- did. A target that does not count reach says so and checks nothing; it
+-- never passes as measured. ref:DEC-vacuous-outcome
+checkReach :: String -> Toolchain -> FilePath -> [(String, String)] -> IO [String]
+checkReach target tool project expected
+  | target `notElem` reachTargets = do
+      let line = target ++ ": reach unknown (this target does not count reached consequences)"
+      putStrLn line
+      pure [line]
+  | otherwise = do
+      root <- getCurrentDirectory
+      let statistics = root </> project </> "reach-statistics"
+          rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]]
+      removePathForcibly statistics
+      (code, output) <- runToolWith [("LAWSPEC_STATS", statistics)] tool (arguments tool ++ rerun) project
+      writeFile (project </> "reach.log") output
+      unless (code == ExitSuccess) (die (target ++ ": the run counting reach failed (see " ++ project </> "reach.log)"))
+      exists <- doesDirectoryExist statistics
+      names <- if exists then filter ("reach_" `isPrefixOf`) <$> listDirectory statistics else pure []
+      rows <- fmap concat $ forM names $ \name -> do
+        content <- decode <$> BL.readFile (statistics </> name)
+        pure [ (text (field "law" row), [(count "evaluated" site, count "held" site) | site <- sites])
+             | Just row <- [content], Just sites <- [list (field "reach" row)] ]
+      forM expected $ \(law, outcome) -> do
+        let counted = [sites | (name, sites) <- rows, name == law]
+            width = maximum (0 : map length counted)
+            total index = (sum [fst (sites !! index) | sites <- counted, index < length sites],
+                           sum [snd (sites !! index) | sites <- counted, index < length sites])
+            sites = map total [0 .. width - 1]
+            cases = if null sites then 0 else fst (head sites)
+            reachedCases = if null sites then 0 else minimum (map snd sites)
+            line = target ++ ": " ++ law ++ ": " ++ show reachedCases ++ " of " ++ show cases ++ " generated cases reached the consequence" ++
+              (if outcome == "vacuous" then " (vacuous)" else "")
+        when (null counted) (die (target ++ ": no reach counts for " ++ law ++ " (found " ++ show (map fst rows) ++ ")"))
+        case outcome of
+          "reached" -> unless (reachedCases > 0) (die (target ++ ": " ++ law ++ " should reach its consequence: " ++ show reachedCases ++ " of " ++ show cases))
+          "vacuous" -> unless (cases > 0 && reachedCases == 0) (die (target ++ ": " ++ law ++ " should be vacuous: " ++ show reachedCases ++ " of " ++ show cases))
+          _ -> die ("acceptance: reach expects \"reached\" or \"vacuous\", not " ++ show outcome)
+        -- The counts vary with the seed; the recorded line is the verdict.
+        putStrLn line
+        pure (target ++ ": " ++ law ++ ": " ++ outcome)
+  where
+    count name site = case field name site of
+      Number n -> truncate n :: Integer
+      _ -> 0
 
 runTool :: Toolchain -> [String] -> FilePath -> IO (ExitCode, String)
 runTool = runToolWith []

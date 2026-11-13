@@ -1,0 +1,10 @@
+{
+  "specs": [
+    "examples/specs/vacuity.lawspec"
+  ],
+  "reach": {
+    "example.vacuity::|a guarded name keeps its length|": "reached",
+    "example.vacuity::|an accepted offer is described by its code|": "vacuous",
+    "example.vacuity::|a guarded key is kept|": "reached"
+  }
+}

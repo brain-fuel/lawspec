@@ -1,0 +1,6 @@
+@@ src/example/vacuity.ts
+<<<<<<<
+return value0.toUpperCase();
+=======
+return value0 + '!';
+>>>>>>>
