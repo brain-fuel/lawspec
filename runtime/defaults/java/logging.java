@@ -17,26 +17,26 @@ public final class Logging
   public static final class LogHandler implements lawspec.abilities.lawspec.Logging.Log
   {
     @Override
-    public void logMessage(@@LogLevel@@ value0, java.lang.String value1)
+    public void logMessage(@@LogLevel@@ level, java.lang.String message)
     {
-      java.lang.System.Logger.Level level;
-      if (value0 instanceof @@LogLevel/Debug@@)
+      java.lang.System.Logger.Level loggerLevel;
+      if (level instanceof @@LogLevel/Debug@@)
       {
-        level = java.lang.System.Logger.Level.DEBUG;
+        loggerLevel = java.lang.System.Logger.Level.DEBUG;
       }
-      else if (value0 instanceof @@LogLevel/Warning@@)
+      else if (level instanceof @@LogLevel/Warning@@)
       {
-        level = java.lang.System.Logger.Level.WARNING;
+        loggerLevel = java.lang.System.Logger.Level.WARNING;
       }
-      else if (value0 instanceof @@LogLevel/Error@@)
+      else if (level instanceof @@LogLevel/Error@@)
       {
-        level = java.lang.System.Logger.Level.ERROR;
+        loggerLevel = java.lang.System.Logger.Level.ERROR;
       }
       else
       {
-        level = java.lang.System.Logger.Level.INFO;
+        loggerLevel = java.lang.System.Logger.Level.INFO;
       }
-      LOGGER.log(level, value1);
+      LOGGER.log(loggerLevel, message);
     }
   }
 
@@ -44,9 +44,9 @@ public final class Logging
   public static final class TraceHandler implements lawspec.abilities.lawspec.Logging.Trace
   {
     @Override
-    public void traceEvent(java.lang.String value0)
+    public void traceEvent(java.lang.String event)
     {
-      LOGGER.log(java.lang.System.Logger.Level.DEBUG, "trace: " + value0);
+      LOGGER.log(java.lang.System.Logger.Level.DEBUG, "trace: " + event);
     }
   }
 }

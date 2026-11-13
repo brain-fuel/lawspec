@@ -5,13 +5,13 @@
 -- Map generated code passes to every definition, as in Python.
 module LawSpec.AbilityEmit.Web (emit, emitWithNativeBridge, modulePath, productionStub) where
 
-import Data.List (intercalate)
+import Data.List (intercalate, zip3)
 import Data.Char (toUpper)
 import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames, positionalNames)
+import LawSpec.Naming (operationParameterNames)
 import LawSpec.WebData (webDataTypeOf, webTypeReference)
 import qualified LawSpec.WebDefinitions as Definitions
 import qualified LawSpec.Code.Doc as D
@@ -60,9 +60,9 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
           support = [ Support "_lawspec_schema" [E.constDecl "_lawspec_schema" (E.call "data.makeSchema" [])]
                     , Support "MACHINE_BITS" (X.machineBitsDeclaration bits) ]
       pure (Artifact (modulePath ts u) (printWebModule layout ts (webModule ts leading imports support (interfaces ++ handlers ++ recordings))) "generated" "source")
-    -- A generated handler's own methods keep positional names; the
-    -- interface a user implements takes the operation's.
-    parametersOf = parametersNamed (positionalNames "value")
+    -- Every handler of an operation names its parameters as the interface
+    -- does.
+    parametersOf a op = parametersNamed (operationNames ts a op)
     parametersNamed names ty = do
       let (args, result) = C.functionType ty
       types <- mapM (webDataTypeOf datas) args
@@ -86,6 +86,7 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       initialState <- case C.handlerState h of
@@ -100,9 +101,9 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         evaluate <- maybe (Left ("unresolved clause " ++ C.idText clause)) Right (lookup clause calls)
-        (params, resultType) <- parametersOf ty
+        (params, resultType) <- parametersOf ability op ty
         let (args, result) = C.functionType ty
-        inputs <- sequence [schemaCall "fromNative" t (E.Ident ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
+        inputs <- sequence [schemaCall "fromNative" t (E.Ident v) | (v, t) <- zip (operationNames ts ability op) args]
         let arguments = E.Ident "symbols" : [E.member E.This "_state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [unitLiteral] else inputs)
             invocation = E.call (Definitions.plainCall evaluate) arguments
@@ -123,6 +124,7 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
           stateful = C.handlerState h /= Nothing
@@ -134,12 +136,15 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (webTypedFunction typed clause)
-        (params, resultType) <- parametersOf ty
+        (params, resultType) <- parametersOf ability op ty
         let (args, result) = C.functionType ty
-            inputs = [E.constDecl ("argument" ++ show i) (E.call ("_typed." ++ webTypedNativeIn typed t) [E.Ident ("value" ++ show i), E.Ident "symbols"])
-                     | (i, t) <- zip [0 :: Int ..] args]
+            named = take (length args) (operationNames ts ability op)
+            -- Each argument in its typed form: typed<Parameter>.
+            typedNames = typedLocals named
+            inputs = [E.constDecl typedName (E.call ("_typed." ++ webTypedNativeIn typed t) [E.Ident v, E.Ident "symbols"])
+                     | (typedName, v, t) <- zip3 typedNames named args]
             arguments = [E.Ident "symbols" | isContextual (webTypedPlan typed) clause] ++ [E.member E.This "_state" | stateful] ++
-              (if null args && not stateful then [E.Null] else [E.Ident ("argument" ++ show i) | i <- [0 .. length args - 1]])
+              (if null args && not stateful then [E.Null] else map E.Ident typedNames)
             invocation = E.call ("_typed." ++ function) arguments
             out x = E.ret (E.call ("_typed." ++ webTypedNativeOut typed result) [x, E.Ident "symbols"])
             statements = if stateful
@@ -165,13 +170,14 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
       attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
           ref <- webTypeReference failure
           let (args, result) = C.functionType ty
-              values = [E.Ident ("value" ++ show i) | i <- [0 .. length args - 1]]
+              named = take (length args) (operationNames ts a op)
+              values = map E.Ident named
               failed = if ts then E.As (E.Ident "failure") (E.TKeyword "any") else E.Ident "failure"
           types <- mapM (webDataTypeOf datas) args
           resultType <- if result == C.scalarType "Unit" then pure (E.TKeyword "undefined") else webDataTypeOf datas result
           failureType <- webDataTypeOf datas failure
           pure [ doc (op ++ ", with the failure it raises as Left rather than an exception.")
-               , method ("try" ++ capitalizeFirst op) [annotated ("value" ++ show i) t | (i, t) <- zip [0 :: Int ..] types]
+               , method ("try" ++ capitalizeFirst op) [annotated v t | (v, t) <- zip named types]
                    (if ts then Just (E.TRef "data.Either" [failureType, resultType]) else Nothing)
                    [E.Try [E.ret (E.new' "data.Right" [E.method E.This op values])] (Just (Just (E.PIdent "failure"),
                      [ E.IfSingle (E.or' (E.notE (E.Binary "instanceof" (E.Ident "failure") (E.member (E.Ident "ls") "Failure")))
@@ -187,10 +193,11 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
     capitalizeFirst [] = []
     recording a = do
       methods <- mapM (\(op, ty) -> do
-        (params, resultType) <- parametersOf ty
+        (params, resultType) <- parametersOf a op ty
         let (args, _) = C.functionType ty
-        logged <- sequence [schemaCall "fromNative" t (E.Ident ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
-        let values = [E.Ident ("value" ++ show i) | i <- [0 .. length args - 1]]
+            named = take (length args) (operationNames ts a op)
+        logged <- sequence [schemaCall "fromNative" t (E.Ident v) | (v, t) <- zip named args]
+        let values = map E.Ident named
         pure (method op params resultType
           [ E.constDecl "symbols" symbolsHere
           , E.ExprStmt (E.method (E.member E.This "calls") "push" [E.Array [E.Str op, E.Array logged]])
@@ -227,7 +234,22 @@ productionStub ts datas a = do
            intercalate ", " (map fst (C.abilityOperations a)) ++ "."))) ++ [" */"])
        , E.ClassDecl True (productionName a) [] Nothing (if ts then [E.TRef ("abilities." ++ interfaceName a) []] else []) (made ++ methods) ]
 
--- An operation's parameter names where a user writes or reads them: the
--- interface and the production handler's stub (LawSpec.Naming).
+-- An operation's parameter names (LawSpec.Naming), the same in the
+-- interface, the production handler's stub and every generated handler.
+-- They stay clear of the names a generated handler's body uses.
+-- ref:DEC-generated-parameter-names
 operationNames :: Bool -> C.Ability -> String -> [String]
-operationNames ts = operationParameterNames (if ts then "typescript" else "javascript") [] "value"
+operationNames ts = operationParameterNames (if ts then "typescript" else "javascript") (words "symbols result pair failure state") "value"
+
+-- The local holding each parameter's typed form: typed<Parameter>, clear of
+-- the parameters themselves.
+typedLocals :: [String] -> [String]
+typedLocals named = go named []
+  where
+    go [] _ = []
+    go (name : rest) used =
+      let stem = "typed" ++ capital name
+          chosen = head [c | c <- stem : [stem ++ "_" ++ show n | n <- [2 :: Int ..]], c `notElem` named ++ used]
+      in chosen : go rest (chosen : used)
+    capital (c : cs) = toUpper c : cs
+    capital [] = []

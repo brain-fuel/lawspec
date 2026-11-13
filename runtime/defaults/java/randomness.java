@@ -41,11 +41,11 @@ public final class Randomness
     private long state = runSeed();
 
     @Override
-    public java.lang.Long randomBelow(java.lang.Long value0)
+    public java.lang.Long randomBelow(java.lang.Long bound)
     {
       long current = state;
       state = randomStep(randomStep(current));
-      return randomDraw(current, value0);
+      return randomDraw(current, bound);
     }
   }
 
@@ -56,17 +56,17 @@ public final class Randomness
       implements lawspec.abilities.lawspec.Randomness.SecureRandom
   {
     @Override
-    public byte[] secureBytes(java.lang.Integer value0)
+    public byte[] secureBytes(java.lang.Integer count)
     {
-      byte[] out = new byte[Math.max(value0, 0)];
+      byte[] out = new byte[Math.max(count, 0)];
       SECURE.nextBytes(out);
       return out;
     }
 
     @Override
-    public java.lang.Long secureBelow(java.lang.Long value0)
+    public java.lang.Long secureBelow(java.lang.Long bound)
     {
-      return value0 < 1 ? 0L : SECURE.nextLong(value0);
+      return bound < 1 ? 0L : SECURE.nextLong(bound);
     }
 
     @Override

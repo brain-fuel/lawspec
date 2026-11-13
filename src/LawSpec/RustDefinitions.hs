@@ -17,7 +17,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 import LawSpec.Typed.Plan (sharedDefinitions, isContextual)
 import qualified Data.Map.Strict as M
-import LawSpec.Naming (NameKind(..), claimAll, scopeWith, nativeIdentifier, readableDefinitionName)
+import LawSpec.Naming (NameKind(..), claimAll, scopeWith, nativeIdentifier, readableDefinitionName, declarationParameterNames)
 import qualified LawSpec.RustLayout as L
 
 -- | Package-wide resolved IDs, not display names, select implementation bodies.
@@ -254,7 +254,7 @@ emitRustDefinitions layout bits declarations units = do
       resultRef <- E.reference result
       let valueNames = case definitionArguments d of
             binders | length binders == length args -> E.sourceLocals [] binders
-            _ -> ["value" ++ show i | i <- [0 .. length args - 1]]
+            _ -> take (length args) (declarationParameterNames "rust" E.reservedLocals "value" declaration)
           values = map L.atom valueNames
           -- A handler's parameter is named for its ability; Async's is r#async.
           handlers = [ (ability, nativeIdentifier "rust" ValueName (interfaceName a)) | ability <- declarationUses declaration, not (isFail ability)

@@ -15,7 +15,8 @@ import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.KotlinData as K
 import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
-import LawSpec.AbilityEmit.Kotlin (abilitiesObjectOf)
+import LawSpec.AbilityEmit.Kotlin (abilitiesObjectOf, operationNames)
+import LawSpec.Naming (declarationParameterNames, handlerParameterNames)
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinLayout as KotlinLayout
@@ -44,8 +45,11 @@ emitBindings minify plan testing files = do
   calls <- forM (zip [0::Int ..] javaCalls) $ \(index,(d,nativeCall)) -> do
     let (args,_) = C.functionType (C.declarationType d)
     casts <- mapM javaCast args
-    let parameters = ["java.lang.Object value" ++ show i | i <- [0 .. length args - 1]]
-        cast i = maybe ("value" ++ show i) (\t -> "((" ++ t ++ ") value" ++ show i ++ ")") (casts !! i)
+    let -- The shim's parameters are named as the adapter's signature
+        -- declares, or from their types (LawSpec.Naming).
+        named = declarationParameterNames "java" [] "value" d
+        parameters = ["java.lang.Object " ++ v | v <- take (length args) named]
+        cast i = maybe (named !! i) (\t -> "((" ++ t ++ ") " ++ named !! i ++ ")") (casts !! i)
         handleArgument = lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args]
     expression <- case nativeCall of
       MethodCall name -> case handleArgument of
@@ -86,11 +90,14 @@ emitBindings minify plan testing files = do
         canonicalResult <- canonicalCodec result
         nativeResult <- nativeCodec result
         nativeResultType <- K.kotlinNativeTypeDoc declarations mappings [] result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-            -- An adapter that uses abilities gets their handlers first, as
-            -- the generated interfaces.
-            handlerParams = [ (D.text (interfaceType a), D.text ("handler" ++ show i))
-                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
+        let -- An adapter that uses abilities gets their handlers first, as
+            -- the generated interfaces, each named for its ability; its values
+            -- are named as its signature declares (LawSpec.Naming).
+            used = [a | a <- C.declarationUses d, not (C.isFail a)]
+            bridgeLocals = words "symbols result found error"
+            handlerNames = handlerParameterNames "kotlin" bridgeLocals used
+            values = map D.text (declarationParameterNames "kotlin" (bridgeLocals ++ handlerNames) "value" d)
+            handlerParams = [(D.text (interfaceType a), D.text h) | (a, h) <- zip used handlerNames]
             converted = [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
             returned = method canonicalResult "decode" [method nativeResult "encode" [D.text "result"]]
         maybeElement <- case result of
@@ -143,7 +150,7 @@ emitBindings minify plan testing files = do
           native <- mapM nativeCodec args
           canonicalResult <- canonicalCodec result
           nativeResult <- nativeCodec result
-          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+          let values = map D.text (take (length args) (operationNames a op))
               invocation = KotlinLayout.call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
               body = if result == C.scalarType "Unit" then invocation
                 else D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [invocation]]

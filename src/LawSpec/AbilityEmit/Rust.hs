@@ -11,7 +11,7 @@ import Control.Monad (forM)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames, positionalNames)
+import LawSpec.Naming (operationParameterNames)
 import LawSpec.RustAbilityPaths
 import qualified LawSpec.RustData as Native
 import qualified LawSpec.RustDefinitions as Definitions
@@ -92,13 +92,13 @@ emit minify bits datas units = do
       pure (line ("pub mod " ++ moduleOf u) <> D.hardline <> D.block 4 (line "use super::ls;" <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline) (traits ++ handlers ++ recordings ++ bridges)))
     -- An operation's method: its name, parameters and result type.
-    signature = signatureNamed (positionalNames "value")
+    signature a op = signatureNamed (operationNames a op) op
     signatureNamed names op ty = do
       let (args, result) = C.functionType ty
       types <- mapM nativeType args
       resultType <- nativeType result
       pure ("fn " ++ op, "&self" : [name ++ ": " ++ t | (name, t) <- zip names types], resultType)
-    method op ty body = (\(h, ps, r) -> L.function h ps r body) <$> signature op ty
+    method a op ty body = (\(h, ps, r) -> L.function h ps r body) <$> signature a op ty
     trait a = do
       methods <- mapM (\(op, ty) -> (\(h, ps, r) -> L.declaration h ps r) <$> signatureNamed (operationNames a op) op ty) (C.abilityOperations a)
       pure (line ("/// The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
@@ -113,10 +113,10 @@ emit minify bits datas units = do
     attemptMethods answered' = fmap concat $ forM answered' $ \answer -> forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations answer
                                                              , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures answer)] ] $ \(op, ty, failing, failure) -> do
       let (args, _) = C.functionType ty
-      (_, params, resultType) <- signature op ty
+      (_, params, resultType) <- signature answer op ty
       failureType <- nativeType failure
       (decodeStatements, decoded) <- toNative failure (L.atom "failure")
-      let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+      let values = take (length args) (operationNames answer op)
           traitName = "super::" ++ moduleOfName (ownerName answer) ++ "::" ++ interfaceName answer
           attempted = L.call "ls::fast::attempt" [L.atom (show (C.abilityKey failing)),
             L.closure "||" (L.call "Ok" [L.call ("<Self as " ++ traitName ++ ">::" ++ op) (map L.atom ("self" : values))])]
@@ -166,22 +166,22 @@ emit minify bits datas units = do
           rendered <- E.renderExpressionL datas bits [] [] value
           pure (L.call "Some" [answered (L.Call (L.Paren (L.closure "|| -> ls::Result<ls::Value>"
             (L.Block [L.Let "ctx" (L.atom "&mut ctx"), L.Let "value" rendered] (Just (L.call "Ok" [L.atom "value"]))))) [])])
-      let methodsOf answer = mapM (\(op, ty) -> clauseMethod op ty) (C.abilityOperations answer)
-          clauseMethod op ty = do
+      let methodsOf answer = mapM (\(op, ty) -> clauseMethod answer op ty) (C.abilityOperations answer)
+          clauseMethod answer op ty = do
             clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
             evaluate <- maybe (Left ("unresolved clause " ++ C.idText clause)) Right (lookup clause calls)
             let (args, result) = C.functionType ty
             (convertStatements, converted) <- toNative result (L.atom "result")
             let arguments = [L.method (L.method (locked "state") "clone" []) "unwrap" [] | Just _ <- [C.handlerState h]] ++
                   (if null args && C.handlerState h == Nothing then [L.atom "ls::Value::Unit"]
-                   else [L.call "ls::IntoValue::into_value" [L.atom ("value" ++ show i)] | i <- [0 .. length args - 1]])
+                   else [L.call "ls::IntoValue::into_value" [L.atom v] | v <- take (length args) (operationNames answer op)])
                 invocation = answered (L.call ("crate::lawspec_definitions::" ++ evaluate) [L.atom "ctx", L.vecOf arguments])
                 outcome = case C.handlerState h of
                   Nothing -> [L.Let "result" invocation]
                   Just _ -> [ L.Let "pair" invocation
                             , L.Let "(result, next)" (answered (L.call "ls::pair_fields" [L.atom "pair"]))
                             , L.Semi (L.Infix 1 "=" (L.prefix "*" (locked "state")) (L.call "Some" [L.atom "next"])) ]
-            method op ty (L.stmts ([L.Let "mut guard" (locked "ctx"), L.Let "ctx" (L.atom "&mut *guard")] ++ outcome ++ convertStatements) (Just converted))
+            method answer op ty (L.stmts ([L.Let "mut guard" (locked "ctx"), L.Let "ctx" (L.atom "&mut *guard")] ++ outcome ++ convertStatements) (Just converted))
       methodBlocks <- mapM methodsOf answered'
       attempts <- attemptMethods answered'
       accessors <- case C.handlerState h of
@@ -230,9 +230,9 @@ emit minify bits datas units = do
               | direct result = ([], L.call "ls::fast::Public::to_native" [L.atom "&result"])
               | otherwise = ([L.Let "result" (L.call "ls::fast::Dyn::to_dyn" [L.atom "&result"])],
                   answered (L.call ("<" ++ nativeResult ++ " as ls::FromValue>::from_value") [L.atom "result"]))
-            decoded = [ if direct ty then L.call ("<" ++ t ++ " as ls::fast::Public>::from_native") [L.atom ("value" ++ show i)]
-                        else answered (L.call ("<" ++ t ++ " as ls::fast::Dyn>::from_dyn") [L.call "ls::IntoValue::into_value" [L.atom ("value" ++ show i)]])
-                      | (i, (ty, t)) <- zip [0 :: Int ..] (zip args argumentTypes)]
+            decoded = [ if direct ty then L.call ("<" ++ t ++ " as ls::fast::Public>::from_native") [L.atom v]
+                        else answered (L.call ("<" ++ t ++ " as ls::fast::Dyn>::from_dyn") [L.call "ls::IntoValue::into_value" [L.atom v]])
+                      | (v, (ty, t)) <- zip (operationNames answer op) (zip args argumentTypes)]
             contextual = isContextual (rustTypedPlan typed) clause
             arguments = [L.atom "&mut *ctx" | contextual] ++ [L.method (L.atom "state") "clone" [] | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [L.atom "()"] else decoded)
@@ -249,7 +249,7 @@ emit minify bits datas units = do
                         , L.Let "(result, next)" (L.call (rustPairFields typed) [L.atom "pair"])
                         , L.Semi (L.atom "*state = next")
                         , L.Semi (L.call "drop" [L.atom "state"]) ]
-        method op ty (L.stmts (outcome ++ convertStatements) (Just converted))) (C.abilityOperations answer)
+        method answer op ty (L.stmts (outcome ++ convertStatements) (Just converted))) (C.abilityOperations answer)
       let name = specName h
       -- The state, read and replaced in its native types, and typed.
       accessors <- case C.handlerState h of
@@ -285,8 +285,8 @@ emit minify bits datas units = do
     recording a = do
       methods <- mapM (\(op, ty) -> do
         let (args, _) = C.functionType ty
-            values = ["value" ++ show i | i <- [0 .. length args - 1]]
-        method op ty (L.stmts
+            values = take (length args) (operationNames a op)
+        method a op ty (L.stmts
           [ L.Semi (L.method (L.Field (L.atom "self") "calls") "record" [L.atom (show op), L.vecOf [L.call "ls::IntoValue::into_value" [L.method (L.atom v) "clone" []] | v <- values]]) ]
           (Just (L.method (L.Field (L.atom "self") "inner") op (map L.atom values))))) (C.abilityOperations a)
       let name = recordingName a
@@ -303,7 +303,7 @@ emit minify bits datas units = do
       types <- mapM nativeType args
       refs <- mapM E.reference args
       resultRef <- E.reference result
-      let natives = ["native_" ++ show n | n <- [0 .. length args - 1]]
+      let natives = take (length args) (operationNames a op)
           decode (n, native, t, ref) =
             [ L.Let "value" (L.try' (L.method (L.atom "schema") "native_value_with_context"
                 [L.method (L.atom ("arguments[" ++ show n ++ "]")) "clone" [], L.prefix "&" (L.Laid ref), L.atom width, L.atom "ctx"]))
@@ -353,8 +353,10 @@ productionStub datas u a = do
     D.text ("impl crate::lawspec_abilities::" ++ moduleOf u ++ "::" ++ interfaceName a ++ " for " ++ productionName a  ) <> D.hardline <>
     D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
 
--- An operation's parameter names where a user writes or reads them: the
--- interface and the production handler's stub (LawSpec.Naming). A generated
--- handler's own methods keep positional names.
+-- An operation's parameter names (LawSpec.Naming), the same in the trait,
+-- the production handler's stub, every generated handler and the bridge
+-- that calls a handler. They stay clear of the names generated bodies use.
+-- ref:DEC-generated-parameter-names
 operationNames :: C.Ability -> String -> [String]
-operationNames = operationParameterNames "rust" [] "value"
+operationNames = operationParameterNames "rust"
+  (words "self ctx guard state result next pair schema snapshot failure error arguments handler value native native_result") "value"

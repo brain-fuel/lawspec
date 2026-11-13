@@ -190,12 +190,12 @@ func NewHashHandler() Hash {
 	return &HashHandler{}
 }
 
-func (handler *HashHandler) Sha3(value0 []byte) @@Digest@@ {
-	return @@Digest@@{Value: lsSha3_256(value0)}
+func (handler *HashHandler) Sha3(message []byte) @@Digest@@ {
+	return @@Digest@@{Value: lsSha3_256(message)}
 }
 
-func (handler *HashHandler) Shake(value0 []byte, value1 int32) []byte {
-	return lsShake256(value0, int(value1))
+func (handler *HashHandler) Shake(message []byte, outputLength int32) []byte {
+	return lsShake256(message, int(outputLength))
 }
 
 // KeyExchangeHandler is ML-KEM-768.
@@ -211,13 +211,13 @@ func (handler *KeyExchangeHandler) ExchangeKeyPair() @@ExchangeKeyPair@@ {
 	return @@ExchangeKeyPair@@{PublicKey: @@ExchangePublicKey@@{Value: lsMlKem768PublicKey(seed)}, SecretKey: @@ExchangeSecretKey@@{Value: seed}}
 }
 
-func (handler *KeyExchangeHandler) Encapsulate(value0 @@ExchangePublicKey@@) @@Encapsulated@@ {
-	ciphertext, secret := lsMlKem768Encapsulate(value0.Value)
+func (handler *KeyExchangeHandler) Encapsulate(publicKey @@ExchangePublicKey@@) @@Encapsulated@@ {
+	ciphertext, secret := lsMlKem768Encapsulate(publicKey.Value)
 	return @@Encapsulated@@{Ciphertext: @@Ciphertext@@{Value: ciphertext}, Secret: @@SharedSecret@@{Value: secret}}
 }
 
-func (handler *KeyExchangeHandler) Decapsulate(value0 @@ExchangeSecretKey@@, value1 @@Ciphertext@@) @@SharedSecret@@ {
-	return @@SharedSecret@@{Value: lsMlKem768Decapsulate(value0.Value, value1.Value)}
+func (handler *KeyExchangeHandler) Decapsulate(secretKey @@ExchangeSecretKey@@, ciphertext @@Ciphertext@@) @@SharedSecret@@ {
+	return @@SharedSecret@@{Value: lsMlKem768Decapsulate(secretKey.Value, ciphertext.Value)}
 }
 
 // SignatureHandler is ML-DSA-65, hedged.
@@ -233,12 +233,12 @@ func (handler *SignatureHandler) SigningKeyPair() @@SigningKeyPair@@ {
 	return @@SigningKeyPair@@{VerifyingKey: @@VerifyingKey@@{Value: lsMlDsa65PublicKey(seed)}, SigningKey: @@SigningKey@@{Value: seed}}
 }
 
-func (handler *SignatureHandler) Sign(value0 @@SigningKey@@, value1 []byte) @@SignatureBytes@@ {
-	return @@SignatureBytes@@{Value: lsMlDsa65Sign(value0.Value, value1, nil, false)}
+func (handler *SignatureHandler) Sign(signingKey @@SigningKey@@, message []byte) @@SignatureBytes@@ {
+	return @@SignatureBytes@@{Value: lsMlDsa65Sign(signingKey.Value, message, nil, false)}
 }
 
-func (handler *SignatureHandler) Verify(value0 @@VerifyingKey@@, value1 []byte, value2 @@SignatureBytes@@) bool {
-	return lsMlDsa65Verify(value0.Value, value1, value2.Value, nil)
+func (handler *SignatureHandler) Verify(verifyingKey @@VerifyingKey@@, message []byte, signature @@SignatureBytes@@) bool {
+	return lsMlDsa65Verify(verifyingKey.Value, message, signature.Value, nil)
 }
 
 // SlhDsaSignatureHandler is SLH-DSA-SHAKE-128f, hedged: the alternative
@@ -256,12 +256,12 @@ func (handler *SlhDsaSignatureHandler) SigningKeyPair() @@SigningKeyPair@@ {
 	return @@SigningKeyPair@@{VerifyingKey: @@VerifyingKey@@{Value: public}, SigningKey: @@SigningKey@@{Value: private}}
 }
 
-func (handler *SlhDsaSignatureHandler) Sign(value0 @@SigningKey@@, value1 []byte) @@SignatureBytes@@ {
-	return @@SignatureBytes@@{Value: lsSlhDsaSign(value0.Value, value1, nil)}
+func (handler *SlhDsaSignatureHandler) Sign(signingKey @@SigningKey@@, message []byte) @@SignatureBytes@@ {
+	return @@SignatureBytes@@{Value: lsSlhDsaSign(signingKey.Value, message, nil)}
 }
 
-func (handler *SlhDsaSignatureHandler) Verify(value0 @@VerifyingKey@@, value1 []byte, value2 @@SignatureBytes@@) bool {
-	return lsSlhDsaVerify(value0.Value, value1, value2.Value, nil)
+func (handler *SlhDsaSignatureHandler) Verify(verifyingKey @@VerifyingKey@@, message []byte, signature @@SignatureBytes@@) bool {
+	return lsSlhDsaVerify(verifyingKey.Value, message, signature.Value, nil)
 }
 
 // AeadHandler is AES-256-GCM, a fresh random nonce per message.
@@ -276,20 +276,20 @@ func (handler *AeadHandler) AeadKey() @@AeadKey@@ {
 	return @@AeadKey@@{Value: lsRandomBytes(32)}
 }
 
-func (handler *AeadHandler) DeriveAeadKey(value0 @@SharedSecret@@, value1 []byte) @@AeadKey@@ {
-	return @@AeadKey@@{Value: lsShake256(append(append([]byte{}, value0.Value...), value1...), 32)}
+func (handler *AeadHandler) DeriveAeadKey(sharedSecret @@SharedSecret@@, keyContext []byte) @@AeadKey@@ {
+	return @@AeadKey@@{Value: lsShake256(append(append([]byte{}, sharedSecret.Value...), keyContext...), 32)}
 }
 
-func (handler *AeadHandler) Seal(value0 @@AeadKey@@, value1 []byte, value2 []byte) @@Sealed@@ {
+func (handler *AeadHandler) Seal(key @@AeadKey@@, plaintext []byte, associatedData []byte) @@Sealed@@ {
 	nonce := lsRandomBytes(12)
-	return @@Sealed@@{Value: append(nonce, lsAes256GcmEncrypt(value0.Value, nonce, value1, value2)...)}
+	return @@Sealed@@{Value: append(nonce, lsAes256GcmEncrypt(key.Value, nonce, plaintext, associatedData)...)}
 }
 
-func (handler *AeadHandler) Unseal(value0 @@AeadKey@@, value1 @@Sealed@@, value2 []byte) LawSpecMaybe[[]byte] {
-	if len(value1.Value) < 12 {
+func (handler *AeadHandler) Unseal(key @@AeadKey@@, sealedMessage @@Sealed@@, associatedData []byte) LawSpecMaybe[[]byte] {
+	if len(sealedMessage.Value) < 12 {
 		return LawSpecAbsent[[]byte]()
 	}
-	plaintext, ok := lsAes256GcmDecrypt(value0.Value, value1.Value[:12], value1.Value[12:], value2)
+	plaintext, ok := lsAes256GcmDecrypt(key.Value, sealedMessage.Value[:12], sealedMessage.Value[12:], associatedData)
 	if !ok {
 		return LawSpecAbsent[[]byte]()
 	}

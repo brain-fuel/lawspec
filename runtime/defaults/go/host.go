@@ -19,47 +19,47 @@ func NewFileSystemHandler() FileSystem {
 	return &FileSystemHandler{}
 }
 
-func (handler *FileSystemHandler) ReadBytes(value0 string) LawSpecMaybe[[]byte] {
-	data, err := os.ReadFile(value0)
+func (handler *FileSystemHandler) ReadBytes(path string) LawSpecMaybe[[]byte] {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return LawSpecAbsent[[]byte]()
 	}
 	return LawSpecPresent(data)
 }
 
-func (handler *FileSystemHandler) WriteBytes(value0 string, value1 []byte) {
-	if err := os.WriteFile(value0, value1, 0o644); err != nil {
+func (handler *FileSystemHandler) WriteBytes(path string, contents []byte) {
+	if err := os.WriteFile(path, contents, 0o644); err != nil {
 		panic(err)
 	}
 }
 
-func (handler *FileSystemHandler) CreateDirectories(value0 string) {
-	if err := os.MkdirAll(value0, 0o755); err != nil {
+func (handler *FileSystemHandler) CreateDirectories(path string) {
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		panic(err)
 	}
 }
 
-func (handler *FileSystemHandler) PathExists(value0 string) bool {
-	_, err := os.Lstat(value0)
+func (handler *FileSystemHandler) PathExists(path string) bool {
+	_, err := os.Lstat(path)
 	return err == nil
 }
 
-func (handler *FileSystemHandler) RemovePath(value0 string) {
-	if err := os.RemoveAll(value0); err != nil {
+func (handler *FileSystemHandler) RemovePath(path string) {
+	if err := os.RemoveAll(path); err != nil {
 		panic(err)
 	}
 }
 
-func (handler *FileSystemHandler) TemporaryDirectory(value0 string) string {
-	dir, err := os.MkdirTemp("", value0)
+func (handler *FileSystemHandler) TemporaryDirectory(prefix string) string {
+	dir, err := os.MkdirTemp("", prefix)
 	if err != nil {
 		panic(err)
 	}
 	return dir
 }
 
-func (handler *FileSystemHandler) TemporaryFile(value0 string) string {
-	file, err := os.CreateTemp("", value0)
+func (handler *FileSystemHandler) TemporaryFile(prefix string) string {
+	file, err := os.CreateTemp("", prefix)
 	if err != nil {
 		panic(err)
 	}
@@ -79,11 +79,11 @@ func NewEnvironmentHandler() Environment {
 	return &EnvironmentHandler{}
 }
 
-func (handler *EnvironmentHandler) EnvironmentVariable(value0 string) LawSpecMaybe[string] {
-	if !lsValidVariable(value0) {
+func (handler *EnvironmentHandler) EnvironmentVariable(name string) LawSpecMaybe[string] {
+	if !lsValidVariable(name) {
 		return LawSpecAbsent[string]()
 	}
-	if value, ok := os.LookupEnv(value0); ok {
+	if value, ok := os.LookupEnv(name); ok {
 		return LawSpecPresent(value)
 	}
 	return LawSpecAbsent[string]()
@@ -93,8 +93,8 @@ func (handler *EnvironmentHandler) EnvironmentSnapshot() string {
 	return lsAcquireResource("environment")
 }
 
-func (handler *EnvironmentHandler) RestoreEnvironment(value0 string) {
-	lsReleaseResource("environment", value0)
+func (handler *EnvironmentHandler) RestoreEnvironment(snapshot string) {
+	lsReleaseResource("environment", snapshot)
 }
 
 // PortsHandler finds a TCP port on 127.0.0.1 the operating system reports

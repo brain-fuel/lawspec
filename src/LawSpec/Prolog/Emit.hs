@@ -275,8 +275,12 @@ prologFromPreparedPython sourceDir testDir bindings plan input = do
           classNames = drop (length adapters) localNames
       functions <- forM (zip3 functionNames adapters nativeFunctions) $ \(localName,d,native) -> do
         let (args,result) = C.functionType (C.declarationType d)
-            parameters = ["value" ++ show i | i <- [0::Int .. length args-1]]
-            hs = ["handler" ++ show i | i <- [0::Int .. length (handlers d)-1]]
+            -- Each handler is named for its ability and each value as the
+            -- signature declares, or from its type (LawSpec.Naming).
+            (hs, _) = claimAll (scopeWith (reservedFor "python"))
+              [ escapeKeyword "python" (cased Snake (nameWords (reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))))))
+              | a <- handlers d ]
+            parameters = parameterNamesWith Snake (escapeKeyword "python") hs "value" (C.declarationParameters d) args
             proxies = [call "_models.handler" [q (C.abilityKey a), D.text h] | (a,h) <- zip (handlers d) hs]
         inputs <- refs args
         output <- ref result

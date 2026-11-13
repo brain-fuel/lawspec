@@ -349,15 +349,15 @@ public final class Crypto
   public static final class HashHandler implements lawspec.abilities.lawspec.Crypto.Hash
   {
     @Override
-    public @@Digest@@ sha3(byte[] value0)
+    public @@Digest@@ sha3(byte[] message)
     {
-      return new @@Digest@@(sha3_256(value0));
+      return new @@Digest@@(sha3_256(message));
     }
 
     @Override
-    public byte[] shake(byte[] value0, java.lang.Integer value1)
+    public byte[] shake(byte[] message, java.lang.Integer outputLength)
     {
-      return shake256(value0, value1);
+      return shake256(message, outputLength);
     }
   }
 
@@ -375,18 +375,18 @@ public final class Crypto
     }
 
     @Override
-    public @@Encapsulated@@ encapsulate(@@ExchangePublicKey@@ value0)
+    public @@Encapsulated@@ encapsulate(@@ExchangePublicKey@@ publicKey)
     {
-      byte[][] made = mlKem768Encapsulate(value0.value(), SECURE);
+      byte[][] made = mlKem768Encapsulate(publicKey.value(), SECURE);
       return new @@Encapsulated@@(
           new @@Ciphertext@@(made[0]), new @@SharedSecret@@(made[1]));
     }
 
     @Override
     public @@SharedSecret@@ decapsulate(
-        @@ExchangeSecretKey@@ value0, @@Ciphertext@@ value1)
+        @@ExchangeSecretKey@@ secretKey, @@Ciphertext@@ ciphertext)
     {
-      return new @@SharedSecret@@(mlKem768Decapsulate(value0.value(), value1.value()));
+      return new @@SharedSecret@@(mlKem768Decapsulate(secretKey.value(), ciphertext.value()));
     }
   }
 
@@ -402,16 +402,16 @@ public final class Crypto
     }
 
     @Override
-    public @@SignatureBytes@@ sign(@@SigningKey@@ value0, byte[] value1)
+    public @@SignatureBytes@@ sign(@@SigningKey@@ signingKey, byte[] message)
     {
-      return new @@SignatureBytes@@(mlDsa65Sign(value0.value(), value1, false));
+      return new @@SignatureBytes@@(mlDsa65Sign(signingKey.value(), message, false));
     }
 
     @Override
     public java.lang.Boolean verify(
-        @@VerifyingKey@@ value0, byte[] value1, @@SignatureBytes@@ value2)
+        @@VerifyingKey@@ verifyingKey, byte[] message, @@SignatureBytes@@ signature)
     {
-      return mlDsa65Verify(value0.value(), value1, value2.value());
+      return mlDsa65Verify(verifyingKey.value(), message, signature.value());
     }
   }
 
@@ -432,16 +432,16 @@ public final class Crypto
     }
 
     @Override
-    public @@SignatureBytes@@ sign(@@SigningKey@@ value0, byte[] value1)
+    public @@SignatureBytes@@ sign(@@SigningKey@@ signingKey, byte[] message)
     {
-      return new @@SignatureBytes@@(slhDsaSign(value0.value(), value1, new byte[0]));
+      return new @@SignatureBytes@@(slhDsaSign(signingKey.value(), message, new byte[0]));
     }
 
     @Override
     public java.lang.Boolean verify(
-        @@VerifyingKey@@ value0, byte[] value1, @@SignatureBytes@@ value2)
+        @@VerifyingKey@@ verifyingKey, byte[] message, @@SignatureBytes@@ signature)
     {
-      return slhDsaVerify(value0.value(), value1, value2.value(), new byte[0]);
+      return slhDsaVerify(verifyingKey.value(), message, signature.value(), new byte[0]);
     }
   }
 
@@ -455,32 +455,32 @@ public final class Crypto
     }
 
     @Override
-    public @@AeadKey@@ deriveAeadKey(@@SharedSecret@@ value0, byte[] value1)
+    public @@AeadKey@@ deriveAeadKey(@@SharedSecret@@ sharedSecret, byte[] keyContext)
     {
-      return new @@AeadKey@@(shake256(concat(value0.value(), value1), 32));
+      return new @@AeadKey@@(shake256(concat(sharedSecret.value(), keyContext), 32));
     }
 
     @Override
-    public @@Sealed@@ seal(@@AeadKey@@ value0, byte[] value1, byte[] value2)
+    public @@Sealed@@ seal(@@AeadKey@@ key, byte[] plaintext, byte[] associatedData)
     {
       byte[] nonce = randomBytes(12);
       return new @@Sealed@@(
-          concat(nonce, aes256GcmEncrypt(value0.value(), nonce, value1, value2)));
+          concat(nonce, aes256GcmEncrypt(key.value(), nonce, plaintext, associatedData)));
     }
 
     @Override
     public lawspec.runtime.LawSpecRuntime.Maybe<byte[]> unseal(
-        @@AeadKey@@ value0, @@Sealed@@ value1, byte[] value2)
+        @@AeadKey@@ key, @@Sealed@@ sealedMessage, byte[] associatedData)
     {
-      byte[] sealed = value1.value();
+      byte[] sealed = sealedMessage.value();
       byte[] opened =
           sealed.length < 12
               ? null
               : aes256GcmDecrypt(
-                  value0.value(),
+                  key.value(),
                   java.util.Arrays.copyOf(sealed, 12),
                   java.util.Arrays.copyOfRange(sealed, 12, sealed.length),
-                  value2);
+                  associatedData);
       return opened == null
           ? new lawspec.runtime.LawSpecRuntime.Absent<>()
           : new lawspec.runtime.LawSpecRuntime.Present<>(opened);

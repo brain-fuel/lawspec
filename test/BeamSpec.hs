@@ -1127,8 +1127,8 @@ test_beamRunsTheLanguageGaps = describe "BEAM language gaps" $ do
   mapM_ (\(target, path, needles) -> it (target ++ " gives try forms and state accessors to an embedding application") $
     withSpec "acceptance/beam-embedding/embedding.lawspec" target $ \artifacts ->
       mapM_ (\needle -> concatMap artifactContent [a | a <- artifacts, path `isInfixOf` artifactPath a] `shouldSatisfy` isInfixOf needle) needles)
-    [ ("erlang", "lawspec_abilities_example_embedding.erl", ["tally_try_add(Handler, Value0) ->", "keeping_state(Value0) ->", "keeping_set_state(Value0, Value1) ->", "-spec book(lawspec_beam_effects:context()) -> {ledger(), balance()}."])
-    , ("elixir", "lib/lawspec/", ["def try_add(handler, value0)", "def keeping_state(value0)", "def keeping_set_state(value0, value1)"])
+    [ ("erlang", "lawspec_abilities_example_embedding.erl", ["tally_try_add(Handler, Int64_1) ->", "keeping_state(Handler) ->", "keeping_set_state(Handler, State) ->", "-spec book(lawspec_beam_effects:context()) -> {ledger(), balance()}."])
+    , ("elixir", "lib/lawspec/", ["def try_add(handler, int64_1)", "def keeping_state(handler)", "def keeping_set_state(handler, state)"])
     , ("gleam", "abilities/example/embedding.gleam", ["pub fn tally_try_add(", "effects.attempt(", "pub fn keeping_state(", "-> #(Ledger, Balance)"]) ]
 
 -- | How a test file names a manifest entry: the unit and the test's name,

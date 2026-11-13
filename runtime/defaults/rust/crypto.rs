@@ -29,16 +29,16 @@ pub struct HashHandler;
 
 impl crate::lawspec_abilities::lawspec_crypto::Hash for HashHandler
 {
-    fn sha3(&self, value0: std::vec::Vec<u8>) -> Digest
+    fn sha3(&self, message: std::vec::Vec<u8>) -> Digest
     {
         Digest {
-            value: primitives::sha3_256(&value0),
+            value: primitives::sha3_256(&message),
         }
     }
 
-    fn shake(&self, value0: std::vec::Vec<u8>, value1: i32) -> std::vec::Vec<u8>
+    fn shake(&self, message: std::vec::Vec<u8>, output_length: i32) -> std::vec::Vec<u8>
     {
-        primitives::shake256(&value0, value1.max(0) as usize)
+        primitives::shake256(&message, output_length.max(0) as usize)
     }
 }
 
@@ -59,19 +59,19 @@ impl crate::lawspec_abilities::lawspec_crypto::KeyExchange for KeyExchangeHandle
         }
     }
 
-    fn encapsulate(&self, value0: ExchangePublicKey) -> Encapsulated
+    fn encapsulate(&self, public_key: ExchangePublicKey) -> Encapsulated
     {
-        let (ciphertext, secret) = primitives::ml_kem_768_encapsulate(&value0.value);
+        let (ciphertext, secret) = primitives::ml_kem_768_encapsulate(&public_key.value);
         Encapsulated {
             ciphertext: Ciphertext { value: ciphertext },
             secret: SharedSecret { value: secret },
         }
     }
 
-    fn decapsulate(&self, value0: ExchangeSecretKey, value1: Ciphertext) -> SharedSecret
+    fn decapsulate(&self, secret_key: ExchangeSecretKey, ciphertext: Ciphertext) -> SharedSecret
     {
         SharedSecret {
-            value: primitives::ml_kem_768_decapsulate(&value0.value, &value1.value),
+            value: primitives::ml_kem_768_decapsulate(&secret_key.value, &ciphertext.value),
         }
     }
 }
@@ -93,21 +93,21 @@ impl crate::lawspec_abilities::lawspec_crypto::Signature for SignatureHandler
         }
     }
 
-    fn sign(&self, value0: SigningKey, value1: std::vec::Vec<u8>) -> SignatureBytes
+    fn sign(&self, signing_key: SigningKey, message: std::vec::Vec<u8>) -> SignatureBytes
     {
         SignatureBytes {
-            value: primitives::ml_dsa_65_sign(&value0.value, &value1, &[], false),
+            value: primitives::ml_dsa_65_sign(&signing_key.value, &message, &[], false),
         }
     }
 
     fn verify(
         &self,
-        value0: VerifyingKey,
-        value1: std::vec::Vec<u8>,
-        value2: SignatureBytes,
+        verifying_key: VerifyingKey,
+        message: std::vec::Vec<u8>,
+        signature: SignatureBytes,
     ) -> bool
     {
-        primitives::ml_dsa_65_verify(&value0.value, &value1, &value2.value, &[])
+        primitives::ml_dsa_65_verify(&verifying_key.value, &message, &signature.value, &[])
     }
 }
 
@@ -132,21 +132,21 @@ impl crate::lawspec_abilities::lawspec_crypto::Signature for SlhDsaSignatureHand
         }
     }
 
-    fn sign(&self, value0: SigningKey, value1: std::vec::Vec<u8>) -> SignatureBytes
+    fn sign(&self, signing_key: SigningKey, message: std::vec::Vec<u8>) -> SignatureBytes
     {
         SignatureBytes {
-            value: primitives::slh_dsa_sign(&value0.value, &value1, &[]),
+            value: primitives::slh_dsa_sign(&signing_key.value, &message, &[]),
         }
     }
 
     fn verify(
         &self,
-        value0: VerifyingKey,
-        value1: std::vec::Vec<u8>,
-        value2: SignatureBytes,
+        verifying_key: VerifyingKey,
+        message: std::vec::Vec<u8>,
+        signature: SignatureBytes,
     ) -> bool
     {
-        primitives::slh_dsa_verify(&value0.value, &value1, &value2.value, &[])
+        primitives::slh_dsa_verify(&verifying_key.value, &message, &signature.value, &[])
     }
 }
 
@@ -163,40 +163,41 @@ impl crate::lawspec_abilities::lawspec_crypto::Aead for AeadHandler
         }
     }
 
-    fn deriveAeadKey(&self, value0: SharedSecret, value1: std::vec::Vec<u8>) -> AeadKey
+    fn deriveAeadKey(&self, shared_secret: SharedSecret, key_context: std::vec::Vec<u8>) -> AeadKey
     {
-        let mut material = value0.value.clone();
-        material.extend_from_slice(&value1);
+        let mut material = shared_secret.value.clone();
+        material.extend_from_slice(&key_context);
         AeadKey {
             value: primitives::shake256(&material, 32),
         }
     }
 
-    fn seal(&self, value0: AeadKey, value1: std::vec::Vec<u8>, value2: std::vec::Vec<u8>)
+    fn seal(&self, key: AeadKey, plaintext: std::vec::Vec<u8>, associated_data: std::vec::Vec<u8>)
     -> Sealed
     {
         let mut sealed = primitives::random_bytes(12);
-        let body = primitives::aes_256_gcm_encrypt(&value0.value, &sealed, &value1, &value2);
+        let body =
+            primitives::aes_256_gcm_encrypt(&key.value, &sealed, &plaintext, &associated_data);
         sealed.extend_from_slice(&body);
         Sealed { value: sealed }
     }
 
     fn unseal(
         &self,
-        value0: AeadKey,
-        value1: Sealed,
-        value2: std::vec::Vec<u8>,
+        key: AeadKey,
+        sealed_message: Sealed,
+        associated_data: std::vec::Vec<u8>,
     ) -> std::option::Option<std::vec::Vec<u8>>
     {
-        if value1.value.len() < 12
+        if sealed_message.value.len() < 12
         {
             return None;
         }
         primitives::aes_256_gcm_decrypt(
-            &value0.value,
-            &value1.value[..12],
-            &value1.value[12..],
-            &value2,
+            &key.value,
+            &sealed_message.value[..12],
+            &sealed_message.value[12..],
+            &associated_data,
         )
     }
 }

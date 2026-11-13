@@ -5,6 +5,7 @@ import Control.Monad (forM, unless)
 import Data.Char (toLower)
 import Data.List (intercalate, nub, isPrefixOf, isSuffixOf)
 import qualified LawSpec.Core as C
+import LawSpec.Naming (declarationParameterNames, handlerParameterNames)
 import LawSpec.Common
 import LawSpec.Backend (unitName)
 import LawSpec.Testing
@@ -80,10 +81,14 @@ emitBindings minify bindings plan files = do
         resultType <- typeOf result
         refs' <- mapM Data.pythonTypeReferenceDoc args
         resultRef <- Data.pythonTypeReferenceDoc result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-            -- An adapter that uses abilities gets their handlers first, as
+        let -- An adapter that uses abilities gets their handlers first, as
             -- they are: application code's handlers take the bound types.
-            handlerNames = [D.text ("handler" ++ show i) | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
+            -- Each is named for its ability, and each value as the
+            -- signature declares or from its type (LawSpec.Naming).
+            bridgeLocals = words "bridge symbols result found error"
+            handlerWords = handlerParameterNames "python" bridgeLocals [a | a <- C.declarationUses decl, not (C.isFail a)]
+            handlerNames = map D.text handlerWords
+            values = map D.text (declarationParameterNames "python" (bridgeLocals ++ handlerWords) "value" decl)
             bits = D.text "MACHINE_BITS"
             convert schema method ref value = P.invoke (schema ++ "." ++ method) [ref,value,bits,D.text "symbols"]
             converted = [convert "bridge._native" "to_native" ty

@@ -199,13 +199,13 @@ export function aes256GcmDecrypt(
 /** SHA3-256 and SHAKE256. */
 export class HashHandler implements abilities.Hash
 {
-  sha3(value0: Uint8Array): @@Digest@@
+  sha3(message: Uint8Array): @@Digest@@
   {
-    return new @@Digest@@(sha3_256(value0));
+    return new @@Digest@@(sha3_256(message));
   }
-  shake(value0: Uint8Array, value1: number): Uint8Array
+  shake(message: Uint8Array, outputLength: number): Uint8Array
   {
-    return shake256(value0, value1);
+    return shake256(message, outputLength);
   }
 }
 
@@ -222,21 +222,21 @@ export class KeyExchangeHandler implements abilities.KeyExchange
       new @@ExchangeSecretKey@@(secretKey),
     );
   }
-  encapsulate(value0: @@ExchangePublicKey@@): @@Encapsulated@@
+  encapsulate(publicKey: @@ExchangePublicKey@@): @@Encapsulated@@
   {
-    const {ciphertext, secret} = mlKem768Encapsulate(value0.value);
+    const {ciphertext, secret} = mlKem768Encapsulate(publicKey.value);
     return new @@Encapsulated@@(
       new @@Ciphertext@@(ciphertext),
       new @@SharedSecret@@(secret),
     );
   }
   decapsulate(
-    value0: @@ExchangeSecretKey@@,
-    value1: @@Ciphertext@@,
+    secretKey: @@ExchangeSecretKey@@,
+    ciphertext: @@Ciphertext@@,
   ): @@SharedSecret@@
   {
     return new @@SharedSecret@@(
-      mlKem768Decapsulate(value0.value, value1.value),
+      mlKem768Decapsulate(secretKey.value, ciphertext.value),
     );
   }
 }
@@ -252,18 +252,18 @@ export class SignatureHandler implements abilities.Signature
       new @@SigningKey@@(seed),
     );
   }
-  sign(value0: @@SigningKey@@, value1: Uint8Array): @@SignatureBytes@@
+  sign(signingKey: @@SigningKey@@, message: Uint8Array): @@SignatureBytes@@
   {
-    const signature = mlDsa65Sign(value0.value, value1);
+    const signature = mlDsa65Sign(signingKey.value, message);
     return new @@SignatureBytes@@(signature);
   }
   verify(
-    value0: @@VerifyingKey@@,
-    value1: Uint8Array,
-    value2: @@SignatureBytes@@,
+    verifyingKey: @@VerifyingKey@@,
+    message: Uint8Array,
+    signature: @@SignatureBytes@@,
   ): boolean
   {
-    return mlDsa65Verify(value0.value, value1, value2.value);
+    return mlDsa65Verify(verifyingKey.value, message, signature.value);
   }
 }
 
@@ -286,18 +286,18 @@ export class SlhDsaSignatureHandler implements abilities.Signature
       new @@SigningKey@@(secretKey),
     );
   }
-  sign(value0: @@SigningKey@@, value1: Uint8Array): @@SignatureBytes@@
+  sign(signingKey: @@SigningKey@@, message: Uint8Array): @@SignatureBytes@@
   {
-    const signature = slhDsaSign(value0.value, value1);
+    const signature = slhDsaSign(signingKey.value, message);
     return new @@SignatureBytes@@(signature);
   }
   verify(
-    value0: @@VerifyingKey@@,
-    value1: Uint8Array,
-    value2: @@SignatureBytes@@,
+    verifyingKey: @@VerifyingKey@@,
+    message: Uint8Array,
+    signature: @@SignatureBytes@@,
   ): boolean
   {
-    return slhDsaVerify(value0.value, value1, value2.value);
+    return slhDsaVerify(verifyingKey.value, message, signature.value);
   }
 }
 
@@ -308,37 +308,40 @@ export class AeadHandler implements abilities.Aead
   {
     return new @@AeadKey@@(bytes(randomBytes(32)));
   }
-  deriveAeadKey(value0: @@SharedSecret@@, value1: Uint8Array): @@AeadKey@@
+  deriveAeadKey(
+    sharedSecret: @@SharedSecret@@,
+    keyContext: Uint8Array,
+  ): @@AeadKey@@
   {
     return new @@AeadKey@@(
-      shake256(new Uint8Array([...value0.value, ...value1]), 32),
+      shake256(new Uint8Array([...sharedSecret.value, ...keyContext]), 32),
     );
   }
   seal(
-    value0: @@AeadKey@@,
-    value1: Uint8Array,
-    value2: Uint8Array,
+    key: @@AeadKey@@,
+    plaintext: Uint8Array,
+    associatedData: Uint8Array,
   ): @@Sealed@@
   {
     const nonce = bytes(randomBytes(12));
     return new @@Sealed@@(
       new Uint8Array([
         ...nonce,
-        ...aes256GcmEncrypt(value0.value, nonce, value1, value2),
+        ...aes256GcmEncrypt(key.value, nonce, plaintext, associatedData),
       ]),
     );
   }
   unseal(
-    value0: @@AeadKey@@,
-    value1: @@Sealed@@,
-    value2: Uint8Array,
+    key: @@AeadKey@@,
+    sealedMessage: @@Sealed@@,
+    associatedData: Uint8Array,
   ): data.Maybe<Uint8Array>
   {
     const opened = aes256GcmDecrypt(
-      value0.value,
-      value1.value.subarray(0, 12),
-      value1.value.subarray(12),
-      value2,
+      key.value,
+      sealedMessage.value.subarray(0, 12),
+      sealedMessage.value.subarray(12),
+      associatedData,
     );
     return opened === undefined ? new data.Absent() : new data.Present(opened);
   }

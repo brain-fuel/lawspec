@@ -2,7 +2,7 @@
 -- lawspec.abilities.<unit package>.<Unit>: a nested interface per ability, a
 -- class per spec handler and a recording class per ability. Handlers travel
 -- in the symbols map generated code passes to every definition.
-module LawSpec.AbilityEmit.Java (emit, emitProduct, productionStub, productionProduct, abilitiesClass, abilitiesClassOf, adapterClassOf) where
+module LawSpec.AbilityEmit.Java (emit, emitProduct, productionStub, productionProduct, abilitiesClass, abilitiesClassOf, adapterClassOf, operationNames) where
 
 import qualified LawSpec.JavaAbi as Abi
 import qualified LawSpec.JvmProduct as Product
@@ -14,7 +14,7 @@ import LawSpec.Backend (localName)
 import LawSpec.JvmNames (jvmLocal)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames, positionalNames)
+import LawSpec.Naming (operationParameterNames)
 import qualified LawSpec.JavaData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.JavaExpr as E
@@ -80,7 +80,7 @@ emitProduct minify bits datas units = do
                map snd interfaces ++ handlers ++ recordings)) <> D.hardline
       pure (Product.JvmProduct [Artifact ("src/main/java/" ++ intercalate "/" qualified ++ ".java") (D.render layout source) "generated" "source"]
         [] (map fst interfaces) [])
-    signature op ty = operationDoc <$> operationAbi datas op ty
+    signature a op ty = operationDoc <$> operationAbiNamed (operationNames a op) datas op ty
     interface a = do
       operations <- mapM (\(op, ty) -> operationAbiNamed (operationNames a op) datas op ty) (C.abilityOperations a)
       let methods = [operationDoc operation <> line ";" | operation <- operations]
@@ -95,6 +95,7 @@ emitProduct minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       initialState <- case C.handlerState h of
@@ -110,13 +111,14 @@ emitProduct minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         evaluate <- maybe (Left ("unresolved clause " ++ C.idText clause)) Right (lookup clause calls)
-        s <- signature op ty
+        s <- signature ability op ty
         let (args, result) = C.functionType ty
+            named = operationNames ability op
         argumentCodecs <- mapM codec args
         resultCodec <- codec result
         let arguments = line "symbols" : [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "LawSpecRuntime.absent(\"Unit\")"]
-               else [c <> line (".encode(value" ++ show i ++ ")") | (i, c) <- zip [0 :: Int ..] argumentCodecs])
+               else [c <> line (".encode(" ++ v ++ ")") | (v, c) <- zip named argumentCodecs])
             invocation = E.call evaluate arguments
             outcome = case C.handlerState h of
               Nothing -> [line "var result = " <> invocation <> line ";"]
@@ -138,6 +140,7 @@ emitProduct minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       stateType <- traverse (jvmTypedTypeDoc typed . fst) (C.handlerState h)
@@ -146,8 +149,9 @@ emitProduct minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (jvmTypedFunction typed clause)
-        s <- signature op ty
+        s <- signature ability op ty
         let (args, result) = C.functionType ty
+            named = operationNames ability op
         argumentCodecs <- mapM codec args
         typedCodecs <- mapM (jvmTypedCodec typed) args
         resultCodec <- codec result
@@ -155,12 +159,12 @@ emitProduct minify bits datas units = do
         -- A value converts directly between its native and typed forms where
         -- it can; otherwise through its codecs and the dynamic Value.
         let direct = jvmTypedNative typed
-            argument i ty c t = case direct ty of
-              Just (fromNative, _) -> line (fromNative ++ "(value" ++ show i ++ ")")
-              Nothing -> line (t ++ ".decode(") <> c <> line (".encode(value" ++ show i ++ "))")
+            argument v ty c t = case direct ty of
+              Just (fromNative, _) -> line (fromNative ++ "(" ++ v ++ ")")
+              Nothing -> line (t ++ ".decode(") <> c <> line (".encode(" ++ v ++ "))")
             arguments = [line "symbols" | isContextual (jvmTypedPlan typed) clause] ++ [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lawspec.runtime.LawSpecFast.Unit.UNIT"]
-               else [argument i ty c t | (i, (ty, (c, t))) <- zip [0 :: Int ..] (zip args (zip argumentCodecs typedCodecs))])
+               else [argument v ty c t | (v, (ty, (c, t))) <- zip named (zip args (zip argumentCodecs typedCodecs))])
             invocation = line function <> D.delimit 4 "(" ")" arguments
             outcome = case C.handlerState h of
               Nothing -> [line "var result = " <> invocation <> line ";"]
@@ -197,7 +201,7 @@ emitProduct minify bits datas units = do
         resultType <- if result == C.scalarType "Unit" then pure (line "Void") else Native.javaDataTypeDoc datas result
         failureType <- Native.javaDataTypeDoc datas failure
         failureCodec <- codec failure
-        let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+        let values = take (length args) (operationNames a op)
             call = op ++ "(" ++ intercalate ", " values ++ ")"
             outcome = line "lawspec.runtime.LawSpecFast.Outcome<" <> resultType <> line ", " <> failureType <> line ">"
         pure (javadoc 98 ("" ++ op ++ ", with the failure it raises as an Outcome rather than an exception.") <> D.hardline <>
@@ -221,11 +225,12 @@ emitProduct minify bits datas units = do
     recording a = do
       let name = recordingName a
       methods <- mapM (\(op, ty) -> do
-        s <- signature op ty
+        s <- signature a op ty
         let (args, result) = C.functionType ty
+            named = operationNames a op
         argumentCodecs <- mapM codec args
-        let logged = E.call "java.util.List.of" [c <> line (".encode(value" ++ show i ++ ")") | (i, c) <- zip [0 :: Int ..] argumentCodecs]
-            forward = "inner." ++ op ++ "(" ++ intercalate ", " ["value" ++ show i | i <- [0 .. length args - 1]] ++ ");"
+        let logged = E.call "java.util.List.of" [c <> line (".encode(" ++ v ++ ")") | (v, c) <- zip named argumentCodecs]
+            forward = "inner." ++ op ++ "(" ++ intercalate ", " (take (length args) named) ++ ");"
         pure (line "@Override" <> D.hardline <> line "public " <> s <> line "" <> D.hardline <> D.block 2 (D.joinWith D.hardline
           [ line ("calls.add(new LawSpecRuntime.RecordedCall(" ++ show op ++ ", ") <> logged <> line "));"
           , line (if result == C.scalarType "Unit" then forward else "return " ++ forward) ]))) (C.abilityOperations a)
@@ -266,14 +271,8 @@ productionProduct datas u a = do
     D.group (D.text ("public static final class " ++ productionName a) <> D.nest 4 (D.softline <> D.text ("implements " ++ abilitiesClass u ++ "." ++ interfaceName a))) <> D.hardline <>
     D.block 2 (D.joinWith (D.hardline <> D.hardline) (made ++ methods)))
 
--- The exact same checked signature is used in interfaces, production stubs,
--- recordings and downstream JVM bridges.
-operationAbi :: [C.DataDeclaration] -> String -> C.Type -> Either String Abi.Operation
-operationAbi = operationAbiNamed (positionalNames "value")
-
--- | An interface a user implements and its production stub name the
--- operation's parameters (LawSpec.Naming); a generated handler's own
--- methods keep positional names.
+-- | The exact same checked signature, with the operation's parameter names,
+-- is used in interfaces, production stubs, spec handlers and recordings.
 operationAbiNamed :: [String] -> [C.DataDeclaration] -> String -> C.Type -> Either String Abi.Operation
 operationAbiNamed names datas name ty = do
   let (args, result) = C.functionType ty
@@ -281,8 +280,12 @@ operationAbiNamed names datas name ty = do
   resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else Native.javaDataTypeDoc datas result
   pure (Abi.operation resultType name (zip types names) name)
 
+-- | An operation's parameter names (LawSpec.Naming), the same in the
+-- interface, the production stub and every generated handler. They stay
+-- clear of the names a generated handler's body uses.
+-- ref:DEC-generated-parameter-names
 operationNames :: C.Ability -> String -> [String]
-operationNames = operationParameterNames "java" [] "value"
+operationNames = operationParameterNames "java" (words "symbols state result pair inner calls failure resource") "value"
 
 operationDoc :: Abi.Operation -> D.Doc
 operationDoc operation = Abi.opResultLayout operation <> D.text (" " ++ Abi.opName operation) <>

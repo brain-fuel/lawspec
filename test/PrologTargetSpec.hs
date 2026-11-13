@@ -72,7 +72,7 @@ test_prologEmitter = describe "Prolog emitter admission" $ do
             Right files -> do
               let bridge = concat [artifactContent file | file <- files, artifactPath file == "src/sample.py"]
               bridge `shouldSatisfy` isInfixOf "\"close\": close"
-              bridge `shouldSatisfy` isInfixOf "def close(value0):"
+              bridge `shouldSatisfy` isInfixOf "def close(uint8_1):"
               -- The unit's module is named after it, in SWI-Prolog's layout.
               concat [artifactContent file | file <- files, artifactPath file == "src/sample.pl"] `shouldSatisfy`
                 isInfixOf ":- module(sample,\n          [ ls_close/2\n          ]).\n"

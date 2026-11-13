@@ -5,7 +5,7 @@
 -- ref:DEC-readable-generated-names
 module LawSpec.BeamNames
   ( erlangReserved, functionAtom, definitionEntries, abilityEntries
-  , variableName, variables, generatedVariables, stubParameters
+  , variableName, variables, generatedVariables, stubParameters, operationVariables
   ) where
 
 import qualified LawSpec.Core as C
@@ -77,6 +77,24 @@ stubParameters :: String -> [String] -> C.ParameterNames -> [C.Type] -> Maybe [S
 stubParameters target taken declared types = case declared of
   C.PositionalParameters -> Nothing
   _ -> Just (parameterNamesWith (if target == "erlang" then Pascal else Snake) id taken "value" declared types)
+
+-- | An operation's parameters where generated code passes them on beside a
+-- handler: named as the operation declares or from their types, clear of
+-- the handler's own variable. ref:DEC-generated-parameter-names
+operationVariables :: String -> C.Ability -> String -> [String]
+operationVariables target ability operation = case C.operationParameters ability operation of
+  C.PositionalParameters -> [(if erlang then "Value" else "value") ++ show i | (i, _) <- zip [0 :: Int ..] types]
+  declared -> parameterNamesWith (if erlang then Pascal else Snake) escape [if erlang then "Handler" else "handler"] "value" declared types
+  where
+    erlang = target == "erlang"
+    -- An Erlang variable is never a reserved word; Elixir's and Gleam's
+    -- words take a trailing underscore.
+    escape name = if name `elem` reserved then name ++ "_" else name
+    reserved = case target of
+      "elixir" -> words "after and catch do else end false fn in nil not or rescue true when"
+      "gleam" -> words "as assert auto case const delegate derive echo else fn if implement import let macro opaque panic pub test todo type use"
+      _ -> []
+    types = maybe [] (fst . C.functionType) (lookup operation (C.abilityOperations ability))
 
 -- | The variables generated BEAM code binds itself; a source binder never
 -- takes one of these names.

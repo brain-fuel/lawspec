@@ -515,13 +515,13 @@ def slh_dsa_verify(
 class HashHandler:
     """SHA3-256 and SHAKE256."""
 
-    def sha3(self, value0: _builtins.bytes) -> @@Digest@@:
-        return @@Digest@@(sha3_256(value0))
+    def sha3(self, message: _builtins.bytes) -> @@Digest@@:
+        return @@Digest@@(sha3_256(message))
 
     def shake(
-        self, value0: _builtins.bytes, value1: _builtins.int
+        self, message: _builtins.bytes, output_length: _builtins.int
     ) -> _builtins.bytes:
-        return shake256(value0, value1)
+        return shake256(message, output_length)
 
 
 class KeyExchangeHandler:
@@ -533,17 +533,19 @@ class KeyExchangeHandler:
             @@ExchangePublicKey@@(public), @@ExchangeSecretKey@@(secret)
         )
 
-    def encapsulate(self, value0: @@ExchangePublicKey@@) -> @@Encapsulated@@:
-        ciphertext, secret = ml_kem_768_encapsulate(value0.value)
+    def encapsulate(
+        self, public_key: @@ExchangePublicKey@@
+    ) -> @@Encapsulated@@:
+        ciphertext, secret = ml_kem_768_encapsulate(public_key.value)
         return @@Encapsulated@@(
             @@Ciphertext@@(ciphertext), @@SharedSecret@@(secret)
         )
 
     def decapsulate(
-        self, value0: @@ExchangeSecretKey@@, value1: @@Ciphertext@@
+        self, secret_key: @@ExchangeSecretKey@@, ciphertext: @@Ciphertext@@
     ) -> @@SharedSecret@@:
         return @@SharedSecret@@(
-            ml_kem_768_decapsulate(value0.value, value1.value)
+            ml_kem_768_decapsulate(secret_key.value, ciphertext.value)
         )
 
 
@@ -557,17 +559,17 @@ class SignatureHandler:
         )
 
     def sign(
-        self, value0: @@SigningKey@@, value1: _builtins.bytes
+        self, signing_key: @@SigningKey@@, message: _builtins.bytes
     ) -> @@SignatureBytes@@:
-        return @@SignatureBytes@@(ml_dsa_65_sign(value0.value, value1))
+        return @@SignatureBytes@@(ml_dsa_65_sign(signing_key.value, message))
 
     def verify(
         self,
-        value0: @@VerifyingKey@@,
-        value1: _builtins.bytes,
-        value2: @@SignatureBytes@@,
+        verifying_key: @@VerifyingKey@@,
+        message: _builtins.bytes,
+        signature: @@SignatureBytes@@,
     ) -> _builtins.bool:
-        return ml_dsa_65_verify(value0.value, value1, value2.value)
+        return ml_dsa_65_verify(verifying_key.value, message, signature.value)
 
 
 class SlhDsaSignatureHandler:
@@ -584,17 +586,17 @@ class SlhDsaSignatureHandler:
         )
 
     def sign(
-        self, value0: @@SigningKey@@, value1: _builtins.bytes
+        self, signing_key: @@SigningKey@@, message: _builtins.bytes
     ) -> @@SignatureBytes@@:
-        return @@SignatureBytes@@(slh_dsa_sign(value0.value, value1))
+        return @@SignatureBytes@@(slh_dsa_sign(signing_key.value, message))
 
     def verify(
         self,
-        value0: @@VerifyingKey@@,
-        value1: _builtins.bytes,
-        value2: @@SignatureBytes@@,
+        verifying_key: @@VerifyingKey@@,
+        message: _builtins.bytes,
+        signature: @@SignatureBytes@@,
     ) -> _builtins.bool:
-        return slh_dsa_verify(value0.value, value1, value2.value)
+        return slh_dsa_verify(verifying_key.value, message, signature.value)
 
 
 class AeadHandler:
@@ -604,26 +606,30 @@ class AeadHandler:
         return @@AeadKey@@(_os.urandom(32))
 
     def deriveAeadKey(
-        self, value0: @@SharedSecret@@, value1: _builtins.bytes
+        self, shared_secret: @@SharedSecret@@, key_context: _builtins.bytes
     ) -> @@AeadKey@@:
-        return @@AeadKey@@(shake256(value0.value + value1, 32))
+        return @@AeadKey@@(shake256(shared_secret.value + key_context, 32))
 
     def seal(
         self,
-        value0: @@AeadKey@@,
-        value1: _builtins.bytes,
-        value2: _builtins.bytes,
+        key: @@AeadKey@@,
+        plaintext: _builtins.bytes,
+        associated_data: _builtins.bytes,
     ) -> @@Sealed@@:
         nonce = _os.urandom(12)
         return @@Sealed@@(
-            nonce + aes_256_gcm_encrypt(value0.value, nonce, value1, value2)
+            nonce
+            + aes_256_gcm_encrypt(key.value, nonce, plaintext, associated_data)
         )
 
     def unseal(
-        self, value0: @@AeadKey@@, value1: @@Sealed@@, value2: _builtins.bytes
+        self,
+        key: @@AeadKey@@,
+        sealed_message: @@Sealed@@,
+        associated_data: _builtins.bytes,
     ) -> _schema.Maybe[_builtins.bytes]:
-        sealed = value1.value
+        sealed = sealed_message.value
         opened = aes_256_gcm_decrypt(
-            value0.value, sealed[:12], sealed[12:], value2
+            key.value, sealed[:12], sealed[12:], associated_data
         )
         return _schema.Absent() if opened is None else _schema.Present(opened)

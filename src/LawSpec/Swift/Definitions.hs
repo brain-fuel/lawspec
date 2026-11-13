@@ -125,11 +125,12 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
           (parameterTypes, resultType) = C.functionType (C.declarationType declaration)
           definition = lookup identity definitions
           -- A definition's arguments keep their source names; an adapter's
-          -- have none, so they are numbered.
+          -- take the names its signature declares, or ones made from their
+          -- types (LawSpec.Naming).
           arguments = case definition of
             Just d | length (C.definitionArguments d) == length parameterTypes ->
               fst (claimAll (scopeWith reservedLocals) [localName (C.binderName b) | b <- C.definitionArguments d])
-            _ -> ["argument" ++ show i | (i, _) <- zip [0 :: Int ..] parameterTypes]
+            _ -> take (length parameterTypes) (parameterNames [] declaration)
           locals = maybe [] (\d -> zip (map C.binderId (C.definitionArguments d)) arguments) definition
           resolve table variable = maybe (error ("unbound Swift binder: " ++ C.idText variable)) id (lookup variable table)
           context table = X.Context bits X.schemaVar X.symbolsVar (resolve table) (Effects.external units) X.typeRef X.typeKeyOf

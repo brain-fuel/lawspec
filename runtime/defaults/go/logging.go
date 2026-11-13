@@ -14,16 +14,16 @@ func NewLogHandler() Log {
 	return &LogHandler{}
 }
 
-func (handler *LogHandler) LogMessage(value0 @@LogLevel@@, value1 string) {
-	switch value0.(type) {
+func (handler *LogHandler) LogMessage(level @@LogLevel@@, message string) {
+	switch level.(type) {
 	case @@LogLevel/Debug@@:
-		slog.Debug(value1)
+		slog.Debug(message)
 	case @@LogLevel/Warning@@:
-		slog.Warn(value1)
+		slog.Warn(message)
 	case @@LogLevel/Error@@:
-		slog.Error(value1)
+		slog.Error(message)
 	default:
-		slog.Info(value1)
+		slog.Info(message)
 	}
 }
 
@@ -35,6 +35,6 @@ func NewTraceHandler() Trace {
 	return &TraceHandler{}
 }
 
-func (handler *TraceHandler) TraceEvent(value0 string) {
-	slog.Debug("trace", "event", value0)
+func (handler *TraceHandler) TraceEvent(event string) {
+	slog.Debug("trace", "event", event)
 }

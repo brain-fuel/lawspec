@@ -33,7 +33,7 @@ end unit
 type LogLevel is one of | Debug | Info | Warning | Error end type
 
 ability Log is
-  logMessage :: LogLevel -> Text -> Unit
+  logMessage :: (level :: LogLevel) -> (message :: Text) -> Unit
 end ability
 ```
 
@@ -54,7 +54,7 @@ The spec handler `silentLog` drops every message.
 
 ```lawspec fragment
 ability Trace is
-  traceEvent :: Text -> Unit
+  traceEvent :: (event :: Text) -> Unit
 end ability
 ```
 

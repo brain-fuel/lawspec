@@ -15,44 +15,42 @@ import tempfile as _tempfile
 class FileSystemHandler:
     """Files by path; a relative path is from the working directory."""
 
-    def readBytes(
-        self, value0: _builtins.str
-    ) -> _schema.Maybe[_builtins.bytes]:
+    def readBytes(self, path: _builtins.str) -> _schema.Maybe[_builtins.bytes]:
         try:
-            with open(value0, "rb") as file:
+            with open(path, "rb") as file:
                 return _schema.Present(file.read())
         except (OSError, ValueError):
             return _schema.Absent()
 
     def writeBytes(
-        self, value0: _builtins.str, value1: _builtins.bytes
+        self, path: _builtins.str, contents: _builtins.bytes
     ) -> None:
-        with open(value0, "wb") as file:
-            file.write(value1)
+        with open(path, "wb") as file:
+            file.write(contents)
 
-    def createDirectories(self, value0: _builtins.str) -> None:
-        _os.makedirs(value0, exist_ok=True)
+    def createDirectories(self, path: _builtins.str) -> None:
+        _os.makedirs(path, exist_ok=True)
 
-    def pathExists(self, value0: _builtins.str) -> _builtins.bool:
+    def pathExists(self, path: _builtins.str) -> _builtins.bool:
         try:
-            return _os.path.lexists(value0)
+            return _os.path.lexists(path)
         except ValueError:
             return False
 
-    def removePath(self, value0: _builtins.str) -> None:
+    def removePath(self, path: _builtins.str) -> None:
         try:
-            if _os.path.isdir(value0) and not _os.path.islink(value0):
-                _shutil.rmtree(value0)
+            if _os.path.isdir(path) and not _os.path.islink(path):
+                _shutil.rmtree(path)
             else:
-                _os.remove(value0)
+                _os.remove(path)
         except FileNotFoundError:
             pass
 
-    def temporaryDirectory(self, value0: _builtins.str) -> _builtins.str:
-        return _tempfile.mkdtemp(prefix=value0)
+    def temporaryDirectory(self, prefix: _builtins.str) -> _builtins.str:
+        return _tempfile.mkdtemp(prefix=prefix)
 
-    def temporaryFile(self, value0: _builtins.str) -> _builtins.str:
-        handle, path = _tempfile.mkstemp(prefix=value0)
+    def temporaryFile(self, prefix: _builtins.str) -> _builtins.str:
+        handle, path = _tempfile.mkstemp(prefix=prefix)
         _os.close(handle)
         return path
 
@@ -65,16 +63,16 @@ class EnvironmentHandler:
     """The process's environment."""
 
     def environmentVariable(
-        self, value0: _builtins.str
+        self, name: _builtins.str
     ) -> _schema.Maybe[_builtins.str]:
-        value = _os.environ.get(value0) if valid_name(value0) else None
+        value = _os.environ.get(name) if valid_name(name) else None
         return _schema.Absent() if value is None else _schema.Present(value)
 
     def environmentSnapshot(self) -> _builtins.str:
         return _ls.acquire_resource("environment")
 
-    def restoreEnvironment(self, value0: _builtins.str) -> None:
-        _ls.release_resource("environment", value0)
+    def restoreEnvironment(self, snapshot: _builtins.str) -> None:
+        _ls.release_resource("environment", snapshot)
 
 
 class PortsHandler:

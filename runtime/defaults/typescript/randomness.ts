@@ -41,11 +41,11 @@ export class RandomHandler implements abilities.Random
     this.state =
       seed === undefined ? runSeed() : ((seed % modulus) + modulus) % modulus;
   }
-  randomBelow(value0: bigint): bigint
+  randomBelow(bound: bigint): bigint
   {
     const state = this.state;
     this.state = randomStep(randomStep(state));
-    return randomDraw(state, value0);
+    return randomDraw(state, bound);
   }
 }
 
@@ -64,13 +64,13 @@ export function secureBelow(bound: bigint): bigint
 /** The operating system's generator (node:crypto). */
 export class SecureRandomHandler implements abilities.SecureRandom
 {
-  secureBytes(value0: number): Uint8Array
+  secureBytes(count: number): Uint8Array
   {
-    return new Uint8Array(randomBytes(Math.max(value0, 0)));
+    return new Uint8Array(randomBytes(Math.max(count, 0)));
   }
-  secureBelow(value0: bigint): bigint
+  secureBelow(bound: bigint): bigint
   {
-    return secureBelow(value0);
+    return secureBelow(bound);
   }
   secureToken(): string
   {

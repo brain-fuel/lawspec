@@ -27,8 +27,8 @@ func (handler *ClockHandler) Now() @@Instant@@ {
 	return @@Instant@@{Value: lsNowMicros()}
 }
 
-func (handler *ClockHandler) Sleep(value0 LawSpecDuration) {
-	target := lsNowMicros() + time.Duration(value0).Microseconds()
+func (handler *ClockHandler) Sleep(duration LawSpecDuration) {
+	target := lsNowMicros() + time.Duration(duration).Microseconds()
 	for left := target - lsNowMicros(); left > 0; left = target - lsNowMicros() {
 		time.Sleep(time.Duration(left) * time.Microsecond)
 	}

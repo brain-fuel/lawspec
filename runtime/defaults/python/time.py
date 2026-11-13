@@ -23,8 +23,8 @@ class ClockHandler:
     def now(self) -> @@Instant@@:
         return @@Instant@@(now_micros())
 
-    def sleep(self, value0: ls.timedelta) -> None:
-        target = now_micros() + value0 // ls.timedelta(microseconds=1)
+    def sleep(self, duration: ls.timedelta) -> None:
+        target = now_micros() + duration // ls.timedelta(microseconds=1)
         while (left := target - now_micros()) > 0:
             _time.sleep(left / 1000000)
 

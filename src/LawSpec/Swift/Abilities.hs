@@ -137,7 +137,10 @@ emitBridges layout bits declarations units
         out <- Data.codec bits names [] result
         ref <- X.typeRef result
         let nativeArgs = [(i, c) | (i, c, t) <- zip3 [0 :: Int ..] codecs args, not (isUnit t)]
-            argumentName i = "argument" ++ show i
+            -- Each native argument is named as the operation's parameter.
+            argumentName i = case drop i (operationParameterNames a op args) of
+              name : _ -> name
+              [] -> "argument" ++ show i
             callNative = Pure ("box.value." ++ Effects.operationMember op) [Var (argumentName i) | (i, _) <- nativeArgs]
         invoked <- case (failure, failureOf a op) of
           (Just e, Just ft) -> do

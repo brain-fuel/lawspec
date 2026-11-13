@@ -7,23 +7,23 @@ import type * as abilities from '../lawspec_abilities/lawspec/logging.js';
 /** Logs to the console, at the matching level. */
 export class LogHandler implements abilities.Log
 {
-  logMessage(value0: @@LogLevel@@, value1: string): void
+  logMessage(level: @@LogLevel@@, message: string): void
   {
-    if (value0 instanceof @@LogLevel/Debug@@)
+    if (level instanceof @@LogLevel/Debug@@)
     {
-      console.debug(value1);
+      console.debug(message);
     }
-    else if (value0 instanceof @@LogLevel/Warning@@)
+    else if (level instanceof @@LogLevel/Warning@@)
     {
-      console.warn(value1);
+      console.warn(message);
     }
-    else if (value0 instanceof @@LogLevel/Error@@)
+    else if (level instanceof @@LogLevel/Error@@)
     {
-      console.error(value1);
+      console.error(message);
     }
     else
     {
-      console.info(value1);
+      console.info(message);
     }
   }
 }
@@ -31,8 +31,8 @@ export class LogHandler implements abilities.Log
 /** Trace events, at debug level. */
 export class TraceHandler implements abilities.Trace
 {
-  traceEvent(value0: string): void
+  traceEvent(event: string): void
   {
-    console.debug(`trace: ${value0}`);
+    console.debug(`trace: ${event}`);
   }
 }

@@ -71,8 +71,8 @@ pair them up.
 
 ```lawspec fragment
 ability Hash is
-  sha3 :: Bytes -> Digest
-  shake :: Bytes -> Int32 -> Bytes
+  sha3 :: (message :: Bytes) -> Digest
+  shake :: (message :: Bytes) -> (outputLength :: Int32) -> Bytes
 end ability
 ```
 
@@ -86,8 +86,8 @@ as asked.
 ```lawspec fragment
 ability KeyExchange is
   exchangeKeyPair :: ExchangeKeyPair
-  encapsulate :: ExchangePublicKey -> Encapsulated
-  decapsulate :: ExchangeSecretKey -> Ciphertext -> SharedSecret
+  encapsulate :: (publicKey :: ExchangePublicKey) -> Encapsulated
+  decapsulate :: (secretKey :: ExchangeSecretKey) -> (ciphertext :: Ciphertext) -> SharedSecret
 end ability
 ```
 
@@ -105,8 +105,8 @@ secret. Laws:
 ```lawspec fragment
 ability Signature is
   signingKeyPair :: SigningKeyPair
-  sign :: SigningKey -> Bytes -> SignatureBytes
-  verify :: VerifyingKey -> Bytes -> SignatureBytes -> Bool
+  sign :: (signingKey :: SigningKey) -> (message :: Bytes) -> SignatureBytes
+  verify :: (verifyingKey :: VerifyingKey) -> (message :: Bytes) -> (signature :: SignatureBytes) -> Bool
 end ability
 ```
 
@@ -141,9 +141,9 @@ signatures 17088 bytes.
 ```lawspec fragment
 ability Aead is
   aeadKey :: AeadKey
-  deriveAeadKey :: SharedSecret -> Bytes -> AeadKey
-  seal :: AeadKey -> Bytes -> Bytes -> Sealed
-  unseal :: AeadKey -> Sealed -> Bytes -> Maybe Bytes
+  deriveAeadKey :: (sharedSecret :: SharedSecret) -> (keyContext :: Bytes) -> AeadKey
+  seal :: (key :: AeadKey) -> (plaintext :: Bytes) -> (associatedData :: Bytes) -> Sealed
+  unseal :: (key :: AeadKey) -> (sealedMessage :: Sealed) -> (associatedData :: Bytes) -> Maybe Bytes
 end ability
 ```
 

@@ -57,7 +57,7 @@ to an earlier one is no time at all.
 ```text
 ability Clock is
   now :: Instant
-  sleep :: Duration -> Unit
+  sleep :: (duration :: Duration) -> Unit
 laws
   law "|time does not go back| is definition: ... end definition end law
   law "|sleeping lets at least that long pass| is definition: ... end definition end law
@@ -90,10 +90,10 @@ evaluates them where their domain is finite.
 
 | Target | `now` | `sleep` |
 | --- | --- | --- |
-| Python | `def now(self) -> data.Instant` | `def sleep(self, value0: timedelta) -> None` |
-| JavaScript, TypeScript | `now(): data.Instant` | `sleep(value0: data.Duration): void` |
-| Go | `Now() Instant` | `Sleep(value0 LawSpecDuration)` |
-| Java | `lawspec.data.Instant now()` | `void sleep(java.time.Duration value0)` |
-| Kotlin | `fun now(): lawspec.data.Instant` | `fun sleep(value0: kotlin.time.Duration)` |
+| Python | `def now(self) -> data.Instant` | `def sleep(self, duration: timedelta) -> None` |
+| JavaScript, TypeScript | `now(): data.Instant` | `sleep(duration: data.Duration): void` |
+| Go | `Now() Instant` | `Sleep(duration LawSpecDuration)` |
+| Java | `lawspec.data.Instant now()` | `void sleep(java.time.Duration duration)` |
+| Kotlin | `fun now(): lawspec.data.Instant` | `fun sleep(duration: kotlin.time.Duration)` |
 | Haskell | `now :: IO Data.Instant` | `sleep :: Data.Duration -> IO ()` |
-| Rust | `fn now(&self) -> Instant` | `fn sleep(&self, value0: std::time::Duration)` |
+| Rust | `fn now(&self) -> Instant` | `fn sleep(&self, duration: std::time::Duration)` |

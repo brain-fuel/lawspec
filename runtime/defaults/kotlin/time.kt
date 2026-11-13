@@ -39,8 +39,8 @@ object Time {
     class ClockHandler : lawspec.abilities.lawspec.Time.Clock {
         override fun now(): @@Instant@@ = @@Instant@@(nowMicros())
 
-        override fun sleep(value0: kotlin.time.Duration) {
-            val target = nowMicros() + value0.inWholeMicroseconds
+        override fun sleep(duration: kotlin.time.Duration) {
+            val target = nowMicros() + duration.inWholeMicroseconds
             var left = target - nowMicros()
             while (left > 0) {
                 Thread.sleep(left / 1000L, ((left % 1000L) * 1000L).toInt())

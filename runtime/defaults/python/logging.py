@@ -19,12 +19,12 @@ _LEVELS = {
 class LogHandler:
     """Logs to the "lawspec" logger."""
 
-    def logMessage(self, value0: @@LogLevel@@, value1: _builtins.str) -> None:
-        _LOGGER.log(_LEVELS.get(type(value0), _logging.INFO), value1)
+    def logMessage(self, level: @@LogLevel@@, message: _builtins.str) -> None:
+        _LOGGER.log(_LEVELS.get(type(level), _logging.INFO), message)
 
 
 class TraceHandler:
     """Trace events, at debug level on the "lawspec.trace" logger."""
 
-    def traceEvent(self, value0: _builtins.str) -> None:
-        _logging.getLogger("lawspec.trace").debug(value0)
+    def traceEvent(self, event: _builtins.str) -> None:
+        _logging.getLogger("lawspec.trace").debug(event)

@@ -142,13 +142,13 @@ export function aes256GcmDecrypt(key, nonce, sealed, associated)
 /** SHA3-256 and SHAKE256. */
 export class HashHandler
 {
-  sha3(value0)
+  sha3(message)
   {
-    return new @@Digest@@(sha3_256(value0));
+    return new @@Digest@@(sha3_256(message));
   }
-  shake(value0, value1)
+  shake(message, outputLength)
   {
-    return shake256(value0, value1);
+    return shake256(message, outputLength);
   }
 }
 /** ML-KEM-768. */
@@ -164,18 +164,18 @@ export class KeyExchangeHandler
       new @@ExchangeSecretKey@@(secretKey),
     );
   }
-  encapsulate(value0)
+  encapsulate(publicKey)
   {
-    const {ciphertext, secret} = mlKem768Encapsulate(value0.value);
+    const {ciphertext, secret} = mlKem768Encapsulate(publicKey.value);
     return new @@Encapsulated@@(
       new @@Ciphertext@@(ciphertext),
       new @@SharedSecret@@(secret),
     );
   }
-  decapsulate(value0, value1)
+  decapsulate(secretKey, ciphertext)
   {
     return new @@SharedSecret@@(
-      mlKem768Decapsulate(value0.value, value1.value),
+      mlKem768Decapsulate(secretKey.value, ciphertext.value),
     );
   }
 }
@@ -190,14 +190,14 @@ export class SignatureHandler
       new @@SigningKey@@(seed),
     );
   }
-  sign(value0, value1)
+  sign(signingKey, message)
   {
-    const signature = mlDsa65Sign(value0.value, value1);
+    const signature = mlDsa65Sign(signingKey.value, message);
     return new @@SignatureBytes@@(signature);
   }
-  verify(value0, value1, value2)
+  verify(verifyingKey, message, signature)
   {
-    return mlDsa65Verify(value0.value, value1, value2.value);
+    return mlDsa65Verify(verifyingKey.value, message, signature.value);
   }
 }
 /**
@@ -219,14 +219,14 @@ export class SlhDsaSignatureHandler
       new @@SigningKey@@(secretKey),
     );
   }
-  sign(value0, value1)
+  sign(signingKey, message)
   {
-    const signature = slhDsaSign(value0.value, value1);
+    const signature = slhDsaSign(signingKey.value, message);
     return new @@SignatureBytes@@(signature);
   }
-  verify(value0, value1, value2)
+  verify(verifyingKey, message, signature)
   {
-    return slhDsaVerify(value0.value, value1, value2.value);
+    return slhDsaVerify(verifyingKey.value, message, signature.value);
   }
 }
 /** AES-256-GCM, a fresh random nonce per message. */
@@ -236,29 +236,29 @@ export class AeadHandler
   {
     return new @@AeadKey@@(bytes(randomBytes(32)));
   }
-  deriveAeadKey(value0, value1)
+  deriveAeadKey(sharedSecret, keyContext)
   {
     return new @@AeadKey@@(
-      shake256(new Uint8Array([...value0.value, ...value1]), 32),
+      shake256(new Uint8Array([...sharedSecret.value, ...keyContext]), 32),
     );
   }
-  seal(value0, value1, value2)
+  seal(key, plaintext, associatedData)
   {
     const nonce = bytes(randomBytes(12));
     return new @@Sealed@@(
       new Uint8Array([
         ...nonce,
-        ...aes256GcmEncrypt(value0.value, nonce, value1, value2),
+        ...aes256GcmEncrypt(key.value, nonce, plaintext, associatedData),
       ]),
     );
   }
-  unseal(value0, value1, value2)
+  unseal(key, sealedMessage, associatedData)
   {
     const opened = aes256GcmDecrypt(
-      value0.value,
-      value1.value.subarray(0, 12),
-      value1.value.subarray(12),
-      value2,
+      key.value,
+      sealedMessage.value.subarray(0, 12),
+      sealedMessage.value.subarray(12),
+      associatedData,
     );
     return opened === undefined ? new data.Absent() : new data.Present(opened);
   }

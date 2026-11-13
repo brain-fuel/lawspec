@@ -8,7 +8,7 @@ module LawSpec.Naming
   , nativeIdentifier, Scope, emptyScope, scopeWith, claim, claimAll, uniqueNames
   , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, typeWords
   , ParameterName(..), parameterWords, typeHeadWords, parameterIdentifier, parameterNames, parameterNamesWith
-  , declarationParameterNames, operationParameterNames, sourceParameterNames, positionalParameters, positionalNames
+  , declarationParameterNames, operationParameterNames, handlerParameterNames, sourceParameterNames, positionalParameters, positionalNames
   ) where
 
 import Data.Binary (Binary)
@@ -17,7 +17,6 @@ import Data.Char (isAlphaNum, isAscii, isDigit, isHexDigit, isLower, isUpper, to
 import qualified LawSpec.Core as C
 import Data.List (intercalate, isPrefixOf, stripPrefix, dropWhileEnd)
 import qualified Data.Set as S
-import LawSpec.Builtins (defaultedUnits)
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.TestNames (lawWords, testIdentifier)
 
@@ -319,18 +318,21 @@ declarationParameterNames :: String -> [String] -> String -> C.Declaration -> [S
 declarationParameterNames target taken positional d =
   parameterNames target taken positional (C.declarationParameters d) (fst (C.functionType (C.declarationType d)))
 
--- | An ability operation's parameter names on a target. A built-in unit's
--- abilities keep positional names: their default handlers are the runtime's
--- own sources, written with those names, and an interface that named them
--- otherwise would have each override rename its parameters.
+-- | An ability operation's parameter names on a target. The built-in
+-- units' abilities declare theirs (LawSpec.Builtins), and the runtime's
+-- default handlers are written with the same names.
 operationParameterNames :: String -> [String] -> String -> C.Ability -> String -> [String]
 operationParameterNames target taken positional ability operation =
-  parameterNames target taken positional declared
+  parameterNames target taken positional (C.operationParameters ability operation)
     (maybe [] (fst . C.functionType) (lookup operation (C.abilityOperations ability)))
-  where
-    declared
-      | C.idText (C.abilityOwner ability) `elem` defaultedUnits = C.PositionalParameters
-      | otherwise = C.operationParameters ability operation
+
+-- | The names of the handlers a generated function takes, one for each
+-- ability it uses: the ability's name cased as the target cases a value
+-- (gateway, order_store), a clash numbered from 2.
+handlerParameterNames :: String -> [String] -> [C.AbilityRef] -> [String]
+handlerParameterNames target taken refs =
+  parameterNames target taken "handler" (C.DeclaredParameters [Just (lastTypeSegment (C.idText (C.abilityRefId ref))) | ref <- refs])
+    (map (const (C.scalarType "Unit")) refs)
 
 -- | Parameter names as text about the spec gives them (a failure, explain):
 -- the declared name as written, or the type-derived one in snake_case.

@@ -5,7 +5,7 @@ import Control.Monad (forM)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
 import LawSpec.Common
-import LawSpec.Naming (declarationParameterNames)
+import LawSpec.Naming (declarationParameterNames, operationParameterNames)
 import LawSpec.Core
 import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.KotlinExpr as E
@@ -65,10 +65,11 @@ emitKotlinDefinitions layout bits declarations units = do
               interface = abilityInterface (operationAbility op)
           codecs <- mapM (Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
           resultCodec <- Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
-          let parameters = D.text "symbols: MutableMap<String, Any>" :
-                [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
+          let names = take (length args) (operationParameterNames "kotlin" bridgeLocals "value" declared (operationName op))
+              parameters = D.text "symbols: MutableMap<String, Any>" :
+                [D.text (name ++ ": LawSpecRuntime.Value") | name <- names]
               invocation = KotlinLayout.chain (KotlinLayout.expressionReceiver (handlerAs (operationAbility op))) [(operationName op,
-                [decode codec (D.text ("value" ++ show i)) | (i, codec) <- zip [0::Int ..] codecs])]
+                [decode codec (D.text name) | (name, codec) <- zip names codecs])]
               _ = interface
           -- An operation that fails with E: a native handler throws
           -- LawSpecRuntime.Fail with a native E, which becomes the failure.
@@ -82,12 +83,13 @@ emitKotlinDefinitions layout bits declarations units = do
               cls = intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
           codecs <- mapM (Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations) args
           resultCodec <- Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (D.text "symbols") declarations result
-          let parameters = D.text "symbols: MutableMap<String, Any>" :
-                [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
+          let names = take (length args) (declarationParameterNames "kotlin" bridgeLocals "value" adapter)
+              parameters = D.text "symbols: MutableMap<String, Any>" :
+                [D.text (name ++ ": LawSpecRuntime.Value") | name <- names]
               -- An adapter that uses abilities gets their handlers first.
               handlers = [handlerAs a | a <- declarationUses adapter, not (isFail a)]
               invocation = call (cls ++ "." ++ declarationName adapter)
-                (handlers ++ [decode codec (D.text ("value" ++ show i)) | (i, codec) <- zip [0::Int ..] codecs])
+                (handlers ++ [decode codec (D.text name) | (name, codec) <- zip names codecs])
               -- A suspending adapter runs as a coroutine the workflow awaits,
               -- within its stage's timeout and hedge when it has them.
               body
@@ -214,3 +216,8 @@ apiParameters handlers declaration = declarationParameterNames "kotlin"
   (handlers ++ words "symbols result resultCodec context failure error" ++
     concat [["codec" ++ show i, "argument" ++ show i] | i <- [0 .. length (fst (functionType (declarationType declaration)))]])
   "value" declaration
+
+-- | The names a bridge of LawSpecKotlinAdapters uses for itself, which an
+-- operation's or an adapter's parameters stay clear of.
+bridgeLocals :: [String]
+bridgeLocals = ["symbols", "native", "value", "result", "failure", "handler", "it"]

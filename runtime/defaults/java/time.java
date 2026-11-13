@@ -51,9 +51,9 @@ public final class Time
     }
 
     @Override
-    public void sleep(java.time.Duration value0)
+    public void sleep(java.time.Duration duration)
     {
-      long target = nowMicros() + value0.toNanos() / 1000L;
+      long target = nowMicros() + duration.toNanos() / 1000L;
       for (long left = target - nowMicros(); left > 0; left = target - nowMicros())
       {
         try

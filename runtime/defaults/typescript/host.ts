@@ -12,30 +12,30 @@ import type * as abilities from '../lawspec_abilities/lawspec/host.js';
 /** Files by path; a relative path is from the working directory. */
 export class FileSystemHandler implements abilities.FileSystem
 {
-  readBytes(value0: string): data.Maybe<Uint8Array>
+  readBytes(path: string): data.Maybe<Uint8Array>
   {
     try
     {
-      return new data.Present(new Uint8Array(fs.readFileSync(value0)));
+      return new data.Present(new Uint8Array(fs.readFileSync(path)));
     }
     catch
     {
       return new data.Absent();
     }
   }
-  writeBytes(value0: string, value1: Uint8Array): void
+  writeBytes(path: string, contents: Uint8Array): void
   {
-    fs.writeFileSync(value0, value1);
+    fs.writeFileSync(path, contents);
   }
-  createDirectories(value0: string): void
+  createDirectories(path: string): void
   {
-    fs.mkdirSync(value0, {recursive: true});
+    fs.mkdirSync(path, {recursive: true});
   }
-  pathExists(value0: string): boolean
+  pathExists(path: string): boolean
   {
     try
     {
-      fs.lstatSync(value0);
+      fs.lstatSync(path);
       return true;
     }
     catch
@@ -43,18 +43,18 @@ export class FileSystemHandler implements abilities.FileSystem
       return false;
     }
   }
-  removePath(value0: string): void
+  removePath(path: string): void
   {
-    fs.rmSync(value0, {recursive: true, force: true});
+    fs.rmSync(path, {recursive: true, force: true});
   }
-  temporaryDirectory(value0: string): string
+  temporaryDirectory(prefix: string): string
   {
-    return fs.mkdtempSync(path.join(os.tmpdir(), value0));
+    return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   }
-  temporaryFile(value0: string): string
+  temporaryFile(prefix: string): string
   {
     const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), value0)),
+      fs.mkdtempSync(path.join(os.tmpdir(), prefix)),
       'file',
     );
     fs.writeFileSync(file, '');
@@ -70,18 +70,18 @@ export function validName(name: string): boolean
 /** The process's environment. */
 export class EnvironmentHandler implements abilities.Environment
 {
-  environmentVariable(value0: string): data.Maybe<string>
+  environmentVariable(name: string): data.Maybe<string>
   {
-    const value = validName(value0) ? process.env[value0] : undefined;
+    const value = validName(name) ? process.env[name] : undefined;
     return value === undefined ? new data.Absent() : new data.Present(value);
   }
   environmentSnapshot(): string
   {
     return ls.acquireResource('environment');
   }
-  restoreEnvironment(value0: string): void
+  restoreEnvironment(snapshot: string): void
   {
-    ls.releaseResource('environment', value0);
+    ls.releaseResource('environment', snapshot);
   }
 }
 

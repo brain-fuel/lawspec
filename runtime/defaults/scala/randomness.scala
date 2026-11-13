@@ -29,10 +29,10 @@ object Randomness {
   class RandomHandler extends lawspec.abilities.lawspec.Randomness.Random {
     private var state = runSeed()
 
-    override def randomBelow(value0: scala.Long): scala.Long = synchronized {
+    override def randomBelow(bound: scala.Long): scala.Long = synchronized {
       val current = state
       state = randomStep(randomStep(current))
-      randomDraw(current, value0)
+      randomDraw(current, bound)
     }
   }
 
@@ -47,11 +47,11 @@ object Randomness {
   /** The operating system's generator (java.security.SecureRandom). */
   class SecureRandomHandler
       extends lawspec.abilities.lawspec.Randomness.SecureRandom {
-    override def secureBytes(value0: scala.Int): scala.IArray[scala.Byte] =
-      IArray.unsafeFromArray(secureArray(value0))
+    override def secureBytes(count: scala.Int): scala.IArray[scala.Byte] =
+      IArray.unsafeFromArray(secureArray(count))
 
-    override def secureBelow(value0: scala.Long): scala.Long =
-      if (value0 < 1) 0L else secure.nextLong(value0)
+    override def secureBelow(bound: scala.Long): scala.Long =
+      if (bound < 1) 0L else secure.nextLong(bound)
 
     override def secureToken(): java.lang.String =
       java.util.HexFormat.of().formatHex(secureArray(32))

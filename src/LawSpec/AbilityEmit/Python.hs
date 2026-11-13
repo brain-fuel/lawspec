@@ -8,12 +8,12 @@
 -- ls.handler(symbols, key). Native code gets them as arguments instead.
 module LawSpec.AbilityEmit.Python (emit, emitWithNativeBridge, modulePath, moduleName, moduleNameOf, productionStub) where
 
-import Data.List (intercalate)
+import Data.List (intercalate, zip3)
 import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..), pythonUnitFile)
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames, positionalNames)
+import LawSpec.Naming (operationParameterNames)
 import LawSpec.PythonTypes (pythonDataTypeDoc, pythonTypeReferenceDoc, pythonLayout)
 import qualified LawSpec.PythonDefinitions as Definitions
 import qualified LawSpec.Code.Doc as D
@@ -75,9 +75,9 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
           body = D.joinWith (D.hardline <> D.hardline <> D.hardline) (protocols ++ handlers ++ recordings)
           usesBits = "MACHINE_BITS" `elem` words (map (\c -> if c == '_' || c `elem` ['A'..'Z'] then c else ' ') (D.render D.Compact body))
       pure (Artifact (modulePath units u) (D.render layout (header <> D.hardline <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
-    -- A generated handler's own methods keep positional names; the
-    -- protocol a user implements takes the operation's.
-    parameters = parametersNamed (positionalNames "value")
+    -- Every handler of an operation names its parameters as the protocol
+    -- does.
+    parameters a op = parametersNamed (operationNames a op)
     parametersNamed names ty = do
       let (args, result) = C.functionType ty
       types <- mapM (pythonDataTypeDoc datas) args
@@ -95,6 +95,7 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       initialState <- case C.handlerState h of
@@ -109,9 +110,9 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         evaluate <- maybe (Left ("unresolved clause " ++ C.idText clause)) Right (lookup clause calls)
-        ps <- parameters ty
+        ps <- parameters ability op ty
         let (args, result) = C.functionType ty
-        inputs <- sequence [schemaCall "from_native" t (D.text ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
+        inputs <- sequence [schemaCall "from_native" t (D.text v) | (v, t) <- zip (operationNames ability op) args]
         let arguments = D.text "symbols" : [D.text "self._state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [E.scalarLiteral (SAbsent "Unit")] else inputs)
             invocation = E.call evaluate arguments
@@ -134,6 +135,7 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
           stateful = C.handlerState h /= Nothing
@@ -145,11 +147,14 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (pyTypedFunction typed clause)
-        ps <- parameters ty
+        ps <- parameters ability op ty
         let (args, result) = C.functionType ty
-            inputs = [D.text ("argument" ++ show i ++ " = ") <> E.call ("_typed." ++ pyTypedNativeIn typed t) [D.text ("value" ++ show i), D.text "symbols"] | (i, t) <- zip [0 :: Int ..] args]
+            named = take (length args) (operationNames ability op)
+            -- Each argument in its typed form: typed_<parameter>.
+            typedNames = typedLocals named
+            inputs = [D.text (typedName ++ " = ") <> E.call ("_typed." ++ pyTypedNativeIn typed t) [D.text v, D.text "symbols"] | (typedName, v, t) <- zip3 typedNames named args]
             arguments = ["symbols" | isContextual (pyTypedPlan typed) clause] ++ ["self._state" | stateful] ++
-              (if null args && not stateful then ["None"] else ["argument" ++ show i | i <- [0 .. length args - 1]])
+              (if null args && not stateful then ["None"] else typedNames)
             invocation = E.call ("_typed." ++ function) (map D.text arguments)
             out x = D.text "return " <> E.call ("_typed." ++ pyTypedNativeOut typed result) [x, D.text "symbols"]
             statements = if stateful
@@ -176,11 +181,12 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
       attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
           ref <- pythonTypeReferenceDoc failure
           let (args, result) = C.functionType ty
-              values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
+              named = take (length args) (operationNames a op)
+              values = map D.text named
           types <- mapM (pythonDataTypeDoc datas) args
           resultType <- if result == C.scalarType "Unit" then pure (D.text "None") else pythonDataTypeDoc datas result
           failureType <- pythonDataTypeDoc datas failure
-          let ps' = D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types]) <>
+          let ps' = D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text (v ++ ": ") <> t | (v, t) <- zip named types]) <>
                 D.text " -> _schema.Either[" <> flat failureType <> D.text ", " <> flat resultType <> D.text "]"
           pure (E.suite (D.text ("def try_" ++ op) <> ps') (D.joinWith D.hardline
             [ D.text ("\"\"\"" ++ op ++ ", with the failure it raises as Left rather than an exception.\"\"\"")
@@ -198,10 +204,11 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
           concatMap (\m -> [D.text "", m]) (methods ++ accessors ++ attempts))))
     recording a = do
       methods <- mapM (\(op, ty) -> do
-        ps <- parameters ty
+        ps <- parameters a op ty
         let (args, _) = C.functionType ty
-        logged <- sequence [schemaCall "from_native" t (D.text ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
-        let values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
+            named = take (length args) (operationNames a op)
+        logged <- sequence [schemaCall "from_native" t (D.text v) | (v, t) <- zip named args]
+        let values = map D.text named
         pure (E.suite (D.text ("def " ++ op) <> ps) (D.joinWith D.hardline
           [ D.text "symbols = self._symbols"
           , E.call "self.calls.append" [D.delimitTrailing 4 "(" ")" [E.quoted op, E.array logged]]
@@ -237,7 +244,19 @@ productionStub datas a = do
     (D.joinWith D.hardline (D.text ("\"\"\"The native handler of " ++ displayName a ++ ": " ++
       intercalate ", " (map fst (C.abilityOperations a)) ++ ".\"\"\"") : made ++ concatMap (\m -> [D.text "", m]) methods))) ++ "\n")
 
--- An operation's parameter names where a user writes or reads them: the
--- protocol and the production handler's stub (LawSpec.Naming).
+-- An operation's parameter names (LawSpec.Naming), the same in the
+-- protocol, the production handler's stub and every generated handler. They
+-- stay clear of the names a generated handler's body uses.
+-- ref:DEC-generated-parameter-names
 operationNames :: C.Ability -> String -> [String]
-operationNames = operationParameterNames "python" ["self"] "value"
+operationNames = operationParameterNames "python" (words "self symbols result pair failure state typed") "value"
+
+-- The local holding each parameter's typed form: typed_<parameter>, clear
+-- of the parameters themselves.
+typedLocals :: [String] -> [String]
+typedLocals named = go named []
+  where
+    go [] _ = []
+    go (name : rest) used =
+      let chosen = head [c | c <- ("typed_" ++ name) : [("typed_" ++ name ++ "_" ++ show n) | n <- [2 :: Int ..]], c `notElem` named ++ used]
+      in chosen : go rest (chosen : used)

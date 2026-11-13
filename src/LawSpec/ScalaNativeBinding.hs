@@ -16,7 +16,8 @@ import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.ScalaData as S
 import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
-import LawSpec.AbilityEmit.Scala (abilitiesObjectOf, operationResult)
+import LawSpec.AbilityEmit.Scala (abilitiesObjectOf, operationResult, operationNames)
+import LawSpec.Naming (declarationParameterNames, handlerParameterNames)
 import LawSpec.ScalaDefinitions (adapterResult)
 import qualified LawSpec.ScalaExpr as E
 import qualified LawSpec.Code.Doc as D
@@ -50,8 +51,11 @@ emitBindings minify plan testing files = do
   calls <- forM (zip [0::Int ..] javaCalls) $ \(index,(d,nativeCall)) -> do
     let (args,_) = C.functionType (C.declarationType d)
     casts <- mapM javaCast args
-    let parameters = ["java.lang.Object value" ++ show i | i <- [0 .. length args - 1]]
-        cast i = maybe ("value" ++ show i) (\t -> "((" ++ t ++ ") value" ++ show i ++ ")") (casts !! i)
+    let -- The shim's parameters are named as the adapter's signature
+        -- declares, or from their types (LawSpec.Naming).
+        named = declarationParameterNames "java" [] "value" d
+        parameters = ["java.lang.Object " ++ v | v <- take (length args) named]
+        cast i = maybe (named !! i) (\t -> "((" ++ t ++ ") " ++ named !! i ++ ")") (casts !! i)
         handleArgument = lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args]
     expression <- case nativeCall of
       MethodCall name -> case handleArgument of
@@ -93,7 +97,7 @@ emitBindings minify plan testing files = do
         argTypes <- mapM (S.scalaDataTypeDoc declarations) args
         resultType <- adapterResult declarations d
         pure (L.parameters (D.text ("def " ++ S.escaped (C.declarationName d)))
-            [D.text ("value" ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] argTypes] <>
+            [D.text (v ++ ": ") <> t | (v,t) <- zip (declarationParameterNames "scala" [] "value" d) argTypes] <>
           D.text ": " <> resultType <> D.text " =" <> D.nest 2 (D.hardline <> D.text "throw " <>
             E.call "UnsupportedOperationException" [E.quoted (C.idText (C.declarationId d) ++
               " runs in the native actor bound to " ++ actorIdentity actor ++ "; LawSpec checks it through that actor")]))
@@ -108,11 +112,14 @@ emitBindings minify plan testing files = do
         nativeResult <- nativeCodec result
         nativeResultType <- if result == C.scalarType "Integer" then pure (D.text "scala.Int | scala.Long | scala.math.BigInt")
           else S.scalaNativeTypeDoc declarations mappings [] result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-            -- An adapter that uses abilities gets their handlers first, as
-            -- the generated traits.
-            handlerParams = [ (D.text (interfaceType a), D.text ("handler" ++ show i))
-                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
+        let -- An adapter that uses abilities gets their handlers first, as
+            -- the generated traits, each named for its ability; its values
+            -- are named as its signature declares (LawSpec.Naming).
+            used = [a | a <- C.declarationUses d, not (C.isFail a)]
+            bridgeLocals = words "symbols result found error"
+            handlerNames = handlerParameterNames "scala" bridgeLocals used
+            values = map D.text (declarationParameterNames "scala" (bridgeLocals ++ handlerNames) "value" d)
+            handlerParams = [(D.text (interfaceType a), D.text h) | (a, h) <- zip used handlerNames]
             converted = [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
             -- An Integer result stays polymorphic: the caller checks it.
             returnedOf value = if result == C.scalarType "Integer" then value
@@ -185,7 +192,7 @@ emitBindings minify plan testing files = do
           native <- mapM nativeCodec args
           canonicalResult <- canonicalCodec result
           nativeResult <- nativeCodec result
-          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+          let values = map D.text (take (length args) (operationNames a op))
               invocation = E.call ("inner." ++ S.escaped op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
               plain = if result == C.scalarType "Unit" then L.statements [invocation, D.text "()"]
                 else method canonicalResult "decode" [method nativeResult "encode" [invocation]]

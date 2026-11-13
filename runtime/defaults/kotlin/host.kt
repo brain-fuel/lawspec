@@ -7,10 +7,10 @@ import lawspec.runtime.LawSpecRuntime
 object Host {
     /** Files by path; a relative path is from the working directory. */
     class FileSystemHandler : lawspec.abilities.lawspec.Host.FileSystem {
-        override fun readBytes(value0: kotlin.String): LawSpecRuntime.Maybe<kotlin.ByteArray> =
+        override fun readBytes(path: kotlin.String): LawSpecRuntime.Maybe<kotlin.ByteArray> =
             try {
                 LawSpecRuntime.Present(
-                    java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0))
+                    java.nio.file.Files.readAllBytes(java.nio.file.Path.of(path))
                 )
             } catch (failed: java.io.IOException) {
                 LawSpecRuntime.Absent()
@@ -18,56 +18,54 @@ object Host {
                 LawSpecRuntime.Absent()
             }
 
-        override fun writeBytes(value0: kotlin.String, value1: kotlin.ByteArray) {
-            java.nio.file.Files.write(java.nio.file.Path.of(value0), value1)
+        override fun writeBytes(path: kotlin.String, contents: kotlin.ByteArray) {
+            java.nio.file.Files.write(java.nio.file.Path.of(path), contents)
         }
 
-        override fun createDirectories(value0: kotlin.String) {
-            java.nio.file.Files.createDirectories(java.nio.file.Path.of(value0))
+        override fun createDirectories(path: kotlin.String) {
+            java.nio.file.Files.createDirectories(java.nio.file.Path.of(path))
         }
 
-        override fun pathExists(value0: kotlin.String): kotlin.Boolean =
+        override fun pathExists(path: kotlin.String): kotlin.Boolean =
             try {
                 java.nio.file.Files.exists(
-                    java.nio.file.Path.of(value0),
+                    java.nio.file.Path.of(path),
                     java.nio.file.LinkOption.NOFOLLOW_LINKS,
                 )
             } catch (failed: RuntimeException) {
                 false
             }
 
-        override fun removePath(value0: kotlin.String) {
-            val path = java.nio.file.Path.of(value0)
-            if (java.nio.file.Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                path.toFile().deleteRecursively()
+        override fun removePath(path: kotlin.String) {
+            val target = java.nio.file.Path.of(path)
+            if (java.nio.file.Files.isDirectory(target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                target.toFile().deleteRecursively()
             } else {
-                java.nio.file.Files.deleteIfExists(path)
+                java.nio.file.Files.deleteIfExists(target)
             }
         }
 
-        override fun temporaryDirectory(value0: kotlin.String): kotlin.String =
-            java.nio.file.Files.createTempDirectory(value0).toString()
+        override fun temporaryDirectory(prefix: kotlin.String): kotlin.String =
+            java.nio.file.Files.createTempDirectory(prefix).toString()
 
-        override fun temporaryFile(value0: kotlin.String): kotlin.String =
-            java.nio.file.Files.createTempFile(value0, "").toString()
+        override fun temporaryFile(prefix: kotlin.String): kotlin.String =
+            java.nio.file.Files.createTempFile(prefix, "").toString()
     }
 
     fun validName(name: String): Boolean = name.isNotEmpty() && '=' !in name && '\u0000' !in name
 
     /** The process's environment. */
     class EnvironmentHandler : lawspec.abilities.lawspec.Host.Environment {
-        override fun environmentVariable(
-            value0: kotlin.String
-        ): LawSpecRuntime.Maybe<kotlin.String> {
-            val value = if (validName(value0)) java.lang.System.getenv(value0) else null
+        override fun environmentVariable(name: kotlin.String): LawSpecRuntime.Maybe<kotlin.String> {
+            val value = if (validName(name)) java.lang.System.getenv(name) else null
             return if (value == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(value)
         }
 
         override fun environmentSnapshot(): kotlin.String =
             LawSpecRuntime.acquireResource("environment")
 
-        override fun restoreEnvironment(value0: kotlin.String) {
-            LawSpecRuntime.releaseResource("environment", value0)
+        override fun restoreEnvironment(snapshot: kotlin.String) {
+            LawSpecRuntime.releaseResource("environment", snapshot)
         }
     }
 

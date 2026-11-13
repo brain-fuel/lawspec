@@ -52,7 +52,7 @@ impl Default for RandomHandler
 
 impl crate::lawspec_abilities::lawspec_randomness::Random for RandomHandler
 {
-    fn randomBelow(&self, value0: i64) -> i64
+    fn randomBelow(&self, bound: i64) -> i64
     {
         let mut state = self
             .state
@@ -60,7 +60,7 @@ impl crate::lawspec_abilities::lawspec_randomness::Random for RandomHandler
             .expect("random generator state lock is not poisoned");
         let current = *state;
         *state = random_step(random_step(current));
-        random_draw(current, value0)
+        random_draw(current, bound)
     }
 }
 
@@ -77,20 +77,20 @@ pub struct SecureRandomHandler;
 
 impl crate::lawspec_abilities::lawspec_randomness::SecureRandom for SecureRandomHandler
 {
-    fn secureBytes(&self, value0: i32) -> std::vec::Vec<u8>
+    fn secureBytes(&self, count: i32) -> std::vec::Vec<u8>
     {
-        let mut out = vec![0u8; value0.max(0) as usize];
+        let mut out = vec![0u8; count.max(0) as usize];
         getrandom::fill(&mut out).expect("the operating system's generator failed");
         out
     }
 
-    fn secureBelow(&self, value0: i64) -> i64
+    fn secureBelow(&self, bound: i64) -> i64
     {
-        if value0 < 1
+        if bound < 1
         {
             return 0;
         }
-        let bound = value0 as u64;
+        let bound = bound as u64;
         let limit = u64::MAX - (u64::MAX % bound + 1) % bound;
         loop
         {

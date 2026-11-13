@@ -37,20 +37,20 @@ class RandomHandler:
     def __init__(self, seed: int | None = None):
         self._state = run_seed() if seed is None else seed % _MODULUS
 
-    def randomBelow(self, value0: _builtins.int) -> _builtins.int:
+    def randomBelow(self, bound: _builtins.int) -> _builtins.int:
         state = self._state
         self._state = random_step(random_step(state))
-        return random_draw(state, value0)
+        return random_draw(state, bound)
 
 
 class SecureRandomHandler:
     """The operating system's generator (secrets)."""
 
-    def secureBytes(self, value0: _builtins.int) -> _builtins.bytes:
-        return _secrets.token_bytes(max(value0, 0))
+    def secureBytes(self, count: _builtins.int) -> _builtins.bytes:
+        return _secrets.token_bytes(max(count, 0))
 
-    def secureBelow(self, value0: _builtins.int) -> _builtins.int:
-        return _secrets.randbelow(value0) if value0 >= 1 else 0
+    def secureBelow(self, bound: _builtins.int) -> _builtins.int:
+        return _secrets.randbelow(bound) if bound >= 1 else 0
 
     def secureToken(self) -> _builtins.str:
         return _secrets.token_hex(32)

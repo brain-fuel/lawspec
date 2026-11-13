@@ -12,16 +12,16 @@ pub struct LogHandler;
 
 impl crate::lawspec_abilities::lawspec_logging::Log for LogHandler
 {
-    fn logMessage(&self, value0: LogLevel, value1: std::string::String) -> ()
+    fn logMessage(&self, level: LogLevel, message: std::string::String) -> ()
     {
-        let level = match value0
+        let level = match level
         {
             LogLevel::Debug => "DEBUG",
             LogLevel::Info => "INFO",
             LogLevel::Warning => "WARNING",
             LogLevel::Error => "ERROR",
         };
-        eprintln!("{level}: {value1}");
+        eprintln!("{level}: {message}");
     }
 }
 
@@ -31,8 +31,8 @@ pub struct TraceHandler;
 
 impl crate::lawspec_abilities::lawspec_logging::Trace for TraceHandler
 {
-    fn traceEvent(&self, value0: std::string::String) -> ()
+    fn traceEvent(&self, event: std::string::String) -> ()
     {
-        eprintln!("DEBUG: trace: {value0}");
+        eprintln!("DEBUG: trace: {event}");
     }
 }

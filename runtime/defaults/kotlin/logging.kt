@@ -10,22 +10,22 @@ object Logging {
 
     /** Logs to the "lawspec" platform logger, at the matching level. */
     class LogHandler : lawspec.abilities.lawspec.Logging.Log {
-        override fun logMessage(value0: @@LogLevel@@, value1: kotlin.String) {
-            val level =
-                when (value0) {
+        override fun logMessage(level: @@LogLevel@@, message: kotlin.String) {
+            val loggerLevel =
+                when (level) {
                     @@LogLevel/Debug@@ -> java.lang.System.Logger.Level.DEBUG
                     @@LogLevel/Warning@@ -> java.lang.System.Logger.Level.WARNING
                     @@LogLevel/Error@@ -> java.lang.System.Logger.Level.ERROR
                     else -> java.lang.System.Logger.Level.INFO
                 }
-            logger.log(level, value1)
+            logger.log(loggerLevel, message)
         }
     }
 
     /** Trace events, at debug level. */
     class TraceHandler : lawspec.abilities.lawspec.Logging.Trace {
-        override fun traceEvent(value0: kotlin.String) {
-            logger.log(java.lang.System.Logger.Level.DEBUG, "trace: $value0")
+        override fun traceEvent(event: kotlin.String) {
+            logger.log(java.lang.System.Logger.Level.DEBUG, "trace: $event")
         }
     }
 }

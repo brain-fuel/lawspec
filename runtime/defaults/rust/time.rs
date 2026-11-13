@@ -40,9 +40,9 @@ impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler
         }
     }
 
-    fn sleep(&self, value0: std::time::Duration) -> ()
+    fn sleep(&self, duration: std::time::Duration) -> ()
     {
-        let target = now_micros() + value0.as_micros() as i64;
+        let target = now_micros() + duration.as_micros() as i64;
         loop
         {
             let left = target - now_micros();

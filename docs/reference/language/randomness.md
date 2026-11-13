@@ -36,7 +36,7 @@ end unit
 
 ```lawspec fragment
 ability Random is
-  randomBelow :: Int64 -> Int64
+  randomBelow :: (bound :: Int64) -> Int64
 end ability
 ```
 
@@ -58,8 +58,8 @@ the same on every target, so the same seed gives the same draws on all eight:
 
 ```lawspec fragment
 ability SecureRandom is
-  secureBytes :: Int32 -> Bytes
-  secureBelow :: Int64 -> Int64
+  secureBytes :: (count :: Int32) -> Bytes
+  secureBelow :: (bound :: Int64) -> Int64
   secureToken :: Text
 end ability
 ```
