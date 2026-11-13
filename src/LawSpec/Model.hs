@@ -5,6 +5,7 @@
 -- ref:DEC-typed-core-boundary
 module LawSpec.Model (module LawSpec.Model, module LawSpec.Common) where
 
+import LawSpec.Formats (FormatCheck(..), formatChecks)
 import LawSpec.Core.Policy (StagePolicy)
 import LawSpec.Core.Machine (Machine, Supervisor)
 import qualified LawSpec.Core.Positional as Positional
@@ -196,14 +197,21 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
 
 -- | How a masked field is shown: the first character of an address's local
 -- part and its domain; the last n characters; a keyed hash; or nothing of it.
-data FieldMask = MaskEmail | MaskLast Integer | MaskHash | MaskHidden deriving (Eq, Show, Generic)
+-- A hash names its algorithm or takes the default one (hashAlgorithms).
+data FieldMask = MaskEmail | MaskLast Integer | MaskHash (Maybe String) | MaskHidden deriving (Eq, Show, Generic)
+
+-- | The algorithms `shown as hash <algorithm>` may name. `shown as hash`
+-- alone is the first: changing it is a breaking change. ref:DEC-masking
+hashAlgorithms :: [String]
+hashAlgorithms = ["blake3"]
 
 -- | The words that name a mask after `shown as`.
 fieldMaskText :: FieldMask -> String
 fieldMaskText mask = case mask of
   MaskEmail -> "email"
   MaskLast count -> "last " ++ show count
-  MaskHash -> "hash"
+  MaskHash Nothing -> "hash"
+  MaskHash (Just algorithm) -> "hash " ++ algorithm
   MaskHidden -> "hidden"
 
 -- | masking Record is field shown as mask ... end masking.
@@ -988,6 +996,18 @@ scopeRecordFields extra env transform fields = walk used env [] fields
 
 -- | Source wrappers survive renaming and substitution. Consumers that only inspect
 -- syntax may discard wrappers explicitly; elaboration retains their real ranges.
+-- | `subject matches format <name>`, as the checks of the format
+-- (LawSpec.Formats) joined by &&. The record rules recognise the same
+-- expression as one rule, named after the format.
+formatPredicate :: String -> Expr -> Maybe Expr
+formatPredicate name subject = foldr1 (Binary "&&") . map check <$> formatChecks name
+  where
+    matches regex value = Apply (Apply (Var "prelude.regexMatches") (StringLit regex)) value
+    check item = case item of
+      Matches regex -> matches regex subject
+      UncommentedMatches regex -> matches regex (Apply (Var "prelude.rfc822Uncommented") subject)
+      AtMost limit -> Binary "<=" (Apply (Var "prelude.length") subject) (Number limit)
+
 unlocated :: Expr -> Expr
 unlocated (Located _ e) = unlocated e
 unlocated e = e

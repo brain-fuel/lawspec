@@ -26,7 +26,7 @@ import LawSpec.Indexed
 import LawSpec.PreludeNames (preludeValueName)
 import LawSpec.DomainModel
 import LawSpec.ContractRules (elaborateContracts, contractDemand, draftName)
-import LawSpec.Formats (formatNames, formatPattern)
+import LawSpec.Formats (formatNames)
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), ModelRestart(..), elaborateModels, checkSupervisors)
 import LawSpec.ModelTime (timeStep, timePasses)
 import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
@@ -44,7 +44,7 @@ import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
 import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace, isDigit)
 import Data.List (uncons, intercalate, isInfixOf, nub, mapAccumL)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Text.Megaparsec hiding (SourcePos, parse, runParserT, lookAhead)
 import qualified Text.Megaparsec as MP
 import Text.Megaparsec.Char
@@ -1034,7 +1034,7 @@ canonicalRecordP = sourceNode "record-declaration" (const Nothing) $ do
           | (label, ty) <- [last fields]]
 
 -- | masking Record is field shown as mask ... end masking. A mask is email,
--- last n, hash or hidden.
+-- last n, hash (with or without its algorithm's name) or hidden.
 maskingP :: P MaskingDeclaration
 maskingP = blockP "masking" $ do
   ((record, fields), range) <- withSpan $ do
@@ -1044,9 +1044,9 @@ maskingP = blockP "masking" $ do
     fields <- many (sourceNode "masking-field" (Just . fst) $ do
       label <- try (ident <* keyword "shown")
       keyword "as"
-      mask <- (MaskEmail <$ keyword "email") <|> (MaskHash <$ keyword "hash") <|> (MaskHidden <$ keyword "hidden")
+      mask <- (MaskEmail <$ keyword "email") <|> (MaskHash <$> (keyword "hash" *> optional (try (ident <* notFollowedBy (keyword "shown"))))) <|> (MaskHidden <$ keyword "hidden")
         <|> (MaskLast <$> (keyword "last" *> lexeme L.decimal))
-        <?> "a mask: email, last <n>, hash or hidden"
+        <?> "a mask: email, last <n>, hash, hash <algorithm> or hidden"
       pure (label, mask))
     closeP "masking"
     pure (record, fields)
@@ -1545,11 +1545,11 @@ matcherSuffix operand = choice
       keyword "regex"
       pattern <- regexText
       pure (\subject -> Apply (Apply (Var "prelude.regexMatches") (StringLit pattern)) subject)
-    -- t matches format email: the whole text is in the named format, which
-    -- is a regex of the same dialect (LawSpec.Formats).
+    -- t matches format email: the whole text is in the named format, whose
+    -- checks are regexes of the same dialect and lengths (LawSpec.Formats).
     formatLiteral = sourceNode "format" Just (try (keyword "format" *> lookAhead identRaw) *> ident) >>= \name ->
-      case formatPattern name of
-        Just pattern -> pure (\subject -> Apply (Apply (Var "prelude.regexMatches") (StringLit pattern)) subject)
+      case formatPredicate name (Var "") of
+        Just _ -> pure (\subject -> fromMaybe subject (formatPredicate name subject))
         Nothing -> fail ("there is no format called " ++ name ++ "; the formats are " ++ intercalate ", " formatNames)
     -- e fails with age.min: a validation whose only violation is that rule
     -- (LawSpec.ContractRules). A rule's id starts with a lowercase letter,

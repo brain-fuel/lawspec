@@ -6,6 +6,11 @@ import Data.Ratio
 import Control.Monad (unless)
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
 import LawSpec.Regex (regexMatchesText)
+import LawSpec.Formats (rfc822Uncommented)
+import LawSpec.Blake3 (blake3Keyed, hexOf)
+import qualified Data.ByteString as B
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 
 -- | Conversions follow LawSpec's rules, so a non-finite float never becomes an
 -- exact number on any target. ref:DEC-portable-exact-arithmetic
@@ -81,6 +86,14 @@ helperValue _ "startsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBo
 helperValue _ "endsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isSuffixOf p t))
 helperValue _ "textContains" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isInfixOf p t))
 helperValue _ "regexMatches" [SSequence "Text" p, SSequence "Text" t] = SBool <$> regexMatchesText (map toEnum p) t
+helperValue _ "rfc822Uncommented" [SSequence "Text" t] = Right (SSequence "Text" (map fromEnum (rfc822Uncommented (map toEnum t))))
+-- A code point that is not a Unicode scalar value (a lone surrogate) is
+-- hashed as U+FFFD, which is what encoding to UTF-8 makes of it here and in
+-- every runtime.
+helperValue _ "maskHashBlake3" [SSequence "Bytes" key, SSequence "Text" t] =
+  case blake3Keyed (B.pack (map fromIntegral key)) (T.encodeUtf8 (T.pack (map toEnum t))) of
+    Just digest -> Right (SSequence "Text" (map fromEnum ("hash:" ++ hexOf digest)))
+    Nothing -> Left "maskHashBlake3: the key is 32 bytes"
 -- Text and Bytes: joined, sliced by index (clamped), encoded and printed.
 helperValue _ "append" [SSequence t a, SSequence u b] | t == u = Right (SSequence t (a ++ b))
 helperValue _ "slice" [SSequence t xs, from, to] = do

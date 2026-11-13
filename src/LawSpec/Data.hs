@@ -158,7 +158,7 @@ dataDeclarationHeaders units = do
           S.MaskHidden -> C.MaskHidden
           S.MaskLast count -> C.MaskLast count
           S.MaskEmail -> C.MaskEmail
-          S.MaskHash -> C.MaskHash)
+          S.MaskHash algorithm -> C.MaskHash algorithm)
       | contract <- S.recordContracts u
       , name `elem` [S.contractRecord contract, S.contractRecord contract ++ "Draft"]
       , (field, mask) <- S.contractMasks contract ]

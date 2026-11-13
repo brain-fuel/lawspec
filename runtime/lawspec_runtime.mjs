@@ -370,12 +370,19 @@ export function setMaskKey(key)
   MASK_KEY = blake3Words(key, 0, 32).slice(0, 8);
 }
 
+/** What a hidden value shows: three stars, whatever the value. */
+export function maskStar(_value)
+{
+  return '***';
+}
+
 /**
- * `hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes: equal
- * values show alike, and the value cannot be read back without the key.
- * Without a key it throws; it never falls back to showing or hiding.
+ * `hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes, under
+ * the key the application set: equal values show alike, and the value
+ * cannot be read back without the key. Without a key it throws; it never
+ * falls back to showing or hiding. A lone surrogate is hashed as U+FFFD.
  */
-export function maskHash(value)
+export function maskHashBlake3(value)
 {
   if (MASK_KEY === null)
     throw new Error(
@@ -384,6 +391,81 @@ export function maskHash(value)
     );
   const bytes = new TextEncoder().encode(String(value));
   return 'hash:' + blake3KeyedHex(MASK_KEY, bytes);
+}
+
+/**
+ * The hash mask of this version's default algorithm, BLAKE3. A version that
+ * changes the default says so as a breaking change; name the algorithm
+ * (maskHashBlake3) where the digests must stay comparable.
+ */
+export const maskHash = maskHashBlake3;
+
+/**
+ * maskHashBlake3 under a key given with the call: LawSpec's own
+ * `maskHashBlake3 key text`, which is pure. The key is 32 bytes.
+ */
+export function maskHashBlake3With(key, value)
+{
+  if (!(key instanceof Uint8Array) || key.length !== 32)
+    throw new TypeError(
+      'LawSpec masking: the hash key is a Uint8Array of 32 bytes',
+    );
+  const bytes = new TextEncoder().encode(String(value));
+  return 'hash:' + blake3KeyedHex(blake3Words(key, 0, 32).slice(0, 8), bytes);
+}
+
+/** As maskHash, under a key given with the call. */
+export const maskHashWith = maskHashBlake3With;
+
+/**
+ * An RFC 822 address without its comments, as Mail::RFC822::Address's
+ * valid() removes them before it matches: while a comment with no comment
+ * inside it starts where the quoted strings before it are closed, the last
+ * such comment becomes one space. A backslash quotes the next character.
+ * The rfc822Address format matches the result (LawSpec.Formats).
+ */
+export function rfc822Uncommented(text)
+{
+  let source = String(text);
+  for (;;)
+  {
+    const next = withoutLastComment(source);
+    if (next === null) return source;
+    source = next;
+  }
+}
+
+function withoutLastComment(source)
+{
+  // Whether a comment may start at each position: outside quoted strings
+  // and not straight after a backslash.
+  const outside = [];
+  let quoted = false;
+  let at = 0;
+  for (;;)
+  {
+    outside[at] = !quoted;
+    if (at >= source.length) break;
+    if (source[at] === '\\')
+    {
+      if (at + 1 >= source.length) break;
+      outside[at + 1] = false;
+      at += 2;
+      continue;
+    }
+    if (source[at] === '"') quoted = !quoted;
+    at++;
+  }
+  for (let start = outside.length - 1; start >= 0; start--)
+  {
+    if (!outside[start] || source[start] !== '(') continue;
+    let end = start + 1;
+    while (end < source.length && source[end] !== ')' && source[end] !== '(')
+      end += source[end] === '\\' ? 2 : 1;
+    if (end < source.length && source[end] === ')')
+      return source.slice(0, start) + ' ' + source.slice(end + 1);
+  }
+  return null;
 }
 
 /** A value with every masked field replaced by a marker that prints as ***. */
@@ -1119,6 +1201,8 @@ const sequenceHelpers = {
   trim: ([text]) => trimText(text),
   isUnicodeWhitespace: ([text]) => isUnicodeWhitespaceText(text),
   trimAsciiControl: ([text]) => trimAsciiControlText(text),
+  rfc822Uncommented: ([text]) => rfc822Uncommented(text),
+  maskHashBlake3: ([key, text]) => maskHashBlake3With(key, text),
   words: ([text]) => wordsOfText(text),
   lines: ([text]) => linesOfText(text),
 };

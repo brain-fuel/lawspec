@@ -264,17 +264,93 @@ def set_mask_key(key):
     _MASK_KEY = _blake3_words(bytes(key))[:8]
 
 
-def mask_hash(value):
-    """`hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes:
-    equal values show alike, and the value cannot be read back without the
-    key. Without a key it raises; it never falls back to showing or
-    hiding."""
+def mask_star(_value):
+    """What a hidden value shows: three stars, whatever the value."""
+    return "***"
+
+
+def _mask_text_bytes(value):
+    """A text's UTF-8 bytes, a lone surrogate encoded as U+FFFD."""
+    text = "".join(
+        "\ufffd" if 0xD800 <= ord(c) <= 0xDFFF else c for c in str(value)
+    )
+    return text.encode("utf-8")
+
+
+def mask_hash_blake3(value):
+    """`hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes,
+    under the key the application set: equal values show alike, and the
+    value cannot be read back without the key. Without a key it raises; it
+    never falls back to showing or hiding."""
     if _MASK_KEY is None:
         raise RuntimeError(
             "LawSpec masking: a field is shown as hash and no key is set;"
             " call set_mask_key with 32 secret bytes when the application starts"
         )
-    return "hash:" + _blake3_keyed_hex(_MASK_KEY, str(value).encode("utf-8"))
+    return "hash:" + _blake3_keyed_hex(_MASK_KEY, _mask_text_bytes(value))
+
+
+# The hash mask of this version's default algorithm, BLAKE3. A version that
+# changes the default says so as a breaking change; name the algorithm
+# (mask_hash_blake3) where the digests must stay comparable.
+mask_hash = mask_hash_blake3
+
+
+def mask_hash_blake3_with(key, value):
+    """mask_hash_blake3 under a key given with the call: LawSpec's own
+    `maskHashBlake3 key text`, which is pure. The key is 32 bytes."""
+    if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
+        raise TypeError("LawSpec masking: the hash key is 32 bytes")
+    words = _blake3_words(bytes(key))[:8]
+    return "hash:" + _blake3_keyed_hex(words, _mask_text_bytes(value))
+
+
+# As mask_hash, under a key given with the call.
+mask_hash_with = mask_hash_blake3_with
+
+
+def rfc822_uncommented(text):
+    """An RFC 822 address without its comments, as Mail::RFC822::Address's
+    valid() removes them before it matches: while a comment with no comment
+    inside it starts where the quoted strings before it are closed, the last
+    such comment becomes one space. A backslash quotes the next character.
+    The rfc822Address format matches the result (LawSpec.Formats)."""
+    source = str(text)
+    while True:
+        shorter = _without_last_comment(source)
+        if shorter is None:
+            return source
+        source = shorter
+
+
+def _without_last_comment(source):
+    # Whether a comment may start at each position: outside quoted strings
+    # and not straight after a backslash.
+    outside = {}
+    quoted = False
+    at = 0
+    while True:
+        outside[at] = not quoted
+        if at >= len(source):
+            break
+        if source[at] == "\\":
+            if at + 1 >= len(source):
+                break
+            outside[at + 1] = False
+            at += 2
+            continue
+        if source[at] == '"':
+            quoted = not quoted
+        at += 1
+    for start in sorted(outside, reverse=True):
+        if not outside[start] or source[start : start + 1] != "(":
+            continue
+        end = start + 1
+        while end < len(source) and source[end] not in "()":
+            end += 2 if source[end] == "\\" else 1
+        if end < len(source) and source[end] == ")":
+            return source[:start] + " " + source[end + 1 :]
+    return None
 
 
 def plain(value):
@@ -991,6 +1067,8 @@ _SEQUENCE_HELPERS = {
     "trim": lambda text: _text_trim(text),
     "isUnicodeWhitespace": lambda text: _text_is_unicode_whitespace(text),
     "trimAsciiControl": lambda text: _text_trim_ascii_control(text),
+    "rfc822Uncommented": lambda text: rfc822_uncommented(text),
+    "maskHashBlake3": lambda key, text: mask_hash_blake3_with(key, text),
     "words": lambda text: _text_words(text),
     "lines": lambda text: _text_lines(text),
 }

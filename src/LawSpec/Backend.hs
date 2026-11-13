@@ -8,7 +8,7 @@ import LawSpec.Testing (PlannedProperty(..), GeneratorRequirement(..))
 import LawSpec.Common (Generation, Location(..), Quantification(..), renderReference, documentaryUnit, documentaryName)
 import LawSpec.Scalar (prettyScalar)
 import Data.List (intercalate, stripPrefix, isPrefixOf)
-import Data.Char (isAlphaNum, isDigit)
+import Data.Char (isAlphaNum, isDigit, toUpper)
 import qualified Data.Map.Strict as M
 import Numeric (showHex)
 import LawSpec.Scalar (Scalar(..))
@@ -164,6 +164,26 @@ domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 -- test runtime hides masked fields in failure output. ref:DEC-masking
 maskedRenderingTargets :: [String]
 maskedRenderingTargets = ["java", "javascript", "python", "typescript"]
+
+-- | The targets whose runtime has the two text primitives no other runtime
+-- has yet: the comment pass of the rfc822Address format and keyed BLAKE3.
+-- ref:DEC-email-format ref:DEC-masking
+runtimePrimitiveTargets :: [String]
+runtimePrimitiveTargets = ["java", "javascript", "python", "typescript"]
+
+-- | The runtime function a `shown as hash` field renders through, in the
+-- target's own casing: the default algorithm's when none is named, and the
+-- named algorithm's otherwise. ref:DEC-masking
+maskFunction :: String -> Maybe String -> String
+maskFunction target algorithm = cased (words' algorithm)
+  where
+    words' Nothing = ["mask", "hash"]
+    words' (Just name) = ["mask", "hash", name]
+    cased parts
+      | target == "python" = intercalate "_" parts
+      | otherwise = head parts ++ concatMap capital (tail parts)
+    capital [] = []
+    capital (c : rest) = toUpper c : rest
 
 -- | Each masked record's constructor and the positions of the fields its
 -- masking block hides, for a runtime to hide them in what it prints.

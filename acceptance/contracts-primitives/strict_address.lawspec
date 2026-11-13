@@ -1,0 +1,52 @@
+unit example.strict
+
+-- Two formats for an address. `email` is what a form should take: the bare
+-- address, with a domain of at least two names. `rfc822Address` is every
+-- address RFC 822 allows, comments included.
+
+type Sender is a record{
+  reply :: (v :: Text where v matches format email),
+  header :: (v :: Text where v matches format rfc822Address)}
+end type
+
+function ann (u :: Unit) -> SenderDraft is
+  SenderDraft record{reply = "ann@example.org", header = "ann@example.org (Ann Lee)"}
+end function
+
+law "|a commented address is a strict one| is
+  definition :
+    violationsOfSender (ann ()) = []
+    and violationsOfSender (ann () with header = "Ann Lee <ann@example.org>") = []
+    and violationsOfSender (ann () with header = "ann@localhost") = []
+  end definition
+end law
+
+law "|the normal format takes the bare address only| is
+  definition :
+    validateSender (ann () with reply = "ann@example.org (Ann Lee)") fails with reply.email
+    and validateSender (ann () with reply = "Ann Lee <ann@example.org>") fails with reply.email
+    and validateSender (ann () with reply = "ann@localhost") fails with reply.email
+    and validateSender (ann () with reply = "ann@example.org\n") fails with reply.email
+  end definition
+end law
+
+-- rfc822Address is its regex on prelude.rfc822Uncommented of the text: each
+-- comment becomes one space, innermost first, and a quoted string keeps its
+-- parentheses. Every runtime gives these same texts.
+law "|comments are removed before the address is matched| is
+  definition :
+    prelude.rfc822Uncommented "a(b)c" = "a c"
+    and prelude.rfc822Uncommented "a(b(c)d)e" = "a e"
+    and prelude.rfc822Uncommented "\"(a)\"(b)" = "\"(a)\" "
+    and prelude.rfc822Uncommented "a(b\\)c)d" = "a d"
+    and prelude.rfc822Uncommented "a(b" = "a(b"
+    and prelude.rfc822Uncommented "(a\"b) \"(c)\"" = "  \" \""
+  end definition
+end law
+
+law "|each format has one rule| is
+  definition :
+    prelude.violatedRules (violationsOfSender (ann () with reply = "ann", header = "ann@")) = ["reply.email", "header.rfc822Address"]
+  end definition
+end law
+end unit

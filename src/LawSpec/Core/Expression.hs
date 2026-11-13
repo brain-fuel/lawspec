@@ -262,6 +262,8 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     helperType Split [sep, text] | all ((== scalarType "Text") . expressionTypeOf) [sep, text] = Right (Constructor "List" [TypeArgument (scalarType "Text")])
     helperType Trim [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
     helperType TrimAsciiControl [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
+    helperType Rfc822Uncommented [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
+    helperType MaskHashBlake3 [key, text] | expressionTypeOf key == scalarType "Bytes", expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
     helperType IsUnicodeWhitespace [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Bool")
     helperType builtin [text] | builtin `elem` [Words, Lines], expressionTypeOf text == scalarType "Text" = Right (Constructor "List" [TypeArgument (scalarType "Text")])
     helperType b args = Left ("invalid arguments to " ++ builtinName b ++ ": " ++ show (map expressionTypeOf args))

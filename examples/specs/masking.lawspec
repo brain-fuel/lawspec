@@ -36,9 +36,11 @@ law "|a violation shows the masked value| is
   end definition
 end law
 
--- `hash` shows a keyed BLAKE3 digest in a target's native rendering, where
+-- `hash` shows a keyed BLAKE3 hash in a target's native rendering, where
 -- the application has set a key. maskedSession is a pure definition and has
--- no key, so it hides the field.
+-- no key, so it hides the field. maskedSessionWith takes the key
+-- (acceptance/contracts-primitives/keyed_masking.lawspec); it is not here
+-- because only some targets have the keyed hash.
 type Session is a record{
   user :: Text,
   token :: (v :: Text where prelude.length v >= 8)}

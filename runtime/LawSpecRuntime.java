@@ -547,6 +547,37 @@ public final class LawSpecRuntime
     return hidden != null && hidden.contains(position);
   }
 
+  /** A value's canonical text (render) for a failure message, each masked field as ***. */
+  static String renderMasked(Value v)
+  {
+    if (MASKED_FIELDS.isEmpty())
+    {
+      return render(v);
+    }
+    Object data = v.data();
+    if (data instanceof List<?> items && !items.isEmpty() && items.get(0) instanceof Value)
+    {
+      var parts = new ArrayList<String>();
+      for (Object item : items)
+      {
+        parts.add(renderMasked((Value) item));
+      }
+      return "[" + String.join(", ", parts) + "]";
+    }
+    if (data instanceof Data value && !value.fields().isEmpty())
+    {
+      String tag = value.tag();
+      int cut = tag.lastIndexOf("::");
+      var parts = new ArrayList<String>();
+      for (int i = 0; i < value.fields().size(); i++)
+      {
+        parts.add(masked(tag, i) ? "***" : renderMasked(value.fields().get(i)));
+      }
+      return (cut < 0 ? tag : tag.substring(cut + 2)) + "(" + String.join(", ", parts) + ")";
+    }
+    return render(v);
+  }
+
   public record Ratio(BigInteger n, BigInteger d)
   {
     public Ratio
@@ -1835,6 +1866,18 @@ public final class LawSpecRuntime
         return bool(textIsUnicodeWhitespace(codePointsText(args[0])));
       case "trimAsciiControl":
         return textValue(textTrimAsciiControl(codePointsText(args[0])));
+      case "rfc822Uncommented":
+        return textValue(textRfc822Uncommented(codePointsText(args[0])));
+      case "maskHashBlake3":
+      {
+        var units = (List<?>) args[0].data;
+        byte[] key = new byte[units.size()];
+        for (int i = 0; i < key.length; i++)
+        {
+          key[i] = (byte) ((Number) units.get(i)).intValue();
+        }
+        return textValue(maskHashBlake3With(key, codePointsText(args[1])));
+      }
       case "words":
         return textList(textWords(codePointsText(args[0])));
       case "lines":
@@ -4180,8 +4223,8 @@ public final class LawSpecRuntime
     }
     if (shownA == null)
     {
-      shownA = render(a);
-      shownB = render(b);
+      shownA = renderMasked(a);
+      shownB = renderMasked(b);
     }
     return " | first difference at " + String.join(", ", path) + ": expected " + shownB
         + ", actual " + shownA;
@@ -6196,7 +6239,7 @@ public final class LawSpecRuntime
         if (!command.unit && compareValues(result, wanted) != 0)
         {
           return new ModelFailure(step,
-              "returned " + render(result) + "; the model returns " + render(wanted));
+              "returned " + renderMasked(result) + "; the model returns " + renderMasked(wanted));
         }
         failure = checkState(model, symbols, state, expected);
         if (failure != null)
@@ -6226,7 +6269,7 @@ public final class LawSpecRuntime
       var actual = model.abstractState.apply(symbols, List.of(state));
       if (compareValues(actual, expected) != 0)
       {
-        return "the state is " + render(actual) + "; the model is " + render(expected);
+        return "the state is " + renderMasked(actual) + "; the model is " + renderMasked(expected);
       }
     }
     for (int k = 0; k < model.invariants.size(); k++)
@@ -6330,12 +6373,13 @@ public final class LawSpecRuntime
     return new Shrunk(run, failure);
   }
 
+  // The arguments of a call as a failure message shows them.
   private static String renderAll(List<Value> args)
   {
     var parts = new ArrayList<String>();
     for (var a : args)
     {
-      parts.add(render(a));
+      parts.add(renderMasked(a));
     }
     return String.join(", ", parts);
   }
@@ -6691,7 +6735,7 @@ public final class LawSpecRuntime
       for (int k = 0; k < branches.get(i).size(); k++)
       {
         observed.add(branchName(i) + ": " + model.commands.get(branches.get(i).get(k).index()).name
-            + "() returned " + render(history.get(i)[k].result()));
+            + "() returned " + renderMasked(history.get(i)[k].result()));
       }
     }
     return "no order of the parallel calls agrees with the model (" + String.join("; ", observed)
@@ -7931,8 +7975,8 @@ public final class LawSpecRuntime
           Value wanted = scenarioConstant(form(act.get(2)));
           if (actual == null || compareValues(actual, wanted) != 0)
           {
-            run.failures.add("expect " + name + " = " + render(wanted) + " failed: " + name + " is "
-                + (actual == null ? "None" : render(actual)));
+            run.failures.add("expect " + name + " = " + renderMasked(wanted) + " failed: " + name
+                + " is " + (actual == null ? "None" : renderMasked(actual)));
             return false;
           }
         }
@@ -8098,8 +8142,8 @@ public final class LawSpecRuntime
       var observed = new ArrayList<String>();
       for (var c : sorted)
       {
-        observed
-            .add(c.command().name + "(" + renderAll(c.args()) + ") returned " + render(c.result()));
+        observed.add(c.command().name + "(" + renderAll(c.args()) + ") returned "
+            + renderMasked(c.result()));
       }
       return new ScenarioOutcome(title, "the calls are not " + consistent(model.consistency)
           + " with the model (" + String.join("; ", observed) + ")");
@@ -9711,6 +9755,248 @@ public final class LawSpecRuntime
   public static boolean textIsUnicodeWhitespace(String text)
   {
     return text.codePoints().allMatch(LawSpecRuntime::textWhiteSpace);
+  }
+
+  // Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1), for the hash mask.
+  private static final int[] BLAKE3_IV = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+  private static final int[] BLAKE3_SCHEDULE =
+      {2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8};
+  private static final int BLAKE3_CHUNK_START = 1;
+  private static final int BLAKE3_CHUNK_END = 2;
+  private static final int BLAKE3_PARENT = 4;
+  private static final int BLAKE3_ROOT = 8;
+  private static final int BLAKE3_KEYED_HASH = 16;
+
+  /**
+   * The word hash, a colon and the keyed BLAKE3-256 digest of the text's UTF-8 bytes in
+   * hexadecimal: LawSpec's {@code maskHashBlake3 key text}. A lone surrogate is hashed as U+FFFD.
+   *
+   * @throws IllegalArgumentException when the key is not 32 bytes
+   */
+  public static String maskHashBlake3With(byte[] secret, String value)
+  {
+    if (secret == null || secret.length != 32)
+    {
+      throw new IllegalArgumentException("LawSpec masking: the hash key is 32 bytes");
+    }
+    int[] key = new int[8];
+    System.arraycopy(blake3Words(secret, 0, 32), 0, key, 0, 8);
+    var scalar = new StringBuilder();
+    String text = String.valueOf(value);
+    for (int i = 0; i < text.length(); i++)
+    {
+      char unit = text.charAt(i);
+      boolean pair = Character.isHighSurrogate(unit) && i + 1 < text.length()
+          && Character.isLowSurrogate(text.charAt(i + 1));
+      if (pair)
+      {
+        scalar.append(unit).append(text.charAt(i + 1));
+        i++;
+      }
+      else
+      {
+        scalar.append(Character.isSurrogate(unit) ? '\uFFFD' : unit);
+      }
+    }
+    byte[] bytes = scalar.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    int chunks = Math.max(1, (bytes.length + 1023) / 1024);
+    // The reference implementation's merge: a stack of subtree chaining values, one subtree
+    // closed per trailing zero of the chunk count.
+    int[][] stack = new int[32][];
+    int depth = 0;
+    for (int index = 0; index < chunks - 1; index++)
+    {
+      int[] cv = blake3Chunk(key, bytes, index, 0);
+      for (int total = index + 1; total % 2 == 0; total /= 2)
+      {
+        depth--;
+        cv = blake3Compress(
+            key, blake3Join(stack[depth], cv), 0, 64, BLAKE3_KEYED_HASH | BLAKE3_PARENT);
+      }
+      stack[depth] = cv;
+      depth++;
+    }
+    int[] root;
+    if (depth == 0)
+    {
+      root = blake3Chunk(key, bytes, chunks - 1, BLAKE3_ROOT);
+    }
+    else
+    {
+      int[] cv = blake3Chunk(key, bytes, chunks - 1, 0);
+      while (depth > 1)
+      {
+        depth--;
+        cv = blake3Compress(
+            key, blake3Join(stack[depth], cv), 0, 64, BLAKE3_KEYED_HASH | BLAKE3_PARENT);
+      }
+      int flags = BLAKE3_KEYED_HASH | BLAKE3_PARENT | BLAKE3_ROOT;
+      root = blake3Compress(key, blake3Join(stack[0], cv), 0, 64, flags);
+    }
+    StringBuilder hex = new StringBuilder("hash:");
+    for (int word : root)
+    {
+      for (int shift = 0; shift < 32; shift += 8)
+      {
+        int octet = (word >>> shift) & 255;
+        hex.append(Character.forDigit(octet >>> 4, 16)).append(Character.forDigit(octet & 15, 16));
+      }
+    }
+    return hex.toString();
+  }
+
+  /** A chunk's chaining value; its last block carries the extra flags. */
+  private static int[] blake3Chunk(int[] key, byte[] bytes, int index, int last)
+  {
+    int end = Math.min(bytes.length, index * 1024 + 1024);
+    int offset = index * 1024;
+    int[] cv = key;
+    int flags = BLAKE3_KEYED_HASH | BLAKE3_CHUNK_START;
+    while (end - offset > 64)
+    {
+      cv = blake3Compress(cv, blake3Words(bytes, offset, 64), index, 64, flags);
+      flags = BLAKE3_KEYED_HASH;
+      offset += 64;
+    }
+    return blake3Compress(cv, blake3Words(bytes, offset, end - offset), index, end - offset,
+        flags | BLAKE3_CHUNK_END | last);
+  }
+
+  private static int[] blake3Join(int[] left, int[] right)
+  {
+    int[] words = new int[16];
+    System.arraycopy(left, 0, words, 0, 8);
+    System.arraycopy(right, 0, words, 8, 8);
+    return words;
+  }
+
+  /** Sixteen little-endian words of a block, zero padded past its length. */
+  private static int[] blake3Words(byte[] bytes, int offset, int length)
+  {
+    int[] words = new int[16];
+    for (int i = 0; i < length; i++)
+    {
+      words[i >>> 2] |= (bytes[offset + i] & 255) << (8 * (i & 3));
+    }
+    return words;
+  }
+
+  /** The first eight words of BLAKE3's compression: a chaining value. */
+  private static int[] blake3Compress(int[] cv, int[] block, long counter, int length, int flags)
+  {
+    int[] state = new int[16];
+    System.arraycopy(cv, 0, state, 0, 8);
+    System.arraycopy(BLAKE3_IV, 0, state, 8, 4);
+    state[12] = (int) counter;
+    state[13] = (int) (counter >>> 32);
+    state[14] = length;
+    state[15] = flags;
+    int[] m = block;
+    for (int round = 0; round < 7; round++)
+    {
+      blake3Mix(state, 0, 4, 8, 12, m[0], m[1]);
+      blake3Mix(state, 1, 5, 9, 13, m[2], m[3]);
+      blake3Mix(state, 2, 6, 10, 14, m[4], m[5]);
+      blake3Mix(state, 3, 7, 11, 15, m[6], m[7]);
+      blake3Mix(state, 0, 5, 10, 15, m[8], m[9]);
+      blake3Mix(state, 1, 6, 11, 12, m[10], m[11]);
+      blake3Mix(state, 2, 7, 8, 13, m[12], m[13]);
+      blake3Mix(state, 3, 4, 9, 14, m[14], m[15]);
+      int[] next = new int[16];
+      for (int i = 0; i < 16; i++)
+      {
+        next[i] = m[BLAKE3_SCHEDULE[i]];
+      }
+      m = next;
+    }
+    int[] out = new int[8];
+    for (int i = 0; i < 8; i++)
+    {
+      out[i] = state[i] ^ state[i + 8];
+    }
+    return out;
+  }
+
+  private static void blake3Mix(int[] state, int a, int b, int c, int d, int x, int y)
+  {
+    state[a] = state[a] + state[b] + x;
+    state[d] = Integer.rotateRight(state[d] ^ state[a], 16);
+    state[c] = state[c] + state[d];
+    state[b] = Integer.rotateRight(state[b] ^ state[c], 12);
+    state[a] = state[a] + state[b] + y;
+    state[d] = Integer.rotateRight(state[d] ^ state[a], 8);
+    state[c] = state[c] + state[d];
+    state[b] = Integer.rotateRight(state[b] ^ state[c], 7);
+  }
+
+  /**
+   * An RFC 822 address without its comments, as Mail::RFC822::Address's valid() removes them
+   * before it matches: while a comment with no comment inside it starts where the quoted strings
+   * before it are closed, the last such comment becomes one space. A backslash quotes the next
+   * character. The rfc822Address format matches the result (LawSpec.Formats).
+   */
+  public static String textRfc822Uncommented(String text)
+  {
+    String source = text;
+    while (true)
+    {
+      String shorter = withoutLastComment(source);
+      if (shorter == null)
+      {
+        return source;
+      }
+      source = shorter;
+    }
+  }
+
+  private static String withoutLastComment(String source)
+  {
+    // Whether a comment may start at each position: outside quoted strings and not straight
+    // after a backslash. A position the scan does not reach is not one.
+    boolean[] outside = new boolean[source.length() + 1];
+    boolean quoted = false;
+    int at = 0;
+    while (true)
+    {
+      outside[at] = !quoted;
+      if (at >= source.length())
+      {
+        break;
+      }
+      if (source.charAt(at) == '\\')
+      {
+        if (at + 1 >= source.length())
+        {
+          break;
+        }
+        outside[at + 1] = false;
+        at += 2;
+        continue;
+      }
+      if (source.charAt(at) == '"')
+      {
+        quoted = !quoted;
+      }
+      at++;
+    }
+    for (int start = source.length() - 1; start >= 0; start--)
+    {
+      if (!outside[start] || source.charAt(start) != '(')
+      {
+        continue;
+      }
+      int end = start + 1;
+      while (end < source.length() && source.charAt(end) != ')' && source.charAt(end) != '(')
+      {
+        end += source.charAt(end) == '\\' ? 2 : 1;
+      }
+      if (end < source.length() && source.charAt(end) == ')')
+      {
+        return source.substring(0, start) + " " + source.substring(end + 1);
+      }
+    }
+    return null;
   }
 
   /**

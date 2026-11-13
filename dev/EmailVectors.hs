@@ -1,7 +1,8 @@
--- | The recorded vectors of the `email` format (LawSpec.Formats): texts with
--- the verdicts of Mail::RFC822::Address 0.3 on them. The module is the
--- oracle and is not part of this repository; this command needs Perl and a
--- copy of the module's Address.pm, and nothing else in the build does.
+-- | The recorded vectors of the `rfc822Address` and `email` formats
+-- (LawSpec.Formats): texts with the verdicts of Mail::RFC822::Address 0.3
+-- and of Email::Valid 1.204 on them. The modules are the oracles and are not
+-- part of this repository; this command needs Perl and a copy of each, and
+-- nothing else in the build does.
 --
 --   lawspec-dev email-vectors <Address.pm>
 --       rewrite test/fixtures/formats/email-vectors.tsv
@@ -11,6 +12,10 @@
 --       corpus files
 --       (for example the test files of Email::Valid and Email::Address,
 --       which are not copied here)
+--   lawspec-dev email-vectors --email-valid <Email::Valid's lib directory>
+--       rewrite test/fixtures/formats/email-valid-vectors.tsv: Email::Valid's
+--       verdict on each text and, where `email` refuses what it accepts, why
+--       (needs Mail::Address installed; the network is never used)
 --
 -- The inputs are LawSpec's own: addresses written from RFC 822's grammar,
 -- texts the format's regex generates, single edits of both, and every text
@@ -21,7 +26,8 @@ module EmailVectors (emailVectorsCommand, vectorInputs, encodeInput) where
 import Control.Monad (forM_, unless, when)
 import Data.Char (isSpace)
 import qualified Data.Set as S
-import LawSpec.Formats (CommentPolicy(..), emailAccepts, emailPattern)
+import Data.List (intercalate)
+import LawSpec.Formats (emailDeviations, emailPattern, formatAccepts, rfc822Pattern, rfc822RegexAccepts)
 import LawSpec.Regex (parseRegex, regexSamples)
 import Numeric (showHex)
 import System.Exit (die, exitFailure)
@@ -37,28 +43,57 @@ emailVectorsCommand arguments = case arguments of
     writeFile fixture (unlines (header ++ [encodeInput input ++ "\t" ++ bit regex ++ "\t" ++ bit valid | (input, regex, valid) <- verdicts]))
     putStrLn ("recorded " ++ show (length verdicts) ++ " vectors in " ++ fixture)
     compareWith verdicts
+  ["--email-valid", library] -> do
+    let inputs = distinct (mailboxes ++ vectorInputs)
+    output <- readProcess "perl" ["tools/email-valid-oracle.pl", library] (unlines (map encodeInput inputs))
+    let answered = [ (input, verdict == "1") | (input, row) <- zip inputs (lines output), [_, verdict] <- [splitTabs row], verdict `elem` ["0", "1"] ]
+        row (input, accepted) = (input, accepted, if accepted && not (formatAccepts "email" input) then emailDeviations input else [])
+        rows = map row answered
+        wider = [input | (input, False) <- answered, formatAccepts "email" input]
+        unexplained = [input | (input, True, []) <- rows, not (formatAccepts "email" input)]
+    when (length (lines output) /= length inputs) (die "the oracle answered a different number of lines than it was asked")
+    forM_ (take 40 wider) (\input -> putStrLn ("email accepts what Email::Valid refuses: " ++ show input))
+    forM_ (take 40 unexplained) (\input -> putStrLn ("email refuses what Email::Valid accepts, for no listed reason: " ++ show input))
+    unless (null wider && null unexplained) exitFailure
+    -- Every text is compared here. The file keeps each text the module
+    -- accepts, and one in twelve of those both refuse.
+    let kept = [row | (index, row@(_, accepted, _)) <- zip [0 :: Int ..] rows, accepted || index `mod` 12 == 0]
+    writeFile emailValidFixture (unlines (emailValidHeader ++
+      [encodeInput input ++ "\t" ++ bit accepted ++ "\t" ++ (if null reasons then "-" else intercalate "," reasons) | (input, accepted, reasons) <- kept]))
+    putStrLn ("compared " ++ show (length rows) ++ " texts and recorded " ++ show (length kept) ++ " vectors in " ++ emailValidFixture ++ "; " ++
+      show (length [() | (_, True, _ : _) <- rows]) ++ " are listed deviations, " ++
+      show (length [() | (input, True, []) <- rows, formatAccepts "email" input]) ++ " are accepted by both")
   "--check" : modulePath : corpora -> do
     extra <- concat <$> mapM (fmap corpusTexts . readFile) corpora
     verdicts <- oracle modulePath (distinct (checkedInputs ++ extra))
     putStrLn ("compared " ++ show (length verdicts) ++ " texts with the module")
     compareWith verdicts
-  _ -> die "usage: lawspec-dev email-vectors [--check] <path to Mail::RFC822::Address's Address.pm> [corpus files...]"
+  _ -> die "usage: lawspec-dev email-vectors [--check] <path to Mail::RFC822::Address's Address.pm> [corpus files...] | --email-valid <path to Email::Valid's lib directory>"
   where
     bit verdict = if verdict then "1" else "0"
     header =
       [ "# Verdicts of Mail::RFC822::Address 0.3 (Paul Warren, 2001-2002) on LawSpec's own inputs."
       , "# Columns: the text as hexadecimal code points; the module's regex alone; the module's valid()."
       , "# Written by `lawspec-dev email-vectors <Address.pm>`; see dev/EmailVectors.hs. Do not edit." ]
+    emailValidHeader =
+      [ "# Verdicts of Email::Valid 1.204 (fqdn, allow_ip and localpart on; mxcheck, tldcheck, fudge and local_rules off) on LawSpec's own inputs."
+      , "# Columns: the text as hexadecimal code points; the module's verdict; why LawSpec's `email` refuses a text the module accepts, or -."
+      , "# Every text the module accepts is here, and one in twelve of the texts it and LawSpec both refuse."
+      , "# Written by `lawspec-dev email-vectors --email-valid <lib>`; see dev/EmailVectors.hs. Do not edit." ]
+
+emailValidFixture :: FilePath
+emailValidFixture = "test/fixtures/formats/email-valid-vectors.tsv"
 
 -- | LawSpec's verdicts beside the module's; any difference fails.
 compareWith :: [(String, Bool, Bool)] -> IO ()
 compareWith verdicts = do
-  let differences = [ (input, policy, expected)
+  let differences = [ (input, what, expected)
                     | (input, regex, valid) <- verdicts
-                    , (policy, expected) <- [(RefuseComments, regex), (StripComments, valid)]
-                    , emailAccepts policy input /= expected ]
-  forM_ (take 40 differences) $ \(input, policy, expected) ->
-    putStrLn ("differs under " ++ show policy ++ ": the module says " ++ show expected ++ " for " ++ show input)
+                    , (what, ours, expected) <- [ ("the regex alone", rfc822RegexAccepts input, regex)
+                                                , ("rfc822Address", formatAccepts "rfc822Address" input, valid) ]
+                    , ours /= expected ]
+  forM_ (take 40 differences) $ \(input, what, expected) ->
+    putStrLn ("differs for " ++ what ++ ": the module says " ++ show expected ++ " for " ++ show input)
   unless (null differences) $ do
     putStrLn (show (length differences) ++ " differences")
     exitFailure
@@ -122,7 +157,35 @@ checkedInputs = distinct (vectorInputs ++ concatMap singleEdits (written ++ take
 -- | Texts the format's regex generates. Long ones are where the module's own
 -- regex stops answering.
 generated :: [String]
-generated = filter ((<= 48) . length) (either (const []) (regexSamples 400) (parseRegex emailPattern))
+generated = filter ((<= 48) . length) (either (const []) (regexSamples 400) (parseRegex rfc822Pattern))
+
+-- | Inputs for the `email` format: texts its regex generates, their single
+-- edits, and texts written around each of its rules and of Email::Valid's.
+mailboxes :: [String]
+mailboxes = distinct (plain ++ samples ++ concatMap singleEdits (plain ++ take 60 samples) ++ concatMap mailboxEdits (take 12 plain))
+  where
+    samples = filter ((<= 80) . length) (either (const []) (regexSamples 300) (parseRegex emailPattern))
+    long n = replicate n 'a'
+    plain =
+      [ "ann@example.org", "ann.lee@example.org", "ann@example", "ann@example.co.uk", "ANN@EXAMPLE.ORG", "0@a.b", "ann@1.2"
+      , "a!#$%&'*+/=?^_`{|}~-b@example.org", "ann..lee@example.org", ".ann@example.org", "ann.@example.org"
+      , "ann@example..org", "ann@.example.org", "ann@example.org.", "ann@-a.org", "ann@a-.org", "ann@a-b.org", "ann@a--b.org"
+      , "ann@ex_ample.org", "ann@ex ample.org", "ann@xn--bcher-kva.example", "\228nn@example.org", "ann@ex\228mple.org"
+      , "\"Ann Lee\"@example.org", "\"\"@example.org", "\"a@b\"@example.org", "\"a\\\"b\"@example.org", "\"a\\\\b\"@example.org"
+      , "\"a\\ b\"@example.org", "\"a\SOHb\"@example.org", "\"a\nb\"@example.org", "\"a\tb\"@example.org", "\"a\DELb\"@example.org"
+      , "\"a\\\SOHb\"@example.org", "\"a\".b@example.org", "a.\"b\"@example.org", "\"a\".\"b\"@example.org", "\"a\"b@example.org", "a\"b\"@example.org"
+      , "ann@[10.0.0.1]", "ann@[255.255.255.255]", "ann@[256.1.1.1]", "ann@[999.1.1.1]", "ann@[10.0.0.1x]", "ann@[10.0.0]"
+      , "ann@[10.0.0.01]", "ann@[010.0.0.1]", "ann@[0.0.0.0]", "ann@[IPv6:::1]", "ann@[1.2.3.4].example.org", "ann@x.[1.2.3.4]", "ann@[1.2.3.4"
+      , "ann@10.0.0.1", "a\DELb@example.org", "a\USb@example.org", "ann@exa\DELmple.org"
+      , "Ann Lee <ann@example.org>", "<ann@example.org>", "ann@example.org (Ann)", "(Ann) ann@example.org", "ann(x)@example.org"
+      , "ann @ example.org", " ann@example.org", "ann@example.org ", "ann@example.org\n", "ann@example.org\r\n", "ann@example.org\n\n"
+      , "team: ann@example.org;", "ann@example.org, bob@example.org", "ann@example.org;", "ann@@example.org", "ann", "", "@", "@example.org", "ann@"
+      , long 64 ++ "@example.org", long 65 ++ "@example.org", long 32 ++ "." ++ long 31 ++ "@example.org", long 32 ++ "." ++ long 32 ++ "@example.org"
+      , "\"" ++ long 62 ++ "\"@example.org", "\"" ++ long 63 ++ "\"@example.org"
+      , "a@" ++ long 248 ++ ".org", "a@" ++ long 249 ++ ".org", long 64 ++ "@" ++ long 185 ++ ".org", long 64 ++ "@" ++ long 186 ++ ".org"
+      , "a@" ++ long 63 ++ ".org", "a@" ++ long 64 ++ ".org", "a@" ++ intercalate "." (replicate 120 "b"), "a@" ++ intercalate "." (replicate 127 "b") ]
+    -- The characters that separate the two formats, put at each position.
+    mailboxEdits text = [before ++ [c] ++ rest | index <- [0 .. length text], let (before, rest) = splitAt index text, c <- "-_\DEL\SOH\t\n)]>" :: String]
 
 -- | Every text of up to n of the characters.
 short :: Int -> String -> [String]

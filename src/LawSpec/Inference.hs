@@ -944,7 +944,8 @@ builtin env n args
       checkExpr env (Named "Text") sep
       checkExpr env (Named "Text") text
       pure (Applied "List" (Named "Text"))
-  | n `elem` ["trim","trimAsciiControl"], [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Text")
+  | n `elem` ["trim","trimAsciiControl","rfc822Uncommented"], [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Text")
+  | n `elem` ["maskHash","maskHashBlake3"], [key,text] <- args = checkExpr env (Named "Bytes") key >> checkExpr env (Named "Text") text >> pure (Named "Text")
   | n == "isUnicodeWhitespace", [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Bool")
   | n `elem` ["words","lines"], [text] <- args = checkExpr env (Named "Text") text >> pure (Applied "List" (Named "Text"))
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
@@ -1231,7 +1232,9 @@ fixedSignatures =
   , ("prelude.utf8", [Named "Text"]), ("prelude.join", [Named "Text", Applied "List" (Named "Text")])
   , ("prelude.split", [Named "Text", Named "Text"]), ("prelude.trim", [Named "Text"])
   , ("prelude.isUnicodeWhitespace", [Named "Text"]), ("prelude.trimAsciiControl", [Named "Text"])
-  , ("prelude.words", [Named "Text"]), ("prelude.lines", [Named "Text"]) ]
+  , ("prelude.words", [Named "Text"]), ("prelude.lines", [Named "Text"])
+  , ("prelude.rfc822Uncommented", [Named "Text"])
+  , ("prelude.maskHash", [Named "Bytes", Named "Text"]), ("prelude.maskHashBlake3", [Named "Bytes", Named "Text"]) ]
 
 -- | Whether an expression reads or replaces a field (see fieldAccessPrefix).
 isFieldNode :: Expr -> Bool

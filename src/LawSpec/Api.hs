@@ -12,7 +12,7 @@ import Data.Aeson.Types (parseEither, parseMaybe)
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as BC
 import Data.Foldable (toList)
-import Data.List (intercalate, isSuffixOf)
+import Data.List (intercalate, isInfixOf, isSuffixOf)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -127,7 +127,7 @@ dispatch bytes
                     generatedTests = generatedTestDirectory testDir (either (const noTargetOptions) id options)
                     placed = placedArtifacts target sourceDir testDir options
                  in
-                either failure id $ (either (\message -> Left [Diagnostic "native-binding" message Nothing]) Right (resolveNativeRequest core native) >>=) $ \bindings ->
+                either failure id $ (runtimePrimitivesSupported target method core >>) $ (either (\message -> Left [Diagnostic "native-binding" message Nothing]) Right (resolveNativeRequest core native) >>=) $ \bindings ->
                   fmap
                     ( \analysed ->
                         let evidence = lawEvidence ++ map fst analysed
@@ -434,7 +434,7 @@ dispatch bytes
                 | (name, hashed) <- masked ]
               existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
            in Object (KM.insert "warnings" (toJSON (existing ++ rows)) response)
-      where masked = [(C.dataName declaration, C.MaskHash `elem` map snd (C.dataMasking declaration)) | declaration <- C.programDataDeclarations program
+      where masked = [(C.dataName declaration, not (null [() | (_, C.MaskHash _) <- C.dataMasking declaration])) | declaration <- C.programDataDeclarations program
                                              , not (null (C.dataMasking declaration))
                                              , not ("Draft" `isSuffixOf` C.dataName declaration) ]
     withMaskingWarnings _ _ _ response = response
@@ -883,6 +883,26 @@ withModelTasks _ _ _ _ value = value
 
 failure :: [Diagnostic] -> Value
 failure ds = object ["schemaVersion" .= (5 :: Int), "diagnostics" .= ds]
+
+-- | Two text primitives exist in some runtimes only: the comment pass of the
+-- rfc822Address format and the keyed hash of maskHash. A program that uses
+-- one is refused for any other target, since nothing weaker stands in for
+-- either. The printed program is searched because Core has no traversal over
+-- every declaration's expressions, and only for a target outside the list,
+-- so the supported targets pay nothing. ref:DEC-email-format ref:DEC-masking
+runtimePrimitivesSupported :: String -> String -> C.Program -> Either [Diagnostic] ()
+runtimePrimitivesSupported target method program
+  | method /= "planGeneration" || target `elem` Backend.runtimePrimitiveTargets || null missing = Right ()
+  | otherwise = Left [Diagnostic "target-unsupported" (target ++ ": " ++ what ++ " Targets that have it: " ++ intercalate ", " Backend.runtimePrimitiveTargets) Nothing | what <- missing]
+  where
+    printed = show program
+    missing =
+      [ what
+      | (helper, what) <-
+          [ (C.Rfc822Uncommented, "the format rfc822Address removes RFC 822 comments before it matches, which this target has no pass for (and no JSON Schema pattern can do); `email` works on every target.")
+          , (C.MaskHashBlake3, "maskHash and maskHashBlake3 (and a masked<Record>With rendering of a hashed field) need keyed BLAKE3, which this target does not have.") ]
+      , ("Helper " ++ show helper) `isInfixOf` printed ]
+
 
 -- | The request without the fields that only select a method, target or layout.
 sharedRequest :: B.ByteString -> String
