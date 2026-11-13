@@ -19,7 +19,26 @@ const bin =
     }).trim(),
     'bin/lawspec-core',
   );
-const requested = process.argv.slice(2).filter(arg => arg !== '--canonical');
+// --part=<name> runs one part, so lawspec-dev ci can run the parts at once:
+// base, frontend-32, frontend-64, generation-32, generation-32-compact,
+// generation-64 and generation-64-compact. Without it every part runs.
+const partOption = process.argv.slice(2).find(arg => arg.startsWith('--part='));
+const part = partOption?.slice('--part='.length);
+const parts = [
+  'base',
+  'frontend-32',
+  'frontend-64',
+  'generation-32',
+  'generation-32-compact',
+  'generation-64',
+  'generation-64-compact',
+];
+if (part !== undefined && !parts.includes(part))
+  throw new Error('Unknown parity part: ' + part);
+const runs = name => part === undefined || part === name;
+const requested = process.argv
+  .slice(2)
+  .filter(arg => arg !== '--canonical' && !arg.startsWith('--part='));
 const paths = requested.length
   ? requested.map(name => path.resolve(name))
   : (await readdir(path.join(root, 'examples/specs')))
@@ -156,74 +175,78 @@ async function compare(
   }
   return native;
 }
-await compare(
-  'prelude',
-  {query: 'sameItems'},
-  'prelude before initialization',
-  {required: true},
-);
-// A selected verification layer is not evidence of an executable continuation.
-// ref:DEC-s1j-evaluation-budget
-for (const target of programTargets)
-  for (const layers of [
-    ['property'],
-    ['exhaustive'],
-    ['property', 'exhaustive'],
-  ])
-  {
-    const result = await compare(
-      'planGeneration',
-      {
-        ...options,
-        target,
-        verification: {
-          layers,
-          evaluation: {deferLaws: ['emptyDeferred::vacuous']},
-        },
-        sources: [
-          {
-            path: 'empty-deferred.lawspec',
-            content:
-              'unit emptyDeferred\nlaw vacuous is definition: for all (value :: Bool where false) => false end for all end definition end law\nend unit',
-          },
-        ],
-      },
-      `empty deferred continuation:${target}:${layers.join(',')}`,
-      {required: true},
-    );
-    assert.deepEqual(result.tests, []);
-    assert.deepEqual(
-      result.evidence
-        .filter(item => item.stage === 'law')
-        .map(item => item.status),
-      ['incomplete'],
-    );
-  }
-for (const machineBits of [32, 64])
-  for (const minify of [false, true])
-    for (const target of programTargets)
+if (runs('base'))
+{
+  await compare(
+    'prelude',
+    {query: 'sameItems'},
+    'prelude before initialization',
+    {required: true},
+  );
+  // A selected verification layer is not evidence of an executable continuation.
+  // ref:DEC-s1j-evaluation-budget
+  for (const target of programTargets)
+    for (const layers of [
+      ['property'],
+      ['exhaustive'],
+      ['property', 'exhaustive'],
+    ])
     {
-      await compare(
-        'inspect',
+      const result = await compare(
+        'planGeneration',
         {
           ...options,
           target,
-          machineBits,
-          minify,
+          verification: {
+            layers,
+            evaluation: {deferLaws: ['emptyDeferred::vacuous']},
+          },
           sources: [
             {
-              path: 'inspect.lawspec',
+              path: 'empty-deferred.lawspec',
               content:
-                'unit inspect\ntype Point is a record {x :: Integer y :: Maybe Decimal} end type\necho :: Point -> Point\nfunction size (xs :: List Integer) -> Integer is first matching case of xs: when Nil then 0 when Cons h t then 1 + size t end case end function\nend unit',
+                'unit emptyDeferred\nlaw vacuous is definition: for all (value :: Bool where false) => false end for all end definition end law\nend unit',
             },
           ],
         },
-        `inspection and advice:${target}:${machineBits}:${minify}`,
+        `empty deferred continuation:${target}:${layers.join(',')}`,
         {required: true},
       );
+      assert.deepEqual(result.tests, []);
+      assert.deepEqual(
+        result.evidence
+          .filter(item => item.stage === 'law')
+          .map(item => item.status),
+        ['incomplete'],
+      );
     }
+  for (const machineBits of [32, 64])
+    for (const minify of [false, true])
+      for (const target of programTargets)
+      {
+        await compare(
+          'inspect',
+          {
+            ...options,
+            target,
+            machineBits,
+            minify,
+            sources: [
+              {
+                path: 'inspect.lawspec',
+                content:
+                  'unit inspect\ntype Point is a record {x :: Integer y :: Maybe Decimal} end type\necho :: Point -> Point\nfunction size (xs :: List Integer) -> Integer is first matching case of xs: when Nil then 0 when Cons h t then 1 + size t end case end function\nend unit',
+              },
+            ],
+          },
+          `inspection and advice:${target}:${machineBits}:${minify}`,
+          {required: true},
+        );
+      }
+}
 for (const machineBits of [32, 64])
 {
+  if (!runs('frontend-' + machineBits)) continue;
   for (const [index, text] of fixtures.entries())
   {
     const input = {
@@ -255,6 +278,8 @@ for (const machineBits of [32, 64])
 for (const machineBits of [32, 64])
   for (const minify of [false, true])
   {
+    if (!runs('generation-' + machineBits + (minify ? '-compact' : '')))
+      continue;
     for (const [index, text] of fixtures.entries())
       for (const target of targets)
       {
@@ -345,40 +370,43 @@ for (const machineBits of [32, 64])
       minify,
     );
   }
-const projectRoot = path.join(root, 'examples/packages/orders');
-const config = parseManifest(
-  await readFile(path.join(projectRoot, 'lawspec.edn'), 'utf8'),
-);
-const packages = await Promise.all(
-  config.packages.map(async name =>
-  {
-    const directory = path.resolve(projectRoot, name);
-    const manifest = parseManifest(
-      await readFile(path.join(directory, 'lawspec.edn'), 'utf8'),
-    );
-    return {
-      name: manifest.package.name,
-      version: manifest.package.version,
-      ...(manifest.dependencies ? {dependencies: manifest.dependencies} : {}),
-      sources: await collectSources(directory, manifest.sources),
-    };
-  }),
-);
-const packaged = {
-  ...options,
-  sources: await collectSources(projectRoot, config.sources),
-  dependencies: config.dependencies,
-  packages,
-};
-for (const method of ['check', 'expand'])
-  await compare(method, packaged, `canonical packages:${method}`, {
-    required: true,
-  });
-for (const target of programTargets)
-  await compare(
-    'planGeneration',
-    {...packaged, target},
-    `canonical packages:${target}`,
-    {generation: true, required: true},
+if (runs('base'))
+{
+  const projectRoot = path.join(root, 'examples/packages/orders');
+  const config = parseManifest(
+    await readFile(path.join(projectRoot, 'lawspec.edn'), 'utf8'),
   );
+  const packages = await Promise.all(
+    config.packages.map(async name =>
+    {
+      const directory = path.resolve(projectRoot, name);
+      const manifest = parseManifest(
+        await readFile(path.join(directory, 'lawspec.edn'), 'utf8'),
+      );
+      return {
+        name: manifest.package.name,
+        version: manifest.package.version,
+        ...(manifest.dependencies ? {dependencies: manifest.dependencies} : {}),
+        sources: await collectSources(directory, manifest.sources),
+      };
+    }),
+  );
+  const packaged = {
+    ...options,
+    sources: await collectSources(projectRoot, config.sources),
+    dependencies: config.dependencies,
+    packages,
+  };
+  for (const method of ['check', 'expand'])
+    await compare(method, packaged, `canonical packages:${method}`, {
+      required: true,
+    });
+  for (const target of programTargets)
+    await compare(
+      'planGeneration',
+      {...packaged, target},
+      `canonical packages:${target}`,
+      {generation: true, required: true},
+    );
+}
 console.log('Complete native/WASM response counts:', JSON.stringify(counts));

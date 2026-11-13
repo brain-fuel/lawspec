@@ -102,6 +102,14 @@ sdkTestStep file = "npm-test-" ++ take (length file - length (".test.mjs" :: Str
 isSdkTest :: String -> Bool
 isSdkTest = ("npm-test-" `isPrefixOf`)
 
+isParity :: String -> Bool
+isParity = ("parity-" `isPrefixOf`)
+
+-- | The parts tools/parity.mjs runs with --part.
+parityParts :: [String]
+parityParts =
+  ["base", "frontend-32", "frontend-64", "generation-32", "generation-32-compact", "generation-64", "generation-64-compact"]
+
 isCompilerTest :: String -> Bool
 isCompilerTest = ("compiler-tests-" `isPrefixOf`)
 
@@ -315,7 +323,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
         ++ [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]]
         ++ [ Shared "stack-work"
            | name `notElem` stackBuilders,
-             take 1 command == ["stack"] || name `elem` ["rejection-examples", "parity"] || isCompilerTest name
+             take 1 command == ["stack"] || name == "rejection-examples" || isParity name || isCompilerTest name
            ]
         ++ [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"] || isSdkTest name]
         ++ [Shared "env:javascript" | isSdkTest name]
@@ -343,6 +351,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     -- A step that runs something the build step built.
     usesBuild command = take 1 command == ["stack"] || command == ["sh", "tools/beam-runtime.sh"]
       || take 2 command == ["sh", "tools/compiler-tests.sh"]
+      || take 2 command == ["node", "tools/parity.mjs"]
     timing name command =
       name == "beam-runtime"
         || maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
@@ -473,9 +482,13 @@ coreSteps sdkTests =
   [ step (sdkTestStep file) ["node", "--test", "npm/test/" ++ file] | file <- sdkTests ] ++
   [
     step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/mcp.mjs", "templates/npm/project.mjs", "templates/npm/learn.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs"],
-    step "learn-execution" ["npm", "test", "--prefix", "learn"],
     step "learn-browser" ["npm", "run", "test:browser", "--prefix", "learn"],
-    step "parity" ["node", "tools/parity.mjs"],
+    step "learn-execution" ["npm", "test", "--prefix", "learn"]
+  ] ++
+  -- Native against WASM, response for response. All of it in one process
+  -- took 113 minutes alone, so each part is a step.
+  [ step ("parity-" ++ part) ["node", "tools/parity.mjs", "--part=" ++ part] | part <- parityParts ] ++
+  [
     step "package-smoke" ["node", "tools/package-smoke.mjs"],
     step "component-native-acceptance" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "native-check"],
     step "docs" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "docs", "--check"],
@@ -504,7 +517,7 @@ stepInputs name = case name of
   -- select optional native tools by availability, so each tool's presence
   -- and version is part of the key.
   _ | isSdkTest name -> Just (Inputs [] [] [["node", "tools/ci-artifact-key.mjs", "npm-tests"]])
-  "parity" ->
+  _ | isParity name ->
     Just
       ( Inputs
           [ "tools/parity.mjs",

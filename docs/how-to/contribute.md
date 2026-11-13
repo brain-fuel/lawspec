@@ -154,6 +154,9 @@ resources exclusively:
   a new test group runs there without being listed. `sh
   tools/compiler-tests.sh --match "SMT text"` runs one part by hand.
 - Each file in `npm/test` is a step, `npm-test-<name>`.
+- Native/WASM parity runs as seven steps, `parity-<part>`
+  (`node tools/parity.mjs --part=frontend-32` runs one). In one process it
+  took 113 minutes.
 - Haskell and Java suites follow the target's `crypto` suite, which fills
   Stack's snapshot database and Maven's repository alone; neither guards
   concurrent installation. Cargo, Go, Gradle, NuGet and npm lock their caches.
