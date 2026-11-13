@@ -36,6 +36,7 @@ component: ## Build and stage npm/host-component: make component SDK_DIST=<SDK t
 	mkdir -p $(DEV_CACHE)/locks
 	python3 tools/with-lock.py $(DEV_CACHE)/locks/wasm.lock npm run build --prefix component
 	node component/tools/package-native.mjs
+	$(if $(KEEP_NATIVE_RECORD),,git checkout -- component/native-packages.json)
 	$(STACK) build --test --no-run-tests
 	$(STACK) exec lawspec-dev -- integrity --record
 

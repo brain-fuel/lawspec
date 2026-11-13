@@ -74,9 +74,9 @@ builds it. The target installs the packed Wasm Platform Kit from
 names another), builds the component under the same machine-wide lock as
 `tools/wasm.sh`, packages this machine's native artifact, and records the
 fingerprints in `npm/build.json`. Packaging rewrites
-`component/native-packages.json` with the platforms built here; unless a
-release is being prepared, restore it with
-`git checkout component/native-packages.json`. See
+`component/native-packages.json` with the platforms built here, so the
+target restores the committed record afterwards; pass `KEEP_NATIVE_RECORD=1`
+to keep the rewritten file when a release is being prepared. See
 [the component build instructions](../../component/README.md) for the steps
 one by one.
 
