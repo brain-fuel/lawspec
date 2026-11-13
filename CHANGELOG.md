@@ -59,6 +59,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`quantifier-decided-by-sampling`) and say how to hoist it; `explain` says
   so in every view; the wire law carries `sampledQuantifiers`. Evidence
   statuses are unchanged.
+- Java, JavaScript and TypeScript failures say more. A failing case ends with
+  the law's inputs by name (`| inputs: userId = "a\uD800"`), so a boundary
+  case is no longer only an index. A side of a law that throws puts the cause
+  in the headline (`… | quantifier-search-incomplete: …`); it was only the
+  exception's cause in Java. A violated adapter contract names the argument
+  values. Text in these messages is a quoted literal with invisible
+  characters escaped, a lone surrogate included.
 - One command compiles once. The advice in `check` and `generate` ran with no
   cache directory, which made the launcher start a new compiler instance and
   compile the project again, and a second time when the command went back to

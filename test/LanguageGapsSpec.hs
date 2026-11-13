@@ -398,3 +398,18 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "end handler"
         , "\nend unit" ]) >>= planTesting >>= emitPlan "rust")
       concatMap artifactContent files `shouldSatisfy` isInfixOf "pub struct CounterSpec"
+  describe "failures that name a law's inputs" $
+    it "wraps each Java and JavaScript case so a failure ends with its inputs by name" $ do
+      let source = unlines
+            [ "unit gaps.named"
+            , "function shorter (userId :: Text) (limit :: Integer) -> Bool is prelude.length userId <= limit end function"
+            , "law \"|ids are short| is"
+            , "  definition : for all (userId :: Text) (limit :: Integer) => shorter userId limit = true end for all end definition"
+            , "end law"
+            , "end unit" ]
+          emitted target = either (\ds -> fail (show ds)) (pure . concatMap artifactContent)
+            (program source >>= planTesting >>= emitPlan target)
+      java <- emitted "java"
+      java `shouldSatisfy` isInfixOf "LawSpecRuntime.withInputs(failure, new String[] {\"userId\", \"limit\"}, values)"
+      javascript <- emitted "javascript"
+      javascript `shouldSatisfy` isInfixOf "ls.withInputs(caseFailure, ['userId', 'limit'], [userId, limit])"

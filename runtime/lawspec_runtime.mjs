@@ -1372,9 +1372,11 @@ export function generateTuple(domains, seed, attempts, prefix = [])
       `prefix=${lastPrefix.map(String)}; seed=${seed}`,
   );
 }
-export function requireContract(condition, context)
+export function requireContract(condition, context, names = [], values = [])
 {
-  if (condition !== true) throw new Error(context);
+  if (condition === true) return;
+  const given = names.map((name, i) => `${name} = ${shown(values[i])}`);
+  throw new Error(given.length ? `${context} | ${given.join(', ')}` : context);
 }
 export function refinedCase(
   domains,
@@ -3014,6 +3016,63 @@ export function render(v)
       : name;
   }
   return String(v);
+}
+
+/**
+ * A value as a failure message shows it. A text is a quoted literal in which a
+ * character that would not be seen is an escape: a quote or backslash, a
+ * control, a lone surrogate (\uD800), a format character or a separator other
+ * than the space.
+ */
+export function shown(v)
+{
+  if (typeof v === 'string')
+  {
+    let out = '"';
+    for (const character of v)
+    {
+      const point = character.codePointAt(0);
+      if (character === '"' || character === '\\') out += '\\' + character;
+      else if (character === '\n') out += '\\n';
+      else if (character === '\t') out += '\\t';
+      else if (character === '\r') out += '\\r';
+      else if (character === ' ' || !/[\p{C}\p{Z}]/u.test(character))
+        out += character;
+      else if (point <= 0xffff)
+        out += '\\u' + point.toString(16).toUpperCase().padStart(4, '0');
+      else out += '\\u{' + point.toString(16).toUpperCase() + '}';
+    }
+    return out + '"';
+  }
+  if (Array.isArray(v)) return '[' + v.map(shown).join(', ') + ']';
+  if (v instanceof DataValue && !isHandle(v))
+  {
+    const name = v.tag.split('::').pop();
+    return v.fields.length
+      ? name + '(' + v.fields.map(shown).join(', ') + ')'
+      : name;
+  }
+  return render(v);
+}
+
+/**
+ * A law's failure with the inputs of the failing case by name, so a boundary
+ * or generated case shows what it was given and not only its index. A failure
+ * that already carries them is kept.
+ */
+export function withInputs(failure, names, values)
+{
+  const message = String(failure?.message ?? failure);
+  if (names.length === 0 || message.includes(' | inputs: ')) return failure;
+  const inputs = names
+    .map((name, i) => `${name} = ${shown(values[i])}`)
+    .join(', ');
+  const described = new Error(`${message} | inputs: ${inputs}`, {
+    cause: failure?.cause ?? failure,
+  });
+  if (failure?.stack)
+    described.stack = failure.stack.replace(message, described.message);
+  return described;
 }
 
 // Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
@@ -9030,20 +9089,22 @@ function relayEnd(node, values, channel, side, part, schema)
  */
 export function check(context, actual, expected, actualType, expectedType)
 {
+  let a;
+  let b;
   try
   {
-    const a = actual();
-    const b = expected();
-    if (!equal(a, b, actualType, expectedType))
-    {
-      throw new Error(
-        `${context} | actual=${String(a)}, expected=${String(b)}${difference(a, b)}`,
-      );
-    }
+    a = actual();
+    b = expected();
   }
   catch (error)
   {
-    throw new Error(`${context}: ${error.message}`, {cause: error});
+    throw new Error(`${context} | ${error.message}`, {cause: error});
+  }
+  if (!equal(a, b, actualType, expectedType))
+  {
+    throw new Error(
+      `${context} | actual=${shown(a)}, expected=${shown(b)}${difference(a, b)}`,
+    );
   }
 }
 
@@ -9056,20 +9117,22 @@ export async function checkAsync(
   expectedType,
 )
 {
+  let a;
+  let b;
   try
   {
-    const a = await actual();
-    const b = await expected();
-    if (!equal(a, b, actualType, expectedType))
-    {
-      throw new Error(
-        `${context} | actual=${String(a)}, expected=${String(b)}${difference(a, b)}`,
-      );
-    }
+    a = await actual();
+    b = await expected();
   }
   catch (error)
   {
-    throw new Error(`${context}: ${error.message}`, {cause: error});
+    throw new Error(`${context} | ${error.message}`, {cause: error});
+  }
+  if (!equal(a, b, actualType, expectedType))
+  {
+    throw new Error(
+      `${context} | actual=${shown(a)}, expected=${shown(b)}${difference(a, b)}`,
+    );
   }
 }
 

@@ -239,6 +239,14 @@ results with `expect <expression> = <literal>`.
 - A failing assertion shows the compared values, and names the example, its
   input bindings and the expression. It stops that test only; other tests run
   independently.
+- In Java, JavaScript and TypeScript a failing case of any kind (an example,
+  a boundary case such as `boundary 3`, a generated case) ends with the law's
+  inputs by name, `| inputs: userId = "a\uD800", retries = 3`. A text is shown
+  as a quoted literal in which a character that would not be seen (a control,
+  a lone surrogate, a no-break space) is an escape. When a side of the law
+  fails instead of giving a value, the headline carries the cause, and a
+  violated adapter contract names the argument values it was checked on. The
+  other targets show the compared values and where they first differ.
 
 A law may have no examples at all, but an example must have at least one
 `expect`. Use `lawspec explain --view dev` to see a law's expansion, the input

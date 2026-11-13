@@ -1096,7 +1096,7 @@ public final class LawSpecSchema
     }
     catch (RuntimeException error)
     {
-      throw new AssertionError(context, error);
+      throw new AssertionError(context + " | " + LawSpecRuntime.failureCause(error), error);
     }
   }
 
