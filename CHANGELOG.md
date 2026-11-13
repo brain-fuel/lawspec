@@ -98,6 +98,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `OrderWith` both need `maskedOrderWith`) are refused with both named.
 - Erlang, F#, C# and Swift: a long `bytes([...])` literal is laid out as
   each target's formatter leaves it.
+- Record rules and masking blocks now pass their acceptance suites on every
+  program target. Erlang, Elixir, Gleam and Swift build a record with
+  several restricted fields field by field: before, Erlang, Elixir and Gleam
+  failed with `cant_generate` and a Swift run did not finish. Generated
+  Rust, Kotlin, F#, C# and Swift for such records is now what rustfmt,
+  ktfmt, Fantomas and swift-format leave unchanged. The output of a failed
+  generated test is masked on Java, JavaScript, TypeScript, Python, Kotlin,
+  Scala, Groovy, Clojure and Prolog, and is not masked on Go, Haskell, Rust,
+  Erlang, Elixir, Gleam, F#, C# or Swift; see
+  [compatibility](docs/reference/compatibility.md#record-rules-and-masking).
 - Java: a model or scenario failure prints `***` for masked fields, as the
   other failure output already did.
 - Java: a long text concatenation in a typed definition breaks before `+`

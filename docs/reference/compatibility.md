@@ -180,15 +180,20 @@ lacks them.
 What each target does for [record rules and masking](language/record-rules.md),
 and what the acceptance suites did there when 0.34.0 was prepared.
 
-| | Java, JavaScript, TypeScript, Python | Every other program target |
-| --- | --- | --- |
-| Validators, rule ids, `maskedR`, generated laws | yes | generated from the same checked definitions; see the runs below |
-| `digest`, `maskDigest`, `maskHash key`, `maskedRWith`, the `blake3` functions | yes | yes |
-| Native rendering masked | yes | no; generation warns `target-unsupported` |
-| Failed-test output masked | yes | not claimed |
-| `hash` under a key the application configures | yes | no; `maskedR` shows `***`, `maskedRWith` takes the key |
-| `rfc822Address` | yes | refused, `target-unsupported` |
-| Logging hook | Java: wrapper and Logback converter; the others need none | none |
+| | Java, JavaScript, TypeScript, Python | Kotlin, Scala, Groovy, Clojure, Prolog | Go, Haskell, Rust, Erlang, Elixir, Gleam, F#, C#, Swift |
+| --- | --- | --- | --- |
+| Validators, rule ids, `maskedR`, generated laws | yes | yes | yes |
+| `digest`, `maskDigest`, `maskHash key`, `maskedRWith`, the `blake3` functions | yes | yes | yes |
+| Native rendering masked | yes | no; generation warns `target-unsupported` | no; generation warns `target-unsupported` |
+| Failed-test output masked | yes | yes, through the Java or Python runtime under them | **no**: a failed generated test prints the failing record's fields as they are |
+| `hash` under a key the application configures | yes | no; `maskedR` shows `***`, `maskedRWith` takes the key | the same |
+| `rfc822Address` | yes | refused, `target-unsupported` | refused, `target-unsupported` |
+| Logging hook | Java: wrapper and Logback converter; the others need none | none | none |
+
+On the targets of the last column, keep the output of failed generated
+tests out of shared logs when the records under test hold personal data, or
+test with made-up values. The frameworks there print a failing input
+through the record's native rendering, which is not masked.
 
 BLAKE3 by target:
 
@@ -207,17 +212,15 @@ BLAKE3 by target:
 Acceptance runs. "Pass" is the whole suite: the laws, and every mutant
 rejected.
 
-| Suite | Passes | Does not pass |
-| --- | --- | --- |
-| `contracts-digest` (official vectors, digest masks, keyed hash under one key) | all 18 program targets | |
-| `contracts-validation` | Java, JavaScript, TypeScript, Python, Go, Haskell, Scala, Groovy, Clojure, Prolog | Kotlin, Rust, F#, C#: the generated code is not as the target's formatter leaves it. Erlang, Elixir, Gleam: the property generator cannot produce a record under its restrictions. Swift: the run did not finish in 23 minutes and was stopped |
-| `contracts-masking` | Java, JavaScript, TypeScript, Python, Kotlin, Scala, Groovy, Clojure, Prolog | Go, Haskell, Erlang, Elixir, Gleam: the laws pass, and the mutant that needs masked failed-test output is not rejected, as the table above says. Rust, F#, C#, Swift: generated code is not as the formatter leaves it |
-| `contracts-primitives` | Java, JavaScript, TypeScript, Python | every other target: refused for `rfc822Address` |
+| Suite | Passes |
+| --- | --- |
+| `contracts-digest` (official vectors, digest masks, keyed hash under one key) | all 18 program targets |
+| `contracts-validation` | all 18 program targets |
+| `contracts-masking` | all 18 program targets. On Go, Haskell, Rust, Erlang, Elixir, Gleam, F#, C# and Swift its two mutants must fail, and their output is not checked for masked values: each mutant file declares that, with the reason, and the run prints it |
+| `contracts-primitives` | Java, JavaScript, TypeScript, Python; every other target refuses it for `rfc822Address` |
 
-The check (`lawspec-dev ci`) runs `contracts-digest` on every program
-target and the other three on Java, JavaScript, TypeScript and Python only.
-Where a suite does not pass, record rules and masking blocks are not
-supported on that target beyond what `contracts-digest` covers.
+The check (`lawspec-dev ci`) runs the first three on every program target
+and `contracts-primitives` on those four.
 
 ## C# over F#
 

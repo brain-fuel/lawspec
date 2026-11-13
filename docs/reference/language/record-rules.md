@@ -270,7 +270,7 @@ text: two drafts that differ only in it render alike.
 | --- | --- | --- | --- | --- |
 | `maskedR`, `maskedRDraft`, violation messages | masked | masked | masked | masked |
 | The record's own text form | `toString()` | `toString()`, `util.inspect` and so `console.log` | `repr()`, `str()` | **not masked** |
-| Output of a failed generated test | a digest field as its digest, any other masked field as `***` | the same | the same | **not masked** |
+| Output of a failed generated test | a digest field as its digest, any other masked field as `***` | the same | the same | the same on Kotlin, Scala, Groovy, Clojure and Prolog; **not masked** on Go, Haskell, Rust, Erlang, Elixir, Gleam, F#, C# and Swift |
 | A logger given the record | masked, through `toString()` | masked | masked | **not masked** |
 | The unmasked text, by an explicit name | `toUnmaskedString()` | `toUnmaskedString()` | `unmasked_repr()` | |
 | Fields, accessors and wire forms | not masked | not masked | not masked | not masked |
@@ -284,7 +284,10 @@ reason.
 
 On a target of the last column, generation warns with `target-unsupported`
 for each record with a masking block. `maskedR` works there, digests and
-all; nothing else is masked.
+all. Nothing else is masked, except the output of a failed generated test
+on the five targets that run on the Java or Python runtime.
+[Compatibility](../compatibility.md#record-rules-and-masking) lists each
+target.
 
 The output of a failed generated test shows a digest field as its digest
 and `***` for every other masked field, whatever its mask, and two records
