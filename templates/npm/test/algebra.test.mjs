@@ -119,7 +119,7 @@ end unit
       assert.ok(head, 'The Prolog adapter declares its functional predicate');
       assert.equal(head[1].split(',').length, 13, 'Twelve inputs and one result');
     }
-    else if (target !== "haskell") assert.match(adapter, /value11/, target);
+    else if (target !== "haskell") assert.match(adapter, /int32[_-]12/i, target);
   }
   for (const bad of [
     content.replace("Int32 -> Int32", "Bool -> Int32"),
