@@ -47,7 +47,12 @@ operationSignature bits names a (op, ty) = do
   ps <- mapM (Data.nativeType bits names []) [t | t <- args, not (isUnit t)]
   r <- if isUnit result then pure "Void" else Data.nativeType bits names [] result
   e <- traverse (Data.nativeType bits names []) (failureOf a op)
-  pure (zip ["value" ++ show i | i <- [0 :: Int ..]] ps, r, e)
+  -- A Unit parameter is not passed; the reference spelling numbers those
+  -- that are. ref:DEC-generated-parameter-names
+  let named = case C.operationParameters a op of
+        C.PositionalParameters -> ["value" ++ show i | i <- [0 :: Int ..]]
+        _ -> [n | (n, t) <- zip (operationParameterNames a op args) args, not (isUnit t)]
+  pure (zip named ps, r, e)
 
 -- | An operation's method: its requirement in a protocol, or with a body.
 method :: String -> ([(String, String)], String, Maybe String) -> Maybe D.Doc -> D.Doc

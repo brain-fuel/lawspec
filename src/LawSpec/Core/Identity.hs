@@ -75,7 +75,7 @@ type M = State St
 -- semantic. A name here moves the field's whole content to that stream.
 presentationFields :: M.Map String Stream
 presentationFields = M.fromList $
-  [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "declarationTemplate", "dataId", "dataName", "constructorId", "constructorName"
+  [ (f, Names) | f <- [ "declarationId", "declarationName", "declarationSource", "declarationTemplate", "declarationParameters", "abilityOperationParameters", "dataId", "dataName", "constructorId", "constructorName"
                       , "abilityName", "handlerId", "handlerName", "propertyId", "propertyName", "contractDeclaration"
                       , "harnessUnit", "sessionId", "sessionName", "machineName", "commandName", "programTitle", "unitId", "unitHarnessName", "exampleName", "coverLabel" ] ] ++
   [ (f, Docs) | f <- [ "declarationOrigin", "dataOrigin", "constructorOrigin", "expressionOrigin", "abilityOrigin"
@@ -293,6 +293,7 @@ instance Encode Property where
     enc r harness
     enc r domain
 
+instance Encode ParameterNames
 instance Encode Declaration
 instance Encode Definition
 instance Encode Contract
@@ -540,6 +541,7 @@ instance Collect Property where
   collect p = collect (propertyParameters p) . collect (propertyInputs p) . collect (propertyBody p) .
     collect (propertyExamples p) . collect (propertyHandlers p) . collect (propertyResources p) . collect (propertyHarness p)
 
+instance Collect ParameterNames where collect _ = id
 instance Collect Declaration
 instance Collect Definition
 instance Collect Contract

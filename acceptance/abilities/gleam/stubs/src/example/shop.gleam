@@ -5,13 +5,13 @@ import lawspec/abilities/example/shop as abilities_example_shop
 
 pub fn refund(
   _gateway_handler: abilities_example_abilities.Gateway,
-  _int32: Int,
+  _int32_1: Int,
 ) -> Int {
   panic as "Not implemented: example.shop::refund"
 }
 
 pub fn log_handler() -> abilities_example_shop.Log {
-  abilities_example_shop.log(fn(_text) {
+  abilities_example_shop.log(fn(_text_1) {
     panic as "Not implemented: example.shop::ability::Log.note"
   })
 }
@@ -19,7 +19,7 @@ pub fn log_handler() -> abilities_example_shop.Log {
 pub fn store_int32_handler() -> abilities_example_shop.StoreInt32 {
   abilities_example_shop.store_int32(
     fn() { panic as "Not implemented: example.shop::ability::Store(Int32).load" },
-    fn(_int32) {
+    fn(_int32_1) {
       panic as "Not implemented: example.shop::ability::Store(Int32).save"
     },
   )
@@ -28,7 +28,7 @@ pub fn store_int32_handler() -> abilities_example_shop.StoreInt32 {
 pub fn store_text_handler() -> abilities_example_shop.StoreText {
   abilities_example_shop.store_text(
     fn() { panic as "Not implemented: example.shop::ability::Store(Text).load" },
-    fn(_text) {
+    fn(_text_1) {
       panic as "Not implemented: example.shop::ability::Store(Text).save"
     },
   )

@@ -6,6 +6,7 @@ import Control.Monad (forM)
 import Data.Char (toUpper)
 import Data.List (intercalate)
 import LawSpec.Common
+import LawSpec.Naming (declarationParameterNames)
 import LawSpec.Core
 import qualified LawSpec.ScalaData as Native
 import qualified LawSpec.ScalaExpr as E
@@ -140,9 +141,9 @@ emitScalaDefinitions layout bits declarations units = do
           types <- mapM (Native.scalaDataTypeDoc declarations) args
           resultType <- Native.scalaDataTypeDoc declarations result
           let declaration = definitionDeclaration d
-              parameters = D.text ("symbols: " ++ Native.symbolsType) : [D.text ("value" ++ show i ++ ": ") <> ty | (i, ty) <- zip [0::Int ..] types]
+              parameters = D.text ("symbols: " ++ Native.symbolsType) : [D.text (parameter ++ ": ") <> ty | (parameter, ty) <- zip (apiParameters [] declaration) types]
           pure (L.equalsBody (L.parameters (D.text ("def " ++ Native.escaped (declarationName declaration))) parameters <> D.text ": " <> resultType)
-            (call toNative [call function [call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]]))
+            (call toNative [call function [call fromNative [D.text parameter] | (parameter, (fromNative, _)) <- zip (apiParameters [] declaration) conversions]]))
       | otherwise = definitionDynamic d
     definitionDynamic d = do
       let declaration = definitionDeclaration d
@@ -156,14 +157,14 @@ emitScalaDefinitions layout bits declarations units = do
                      , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text ("symbols: " ++ Native.symbolsType) :
             [D.text (name ++ ": " ++ abilityInterface ability) | (ability, name) <- handlers] ++
-            [D.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
+            [D.text (parameter ++ ": ") <> ty | (parameter,ty) <- zip (apiParameters (map snd handlers) declaration) types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [call "LawSpecRuntime.installHandlers" [D.text "symbols",
             call "java.util.Map.of[String, Object]" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name) <- handlers])] | not (null handlers)]
           signature = L.parameters (D.text ("def " ++ Native.escaped (declarationName declaration))) parameters <> D.text ": " <> resultType <> D.text " = "
           input i codec = [assign ("codec" ++ show i) (L.receiverDoc codec),
-            D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ")")]
+            D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(" ++ (apiParameters (map snd handlers) declaration !! i) ++ ")")]
           body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
              assign "resultCodec" (L.receiverDoc resultCodec),D.text "resultCodec.decode(result)"]
@@ -205,3 +206,12 @@ emitScalaDefinitions layout bits declarations units = do
         in call "LawSpecRuntime.nativeFailures" ([E.quoted (abilityKey ability),
              arrow "(nativeValue: Object)" (L.chain codec [("encode", [call ("LawSpecScala.cast[" ++ native ++ "]") [D.text "nativeValue"]])]), arrow "()" body] ++ mapped)
       _ -> body
+
+-- A definition's parameters in its native API: its binders' names, or ones
+-- made from their types (LawSpec.Naming), clear of the handlers it takes
+-- and of the names its body binds.
+apiParameters :: [String] -> Declaration -> [String]
+apiParameters handlers declaration = declarationParameterNames "scala"
+  (handlers ++ words "symbols result resultCodec context failure error" ++
+    concat [["codec" ++ show i, "argument" ++ show i] | i <- [0 .. length (fst (functionType (declarationType declaration)))]])
+  "value" declaration

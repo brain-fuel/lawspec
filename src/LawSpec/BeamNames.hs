@@ -5,11 +5,11 @@
 -- ref:DEC-readable-generated-names
 module LawSpec.BeamNames
   ( erlangReserved, functionAtom, definitionEntries, abilityEntries
-  , variableName, variables, generatedVariables
+  , variableName, variables, generatedVariables, stubParameters
   ) where
 
 import qualified LawSpec.Core as C
-import LawSpec.Naming (NameKind(..), Casing(..), cased, nameWords, claimAll, scopeWith, readableDefinitionName, typeWords, localIdentifier)
+import LawSpec.Naming (NameKind(..), Casing(..), cased, nameWords, claimAll, scopeWith, readableDefinitionName, typeWords, localIdentifier, parameterNamesWith)
 import Data.Char (isDigit)
 import Data.List (nub)
 
@@ -67,6 +67,16 @@ variableName source = case cased Pascal (nameWords (localIdentifier "erlang" sou
 -- taken, in order.
 variables :: [String] -> [String] -> [String]
 variables taken sources = fst (claimAll (scopeWith taken) (map variableName sources))
+
+-- | A stub's parameters by the names its signature declares, or ones made
+-- from their types (LawSpec.Naming): Erlang variables in PascalCase
+-- (Int32_1), Elixir's and Gleam's in snake_case, clear of the names taken.
+-- Nothing asks for the reference spelling, which each stub keeps as it
+-- always wrote it. ref:DEC-generated-parameter-names
+stubParameters :: String -> [String] -> C.ParameterNames -> [C.Type] -> Maybe [String]
+stubParameters target taken declared types = case declared of
+  C.PositionalParameters -> Nothing
+  _ -> Just (parameterNamesWith (if target == "erlang" then Pascal else Snake) id taken "value" declared types)
 
 -- | The variables generated BEAM code binds itself; a source binder never
 -- takes one of these names.

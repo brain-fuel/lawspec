@@ -1183,6 +1183,7 @@ test-suite lawspec-test
       NativeBindingSpec
       NativeRequestSpec
       OperationResultSpec
+      ParameterNamesSpec
       ParserDiagnosticsSpec
       PayloadProofSpec
       PayloadSpec

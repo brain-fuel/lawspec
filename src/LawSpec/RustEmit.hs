@@ -32,7 +32,7 @@ import qualified LawSpec.Code.Doc as Doc
 import Data.Char (isAlphaNum, isAscii, isUpper, toLower)
 import Data.List (intercalate, find, nub, sortOn, stripPrefix, tails)
 import Data.Maybe (mapMaybe)
-import LawSpec.Naming (NameKind(..), nativeIdentifier, claim, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword)
+import LawSpec.Naming (NameKind(..), nativeIdentifier, claim, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword, declarationParameterNames)
 import LawSpec.SourceLink (sourceLink, locationLink, exampleLocation, labelled, generatedHeader, unitSourceFile)
 import LawSpec.RustExpr (mentions, unusedAs)
 import qualified LawSpec.RustLayout as RL
@@ -558,7 +558,10 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
         argTypes <- mapM argumentType args
         resultType <- nativeType result
         let arguments = [Doc.text (handlerName ability ++ ": &dyn crate::" ++ Abilities.traitPath allUnits ability) | ability <- declarationUses d, not (isFail ability)] ++
-              [Doc.text ("value" ++ show i ++ ": " ++ t) | (i,t) <- zip [0::Int ..] argTypes]
+              [Doc.text (parameter ++ ": " ++ t) | (parameter,t) <- zip parameters argTypes]
+            -- Its own parameters take the names its signature declares, or
+            -- ones made from their types (LawSpec.Naming).
+            parameters = declarationParameterNames "rust" [handlerName ability | ability <- declarationUses d, not (isFail ability)] "value" d
             handlerName ability = case [interfaceName a | Just (_, a) <- [findAbility allUnits ability]] of
               n : _ -> nativeIdentifier "rust" ValueName n
               [] -> "handler"

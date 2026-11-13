@@ -5,7 +5,7 @@ import lawspec_schema as _schema
 import lawspec_runtime as ls
 
 
-# LawSpec argument 0: Int32
+# LawSpec argument int32_1: Int32
 # LawSpec result: Int64
-def priceInCents(value0: int) -> int:
+def priceInCents(int32_1: int) -> int:
     raise NotImplementedError("priceInCents")

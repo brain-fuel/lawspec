@@ -4,4 +4,4 @@
 
 -spec native_probe(ok) -> boolean().
 
-native_probe(_Unit) -> erlang:error({not_implemented, <<"example.crypto_context::nativeProbe">>}).
+native_probe(_Unit1) -> erlang:error({not_implemented, <<"example.crypto_context::nativeProbe">>}).

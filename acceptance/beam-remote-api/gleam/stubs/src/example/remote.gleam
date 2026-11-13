@@ -2,12 +2,12 @@
 
 import lawspec/abilities/example/remote as abilities_example_remote
 
-pub fn native_probe(_unit: Nil) -> Bool {
+pub fn native_probe(_unit_1: Nil) -> Bool {
   panic as "Not implemented: example.remote::nativeProbe"
 }
 
 pub fn offset_handler() -> abilities_example_remote.Offset {
-  abilities_example_remote.offset(fn(_int32) {
+  abilities_example_remote.offset(fn(_int32_1) {
     panic as "Not implemented: example.remote::ability::Offset.shift"
   })
 }

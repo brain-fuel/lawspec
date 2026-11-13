@@ -74,8 +74,8 @@ interface's marker method includes the type parameters, so Go rejects a
 `TreeLeaf[bool]` where a `Tree[int8]` is required. Switch on the variants:
 
 ```go
-func Size(value0 Tree[int8]) int {
-	switch tree := value0.(type) {
+func Size(tree1 Tree[int8]) int {
+	switch tree := tree1.(type) {
 	case TreeLeaf[int8]:
 		return 1
 	case TreeBranch[int8]:
@@ -90,11 +90,11 @@ func Size(value0 Tree[int8]) int {
 ```
 
 `type Pair is Pair first :: Int8 second :: Int8 end` becomes
-`type Pair struct { First int8; Second int8 }`, read as `value0.First`.
+`type Pair struct { First int8; Second int8 }`, read as `pair1.First`.
 
 ```go
-func Echo(value0 Tree[int8]) Tree[int8] {
-	return value0
+func Echo(tree1 Tree[int8]) Tree[int8] {
+	return tree1
 }
 ```
 

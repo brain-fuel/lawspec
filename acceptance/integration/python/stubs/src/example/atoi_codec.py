@@ -2,13 +2,13 @@
 import lawspec_runtime as ls
 
 
-# LawSpec argument 0: Int32
+# LawSpec argument int32_1: Int32
 # LawSpec result: Text
-def itoa(value0: int) -> str:
+def itoa(int32_1: int) -> str:
     raise NotImplementedError("itoa")
 
 
-# LawSpec argument 0: Text
+# LawSpec argument text_1: Text
 # LawSpec result: Int32
-def atoi(value0: str) -> int:
+def atoi(text_1: str) -> int:
     raise NotImplementedError("atoi")

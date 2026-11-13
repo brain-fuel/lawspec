@@ -14,6 +14,7 @@ import LawSpec.Backend (localName)
 import LawSpec.JvmNames (jvmLocal)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames, positionalNames)
 import qualified LawSpec.JavaData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.JavaExpr as E
@@ -81,7 +82,7 @@ emitProduct minify bits datas units = do
         [] (map fst interfaces) [])
     signature op ty = operationDoc <$> operationAbi datas op ty
     interface a = do
-      operations <- mapM (uncurry (operationAbi datas)) (C.abilityOperations a)
+      operations <- mapM (\(op, ty) -> operationAbiNamed (operationNames a op) datas op ty) (C.abilityOperations a)
       let methods = [operationDoc operation <> line ";" | operation <- operations]
           abi = Abi.InterfaceAbi (abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a) operations
       pure (abi, javadoc 98 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
@@ -247,7 +248,7 @@ productionStub datas u a = snd <$> productionProduct datas u a
 -- operation types, before any source is rendered.
 productionProduct :: [C.DataDeclaration] -> C.Unit -> C.Ability -> Either String (Abi.Item, D.Doc)
 productionProduct datas u a = do
-  operations <- mapM (uncurry (operationAbi datas)) (C.abilityOperations a)
+  operations <- mapM (\(op, ty) -> operationAbiNamed (operationNames a op) datas op ty) (C.abilityOperations a)
   let methods = [D.text "@Override" <> D.hardline <> D.text "public " <> operationDoc operation <> D.hardline <>
         D.block 2 (D.text ("throw new UnsupportedOperationException(" ++ show (Abi.opName operation) ++ ");")) | operation <- operations]
   -- ability A with T: the handler is made with the case's T.
@@ -268,11 +269,20 @@ productionProduct datas u a = do
 -- The exact same checked signature is used in interfaces, production stubs,
 -- recordings and downstream JVM bridges.
 operationAbi :: [C.DataDeclaration] -> String -> C.Type -> Either String Abi.Operation
-operationAbi datas name ty = do
+operationAbi = operationAbiNamed (positionalNames "value")
+
+-- | An interface a user implements and its production stub name the
+-- operation's parameters (LawSpec.Naming); a generated handler's own
+-- methods keep positional names.
+operationAbiNamed :: [String] -> [C.DataDeclaration] -> String -> C.Type -> Either String Abi.Operation
+operationAbiNamed names datas name ty = do
   let (args, result) = C.functionType ty
   types <- mapM (Native.javaDataTypeDoc datas) args
   resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else Native.javaDataTypeDoc datas result
-  pure (Abi.operation resultType name [(t, "value" ++ show i) | (i,t) <- zip [0::Int ..] types] name)
+  pure (Abi.operation resultType name (zip types names) name)
+
+operationNames :: C.Ability -> String -> [String]
+operationNames = operationParameterNames "java" [] "value"
 
 operationDoc :: Abi.Operation -> D.Doc
 operationDoc operation = Abi.opResultLayout operation <> D.text (" " ++ Abi.opName operation) <>

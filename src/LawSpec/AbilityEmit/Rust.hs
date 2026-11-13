@@ -11,6 +11,7 @@ import Control.Monad (forM)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames, positionalNames)
 import LawSpec.RustAbilityPaths
 import qualified LawSpec.RustData as Native
 import qualified LawSpec.RustDefinitions as Definitions
@@ -91,14 +92,15 @@ emit minify bits datas units = do
       pure (line ("pub mod " ++ moduleOf u) <> D.hardline <> D.block 4 (line "use super::ls;" <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline) (traits ++ handlers ++ recordings ++ bridges)))
     -- An operation's method: its name, parameters and result type.
-    signature op ty = do
+    signature = signatureNamed (positionalNames "value")
+    signatureNamed names op ty = do
       let (args, result) = C.functionType ty
       types <- mapM nativeType args
       resultType <- nativeType result
-      pure ("fn " ++ op, "&self" : ["value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types], resultType)
+      pure ("fn " ++ op, "&self" : [name ++ ": " ++ t | (name, t) <- zip names types], resultType)
     method op ty body = (\(h, ps, r) -> L.function h ps r body) <$> signature op ty
     trait a = do
-      methods <- mapM (\(op, ty) -> (\(h, ps, r) -> L.declaration h ps r) <$> signature op ty) (C.abilityOperations a)
+      methods <- mapM (\(op, ty) -> (\(h, ps, r) -> L.declaration h ps r) <$> signatureNamed (operationNames a op) op ty) (C.abilityOperations a)
       pure (line ("/// The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
         line ("pub trait " ++ interfaceName a ++ ": Send + Sync") <> D.hardline <> D.block 4 (D.joinWith D.hardline methods))
     -- A native result from a logical value, as the definitions' wrappers do.
@@ -338,7 +340,7 @@ productionStub datas u a = do
     let (args, result) = C.functionType ty
     types <- mapM (Native.rustDataType datas) args
     resultType <- Native.rustDataType datas result
-    pure (D.text ("fn " ++ op ++ "(&self" ++ concat [", value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ") -> " ++ resultType ) <> D.hardline <>
+    pure (D.text ("fn " ++ op ++ "(&self" ++ concat [", " ++ name ++ ": " ++ t | (name, t) <- zip (operationNames a op) types] ++ ") -> " ++ resultType ) <> D.hardline <>
       D.block 4 (D.text ("todo!(" ++ show op ++ ")")))) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T, by new.
   made <- traverse (Native.rustDataType datas) (C.abilityResource a)
@@ -350,3 +352,9 @@ productionStub datas u a = do
         D.hardline <> D.hardline) <>
     D.text ("impl crate::lawspec_abilities::" ++ moduleOf u ++ "::" ++ interfaceName a ++ " for " ++ productionName a  ) <> D.hardline <>
     D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
+
+-- An operation's parameter names where a user writes or reads them: the
+-- interface and the production handler's stub (LawSpec.Naming). A generated
+-- handler's own methods keep positional names.
+operationNames :: C.Ability -> String -> [String]
+operationNames = operationParameterNames "rust" [] "value"

@@ -18,6 +18,7 @@ import qualified LawSpec.ScalaTestHelpers as ScalaTestHelpers
 import LawSpec.ScalaDefinitions (adapterResult)
 import LawSpec.Backend
 import LawSpec.Common
+import LawSpec.Naming (declarationParameterNames)
 import LawSpec.Testing
 import qualified LawSpec.Testing.Literals as Literals
 import Control.Monad (forM)
@@ -92,7 +93,9 @@ emitScalaUnitOn pekko budget nativeGenerators minify dataDeclarations definition
       types <- mapM (ScalaData.scalaDataTypeDoc dataDeclarations) args
       result <- adapterResult dataDeclarations d
       let arguments = [Doc.text (handlerParameter ability ++ ": " ++ scInterface ability) | ability <- usesOf n] ++
-            [Doc.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
+            -- Its own parameters take the names its signature declares,
+            -- or ones made from their types (LawSpec.Naming).
+            [Doc.text (parameter ++ ": ") <> ty | (parameter,ty) <- zip (declarationParameterNames "scala" (map handlerParameter (usesOf n)) "value" d) types]
           signature = ScalaLayout.parameters (Doc.text ("def " ++ ScalaData.escaped (adapterName u (C.declarationId d)))) arguments <>
             Doc.text ": " <> Doc.bestFit [Doc.text (Doc.render Doc.Compact result ++ " ="), result <> Doc.text " ="]
       pure (Doc.lineComment 78 "// " (n ++ " :: " ++ prettyType (C.declarationType d) ++ maybe "" (" — " ++) (sourceLink (C.declarationOrigin d))) <>

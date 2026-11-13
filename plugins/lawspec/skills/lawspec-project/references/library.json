@@ -6204,45 +6204,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/handlers.md:247: Erlang, Elixir and Gleam",
+      "id": "reference:docs/reference/language/handlers.md:248: Erlang, Elixir and Gleam",
       "kind": "reference",
-      "name": "docs/reference/language/handlers.md:247: Erlang, Elixir and Gleam",
+      "name": "docs/reference/language/handlers.md:248: Erlang, Elixir and Gleam",
       "source": "docs/reference/language/handlers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/handlers.md:330: Binding a production handler",
+      "id": "reference:docs/reference/language/handlers.md:331: Binding a production handler",
       "kind": "reference",
-      "name": "docs/reference/language/handlers.md:330: Binding a production handler",
+      "name": "docs/reference/language/handlers.md:331: Binding a production handler",
       "source": "docs/reference/language/handlers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/handlers.md:366: Native failures",
+      "id": "reference:docs/reference/language/handlers.md:367: Native failures",
       "kind": "reference",
-      "name": "docs/reference/language/handlers.md:366: Native failures",
+      "name": "docs/reference/language/handlers.md:367: Native failures",
       "source": "docs/reference/language/handlers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/handlers.md:400: Spec handlers with state, at compile time",
+      "id": "reference:docs/reference/language/handlers.md:401: Spec handlers with state, at compile time",
       "kind": "reference",
-      "name": "docs/reference/language/handlers.md:400: Spec handlers with state, at compile time",
+      "name": "docs/reference/language/handlers.md:401: Spec handlers with state, at compile time",
       "source": "docs/reference/language/handlers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/handlers.md:408: Limits",
+      "id": "reference:docs/reference/language/handlers.md:409: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/handlers.md:408: Limits",
+      "name": "docs/reference/language/handlers.md:409: Limits",
       "source": "docs/reference/language/handlers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7149,9 +7149,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/syntax.md:130: Units and declarations",
+      "id": "reference:docs/reference/language/syntax.md:134: Units and declarations",
       "kind": "reference",
-      "name": "docs/reference/language/syntax.md:130: Units and declarations",
+      "name": "docs/reference/language/syntax.md:134: Units and declarations",
       "source": "docs/reference/language/syntax.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7167,36 +7167,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/syntax.md:164: Laws and quantifiers",
+      "id": "reference:docs/reference/language/syntax.md:168: Laws and quantifiers",
       "kind": "reference",
-      "name": "docs/reference/language/syntax.md:164: Laws and quantifiers",
+      "name": "docs/reference/language/syntax.md:168: Laws and quantifiers",
       "source": "docs/reference/language/syntax.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/syntax.md:197: Cases, bindings and mappings",
+      "id": "reference:docs/reference/language/syntax.md:201: Cases, bindings and mappings",
       "kind": "reference",
-      "name": "docs/reference/language/syntax.md:197: Cases, bindings and mappings",
+      "name": "docs/reference/language/syntax.md:201: Cases, bindings and mappings",
       "source": "docs/reference/language/syntax.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/syntax.md:230: Abilities, handlers and harnesses",
+      "id": "reference:docs/reference/language/syntax.md:234: Abilities, handlers and harnesses",
       "kind": "reference",
-      "name": "docs/reference/language/syntax.md:230: Abilities, handlers and harnesses",
+      "name": "docs/reference/language/syntax.md:234: Abilities, handlers and harnesses",
       "source": "docs/reference/language/syntax.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/syntax.md:267: Reserved names",
+      "id": "reference:docs/reference/language/syntax.md:271: Reserved names",
       "kind": "reference",
-      "name": "docs/reference/language/syntax.md:267: Reserved names",
+      "name": "docs/reference/language/syntax.md:271: Reserved names",
       "source": "docs/reference/language/syntax.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7212,9 +7212,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/syntax.md:58: Blocks and endings",
+      "id": "reference:docs/reference/language/syntax.md:62: Blocks and endings",
       "kind": "reference",
-      "name": "docs/reference/language/syntax.md:58: Blocks and endings",
+      "name": "docs/reference/language/syntax.md:62: Blocks and endings",
       "source": "docs/reference/language/syntax.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7680,9 +7680,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/native-bindings.md:541: Ownership",
+      "id": "reference:docs/reference/native-bindings.md:541: Parameter names",
       "kind": "reference",
-      "name": "docs/reference/native-bindings.md:541: Ownership",
+      "name": "docs/reference/native-bindings.md:541: Parameter names",
+      "source": "docs/reference/native-bindings.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/native-bindings.md:614: Ownership",
+      "kind": "reference",
+      "name": "docs/reference/native-bindings.md:614: Ownership",
       "source": "docs/reference/native-bindings.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

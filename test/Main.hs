@@ -64,6 +64,7 @@ import qualified StatefulModelSpec
 import qualified ScenarioSpec
 import qualified TargetNamesSpec
 import qualified TargetOptionsSpec
+import qualified ParameterNamesSpec
 import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
@@ -194,6 +195,7 @@ main = hspec $ do
   TargetNamesSpec.test_targetNamesNeverCollideWithKeywords
   TargetOptionsSpec.test_generatedDirectoriesPlaceFilesByOwnership
   TargetOptionsSpec.test_javaReleaseRefusesWhatItCannotCompile
+  ParameterNamesSpec.test_generatedParametersTakeTheirSignaturesNames
   TimeSpec.test_durationsAreExactAndPortable
   ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence

@@ -14,7 +14,7 @@ import qualified Data.Text.Encoding as T
 import qualified LawSpec.Core as C
 import LawSpec.Core.DefinitionContracts (validateNativeEmissionDefinitions)
 import LawSpec.Common (Artifact(..), Diagnostic(..), pythonUnitFile)
-import LawSpec.Naming (Casing(..), cased, claimAll, displayLabel, escapeKeyword, nameWords, reservedFor, scopeWith, sourceDefinitionName)
+import LawSpec.Naming (Casing(..), cased, claimAll, displayLabel, escapeKeyword, nameWords, reservedFor, scopeWith, sourceDefinitionName, parameterNamesWith)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, sourceLink, unitSourceFile)
 import LawSpec.PythonTypes (pythonTypeReferenceDoc, pythonLayout)
 import qualified LawSpec.PythonExpr as E
@@ -317,7 +317,21 @@ prologFromPreparedPython sourceDir testDir bindings plan input = do
               [directive (Compound "use_module" [Atom i]) | i <- imports] ]
           links = [(predicate d, C.declarationName d, sourceLink (C.declarationOrigin d)) | d <- adapters ++ modelDeclarations]
           linkFor name = [comment (labelled label (Just l)) | (n,label,Just l) <- links, n == name]
-          stub (name,arity) = linkFor name ++ [clause (Compound name (replicate arity (Var "_")))
+          -- An adapter's value arguments are named as its signature
+          -- declares, or from their types (LawSpec.Naming): unused, so
+          -- each follows an underscore. Handlers and the result stay _.
+          stubArguments name arity = case [d | d <- adapters, functionBinding d == Nothing, predicate d == name] of
+            d : _ | C.declarationParameters d /= C.PositionalParameters ->
+              replicate (length (handlers d)) (Var "_") ++
+              [Var ('_' : v) | v <- parameterNamesWith Pascal id [] "value" (C.declarationParameters d) (fst (C.functionType (C.declarationType d)))] ++
+              [Var "_"]
+            -- A production handler's operation: the handler, its values,
+            -- the result.
+            _ -> case [(a, op, ty) | a <- productions, handlerBinding a == Nothing, (op, ty) <- C.abilityOperations a, operationPredicate a op == name] of
+              (a, op, ty) : _ | C.operationParameters a op /= C.PositionalParameters ->
+                [Var "_"] ++ [Var ('_' : v) | v <- parameterNamesWith Pascal id [] "value" (C.operationParameters a op) (fst (C.functionType ty))] ++ [Var "_"]
+              _ -> replicate arity (Var "_")
+          stub (name,arity) = linkFor name ++ [clause (Compound name (stubArguments name arity))
             (Just (Compound "throw" [Compound "error" [Compound "not_implemented" [Atom (owner u ++ "::" ++ name)], Var "_"]]))]
           stubs = prologFile (header ["User-owned LawSpec adapter for " ++ owner u ++ maybe "" (" from " ++) (unitSourceFile u) ++ "."]
               (moduleId u) (adapterExports ++ productionExports) [] ++

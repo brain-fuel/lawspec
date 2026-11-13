@@ -3,7 +3,7 @@ defmodule Example.Shop do
   @spec refund(LawSpec.Abilities.Example.Abilities.Gateway.t(), -2_147_483_648..2_147_483_647) ::
           -2_147_483_648..2_147_483_647
 
-  def refund(_gateway_handler, _int32) do
+  def refund(_gateway_handler, _int32_1) do
     raise "Not implemented: example.shop::refund"
   end
 
@@ -11,7 +11,7 @@ defmodule Example.Shop do
 
   def log_handler() do
     %LawSpec.Abilities.Example.Shop.Log{
-      note: fn _text -> raise "Not implemented: example.shop::ability::Log.note" end
+      note: fn _text_1 -> raise "Not implemented: example.shop::ability::Log.note" end
     }
   end
 
@@ -20,7 +20,7 @@ defmodule Example.Shop do
   def store_int32_handler() do
     %LawSpec.Abilities.Example.Shop.StoreInt32{
       load: fn -> raise "Not implemented: example.shop::ability::Store(Int32).load" end,
-      save: fn _int32 -> raise "Not implemented: example.shop::ability::Store(Int32).save" end
+      save: fn _int32_1 -> raise "Not implemented: example.shop::ability::Store(Int32).save" end
     }
   end
 
@@ -29,7 +29,7 @@ defmodule Example.Shop do
   def store_text_handler() do
     %LawSpec.Abilities.Example.Shop.StoreText{
       load: fn -> raise "Not implemented: example.shop::ability::Store(Text).load" end,
-      save: fn _text -> raise "Not implemented: example.shop::ability::Store(Text).save" end
+      save: fn _text_1 -> raise "Not implemented: example.shop::ability::Store(Text).save" end
     }
   end
 

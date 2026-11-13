@@ -14,6 +14,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames, positionalNames)
 import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.GoExpr as E
@@ -56,13 +57,14 @@ emit minify bits datas units = case clashes of
             D.joinWith (D.hardline <> D.hardline) (interfaces ++ handlers ++ recordings) <> D.hardline
       pure (Artifact (map (\c -> if c == '.' then '/' else c) identity ++ "/lawspec_abilities.go")
         (D.render layout source) "generated" "source")
-    signature ty = do
+    signature = signatureNamed (positionalNames "value")
+    signatureNamed names ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.goDataType datas) args
       resultType <- if result == C.scalarType "Unit" then pure "" else (' ' :) <$> Native.goDataType datas result
-      pure ("(" ++ intercalate ", " ["value" ++ show i ++ " " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ")" ++ resultType)
+      pure ("(" ++ intercalate ", " [name ++ " " ++ t | (name, t) <- zip names types] ++ ")" ++ resultType)
     interface a = do
-      methods <- mapM (\(op, ty) -> (\s -> line (methodName op ++ s)) <$> signature ty) (C.abilityOperations a)
+      methods <- mapM (\(op, ty) -> (\s -> line (methodName op ++ s)) <$> signatureNamed (operationNames a op) ty) (C.abilityOperations a)
       pure (line ("// " ++ interfaceName a ++ " is the " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
         line ("type " ++ interfaceName a ++ " interface ") <> D.block 8 (D.joinWith D.hardline methods))
     codecs ty = do
@@ -249,7 +251,7 @@ productionStub datas a = do
     types <- mapM (Native.goDataType datas) args
     resultType <- if result == C.scalarType "Unit" then pure "" else (' ' :) <$> Native.goDataType datas result
     pure ("func (handler *" ++ productionName a ++ ") " ++ methodName op ++ "(" ++
-      intercalate ", " ["value" ++ show i ++ " " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ")" ++ resultType ++
+      intercalate ", " [name ++ " " ++ t | (name, t) <- zip (operationNames a op) types] ++ ")" ++ resultType ++
       " {\n\tpanic(" ++ show op ++ ")\n}\n")) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   resource <- traverse (Native.goDataType datas) (C.abilityResource a)
@@ -260,3 +262,9 @@ productionStub datas a = do
     intercalate ", " (map fst (C.abilityOperations a)) ++ ".\ntype " ++ productionName a ++ " " ++ fields ++ "\n\n" ++
     "// New" ++ productionName a ++ " makes the native handler the generated tests use.\nfunc New" ++ productionName a ++
     "(" ++ parameter ++ ") " ++ interfaceName a ++ " {\n\treturn &" ++ productionName a ++ made ++ "\n}\n\n" ++ intercalate "\n" methods)
+
+-- An operation's parameter names where a user writes or reads them: the
+-- interface and the production handler's stub (LawSpec.Naming). A generated
+-- handler's own methods keep positional names.
+operationNames :: C.Ability -> String -> [String]
+operationNames = operationParameterNames "go" ["handler"] "value"

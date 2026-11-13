@@ -4,12 +4,12 @@
 
 -spec price(binary()) -> -2147483648..2147483647.
 
-price(_Text) -> erlang:error({not_implemented, <<"example.orders::price">>}).
+price(_Sku) -> erlang:error({not_implemented, <<"example.orders::price">>}).
 
 -spec stock(binary()) -> -2147483648..2147483647.
 
-stock(_Text) -> erlang:error({not_implemented, <<"example.orders::stock">>}).
+stock(_Text1) -> erlang:error({not_implemented, <<"example.orders::stock">>}).
 
 -spec quote(binary()) -> -2147483648..2147483647.
 
-quote(_Text) -> erlang:error({not_implemented, <<"example.orders::quote">>}).
+quote(_Text1) -> erlang:error({not_implemented, <<"example.orders::quote">>}).

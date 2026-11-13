@@ -25,7 +25,7 @@
 -- A request can also ask for progress: each stage's time on standard error,
 -- as lines, as one line a terminal overwrites, or as a table when the
 -- request ends (see 'staged').
-module LawSpec.Memo (Table, CacheBackend (..), withCacheBackend, newTable, newPersistentTable, newTableByShow, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withRequest, withoutMemoization, buildIdentity, entryLocation, entryNameLength, temporaryName, CacheFailure (..), Progress (..), noProgress, staged) where
+module LawSpec.Memo (Table, CacheBackend (..), withCacheBackend, newTable, newPersistentTable, newTableByShow, newPersistentTableByShow, boundedShowWeight, memoized, memoizedState, withCacheDirectory, withRequest, withoutMemoization, unmemoized, buildIdentity, entryLocation, entryNameLength, temporaryName, CacheFailure (..), Progress (..), noProgress, staged) where
 
 import Control.Exception (SomeException, bracket, displayException, evaluate, onException, try)
 import Control.Monad (forM_, unless, when)
@@ -331,6 +331,20 @@ withoutMemoization action input =
       (writeIORef memoizationEnabled)
       (\_ -> let result = action input in evaluate (BL.length result) >> pure result)
 {-# NOINLINE withoutMemoization #-}
+
+-- | A value computed beside the memo tables: nothing it needs is read from
+-- one or recorded in one. The measure says how much of the value to compute
+-- inside the bracket; what it leaves unevaluated is memoized as usual. For a
+-- by-product of a request (an adapter's reference stub) whose entries no
+-- later request would look up.
+unmemoized :: (a -> Int) -> a -> a
+unmemoized measure value =
+  unsafePerformIO $
+    bracket
+      (atomicModifyIORef' memoizationEnabled (\before -> (False, before)))
+      (writeIORef memoizationEnabled)
+      (\_ -> evaluate (measure value) >> pure value)
+{-# NOINLINE unmemoized #-}
 
 -- | A structured emission chunk may request helpers or literals while it is
 -- lowered. Cache the full state transition, not just its document. Its

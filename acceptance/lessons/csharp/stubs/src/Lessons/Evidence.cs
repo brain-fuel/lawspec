@@ -12,13 +12,13 @@ using LawSpec.CSharp;
 public static class Evidence
 {
   /// <summary>(Int8 -> Bool)</summary>
-  public static bool IsWeekend(sbyte value0)
+  public static bool IsWeekend(sbyte d)
   {
     throw new NotImplementedException("not implemented: lessons.evidence::isWeekend");
   }
 
   /// <summary>(Int64 -> Int64)</summary>
-  public static long RoundToDollars(long value0)
+  public static long RoundToDollars(long int64_1)
   {
     throw new NotImplementedException("not implemented: lessons.evidence::roundToDollars");
   }

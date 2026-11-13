@@ -64,7 +64,12 @@ nativeSignature bits names units d = do
   ps <- mapM (Data.nativeType bits names []) [p | p <- parameters, not (isUnit p)]
   r <- if isUnit result then pure "Void" else Data.nativeType bits names [] result
   failure <- traverse (Data.nativeType bits names []) (declarationFailure d)
-  pure (handlers ++ zip [parameterName i | i <- [0 ..]] ps, r, failure, C.declarationAsync d)
+  -- A Unit parameter is not passed; the reference spelling numbers those
+  -- that are.
+  let named = case C.declarationParameters d of
+        C.PositionalParameters -> [parameterName i | i <- [0 ..]]
+        _ -> [n | (n, p) <- zip (parameterNames (map fst handlers) d) parameters, not (isUnit p)]
+  pure (handlers ++ zip named ps, r, failure, C.declarationAsync d)
 
 -- | A function's declaration: its signature, with its parameters on one
 -- line or one a line, and its body.

@@ -12,7 +12,7 @@ using LawSpec.CSharp;
 public static class Discounts
 {
   /// <summary>(Int64 -> (Int32 -> Int64))</summary>
-  public static long ApplyDiscount(long value0, int value1)
+  public static long ApplyDiscount(long int64_1, int int32_1)
   {
     throw new NotImplementedException("not implemented: lessons.discounts::applyDiscount");
   }

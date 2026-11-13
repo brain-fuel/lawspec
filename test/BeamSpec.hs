@@ -9,7 +9,7 @@ import Data.Either (isLeft)
 import LawSpec.Common
 import LawSpec.Frontend (compileCore)
 import LawSpec.Testing (finiteCases, planTesting, planTestingWith, Plan(..), PlannedUnit(..), PlannedProperty(..), GeneratorRequirement(..))
-import LawSpec.CoreEmit (emitPlanWithFormat, emitPlanWithOptions)
+import LawSpec.CoreEmit (emitPlanWithFormat, emitPlanWithOptions, positionalPlan)
 import LawSpec.TestManifest (unitTestPath)
 import qualified LawSpec.TestManifest as TestManifest
 import LawSpec.TestNames (unitTestNames)
@@ -549,7 +549,11 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         let user = filter ((== "user") . ownership)
         map artifactPath (user readable) `shouldBe` ["src/example_codec.erl"]
         map adapterReference (user readable) `shouldBe` map adapterReference (user compact)
-        map adapterReference (user readable) `shouldBe` map (Just . artifactContent) (user readable)
+        -- The baseline is the readable stub with the parameter names every
+        -- earlier release wrote. ref:DEC-generated-parameter-names
+        map adapterReference (user readable) `shouldBe`
+          either (const []) (map (Just . artifactContent) . user)
+            (compileCore 64 defaultGeneration [Source "beam.lawspec" source] >>= planTesting >>= emitPlanWithFormat False "erlang" . positionalPlan)
       failure -> expectationFailure (show failure)
   -- ref:DEC-idiomatic-generated-types
   it "emits tuple constructors and exported types for recursive data" $ do

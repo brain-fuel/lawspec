@@ -5,7 +5,7 @@ defmodule Example.HandlerContext do
           -2_147_483_648..2_147_483_647
         ) :: integer()
 
-  def roundtrip(_counter_handler, _int32) do
+  def roundtrip(_counter_handler, _int32_1) do
     raise "Not implemented: example.handlerContext::roundtrip"
   end
 
@@ -14,13 +14,13 @@ defmodule Example.HandlerContext do
           -2_147_483_648..2_147_483_647
         ) :: integer()
 
-  def async_roundtrip(_counter_handler, _int32) do
+  def async_roundtrip(_counter_handler, _int32_1) do
     raise "Not implemented: example.handlerContext::asyncRoundtrip"
   end
 
   @spec public_probe(:ok) :: boolean()
 
-  def public_probe(_unit) do
+  def public_probe(_unit_1) do
     raise "Not implemented: example.handlerContext::publicProbe"
   end
 
@@ -28,7 +28,7 @@ defmodule Example.HandlerContext do
 
   def counter_handler() do
     %LawSpec.Abilities.Example.HandlerContext.Counter{
-      bump: fn _int32 ->
+      bump: fn _int32_1 ->
         raise "Not implemented: example.handlerContext::ability::Counter.bump"
       end,
       current: fn -> raise "Not implemented: example.handlerContext::ability::Counter.current" end

@@ -382,7 +382,7 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
       Left ds -> expectationFailure (show ds)
       Right files -> do
         let contents = concatMap artifactContent files
-        contents `shouldSatisfy` isInfixOf "value0: lawspec.data.Tree<kotlin.Byte>"
+        contents `shouldSatisfy` isInfixOf "tree1: lawspec.data.Tree<kotlin.Byte>"
         contents `shouldSatisfy` isInfixOf "LawSpecKotlinStrategies.generator"
         contents `shouldSatisfy` isInfixOf "LawSpecDataCodecs.treeCodec"
         contents `shouldSatisfy` isInfixOf "SCHEMA.validate"

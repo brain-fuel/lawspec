@@ -7,13 +7,13 @@
     -2147483648..2147483647
 ) -> -2147483648..2147483647.
 
-refund(_GatewayHandler, _Int32) -> erlang:error({not_implemented, <<"example.shop::refund">>}).
+refund(_GatewayHandler, _Int32_1) -> erlang:error({not_implemented, <<"example.shop::refund">>}).
 
 -spec log_handler() -> lawspec_abilities_example_shop:log().
 
 log_handler() ->
     #{
-        note => fun(_Text) ->
+        note => fun(_Text1) ->
             erlang:error({not_implemented, <<"Not implemented: example.shop::ability::Log.note">>})
         end
     }.
@@ -27,7 +27,7 @@ store_int32_handler() ->
                 {not_implemented, <<"Not implemented: example.shop::ability::Store(Int32).load">>}
             )
         end,
-        save => fun(_Int32) ->
+        save => fun(_Int32_1) ->
             erlang:error(
                 {not_implemented, <<"Not implemented: example.shop::ability::Store(Int32).save">>}
             )
@@ -43,7 +43,7 @@ store_text_handler() ->
                 {not_implemented, <<"Not implemented: example.shop::ability::Store(Text).load">>}
             )
         end,
-        save => fun(_Text) ->
+        save => fun(_Text1) ->
             erlang:error(
                 {not_implemented, <<"Not implemented: example.shop::ability::Store(Text).save">>}
             )

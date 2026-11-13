@@ -8,28 +8,28 @@ import lawspec/data
 
 pub fn elapsed(
   _clock_handler: abilities_lawspec_time.Clock,
-  _int32: Int,
+  _int32_1: Int,
 ) -> data.Duration {
   panic as "Not implemented: example.builtins::elapsed"
 }
 
 pub fn token(
   _secure_random_handler: abilities_lawspec_randomness.SecureRandom,
-  _int32: Int,
+  _int32_1: Int,
 ) -> BitArray {
   panic as "Not implemented: example.builtins::token"
 }
 
 pub fn listening(
   _ports_handler: abilities_lawspec_host.Ports,
-  _int32: Int,
+  _int32_1: Int,
 ) -> Bool {
   panic as "Not implemented: example.builtins::listening"
 }
 
 pub fn charge(
   _log_handler: abilities_lawspec_logging.Log,
-  _int32: Int,
+  _int32_1: Int,
 ) -> Bool {
   panic as "Not implemented: example.builtins::charge"
 }

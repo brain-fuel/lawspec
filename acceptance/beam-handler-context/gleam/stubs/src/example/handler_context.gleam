@@ -4,25 +4,25 @@ import lawspec/abilities/example/handler_context as abilities_example_handler_co
 
 pub fn roundtrip(
   _counter_handler: abilities_example_handler_context.Counter,
-  _int32: Int,
+  _int32_1: Int,
 ) -> Int {
   panic as "Not implemented: example.handlerContext::roundtrip"
 }
 
 pub fn async_roundtrip(
   _counter_handler: abilities_example_handler_context.Counter,
-  _int32: Int,
+  _int32_1: Int,
 ) -> Int {
   panic as "Not implemented: example.handlerContext::asyncRoundtrip"
 }
 
-pub fn public_probe(_unit: Nil) -> Bool {
+pub fn public_probe(_unit_1: Nil) -> Bool {
   panic as "Not implemented: example.handlerContext::publicProbe"
 }
 
 pub fn counter_handler() -> abilities_example_handler_context.Counter {
   abilities_example_handler_context.counter(
-    fn(_int32) {
+    fn(_int32_1) {
       panic as "Not implemented: example.handlerContext::ability::Counter.bump"
     },
     fn() {

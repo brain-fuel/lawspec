@@ -88,6 +88,10 @@ The presentation hash covers what the semantic hash leaves out: names,
 identity spellings, docs and spans. It is a Merkle hash over the presentation
 hashes of what the node reaches. It changes exactly when one of those changes.
 
+The names a signature gives its parameters are presentation too: `add :: (a ::
+Int32) -> (b :: Int32) -> Int32` and `add :: Int32 -> Int32 -> Int32` have one
+semantic hash. ref:DEC-generated-parameter-names
+
 A compiler memo whose result shows names, such as a plan or emitted code, is
 keyed by both hashes. A pure law's execution result or proof can retain its
 semantic identity when only presentation changes, provided its other execution

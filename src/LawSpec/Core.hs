@@ -43,6 +43,20 @@ functionType :: Type -> ([Type], Type)
 functionType (Arrow a b) = let (as,r) = functionType b in (a:as,r)
 functionType t = ([],t)
 
+-- | The names a signature gives its parameters, by position: add ::
+-- (a :: Int32) -> Int32 -> Int32 declares a for the first and none for the
+-- second, which generated code then names from its type (LawSpec.Naming).
+-- The result's name is not kept: it is the spec's alone.
+-- PositionalParameters asks for the names every release before 0.34 wrote
+-- (value0, value1). The compiler emits an adapter's canonical reference
+-- with them, so the digest a host compares never depends on a parameter's
+-- name. ref:DEC-generated-parameter-names
+data ParameterNames = DeclaredParameters [Maybe String] | PositionalParameters deriving (Eq, Ord, Show, Generic)
+
+-- | No parameter is named.
+unnamedParameters :: ParameterNames
+unnamedParameters = DeclaredParameters []
+
 -- | A bound variable keeps both its resolved identity, for evaluation, and its
 -- written name, so generated code and messages use what the user wrote.
 data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type } deriving (Eq, Show, Generic)
@@ -51,10 +65,12 @@ data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type 
 -- declarationUses is its ability row: the abilities it needs a handler for,
 -- declared on an adapter and inferred for a definition. A native adapter
 -- receives one handler per ability, in this order, before its arguments.
-data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool, declarationUses :: [AbilityRef], declarationSource :: Maybe (String,String), declarationTemplate :: Maybe (Id,String) } deriving (Eq, Show, Generic)
+-- declarationParameters is how generated code names its parameters: the
+-- names its signature declares. They are presentation, never identity.
+data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool, declarationUses :: [AbilityRef], declarationSource :: Maybe (String,String), declarationTemplate :: Maybe (Id,String), declarationParameters :: ParameterNames } deriving (Eq, Show, Generic)
 pattern Declaration :: Id -> String -> Type -> Origin -> Declaration
-pattern Declaration identity name ty origin <- MkDeclaration identity name ty origin _ _ _ _
-  where Declaration identity name ty origin = MkDeclaration identity name ty origin False [] Nothing Nothing
+pattern Declaration identity name ty origin <- MkDeclaration identity name ty origin _ _ _ _ _
+  where Declaration identity name ty origin = MkDeclaration identity name ty origin False [] Nothing Nothing unnamedParameters
 {-# COMPLETE Declaration #-}
 -- | A definition supplies a checked body rather than a user-owned adapter.
 -- Calls retain resolved declaration identities; the total-definition audit
@@ -221,7 +237,14 @@ data Ability = Ability
   -- ability A with T: each case that runs A's native handler makes it with
   -- the case's T, a resource every such handler of the case shares.
   , abilityResource :: Maybe Type
+  -- The names each operation's signature gives its parameters, by
+  -- operation: presentation, as a declaration's are.
+  , abilityOperationParameters :: [(String, ParameterNames)]
   } deriving (Eq, Show, Generic)
+
+-- | The names an ability's operation declares for its parameters.
+operationParameters :: Ability -> String -> ParameterNames
+operationParameters ability operation = maybe unnamedParameters id (lookup operation (abilityOperationParameters ability))
 
 -- A unit's ability, as its operations refer to it.
 abilityInstance :: Ability -> AbilityRef
@@ -309,7 +332,7 @@ failAbilityId = Id "lawspec::ability::Fail"
 failAbility :: Ability
 failAbility = Ability failAbilityId "Fail" [Id "Fail::e"]
   [("raise", Arrow (TypeVariable (Id "Fail::e")) (TypeVariable (Id "Fail::raise::a")))]
-  (GeneratedFrom failAbilityId) [] Nothing [] Nothing
+  (GeneratedFrom failAbilityId) [] Nothing [] Nothing []
 
 -- A stable key for an ability instance, the same on every target: its
 -- identity, then its type arguments' keys in parentheses.

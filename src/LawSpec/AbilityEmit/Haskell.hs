@@ -14,6 +14,7 @@ import Control.Monad (forM)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
+import LawSpec.Naming (parameterNames)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.HaskellData as Native
 import qualified LawSpec.HaskellDefinitions as Definitions
@@ -186,8 +187,13 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
 productionStub :: [C.DataDeclaration] -> C.Ability -> Either String D.Doc
 productionStub datas a = do
   let name = productionFunction a
-      fields = [ ("Abilities." ++ fieldName a op, (if null args then id else lambda (replicate (length args) "_")) (call "P.error" [H.string op]))
+      fields = [ ("Abilities." ++ fieldName a op, (if null args then id else lambda (stubArguments op args)) (call "P.error" [H.string op]))
                | (op, ty) <- C.abilityOperations a, let (args, _) = C.functionType ty]
+      -- A stub ignores its arguments: each is named as the operation
+      -- declares, or from its type (LawSpec.Naming), after an underscore.
+      stubArguments op args = case C.operationParameters a op of
+        C.PositionalParameters -> replicate (length args) "_"
+        declared -> map ('_' :) (parameterNames "haskell" [] "value" declared args)
   _ <- mapM (Native.haskellDataType datas . snd . C.functionType . snd) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   made <- traverse (Native.haskellDataType datas) (C.abilityResource a)

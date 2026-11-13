@@ -2,7 +2,7 @@
 defmodule Example.Remote do
   @spec native_probe(:ok) :: boolean()
 
-  def native_probe(_unit) do
+  def native_probe(_unit_1) do
     raise "Not implemented: example.remote::nativeProbe"
   end
 
@@ -10,7 +10,7 @@ defmodule Example.Remote do
 
   def offset_handler() do
     %LawSpec.Abilities.Example.Remote.Offset{
-      shift: fn _int32 -> raise "Not implemented: example.remote::ability::Offset.shift" end
+      shift: fn _int32_1 -> raise "Not implemented: example.remote::ability::Offset.shift" end
     }
   end
 end

@@ -55,6 +55,10 @@ channel report of type Report
 channel report :: Report
 ```
 
+A name on a signature's parameter is the parameter's name in generated code,
+on every target; see [parameter names](../native-bindings.md#parameter-names).
+A name on its result (`-> (total :: Int32)`) is for the spec alone.
+
 ## Blocks and endings
 
 | Construct | Required ending |

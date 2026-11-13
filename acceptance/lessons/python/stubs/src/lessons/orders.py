@@ -5,7 +5,7 @@ import lawspec_schema as _schema
 import lawspec_runtime as ls
 
 
-# LawSpec argument 0: lessons.orders::type::Drink
+# LawSpec argument drink_1: lessons.orders::type::Drink
 # LawSpec result: Int64
-def price(value0: data.Drink) -> int:
+def price(drink_1: data.Drink) -> int:
     raise NotImplementedError("price")

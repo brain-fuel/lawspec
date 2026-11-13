@@ -62,14 +62,14 @@ emitInterfaces lang layout bits declarations units
             let comment = "/// " ++ op
             pure $ case lang of
               FSharp ->
-                let signature = (if null ps then "unit" else intercalate " * " ["value" ++ show i ++ ": " ++ p | (i, p) <- zip [0 :: Int ..] ps]) ++ " -> " ++ r
+                let signature = (if null ps then "unit" else intercalate " * " [name ++ ": " ++ p | (name, p) <- zip (operationParameterNames lang a op) ps]) ++ " -> " ++ r
                     declaration = "abstract " ++ Effects.operationMember op ++ ":"
                     -- A signature too long for its line goes under its name.
                     codeLines = if 4 + L.columns (declaration ++ " " ++ signature) <= L.pageWidth then [declaration ++ " " ++ signature]
                       else [declaration, "    " ++ signature]
                 in (length codeLines > 1, D.text comment <> D.hardline <> D.joinWith D.hardline (map D.text codeLines))
               CSharp -> (False, D.text ("/// <summary>" ++ op ++ "</summary>") <> D.hardline <> D.text (csResult r ++ " " ++ Effects.operationMember op ++ "(" ++
-                intercalate ", " [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps] ++ ");"))
+                intercalate ", " [p ++ " " ++ name | (name, p) <- zip (operationParameterNames lang a op) ps] ++ ");"))
           let name = "I" ++ pascal (N.interfaceName a)
               doc = "The native interface of " ++ N.displayName a ++ " (" ++ C.abilityKey (C.abilityInstance a) ++ ")."
           pure $ case lang of
@@ -259,7 +259,7 @@ productionStubs CSharp bits declarations unit = do
   fmap concat $ forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do
     members <- forM (C.abilityOperations a) $ \(op, ty) -> do
       (ps, r) <- operationSignature CSharp bits names a (op, ty)
-      let params = [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps, ps /= ["Unit"]]
+      let params = [p ++ " " ++ name | (name, p) <- zip (operationParameterNames CSharp a op) ps, ps /= ["Unit"]]
           message = "not implemented: " ++ C.abilityKey (C.abilityInstance a) ++ "." ++ op
       pure (D.text ("public " ++ (if r == "Unit" then "void" else r) ++ " " ++ Effects.operationMember op ++ "(" ++ intercalate ", " params ++ ") =>") <>
         D.nest 4 (D.hardline <> D.text ("throw new NotImplementedException(" ++ stringLiteral CSharp message ++ ");")))
@@ -276,7 +276,7 @@ productionStubs lang bits declarations unit = do
   forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do
     members <- forM (C.abilityOperations a) $ \(op, ty) -> do
       (ps, _) <- operationSignature lang bits names a (op, ty)
-      let values = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] ps, ps /= ["unit"]]
+      let values = [name | (name, _) <- zip (operationParameterNames lang a op) ps, ps /= ["unit"]]
           message = "not implemented: " ++ C.abilityKey (C.abilityInstance a) ++ "." ++ op
       pure (L.function 8 ("member _." ++ Effects.operationMember op ++ "(" ++ intercalate ", " [if null ps then "" else v | v <- values] ++ ")") [] Nothing
         (L.App "failwith" [L.A (stringLiteral FSharp message)]))

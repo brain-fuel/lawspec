@@ -2,46 +2,46 @@
 defmodule Example.Workflows do
   @spec audit(LawSpec.Data.account()) :: boolean()
 
-  def audit(_account) do
+  def audit(_account_1) do
     raise "Not implemented: example.workflows::audit"
   end
 
   @spec waitlist(LawSpec.Data.signup_error()) ::
           {:left, LawSpec.Data.signup_error()} | {:right, LawSpec.Data.account()}
 
-  def waitlist(_signup_error) do
+  def waitlist(_signup_error_1) do
     raise "Not implemented: example.workflows::waitlist"
   end
 
   @spec check_stock(LawSpec.Data.order()) :: {:left, binary()} | {:right, LawSpec.Data.order()}
 
-  def check_stock(_order) do
+  def check_stock(_order_1) do
     raise "Not implemented: example.workflows::checkStock"
   end
 
   @spec check_credit(LawSpec.Data.order()) :: {:left, binary()} | {:right, LawSpec.Data.order()}
 
-  def check_credit(_order) do
+  def check_credit(_order_1) do
     raise "Not implemented: example.workflows::checkCredit"
   end
 
   @spec check_name(LawSpec.Data.signup()) ::
           {:left, LawSpec.Data.signup_error()} | {:right, LawSpec.Data.signup()}
 
-  def check_name(_signup) do
+  def check_name(_signup_1) do
     raise "Not implemented: example.workflows::checkName"
   end
 
   @spec check_age(LawSpec.Data.signup()) :: {:left, binary()} | {:right, LawSpec.Data.signup()}
 
-  def check_age(_signup) do
+  def check_age(_signup_1) do
     raise "Not implemented: example.workflows::checkAge"
   end
 
   @spec open_account(LawSpec.Data.signup()) ::
           {:left, LawSpec.Data.signup_error()} | {:right, LawSpec.Data.account()}
 
-  def open_account(_signup) do
+  def open_account(_signup_1) do
     raise "Not implemented: example.workflows::openAccount"
   end
 end

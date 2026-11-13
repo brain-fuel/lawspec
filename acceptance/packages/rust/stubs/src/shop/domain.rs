@@ -4,8 +4,8 @@
 // LawSpec type: shop.domain::type::Currency -> (shop.domain::type::Money ->
 // shop.domain::type::Money)
 pub fn convert(
-    value0: crate::lawspec_data::ShopDomainCurrency,
-    value1: crate::lawspec_data::Money,
+    currency_1: crate::lawspec_data::ShopDomainCurrency,
+    money_1: crate::lawspec_data::Money,
 ) -> crate::lawspec_data::Money
 {
     todo!("shop.domain::convert")

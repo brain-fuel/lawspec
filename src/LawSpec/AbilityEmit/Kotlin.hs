@@ -12,6 +12,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames)
 import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.KotlinExpr as E
@@ -86,14 +87,14 @@ emit minify bits datas units = do
             kdoc 100 ("The abilities of " ++ C.idText (C.unitId u) ++ ": an interface for each, its spec handlers, and a recording of any handler of it.") <> D.hardline <>
             line ("object " ++ name ++ " ") <> D.block 4 body <> D.hardline
       pure (Artifact ("src/main/kotlin/" ++ intercalate "/" qualified ++ ".kt") (D.render layout source) "generated" "source")
-    signature op ty = do
+    signature a op ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.kotlinDataTypeDoc datas) args
       resultType <- if result == C.scalarType "Unit" then pure (line "Unit") else line . D.render D.Compact <$> Native.kotlinDataTypeDoc datas result
-      pure (line ("fun " ++ op) <> KotlinLayout.arguments [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
+      pure (line ("fun " ++ op) <> KotlinLayout.arguments [line (name ++ ": ") <> t | (name, t) <- zip (operationNames a op) types] <>
         line ": " <> resultType)
     interface a = do
-      methods <- mapM (\(op, ty) -> signature op ty) (C.abilityOperations a)
+      methods <- mapM (\(op, ty) -> signature a op ty) (C.abilityOperations a)
       pure (kdoc 96 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <> D.hardline <>
         line ("interface " ++ interfaceName a ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
     codec ty = Native.kotlinCodecReceiverIn ("SCHEMA", "MACHINE_BITS") (line "symbols") datas ty
@@ -104,6 +105,7 @@ emit minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       initialState <- case C.handlerState h of
@@ -117,13 +119,13 @@ emit minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         evaluate <- maybe (Left ("unresolved clause " ++ C.idText clause)) Right (lookup clause calls)
-        s <- signature op ty
+        s <- signature ability op ty
         let (args, result) = C.functionType ty
         argumentCodecs <- mapM codec args
         resultCodec <- codec result
         let arguments = line "symbols" : [line "state!!" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "LawSpecRuntime.absent(\"Unit\")"]
-               else [KotlinLayout.chain c [("encode", [line ("value" ++ show i)])] | (i, c) <- zip [0 :: Int ..] argumentCodecs])
+               else [KotlinLayout.chain c [("encode", [line (parameter ability op i)])] | (i, c) <- zip [0 :: Int ..] argumentCodecs])
             invocation = E.call evaluate arguments
             outcome = case C.handlerState h of
               Nothing -> [KotlinLayout.bind "result" invocation]
@@ -147,6 +149,7 @@ emit minify bits datas units = do
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       stateType <- traverse (jvmTypedType typed . fst) (C.handlerState h)
@@ -155,7 +158,7 @@ emit minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         function <- maybe (Left ("untyped clause " ++ C.idText clause)) (Right . KotlinLayout.escapedPath) (jvmTypedFunction typed clause)
-        s <- signature op ty
+        s <- signature ability op ty
         let (args, result) = C.functionType ty
         argumentCodecs <- mapM codec args
         typedCodecs <- mapM (jvmTypedCodec typed) args
@@ -165,8 +168,8 @@ emit minify bits datas units = do
         -- it can; otherwise through its codecs and the dynamic Value.
         let direct = jvmTypedNative typed
             argument i ty c t = case direct ty of
-              Just (fromNative, _) -> line (fromNative ++ "(value" ++ show i ++ ")")
-              Nothing -> E.call (t ++ ".decode") [KotlinLayout.chain c [("encode", [line ("value" ++ show i)])]]
+              Just (fromNative, _) -> line (fromNative ++ "(" ++ parameter ability op i ++ ")")
+              Nothing -> E.call (t ++ ".decode") [KotlinLayout.chain c [("encode", [line (parameter ability op i)])]]
             arguments = [line "symbols" | isContextual (jvmTypedPlan typed) clause] ++ [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lawspec.runtime.LawSpecFast.Unit.UNIT"]
                else [argument i ty c t | (i, (ty, (c, t))) <- zip [0 :: Int ..] (zip args (zip argumentCodecs typedCodecs))])
@@ -207,7 +210,7 @@ emit minify bits datas units = do
           resultType <- if result == C.scalarType "Unit" then pure (line "Unit") else Native.kotlinDataTypeDoc datas result
           failureType <- Native.kotlinDataTypeDoc datas failure
           failureCodec <- codec failure
-          let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+          let values = take (length args) (operationNames a op)
               call = op ++ "(" ++ intercalate ", " values ++ ")"
           pure (kdoc 92 ("" ++ op ++ ", with the failure it raises as an Outcome rather than an exception.") <> D.hardline <>
             line ("fun try" ++ capitalizeFirst op) <> KotlinLayout.arguments [line (v ++ ": ") <> t | (v, t) <- zip values types] <>
@@ -226,11 +229,11 @@ emit minify bits datas units = do
     recording a = do
       let name = recordingName a
       methods <- mapM (\(op, ty) -> do
-        s <- signature op ty
+        s <- signature a op ty
         let (args, _) = C.functionType ty
         argumentCodecs <- mapM codec args
-        let logged = E.call "listOf" [KotlinLayout.chain c [("encode", [line ("value" ++ show i)])] | (i, c) <- zip [0 :: Int ..] argumentCodecs]
-            forward = "inner." ++ op ++ "(" ++ intercalate ", " ["value" ++ show i | i <- [0 .. length args - 1]] ++ ")"
+        let logged = E.call "listOf" [KotlinLayout.chain c [("encode", [line (parameter a op i)])] | (i, c) <- zip [0 :: Int ..] argumentCodecs]
+            forward = "inner." ++ op ++ "(" ++ intercalate ", " (take (length args) (operationNames a op)) ++ ")"
         pure (line "override " <> s <> line " " <> D.block 4 (D.joinWith D.hardline
           [ E.call "calls.add" [E.call "LawSpecRuntime.RecordedCall" [E.quoted op, logged]]
           , line ("return " ++ forward) ]))) (C.abilityOperations a)
@@ -250,7 +253,7 @@ productionStub datas u a = do
     types <- mapM (Native.kotlinDataTypeDoc datas) args
     resultType <- if result == C.scalarType "Unit" then pure (D.text "Unit") else D.text . D.render D.Compact <$> Native.kotlinDataTypeDoc datas result
     pure (KotlinLayout.equalsBody (D.text ("override fun " ++ op) <>
-      KotlinLayout.arguments [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
+      KotlinLayout.arguments [D.text (parameter a op i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
       D.text ": " <> resultType) (D.text ("TODO(" ++ show op ++ ")")))) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   made <- traverse (Native.kotlinDataTypeDoc datas) (C.abilityResource a)
@@ -258,3 +261,15 @@ productionStub datas u a = do
     D.text ("class " ++ productionName a) <> maybe mempty (\t -> D.text "(val resource: " <> t <> D.text ")") made <>
     D.text (" : " ++ abilitiesObject u ++ "." ++ interfaceName a ++ " ") <>
     D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
+
+-- An operation's parameter names (LawSpec.Naming), the same in the
+-- interface, the production stub and every generated handler, since Kotlin
+-- warns when an override renames a parameter. They stay clear of the names
+-- a generated handler's body uses.
+operationNames :: C.Ability -> String -> [String]
+operationNames = operationParameterNames "kotlin" (words "symbols state result pair inner calls failure resource") "value"
+
+parameter :: C.Ability -> String -> Int -> String
+parameter a op i = case drop i (operationNames a op) of
+  name : _ -> name
+  [] -> "value" ++ show i

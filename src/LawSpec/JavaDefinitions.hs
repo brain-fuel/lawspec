@@ -22,7 +22,7 @@ import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmPerformName)
 import qualified Data.Set as S
 import LawSpec.JvmNames (googleCase, jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved, jvmMethod)
-import LawSpec.Naming (readableDefinitionName)
+import LawSpec.Naming (readableDefinitionName, declarationParameterNames)
 
 -- | The adapters orchestrations call, with their units.
 orchestratedAdapters :: [Unit] -> [(Id, (Id, Declaration))]
@@ -188,10 +188,10 @@ emitDefinitions style layout bits declarations units = do
           nativeArgs <- mapM (Native.javaDataTypeDoc declarations) args
           nativeResult <- Native.javaDataTypeDoc declarations result
           let declaration = definitionDeclaration d
-              parameters = D.text "Map<String, Object> symbols" : [ty <> D.text (" value" ++ show i) | (i, ty) <- zip [0::Int ..] nativeArgs]
+              parameters = D.text "Map<String, Object> symbols" : [ty <> D.text (" " ++ parameter) | (parameter, ty) <- zip (apiParameters [] declaration) nativeArgs]
           pure (J.block (J.signature "public static " nativeResult (apiName declaration) parameters)
             [J.returned (E.call toNative [E.call function
-              [E.call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]])])
+              [E.call fromNative [D.text parameter] | (parameter, (fromNative, _)) <- zip (apiParameters [] declaration) conversions]])])
       | otherwise = nativeDynamic d
     -- A definition's method: its name as Google Java Style writes it
     -- (nOfStack is nofStack).
@@ -213,7 +213,7 @@ emitDefinitions style layout bits declarations units = do
       let handlers = [ (ability, lowerFirst (interfaceName a), abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "Map<String, Object> symbols" : [D.text (iface ++ " " ++ name) | (_, name, iface) <- handlers] ++
-            [ty <> D.text (" value" ++ show i) | (i,ty) <- zip [0::Int ..] nativeArgs]
+            [ty <> D.text (" " ++ parameter) | (parameter,ty) <- zip (apiParameters [name | (_, name, _) <- handlers] declaration) nativeArgs]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [E.call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
@@ -221,7 +221,7 @@ emitDefinitions style layout bits declarations units = do
             | not (null handlers)]
           signature = J.signature "public static " nativeResult (apiName declaration) parameters
           input i codec = [assign ("codec" ++ show i) codec,
-            D.text ("var argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ");")]
+            D.text ("var argument" ++ show i ++ " = codec" ++ show i ++ ".encode(" ++ (apiParameters [name | (_, name, _) <- handlers] declaration !! i) ++ ");")]
           invocation = E.call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
           body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" invocation,
@@ -500,3 +500,12 @@ freshenShadowed = go S.empty
           let renamed = Id (idText (binderId binder) ++ "::shadow::" ++ show (S.size scope))
           in (binder { binderId = renamed }, renameLocal (binderId binder) renamed body)
       | otherwise = (binder, body)
+
+-- A definition's parameters in its native API: its binders' names, or ones
+-- made from their types (LawSpec.Naming), clear of the handlers it takes
+-- and of the names its body binds.
+apiParameters :: [String] -> Declaration -> [String]
+apiParameters handlers declaration = declarationParameterNames "java"
+  (handlers ++ words "symbols result resultCodec context failure error" ++
+    concat [["codec" ++ show i, "argument" ++ show i] | i <- [0 .. length (fst (functionType (declarationType declaration)))]])
+  "value" declaration

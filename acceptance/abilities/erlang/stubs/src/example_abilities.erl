@@ -4,13 +4,14 @@
 
 -spec charge(lawspec_abilities_example_abilities:gateway(), -2147483648..2147483647) -> boolean().
 
-charge(_GatewayHandler, _Int32) -> erlang:error({not_implemented, <<"example.abilities::charge">>}).
+charge(_GatewayHandler, _Int32_1) ->
+    erlang:error({not_implemented, <<"example.abilities::charge">>}).
 
 -spec gateway_handler() -> lawspec_abilities_example_abilities:gateway().
 
 gateway_handler() ->
     #{
-        authorize => fun(_Int32) ->
+        authorize => fun(_Int32_1) ->
             erlang:error(
                 {
                     not_implemented,
@@ -18,7 +19,7 @@ gateway_handler() ->
                 }
             )
         end,
-        capture => fun(_Int32) ->
+        capture => fun(_Int32_1) ->
             erlang:error(
                 {
                     not_implemented,
