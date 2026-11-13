@@ -4,7 +4,7 @@ unit example.vacuity
 -- says nothing about the claim, so each law's tests count the cases that
 -- reach it (see docs/reference/refinements.md, "Guards and reach").
 
-type Offer is a record{
+type Proposal is a record{
 
     code :: Text
     amount :: Int32}
@@ -25,8 +25,8 @@ end mapping
 
 shout :: (name :: Text) -> Text
 abbreviate :: (stage :: Stage) -> Text
-accepts :: (offer :: Offer) -> Bool
-describe :: (offer :: Offer) -> Text
+accepts :: (offer :: Proposal) -> Bool
+describe :: (offer :: Proposal) -> Text
 keep :: (key :: Text) -> Text
 
 -- A regex guard on a quantified input: the compiler reads the guard and
@@ -44,10 +44,10 @@ end law
 -- generated tests are reported vacuous.
 law "|an accepted offer is described by its code| is
   definition :
-    for all (offer :: Offer) => accepts offer implies describe offer = offer.code end for all
+    for all (offer :: Proposal) => accepts offer implies describe offer = offer.code end for all
   end definition
   example "|a well-formed offer| :
-    offer = Offer record{ code = "OFFER-2026-AB" , amount = 5}
+    offer = Proposal record{ code = "OFFER-2026-AB" , amount = 5}
     expect describe offer = "OFFER-2026-AB"
   end example
 end law

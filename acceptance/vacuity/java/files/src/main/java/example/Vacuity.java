@@ -11,11 +11,11 @@ public final class Vacuity {
   }
 
   // Accepts only codes such as OFFER-2026-AB: no random record has one.
-  public static boolean accepts(lawspec.data.Offer value0) {
+  public static boolean accepts(lawspec.data.Proposal value0) {
     return value0.code().matches("OFFER-[0-9]{4}-[A-Z]{2}") && value0.amount() > 0;
   }
 
-  public static String describe(lawspec.data.Offer value0) {
+  public static String describe(lawspec.data.Proposal value0) {
     return value0.code();
   }
 
