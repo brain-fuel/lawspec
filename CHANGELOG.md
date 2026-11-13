@@ -52,6 +52,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `unknown constructor: Either::Left`.
 - "wrong constructor arity" says how many values the constructor takes and,
   when too few were given, how to pass it as a function.
+- A law with a universal quantifier nested inside its definition
+  (`(for all … end for all) and q`), or the denial of an existential, over a
+  domain with no complete finite cover is decided by bounded sampling and can
+  never pass. `check`, `generate` and `test` now warn
+  (`quantifier-decided-by-sampling`) and say how to hoist it; `explain` says
+  so in every view; the wire law carries `sampledQuantifiers`. Evidence
+  statuses are unchanged.
 - One command compiles once. The advice in `check` and `generate` ran with no
   cache directory, which made the launcher start a new compiler instance and
   compile the project again, and a second time when the command went back to

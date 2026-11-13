@@ -1232,6 +1232,7 @@ explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name"
          , ("inputs", ["Inputs: " <> T.intercalate "; " quantifiers | not (null quantifiers)])
          , ("restrictions", ["Restrictions: " <> T.intercalate " and " restrictions | not (null restrictions)])
          , ("statement", splitLines (devProposition p scope (field "assertion" law)))
+         , ("sampling", sampling Dev)
          , ("source", ["Source: " <> str "file" location <> ":" <> jsString (field "line" location) <> ":" <> jsString (field "column" location)])
          , ("examples", ("Examples: " <> T.pack (show (length examples))) : concatMap (exampleLines p scope) examples)
          , ("native-evidence", concatMap (splitLines . nativeEvidenceText) [e | e <- evidence, not (isNull (field "nativeEvidence" e))]) ]
@@ -1247,7 +1248,8 @@ explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name"
                          in r' <> " ⇒ " <> (if strength <= mImplies then "(" <> formula <> ")" else formula)
       in [ ("title", ["Law: " <> words' (str "name" law)])
          , ("quantifiers", ["∀ " <> T.intercalate ", " binders <> "." | not (null binders)])
-         , ("formula", [if null binders then guarded else "  " <> guarded]) ]
+         , ("formula", [if null binders then guarded else "  " <> guarded])
+         , ("sampling", sampling Math) ]
     -- eng: the law's name, what it is for, then the rule in short lines.
     engSections =
       let engTerms = terms p Eng
@@ -1261,7 +1263,25 @@ explainOne p view evidenceRows law = Explanation view (str "id" law) (str "name"
          , ("description", [l | Just t <- [strField "description" law], not (T.null t), l <- splitLines t])
          , ("inputs", header)
          , ("statement", if null header then statement else map ("  " <>) statement)
+         , ("sampling", sampling Eng)
          , ("reason", ["Reason: " <> t | Just t <- [strField "rationale" law], not (T.null t)]) ]
+    -- A quantifier inside the statement that generated tests decide by
+    -- sampling (law.sampledQuantifiers): said in each register, because such
+    -- a law cannot pass as written.
+    sampling register =
+      [ case register of
+          Eng -> "Note: the tests decide \"" <> (if universal then "for every " else "there is no ") <> name
+            <> "\" by trying sample values. A sample can show it false, never true, so this law cannot pass as written."
+            <> " Write \"for every " <> name <> "\" at the start of the law instead."
+          Math -> (if universal then "∀ " else "¬∃ ") <> name <> " ∈ " <> typeName p Math (field "type" binder)
+            <> " is decided by bounded sampling: refutable, never established."
+          Dev -> "Decided by sampling: " <> (if universal then "for all (" else "not there exists (") <> name <> " of type "
+            <> typeName p Dev (field "type" binder) <> ") is nested in the definition; bounded search can refute it and never establish it"
+            <> " (quantifier-search-incomplete). Hoist it to the definition's prefix."
+      | s <- arr (field "sampledQuantifiers" law)
+      , let binder = field "binder" s
+            name = str "name" binder
+            universal = str "kind" s == "forall" ]
     -- A statement is a sentence: capitalized, ending with a full stop.
     finish [] = []
     finish (first : rest) =

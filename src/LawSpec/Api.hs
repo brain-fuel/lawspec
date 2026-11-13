@@ -140,6 +140,7 @@ dispatch bytes
                                   -- A refuted law keeps its row and fails the request.
                                   result files =
                                     withGoEmbeddingWarnings target method
+                                      $ withSamplingWarnings
                                       $ withAuthoring syntax core
                                       $ withRefutations (refutations core obligations)
                                       $ (if matchWarningsRequested then withMatchWarnings syntax else id)
@@ -403,6 +404,31 @@ dispatch bytes
           existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
        in Object (if null rows then response else KM.insert "warnings" (toJSON (existing ++ rows)) response)
     withGoEmbeddingWarnings _ _ response = response
+    -- A scoped quantifier that bounded sampling can refute and never
+    -- establish (law.sampledQuantifiers) is reported when the law is
+    -- compiled, before a generated test fails with
+    -- quantifier-search-incomplete. A warning: the law still compiles and its
+    -- evidence is unchanged.
+    withSamplingWarnings (Object response) =
+      let rows =
+            [ object
+                [ "code" .= ("quantifier-decided-by-sampling" :: String),
+                  "severity" .= ("warning" :: String),
+                  "at" .= fromMaybe Null (KM.lookup "location" law),
+                  "message" .= samplingWarning (text "owner" law ++ "::" ++ text "name" law) kind negated (text "name" binder)
+                ]
+            | Just (Array laws) <- [KM.lookup "laws" response],
+              Object law <- toList laws,
+              Just (Array sampled) <- [KM.lookup "sampledQuantifiers" law],
+              Object quantifier <- toList sampled,
+              Just (Object binder) <- [KM.lookup "binder" quantifier],
+              let kind = text "kind" quantifier
+                  negated = KM.lookup "negated" quantifier == Just (Bool True)
+            ]
+          text key fields = case KM.lookup key fields of Just (String value) -> T.unpack value; _ -> ""
+          existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
+       in Object (if null rows then response else KM.insert "warnings" (toJSON (existing ++ rows)) response)
+    withSamplingWarnings response = response
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o == Just (Bool True)
       _ -> False
@@ -572,6 +598,19 @@ verificationKeys (Just config) entries = [entry {entryKey = digestHex (digestStr
 plannedCore :: C.Program -> Either [Diagnostic] Plan -> C.Program
 plannedCore core (Right plan) = core {C.programUnits = map plannedUnit (plannedUnits plan)}
 plannedCore core _ = core
+
+-- | Why a scoped quantifier cannot be established by generated tests, and the
+-- rewrite that makes it a generated input.
+samplingWarning :: String -> String -> Bool -> String -> String
+samplingWarning law kind negated name =
+  "law " ++ law ++ ": the quantifier \"" ++ written ++ "\" is nested inside the definition"
+    ++ (if negated then ", under a negation" else "")
+    ++ ", so generated tests decide it by bounded sampling. Sampling can refute it and can never establish it:"
+    ++ " when no counterexample is found the result is unknown and the test fails with quantifier-search-incomplete."
+    ++ " Move it to the front of the definition (for all (" ++ name ++ " of type ...) => ... end for all),"
+    ++ " where " ++ name ++ " becomes a generated input of the law"
+    ++ (if kind == "forall" then "; a conjunct beside it moves inside its body." else "; state the claim as a universal there.")
+  where written = (if kind == "forall" then "for all " else "there exists ") ++ name
 
 withSources :: [Source] -> Value -> Value
 withSources sources (Object o) = Object (KM.insert "formattedSources" (toJSON sources) o)

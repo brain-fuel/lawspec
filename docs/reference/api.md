@@ -468,6 +468,14 @@ still reported in `evidence`; a configured candidate is never itself evidence.
 A failed unbounded candidate yields `incomplete`, and native execution reports
 `quantifier-search-incomplete`. Finite fallback can still establish a result.
 
+A universal quantifier nested inside a law's definition, or the denial of an
+existential, over a domain with no complete finite cover can only be refuted
+by its samples. A response that carries the laws then adds a
+`quantifier-decided-by-sampling` warning that names the law and the bound
+variable, and the wire law lists each such quantifier under
+`sampledQuantifiers` (`kind`, `binder`, `negated`). The warning changes no
+evidence status.
+
 Configured scoped strategies appear in `law.harness.searches`, each with a
 `binder` identity, normalized lexical `path`, `strategy` name and typed `draw`.
 Outer `law.harness.strategies` entries also retain their typed draws. Draws

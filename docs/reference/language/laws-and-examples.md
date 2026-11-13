@@ -42,6 +42,24 @@ more tightly than disjunction; `implies` binds least tightly and associates to
 the right. See the [prelude reference](../prelude-algebra.md) for the expanded
 obligations. Line breaks do not combine requirements.
 
+The `for all` that opens a definition names the law's inputs: tests generate
+them. A quantifier written inside the definition is decided where it stands.
+Over a type with few values (`Bool`, a small union) every value is tried.
+Over any other type the tests can only sample, and a sample can refute a
+`for all` but never establish it, so the case ends as
+`quantifier-search-incomplete` and the law cannot pass:
+
+```text
+(for all (name :: Text) => valid name end for all) and ready     -- sampled; warned
+for all (name :: Text) => valid name and ready end for all       -- name is an input
+```
+
+The compiler warns (`quantifier-decided-by-sampling`) and `lawspec explain`
+says so in every view. Move the quantifier to the front of the definition.
+The same holds for `not (there exists … end exists)`. A `there exists` in a
+positive position is different: one witness establishes it (see
+[rc1](rc1.md)).
+
 Equality is type-directed: `=` produces a `Bool` in a value context and an
 equality obligation in a law's proposition context. `==` remains available as
 a value comparison. All equality spellings retain the operand type's `Eq`

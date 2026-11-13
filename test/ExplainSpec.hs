@@ -219,6 +219,26 @@ test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref
         ["No matching law: example.refunds has no law flagged refund. Nearest: example.refunds::|an eligible flagged refund requires review|"]
       message "example.refund::an eligible flagged refund requires review" `shouldBe`
         ["No matching law: no unit example.refund has a law. Units with laws: example.refunds"]
+    it "warns that a nested universal is decided by sampling, and says so in every view" $ do
+      let nested body = object ["path" .= s "nested.lawspec", "content" .= T.unlines
+            ["unit example.nested", "law \"|nested| is", "  definition:", "    " <> body, "  end definition", "end law", "end unit"]]
+          api method body fields = fromMaybe (error "invalid API response") (decode (dispatch (encode (object
+            (["schemaVersion" .= (5 :: Int), "languageProfile" .= s "1.0-rc.2", "method" .= s method, "sources" .= [nested body]] ++ fields)))))
+          warnings body = [(str (get "code" w), str (get "message" w)) | w <- items (get "warnings" (api "check" body []))]
+          sampledText = "(for all (name :: Text) => prelude.length name >= 0 end for all) and 1 = 1"
+          explained view = str (get "text" (api "explain" sampledText ["view" .= s view]))
+      warnings sampledText `shouldBe`
+        [("quantifier-decided-by-sampling", "law example.nested::|nested|: the quantifier \"for all name\" is nested inside the definition, so generated tests decide it by bounded sampling. Sampling can refute it and can never establish it: when no counterexample is found the result is unknown and the test fails with quantifier-search-incomplete. Move it to the front of the definition (for all (name of type ...) => ... end for all), where name becomes a generated input of the law; a conjunct beside it moves inside its body.")]
+      -- A complete finite domain is decided, a positive existential can be
+      -- witnessed, and a prefix quantifier is a generated input.
+      warnings "(for all (flag :: Bool) => flag or not flag end for all) and 1 = 1" `shouldBe` []
+      warnings "(there exists (name :: Text) such that prelude.length name = 0 end exists) and 1 = 1" `shouldBe` []
+      warnings "for all (name :: Text) => prelude.length name >= 0 and 1 = 1 end for all" `shouldBe` []
+      map fst (warnings "not (there exists (name :: Text) such that prelude.length name < 0 end exists)") `shouldBe` ["quantifier-decided-by-sampling"]
+      explained "eng" `shouldSatisfy` T.isInfixOf "Note: the tests decide \"for every name\" by trying sample values. A sample can show it false, never true, so this law cannot pass as written."
+      explained "math" `shouldSatisfy` T.isInfixOf "∀ name ∈ Text is decided by bounded sampling: refutable, never established."
+      explained "dev" `shouldSatisfy` T.isInfixOf "Decided by sampling: for all (name of type Text) is nested in the definition"
+      str (get "text" (refund ["law" .= lawSelector])) `shouldSatisfy` (not . T.isInfixOf "sampl")
     it "presents host-completed native evidence in dev only, without changing any obligation" $ do
       let row = object ["declaration" .= s "example.refunds::law::|an eligible flagged refund requires review|", "stage" .= s "law"
                        , "status" .= s "property-tested", "reason" .= s "recorded"

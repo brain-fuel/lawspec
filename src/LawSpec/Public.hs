@@ -22,6 +22,9 @@ import LawSpec.Collections (collectionsUnit,canonicalCollectionValues,collection
 import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldOperation)
 import LawSpec.Discharge (budgeted)
 import qualified LawSpec.Typed.Plan as Typed
+import LawSpec.Core.Quantification (SampledQuantifier(..), sampledQuantifiers)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierCandidates)
+import LawSpec.Testing (finiteValuesWithRegistry)
 
 type Names = [(C.Id,String)]
 
@@ -352,7 +355,22 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]
         -- How its tests run: the harness plane, apart from the law itself.
         ,"harness" .= harnessView (names ++ logicalNames (C.propertyBody p)) (C.propertyHarness p)]++
-        ["parameters" .= map input (C.propertyParameters p) | not (null (C.propertyParameters p))])
+        ["parameters" .= map input (C.propertyParameters p) | not (null (C.propertyParameters p))] ++
+        -- Scoped quantifiers that generated tests decide by bounded sampling
+        -- and can never establish (LawSpec.Core.Quantification). Advice for
+        -- the author and for explain; no obligation or status reads it.
+        ["sampledQuantifiers" .=
+            [object ["kind" .= str (if sampledKind s == ForEvery then "forall" else "exists")
+                    ,"negated" .= sampledNegated s, "binder" .= binderView (sampledBinder s)] | s <- sampled p]
+          | not (null (sampled p))])
+    sampled p
+      | C.propertyInputDomain p /= UniversalDomain = []
+      | otherwise = case Types.makeRegistry programDataDeclarations of
+          Left _ -> []
+          Right registry ->
+            let limit = exhaustiveLimit (C.propertyGeneration p)
+            in sampledQuantifiers (finiteQuantifierCandidates programMachineBits limit
+                 (finiteValuesWithRegistry registry programMachineBits limit)) limit (C.propertyBody p)
     logicalNames claim = case claim of
       C.Quantified _ q body -> let b = C.quantifiedBinder q in (C.binderId b,C.binderName b) : logicalNames body
       C.Conjunction bodies -> concatMap logicalNames bodies

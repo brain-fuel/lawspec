@@ -5,7 +5,8 @@ module LawSpec.Core.Quantification
   ( lowerFiniteProposition, lowerWitnessProposition, lowerWitnessProof
   , lowerSearchProposition, lowerSearchProof
   , lowerFinitePropositionCandidates, lowerWitnessPropositionCandidates
-  , lowerSearchPropositionCandidates ) where
+  , lowerSearchPropositionCandidates
+  , SampledQuantifier(..), sampledQuantifiers ) where
 
 import Control.Monad (unless)
 import LawSpec.Common (Quantification(..))
@@ -14,6 +15,38 @@ import LawSpec.Scalar (Scalar(..))
 import Control.Monad.State.Strict (StateT, evalStateT, get, put, lift)
 import Data.List (intercalate)
 import LawSpec.Core.Search (Candidate(..), applyCandidate)
+
+-- | A scoped quantifier that bounded search can refute and never establish:
+-- its kind, its binder, and whether it stands under a negation.
+data SampledQuantifier = SampledQuantifier
+  { sampledKind :: Quantification, sampledBinder :: Binder, sampledNegated :: Bool }
+  deriving (Eq, Show)
+
+-- | The scoped quantifiers of a law body that 'lowerSearchPropositionCandidates'
+-- decides by sampling and that sampling can never establish: a universal in a
+-- positive position, or an existential under a negation, whose domain has no
+-- complete finite cover within the exhaustive limit. A law containing one
+-- reports quantifier-search-incomplete whenever no counterexample is found,
+-- so it cannot pass. An existential in a positive position is not listed: a
+-- witness establishes it. This reads the same domain function and the same
+-- limit as the lowering; it changes no plan and no evidence.
+sampledQuantifiers :: (Quantifier -> Either String (Maybe [Candidate])) -> Int -> Proposition -> [SampledQuantifier]
+sampledQuantifiers domain limit = fst . walk True
+  where
+    walk :: Bool -> Proposition -> ([SampledQuantifier], Integer)
+    walk _ (Equation _ _ _) = ([], 1)
+    walk positive (Implication _ body) = walk positive body
+    walk positive (Conjunction bodies) = let results = map (walk positive) bodies in (concatMap fst results, sum (map snd results))
+    walk positive (Negation body) = walk (not positive) body
+    walk positive (Quantified kind q body) = case domain q of
+      Right (Just []) -> ([], 1)
+      Right available ->
+        let (inner, cost) = walk positive body
+            total = maybe (toInteger limit + 1) ((max 1 cost *) . toInteger . length) available
+            complete = total <= toInteger limit
+            unprovable = (kind == ForEvery) == positive
+        in ([SampledQuantifier kind (quantifiedBinder q) (not positive) | not complete, unprovable] ++ inner, total)
+      Left _ -> ([], 1)
 
 lowerFiniteProposition :: (Quantifier -> Either String (Maybe [Expr])) -> Int -> Id -> Proposition -> Either String Proposition
 lowerFiniteProposition domain = lowerFinitePropositionCandidates (candidateDomain domain)
