@@ -14,6 +14,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 const exec = promisify(execFile),
@@ -32,10 +33,13 @@ const base = path.join(
 );
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
-const env = {
-  ...process.env,
-  npm_config_cache: path.join(repo, '.artifacts/npm-cache'),
-};
+// npm's cache is shared by every worktree (LAWSPEC_DEV_CACHE).
+const devCache = path.resolve(
+  repo,
+  process.env.LAWSPEC_DEV_CACHE ||
+    path.join(os.homedir(), '.cache/lawspec-dev'),
+);
+const env = {...process.env, npm_config_cache: path.join(devCache, 'npm')};
 if (env.LAWSPEC_OFFLINE === '1') env.HEX_OFFLINE = '1';
 let step = 0;
 async function run(command, args, cwd = base, pass = true)

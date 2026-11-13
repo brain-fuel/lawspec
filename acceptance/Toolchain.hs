@@ -1,14 +1,15 @@
 -- | The native test command for each target, shared by every acceptance suite.
-module Toolchain (Toolchain(..), toolchain, Formatter(..), formatter, mutantArguments, compileFailure, actorRuntimePins) where
+module Toolchain (Toolchain(..), toolchain, buildSettings, Formatter(..), formatter, mutantArguments, compileFailure, actorRuntimePins) where
 
 import Data.Char (toLower, isSpace)
 import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix, dropWhileEnd)
 import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, removePathForcibly, withCurrentDirectory)
 import System.IO (readFile')
 import System.Environment (lookupEnv)
-import System.FilePath ((</>))
+import System.FilePath (takeFileName, (</>))
 import System.Process (callProcess, readProcess)
 import Control.Monad (when)
+import Cache (sharedCache)
 
 -- | The pinned libraries a non-default actor runtime adds to a JVM project
 -- (LAWSPEC_ACTORS), part of the acceptance cache key. The scaffolds carry the
@@ -29,6 +30,19 @@ data Toolchain = Toolchain
   , prepare :: IO ()  -- run before every test invocation
   , report :: IO String  -- output kept outside the console, such as test reports
   }
+
+-- | Environment a tool always runs with. Cargo builds each acceptance project
+-- once and then once per mutant, so incremental compilation's per-crate
+-- state and the debug information of every dependency are written and never
+-- used again; together they were most of the size of a project's target
+-- directory. Test results do not depend on either: panics still name their
+-- source location, and debug assertions and overflow checks are separate
+-- settings that stay on.
+buildSettings :: Toolchain -> [(String, String)]
+buildSettings tool
+  | takeFileName (command tool) == "cargo" =
+      [("CARGO_INCREMENTAL", "0"), ("CARGO_PROFILE_DEV_DEBUG", "0"), ("CARGO_PROFILE_TEST_DEBUG", "0")]
+  | otherwise = []
 
 -- | A target's canonical formatter in check mode, run on the generated
 -- sources of a project: generated code must be a fixed point of it. The
@@ -127,8 +141,9 @@ formatter target = do
       pinned <- takeWhile (not . isSpace) . dropWhile isSpace . unwords . filter (not . ("#" `isPrefixOf'`)) . lines
         <$> readFile' (root </> "test/locks/haskell/ormolu.txt")
       -- A file ormolu has passed is remembered by its content, so the
-      -- runtimes every project copies are checked once.
-      let cache = root </> ".artifacts/formatted-cache/ormolu-" ++ pinned
+      -- runtimes every project copies are checked once on the machine.
+      shared <- sharedCache
+      let cache = shared </> "formatted" </> "ormolu-" ++ pinned
           script = "found=$(ormolu --version | head -n 1); " ++
             "if [ \"$found\" != \"ormolu " ++ pinned ++ "\" ]; then echo \"ormolu " ++ pinned ++ " is required; found: $found\"; exit 2; fi; " ++
             "mkdir -p '" ++ cache ++ "'; " ++

@@ -4,6 +4,18 @@
 # fingerprints. Requires wasm32-wasi-ghc and wasm32-wasi-cabal (ghc-wasm-meta).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# One build at a time on the machine: every worktree builds into the same
+# wasm32-wasi Cabal store, which does not guard concurrent builds. The lock
+# is an flock on a file in the shared development cache (LAWSPEC_DEV_CACHE),
+# held through a descriptor this script inherits, so it is released when the
+# script ends however it ends. macOS has no flock(1); Python is already
+# required by the checks.
+if [ -z "${LAWSPEC_WASM_LOCKED:-}" ]; then
+  locks="${LAWSPEC_DEV_CACHE:-$HOME/.cache/lawspec-dev}/locks"
+  mkdir -p "$locks"
+  export LAWSPEC_WASM_LOCKED=1
+  exec python3 tools/with-lock.py "$locks/wasm.lock" "$0" "$@"
+fi
 stack --no-terminal run lawspec-dev -- generate
 stack --no-terminal build
 unset GHC_PACKAGE_PATH

@@ -71,6 +71,7 @@ their fingerprints in `npm/build.json`.
 git add -A
 git commit -m "Prepare LawSpec 0.33.0"
 make ci-fresh
+make smoke-release
 make docs-check
 make release-check
 ```
@@ -82,6 +83,13 @@ running CI. If a check requires changes, commit those changes and rerun CI.
 release commit. Steps run in parallel, half the processors at a time; pass
 `--jobs N` (or set `LAWSPEC_CI_JOBS`) to change that, and `--jobs 1` to run
 them one at a time, for example to time a single step on an idle machine.
+
+`make smoke-release` (`node tools/package-smoke.mjs --examples`) repeats the
+package smoke test with the export of every bundled example from the
+installed archive. The export runs single-threaded for the better part of an
+hour, under a one-hour limit, so the `package-smoke` step of the complete
+check leaves it out; a release must run it. Run it on an otherwise idle
+machine: a loaded one can push the export past its limit.
 
 Every CI step must pass: compiler and npm tests, native/WASM parity, the
 package smoke test, the editor grammar, artifact validators, and program-target
@@ -102,7 +110,7 @@ The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
 `README.md`, `CHANGELOG.md`, `LICENSE`, the starter specification and
 `examples/`. `README.md` and `CHANGELOG.md` live only at the repository root:
 the package's `prepack` script copies them into `npm/`, where git ignores them.
-The smoke test in `make ci` already installed and exercised a
+The smoke tests in step 4 already installed and exercised a
 packed copy.
 
 ## 6. Tag and push

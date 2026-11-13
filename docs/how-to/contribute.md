@@ -58,7 +58,10 @@ backend and Cabal. Install `wasm32-wasi-ghc` and `wasm32-wasi-cabal` through
 tools/wasm.sh
 ```
 
-The script reads `~/.ghc-wasm/env` when present. It builds the WASM core and
+The script reads `~/.ghc-wasm/env` when present. Every worktree builds into
+the same wasm32-wasi Cabal store, so the script holds a machine-wide lock
+(`locks/wasm.lock` in the [shared development cache](#the-shared-development-cache))
+and a second build waits for the first. It builds the WASM core and
 its JavaScript glue, stages the package files in `npm/`, and records compiler
 source and artifact hashes in `npm/build.json`. WASM dependencies are frozen in
 `wasm/cabal.project.freeze`. The npm archive is self-contained: no install-time
@@ -118,6 +121,10 @@ stack run lawspec-dev -- ci --fresh                  # ignore recorded results
 stack run lawspec-dev -- ci --rust-toolchains 1.85.0,stable --rust-targets i686-unknown-linux-gnu
 stack run lawspec-dev -- ci --jobs 4                 # at most four steps at once
 stack run lawspec-dev -- ci --jobs 1                 # one step at a time
+stack run lawspec-dev -- ci --no-core --target go    # one target's steps, without the compiler checks
+stack run lawspec-dev -- ci --only 'rust-*'          # steps by name, with the steps they follow
+stack run lawspec-dev -- ci --affected               # steps that read what changed since main
+stack run lawspec-dev -- ci --affected --list        # name them; run nothing
 ```
 
 `make ci` is equivalent to the first form. The check runs the compiler, npm,
@@ -127,8 +134,15 @@ machine profiles, and runs the installed native-binding example. Each step logs
 to `.artifacts/ci/<step>.log`. Every step runs even after a failure unless
 `--fail-fast` is given, and the command exits non-zero if any step failed.
 
-Steps run in parallel: `--jobs N` at a time, or `LAWSPEC_CI_JOBS`, or half
-the machine's processors. The console prints a line as each step finishes, so
+Each step that finishes also appends a line to `.artifacts/ci/timings.jsonl`:
+its name, when it started, its seconds, whether a recorded pass stood in for
+it (`cached`), and whether it passed. Compare two runs from that file.
+
+Steps run in parallel: `--jobs N` at a time, or `LAWSPEC_CI_JOBS`, or the
+machine's job budget. The budget is half the machine's processors
+(`LAWSPEC_CI_MACHINE_JOBS` sets it) and is shared by every run on the
+machine, in any worktree: a step holds one of its slots while it runs, so two
+runs together use the processors one would. The console prints a line as each step finishes, so
 lines come in the order steps finish; on a terminal a status line also shows
 the steps still running. The summary names failed steps in step order.
 `--jobs 1` runs the steps one at a time, in a fixed order, as before.
@@ -155,9 +169,39 @@ resources exclusively:
   BEAM network, remote, session and mailbox APIs, scheduling, resilience,
   consistency, concurrency) are a timing class: at most a third of the jobs
   run them at once.
-- `package-smoke` runs first and alone. Its export of every bundled example
-  runs with a command limit of one hour; the other commands retain their
-  limits of 30 minutes.
+- `component-native-acceptance` runs first and alone, in its run and on the
+  machine: it holds every slot of the job budget.
+- The Haskell, Java and Clojure warm-up suites also hold a machine-wide lock
+  each (Java and Clojure share Maven's), so two runs never fill Stack's
+  snapshot database or the Maven repository at once.
+
+The slots and locks are advisory file locks in the shared development cache.
+The system releases them when their holder exits, so a run that crashes or is
+killed leaves nothing held.
+
+### Choosing steps
+
+`--only <glob>` runs the steps whose names match (`*` is any run of
+characters, `?` any one; repeat the option for several patterns).
+`--affected [<base>]` runs the steps that read a file that differs from the
+base: by default the commit where the branch left `main`, with uncommitted
+and untracked files counted. Together they run the named steps that are
+affected. `--no-core` leaves out the compiler, npm and editor steps, as
+`--core` leaves out the targets'.
+
+Both selections also run the steps the selected ones follow, such as a
+target's bootstrap and `build-acceptance`, since a suite without them checks
+nothing; `--exact` runs the selection alone. `--list` prints the steps that
+would run.
+
+What a step reads is declared in `dev/Ci.hs`: `stepInputs` for the steps
+whose passes are recorded, and `suiteReads` for acceptance suites (the
+compiler sources, the harness, the suite's own directory without the other
+targets' adapters, the specifications its manifest names, and the pinned
+locks). A step that declares nothing may read anything, so any change selects
+it. The target bootstraps and the tool-driven integration steps are in that
+class; `--core` or `--only` narrows them further. `--affected` chooses what to
+run while working. It does not replace the complete check before a release.
 
 Ctrl-C stops every running step and everything it started. To add a step,
 declare what it follows and holds in `plan` in `dev/Ci.hs`.
@@ -171,13 +215,69 @@ Results are content-addressed, so a second run only repeats what changed:
   them `(cached)`.
 - The compiler, npm, parity, package, docs and Rust runtime steps are keyed by
   the bytes of the repository files they read (tracked or untracked, not
-  ignored) and their tools' versions, and print `cached`.
+  ignored) and their tools' versions, and print `cached`. `package-smoke` is
+  keyed on what npm packs from `npm/`; `npm-tests` reads most of the
+  repository, so every file is its input, with the presence and version of
+  each optional tool and the bootstrapped environments. What those two
+  resolve from package registries is in no key, which is one reason a
+  release runs `--fresh`.
 
-Passes are recorded in `.artifacts/cache`; delete it to forget them.
 `--fresh` (or `make ci-fresh`) runs everything, as a release does.
 Fresh runs still record their passes. For a single `lawspec-acceptance` run,
 `LAWSPEC_CACHE=refresh` reruns and records, and `LAWSPEC_CACHE=0` turns the
 cache off.
+
+### The shared development cache
+
+Passes are recorded in one directory for the machine, `~/.cache/lawspec-dev`
+or `LAWSPEC_DEV_CACHE`, which every worktree shares:
+
+| Path | Contents |
+| --- | --- |
+| `ci/` | Recorded passes of the core steps |
+| `acceptance/` | Recorded passes of acceptance runs |
+| `formatted/` | Files a pinned formatter has already passed, by content |
+| `npm/`, `go-build/` | npm's and Go's caches for the integration tools |
+| `jobs/`, `locks/` | The job budget's slots and the machine-wide locks |
+
+A key holds no path of the worktree it was computed in: files enter it by
+their paths from the repository root, tools by their versions (and, for the
+compiler tests, their bytes), and of the environment only the variables that
+change what a check does. So a second worktree at the same content reuses the
+first one's passes, and a new terminal does not change a key. Records are
+written beside their final name and renamed into place, so concurrent runs
+never read half a record.
+
+An acceptance project's native build output (`target`, `.build`,
+`.stack-work`) is removed once its pass is recorded; the sources, logs and
+reports stay in `.artifacts/<suite><profile>/<target>`. Set
+`LAWSPEC_KEEP_BUILD=1` to keep the build output while working on one suite.
+A recorded pass is reused without writing or building the project.
+
+```sh
+make clean       # remove build output under .artifacts; keep recorded passes
+make clean-all   # also forget every recorded pass, for all worktrees
+```
+
+These run `lawspec-dev clean --artifacts [--keep-cache]`. Neither removes
+`.integration/` or the tools' download caches.
+
+### Inner loops
+
+The complete check takes hours. While working, run what the change can
+affect, and leave the complete check for the merged branch.
+
+| Change | Check |
+| --- | --- |
+| The Node host (`templates/npm/`, then `make generate`) | `stack run lawspec-dev -- ci --core --affected`. No acceptance suite reads the host, except the `packages` suite, which loads package manifests through it. |
+| One emitter or runtime (`src/LawSpec/<Target>*.hs`, `runtime/`) | `stack --no-terminal test`, then `stack run lawspec-dev -- ci --no-core --target <target>`. Suites whose generated project did not change answer from recorded passes. |
+| One acceptance suite (`acceptance/<suite>/`) | `stack run lawspec-acceptance -- <suite> <target>`, or `stack run lawspec-dev -- ci --affected` for every target and profile of it. |
+| The language (parser, inference, Core, prover) | `stack --no-terminal test`, then `stack run lawspec-dev -- ci --affected`: every suite is selected, and those whose generated projects are unchanged are answered from recorded passes. |
+| Documentation (`docs/`, `README.md`) | `stack run lawspec-dev -- ci --only docs --only rejection-examples` (`make docs-check` is the first of these). |
+| The CI driver or harness (`dev/`, `acceptance/*.hs`) | `stack run lawspec-dev -- ci --only 'ci-*'`, then one cheap suite such as `stack run lawspec-acceptance -- domain javascript`, twice: a run, then a recorded pass. |
+
+After a change to `src/` that the WASM core must carry, `integrity` and
+`parity` need `make wasm` first; `--affected` selects them but cannot build it.
 
 Smaller checks:
 
@@ -189,6 +289,7 @@ stack run lawspec-dev -- integrity              # build fingerprints and staged 
 node tools/parity.mjs                           # native and WASM output agree
 node tools/parity.mjs --canonical examples/rc1/parcel-measurements.lawspec
 node tools/package-smoke.mjs                    # pack, install and use the archive
+node tools/package-smoke.mjs --examples         # and export every bundled example (releases)
 ```
 
 `make test`, `make check` and `make package` group these.
@@ -239,6 +340,8 @@ LAWSPEC_MACHINE_BITS=32 LAWSPEC_MINIFY=1 stack run lawspec-acceptance -- indexed
 The suites are `integration`, `algebra`, `scalar`, `refinement`, `indexed`,
 `domain` and `packages`. Output goes to `.artifacts/<suite>[32][-compact]/<target>`.
 Bootstrap installs dependencies into isolated `.integration/` projects.
+A passing run is recorded in the [shared development cache](#the-shared-development-cache);
+the same run again prints its lines with `(cached)` and writes nothing.
 
 A suite lives in `acceptance/<suite>/`:
 

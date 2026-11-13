@@ -1066,7 +1066,9 @@ executable lawspec-dev
       Bench
       Canon
       Ci
+      Ci.Budget
       Ci.Cache
+      Ci.Select
       Docs
       Gen.Api
       Gen.BoundedGenerators

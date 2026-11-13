@@ -3,6 +3,7 @@ import {parseManifest, writeManifest} from '../npm/component.mjs';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {cp, mkdir, readFile, readdir, writeFile, rm, symlink} from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -35,8 +36,10 @@ const offline = process.env.LAWSPEC_OFFLINE === '1';
 const base = path.join(root, '.artifacts/native-example-integration', `${target}-${bits}-${minify}`);
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
-const env = {...process.env, npm_config_cache: path.join(root, '.artifacts/npm-cache'),
-  PYTHONDONTWRITEBYTECODE: '1', GOCACHE: path.join(root, '.artifacts/go-cache')};
+// npm's and Go's caches are shared by every worktree (LAWSPEC_DEV_CACHE).
+const devCache = path.resolve(root, process.env.LAWSPEC_DEV_CACHE || path.join(os.homedir(), '.cache/lawspec-dev'));
+const env = {...process.env, npm_config_cache: path.join(devCache, 'npm'),
+  PYTHONDONTWRITEBYTECODE: '1', GOCACHE: path.join(devCache, 'go-build')};
 if (offline) Object.assign(env, {CARGO_NET_OFFLINE: 'true', GOPROXY: 'off', GOTOOLCHAIN: 'local',
   HEX_OFFLINE: '1', MAVEN_ARGS: `${env.MAVEN_ARGS ?? ''} -o`.trim()});
 let step = 0;

@@ -39,10 +39,18 @@
 -- LAWSPEC_MACHINE_BITS=32 and LAWSPEC_MINIFY=1 select the profile; output goes
 -- to .artifacts/<suite>[32][-compact]/<target>.
 --
--- A passing run is recorded under .artifacts/cache/acceptance, keyed by the
+-- A passing run is recorded in the machine's shared development cache
+-- (LAWSPEC_DEV_CACHE, by default ~/.cache/lawspec-dev), keyed by the
 -- generated project and everything else its tests read (see Cache). An
--- unchanged project reuses the result; LAWSPEC_CACHE=refresh runs everything
--- and records it, and LAWSPEC_CACHE=0 neither reads nor records.
+-- unchanged project reuses the result without being written or built;
+-- LAWSPEC_CACHE=refresh runs everything and records it, and LAWSPEC_CACHE=0
+-- neither reads nor records.
+--
+-- Once a pass is recorded, the project's native build output (target,
+-- .build, .stack-work) is removed: the record answers the next run, and
+-- across every suite, profile and target those directories are most of a
+-- worktree's size. The sources, logs and reports stay. LAWSPEC_KEEP_BUILD=1
+-- keeps the build output, for working on one suite.
 module Main (main) where
 
 import Control.Exception (finally, try, SomeException)
@@ -145,27 +153,44 @@ main = do
       writeProject suite target project (bits == 64 && not minify) minify generated
       unless minify (formatted suite target project generated >>= mapM_ putStrLn)
     else do
-      writeProject suite target project (bits == 64 && not minify) minify generated
+      let write = writeProject suite target project (bits == 64 && not minify) minify generated
       mismatch <- if architecture then architectureMismatch target bits else pure False
-      if mismatch then expectMismatch target bits project
+      if mismatch then write >> expectMismatch target bits project
       else do
         mode <- cacheMode
         scaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) minify target)
-        suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
-          doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
-        recordingInputs <- map snd <$> suiteRecordings suite
         formatInputs <- maybe [] formatterInputs <$> formatter target
+        -- The ownership of each generated file is part of the key with its
+        -- bytes: writing the project checks adapters against it.
         let labels = [suite, target, profile, show mutate] ++ maybe [] actorRuntimePins (runtimeName runtime) ++
-              ["org.apache.pekko:pekko-cluster-typed_3:1.7.1" | remote == ClusterRemote]
-            inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
-        key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
-        semanticScaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) False target)
-        meaning <- forM (semanticIdentities bits sources) $ \hashes ->
-          meaningKey target [suite,target,show bits,show mutate] buildIdentity (hashes ++ map snd vectors ++ [show (extra ++ native)]) semanticScaffolds inputs
-        exact <- if mode == Reuse then lookupResult key else pure Nothing
+              ["org.apache.pekko:pekko-cluster-typed_3:1.7.1" | remote == ClusterRemote] ++
+              [generatedOwnership g ++ ":" ++ generatedPath g | g <- generated]
+            suiteKey = do
+              suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
+                doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
+              recordingInputs <- map snd <$> suiteRecordings suite
+              let inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
+              key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
+              pure (key, inputs)
+        -- The exact key is known before anything is written: the generated
+        -- files come from the compiler in process, and the rest are the
+        -- suite's own files. A recorded pass for these bytes also passed
+        -- every check writing the project makes (an adapter replaces a
+        -- generated user-owned file; a recorded stub equals the generated
+        -- one), since those checks read nothing else. So a hit neither
+        -- writes nor builds the project.
+        (early, _) <- suiteKey
+        exact <- if mode == Reuse then lookupResult early else pure Nothing
         case exact of
           Just output -> mapM_ (putStrLn . (++ " (cached)")) output
           Nothing -> do
+            write
+            -- LAWSPEC_UPDATE_STUBS=1 lets writing the project rewrite a
+            -- recorded stub, which is one of the key's inputs.
+            (key, inputs) <- suiteKey
+            semanticScaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) False target)
+            meaning <- forM (semanticIdentities bits sources) $ \hashes ->
+              meaningKey target [suite,target,show bits,show mutate] buildIdentity (hashes ++ map snd vectors ++ [show (extra ++ native)]) semanticScaffolds inputs
             -- Semantic execution reuse cannot certify changed presentation.
             -- Always validate the current generated layout before consulting
             -- the meaning cache. Bytes hits already checked these bytes.
@@ -182,6 +207,17 @@ main = do
             when (mode /= Off) $ do
               storeResult key (format ++ output)
               mapM_ (`storeResult` output) meaning
+              releaseBuildOutput project
+
+-- | Remove a project's native build output once its pass is recorded. No
+-- later step of a run reuses it: each suite, profile and target has its own
+-- project, and the Rust toolchain and architecture variants that share one
+-- rebuild for another compiler or target anyway. A failing run records
+-- nothing and keeps its build for the next attempt.
+releaseBuildOutput :: FilePath -> IO ()
+releaseBuildOutput project = do
+  keep <- (== Just "1") <$> lookupEnv "LAWSPEC_KEEP_BUILD"
+  unless keep $ forM_ ["target", ".build", ".stack-work"] (removePathForcibly . (project </>))
 
 -- A semantic execution hit says nothing about whether newly presented
 -- source still compiles. Check the current source with its native compiler
@@ -578,6 +614,7 @@ runToolWith extra tool args project = do
   -- suite's recordings when the runtime searches parent directories.
   recordings <- makeAbsolute (project </> "recorded")
   let overrides = extra ++ [("LAWSPEC_CASE", "") | "LAWSPEC_CASE" `notElem` map fst extra] ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
+        ++ [setting | setting <- buildSettings tool, fst setting `notElem` map fst extra]
       settings = Just (overrides ++ [kv | kv@(k, _) <- environment, k `notElem` map fst overrides])
   (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project, env = settings } ""
   -- Capture compiler-owned state before a caller restores a mutant or
