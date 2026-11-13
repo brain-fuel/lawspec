@@ -4,8 +4,12 @@
 // program's definitions reach the blake3 functions (maskDigest and maskHash
 // are defined by them). The hash, the keyed hash and key derivation are
 // goforge.dev/blake3sum's, an ordinary module of the project (go get
-// goforge.dev/blake3sum@v1.0.0); this file only registers them with the
-// runtime in its init. ref:DEC-blake3-port
+// goforge.dev/blake3sum@v1.0.0, MIT, https://goforge.dev/blake3sum); this
+// file only registers them with the runtime in its init. LawSpec checks
+// them against BLAKE3's official test vectors
+// (https://github.com/BLAKE3-team/BLAKE3 at commit
+// ae3e8e6b3a5ae3190ca5d62820789b17886a0038; CC0 1.0 or Apache-2.0).
+// ref:DEC-blake3-port
 package RUNTIME_PACKAGE
 
 import "goforge.dev/blake3sum/components/blake3"

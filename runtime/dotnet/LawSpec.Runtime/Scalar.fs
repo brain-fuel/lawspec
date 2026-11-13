@@ -932,7 +932,9 @@ let textLines (text: string) : string list =
 // output: the hash, the keyed hash and key derivation, written from the
 // specification and its reference implementation (CC0 1.0 or Apache-2.0).
 // One thread, no SIMD; the official test vectors check every mode (the
-// contracts-digest acceptance suite). ref:DEC-blake3-port
+// contracts-digest acceptance suite).
+// Source: https://github.com/BLAKE3-team/BLAKE3, vectors at commit
+// ae3e8e6b3a5ae3190ca5d62820789b17886a0038; CC0 1.0 or Apache-2.0. ref:DEC-blake3-port
 let private blake3Iv: uint32[] =
     [|
         0x6a09e667u

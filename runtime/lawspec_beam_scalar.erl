@@ -1092,7 +1092,8 @@ fail(Reason) -> erlang:error({lawspec, Reason}).
 %% specification and its reference implementation (CC0 1.0 or Apache-2.0).
 %% OTP's crypto has no BLAKE3. One process, no SIMD; the official test
 %% vectors check every mode (the contracts-digest acceptance suite).
-%% ref:DEC-blake3-port
+%% Source: https://github.com/BLAKE3-team/BLAKE3, vectors at commit
+%% ae3e8e6b3a5ae3190ca5d62820789b17886a0038; CC0 1.0 or Apache-2.0. ref:DEC-blake3-port
 -define(BLAKE3_IV,
     {16#6a09e667, 16#bb67ae85, 16#3c6ef372, 16#a54ff53a, 16#510e527f, 16#9b05688c, 16#1f83d9ab,
         16#5be0cd19}

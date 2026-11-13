@@ -231,7 +231,37 @@ constructor_fields(F, C, [{{_, T}, Budget} | Rest], S, Symbols, Values) ->
             {ok, _} -> Native;
             error -> with_witnesses(F, Native, Witnesses)
         end,
-    F:bind(Generator, fun(V) -> constructor_fields(F, C, Rest, S, Symbols, Values ++ [V]) end).
+    Checks = maps:get(length(Values) + 1, maps:get(accepts, C, #{}), []),
+    Arguments = maps:get(arguments, C, []),
+    Accept = fun(V) -> field_accepted(Checks, S, Arguments, Values ++ [V]) end,
+    Field = valid_field(F, Generator, Checks, Accept, Witnesses),
+    F:bind(Field, fun(V) -> constructor_fields(F, C, Rest, S, Symbols, Values ++ [V]) end).
+
+%% A field is valid by construction where its hints allow: a drawn value its
+%% own predicates accept is kept, and any other is replaced by a hint they
+%% accept. Without such a hint the drawn value stands, and the record's whole
+%% predicate, which stays authoritative, decides. ref:DEC-shrink-within-domain
+valid_field(_, Generator, [], _, _) ->
+    Generator;
+valid_field(F, Generator, _, Accept, Witnesses) ->
+    case [W || W <- Witnesses, Accept(W)] of
+        [] ->
+            Generator;
+        Valid ->
+            F:bind(Generator, fun(V) ->
+                case Accept(V) of
+                    true -> F:exactly(V);
+                    false -> F:oneof([F:exactly(W) || W <- Valid])
+                end
+            end)
+    end.
+
+field_accepted(Checks, S, Arguments, Fields) ->
+    try
+        lists:all(fun(Check) -> Check(S, Arguments, Fields) =:= true end, Checks)
+    catch
+        _:_ -> false
+    end.
 
 with_witnesses(_, Native, []) ->
     Native;

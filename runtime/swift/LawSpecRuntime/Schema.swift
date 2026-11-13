@@ -29,6 +29,9 @@ public struct Schema: Sendable {
     public var predicates: [FieldPredicate] = []
     /// By field position, from 1.
     public var generators: [Int: FieldGenerator] = [:]
+    /// By field position, from 1: the predicates about that field that read
+    /// no later one, so a generator can check a field as soon as it is drawn.
+    public var accepts: [Int: [FieldPredicate]] = [:]
     public var indices: [String] = []
     public var refinements: [(Int, TypeRef)] = []
     public var existentials = 0
@@ -519,6 +522,14 @@ public struct Schema: Sendable {
   {
     var made = c
     made.generators = Dictionary(generators, uniquingKeysWith: { $1 })
+    return made
+  }
+
+  public static func withAccepts(_ accepts: [(Int, [FieldPredicate])], _ c: Constructor)
+    -> Constructor
+  {
+    var made = c
+    made.accepts = Dictionary(accepts, uniquingKeysWith: { $1 })
     return made
   }
 

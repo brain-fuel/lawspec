@@ -328,7 +328,9 @@ function blake3Compress(node, extra)
  * implementation merges them: a stack of subtree chaining values, one
  * subtree closed per trailing zero of the chunk count. One thread, no SIMD;
  * the official test vectors check it for every mode (the contracts-digest
- * acceptance suite).
+ * acceptance suite). Source: https://github.com/BLAKE3-team/BLAKE3, vectors
+ * at commit ae3e8e6b3a5ae3190ca5d62820789b17886a0038; CC0 1.0 or Apache-2.0.
+ * ref:DEC-blake3-port
  */
 function blake3Digest(key, mode, bytes)
 {

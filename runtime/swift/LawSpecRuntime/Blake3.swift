@@ -3,7 +3,8 @@
 // specification and its reference implementation (CC0 1.0 or Apache-2.0).
 // One thread, no SIMD; the official test vectors check every mode (the
 // contracts-digest acceptance suite). CryptoKit has no BLAKE3.
-// ref:DEC-blake3-port
+// Source: https://github.com/BLAKE3-team/BLAKE3, vectors at commit
+// ae3e8e6b3a5ae3190ca5d62820789b17886a0038; CC0 1.0 or Apache-2.0. ref:DEC-blake3-port
 
 /// BLAKE3's three modes: LawSpec's blake3, blake3Keyed and blake3DeriveKey.
 public enum Blake3 {

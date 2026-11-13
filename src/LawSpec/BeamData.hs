@@ -46,11 +46,14 @@ emitData target layout bits declarations = do
           S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
         generators <- fmap concat $ mapM fieldGenerators
           [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
+        accepts <- fmap concat $ mapM fieldAccepts
+          [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
         native <- nativeShape tag (S.constructorTag c)
         pure (E.record ([(E.atom "tag",E.binary (S.constructorTag c)),
           (E.atom "fields",E.array [E.tuple [E.binary (S.fieldName f),E.reference (S.fieldType f)] | f <- S.fields c])] ++ native ++
           [(E.atom "predicates",E.array predicates) | not (null predicates)] ++
           [(E.atom "generators",E.record generators) | not (null generators)] ++
+          [(E.atom "accepts",E.record accepts) | not (null accepts)] ++
           [(E.atom "indices",E.array (map E.binary (S.constructorIndex c))) | not (null (S.constructorIndex c))] ++
           [(E.atom "refinements",E.array [E.tuple [D.text (show i),E.reference t] | (i,t) <- S.constructorRefinements c]) | not (null (S.constructorRefinements c))] ++
           [(E.atom "existentials",D.text (show (S.constructorExistentials c))) | S.constructorExistentials c > 0] ++
@@ -134,6 +137,19 @@ emitData target layout bits declarations = do
           hs <- mapM render hints
           pure (E.tuple [E.array (bs ++ ls),E.array hs])
         pure [(D.text (show (i + 1)),body)]
+    -- The predicates a field can be checked against as soon as it is drawn:
+    -- those about it that read no later field. A generator keeps a drawn
+    -- value they accept and otherwise takes a hint they accept, so a record
+    -- of several narrow fields is built field by field, as the other
+    -- targets' prefix search builds it, and not filtered whole.
+    -- ref:DEC-shrink-within-domain
+    fieldAccepts contract = fmap concat $ forM (zip [0::Int ..] (S.contractFields contract)) $ \(i,binder) -> do
+      let known = map C.binderId (take (i + 1) (S.contractFields contract))
+          about expression = let free = C.freeBinders expression in C.binderId binder `elem` free && all (`elem` known) free
+          mine = filter about (S.contractPredicates contract)
+      if null mine then pure [] else do
+        checks <- mapM (predicate contract) mine
+        pure [(D.text (show (i + 1)),E.array checks)]
     predicate contract expression = contractCode contract (\render -> render expression)
     -- A text field a regex constrains, directly or through a definition the
     -- refinement inlines, also draws texts the regex matches, so a narrow

@@ -518,10 +518,13 @@ emitSchema layout bits crypto declarations = do
         S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
       generators <- fmap concat $ mapM fieldGenerators
         [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
+      accepts <- fmap concat $ mapM fieldAccepts
+        [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
       let base = pure' "Schema" "constructor" [Str (S.constructorTag c), ListOf (Ty "[(String, TypeRef)]")
             [call "Schema" "field" [Str (S.fieldName f), Str (refKey (S.fieldType f))] | f <- S.fields c]]
           extras = [\acc -> pure' "Schema" "withPredicates" [ListOf (Ty "[FieldPredicate]") predicates, acc] | not (null predicates)] ++
             [\acc -> pure' "Schema" "withGenerators" [ListOf (Ty "[(Int, FieldGenerator)]") generators, acc] | not (null generators)] ++
+            [\acc -> pure' "Schema" "withAccepts" [ListOf (Ty "[(Int, [FieldPredicate])]") accepts, acc] | not (null accepts)] ++
             [\acc -> pure' "Schema" "withIndices" [ListOf (Ty "[String]") (map Str (S.constructorIndex c)), acc] | not (null (S.constructorIndex c))] ++
             [\acc -> pure' "Schema" "withRefinements" [ListOf (Ty "[(Int, TypeRef)]") [call "Schema" "refinement" [IntLit (toInteger i), Str (refKey t)] | (i, t) <- S.constructorRefinements c], acc] | not (null (S.constructorRefinements c))] ++
             [\acc -> pure' "Schema" "withExistentials" [IntLit (toInteger (S.constructorExistentials c)), acc] | S.constructorExistentials c > 0] ++
@@ -577,6 +580,21 @@ emitSchema layout bits crypto declarations = do
       context <- contractRender contract
       body <- X.render context expression
       pure (Lambda [("schema", tSchema), ("types", Ty "[TypeRef]"), ("fields", tValues)] tBool (withFields contract (X.truth body)))
+    -- The predicates a field can be checked against as soon as it is drawn:
+    -- those about it that read no later field. A generator keeps a drawn
+    -- value they accept and otherwise takes a hint they accept, so a record
+    -- of several narrow fields is built field by field and not filtered
+    -- whole. ref:DEC-shrink-within-domain
+    fieldAccepts contract = fmap concat $ forM (zip [0 :: Int ..] (S.contractFields contract)) $ \(i, binder) -> do
+      let known = map C.binderId (take (i + 1) (S.contractFields contract))
+          about expression = let free = C.freeBinders expression in C.binderId binder `elem` free && all (`elem` known) free
+          mine = filter about (S.contractPredicates contract)
+      if null mine then pure [] else do
+        context <- contractRender contract
+        checks <- forM mine $ \expression -> do
+          body <- X.render context expression
+          pure (Lambda [("schema", tSchema), ("types", Ty "[TypeRef]"), ("fields", tValues)] tBool (withEarlier (i + 1) contract (X.truth body)))
+        pure [TupleOf [IntLit (toInteger (i + 1)), ListOf (Ty "[FieldPredicate]") checks]]
     -- Safe constructor-field bounds may depend on fields already drawn; the
     -- full predicate remains authoritative. ref:DEC-shrink-within-domain
     fieldGenerators contract = fmap concat $ forM (zip [0 :: Int ..] (S.contractFields contract)) $ \(i, binder) -> do

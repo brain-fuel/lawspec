@@ -381,7 +381,21 @@ public enum Generators {
       let native = try build(context, field.1, share, bounds)
       let g =
         factory(context, field.1) != nil ? native : Gens.withExamples(hints?.hints ?? [], native)
-      return g.bind { v in try fields(remaining.dropFirst(), values + [v]) }
+      // A field is valid by construction where its hints allow: a drawn
+      // value its own predicates accept is kept, and any other is replaced
+      // by a hint they accept. Without such a hint the drawn value stands,
+      // and the record's whole predicate, which stays authoritative, decides.
+      // ref:DEC-shrink-within-domain
+      let checks = c.accepts[position] ?? []
+      let schema = context.schema
+      let accept: (Value) -> Bool = { v in
+        checks.allSatisfy { check in (try? check(schema, c.arguments, values + [v])) ?? false }
+      }
+      let valid = checks.isEmpty ? [] : (hints?.hints ?? []).filter(accept)
+      let checked =
+        valid.isEmpty
+        ? g : g.bind { v in accept(v) ? .constant(v) : Gens.oneOf(valid.map { Gen.constant($0) }) }
+      return checked.bind { v in try fields(remaining.dropFirst(), values + [v]) }
     }
     return Gen { seed, size in
       try fields(Array(zip(c.fields, shares))[...], []).generate(seed, size)
