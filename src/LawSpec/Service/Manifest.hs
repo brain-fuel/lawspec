@@ -32,7 +32,7 @@ manifestProblems (Present manifest) =
       optional (array "requires must be a map of named requirements" (concatMap (\(name, value) -> contract ("requires." ++ name) value))) (requires manifest)
     ]
   where
-    allowed = ["manifestVersion", "component", "package", "languageProfile", "sources", "targets", "dependencies", "packages", "authoringExceptions", "verification", "generation", "machineBits", "cache", "attestation", "description", "inputs", "assets", "provides", "requires"]
+    allowed = ["manifestVersion", "component", "package", "languageProfile", "sources", "targets", "dependencies", "packages", "authoringExceptions", "verification", "generation", "machineBits", "cache", "cacheDirectory", "attestation", "description", "inputs", "assets", "provides", "requires"]
 
 unknown :: String -> [String] -> [String] -> [String]
 unknown at allowed keys = [at ++ ": unknown field " ++ key | key <- keys, key `notElem` allowed]

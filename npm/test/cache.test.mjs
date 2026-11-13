@@ -180,9 +180,173 @@ test('SDK persisted compiler memos are separated by the actual WASM binary', asy
     await hash(path.join(variant, 'core.wasm')),
   ];
   assert.notEqual(builds[0], builds[1]);
-  assert.deepEqual((await readdir(cache)).sort(), builds.sort());
-  for (const build of builds)
-    assert.ok((await entries(path.join(cache, build))).length > 0);
+  const folders = builds.map(build => build.slice(0, 16));
+  assert.deepEqual((await readdir(cache)).sort(), folders.sort());
+  for (const folder of folders)
+    assert.ok((await entries(path.join(cache, folder))).length > 0);
+});
+
+const run = (root, args, env = {}) =>
+  exec(process.execPath, [cli, ...args], {
+    cwd: root,
+    env: {...process.env, ...env},
+  });
+test('an entry is three short names below the cache directory', async t =>
+{
+  const root = await project(t);
+  await check(root);
+  const cache = path.join(root, '.lawspec/cache');
+  const stored = (await entries(cache)).filter(
+    file => path.basename(file) !== '.gitignore',
+  );
+  assert.ok(stored.length > 0);
+  for (const file of stored)
+  {
+    const parts = path.relative(cache, file).split(path.sep);
+    assert.deepEqual(
+      parts.map(part => part.length),
+      [16, 3, 32],
+      file,
+    );
+    assert.match(parts[2], /^[a-z2-7]{32}$/);
+  }
+});
+test('check and its advice share one cache; advise and inspect keep none', async t =>
+{
+  const quiet = await project(t);
+  await run(quiet, ['advise', '--json']);
+  await run(quiet, ['inspect', '--target', 'python', '--json']);
+  await assert.rejects(readdir(path.join(quiet, '.lawspec')), {code: 'ENOENT'});
+  const root = await project(t);
+  const first = await check(root);
+  assert.ok(JSON.parse(first).advice);
+  assert.equal(await check(root), first);
+  assert.equal(await check(root, '--no-cache'), first);
+  // The advice inspects the target, and its compact layout is kept.
+  const cache = path.join(root, '.lawspec/cache');
+  const before = (await entries(cache)).length;
+  await check(root);
+  assert.equal((await entries(cache)).length, before);
+});
+test('SDK inspect and advise use a cache directory only with cacheAdvisory', async t =>
+{
+  const {createCompiler} = await import('../api.mjs');
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-advisory-cache-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const compiler = await createCompiler();
+  const request = {
+    schemaVersion: 5,
+    languageProfile: '1.0-rc.2',
+    cacheDirectory: root,
+    verification: {layers: []},
+    sources: [{path: 'input.lawspec', content: spec}],
+    target: 'python',
+  };
+  const plain = await compiler.inspect(request);
+  assert.deepEqual(plain.diagnostics, []);
+  assert.deepEqual(await entries(root), []);
+  // A compiler that has not compiled this yet: what one instance already
+  // holds in memory it does not store again.
+  const cached = await (
+    await createCompiler()
+  ).inspect({
+    ...request,
+    cacheAdvisory: true,
+  });
+  assert.deepEqual(cached, plain);
+  const stored = (await entries(root)).length;
+  assert.ok(stored > 0);
+  // A new compiler reads them, and stores nothing more.
+  const again = await (
+    await createCompiler()
+  ).inspect({
+    ...request,
+    cacheAdvisory: true,
+  });
+  assert.deepEqual(again, plain);
+  assert.equal((await entries(root)).length, stored);
+});
+test(':cache-directory and LAWSPEC_COMPILER_CACHE move the cache, and nothing else is removed there', async t =>
+{
+  const shared = await mkdtemp(path.join(os.tmpdir(), 'lawspec-shared-cache-'));
+  t.after(() => rm(shared, {recursive: true, force: true}));
+  await mkdir(path.join(shared, '0000000000000000'));
+  const configured = await project(t, {cacheDirectory: shared});
+  const first = await check(configured);
+  await assert.rejects(readdir(path.join(configured, '.lawspec')), {
+    code: 'ENOENT',
+  });
+  const builds = (await readdir(shared)).sort();
+  assert.equal(builds.length, 2);
+  assert.ok(builds.includes('0000000000000000'));
+  // Another project, with the directory named by the environment.
+  const other = await project(t);
+  const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'lawspec-env-cache-'));
+  t.after(() => rm(elsewhere, {recursive: true, force: true}));
+  assert.equal(
+    (await run(other, ['check', '--json'], {LAWSPEC_COMPILER_CACHE: elsewhere}))
+      .stdout,
+    first,
+  );
+  assert.ok((await entries(elsewhere)).length > 0);
+  await assert.rejects(readdir(path.join(other, '.lawspec')), {code: 'ENOENT'});
+  // The environment variable wins over the manifest.
+  const count = (await entries(shared)).length;
+  await run(configured, ['check', '--json'], {
+    LAWSPEC_COMPILER_CACHE: elsewhere,
+  });
+  assert.equal((await entries(shared)).length, count);
+  const invalid = await project(t, {cacheDirectory: ''});
+  await assert.rejects(check(invalid), error =>
+    /cacheDirectory must be the path of a directory/.test(
+      error.stdout + error.stderr,
+    ),
+  );
+});
+test('a cache that cannot be written is one warning, and the result is unchanged', async t =>
+{
+  const root = await project(t);
+  const expected = await check(root, '--no-cache');
+  const blocked = path.join(root, 'blocked');
+  await writeFile(blocked, 'a file where the cache directory should be');
+  const result = await run(root, ['check', '--json'], {
+    LAWSPEC_COMPILER_CACHE: path.join(blocked, 'cache'),
+  });
+  assert.equal(result.stdout, expected);
+  const warnings = result.stderr
+    .split('\n')
+    .filter(line => line.includes('the compiler cache is not being written'));
+  assert.equal(warnings.length, 1, result.stderr);
+  assert.match(warnings[0], /path of \d+ characters/);
+});
+test("--timings prints each compiler request's stages on standard error only", async t =>
+{
+  const root = await project(t);
+  const plain = await check(root, '--no-cache');
+  const timed = await run(root, ['check', '--json', '--no-cache', '--timings']);
+  assert.equal(timed.stdout, plain);
+  assert.match(timed.stderr, /^lawspec timings: check \(\d+ ms\)$/m);
+  assert.match(timed.stderr, /^lawspec timings: inspect python \(\d+ ms\)$/m);
+  assert.match(timed.stderr, /^  parse +\d+ ms/m);
+  assert.match(timed.stderr, /^  validate cache\.example +\d+ ms/m);
+  assert.match(timed.stderr, /^  emit python +\d+ ms/m);
+  // The second request finds the compiled program in memory: no parse row.
+  const second = timed.stderr.slice(
+    timed.stderr.indexOf('lawspec timings: inspect'),
+  );
+  assert.doesNotMatch(second, /^  parse /m);
+});
+test('doctor checks the compiler cache and leaves the project as it was', async t =>
+{
+  const root = await project(t);
+  const result = await run(root, ['doctor']).catch(error => error);
+  assert.match(
+    result.stdout,
+    /^compiler cache: ready \(.*deepest entry \d+ characters\)$/m,
+  );
+  await assert.rejects(readdir(path.join(root, '.lawspec')), {code: 'ENOENT'});
+  const off = await run(root, ['doctor', '--no-cache']).catch(error => error);
+  assert.doesNotMatch(off.stdout, /compiler cache/);
 });
 
 test('evaluation settings survive EDN and cold, warm and disabled compiler caches', async t =>

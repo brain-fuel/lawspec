@@ -65,6 +65,7 @@ export interface ComponentManifest
   generation?: Partial<import('./index.js').Generation>;
   machineBits?: 32 | 64;
   cache?: boolean;
+  cacheDirectory?: string;
   attestation?: string;
   description?: string;
 }

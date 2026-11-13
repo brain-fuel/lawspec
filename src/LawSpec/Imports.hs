@@ -82,7 +82,12 @@ data Exports = Exports
   , exportOperations :: M.Map String String }
 
 data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, portable :: Unit
-  , resolvedBindings :: [SyntaxBinding], resolvedReferences :: [SyntaxReference] }
+  , resolvedBindings :: [SyntaxBinding], resolvedReferences :: [SyntaxReference]
+  -- | Whether the portable unit names prelude.wrapping, saturating or
+  -- bounded. Each importer asks, and the answer reads the whole unit, so it
+  -- is found once per unit, not once per importer (lawspec.text is 1,585
+  -- mappings).
+  , portableBounded :: Bool }
 
 -- | visible importer imported: Nothing when the import is allowed, or the reason
 -- it is not (package boundaries).
@@ -205,9 +210,7 @@ resolveUnit capture canonical visible table u allImports = do
         S.fromList [(ValueName, n) | usesBounded, i <- imports, importUnit i == collectionsUnit, d <- boundedArithmeticDefinitions,
           Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
       -- Copies of an import's definitions may use them too.
-      usesBounded = any (\text -> any (`isInfixOf` text) ["Var \"prelude.wrapping\"", "Var \"prelude.saturating\"", "Var \"prelude.bounded\""])
-        (show (functionDefinitions u, laws u, handlerDeclarations u) :
-         [show (functionDefinitions p, laws p, handlerDeclarations p) | (_, source) <- sources, let p = portable source])
+      usesBounded = mentionsBounded u || any (portableBounded . snd) sources
   -- Re-exports: each listed name resolves to what this unit imports it as.
   reexports <- forM [(i, item) | i <- exportLines, item <- importItems i] $ \(i, item) -> do
     let law = "`" `isSuffixOf` item
@@ -308,7 +311,8 @@ resolveUnit capture canonical visible table u allImports = do
       resolvedReference reference = reference{referenceDeclaration=case identity (referenceName reference) of
         Just declaration -> Just declaration
         Nothing -> uniqueIdentity (targetIdentities (referenceTarget reference))}
-  pure (Resolved resolved exports (portableUnit exports resolved) bindings (map resolvedReference (nub references)))
+  let carried = portableUnit exports resolved
+  pure (Resolved resolved exports carried bindings (map resolvedReference (nub references)) (mentionsBounded carried))
   where
     namespace kind = case kind of
       TypeName -> "type"; ConstructorName -> "constructor"; RefinementName -> "refinement"; ValueName -> "value"; LawName -> "law"
@@ -427,6 +431,12 @@ unitExports copied u = Exports
 
 -- | The unit with its own names replaced by the names every importer uses, so
 -- its declarations can be copied as they are.
+-- | Whether a unit's definitions, laws or handlers name one of the bounded
+-- arithmetic operations, wherever an expression may sit.
+mentionsBounded :: Unit -> Bool
+mentionsBounded unit = any (`isInfixOf` text) ["Var \"prelude.wrapping\"", "Var \"prelude.saturating\"", "Var \"prelude.bounded\""]
+  where text = show (functionDefinitions unit, laws unit, handlerDeclarations unit)
+
 portableUnit :: Exports -> Unit -> Unit
 portableUnit exports u = runIdentity $ do
   let rename table n = Identity (M.findWithDefault n n table)

@@ -6,6 +6,54 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `--timings` on `check`, `generate` and `test` prints a table of the
+  compiler's stages and their milliseconds for each compiler request, and on a
+  terminal those commands show the running stage on one line. The compiler
+  writes both itself, on standard error, when a request has the new
+  `progress` field (`"lines"`, `"terminal"`, `"timings"`, or a list).
+- `:cache-directory` in `lawspec.edn` and the `LAWSPEC_COMPILER_CACHE`
+  environment variable choose where the compiler cache lives. A short
+  directory outside the project avoids Windows' 260-character path limit, and
+  projects can share one.
+- `lawspec doctor` checks the compiler cache: it creates and removes the
+  deepest path the compiler would write, and on Windows reports
+  `LongPathsEnabled`.
+- `LAWSPEC_CACHE_TRACE` reaches the WebAssembly compiler.
+
+### Changed
+
+- One command compiles once. The advice in `check` and `generate` ran with no
+  cache directory, which made the launcher start a new compiler instance and
+  compile the project again, and a second time when the command went back to
+  its cache directory. A request that names no cache directory now runs on
+  the instance there is, and that advice uses the command's cache.
+- `inspect` and `advise` requests still write nothing, whatever
+  `cacheDirectory` they name, unless they also set the new `cacheAdvisory`
+  field. `check` and `generate` set it for their own advice. `lawspec
+  inspect`, `lawspec advise`, the MCP tools and the SDK methods are unchanged.
+- A cache entry is `<directory>/<build>/<table>/<entry>`, 54 characters below
+  the cache directory, where it was up to 182 (`<build>/<64 hex>/lawspec-<version>/<table name>/<64 hex>`)
+  and its temporary file four more.
+  The entry's name digests the version, the table and the key; its temporary
+  file is no longer than the entry. Existing caches are not read: `.lawspec/cache`
+  is rebuilt on the first run.
+- A cache entry that cannot be written is reported. The response carries
+  `cacheFailure` with the path and reason, and the CLI prints one warning with
+  the path's length. It was skipped silently.
+- `inspect` lays files out compactly once per unchanged project: the digests
+  that recognize a file generated with `--minify` are kept in the cache.
+- Definition templates stay in memory. Reading a unit's stored templates
+  took longer than inferring them.
+- A unit that declares its own `caseFold` or `textContains` function and
+  never names `prelude.caseFold` no longer brings in `lawspec.text`.
+- A unit's cache keys digest its binary encoding where they digested its
+  `Show` text, and whether an imported unit names the bounded arithmetic
+  operations is found once per unit, not once per importer. Each unit that
+  uses `prelude.caseFold` carries a copy of the 1,585 mappings, so both
+  were paid again for every such unit.
+
 ## [0.33.0] - 2026-11-11
 
 ### Added

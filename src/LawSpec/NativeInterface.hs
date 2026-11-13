@@ -25,7 +25,9 @@ import qualified LawSpec.Swift.Names as Swift
 import qualified LawSpec.BeamCode as Beam
 import LawSpec.Targets (artifactTargets)
 
-interfaceView :: String -> N.BindingPlan -> Plan -> [Artifact] -> [Artifact] -> Either String Value
+-- | The compact layout is given as each file's path and SHA-256: a generated
+-- file is recognized by the digest of either layout.
+interfaceView :: String -> N.BindingPlan -> Plan -> [Artifact] -> [(FilePath, String)] -> Either String Value
 interfaceView target bindings plan files compact = do
   names <- if target `elem` artifactTargets then pure [] else allocate
   pure (object
@@ -43,8 +45,8 @@ interfaceView target bindings plan files compact = do
          c <- C.dataConstructors d]] | d <- declarations],
      "artifacts" .= files,
      "generatedDigests" .= [object ["path" .= artifactPath file,
-       "sha256" .= nub [digestHex (digestString (artifactContent variant)) |
-         variant <- file : [other | other <- compact, artifactPath other == artifactPath file]]]
+       "sha256" .= nub (digestHex (digestString (artifactContent file)) :
+         [other | (path, other) <- compact, path == artifactPath file])]
        | file <- files, ownership file == "generated"],
      "adapters" .= [object ["path" .= artifactPath file, "ownership" .= ownership file,
        "requiredSource" .= maybe (artifactContent file) id (adapterReference file)] | file <- files, ownership file == "user"],

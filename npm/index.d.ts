@@ -112,6 +112,14 @@ export interface AdviceRequest extends CheckRequest
   exceptions?: AdviceException[];
 }
 
+export type Progress = 'lines' | 'terminal' | 'timings';
+
+export interface CacheFailure
+{
+  path: string;
+  reason: string;
+}
+
 export type Target =
   | 'java'
   | 'python'
@@ -863,6 +871,8 @@ export interface CheckRequest
   dependencies?: Record<string, string>;
   packages?: Package[];
   cacheDirectory?: string;
+  cacheAdvisory?: boolean;
+  progress?: Progress | Progress[];
   attestation?: unknown;
   proofCounterexamples?: ProofCounterexample[];
   analysisResults?: AnalysisResult[];
@@ -1292,6 +1302,7 @@ export interface Result
 {
   advice?: AdviceReport;
   interface?: NativeInterface;
+  cacheFailure?: CacheFailure;
   schemaVersion: 5;
   machineBits?: 32 | 64;
   languageProfile?: '1.0-rc.2';

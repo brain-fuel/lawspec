@@ -45,7 +45,7 @@ import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock,
 import LawSpec.Refinement
 import LawSpec.Prelude
 import LawSpec.PreludeNames (preludeDiscoveryText,preludeDependencyText)
-import LawSpec.CaseFold (caseFoldUnit,caseFoldAlias,usesCaseFold,caseFoldSource)
+import LawSpec.CaseFold (caseFoldUnit,caseFoldAlias,caseFoldDemand,caseFoldSource)
 import Control.Monad.State.Strict
 import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import Data.Maybe (listToMaybe)
@@ -55,7 +55,9 @@ import Data.Char (isLower)
 import Data.List (isSuffixOf, isPrefixOf, isInfixOf, stripPrefix)
 import qualified Data.Set as Set
 import System.IO.Unsafe (unsafePerformIO)
-import LawSpec.Digest (digestHex, digestString)
+import qualified Data.Binary as Binary
+import qualified Data.ByteString.Lazy as BL
+import LawSpec.Digest (digest, digestHex, digestString)
 import qualified LawSpec.Memo as Memo
 import LawSpec.Persist ()
 
@@ -377,7 +379,8 @@ sourceParsingContext selected sources =
       resilience = any usesResilience [text | Source _ text <- sources]
       -- Programs that use matchers over lists, or regexes, get the matchers unit.
       matchers = any (providerUses usesMatchers) [text | Source _ text <- sources]
-      textFolding = any (providerUses usesCaseFold) [text | Source _ text <- sources]
+      textDemand text = caseFoldDemand text (preludeDependencyText text)
+      textFolding = any textDemand [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
       -- Built-in resources acquire and release through lawspec.host's
@@ -401,7 +404,7 @@ sourceParsingContext selected sources =
       implicit = [(timeUnit, timeAlias, timeTypes, providerUses usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
         [(matchersUnit, matchersAlias, matchersTypes, providerUses usesMatchers) | matchers] ++
-        [(caseFoldUnit, caseFoldAlias, [], providerUses usesCaseFold) | textFolding] ++
+        [(caseFoldUnit, caseFoldAlias, [], textDemand) | textFolding] ++
         [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources] ++
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
@@ -430,12 +433,12 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
   -- (LawSpec.Builtins); importing lawspec.time adds its clock. Their
   -- handlers with state use collections too.
   let (collections, implicit, builtins) = sourceParsingContext selected sources
-  (candidates,sourceSyntax) <- parseSourcesWithOrigins origins capture canonical collections implicit builtins sources
+  (candidates,sourceSyntax) <- Memo.staged "parse" "" (parseSourcesWithOrigins origins capture canonical collections implicit builtins sources)
   let parsedUnits=[(MappingCheck.selectMappingCandidates mappingSelection imports unit,imports) | (unit,imports)<-candidates]
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  documented <- resolveDocumentaryReferences canonical referenceUnit visible parsedUnits
+  documented <- Memo.staged "references" "" (resolveDocumentaryReferences canonical referenceUnit visible parsedUnits)
   let sourceProfile _ = True
-  (imported',sourceBindings,demand) <- resolveImportsWithCollectionDemand capture sourceProfile visible documented
+  (imported',sourceBindings,demand) <- Memo.staged "imports" "" (resolveImportsWithCollectionDemand capture sourceProfile visible documented)
   let explicitCollection=any (\(_,imports)->any (\item->importUnit item==collectionsUnit&&
         let Span start end=importSpan item in start/=end) imports) parsedUnits
       (references,spans,opaque)=demand
@@ -458,15 +461,15 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
     compileWithMappingSelection mappingSelection (Just (explicitCollection||not (null refined),refined)) origins capture canonical referenceUnit visible bits settings sources
   else do
    -- Abilities, handlers and rows, once each unit has what it imports.
-   abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
+   abled <- Memo.staged "abilities" "" (either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported'))
    -- The harness, once every law has its final name.
-   parsed <- either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled)
+   parsed <- Memo.staged "harness" "" (either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled))
    let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
          [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
          | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]
-   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported . checkOperationResults imported) parsed)
+   lowered <- Memo.staged "refinements" "" (either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported . checkOperationResults imported) parsed))
    let beforeExpansion = map (qualifyDataNames . MappingCheck.contextualizeMappings) lowered
-   (headers0,headerContext)<-dataDeclarationHeaders beforeExpansion
+   (headers0,headerContext)<-Memo.staged "data-types" "" (dataDeclarationHeaders beforeExpansion)
    -- Header slots are for type inference, not index or constructor proofs.
    let headers=[header{Core.dataIndex=Nothing} | header<-headers0]
    forM_ beforeExpansion $ \unit -> forM_ (fieldDefinitionChecks unit unit) $ \check -> do
@@ -476,11 +479,11 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
        (typedExpressionWithSchemesContext headerContext headers bits scope (Annotate (mapExprTypes rigid (functionBody check)) (Named "Bool")))
    let us=map (inlineFieldDefinitions headerContext headers bits) beforeExpansion
    mapM_ checkRegexes us
-   (nominalTypes,sourceTypes) <- elaborateDataDeclarationsWithContext bits us
+   (nominalTypes,sourceTypes) <- Memo.staged "data-types" "" (elaborateDataDeclarationsWithContext bits us)
    declaredRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
      (SourceRecords.recordDeclarationsWithContext sourceTypes nominalTypes bits (concatMap SourceRecords.unitTypeReferences us))
    let occurrences = if null declaredRecords then nominalTypes else nominalTypes ++ declaredRecords
-   normalizedDeclarations <- normalizeProgramRecords (Core.Program bits occurrences [])
+   normalizedDeclarations <- Memo.staged "data-types" "" (normalizeProgramRecords (Core.Program bits occurrences []))
    let dataTypes=Core.programDataDeclarations normalizedDeclarations
    _ <- constructorProofContracts bits dataTypes
    let checkTypes = typeCheck sourceTypes dataTypes bits
@@ -494,9 +497,11 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
        key parts = digestHex (digestString parts)
    -- A unit is rendered and hashed once; its three keys then hash the digest.
    -- Rendering and hashing dominated an unchanged check when each key
-   -- repeated them (S1.j report 20).
-   let unitDigests = map (key . show) us
-   mapM_ (\(u,unitDigest) -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, unitDigest))) (validateUnit sourceTypes dataTypes bits u)) (zip us unitDigests)
+   -- repeated them (S1.j report 20). The rendering is the unit's binary
+   -- encoding, which names every field as Show does (it decodes back to the
+   -- unit) in a fraction of the text.
+   let unitDigests = map (digestHex . digest . BL.toStrict . Binary.encode) us
+   mapM_ (\(u,unitDigest) -> Memo.staged "validate" (unitName u) (Memo.memoized validationTable (key (show ("unit", bits, dataDigest, unitDigest))) (validateUnit sourceTypes dataTypes bits u))) (zip us unitDigests)
    _ <- forM (zip3 beforeExpansion us unitDigests) $ \(original,u,unitDigest) -> do
      let checks=fieldDefinitionChecks original u
          dependencies=fieldDefinitionDependencies original checks
@@ -507,9 +512,9 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
          label text check=case stripPrefix (functionName check ++ ": ") text of
            Just rest->"field restriction: " ++ rest
            Nothing->text
-     templates <- fieldDiagnostics $ Memo.memoized definitionTemplatesTable templateKey
+     templates <- Memo.staged "templates" (unitName u) $ fieldDiagnostics $ Memo.memoized definitionTemplatesTable templateKey
        (inferDefinitionTemplates sourceTypes dataTypes bits validationUnit)
-     Memo.memoized validationTable (key (show ("totality-field-expansion",bits,dataDigest,unitDigest,checks,dependencies))) $ fieldDiagnostics $ do
+     Memo.staged "totality" (unitName u) $ Memo.memoized validationTable (key (show ("totality-field-expansion",bits,dataDigest,unitDigest,checks,dependencies))) $ fieldDiagnostics $ do
        deferred<-auditTemplatesWithDeferrals sourceTypes dataTypes bits validationUnit
          (filter (\(definition,_,_,_)->functionName definition `notElem` orchestrations u) templates)
        forM_ dependencies $ \(name,range) ->
@@ -531,7 +536,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
          forM_ requirements $ \requirement -> unless (satisfiedWithContext sourceTypes dataTypes bits [] requirement)
            (Left ("unsatisfied capability: " ++ show requirement))
          pure tree
-   allExpanded <- forM [(u,l) | u <- us,l <- laws u] $ \(u,l) -> Memo.memoized expansionTable (expansionKey u l) $
+   allExpanded <- forM [(u,l) | u <- us,l <- laws u] $ \(u,l) -> Memo.staged "expand" (unitName u) $ Memo.memoized expansionTable (expansionKey u l) $
      either (Left . pure . (\m -> Diagnostic "semantic" m (Just (location l)))) Right $ evalStateT (do
        let symbolic = not (null (parameters l))
            rigid (Variable n) = Named ("@" ++ n)
@@ -606,10 +611,10 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
            resolveKnown t = t
        pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks (if sourceProfile (unitName u) then UniversalDomain else NonemptyDomain))
        ) (withSourceContext sourceTypes (withDataDeclarations dataTypes (initialState bits)))
-   mapM_ (validateContracts sourceTypes dataTypes bits) us
-   witnessed <- prepareHarnessWitnesses (filter ((/= "prelude") . unitName) us)
+   mapM_ (\u -> Memo.staged "contracts" (unitName u) (validateContracts sourceTypes dataTypes bits u)) us
+   witnessed <- Memo.staged "witnesses" "" $ prepareHarnessWitnesses (filter ((/= "prelude") . unitName) us)
      (filter (null . parameters . original) allExpanded)
-   (specialized, properties) <- specializeDefinitionsWithContext sourceTypes dataTypes bits (satisfiedWithContext sourceTypes dataTypes bits [])
+   (specialized, properties) <- Memo.staged "specialize" "" $ specializeDefinitionsWithContext sourceTypes dataTypes bits (satisfiedWithContext sourceTypes dataTypes bits [])
      witnessed (filter (null . parameters . original) allExpanded)
    -- A type that cannot cross into Core is a compiler bug, but the report
    -- still names where: the first declaration whose types do not lower.
@@ -622,25 +627,25 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
           [spanStart (functionSpan d) | d <- functionDefinitions u,
             not (all lowers (functionResult d : map snd (functionArguments d)))] ++
           map (spanStart . snd) (declarationSpans u))
-   collectedUnits <- forM specialized $ \u -> either (\message -> Left [Diagnostic "definition" message (culprit u)]) Right
+   collectedUnits <- forM specialized $ \u -> Memo.staged "definitions" (unitName u) $ either (\message -> Left [Diagnostic "definition" message (culprit u)]) Right
      (Elaboration.elaborateDefinitionUnitWithSourceRecords sourceTypes dataTypes bits u)
    propertyRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
      (SourceRecords.recordDeclarationsWithContext sourceTypes dataTypes bits
        (concatMap (concatMap SourceRecords.typedTypeReferences . typedExpressions) properties))
    let collectedRecords = concatMap snd collectedUnits ++ propertyRecords
        closedDataTypes = if null collectedRecords then dataTypes else dataTypes ++ collectedRecords
-   normalizedProgram <- normalizeProgramRecords (Core.Program bits closedDataTypes (map fst collectedUnits))
-   closedProgram <- deferProgramPostconditions normalizedProgram
-   invoke <- prepareDefinitions closedProgram
+   normalizedProgram <- Memo.staged "records" "" (normalizeProgramRecords (Core.Program bits closedDataTypes (map fst collectedUnits)))
+   closedProgram <- Memo.staged "admission" "" (deferProgramPostconditions normalizedProgram)
+   invoke <- Memo.staged "evaluator" "" (prepareDefinitions closedProgram)
    registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry (Core.programDataDeclarations closedProgram))
    let hasMappings=any (any (maybe False ((==MappingForward).mappingRole).functionMapping).functionDefinitions) us
-   choices<-if hasMappings then MappingCheck.checkMappings settings us closedProgram invoke else pure M.empty
+   choices<-if hasMappings then Memo.staged "mappings" "" (MappingCheck.checkMappings settings us closedProgram invoke) else pure M.empty
    if hasMappings && mappingSelection==Nothing then
      compileWithMappingSelection (Just choices) selected origins capture canonical referenceUnit visible bits settings sources
    else do
      when (maybe False (/=choices) mappingSelection)
        (Left [Diagnostic "mapping" "mapping derivation changed after final name resolution" Nothing])
-     forM_ properties $ \property -> do
+     forM_ properties $ \property -> Memo.staged "examples" (owner property) $ do
        u <- maybe (Left [Diagnostic "semantic" "missing property owner" Nothing]) Right
          (lookup (owner property) [(unitName u,u) | u <- specialized])
        either (Left . pure . (\message -> Diagnostic "semantic" message (Just (location (original property))))) Right $
@@ -698,7 +703,9 @@ validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (cons
 {-# NOINLINE validationTable #-}
 
 definitionTemplatesTable :: Memo.Table (Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])])
-definitionTemplatesTable = unsafePerformIO (Memo.newPersistentTable "definition-templates" (32*1024) weight)
+-- In memory only: reading a unit's stored templates took longer than
+-- inferring them (docs/explanation/s1j-followup.md).
+definitionTemplatesTable = unsafePerformIO (Memo.newTable (32*1024) weight)
   where
     weight (Left _) = 1
     weight (Right values) = 1 + sum [sum (map nodes (body:pre ++ post)) | (_,body,pre,post)<-values]

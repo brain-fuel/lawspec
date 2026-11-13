@@ -26,6 +26,12 @@ import {serveLanguage} from '../lsp.mjs';
 import {showScalar} from '../scalars.mjs';
 import {mutateProject} from '../mutate.mjs';
 import {doctor} from '../doctor.mjs';
+import {
+  buildLength,
+  cacheLocation,
+  cacheWarning,
+  probeCache,
+} from '../compiler-cache.mjs';
 import {applyRequirements, gradleFor, prepareProject} from '../prepare.mjs';
 import {
   recordNativeAttempts,
@@ -127,6 +133,7 @@ for (let i = 0; i < args.length; i++)
       '--json',
       '--minify',
       '--no-cache',
+      '--timings',
       '--no-install',
       '--fresh',
       '--coverage',
@@ -754,26 +761,61 @@ function harnessText(item)
   }
   return lines.join('\n');
 }
-// The compiler keeps work between runs in .lawspec/cache, in one folder per
-// compiler build, so a different build never reads another's entries. The
-// WebAssembly compiler sees only the working directory. A command that fails
-// removes the .lawspec folder if it created it, leaving the project as it was.
+// The compiler keeps work between runs in a cache directory, in one folder
+// per compiler build, so a different build never reads another's entries.
+// By default that is .lawspec/cache, which LawSpec owns: it removes other
+// builds' folders there, and a command that fails removes the .lawspec
+// folder if it created it, leaving the project as it was. A directory named
+// by LAWSPEC_COMPILER_CACHE or :cache-directory may be shared by projects
+// and compiler versions, so nothing is removed from it.
 let createdState = null;
 async function cacheDirectory(config)
 {
-  if (options['no-cache'] || config.cache === false) return undefined;
-  const folder = path.join(configRoot, '.lawspec', 'cache');
-  const relative = path.relative(process.cwd(), folder);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
-  const build = (await buildDigest()).slice(0, 16);
+  const location = cacheLocation({options, config, configRoot});
+  if (location === undefined) return undefined;
+  if (!location.owned)
+  {
+    await mkdir(location.directory, {recursive: true}).catch(() =>
+    {});
+    return location.directory;
+  }
+  const folder = location.directory;
+  const build = (await buildDigest()).slice(0, buildLength);
   const state = path.join(configRoot, '.lawspec');
   if ((await readOptionalDirectory(state)) === null) createdState = state;
-  await mkdir(path.join(folder, build), {recursive: true});
+  await mkdir(folder, {recursive: true});
   await writeFile(path.join(folder, '.gitignore'), '*\n');
-  for (const entry of await readdir(folder))
-    if (entry !== build && entry !== '.gitignore')
-      await rm(path.join(folder, entry), {recursive: true, force: true});
-  return path.join(relative, build).split(path.sep).join('/');
+  // lawspec prove keeps solver receipts beside the build's folder. They name
+  // the build they belong to, and go when another build's folder goes.
+  const receipts = 'solver-goals-v1';
+  const stale = (await readdir(folder)).filter(
+    entry => ![build, '.gitignore', receipts].includes(entry),
+  );
+  for (const entry of stale.length ? [...stale, receipts] : [])
+    await rm(path.join(folder, entry), {recursive: true, force: true});
+  return folder;
+}
+// An entry the compiler could not store changes no result, so it is reported
+// once, on standard error, and never in a command's own output.
+let cacheWarned = false;
+function reportingCache(compiler)
+{
+  return Object.fromEntries(
+    Object.entries(compiler).map(([name, method]) => [
+      name,
+      async input =>
+      {
+        const result = await method(input);
+        if (result?.cacheFailure)
+        {
+          if (!cacheWarned) console.error(cacheWarning(result.cacheFailure));
+          cacheWarned = true;
+          delete result.cacheFailure;
+        }
+        return result;
+      },
+    ]),
+  );
 }
 // The compiler build, by the digest of its WebAssembly module.
 let buildDigestValue = null;
@@ -1580,7 +1622,7 @@ async function main()
     output(
       'LawSpec ' +
         VERSION +
-        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify] [--no-install]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
+        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify] [--no-install]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
         targets.join(', '),
     );
     return;
@@ -1895,13 +1937,17 @@ async function main()
     const reports = await Promise.all(
       selected.map((t, i) => doctor(t, roots[i])),
     );
+    // The project's own check: can the compiler keep its cache here?
+    const location = cacheLocation({options, config, configRoot});
+    if (location !== undefined)
+      reports.push(await probeCache(location, await buildDigest()));
     output(
       options.json
         ? reports
         : reports
             .map(
               r =>
-                `${r.target}: ${r.ok ? (r.kind === 'artifact' ? 'generation ready' : 'ready') : `${r.message}\n${r.instructions}`}`,
+                `${r.target}: ${r.ok ? (r.detail ?? (r.kind === 'artifact' ? 'generation ready' : 'ready')) : `${r.message}\n${r.instructions}`}`,
             )
             .join('\n'),
     );
@@ -1916,17 +1962,30 @@ async function main()
   if (config.cache !== undefined && typeof config.cache !== 'boolean')
     throw new Error('cache must be true or false');
   if (
+    config.cacheDirectory !== undefined &&
+    (typeof config.cacheDirectory !== 'string' || !config.cacheDirectory)
+  )
+    throw new Error('cacheDirectory must be the path of a directory');
+  if (
     config.attestation !== undefined &&
     typeof config.attestation !== 'string'
   )
     throw new Error(
       'attestation must be the path of an environment attestation',
     );
+  // lawspec inspect and lawspec advise write nothing, so they keep no cache.
   const cache = ['inspect', 'advise'].includes(verb)
     ? undefined
     : await cacheDirectory(config);
+  // The compiler reports its own progress on standard error: the running
+  // stage on a terminal, and a table of every stage with --timings.
+  const progress = [
+    ...(options.timings ? ['timings'] : []),
+    ...(process.stderr.isTTY && !options.json ? ['terminal'] : []),
+  ];
   const input = {
     ...(cache === undefined ? {} : {cacheDirectory: cache}),
+    ...(progress.length ? {progress} : {}),
     advice: !options['no-advice'],
     sources: await sources(config),
     languageProfile: config.languageProfile,
@@ -1941,7 +2000,7 @@ async function main()
       : {}),
     now: new Date().toISOString(),
   };
-  const compiler = await createCompiler();
+  const compiler = reportingCache(await createCompiler());
   async function authoringReport()
   {
     const reports = [];
@@ -1968,9 +2027,11 @@ async function main()
         });
         continue;
       }
+      // This advice belongs to a command that keeps a cache, so it may use
+      // it; lawspec advise and lawspec inspect have no cache directory.
       const advised = await compiler.advise({
         ...input,
-        cacheDirectory: undefined,
+        cacheAdvisory: true,
         target: target.language,
         sourceDir: target.sourceDir,
         testDir: target.testDir,
