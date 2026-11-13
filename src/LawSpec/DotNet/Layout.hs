@@ -28,6 +28,8 @@ data F
   -- | A method or constructor applied to a tuple: Value.Data(a, b).
   | Method String [F]
   | List [F]
+  -- | An array expression: [| a; b |].
+  | Array [F]
   | Tuple [F]
   -- | A record expression: { A = a; B = b }.
   | Record [(String, F)]
@@ -153,6 +155,10 @@ flat e = case e of
   List xs -> do
     items <- mapM flat xs
     within 80 ("[ " ++ intercalate "; " items ++ " ]")
+  Array [] -> Just "[||]"
+  Array xs -> do
+    items <- mapM flat xs
+    within 80 ("[| " ++ intercalate "; " items ++ " |]")
   Tuple xs -> (\as -> "(" ++ intercalate ", " as ++ ")") <$> mapM flat xs
   Record [] -> Just "{}"
   Record fields -> do
@@ -216,6 +222,7 @@ exprW w i c e = case flat e of
       App _ [] -> True
       Method _ [] -> True
       List [] -> True
+      Array [] -> True
       Record [] -> True
       _ -> False
 
@@ -234,6 +241,7 @@ brokenW w i c e = case e of
     in [first] ++ init rest ++ [last rest ++ "("] ++ concat [if k == length args then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] (map (itemW w (lastIndent + 4)) args)] ++ [pad lastIndent ")"]
   Method f args -> commaList (f ++ "(") ")" args
   List xs -> ["["] ++ concatMap (itemW w (i + 4)) xs ++ [pad i "]"]
+  Array xs -> ["[|"] ++ concatMap (itemW w (i + 4)) xs ++ [pad i "|]"]
   -- A tuple too long for its line has an item on each line, aligned after
   -- its opening parenthesis.
   Tuple xs ->

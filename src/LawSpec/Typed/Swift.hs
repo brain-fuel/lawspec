@@ -588,7 +588,7 @@ constant _ _ s = case s of
   SAbsent "Unit" -> pure ([], D.text "Unit()")
   SInteger t n -> pure ([], D.text (integerLiteral t n))
   SSequence "Text" units -> pure ([], D.text (stringLiteral (map toEnum units)))
-  SSequence "Bytes" units -> pure ([], D.text ("[UInt8]([" ++ intercalate ", " (map show units) ++ "])"))
+  SSequence "Bytes" units -> pure ([], D.text "[UInt8](" <> octets units <> D.text ")")
   _ -> lift' (Left ("typed Swift: unsupported constant " ++ show s))
 
 integerLiteral :: String -> Integer -> String
@@ -744,3 +744,12 @@ matchStatements env scope resultType sink value cases = do
             D.joinWith D.hardline (arms ++ [unreachableArm | length cases < length (dataConstructors d)]) <> D.hardline <> D.text "}"]
     _ -> lift' (Left ("typed Swift: cannot match on " ++ show ty))
   pure (prelude ++ arms)
+
+-- | An array of octets: on one line, or filled as swift-format fills an
+-- array of numbers, with a trailing comma.
+octets :: [Int] -> D.Doc
+octets units = case units of
+  [] -> D.text "[]"
+  _ -> D.group (D.text "[" <> D.nest 2 (D.softbreak <>
+    D.flow ([D.text (show unit ++ ",") | unit <- init units] ++ [D.text (show (last units)) <> D.whenBroken (D.text ",")])) <>
+    D.softbreak <> D.text "]")

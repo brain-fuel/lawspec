@@ -4,7 +4,7 @@
 module LawSpec.BeamCode
   ( atom, binary, string, array, tuple, record, call, remote, lambda, apply
   , function, moduleDoc, moduleDocFrom, userModuleDoc, sequenceDoc, snake, moduleName, functionName
-  , typeReference, reference, literal, json, value, nativeType, dataNames
+  , typeReference, reference, literal, octets, json, value, nativeType, dataNames
   , nativeModule, nativeFunction, nativeName, pascal, elixirDataModule, elixirFields, gleamPath, gleamName
   , nativeCall, mentions, variable, comment, linkComment
   , field, assign, breaksInside, forceBreak, operator, caseOf, define, funClauses, spec, funType, comprehension, cons
@@ -275,13 +275,19 @@ json j = case j of
 -- | A scalar as the runtime holds it, written natively: integers, booleans,
 -- Text as a UTF-8 binary, Bytes as a binary, exact and IEEE numbers through
 -- their runtime constructors. Others go through the runtime's literal.
+-- | A binary of octets. One too long for its line is filled, each further
+-- line four columns in, as erlfmt lays a binary out.
+octets :: [Int] -> D.Doc
+octets units = D.text "<<" <> D.nest 4 (D.flow
+  [D.text (show unit ++ if index < length units then "," else "") | (index, unit) <- zip [1 ..] units]) <> D.text ">>"
+
 literal :: D.Doc -> Scalar -> D.Doc
 literal symbols s = case s of
   SInteger _ n -> D.text (show n)
   SCharacter _ n -> D.text (show n)
   SBool b -> atom (if b then "true" else "false")
   SSequence "Text" units -> binary (map toEnum units)
-  SSequence "Bytes" units -> D.text ("<<" ++ intercalate ", " (map show units) ++ ">>")
+  SSequence "Bytes" units -> octets units
   SDecimal c e -> remote "lawspec_beam_scalar" "decimal" [D.text (show c),D.text (show e)]
   SRational n d -> remote "lawspec_beam_scalar" "ratio" [D.text (show n),D.text (show d)]
   SFloat t bits | t `elem` ["Float32","Float64"] ->

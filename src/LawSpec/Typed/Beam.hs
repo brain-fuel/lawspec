@@ -619,7 +619,7 @@ constant env s = case s of
   SAbsent "Unit" -> pure (E.atom (unitAtom (envTarget env)))
   SInteger _ n -> pure (D.text (show n))
   SSequence "Text" units -> pure (E.binary (map toEnum (map fromIntegral units)))
-  SSequence "Bytes" units -> pure (D.text ("<<" ++ intercalate ", " (map show units) ++ ">>"))
+  SSequence "Bytes" units -> pure (E.octets units)
   _ -> failWith ("unsupported constant " ++ show s)
 
 -- | A data constructor's target form, made from its fields.
