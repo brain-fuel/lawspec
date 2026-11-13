@@ -20,8 +20,9 @@ lawspec project validate
 ```
 
 This creates `lawspec.edn`, a starter unit under `laws/`, and Canon metadata
-through the exact `ricestax@0.3.2` setup package. It does not choose an application
-target. That published package embeds Canon 0.1.0; it is separate from the newer
+through the exact `ricestax@0.3.2` setup package. That package is an optional
+dependency of the CLI; when it is absent, the command says how to install it. The
+command does not choose an application target. That published package embeds Canon 0.1.0; it is separate from the newer
 Canon checkout used to review this compiler repository. Its default ingestion
 profile is Folio. Use `--languages folio,javascript` to select additional packaged
 profiles. No package is installed globally and no human verdict is manufactured.
