@@ -12,6 +12,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   constructor variable applied, and `requires Mappable m` allows `prelude.map`
   on it. The instances are `List` and `Either` with its failure type fixed.
   See [Definitions](docs/reference/language/definitions.md#a-definition-over-a-type-constructor).
+- Calendar dates: the built-in unit `lawspec.calendar`, with `Date` (days
+  since 1970-01-01, from 0001-01-01 to 9999-12-31), `Weekday` and `CivilDate`,
+  and `dateOf`, `dateFromDays`, `civilOf`, `weekdayOf`, `weekdayNumber`,
+  `addDays`, `daysBetween`, `isLeapYear`, `daysInMonth` and `daysFromCivil` as
+  checked definitions on every target. Z3 proves its laws, and the `calendar`
+  acceptance suite runs them (DEC-calendar-date). Time zones are not included.
 
 ### Changed
 

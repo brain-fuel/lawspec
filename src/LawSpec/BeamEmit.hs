@@ -3,6 +3,7 @@
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks
 module LawSpec.BeamEmit (emitBeam, emitBeamWithBindings) where
 
+import LawSpec.Calendar (calendarUnit)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Machine (machineActor, machineScenarios)
 import qualified LawSpec.Code.Doc as D
@@ -237,7 +238,7 @@ validatePlan target plan = do
   unless (target /= "gleam" || all (\n -> (not ("lawspec@" `isPrefixOf` n) ||
     n `elem` [E.nativeModule target u | u <- units,
       Abilities.defaultUnit u || C.idText (C.unitId u) `elem`
-        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,Collections.collectionsUnit,caseFoldUnit]]) &&
+        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,Collections.collectionsUnit,caseFoldUnit,calendarUnit]]) &&
     n `notElem` [E.nativeModule target u ++ "@definitions" | u <- units]) natives)
     (Left "Gleam module names collide with generated modules or the lawspec namespace")
   unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) &&
