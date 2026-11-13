@@ -59,6 +59,13 @@ test_formatsAreTheRecordedGrammars = describe "named text formats" $ do
           , "Ann <@a.example,@b.example:ann@example.org>", "team: ann@example.org, Bob <bob@example.org>;", "team:;"
           , "ann@example.org\n" ] $ \text ->
       (text, emailAccepts RefuseComments text) `shouldBe` (text, True)
+  it "email accepts what the module's way of writing the grammar lets in" $ do
+    -- docs/reference/language/matchers.md lists these.
+    forM_ [ "ann @ example.org", "\228nn@ex\228mple.org", "a\SUBb@example.org", "a\USb@example.org", "a\DELb@example.org"
+          , "team: ann@example.org,\160bob@example.org;\8195" ] $ \text ->
+      (text, emailAccepts RefuseComments text) `shouldBe` (text, True)
+    emailAccepts RefuseComments "team: ann@example.org;\n\n\n" `shouldBe` True
+    emailAccepts RefuseComments "a\EMb@example.org" `shouldBe` False
   it "email refuses what is not one address" $
     forM_ [ "", "ann", "@example.org", "ann@", "ann@@example.org", "ann..lee@example.org", "ann@example..org"
           , "ann@example.org, bob@example.org", "ann lee@example.org", "ann@example.org\n\n", "a\0b@example.org" ] $ \text ->

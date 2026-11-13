@@ -4,14 +4,22 @@ module ContractRulesSpec (test_recordRulesBecomeCheckedValidators) where
 import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Control.Monad (forM_)
 import Data.Foldable (toList)
-import Data.List (isInfixOf, sort)
+import Data.List (isInfixOf, isSuffixOf, sort)
 import qualified Data.Text as T
 import Test.Hspec
 import LawSpec.Api (dispatch)
 import LawSpec.Compile
 import LawSpec.ContractRules
+import qualified LawSpec.Core as C
+import LawSpec.Core.Types (makeRegistry)
+import qualified LawSpec.Core.Value as V
+import qualified LawSpec.Scalar as V
+import LawSpec.Data (elaborateDataDeclarations)
 import LawSpec.Model hiding (Expectation)
+import LawSpec.Regex (parseRegex, regexMatches, regexSamples)
+import LawSpec.Testing (constrainedBoundaries)
 
 check :: [String] -> Either [Diagnostic] ([Unit], [Expanded])
 check body = compile [Source "source.lawspec" (unlines (["unit probe.rules", ""] ++ body ++ ["end unit"]))]
@@ -186,3 +194,51 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
       `shouldBe` []
   it "hide a sentinel no source can write by accident" $
     maskSentinel `shouldBe` "<lawspec-masked-sentinel>"
+  it "find boundary records of many restricted fields by settling each field alone" $ do
+    -- Few of a field's seeds pass its own pattern, so whole records tried
+    -- blindly almost never pass all four: the search keeps, per field, the
+    -- seeds that field's restrictions accept before it combines them.
+    let body =
+          [ "type Parcel is a record{"
+          , "  sender :: (v :: Text where v matches regex \"[A-Z]{2}[0-9]{4}\"),"
+          , "  receiver :: (v :: Text where v matches regex \"[a-z]{3}-[0-9]{2}\"),"
+          , "  depot :: (v :: Text where v matches regex \"D[0-9]{3}\"),"
+          , "  weight :: (v :: Int32 where 1 <= v && v <= 30),"
+          , "  note :: Text}"
+          , "end type" ]
+        parcel declarations = head ([name | name <- map (C.idText . C.dataId) declarations, "Parcel" `isSuffixOf` name] ++ ["Parcel"])
+        matching pattern value = case (parseRegex pattern, value) of
+          (Right regex, V.ScalarValue (V.SSequence _ text)) -> regexMatches regex text
+          _ -> False
+    case check body of
+      Left diagnostics -> expectationFailure (concatMap message diagnostics)
+      Right (units, _) -> case elaborateDataDeclarations units of
+       Left diagnostics -> expectationFailure (concatMap message diagnostics)
+       Right declarations -> case makeRegistry declarations of
+        Left text -> expectationFailure text
+        Right registry -> case constrainedBoundaries registry 64 (C.Constructor (parcel declarations) []) of
+          Left text -> expectationFailure text
+          Right values -> do
+            length values `shouldSatisfy` (> 1)
+            [ value | value@(V.DataValue _ _ [sender, receiver, depot, V.ScalarValue (V.SInteger _ weight), _]) <- values
+                    , matching "[A-Z]{2}[0-9]{4}" sender, matching "[a-z]{3}-[0-9]{2}" receiver
+                    , matching "D[0-9]{3}" depot, 1 <= weight, weight <= 30 ] `shouldBe` values
+  it "sample a repetition inside a repetition briefly, and every sample still matches" $ do
+    let samples pattern = either (const []) (regexSamples 200) (parseRegex pattern)
+        accepted pattern text = either (const False) (`regexMatches` map fromEnum text) (parseRegex pattern)
+    -- An open repetition adds at most six turns; one level in, two; deeper, one.
+    maximum (map length (samples "a{2,}")) `shouldBe` 8
+    maximum (map length (samples "a{2,3}")) `shouldBe` 3
+    maximum (map length (samples "(a{0,}){0,}")) `shouldSatisfy` (<= 12)
+    maximum (map length (samples "((a{1,}){1,}){1,}")) `shouldSatisfy` (<= 28)
+    forM_ ["a{2,}", "(a{0,}b){0,}", "((a{1,}){1,}c){1,}", "([a-z]+(\\.[a-z]+)*@)+x"] $ \pattern ->
+      [text | text <- samples pattern, not (accepted pattern text)] `shouldBe` []
+  it "prove a field's length and pattern from a text literal" $ do
+    let coded value =
+          [ "type Code is a record{code :: (v :: Text where prelude.length v <= 8 && v matches regex \"[A-Z]{2}-[0-9]+\")}"
+          , "end type"
+          , "function fixed (u :: Unit) -> Code is Code record{code = \"" ++ value ++ "\"}"
+          , "end function" ]
+    either (concatMap message) (const "") (check (coded "GB-12")) `shouldBe` ""
+    refused (coded "GB-1234567") "constructor field refinement could not be proved"
+    refused (coded "gb-12") "constructor field refinement could not be proved"

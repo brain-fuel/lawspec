@@ -1035,6 +1035,11 @@ linear expression = case expression of
   -- prefixes before any arithmetic relation of the result is used.
   Match _ [([],body)] -> linear body
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
+  -- The length of a literal is the number the reference semantics gives it
+  -- (helperValue), as a text matcher of literals is decided in textPredicate.
+  Opaque "length" [value]
+    | Literal scalar@(SSequence _ _) <- unwrapped value
+    , Right count <- helperValue 64 "length" [scalar] >>= exactValue -> Just (R.constant count)
   Opaque name values -> Just (R.variable (Id ("::opaque::" ++ name ++ show (map unwrapped values))))
   -- This is proof normalization only. walk still audits the complete strict
   -- constructor, including fields the projection does not select. General
