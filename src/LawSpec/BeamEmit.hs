@@ -196,8 +196,11 @@ emitBeamWithBindings target minify bindings plan = do
         let types = fst (C.functionType (C.declarationType d))
             named = Names.variables [] ([unwords (typeWords t) | t <- types] ++
               [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d])
-            args = [D.text ("_" ++ v) | v <- take (length types) named]
-            handlers = [D.text ("_" ++ v) | v <- drop (length types) named]
+            handlerNames = Names.variables [] [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d]
+            -- Or by the names the signature declares (LawSpec.Naming).
+            (handlers, args) = case Names.stubParameters "erlang" handlerNames (C.declarationParameters d) types of
+              Just parameters -> ([D.text ("_" ++ v) | v <- handlerNames], [D.text ("_" ++ v) | v <- parameters])
+              Nothing -> ([D.text ("_" ++ v) | v <- drop (length types) named], [D.text ("_" ++ v) | v <- take (length types) named])
         pure [signature,E.function (E.functionName d) (handlers ++ args) [E.remote "erlang" "error"
           [E.tuple [E.atom "not_implemented",E.binary (C.idText (C.declarationId d))]]]]
       production <- concat <$> mapM (Abilities.productionStub target bits names) (Abilities.productionAbilities unit)

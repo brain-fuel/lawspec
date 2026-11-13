@@ -5,7 +5,7 @@
 -- ref:DEC-idiomatic-generated-types ref:DEC-swift-runtime-from-scratch
 module LawSpec.Swift.Names
   ( pascal, camel, escape, unitNamespace, unitPath, unitQualified, generatedName, apiName
-  , adapterPath, functionName, parameterName, dataNames, swiftKeywords, splitDots, testName
+  , adapterPath, functionName, parameterName, parameterNames, operationParameterNames, dataNames, swiftKeywords, splitDots, testName
   , handleKey, moduleName, testModuleName, typeParameter, localName, reservedLocals, exampleSuffixes, splitDigest
   ) where
 
@@ -156,8 +156,20 @@ camelKeep name
   | (c : _) <- name, all (\x -> isAscii x && (isAlphaNum x || x == '_')) name && isLower c = name
   | otherwise = camel name
 
+-- | The reference spelling of a parameter, by position.
 parameterName :: Int -> String
 parameterName i = "value" ++ show i
+
+-- | A declaration's parameter names: the ones its signature declares, or
+-- ones made from their types, in lowerCamelCase, a keyword in backticks,
+-- clear of the names given and of generated code's own locals.
+-- ref:DEC-generated-parameter-names
+operationParameterNames :: C.Ability -> String -> [C.Type] -> [String]
+operationParameterNames a op = N.parameterNamesWith N.Camel escape reservedLocals "value" (C.operationParameters a op)
+
+parameterNames :: [String] -> C.Declaration -> [String]
+parameterNames taken d = N.parameterNamesWith N.Camel escape (taken ++ reservedLocals) "value"
+  (C.declarationParameters d) (fst (C.functionType (C.declarationType d)))
 
 -- | A unit's test suite: LawsOfExampleShop.
 testName :: C.Id -> String

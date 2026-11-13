@@ -11,6 +11,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames, positionalNames)
 import LawSpec.WebData (webDataTypeOf, webTypeReference)
 import qualified LawSpec.WebDefinitions as Definitions
 import qualified LawSpec.Code.Doc as D
@@ -59,16 +60,19 @@ emitWithNativeBridge nativeBridge ts minify bits datas units = do
           support = [ Support "_lawspec_schema" [E.constDecl "_lawspec_schema" (E.call "data.makeSchema" [])]
                     , Support "MACHINE_BITS" (X.machineBitsDeclaration bits) ]
       pure (Artifact (modulePath ts u) (printWebModule layout ts (webModule ts leading imports support (interfaces ++ handlers ++ recordings))) "generated" "source")
-    parametersOf ty = do
+    -- A generated handler's own methods keep positional names; the
+    -- interface a user implements takes the operation's.
+    parametersOf = parametersNamed (positionalNames "value")
+    parametersNamed names ty = do
       let (args, result) = C.functionType ty
       types <- mapM (webDataTypeOf datas) args
       resultType <- if result == C.scalarType "Unit" then pure (E.TKeyword "void") else webDataTypeOf datas result
-      pure ([annotated ("value" ++ show i) t | (i, t) <- zip [0 :: Int ..] types], if ts then Just resultType else Nothing)
+      pure ([annotated name t | (name, t) <- zip names types], if ts then Just resultType else Nothing)
     method op params result body = E.Method False False "method" op params result body
     doc text = E.MemberComment ["/** " ++ text ++ " */"]
     interface a = do
       methods <- mapM (\(op, ty) -> do
-        (params, result) <- parametersOf ty
+        (params, result) <- parametersNamed (operationNames ts a op) ty
         pure (E.Signature op params result)) (C.abilityOperations a)
       pure [ E.Comment ["/** The " ++ interfaceName a ++ " ability: a handler answers each of its operations. */"]
            , E.Interface True (interfaceName a) [] methods ]
@@ -209,7 +213,7 @@ productionStub ts datas a = do
     let (args, result) = C.functionType ty
     types <- mapM (webDataTypeOf datas) args
     resultType <- if result == C.scalarType "Unit" then pure (E.TKeyword "void") else webDataTypeOf datas result
-    pure (E.Method False False "method" op [(E.param ("value" ++ show i)) { E.paramType = if ts then Just t else Nothing } | (i, t) <- zip [0 :: Int ..] types]
+    pure (E.Method False False "method" op [(E.param name) { E.paramType = if ts then Just t else Nothing } | (name, t) <- zip (operationNames ts a op) types]
       (if ts then Just resultType else Nothing) [E.Throw (E.new' "Error" [E.Str op])])) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   made <- case C.abilityResource a of
@@ -222,3 +226,8 @@ productionStub ts datas a = do
   pure [ E.Comment (["/**"] ++ map (" * " ++) (map (drop 3) (commentLines ("The native handler of " ++ displayName a ++ ": " ++
            intercalate ", " (map fst (C.abilityOperations a)) ++ "."))) ++ [" */"])
        , E.ClassDecl True (productionName a) [] Nothing (if ts then [E.TRef ("abilities." ++ interfaceName a) []] else []) (made ++ methods) ]
+
+-- An operation's parameter names where a user writes or reads them: the
+-- interface and the production handler's stub (LawSpec.Naming).
+operationNames :: Bool -> C.Ability -> String -> [String]
+operationNames ts = operationParameterNames (if ts then "typescript" else "javascript") [] "value"

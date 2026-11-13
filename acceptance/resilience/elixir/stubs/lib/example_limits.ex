@@ -2,37 +2,37 @@
 defmodule Example.Limits do
   @spec admit_ticket(LawSpec.Data.ticket()) :: {:left, binary()} | {:right, LawSpec.Data.ticket()}
 
-  def admit_ticket(_ticket) do
+  def admit_ticket(_ticket_1) do
     raise "Not implemented: example.limits::admitTicket"
   end
 
   @spec reserve_seat(LawSpec.Data.ticket()) :: {:left, binary()} | {:right, LawSpec.Data.ticket()}
 
-  def reserve_seat(_ticket) do
+  def reserve_seat(_ticket_1) do
     raise "Not implemented: example.limits::reserveSeat"
   end
 
   @spec charge_card(LawSpec.Data.ticket()) :: {:left, binary()} | {:right, LawSpec.Data.ticket()}
 
-  def charge_card(_ticket) do
+  def charge_card(_ticket_1) do
     raise "Not implemented: example.limits::chargeCard"
   end
 
   @spec release_seat(LawSpec.Data.ticket()) :: boolean()
 
-  def release_seat(_ticket) do
+  def release_seat(_ticket_1) do
     raise "Not implemented: example.limits::releaseSeat"
   end
 
   @spec fetch_quote(LawSpec.Data.ticket()) :: {:left, binary()} | {:right, LawSpec.Data.ticket()}
 
-  def fetch_quote(_ticket) do
+  def fetch_quote(_ticket_1) do
     raise "Not implemented: example.limits::fetchQuote"
   end
 
   @spec hedge_quote(LawSpec.Data.ticket()) :: {:left, binary()} | {:right, LawSpec.Data.ticket()}
 
-  def hedge_quote(_ticket) do
+  def hedge_quote(_ticket_1) do
     raise "Not implemented: example.limits::hedgeQuote"
   end
 end

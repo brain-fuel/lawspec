@@ -1,7 +1,7 @@
 -- | Turns a testing plan into each target's files: tests, adapter stubs, data
 -- types and companion artifacts. It reads only Core and the plan, never source
 -- syntax, which lawspec-dev boundaries enforces. ref:DEC-typed-core-boundary
-module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
+module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, positionalPlan, targets) where
 import qualified LawSpec.OutputLayout as OutputLayout
 import LawSpec.Sessions (sessionArtifacts)
 import qualified LawSpec.JvmProduct as Product
@@ -79,8 +79,9 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified LawSpec.PythonTypes as PythonTypes
 import qualified LawSpec.WebTypes as WebTypes
-import Control.Monad (unless)
-import LawSpec.Memo (Table, newPersistentTable, memoized)
+import Control.Monad (forM, unless)
+import LawSpec.Naming (positionalParameters)
+import LawSpec.Memo (Table, newPersistentTable, memoized, unmemoized)
 import Data.Binary (Binary(..), encode)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
@@ -112,9 +113,13 @@ emitPlan = emitPlanWithFormat False
 -- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormat minify target plan = do
+emitPlanWithFormat minify target plan | target `elem` Targets.artifactTargets = do
   checkDefinitionPlan plan
   emitMaterializedPlanWithFormat minify target (emittedPlanFor target plan)
+emitPlanWithFormat minify target plan = do
+  checkDefinitionPlan plan
+  files <- emitMaterializedPlanWithFormat minify target (emittedPlanFor target plan)
+  withPositionalReferences files (emitMaterializedPlanWithFormat False target (emittedPlanFor target (positionalPlan plan)))
 
 -- | The plan as emitters see it: admitted, so without the `decreases`
 -- measures that only admission reads.
@@ -754,6 +759,51 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings plan | target
   -- so they keep the measures.
   ArtifactEmit.emitArtifacts minify target sourceDir testDir plan
 emitPlanWithNativeOptions minify target sourceDir testDir bindings admitted = do
+  files <- emitPlanWithParameterNames minify target sourceDir testDir bindings admitted
+  withPositionalReferences files
+    (emitPlanWithParameterNames False target sourceDir testDir (positionalBindings bindings) (positionalPlan admitted))
+
+-- | An adapter's canonical reference is its readable stub with positional
+-- parameter names (value0, value1), as every release before 0.34 wrote it:
+-- the files of the plan, with each adapter's reference taken from the
+-- readable emission of the positional plan. A host compares that
+-- reference's digest, so naming or renaming a parameter is never reported
+-- as a changed adapter requirement: adapters take their arguments by
+-- position on every target. The second emission is computed beside the memo
+-- tables, and only as far as the stubs: its products are for parameters no
+-- file is written with, so no later request would look them up.
+-- ref:DEC-generated-parameter-names
+withPositionalReferences :: [Artifact] -> Either [Diagnostic] [Artifact] -> Either [Diagnostic] [Artifact]
+withPositionalReferences files positional
+  | not (any isAdapter files) = pure files
+  | otherwise = do
+      references <- unmemoized (either (length . show) (sum . map (\(path, stub) -> length path + length stub)))
+        (fmap (\emitted -> [(artifactPath file, maybe (artifactContent file) id (adapterReference file)) | file <- emitted, ownership file == "user"]) positional)
+      forM files $ \file -> if not (isAdapter file) then pure file else
+        case [stub | (path, stub) <- references, path == artifactPath file] of
+          [reference] -> pure file { canonicalAdapter = reference }
+          _ -> Left [Diagnostic "target" ("adapter " ++ artifactPath file ++ " has no canonical reference") Nothing]
+  where
+    isAdapter file = case file of
+      AdapterArtifact{} -> True
+      Artifact{} -> False
+
+-- | A plan whose adapters, definitions and ability operations take the
+-- reference spelling of their parameters.
+positionalPlan :: Plan -> Plan
+positionalPlan plan = plan { plannedUnits = [u { plannedUnit = unit (plannedUnit u) } | u <- plannedUnits plan] }
+  where
+    unit u = u { C.unitDeclarations = map positionalParameters (C.unitDeclarations u)
+               , C.unitDefinitions = [d { C.definitionDeclaration = positionalParameters (C.definitionDeclaration d) } | d <- C.unitDefinitions u]
+               , C.unitAbilities = [a { C.abilityOperationParameters = [(operation, C.PositionalParameters) | (operation, _) <- C.abilityOperations a] } | a <- C.unitAbilities u] }
+
+positionalBindings :: NB.BindingPlan -> NB.BindingPlan
+positionalBindings bindings = bindings
+  { NB.bindingFunctions = [(positionalParameters d, r) | (d, r) <- NB.bindingFunctions bindings]
+  , NB.bindingCalls = [(positionalParameters d, c) | (d, c) <- NB.bindingCalls bindings] }
+
+emitPlanWithParameterNames :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithParameterNames minify target sourceDir testDir bindings admitted = do
   checkDefinitionPlan admitted
   checkExecutionPlan admitted
   -- Existing native actors are checked on Java and Scala so far; elsewhere the

@@ -94,7 +94,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
       text (field "kind" (field "origin" (head (list (field "declarations" (head (list (field "units" result)))))))) `shouldBe` "source"
       let adapter = head [f | f <- files result, text (field "ownership" f) == "user"]
       text (field "path" adapter) `shouldBe` "src/rust_example.rs"
-      content adapter `shouldSatisfy` lineMatches ["value0: i8", "ls::Integer"]
+      content adapter `shouldSatisfy` lineMatches ["int8_1: i8", "ls::Integer"]
       let runtime = fileWhere (== "src/lawspec_runtime.rs") result
       text (field "placement" runtime) `shouldBe` "source"
       text (field "ownership" runtime) `shouldBe` "generated"

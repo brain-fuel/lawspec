@@ -2,7 +2,7 @@
 defmodule Example.Arithmetic do
   @spec mirror(LawSpec.Data.perfect()) :: LawSpec.Data.perfect()
 
-  def mirror(_perfect) do
+  def mirror(_tree) do
     raise "Not implemented: example.arithmetic::mirror"
   end
 
@@ -14,19 +14,19 @@ defmodule Example.Arithmetic do
 
   @spec duplicate(LawSpec.Data.row()) :: LawSpec.Data.halves()
 
-  def duplicate(_row) do
+  def duplicate(_xs) do
     raise "Not implemented: example.arithmetic::duplicate"
   end
 
   @spec count_pairs(LawSpec.Data.row()) :: LawSpec.Data.pairs()
 
-  def count_pairs(_row) do
+  def count_pairs(_xs) do
     raise "Not implemented: example.arithmetic::countPairs"
   end
 
   @spec drop_first(LawSpec.Data.row()) :: LawSpec.Data.rest()
 
-  def drop_first(_row) do
+  def drop_first(_xs) do
     raise "Not implemented: example.arithmetic::dropFirst"
   end
 end

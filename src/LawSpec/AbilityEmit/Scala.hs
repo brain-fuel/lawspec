@@ -13,6 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames, positionalNames)
 import qualified LawSpec.ScalaData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.ScalaExpr as E
@@ -121,16 +122,17 @@ emit minify bits datas units = do
             comment 0 ("The abilities of " ++ C.idText (C.unitId u) ++ ": a trait for each, its spec handlers, and a recording of any handler of it.") <>
             line ("object " ++ name ++ " ") <> block (D.joinWith (D.hardline <> D.hardline) members) <> D.hardline
       pure (Artifact ("src/main/scala/" ++ intercalate "/" qualified ++ ".scala") (D.render layout (Native.rootQualifiedDoc source)) "generated" "source")
-    signature a op ty = do
+    signature = signatureNamed (positionalNames "value")
+    signatureNamed names a op ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.scalaDataTypeDoc datas) args
       resultType <- operationResult datas a op result
-      pure (L.signature (line ("def " ++ Native.escaped op)) [line ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] resultType)
+      pure (L.signature (line ("def " ++ Native.escaped op)) [line (name ++ ": ") <> t | (name, t) <- zip names types] resultType)
     owning answered op = case [a | a <- answered, op `elem` map fst (C.abilityOperations a)] of
       a : _ -> a
       [] -> C.failAbility
     interface a = do
-      methods <- mapM (\(op, ty) -> signature a op ty) (C.abilityOperations a)
+      methods <- mapM (\(op, ty) -> signatureNamed (operationNames a op) a op ty) (C.abilityOperations a)
       pure (comment 2 ("The " ++ C.abilityName a ++ " ability: a handler answers each of its operations.") <>
         line ("trait " ++ interfaceName a ++ " ") <> block (D.joinWith D.hardline methods))
     codec ty = Native.scalaCodecReceiverIn (E.schemaName, E.bitsName) (line "symbols") datas ty
@@ -277,7 +279,7 @@ productionStub datas u a = do
     types <- mapM (Native.scalaDataTypeDoc datas) args
     resultType <- operationResult datas a op result
     pure (L.equalsBody (L.signature (D.text ("override def " ++ Native.escaped op))
-      [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] resultType)
+      [D.text (name ++ ": ") <> t | (name, t) <- zip (operationNames a op) types] resultType)
       (D.text ("throw NotImplementedError(" ++ show op ++ ")")))) (C.abilityOperations a)
   -- ability A with T: the handler is made with the case's T.
   made <- traverse (Native.scalaDataTypeDoc datas) (C.abilityResource a)
@@ -285,3 +287,9 @@ productionStub datas u a = do
     D.group (D.text ("class " ++ productionName a) <> maybe mempty (\t -> D.text "(val resource: " <> t <> D.text ")") made <>
       D.nest 4 (D.softline <> D.text ("extends " ++ abilitiesObject u ++ "." ++ interfaceName a))) <> D.text " " <>
     D.block 2 (D.joinWith D.hardline methods))
+
+-- An operation's parameter names where a user writes or reads them: the
+-- interface and the production handler's stub (LawSpec.Naming). A generated
+-- handler's own methods keep positional names.
+operationNames :: C.Ability -> String -> [String]
+operationNames = operationParameterNames "scala" [] "value"

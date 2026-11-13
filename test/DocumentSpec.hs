@@ -7,7 +7,7 @@ import Data.List (isInfixOf, isPrefixOf, tails)
 import LawSpec.Common
 import LawSpec.Frontend (compileCore)
 import LawSpec.Testing (planTesting)
-import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
+import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, positionalPlan, targets)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import qualified LawSpec.KotlinLayout as Kotlin
@@ -258,8 +258,11 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
             emitPlanWithOptions True target Nothing Nothing plan `shouldBe` Right compact
             map identity compact `shouldBe` map identity readable
             adapters readable `shouldSatisfy` (not . null)
+            -- An adapter's reference is its readable stub with positional
+            -- parameter names, in either format. ref:DEC-generated-parameter-names
             map adapterReference (adapters compact) `shouldBe`
-              map (Just . artifactContent) (adapters readable)
+              either (const []) (map (Just . artifactContent) . adapters) (emitPlanWithFormat False target (positionalPlan plan))
+            map adapterReference (adapters readable) `shouldBe` map adapterReference (adapters compact)
             sum (map (length . artifactContent) compact) `shouldSatisfy`
               (< sum (map (length . artifactContent) readable))
             emitPlanWithOptions False target (Just "sources") (Just "sources") plan

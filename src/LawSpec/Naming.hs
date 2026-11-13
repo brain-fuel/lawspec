@@ -7,6 +7,8 @@ module LawSpec.Naming
   ( Casing(..), NameKind(..), nameWords, cased, casingFor, escapeKeyword, reservedFor
   , nativeIdentifier, Scope, emptyScope, scopeWith, claim, claimAll, uniqueNames
   , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, typeWords
+  , ParameterName(..), parameterWords, typeHeadWords, parameterIdentifier, parameterNames, parameterNamesWith
+  , declarationParameterNames, operationParameterNames, sourceParameterNames, positionalParameters, positionalNames
   ) where
 
 import Data.Binary (Binary)
@@ -15,6 +17,7 @@ import Data.Char (isAlphaNum, isAscii, isDigit, isHexDigit, isLower, isUpper, to
 import qualified LawSpec.Core as C
 import Data.List (intercalate, isPrefixOf, stripPrefix, dropWhileEnd)
 import qualified Data.Set as S
+import LawSpec.Builtins (defaultedUnits)
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.TestNames (lawWords, testIdentifier)
 
@@ -214,6 +217,140 @@ typeWords ty = case ty of
   C.Constructor n args -> nameWords (lastSegment n) ++ concat [typeWords t | C.TypeArgument t <- args]
   C.TypeVariable _ -> ["value"]
   C.Arrow a b -> typeWords a ++ ["to"] ++ typeWords b
+  where
+    lastSegment = lastTypeSegment
+
+-- | The words of a type's head, which name an unnamed parameter: List Text
+-- is list, Maybe Order is maybe, a unit's OrderLine is order line. An
+-- unsigned integer keeps its u (UInt32 is uint32), Whole is whole, an
+-- anonymous record is record, a type variable is value and a function is
+-- function.
+typeHeadWords :: C.Type -> [String]
+typeHeadWords ty = case ty of
+  C.Constructor n _ | "lawspec::structural::" `isPrefixOf` n -> ["record"]
+  C.Constructor "BigUInt" _ -> ["whole"]
+  C.Constructor n _ -> case nameWords (unsigned (lastTypeSegment n)) of
+    [] -> ["value"]
+    ws -> ws
+  C.TypeVariable _ -> ["value"]
+  C.Arrow _ _ -> ["function"]
+  where
+    unsigned n = case stripPrefix "UInt" n of
+      Just rest -> "Uint" ++ rest
+      Nothing -> n
+
+-- | A parameter's name before a target spells it.
+-- ref:DEC-generated-parameter-names
+data ParameterName
+  = DeclaredName String      -- ^ the name its signature declares
+  | TypeDerivedName [String] Int
+    -- ^ its type's head and its number, from 1, among the unnamed
+    -- parameters with that head
+  | PositionalName Int       -- ^ its position, from 0: the reference spelling
+  deriving (Eq, Show)
+
+-- | Every parameter's name, in order: the declared one, or else one made
+-- from its type. add :: (a :: Int32) -> Int32 -> Int32 -> Text has a,
+-- int32 1 and int32 2. A sole unnamed parameter of its type is numbered
+-- too, so adding a second never renames the first.
+parameterWords :: C.ParameterNames -> [C.Type] -> [ParameterName]
+parameterWords C.PositionalParameters types = [PositionalName i | (i, _) <- zip [0 ..] types]
+parameterWords (C.DeclaredParameters declared) types = go [] (zip (declared ++ repeat Nothing) types)
+  where
+    go _ [] = []
+    go seen ((Just name, _) : rest) | not (null (nameWords name)) = DeclaredName name : go seen rest
+    go seen ((_, ty) : rest) =
+      let hd = typeHeadWords ty
+          number = 1 + length (filter (== hd) seen)
+      in TypeDerivedName hd number : go (hd : seen) rest
+
+-- | One parameter's name in a casing, escaped by the target's own rule. A
+-- type-derived name ends in its number, joined as the casing joins a number
+-- (numbered): int32_1 and order_line_1, int32_1 and orderLine1, int32-1.
+parameterIdentifier :: Casing -> (String -> String) -> String -> ParameterName -> String
+parameterIdentifier casing escape positional name = case name of
+  DeclaredName source -> escape (leading (cased casing (nameWords source)))
+  TypeDerivedName ws number -> numbered casing (cased casing ws) number
+  PositionalName i -> positional ++ show i
+  where
+    leading identifier@(c : _) | isDigit c = (if casing == Pascal then 'V' else 'v') : identifier
+    leading identifier = identifier
+
+-- | A name and a number after it. snake_case and kebab-case separate every
+-- word, so the number follows an underscore or a hyphen. camelCase has no
+-- separator, so the number follows directly (text1, orderLine1), except
+-- after a digit, where an underscore keeps two numbers apart (int32_1), as
+-- Google's Java guide writes adjacent numbers (5.3, guava33_4_6).
+numbered :: Casing -> String -> Int -> String
+numbered casing name number = name ++ separator ++ show number
+  where
+    separator = case casing of
+      Kebab -> "-"
+      Camel | not endsInDigit -> ""
+      Pascal | not endsInDigit -> ""
+      _ -> "_"
+    endsInDigit = not (null name) && isDigit (last name)
+
+-- | A function's parameter names on a target: cased as the target cases a
+-- value, clear of its reserved words, of the names already taken where they
+-- are declared, and of each other (a clash is numbered from 2, in order).
+-- The positional stem is what the reference spelling numbers (value gives
+-- value0, value1); those names are exactly the earlier releases' and are
+-- not adjusted.
+parameterNames :: String -> [String] -> String -> C.ParameterNames -> [C.Type] -> [String]
+parameterNames target = parameterNamesWith (casingFor target ValueName) (escapeKeyword target)
+
+-- | The same for a target with its own casing or escape.
+parameterNamesWith :: Casing -> (String -> String) -> [String] -> String -> C.ParameterNames -> [C.Type] -> [String]
+parameterNamesWith casing escape taken positional declared types = case declared of
+  C.PositionalParameters -> spelled
+  _ -> distinct (S.fromList taken) spelled
+  where
+    spelled = map (parameterIdentifier casing escape positional) (parameterWords declared types)
+    distinct _ [] = []
+    distinct used (name : rest) =
+      let chosen = case [c | c <- name : [numbered casing name n | n <- [2 :: Int ..]], c `S.notMember` used] of
+            c : _ -> c
+            [] -> name
+      in chosen : distinct (S.insert chosen used) rest
+
+-- | An adapter's or definition's parameter names on a target.
+declarationParameterNames :: String -> [String] -> String -> C.Declaration -> [String]
+declarationParameterNames target taken positional d =
+  parameterNames target taken positional (C.declarationParameters d) (fst (C.functionType (C.declarationType d)))
+
+-- | An ability operation's parameter names on a target. A built-in unit's
+-- abilities keep positional names: their default handlers are the runtime's
+-- own sources, written with those names, and an interface that named them
+-- otherwise would have each override rename its parameters.
+operationParameterNames :: String -> [String] -> String -> C.Ability -> String -> [String]
+operationParameterNames target taken positional ability operation =
+  parameterNames target taken positional declared
+    (maybe [] (fst . C.functionType) (lookup operation (C.abilityOperations ability)))
+  where
+    declared
+      | C.idText (C.abilityOwner ability) `elem` defaultedUnits = C.PositionalParameters
+      | otherwise = C.operationParameters ability operation
+
+-- | Parameter names as text about the spec gives them (a failure, explain):
+-- the declared name as written, or the type-derived one in snake_case.
+sourceParameterNames :: C.ParameterNames -> [C.Type] -> [String]
+sourceParameterNames declared types = fst (claimAll emptyScope [ case name of
+    DeclaredName source -> source
+    _ -> parameterIdentifier Snake id "value" name
+  | name <- parameterWords declared types ])
+
+-- | The reference spelling on a stem: value0, value1, ... Generated code a
+-- user neither implements nor calls by name keeps it for its own locals.
+positionalNames :: String -> [String]
+positionalNames stem = [stem ++ show i | i <- [0 :: Int ..]]
+
+-- | A declaration with the reference spelling of its parameters.
+positionalParameters :: C.Declaration -> C.Declaration
+positionalParameters d = d { C.declarationParameters = C.PositionalParameters }
+
+lastTypeSegment :: String -> String
+lastTypeSegment = lastSegment
   where
     lastSegment s = case breakOn s of
       (_, Just rest) -> lastSegment rest

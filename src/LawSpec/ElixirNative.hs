@@ -16,6 +16,7 @@ import Control.Monad (forM, unless)
 import Data.List (nub)
 import LawSpec.SourceLink (unitSourceFile)
 import LawSpec.Naming (typeWords)
+import qualified LawSpec.BeamNames as Names
 
 emitNative :: D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitNative layout bits declarations units = do
@@ -50,8 +51,11 @@ emitNative layout bits declarations units = do
         let named = X.variables ([unwords (typeWords t) | t <- fst (C.functionType (C.declarationType d))] ++
               [abilityWords a ++ " handler" | a <- Effects.uses d])
             arity = length (fst (C.functionType (C.declarationType d)))
-            args = [D.text ("_" ++ v) | v <- take arity named]
-            handlers = [D.text ("_" ++ v) | v <- drop arity named]
+            handlerNames = X.variables [abilityWords a ++ " handler" | a <- Effects.uses d]
+            -- Or by the names the signature declares (LawSpec.Naming).
+            (handlers, args) = case Names.stubParameters "elixir" handlerNames (C.declarationParameters d) (fst (C.functionType (C.declarationType d))) of
+              Just parameters -> ([D.text ("_" ++ v) | v <- handlerNames], [D.text ("_" ++ v) | v <- parameters])
+              Nothing -> ([D.text ("_" ++ v) | v <- drop arity named], [D.text ("_" ++ v) | v <- take arity named])
         pure [spec,X.function (functionName d) (handlers ++ args) [D.text "raise " <> X.string ("Not implemented: " ++ C.idText (C.declarationId d))]])
       production <- concat <$> mapM (Abilities.productionStub "elixir" bits names) (Abilities.productionAbilities unit)
       let body = X.moduleDoc (moduleName unit) (not (Abilities.defaultUnit unit)) (bodies ++ production)

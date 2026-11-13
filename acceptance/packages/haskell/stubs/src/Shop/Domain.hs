@@ -14,4 +14,4 @@ import qualified Prelude as P
 -- convert :: shop.domain::type::Currency -> shop.domain::type::Money ->
 -- shop.domain::type::Money — examples/packages/shop-domain/src/domain.lawspec:47
 convert :: Data.ShopDomainCurrency -> Data.Money -> Data.Money
-convert _ _ = P.error "convert"
+convert _currency1 _money1 = P.error "convert"

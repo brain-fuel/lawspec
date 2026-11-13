@@ -13,6 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..), pythonUnitFile)
 import LawSpec.AbilityNames
+import LawSpec.Naming (operationParameterNames, positionalNames)
 import LawSpec.PythonTypes (pythonDataTypeDoc, pythonTypeReferenceDoc, pythonLayout)
 import qualified LawSpec.PythonDefinitions as Definitions
 import qualified LawSpec.Code.Doc as D
@@ -74,16 +75,19 @@ emitWithNativeBridge nativeBridge minify bits datas units = do
           body = D.joinWith (D.hardline <> D.hardline <> D.hardline) (protocols ++ handlers ++ recordings)
           usesBits = "MACHINE_BITS" `elem` words (map (\c -> if c == '_' || c `elem` ['A'..'Z'] then c else ' ') (D.render D.Compact body))
       pure (Artifact (modulePath units u) (D.render layout (header <> D.hardline <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
-    parameters ty = do
+    -- A generated handler's own methods keep positional names; the
+    -- protocol a user implements takes the operation's.
+    parameters = parametersNamed (positionalNames "value")
+    parametersNamed names ty = do
       let (args, result) = C.functionType ty
       types <- mapM (pythonDataTypeDoc datas) args
       resultType <- if result == C.scalarType "Unit" then pure (D.text "None") else pythonDataTypeDoc datas result
-      pure (D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types]) <>
+      pure (D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text (name ++ ": ") <> t | (name, t) <- zip names types]) <>
         D.text " -> " <> flat resultType)
     -- ruff breaks the parameters before a return annotation.
     flat = D.text . D.render D.Compact
     protocol a = do
-      methods <- mapM (\(op, ty) -> (\ps -> D.text ("def " ++ op) <> ps <> D.text ": ...") <$> parameters ty) (C.abilityOperations a)
+      methods <- mapM (\(op, ty) -> (\ps -> D.text ("def " ++ op) <> ps <> D.text ": ...") <$> parametersNamed (operationNames a op) ty) (C.abilityOperations a)
       pure (E.suite (D.text ("class " ++ interfaceName a ++ "(_typing.Protocol)"))
         (D.joinWith D.hardline (D.text ("\"\"\"The " ++ interfaceName a ++ " ability: a handler answers each of its operations.\"\"\"") : D.text "" : methods)))
     specHandler u h = do
@@ -227,8 +231,13 @@ productionStub datas a = do
     types <- mapM (pythonDataTypeDoc datas) args
     resultType <- if result == C.scalarType "Unit" then pure (D.text "None") else pythonDataTypeDoc datas result
     pure (E.suite (D.text ("def " ++ op) <>
-      D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types]) <>
+      D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text (name ++ ": ") <> t | (name, t) <- zip (operationNames a op) types]) <>
       D.text " -> " <> D.text (D.render D.Compact resultType)) (D.text "raise NotImplementedError(" <> E.quoted op <> D.text ")"))) (C.abilityOperations a)
   pure (D.render pythonLayout (E.suite (D.text ("class " ++ productionName a))
     (D.joinWith D.hardline (D.text ("\"\"\"The native handler of " ++ displayName a ++ ": " ++
       intercalate ", " (map fst (C.abilityOperations a)) ++ ".\"\"\"") : made ++ concatMap (\m -> [D.text "", m]) methods))) ++ "\n")
+
+-- An operation's parameter names where a user writes or reads them: the
+-- protocol and the production handler's stub (LawSpec.Naming).
+operationNames :: C.Ability -> String -> [String]
+operationNames = operationParameterNames "python" ["self"] "value"

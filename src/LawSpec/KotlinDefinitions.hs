@@ -5,6 +5,7 @@ import Control.Monad (forM)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
 import LawSpec.Common
+import LawSpec.Naming (declarationParameterNames)
 import LawSpec.Core
 import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.KotlinExpr as E
@@ -136,10 +137,10 @@ emitKotlinDefinitions layout bits declarations units = do
           types <- mapM (Native.kotlinDataTypeDoc declarations) args
           resultType <- flat <$> Native.kotlinDataTypeDoc declarations result
           let declaration = definitionDeclaration d
-              parameters = D.text "symbols: MutableMap<String, Any>" : [D.text ("value" ++ show i ++ ": ") <> ty | (i, ty) <- zip [0::Int ..] types]
+              parameters = D.text "symbols: MutableMap<String, Any>" : [D.text (parameter ++ ": ") <> ty | (parameter, ty) <- zip (apiParameters [] declaration) types]
           pure (KotlinLayout.equalsBody (D.text ("fun " ++ declarationName declaration) <> KotlinLayout.arguments parameters <> D.text ": " <> resultType)
             (KotlinLayout.call toNative [KotlinLayout.call function
-              [KotlinLayout.call fromNative [D.text ("value" ++ show i)] | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]]))
+              [KotlinLayout.call fromNative [D.text parameter] | (parameter, (fromNative, _)) <- zip (apiParameters [] declaration) conversions]]))
       | otherwise = definitionDynamic d
     definitionDynamic d = do
       let declaration = definitionDeclaration d
@@ -153,7 +154,7 @@ emitKotlinDefinitions layout bits declarations units = do
                      , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "symbols: MutableMap<String, Any>" :
             [D.text (name ++ ": " ++ abilityInterface ability) | (ability, name) <- handlers] ++
-            [D.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
+            [D.text (parameter ++ ": ") <> ty | (parameter,ty) <- zip (apiParameters (map snd handlers) declaration) types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
@@ -161,7 +162,7 @@ emitKotlinDefinitions layout bits declarations units = do
           signature = D.text ("fun " ++ declarationName declaration) <>
             KotlinLayout.arguments parameters <> D.text ": " <> resultType <> D.text " "
           input i codec = [assign ("codec" ++ show i) (KotlinLayout.receiverDoc codec),
-            D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ")")]
+            D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(" ++ (apiParameters (map snd handlers) declaration !! i) ++ ")")]
           body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
              assign "resultCodec" (KotlinLayout.receiverDoc resultCodec),D.text "return resultCodec.decode(result)"]
@@ -204,3 +205,12 @@ emitKotlinDefinitions layout bits declarations units = do
         in call "LawSpecRuntime.nativeFailures" ([E.quoted (abilityKey ability),
              KotlinLayout.lambda ["nativeValue"] [encode codec (D.text ("nativeValue as " ++ native))], KotlinLayout.lambda [] [body]] ++ mapped)
       _ -> body
+
+-- A definition's parameters in its native API: its binders' names, or ones
+-- made from their types (LawSpec.Naming), clear of the handlers it takes
+-- and of the names its body binds.
+apiParameters :: [String] -> Declaration -> [String]
+apiParameters handlers declaration = declarationParameterNames "kotlin"
+  (handlers ++ words "symbols result resultCodec context failure error" ++
+    concat [["codec" ++ show i, "argument" ++ show i] | i <- [0 .. length (fst (functionType (declarationType declaration)))]])
+  "value" declaration

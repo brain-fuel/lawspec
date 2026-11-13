@@ -7,21 +7,22 @@
     -2147483648..2147483647
 ) -> lawspec_data:duration().
 
-elapsed(_ClockHandler, _Int32) -> erlang:error({not_implemented, <<"example.builtins::elapsed">>}).
+elapsed(_ClockHandler, _Int32_1) ->
+    erlang:error({not_implemented, <<"example.builtins::elapsed">>}).
 
 -spec token(
     lawspec_abilities_lawspec_randomness:secure_random(),
     -2147483648..2147483647
 ) -> binary().
 
-token(_SecureRandomHandler, _Int32) ->
+token(_SecureRandomHandler, _Int32_1) ->
     erlang:error({not_implemented, <<"example.builtins::token">>}).
 
 -spec listening(lawspec_abilities_lawspec_host:ports(), -2147483648..2147483647) -> boolean().
 
-listening(_PortsHandler, _Int32) ->
+listening(_PortsHandler, _Int32_1) ->
     erlang:error({not_implemented, <<"example.builtins::listening">>}).
 
 -spec charge(lawspec_abilities_lawspec_logging:log(), -2147483648..2147483647) -> boolean().
 
-charge(_LogHandler, _Int32) -> erlang:error({not_implemented, <<"example.builtins::charge">>}).
+charge(_LogHandler, _Int32_1) -> erlang:error({not_implemented, <<"example.builtins::charge">>}).

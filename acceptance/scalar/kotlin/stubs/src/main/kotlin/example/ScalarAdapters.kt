@@ -5,47 +5,47 @@ import lawspec.runtime.LawSpecRuntime
 
 object ScalarAdapters {
     // echoChar :: (Char -> Char) — scalar_adapters.lawspec:2
-    fun echoChar(value0: kotlin.String): kotlin.String = TODO("echoChar")
+    fun echoChar(char1: kotlin.String): kotlin.String = TODO("echoChar")
 
     // echoCodePoint :: (CodePoint -> CodePoint) — scalar_adapters.lawspec:3
-    fun echoCodePoint(value0: kotlin.Int): kotlin.Int = TODO("echoCodePoint")
+    fun echoCodePoint(codePoint1: kotlin.Int): kotlin.Int = TODO("echoCodePoint")
 
     // echoCodeUnit :: (CodeUnit16 -> CodeUnit16) — scalar_adapters.lawspec:4
-    fun echoCodeUnit(value0: kotlin.Char): kotlin.Char = TODO("echoCodeUnit")
+    fun echoCodeUnit(codeUnit16_1: kotlin.Char): kotlin.Char = TODO("echoCodeUnit")
 
     // echoBytes :: (Bytes -> Bytes) — scalar_adapters.lawspec:5
-    fun echoBytes(value0: kotlin.ByteArray): kotlin.ByteArray = TODO("echoBytes")
+    fun echoBytes(bytes1: kotlin.ByteArray): kotlin.ByteArray = TODO("echoBytes")
 
     // echoComplex :: (Complex64 -> Complex64) — scalar_adapters.lawspec:6
     fun echoComplex(
-        value0: lawspec.runtime.LawSpecRuntime.Complex
+        complex64_1: lawspec.runtime.LawSpecRuntime.Complex
     ): lawspec.runtime.LawSpecRuntime.Complex = TODO("echoComplex")
 
     // successor :: (Int8 -> Integer) — scalar_adapters.lawspec:7
-    fun successor(value0: kotlin.Byte): Number = TODO("successor")
+    fun successor(int8_1: kotlin.Byte): Number = TODO("successor")
 
     // narrow :: (Int8 -> Int8) — scalar_adapters.lawspec:8
-    fun narrow(value0: kotlin.Byte): kotlin.Byte = TODO("narrow")
+    fun narrow(int8_1: kotlin.Byte): kotlin.Byte = TODO("narrow")
 
     // addDecimal :: (Decimal -> (Decimal -> Decimal)) — scalar_adapters.lawspec:9
     fun addDecimal(
-        value0: java.math.BigDecimal,
-        value1: java.math.BigDecimal,
+        decimal1: java.math.BigDecimal,
+        decimal2: java.math.BigDecimal,
     ): java.math.BigDecimal = TODO("addDecimal")
 
     // sameSymbol :: (Symbol -> (Symbol -> Bool)) — scalar_adapters.lawspec:10
     fun sameSymbol(
-        value0: lawspec.runtime.LawSpecKotlin.Symbol,
-        value1: lawspec.runtime.LawSpecKotlin.Symbol,
+        symbol1: lawspec.runtime.LawSpecKotlin.Symbol,
+        symbol2: lawspec.runtime.LawSpecKotlin.Symbol,
     ): kotlin.Boolean = TODO("sameSymbol")
 
     // echoRaw :: (Utf16Text -> Utf16Text) — scalar_adapters.lawspec:11
-    fun echoRaw(value0: kotlin.String): kotlin.String = TODO("echoRaw")
+    fun echoRaw(utf16Text1: kotlin.String): kotlin.String = TODO("echoRaw")
 
     // echoPresence :: (Optional (Nullable (Int8)) -> Optional (Nullable (Int8))) —
     // scalar_adapters.lawspec:12
     fun echoPresence(
-        value0:
+        optional1:
             lawspec.runtime.LawSpecKotlin.Optional<
                 lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>
             >
@@ -53,11 +53,11 @@ object ScalarAdapters {
         TODO("echoPresence")
 
     // finish :: (Unit -> Unit) — scalar_adapters.lawspec:13
-    fun finish(value0: kotlin.Unit): kotlin.Unit = TODO("finish")
+    fun finish(unit1: kotlin.Unit): kotlin.Unit = TODO("finish")
 
     // preserveBig :: (UInt64 -> UInt64) — scalar_adapters.lawspec:14
-    fun preserveBig(value0: java.math.BigInteger): java.math.BigInteger = TODO("preserveBig")
+    fun preserveBig(uint64_1: java.math.BigInteger): java.math.BigInteger = TODO("preserveBig")
 
     // machineEcho :: (IntSize -> IntSize) — scalar_adapters.lawspec:15
-    fun machineEcho(value0: java.math.BigInteger): java.math.BigInteger = TODO("machineEcho")
+    fun machineEcho(intSize1: java.math.BigInteger): java.math.BigInteger = TODO("machineEcho")
 }

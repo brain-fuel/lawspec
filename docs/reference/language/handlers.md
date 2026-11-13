@@ -237,7 +237,8 @@ handler whose class would be (`handler payments`), is a compile error that
 says which to rename.
 
 A native adapter that `uses Gateway` takes the handler first:
-`charge(gateway, value0)`. In Haskell its result is in `IO`.
+`charge(gateway, int32_1)` for `charge :: Int32 -> Bool uses Gateway`. In
+Haskell its result is in `IO`.
 
 Native code that calls a checked definition passes its handlers the same
 way. The generated function for `checkout` takes the context, then a Gateway

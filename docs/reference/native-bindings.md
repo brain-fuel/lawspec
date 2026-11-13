@@ -538,6 +538,79 @@ must not fail merely because `Empty` has no values. Demanding a value from that
 child fails generation, so it can never make a property pass. Finite containers
 such as `List Empty` are still enumerated.
 
+## Parameter names
+
+Generated code names an adapter's parameters as its signature does.
+ref:DEC-generated-parameter-names
+
+```lawspec
+unit bindings.names
+add :: (a :: Int32) -> (b :: Int32) -> Int32
+plus :: Int32 -> Int32 -> Int32
+end unit
+```
+
+| Target | `add` | `plus` |
+| --- | --- | --- |
+| Java, Groovy | `add(int a, int b)` | `plus(int int32_1, int int32_2)` |
+| Kotlin | `fun add(a: kotlin.Int, b: kotlin.Int)` | `fun plus(int32_1: kotlin.Int, int32_2: kotlin.Int)` |
+| Scala | `def add(a: scala.Int, b: scala.Int)` | `def plus(int32_1: scala.Int, int32_2: scala.Int)` |
+| Clojure | `[a b]` | `[int32-1 int32-2]` |
+| Python | `def add(a: int, b: int)` | `def plus(int32_1: int, int32_2: int)` |
+| JavaScript | `function add(a, b)` | `function plus(int32_1, int32_2)` |
+| TypeScript | `function add(a: number, b: number)` | `function plus(int32_1: number, int32_2: number)` |
+| Go | `func Add(a int32, b int32)` | `func Plus(int32_1 int32, int32_2 int32)` |
+| Rust | `pub fn add(a: i32, b: i32)` | `pub fn plus(int32_1: i32, int32_2: i32)` |
+| Swift | `func add(_ a: Int32, _ b: Int32)` | `func plus(_ int32_1: Int32, _ int32_2: Int32)` |
+| C# | `Add(int a, int b)` | `Plus(int int32_1, int int32_2)` |
+| F# | `let add (a: int) (b: int)` | `let plus (int32_1: int) (int32_2: int)` |
+| Haskell | `add _a _b =` | `plus _int32_1 _int32_2 =` |
+| Elixir | `def add(_a, _b)` | `def plus(_int32_1, _int32_2)` |
+| Gleam | `pub fn add(_a: Int, _b: Int)` | `pub fn plus(_int32_1: Int, _int32_2: Int)` |
+| Erlang | `add(_A, _B)` | `plus(_Int32_1, _Int32_2)` |
+| Prolog | `ls_add(_A, _B, _)` | `ls_plus(_Int32_1, _Int32_2, _)` |
+
+- **A declared name** is cased as the target cases a value: `order_id` or
+  `orderId` in the spec is `order_id` in Python and Rust, `orderId` in Java,
+  `order-id` in Clojure and `OrderId` as an Erlang or Prolog variable. A
+  reserved word is escaped the target's way (`class_` in Java, `r#type` in
+  Rust, `` `class` `` in Swift).
+- **A parameter without a name** is named after its type and numbered from 1
+  among the unnamed parameters of that type: `int32_1`, `int32_2`. A compound
+  type gives its head: `List Text` is `list_1`, `Maybe Order` is `maybe_1`, a
+  record `Order` is `order_1` (written here in snake_case). An anonymous
+  record is `record_1`, a function `function_1`, a type variable `value_1`
+  and `BigUInt` `whole_1`.
+- **The number is joined as the target joins a word**: `order_line_1` and
+  `text_1` in snake_case, `order-line-1` in Clojure, `orderLine1` and `text1`
+  in camelCase (`OrderLine1` as an Erlang or Prolog variable). camelCase
+  writes an underscore only to keep two numbers apart, as Google's Java guide
+  does: `int32_1`, `float64_2`. A sole parameter keeps its number, so a
+  second parameter of the type never renames the first.
+- **Names stay distinct.** Two names that case alike, or a name the generated
+  signature already uses (a handler parameter, for example), are numbered
+  from 2 the same way, in parameter order: `orderId`, `orderId2`.
+- **A stub that reads nothing** marks its parameters as unused where the
+  target would warn: a leading underscore in Haskell, Elixir, Gleam, Erlang
+  and Prolog. Remove it when you use the parameter.
+- A definition's parameters (`function total (a :: Int32) …`) and an
+  ability's operations are named the same way, in interfaces and in
+  production handler stubs. A result's name stays in the spec.
+
+Text about an adapter's laws uses the spec's spelling of these names: an input
+a claims block leaves out is reported as `current = Cancelled`, or
+`state_1 = Cancelled` when the signature names nothing.
+
+Names never affect what an adapter must implement. An existing adapter is not
+rewritten, and neither naming a parameter nor renaming one reports an adapter
+update: the stub an adapter is compared with is written with positional names
+(`value0`, `value1`). Generated glue that nobody edits, such as bridges,
+codecs and spec handlers, also keeps positional names, and so do the
+interfaces of the built-in units' abilities (`lawspec.time`,
+`lawspec.crypto` and the others with default handlers), whose handlers are
+the runtime's own. A parameter's name is not part of a declaration's semantic
+hash.
+
 ## Ownership
 
 Generated bridges and runtimes are generated source. Framework helpers are

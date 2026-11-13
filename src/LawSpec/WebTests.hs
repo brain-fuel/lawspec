@@ -9,7 +9,7 @@ module LawSpec.WebTests (webTests, webTestsWithSourceRoot) where
 import LawSpec.Backend hiding (inputId, localName, bindings, contractArguments, contractResult)
 import qualified LawSpec.Backend as Backend
 import qualified Data.Map.Strict as M
-import LawSpec.Naming (displayLabel, claimAll, scopeWith, cased, Casing(..))
+import LawSpec.Naming (displayLabel, claimAll, scopeWith, cased, Casing(..), declarationParameterNames)
 import LawSpec.TestNames (lawWords)
 import LawSpec.SourceLink (unitSourceFile, labelled, locationLink, exampleLocation, originLocation)
 import LawSpec.Common
@@ -175,10 +175,16 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
           -- First, a handler for each ability the adapter uses.
           handlerArguments = [ (E.param (handlerParameter ability)) { E.paramType = if ts then Just (maybe (E.TKeyword "unknown") tsInterface (abilityNamed ability)) else Nothing }
                              | d <- C.unitDeclarations u, C.declarationName d == n, ability <- C.declarationUses d, not (C.isFail ability) ]
-          arguments = handlerArguments ++ [(E.param ("value" ++ show i)) { E.paramType = if ts then Just (nativeArg a) else Nothing } | (i,a) <- zip [0 :: Int ..] args]
+          -- Then its own parameters, by the names its signature declares
+          -- or ones made from their types (LawSpec.Naming).
+          parameters = concat [declarationParameterNames target [handlerParameter ability | ability <- C.declarationUses d, not (C.isFail ability)] "value" d
+                              | d <- take 1 [d | d <- C.unitDeclarations u, C.declarationName d == n]]
+          arguments = handlerArguments ++ [(E.param parameter) { E.paramType = if ts then Just (nativeArg a) else Nothing } | (parameter,a) <- zip parameters args]
           -- Native representations can erase LawSpec distinctions. Keep the
           -- declared interface visible in both the stub and its canonical key.
-          signatureComments = concat [commentLines ("LawSpec argument " ++ show i ++ ": " ++ prettyType a) | (i,a) <- zip [0 :: Int ..] args] ++
+          -- The reference counts its arguments; the stub names them.
+          argumentLabels = [if parameter == "value" ++ show i then show i else parameter | (i,parameter) <- zip [0 :: Int ..] parameters]
+          signatureComments = concat [commentLines ("LawSpec argument " ++ label ++ ": " ++ prettyType a) | (label,a) <- zip argumentLabels args] ++
             commentLines ("LawSpec result: " ++ prettyType r)
           asyncStub = n `elem` asyncFunctions u
           result = if ts then Just (if asyncStub then E.TRef "Promise" [native r] else native r) else Nothing

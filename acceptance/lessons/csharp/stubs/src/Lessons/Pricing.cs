@@ -12,7 +12,7 @@ using LawSpec.CSharp;
 public static class Pricing
 {
   /// <summary>(Int32 -> Int64)</summary>
-  public static long PriceInCents(int value0)
+  public static long PriceInCents(int int32_1)
   {
     throw new NotImplementedException("not implemented: lessons.pricing::priceInCents");
   }

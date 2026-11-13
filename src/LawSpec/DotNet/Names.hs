@@ -5,7 +5,7 @@
 -- ref:DEC-idiomatic-generated-types ref:DEC-csharp-over-fsharp
 module LawSpec.DotNet.Names
   ( langOf, extension, pascal, camel, unitNamespace, unitModule, unitQualified, generatedModule
-  , adapterPath, functionName, parameterName, dataNames, fsharpKeywords, csharpKeywords, escapeFSharp
+  , adapterPath, functionName, parameterName, parameterNames, operationParameterNames, dataNames, fsharpKeywords, csharpKeywords, escapeFSharp
   , splitDots, testModule, handleKey, localName, localNames, keywords
   ) where
 
@@ -13,7 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.DotNet.Code (Lang(..))
 import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, toUpper, toLower)
 import Data.List (intercalate, nub)
-import LawSpec.Naming (claimAll, scopeWith, nameWords, cased, Casing(..), readableDefinitionName)
+import LawSpec.Naming (claimAll, scopeWith, nameWords, cased, Casing(..), readableDefinitionName, parameterNamesWith)
 import LawSpec.RecordNames (recordDisplayNames)
 import qualified Data.Map.Strict as M
 
@@ -112,8 +112,20 @@ camelKeep name
   | (c : _) <- name, all (\x -> isAscii x && (isAlphaNum x || x == '_')) name && isLower c = name
   | otherwise = camel name
 
+-- | The reference spelling of a parameter, by position.
 parameterName :: Lang -> Int -> String
 parameterName _ i = "value" ++ show i
+
+-- | A declaration's parameter names: the ones its signature declares, or
+-- ones made from their types, in camelCase, a keyword with a trailing
+-- underscore, clear of the names given. ref:DEC-generated-parameter-names
+operationParameterNames :: Lang -> C.Ability -> String -> [String]
+operationParameterNames lang a op = parameterNamesWith Camel (\name -> if name `elem` keywords lang then name ++ "_" else name)
+  [] "value" (C.operationParameters a op) (maybe [] (fst . C.functionType) (lookup op (C.abilityOperations a)))
+
+parameterNames :: Lang -> [String] -> C.Declaration -> [String]
+parameterNames lang taken d = parameterNamesWith Camel (\name -> if name `elem` keywords lang then name ++ "_" else name)
+  taken "value" (C.declarationParameters d) (fst (C.functionType (C.declarationType d)))
 
 -- | A program's data type names: PascalCase short names, qualified by unit
 -- when two declarations share one, and constructors named within their type.

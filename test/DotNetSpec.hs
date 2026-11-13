@@ -55,7 +55,7 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
       "src/Example/Sample.cs", "src/LawSpec/Generated/ExampleSample.cs"]
     contentOf "src/LawSpec.Sources.props" result `shouldSatisfy` isInfixOf "LawSpec.Model.fsproj"
     let adapter = contentOf "src/Example/Sample.cs" result
-    adapter `shouldSatisfy` isInfixOf "public static LawSpec.Data.Pair Swap(LawSpec.Data.Pair value0)"
+    adapter `shouldSatisfy` isInfixOf "public static LawSpec.Data.Pair Swap(LawSpec.Data.Pair pair1)"
     -- C# adapters take no Unit and return void for it.
     adapter `shouldSatisfy` isInfixOf "public static void Finish()"
     contentOf "lawspec/LawSpec.Runtime/CSharp.fs" result `shouldSatisfy` isInfixOf "namespace LawSpec.CSharp"

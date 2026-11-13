@@ -7,7 +7,7 @@
     -2147483648..2147483647
 ) -> integer().
 
-roundtrip(_CounterHandler, _Int32) ->
+roundtrip(_CounterHandler, _Int32_1) ->
     erlang:error({not_implemented, <<"example.handlerContext::roundtrip">>}).
 
 -spec async_roundtrip(
@@ -15,18 +15,18 @@ roundtrip(_CounterHandler, _Int32) ->
     -2147483648..2147483647
 ) -> integer().
 
-async_roundtrip(_CounterHandler, _Int32) ->
+async_roundtrip(_CounterHandler, _Int32_1) ->
     erlang:error({not_implemented, <<"example.handlerContext::asyncRoundtrip">>}).
 
 -spec public_probe(ok) -> boolean().
 
-public_probe(_Unit) -> erlang:error({not_implemented, <<"example.handlerContext::publicProbe">>}).
+public_probe(_Unit1) -> erlang:error({not_implemented, <<"example.handlerContext::publicProbe">>}).
 
 -spec counter_handler() -> lawspec_abilities_example_handler_context:counter().
 
 counter_handler() ->
     #{
-        bump => fun(_Int32) ->
+        bump => fun(_Int32_1) ->
             erlang:error(
                 {
                     not_implemented,

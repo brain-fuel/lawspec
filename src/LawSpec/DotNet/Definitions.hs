@@ -372,7 +372,12 @@ emitAdapters lang layout bits calls declarations units = do
       (ps, r) <- nativeSignature lang bits names units d
       handlerNames <- forM (Effects.uses d) $ \ref -> maybe (Left ("unknown .NET ability " ++ C.abilityKey ref)) (Right . camel . N.interfaceName) (N.abilityOf units ref)
       let name = functionName lang d
-          parameters = zip (handlerNames ++ [parameterName lang i | i <- [0 ..]]) ps
+          -- A C# adapter takes no Unit argument; the reference spelling
+          -- numbers those it takes.
+          valueNames = case C.declarationParameters d of
+            C.PositionalParameters -> [parameterName lang i | i <- [0 ..]]
+            _ -> [n | (n, p) <- zip (parameterNames lang handlerNames d) (fst (C.functionType (C.declarationType d))), not (csUnit lang p)]
+          parameters = zip (handlerNames ++ valueNames) ps
           message = "not implemented: " ++ C.idText (C.declarationId d)
       pure $ case lang of
         FSharp -> D.text ("/// " ++ showType (C.declarationType d)) <> D.hardline <>

@@ -38,6 +38,7 @@ import LawSpec.Scalar (Scalar(..), prettyScalar)
 import LawSpec.Testing (finiteValuesWithRegistry)
 import LawSpec.Core.QuantifierDomain (finiteQuantifierCandidates)
 import LawSpec.Core.Search (applyCandidate)
+import LawSpec.Naming (sourceParameterNames)
 
 data Check = Completeness | Overlap | Conflict | Vacuity deriving (Eq, Ord, Show, Enum, Bounded)
 
@@ -407,8 +408,12 @@ domain ctx limit program f = do
 arguments :: Program -> Id -> Maybe [Binder]
 arguments program f = case [d | u <- programUnits program, d <- unitDefinitions u, declarationId (definitionDeclaration d) == f] of
   d : _ -> Just (definitionArguments d)
-  [] -> case [declarationType d | u <- programUnits program, d <- unitDeclarations u, declarationId d == f] of
-    ty : _ -> Just [Binder (Id (idText f ++ "::argument::" ++ show i)) ("argument " ++ show (i + 1)) t | (i, t) <- zip [0 :: Int ..] (argumentTypes ty)]
+  [] -> case [d | u <- programUnits program, d <- unitDeclarations u, declarationId d == f] of
+    -- An adapter's inputs are shown by the names its signature declares,
+    -- or the ones made from their types. ref:DEC-generated-parameter-names
+    d : _ -> let types = argumentTypes (declarationType d) in
+      Just [Binder (Id (idText f ++ "::argument::" ++ show i)) name t
+           | (i, name, t) <- zip3 [0 :: Int ..] (sourceParameterNames (declarationParameters d) types) types]
     [] -> Nothing
   where
     argumentTypes (Arrow a b) = a : argumentTypes b

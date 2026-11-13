@@ -6,7 +6,7 @@ module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDef
 import LawSpec.Backend hiding (inputId, localName, bindings, contractArguments, contractResult)
 import qualified LawSpec.Backend as Backend
 import qualified Data.Map.Strict as M
-import LawSpec.Naming (claim, scopeWith, localIdentifier, exampleTestSuffix, boundaryTestSuffix, displayLabel)
+import LawSpec.Naming (claim, scopeWith, localIdentifier, exampleTestSuffix, boundaryTestSuffix, displayLabel, declarationParameterNames)
 import LawSpec.SourceLink (generatedHeader, unitSourceFile, labelled, locationLink, exampleLocation, originLocation)
 import LawSpec.Common
 import LawSpec.Testing
@@ -175,15 +175,21 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
           handlerArguments = [Doc.text (handlerParameter ability) <>
             Doc.text (": " ++ q (maybe "object" (\a -> PythonAbilities.moduleNameOf (ownerName a) ++ "." ++ interfaceName a) (abilityNamed ability))) |
             d <- C.unitDeclarations u, C.declarationName d == n, ability <- C.declarationUses d, not (C.isFail ability)]
-          arguments = handlerArguments ++ [Doc.text ("value" ++ show i) <>
+          -- Then its own parameters, by the names its signature declares
+          -- or ones made from their types (LawSpec.Naming).
+          parameters = concat [declarationParameterNames target [handlerParameter ability | ability <- C.declarationUses d, not (C.isFail ability)] "value" d |
+            d <- take 1 [d | d <- C.unitDeclarations u, C.declarationName d == n]]
+          arguments = handlerArguments ++ [Doc.text parameter <>
             Doc.text ": " <> pythonType a |
-            (i,a) <- zip [0 :: Int ..] args]
+            (parameter,a) <- zip parameters args]
           -- Native representations can erase LawSpec distinctions. Keep the
           -- declared interface visible in both the stub and its canonical key.
           signatureComments =
-            mconcat [stubComment ("LawSpec argument " ++ show i ++ ": " ++ prettyType a) |
-              (i,a) <- zip [0 :: Int ..] args] <>
+            mconcat [stubComment ("LawSpec argument " ++ label ++ ": " ++ prettyType a) |
+              (label,a) <- zip argumentLabels args] <>
             stubComment ("LawSpec result: " ++ prettyType r)
+          -- The reference counts its arguments; the stub names them.
+          argumentLabels = [if parameter == "value" ++ show i then show i else parameter | (i,parameter) <- zip [0 :: Int ..] parameters]
           asyncStub = n `elem` asyncFunctions u
           signature = Doc.text ((if asyncStub then "async def " else "def ") ++ n) <>
             Doc.delimitTrailing 4 "(" ")" arguments <>

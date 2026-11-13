@@ -36,7 +36,7 @@ LawSpec generates a native type for each data type.
 
 ::: only java
 A type with one constructor, such as `Drink`, is a record in `lawspec.data`,
-read through its accessors (`value0.size()`). A type with several, such as
+read through its accessors (`drink1.size()`). A type with several, such as
 `Size`, is a sealed interface with a record per constructor (`Size.Large`), so
 a `switch` over it must cover every case:
 

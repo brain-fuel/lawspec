@@ -64,6 +64,11 @@ adapter it keeps a canonical readable reference of the stub, and reports an
 update only when that reference changes. Switching between readable and
 compact output therefore never produces a false update report. ref:DEC-adapter-ownership
 
+The reference names parameters by position (`value0`, `value1`), whatever the
+stub you were given called them. A parameter's name is yours to choose in an
+adapter, so naming one in the spec, or renaming it, reports no update; a
+changed type, order or result does. ref:DEC-generated-parameter-names
+
 ## Native bindings
 
 Erlang, Elixir and Gleam emit native function bindings in a separate generated

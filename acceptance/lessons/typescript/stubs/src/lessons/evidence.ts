@@ -1,14 +1,14 @@
 // User-owned LawSpec adapter.
-// LawSpec argument 0: Int8
+// LawSpec argument d: Int8
 // LawSpec result: Bool
-export function isWeekend(value0: number): boolean
+export function isWeekend(d: number): boolean
 {
   throw new Error('isWeekend');
 }
 
-// LawSpec argument 0: Int64
+// LawSpec argument int64_1: Int64
 // LawSpec result: Int64
-export function roundToDollars(value0: bigint): bigint
+export function roundToDollars(int64_1: bigint): bigint
 {
   throw new Error('roundToDollars');
 }

@@ -4,10 +4,10 @@
 
 -spec fingerprint(lawspec_abilities_lawspec_crypto:hash(), binary()) -> binary().
 
-fingerprint(_HashHandler, _Bytes) ->
+fingerprint(_HashHandler, _Bytes1) ->
     erlang:error({not_implemented, <<"example.crypto::fingerprint">>}).
 
 -spec round_trip(lawspec_abilities_lawspec_crypto:aead(), binary()) -> boolean().
 
-round_trip(_AeadHandler, _Bytes) ->
+round_trip(_AeadHandler, _Bytes1) ->
     erlang:error({not_implemented, <<"example.crypto::roundTrip">>}).

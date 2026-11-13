@@ -65,7 +65,7 @@ import qualified LawSpec.Backend as Backend
 import qualified Data.Map.Strict as M
 import LawSpec.JvmNames (jvmLocalTable, jvmReserved, contractMethod, jvmClaimAll, jvmLocal)
 import qualified Data.Set as S
-import LawSpec.Naming (typeWords)
+import LawSpec.Naming (typeWords, declarationParameterNames)
 import LawSpec.SourceLink (unitSourceFile, sourceLink, labelled)
 
 q :: String -> String
@@ -372,10 +372,17 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       | kt = KotlinLayout.trailing (Doc.text "kotlinx.coroutines.runBlocking") [] [call]
       | hs = Doc.text "LS.awaitTask (" <> call <> Doc.text ")"
       | otherwise = call <> Doc.text ".join()"
+    -- An adapter's parameter names: the ones its signature declares, or
+    -- ones made from their types (LawSpec.Naming). A Haskell stub ignores
+    -- its arguments, so each name follows an underscore.
+    stubParameters n = case [d | d <- C.unitDeclarations u, C.declarationName d == n] of
+      d : _ | hs && C.declarationParameters d == C.PositionalParameters -> map (const "") (fst (functionType (C.declarationType d)))
+            | otherwise -> declarationParameterNames target (map handlerParameter (usesOf n)) "value" d
+      [] -> []
     goStubFn n t =
       let (args,result) = functionType t
           params = [Doc.text (handlerParameter ability ++ " " ++ maybe "any" interfaceName (abilityNamed ability)) | ability <- usesOf n] ++
-            [Doc.text ("value" ++ show i ++ " " ++ nativeArg a) | (i,a) <- zip [0::Int ..] args]
+            [Doc.text (parameter ++ " " ++ nativeArg a) | (parameter,a) <- zip (stubParameters n) args]
           returnType = if n `elem` asyncFunctions u then " LawSpecTask[" ++ (if result == Named "Unit" then "LawSpecUnit" else native result) ++ "]"
             else if result == Named "Unit" then "" else " " ++ native result
       in Doc.lineComment 100 "// " (cap n ++ " implements " ++ n ++ " :: " ++ prettyType t ++ ".") <>
@@ -389,7 +396,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
     javaStubSignature n t =
       let (args,result) = functionType t
           parameterTypes = [(Doc.text (javaInterface ability), handlerParameter ability) | ability <- usesOf n] ++
-            [(javaTypeDoc True False 8 a, "value" ++ show i) | (i,a) <- zip [0::Int ..] args]
+            [(javaTypeDoc True False 8 a, parameter) | (parameter,a) <- zip (stubParameters n) args]
           params = [Doc.group (ty <> Doc.nest 4 (Doc.softline <> Doc.text parameter)) | (ty,parameter) <- parameterTypes]
           asyncStub = n `elem` asyncFunctions u
           -- An asynchronous Unit adapter completes with nothing: a future of Void.
@@ -447,14 +454,14 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       in Doc.joinWith Doc.hardline
         [ H.comment (HaskellProperties.wrapComment 78 [labelled (n ++ " :: " ++ readableType t) link])
         , H.signature n (map (Doc.render Doc.Compact) types)
-        , H.declaration (n ++ concatMap (const " _") (handlers ++ map (const mempty) args)) (H.call "P.error" [H.string n]) ]
+        , H.declaration (n ++ concatMap (const " _") handlers ++ concatMap (" _" ++) (stubParameters n)) (H.call "P.error" [H.string n]) ]
     readableType t = let (as, r) = functionType t in intercalate " -> " (map prettyType (as ++ [r]))
     kotlinStubFn n t =
       let (args,result) = functionType t
           typeDoc = java . KotlinData.kotlinDataTypeDoc dataDeclarations
           arguments = [Doc.text (handlerParameter ability ++ ": " ++ ktInterface ability) | ability <- usesOf n] ++
-            [Doc.group (Doc.text ("value" ++ show i ++ ":") <> Doc.nest 4 (Doc.softline <> typeDoc ty)) |
-            (i,ty) <- zip [0::Int ..] args]
+            [Doc.group (Doc.text (parameter ++ ":") <> Doc.nest 4 (Doc.softline <> typeDoc ty)) |
+            (parameter,ty) <- zip (stubParameters n) args]
           signature = KotlinLayout.callWith (Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n)) arguments <>
             Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else Doc.text (Doc.render Doc.Compact (typeDoc result)))
       in Doc.lineComment 96 "// " (labelled (n ++ " :: " ++ prettyType t) (declarationLink n)) <>

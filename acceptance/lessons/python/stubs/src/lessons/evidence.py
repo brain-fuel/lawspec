@@ -5,13 +5,13 @@ import lawspec_schema as _schema
 import lawspec_runtime as ls
 
 
-# LawSpec argument 0: Int8
+# LawSpec argument d: Int8
 # LawSpec result: Bool
-def isWeekend(value0: int) -> bool:
+def isWeekend(d: int) -> bool:
     raise NotImplementedError("isWeekend")
 
 
-# LawSpec argument 0: Int64
+# LawSpec argument int64_1: Int64
 # LawSpec result: Int64
-def roundToDollars(value0: int) -> int:
+def roundToDollars(int64_1: int) -> int:
     raise NotImplementedError("roundToDollars")

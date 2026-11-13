@@ -2,87 +2,87 @@
 import lawspec_runtime as ls
 
 
-# LawSpec argument 0: Char
+# LawSpec argument char_1: Char
 # LawSpec result: Char
-def echoChar(value0: str) -> str:
+def echoChar(char_1: str) -> str:
     raise NotImplementedError("echoChar")
 
 
-# LawSpec argument 0: CodePoint
+# LawSpec argument code_point_1: CodePoint
 # LawSpec result: CodePoint
-def echoCodePoint(value0: int) -> int:
+def echoCodePoint(code_point_1: int) -> int:
     raise NotImplementedError("echoCodePoint")
 
 
-# LawSpec argument 0: CodeUnit16
+# LawSpec argument code_unit16_1: CodeUnit16
 # LawSpec result: CodeUnit16
-def echoCodeUnit(value0: int) -> int:
+def echoCodeUnit(code_unit16_1: int) -> int:
     raise NotImplementedError("echoCodeUnit")
 
 
-# LawSpec argument 0: Bytes
+# LawSpec argument bytes_1: Bytes
 # LawSpec result: Bytes
-def echoBytes(value0: bytes) -> bytes:
+def echoBytes(bytes_1: bytes) -> bytes:
     raise NotImplementedError("echoBytes")
 
 
-# LawSpec argument 0: Complex64
+# LawSpec argument complex64_1: Complex64
 # LawSpec result: Complex64
-def echoComplex(value0: complex) -> complex:
+def echoComplex(complex64_1: complex) -> complex:
     raise NotImplementedError("echoComplex")
 
 
-# LawSpec argument 0: Int8
+# LawSpec argument int8_1: Int8
 # LawSpec result: Integer
-def successor(value0: int) -> int:
+def successor(int8_1: int) -> int:
     raise NotImplementedError("successor")
 
 
-# LawSpec argument 0: Int8
+# LawSpec argument int8_1: Int8
 # LawSpec result: Int8
-def narrow(value0: int) -> int:
+def narrow(int8_1: int) -> int:
     raise NotImplementedError("narrow")
 
 
-# LawSpec argument 0: Decimal
-# LawSpec argument 1: Decimal
+# LawSpec argument decimal_1: Decimal
+# LawSpec argument decimal_2: Decimal
 # LawSpec result: Decimal
-def addDecimal(value0: ls.Decimal, value1: ls.Decimal) -> ls.Decimal:
+def addDecimal(decimal_1: ls.Decimal, decimal_2: ls.Decimal) -> ls.Decimal:
     raise NotImplementedError("addDecimal")
 
 
-# LawSpec argument 0: Symbol
-# LawSpec argument 1: Symbol
+# LawSpec argument symbol_1: Symbol
+# LawSpec argument symbol_2: Symbol
 # LawSpec result: Bool
-def sameSymbol(value0: ls.Symbol, value1: ls.Symbol) -> bool:
+def sameSymbol(symbol_1: ls.Symbol, symbol_2: ls.Symbol) -> bool:
     raise NotImplementedError("sameSymbol")
 
 
-# LawSpec argument 0: Utf16Text
+# LawSpec argument utf16_text_1: Utf16Text
 # LawSpec result: Utf16Text
-def echoRaw(value0: ls.Raw) -> ls.Raw:
+def echoRaw(utf16_text_1: ls.Raw) -> ls.Raw:
     raise NotImplementedError("echoRaw")
 
 
-# LawSpec argument 0: Optional (Nullable (Int8))
+# LawSpec argument optional_1: Optional (Nullable (Int8))
 # LawSpec result: Optional (Nullable (Int8))
-def echoPresence(value0: ls.Presence) -> ls.Presence:
+def echoPresence(optional_1: ls.Presence) -> ls.Presence:
     raise NotImplementedError("echoPresence")
 
 
-# LawSpec argument 0: Unit
+# LawSpec argument unit_1: Unit
 # LawSpec result: Unit
-def finish(value0: ls.Absence) -> None:
+def finish(unit_1: ls.Absence) -> None:
     raise NotImplementedError("finish")
 
 
-# LawSpec argument 0: UInt64
+# LawSpec argument uint64_1: UInt64
 # LawSpec result: UInt64
-def preserveBig(value0: int) -> int:
+def preserveBig(uint64_1: int) -> int:
     raise NotImplementedError("preserveBig")
 
 
-# LawSpec argument 0: IntSize
+# LawSpec argument int_size_1: IntSize
 # LawSpec result: IntSize
-def machineEcho(value0: int) -> int:
+def machineEcho(int_size_1: int) -> int:
     raise NotImplementedError("machineEcho")

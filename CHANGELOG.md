@@ -121,6 +121,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Generated parameters take their names from the signature. `add :: (a ::
+  Int32) -> (b :: Int32) -> Int32` gives `add(int a, int b)` in Java,
+  `def add(a: int, b: int)` in Python and `add(_A, _B)` in Erlang: the name
+  is cased as each target cases a value and kept clear of its reserved words
+  (`class_`, `r#type`) and of the other names in the signature. A parameter
+  without a name is named after its type and numbered from 1, in place of
+  `value0`: `int32_1`, `int32_2`, `text_1`, `list_1` for a `List Text`,
+  `order_line_1` for an `OrderLine`. camelCase targets join the number
+  directly (`text1`, `orderLine1`) and keep the underscore only between two
+  numbers (`int32_1`); Clojure writes `order-line-1`. This applies to adapter stubs, ability interfaces and production
+  handler stubs on every target, and to the native API of checked definitions
+  in Java, Kotlin and Scala. A result's name stays in the spec.
+- Existing adapters are not rewritten and are not reported as needing an
+  update: the reference an adapter is compared with keeps positional names,
+  so neither the upgrade nor naming a parameter later changes it. Interfaces
+  and stubs that generation owns are regenerated with the new names; code
+  that passes their parameters by name (Kotlin, Scala, Python, C#, F#) needs
+  the new names.
+- A claims block's `not covered:` text shows an adapter's inputs by these
+  names (`current = Cancelled`, `state_1 = Cancelled`) in place of
+  `argument 1`.
 - A backslash that starts no escape in a text or regex literal (`"\s*"`) is
   reported alone, at the backslash, with the valid escapes and the spelling to
   use (`"\\s*"`). It was reported after an unrelated "unexpected … expecting"

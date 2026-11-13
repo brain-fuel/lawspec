@@ -5,8 +5,8 @@ import lawspec_schema as _schema
 import lawspec_runtime as ls
 
 
-# LawSpec argument 0: Int64
-# LawSpec argument 1: Int32
+# LawSpec argument int64_1: Int64
+# LawSpec argument int32_1: Int32
 # LawSpec result: Int64
-def applyDiscount(value0: int, value1: int) -> int:
+def applyDiscount(int64_1: int, int32_1: int) -> int:
     raise NotImplementedError("applyDiscount")

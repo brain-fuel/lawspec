@@ -1,8 +1,8 @@
 // User-owned LawSpec adapter.
-// LawSpec argument 0: Int64
-// LawSpec argument 1: Int32
+// LawSpec argument int64_1: Int64
+// LawSpec argument int32_1: Int32
 // LawSpec result: Int64
-export function applyDiscount(value0, value1)
+export function applyDiscount(int64_1, int32_1)
 {
   throw new Error('applyDiscount');
 }

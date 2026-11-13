@@ -137,7 +137,10 @@ productionStub target _ _ ability | hasDefault ability = pure (concat
 productionStub target bits names ability = do
   fields <- forM (C.abilityOperations ability) $ \(op,ty) -> do
     -- A stub operation's arguments are named for their types, unused.
-    let args = [D.text (unused v) | v <- X.variables [unwords (typeWords t) | t <- fst (C.functionType ty)]]
+    let args = case Names.stubParameters target [] (C.operationParameters ability op) (fst (C.functionType ty)) of
+          -- By the names the operation declares (LawSpec.Naming).
+          Just parameters -> [D.text ("_" ++ v) | v <- parameters]
+          Nothing -> [D.text (unused v) | v <- X.variables [unwords (typeWords t) | t <- fst (C.functionType ty)]]
         unused v = if target == "erlang" then "_" ++ concatMap capital (words (map (\c -> if c == '_' then ' ' else c) v)) else "_" ++ v
         capital (c : cs) = toUpper c : cs
         capital [] = []

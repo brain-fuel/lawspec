@@ -13,8 +13,8 @@ import qualified Prelude as P
 
 -- itoa :: Int32 -> Text — atoi_codec.lawspec:3
 itoa :: I.Int32 -> T.Text
-itoa _ = P.error "itoa"
+itoa _int32_1 = P.error "itoa"
 
 -- atoi :: Text -> Int32 — atoi_codec.lawspec:4
 atoi :: T.Text -> I.Int32
-atoi _ = P.error "atoi"
+atoi _text1 = P.error "atoi"

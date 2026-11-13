@@ -5,7 +5,7 @@ package lessons;
 public final class Totals
 {
   // larger :: (Int64 -> (Int64 -> Int64)) — 03-algebra.lawspec:4
-  public static long larger(long value0, long value1)
+  public static long larger(long int64_1, long int64_2)
   {
     throw new UnsupportedOperationException("larger -> Int64");
   }

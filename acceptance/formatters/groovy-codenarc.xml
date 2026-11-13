@@ -60,7 +60,9 @@
     <property name="regex" value="[a-z][a-zA-Z0-9]*"/>
     <property name="finalRegex" value="[a-z][a-zA-Z0-9]*"/>
   </rule>
+  <!-- An underscore only between adjacent numbers (Google Java Style 5.3),
+       which a parameter named after its type and its number has (int32_1). -->
   <rule class="org.codenarc.rule.naming.ParameterNameRule">
-    <property name="regex" value="[a-z][a-zA-Z0-9]*"/>
+    <property name="regex" value="[a-z](?:[a-zA-Z]|[0-9]+(?:_[0-9]+)*)*"/>
   </rule>
 </ruleset>

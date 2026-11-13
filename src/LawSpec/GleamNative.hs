@@ -15,6 +15,7 @@ import Data.List (nub)
 import LawSpec.SourceLink (unitSourceFile)
 import qualified LawSpec.ElixirCode as X
 import LawSpec.Naming (typeWords)
+import qualified LawSpec.BeamNames as Names
 
 emitNative :: D.Layout -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitNative layout declarations units = do
@@ -49,8 +50,15 @@ emitNative layout declarations units = do
           named = map G.variableName (X.variables (parameterNames ++
             [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d]))
           shown n = (if unused then "_" else "") ++ n ++ ": "
-      pure ([D.text (shown n) <> t | (n,t) <- zip (drop (length args) named) handlers] ++
-        [D.text (shown n) <> t | (n,t) <- zip named inputs],output)
+          handlerNames = map G.variableName (X.variables
+            [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d])
+          -- A stub's arguments take the names its signature declares, or
+          -- ones made from their types (LawSpec.Naming).
+          (handlerParameters, valueParameters) = case Names.stubParameters "gleam" handlerNames (C.declarationParameters d) args of
+            Just parameters | unused -> (handlerNames, map G.variableName parameters)
+            _ -> (drop (length args) named, named)
+      pure ([D.text (shown n) <> t | (n,t) <- zip handlerParameters handlers] ++
+        [D.text (shown n) <> t | (n,t) <- zip valueParameters inputs],output)
     adapter names unit = do
       bodies <- forM (adapterDeclarations unit) $ \d -> do
         (args,result) <- signature names True d

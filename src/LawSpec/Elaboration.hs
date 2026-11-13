@@ -35,6 +35,7 @@ import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar
 import LawSpec.Digest (digestHex, digestString)
 import Data.List (stripPrefix, nub)
+import Data.Char (isDigit)
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict (StateT, runStateT, get, put, lift)
 
@@ -708,6 +709,26 @@ binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
   [("+",C.Add),("-",C.Subtract),("*",C.Multiply),("/",C.Divide),("quot",C.Quotient),("rem",C.Remainder),("pow",C.Power)
   ,("==",C.Equal),("!=",C.NotEqual),("<",C.Less),("<=",C.LessEqual),(">",C.Greater),(">=",C.GreaterEqual)])
 
+-- | The names a written signature gives its parameters: (a :: Int32) ->
+-- Int32 -> Text names the first a and leaves the second unnamed. A binder
+-- the compiler made (an implicit index's) is no declared name, and the
+-- result's name is the spec's alone. ref:DEC-generated-parameter-names
+signatureParameters :: S.Type -> C.ParameterNames
+signatureParameters = C.DeclaredParameters . parameters
+  where
+    parameters ty = case ty of
+      S.Arrow a b -> named a : parameters b
+      S.Qualified _ t -> parameters t
+      S.CheckedType _ t -> parameters t
+      _ -> []
+    named ty = case ty of
+      S.Refined n _ _ | not (implicitBinder n) -> Just n
+      _ -> Nothing
+    -- LawSpec.Indexed names an unnamed indexed argument indexed<position>.
+    implicitBinder n = case stripPrefix "indexed" n of
+      Just digits@(_ : _) -> all isDigit digits
+      _ -> False
+
 -- | Reused by example-domain checking and final program elaboration. This keeps
 -- closed definition execution on the same typed Core path as generated code.
 elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
@@ -759,7 +780,18 @@ elaborateDefinitionUnitCollected scopes bits u = do
         _ -> Just (S.unitName u,n))
       (case [S.functionTemplate d | d <- S.functionDefinitions u,S.functionName d == n] of
         [Just name] -> Just (declarationId u name,name)
-        _ -> Nothing))
+        _ -> Nothing)
+      -- A definition's parameters are its binders; a signature's are the
+      -- binders it names.
+      (case [S.functionArguments d | d <- S.functionDefinitions u,S.functionName d == n] of
+        [arguments] | not (null arguments) -> C.DeclaredParameters (map (Just . fst) arguments)
+        -- Later passes erase a signature's binders from its type; the
+        -- parsed signature keeps them. Names apply only while the checked
+        -- type still takes one argument for each parsed one.
+        _ -> case lookup n (S.sourceSignatures u) of
+          Just written | C.DeclaredParameters names <- signatureParameters written
+                       , length names == length (fst (C.functionType ty)) -> C.DeclaredParameters names
+          _ -> signatureParameters t))
   (abilities, operations) <- unitOperationsWith (collectType bits) u
   -- What every definition's body sees, made once for the unit.
   let unitEnvironment = S.monoEnvironment (S.functions u)
@@ -939,7 +971,8 @@ unitOperationsWith lower u = do
         failureType <- lower failure
         pure (op, C.AbilityRef C.failAbilityId [failureType])
       resource <- traverse lower (S.abilityResource a)
-      pure (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing failures resource, ref)
+      pure (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing failures resource
+        [(op, signatureParameters ty) | (op, ty) <- S.abilityOperations a], ref)
   let present = concat found
   handlers <- forM (S.handlerDeclarations u) $ \h -> do
     ref <- abilityReferenceWith lower u (S.handlerAbility h)

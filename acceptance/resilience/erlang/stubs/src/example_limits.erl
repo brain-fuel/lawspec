@@ -11,24 +11,24 @@
 
 -spec admit_ticket(lawspec_data:ticket()) -> {left, binary()} | {right, lawspec_data:ticket()}.
 
-admit_ticket(_Ticket) -> erlang:error({not_implemented, <<"example.limits::admitTicket">>}).
+admit_ticket(_Ticket1) -> erlang:error({not_implemented, <<"example.limits::admitTicket">>}).
 
 -spec reserve_seat(lawspec_data:ticket()) -> {left, binary()} | {right, lawspec_data:ticket()}.
 
-reserve_seat(_Ticket) -> erlang:error({not_implemented, <<"example.limits::reserveSeat">>}).
+reserve_seat(_Ticket1) -> erlang:error({not_implemented, <<"example.limits::reserveSeat">>}).
 
 -spec charge_card(lawspec_data:ticket()) -> {left, binary()} | {right, lawspec_data:ticket()}.
 
-charge_card(_Ticket) -> erlang:error({not_implemented, <<"example.limits::chargeCard">>}).
+charge_card(_Ticket1) -> erlang:error({not_implemented, <<"example.limits::chargeCard">>}).
 
 -spec release_seat(lawspec_data:ticket()) -> boolean().
 
-release_seat(_Ticket) -> erlang:error({not_implemented, <<"example.limits::releaseSeat">>}).
+release_seat(_Ticket1) -> erlang:error({not_implemented, <<"example.limits::releaseSeat">>}).
 
 -spec fetch_quote(lawspec_data:ticket()) -> {left, binary()} | {right, lawspec_data:ticket()}.
 
-fetch_quote(_Ticket) -> erlang:error({not_implemented, <<"example.limits::fetchQuote">>}).
+fetch_quote(_Ticket1) -> erlang:error({not_implemented, <<"example.limits::fetchQuote">>}).
 
 -spec hedge_quote(lawspec_data:ticket()) -> {left, binary()} | {right, lawspec_data:ticket()}.
 
-hedge_quote(_Ticket) -> erlang:error({not_implemented, <<"example.limits::hedgeQuote">>}).
+hedge_quote(_Ticket1) -> erlang:error({not_implemented, <<"example.limits::hedgeQuote">>}).
