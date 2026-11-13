@@ -1107,6 +1107,11 @@ targetSteps target =
   -- targets that suite has adapters for. ref:DEC-vacuous-outcome
   [ step (target ++ "-vacuity") (acceptance ["vacuity", target]) | target `elem` reachTargets ] ++
   [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
+  -- Record rules, masking and the keyed and strict primitives have native
+  -- tests on these four targets only.
+  [ step (target ++ "-" ++ suite) (acceptance [suite, target])
+  | target `elem` ["java", "javascript", "typescript", "python"]
+  , suite <- ["contracts-validation", "contracts-masking", "contracts-primitives"] ] ++
   -- Java at the other supported release, and on the JUnit release beyond the
   -- scaffold's, each on three suites. The switches change the build files,
   -- which are part of the harness's cache key, so each variant records its
