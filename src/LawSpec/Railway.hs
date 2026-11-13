@@ -3,7 +3,8 @@
 -- parsed, so type inference, Core and every target see only ordinary matches.
 -- A function given to a combinator is a named adapter or definition, a partial
 -- application or a composition; after the rewrite it is applied to a value,
--- so checked definitions stay first-order.
+-- so checked definitions stay first-order. A constructor may stand for the
+-- function that builds it (prelude.map Present m).
 --
 --   symbol   English                  meaning
 --   m >>= f  prelude.bind m f         continue with f on Right
@@ -18,6 +19,11 @@
 --   m <*> n  prelude.both m n         both successes as a Pair, else the first error
 --            prelude.ensure p e m     fail with e unless p holds of the value
 --            prelude.isLeft m, prelude.isRight m
+--
+-- A Maybe has one combinator of the same kind, the value or a default:
+--
+--            prelude.presentOr m v    the Present value, or v when Absent
+--            prelude.fromMaybe v m
 module LawSpec.Railway (railwayUnit, railwayLaw, railwayExpr, railwayExprWithShadowed, railwayOperators, railwayNames, usesPair) where
 
 import Control.Monad.State.Strict (State, evalState, get, put)
@@ -31,7 +37,7 @@ railwayOperators = [">=>", "<$>", "<!>", "<*>", ">>=", "<|>", "??", "|>"]
 
 -- The named public forms handled by the same rewrite below.
 railwayNames :: [String]
-railwayNames = ["bind","then","map","mapError","orElse","fallback","fromEither","andThen","pipe","both","ensure","isLeft","isRight"]
+railwayNames = ["bind","then","map","mapError","orElse","fallback","fromEither","andThen","pipe","both","ensure","isLeft","isRight","presentOr","fromMaybe"]
 
 -- | Whether a source uses pairs, which the collections unit provides.
 usesPair :: String -> Bool
@@ -141,6 +147,8 @@ railwayExprWithShadowed shadowed e = evalState (go e) 0
         (Var "prelude.ensure", [p, failure, m]) -> ensure p failure m
         (Var "prelude.isLeft", [m]) -> side True m
         (Var "prelude.isRight", [m]) -> side False m
+        (Var "prelude.presentOr", [m, v]) -> presentOr m v
+        (Var "prelude.fromMaybe", [v, m]) -> presentOr m v
         _ -> pure expression
     eitherMatch m onLeft onRight = do
       e <- fresh "railwayError"
@@ -155,8 +163,13 @@ railwayExprWithShadowed shadowed e = evalState (go e) 0
     composed f = case unlocated f of
       Binary ">=>" _ _ -> True
       _ -> case spine f of (Var "prelude.andThen", [_, _]) -> True; _ -> False
+    -- A constructor given where a combinator takes a function is applied to
+    -- the value like one: prelude.map Present m builds Present value. The
+    -- result is an ordinary constructor literal, so its arity and field types
+    -- are checked as if it had been written out.
     apply f x = case unlocated f of
       Binary ">=>" g h -> apply g x >>= \first -> bind first h
+      ConstructLit name fields -> pure (ConstructLit name (fields ++ [x]))
       _ | (Var "prelude.andThen", [g, h]) <- spine f -> apply g x >>= \first -> bind first h
         | otherwise -> pure (Apply f x)
     -- A literal Right or Left decides the match: Right x >>= f is f x.
@@ -181,6 +194,10 @@ railwayExprWithShadowed shadowed e = evalState (go e) 0
     mapError g m = eitherMatchM m (fmap left . apply g) (pure . right)
     orElse m h = eitherMatchM m (apply h) (pure . right)
     fallback m v = eitherMatch m (const v) id
+    -- Maybe's constructors are named by identity, as Either's are.
+    presentOr m v = do
+      value <- fresh "railwayValue"
+      pure (MatchExpr m [MatchBranch "Maybe::Absent" [] v, MatchBranch "Maybe::Present" [value] (Var value)])
     side isLeft m = eitherMatch m (const (BoolLit isLeft)) (const (BoolLit (not isLeft)))
     both m n = do
       e <- fresh "railwayError"

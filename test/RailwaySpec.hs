@@ -37,6 +37,14 @@ refuted left right = do
     Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "refuted"
     Right _ -> expectationFailure "expected the law to be refuted"
 
+-- | The diagnostics of a law that must not compile.
+rejected :: String -> String -> String
+rejected left right =
+  let law = "law \"|l| is definition: for all (b :: Bool) => " ++ left ++ " = " ++ right ++ " end for all end definition end law\n"
+  in case compileCore 64 defaultGeneration [source [law]] of
+       Left diagnostics -> concatMap show diagnostics
+       Right _ -> "compiled"
+
 -- | Workflows chain fallible steps, so binding, mapping, recovery and pairing
 -- must behave as the railway model says and bind with the documented
 -- precedence. ref:DEC-domain-modeling-primitives ref:REQ-railway-combinators
@@ -63,5 +71,25 @@ test_railwayCombinatorsComposeResultsAsDocumented = describe "railway combinator
   it "binds looser than arithmetic and tighter than comparisons" $ do
     holds "((positive 5 >>= small) == positive 5 >>= small)" "true"
     holds "(5 + 1 >= 5 - 1)" "true"
+  it "takes a Maybe's value or a default" $ do
+    holds "prelude.presentOr (Present 5 :: Maybe Integer) 7" "5"
+    holds "prelude.presentOr (Absent :: Maybe Integer) 7" "7"
+    holds "prelude.fromMaybe \"\" (Present \"a\" :: Maybe Text)" "\"a\""
+    holds "prelude.fromMaybe \"\" (Absent :: Maybe Text)" "\"\""
+  it "applies a constructor given where a combinator takes a function" $ do
+    holds "prelude.map Present (positive 5)" "(Right (Present 5) :: Either Problem (Maybe Integer))"
+    holds "(Present <$> positive 5)" "(Right (Present 5) :: Either Problem (Maybe Integer))"
+    holds "prelude.map Present [1, 2]" "[Present 1, Present 2]"
+    holds "prelude.pipe 5 Present" "Present 5"
+  it "says what map applies to when its operand is neither a List nor an Either" $ do
+    let maybeMap = rejected "prelude.map double (Present 5 :: Maybe Integer)" "(Present 10 :: Maybe Integer)"
+        textMap = rejected "prelude.map double \"abc\"" "\"abc\""
+    maybeMap `shouldSatisfy` isInfixOf "prelude.map (and f <$> m) applies to a List, mapping each element, or to an Either, mapping its success value; this operand is a Maybe (Integer)."
+    maybeMap `shouldSatisfy` isInfixOf "prelude.presentOr m default"
+    maybeMap `shouldSatisfy` (not . isInfixOf "Either::Left")
+    textMap `shouldSatisfy` isInfixOf "this operand is a Text."
+  it "suggests a wrapper definition for a constructor used as a value elsewhere" $
+    rejected "(Present :: Maybe Integer)" "(Present 5 :: Maybe Integer)" `shouldSatisfy`
+      isInfixOf "wrong constructor arity: Present takes 1 value, 0 given. A constructor is a function only as the argument of a prelude combinator"
   it "is refuted when a law is wrong" $
     refuted "(positive 500 >>= small)" "positive 500"

@@ -28,6 +28,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that never matched; it is corrected.
 - `of type` is accepted wherever `::` annotates a name: a scenario's
   `channel report of type Report` was the one site that took the symbol only.
+- `prelude.presentOr m v` and `prelude.fromMaybe v m` give a `Maybe`'s
+  `Present` value, or `v` when it is `Absent`, as `fallback` and `fromEither`
+  do for an `Either`. Like them they are rewritten into a match, so every
+  target runs them.
+- A constructor may be given where a prelude combinator takes a function:
+  `prelude.map Present m`, `m >>= Right`, `value |> Present`.
 
 ### Changed
 
@@ -35,6 +41,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reported alone, at the backslash, with the valid escapes and the spelling to
   use (`"\\s*"`). It was reported after an unrelated "unexpected … expecting"
   at the start of the expression.
+- `prelude.map` over an operand that is neither a `List` nor an `Either` says
+  what `map` applies to and, for a `Maybe`, what to write instead. It reported
+  `unknown constructor: Either::Left`.
+- "wrong constructor arity" says how many values the constructor takes and,
+  when too few were given, how to pass it as a function.
 - One command compiles once. The advice in `check` and `generate` ran with no
   cache directory, which made the launcher start a new compiler instance and
   compile the project again, and a second time when the command went back to

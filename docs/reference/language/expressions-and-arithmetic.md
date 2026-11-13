@@ -80,6 +80,7 @@ symbol also has an English name, and some combinators have only a name:
 | | `prelude.ensure p e m` | the success value if `p` holds of it, else `Left e` |
 | | `prelude.isLeft m`, `prelude.isRight m` | which side `m` is |
 | | `prelude.select c a b` | `a` when `c` holds, else `b` |
+| | `prelude.presentOr m v`, `prelude.fromMaybe v m` | for a `Maybe`: the `Present` value, or `v` when `Absent` |
 
 ```lawspec
 unit guide.railway
@@ -105,8 +106,23 @@ end law
 end unit
 ```
 
+`prelude.map` (`f <$> m`) also maps each element of a `List`
+([sequences](sequences.md)); the operand's type chooses. On any other operand,
+a `Maybe` for example, the error says what `map` applies to. For a `Maybe`,
+match on it, or take its value with `prelude.presentOr m default`:
+
+```lawspec fragment
+function displayName (nickname :: Maybe Text) -> Text is
+  prelude.presentOr nickname ""
+end function
+```
+
 The functions given to a combinator are named definitions or adapters,
-partial applications, or compositions. The combinators are rewritten into
+partial applications, or compositions. A constructor may stand for the
+function that builds it: `prelude.map Present m` and `m >>= Right` apply the
+constructor to the value, and its arity and field types are checked as if it
+had been written out. Outside a combinator a constructor is not a value;
+name a one-line definition and pass that. The combinators are rewritten into
 `match` expressions, so every target runs them as ordinary matches. The
 prelude adds laws about them: `bind has a left identity`, `bind is
 associative`, `map fuses` and `recovery keeps successes`.
