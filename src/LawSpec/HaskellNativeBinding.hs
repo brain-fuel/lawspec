@@ -5,6 +5,7 @@ import Control.Monad (forM, unless)
 import Data.Char (isUpper, isLower, toUpper, toLower)
 import Data.List (intercalate, nub, isSuffixOf, isPrefixOf, find)
 import qualified LawSpec.Core as C
+import LawSpec.Naming (Casing(..), declarationParameterNames, operationParameterNames, helperNames)
 import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName, fieldName)
 import LawSpec.Backend (inputs, inputType)
 import LawSpec.Common
@@ -158,8 +159,8 @@ emitBindings minify plan testing files = do
           native = alias (moduleOf r) ++ "."
       fields <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
-            values = HL.uniqueValues (length args)
-            arguments' = HL.uniqueArguments (length args)
+            values = take (length args) (operationParameterNames "haskell" bridgeLocals "value" a op)
+            arguments' = helperNames Camel (bridgeLocals ++ values) "native" values
             codec namespace = H.haskellCodecDocIn Nothing namespace declarations "schema" (show bits)
         canonical <- mapM (codec "Codecs.") args
         nativeArgs <- mapM (nativeCodecIn Nothing (show bits)) args
@@ -281,8 +282,8 @@ emitBindings minify plan testing files = do
     bridge (declaration,call)
       | not (null handlerRecords) = do
           let (args,result) = C.functionType (C.declarationType declaration)
-              values = HL.uniqueValues (length args)
-              arguments' = HL.uniqueArguments (length args)
+              values = take (length args) (declarationParameterNames "haskell" (bridgeLocals ++ handlers) "value" declaration)
+              arguments' = helperNames Camel (bridgeLocals ++ handlers ++ values) "native" values
               handlers = ["handler" ++ show i | i <- [1 .. length handlerRecords]]
               scope = Just (HL.call "P.Just" [HL.var "symbols"])
               codec namespace = H.haskellCodecDocIn scope namespace declarations "schema" (show bits)
@@ -299,7 +300,7 @@ emitBindings minify plan testing files = do
         handlerRecords = [abilityRecord a | ability <- C.declarationUses declaration, not (C.isFail ability), Just (_, a) <- [C.findAbility units' ability]]
     bridge (declaration,call) = do
       let (args,result) = C.functionType (C.declarationType declaration)
-          values = HL.uniqueValues (length args)
+          values = take (length args) (declarationParameterNames "haskell" bridgeLocals "value" declaration)
           ref = callRef call
           -- The native call's arguments, in order.
           passed = case call of
@@ -309,8 +310,8 @@ emitBindings minify plan testing files = do
           discards = isUnit result && case call of Static _ -> False; _ -> True
           scope = Just (HL.call "P.Just" [HL.var "symbols"])
           codec namespace = H.haskellCodecDocIn scope namespace declarations "schema" (show bits)
-          logical i = "logical" ++ show i
-          argument i = "argument" ++ show i
+          logical i = helperNames Camel (bridgeLocals ++ values) "logical" values !! (i - 1)
+          argument i = helperNames Camel (bridgeLocals ++ values) "native" values !! (i - 1)
       canonical <- mapM (codec "Codecs.") args
       native <- mapM (nativeCodec (show bits)) args
       resultNative <- nativeCodec (show bits) result
@@ -361,3 +362,8 @@ lastPart s = case breakOn s of
     go acc (':' : ':' : rest) = (reverse acc, Just rest)
     go acc (c : rest) = go (c : acc) rest
     go acc [] = (reverse acc, Nothing)
+
+-- | The names a generated bridge binds for itself, which the values it
+-- passes on stay clear of.
+bridgeLocals :: [String]
+bridgeLocals = words "symbols inner nativeResult schema result handler failure outcome value native logical"

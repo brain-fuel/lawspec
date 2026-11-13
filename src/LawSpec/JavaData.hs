@@ -8,6 +8,7 @@ import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.JvmNames (googleCase)
+import LawSpec.Naming (fieldCodecNames)
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
@@ -594,16 +595,19 @@ codecSource layout names declarations = do
                 call "schema.fieldType" ([D.text "type", quoted (C.idText (C.constructorId value)), D.text (show i)] ++
                   [keys | witnessCount value > 0])])
               else codec parameters (C.binderType field)
-            pure ("field" ++ show i, C.binderName field,
-              D.group (D.text ("var field" ++ show i ++ " =") <>
+            pure (codecNames !! i, C.binderName field,
+              D.group (D.text ("var " ++ codecNames !! i ++ " =") <>
                 D.nest 4 (D.softline <> bridge) <> D.text ";")))
             (zip [0::Int ..] (C.constructorFields value))
           text <- codec parameters (C.Constructor "Text" [])
           let n = length (C.constructorFields value)
-              witnesses = [("field" ++ show (n + k), Schema.witnessFieldName (witnessCount value) k,
-                D.group (D.text ("var field" ++ show (n + k) ++ " =") <> D.nest 4 (D.softline <> text) <> D.text ";"))
+              witnesses = [(codecNames !! (n + k), Schema.witnessFieldName (witnessCount value) k,
+                D.group (D.text ("var " ++ codecNames !! (n + k) ++ " =") <> D.nest 4 (D.softline <> text) <> D.text ";"))
                 | k <- [0 .. witnessCount value - 1]]
           pure (declared ++ witnesses)
+          where
+            codecNames = fieldCodecNames "java" (words "schema bits symbols type value data item keys") (map C.binderName (C.constructorFields value) ++
+              [Schema.witnessFieldName (witnessCount value) k | k <- [0 .. witnessCount value - 1]])
         recordKeys value = call "List.of" [D.text ("item." ++ Schema.witnessFieldName (witnessCount value) k ++ "()") | k <- [0 .. witnessCount value - 1]]
         dataKeys value = call "LawSpecSchema.witnessKeys" [D.text "data.fields()", D.text (show (witnessCount value))]
         encodeArm parameters args value = do

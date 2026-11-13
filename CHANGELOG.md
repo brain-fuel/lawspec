@@ -213,10 +213,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   try-methods and binding bridges) takes the operation's names as well; a
   name that code needs for itself is numbered from 2. A JavaScript or
   TypeScript data class's constructor names its parameters after its fields
-  (`constructor(verifyingKey, signingKey)`). Positional names remain in the
-  adapter reference and in code that is no interface: the evaluator behind a
-  checked definition, codec locals, generic type parameters and actor and
-  model drivers.
+  (`constructor(verifyingKey, signingKey)`). The rest of the generated code
+  follows: a definition's entry takes its binders' names, a helper local is
+  named after its parameter or field (`pathCodec`, `amountCodec`,
+  `durationNative`), a model's reference operations take `element`, `key` and
+  `value`, and an actor's methods take their handler's names. Positional
+  names remain in the adapter reference, in generic type parameters (`T0`)
+  and the generators made for them, and in two kinds of temporaries (Rust's
+  `argument_1` and `field_0`, a Haskell test's `argument1`); a test fails on
+  any other.
   **Migration:** a handler you wrote for a built-in ability keeps compiling
   with its old parameter names, except that Kotlin warns when an override
   renames a parameter (rename it, or the build fails if it treats warnings as

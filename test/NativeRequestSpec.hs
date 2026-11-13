@@ -305,7 +305,7 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
       Left problem -> expectationFailure problem
       Right value -> codes value `shouldBe` []
     -- Methods are called on the handle argument, and run as IO actions.
-    text `shouldSatisfy` isInfixOf "LS.awaitTask (NativeModule0.push argument1 argument2)"
+    text `shouldSatisfy` isInfixOf "LS.awaitTask (NativeModule0.push jobs1Native int32_1Native)"
     text `shouldSatisfy` isInfixOf "LS.awaitTask NativeModule0.new"
     -- A Unit result discards the native one.
     text `shouldSatisfy` isInfixOf "P.seq"

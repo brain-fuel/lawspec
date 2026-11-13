@@ -22,7 +22,7 @@ import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import Data.Char (toUpper)
 import Data.List (nub, intercalate, zip4)
 import LawSpec.SourceLink (labelled, sourceLink)
-import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, uniqueNames, sourceDefinitionName)
+import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords, uniqueNames, sourceDefinitionName, Casing(..), helperNames, paddedNames, declarationParameterNames)
 import LawSpec.AbilityNames (interfaceName, specName, goPackageMembers)
 
 -- | Generated tests call checked definitions by these names, so every test
@@ -220,8 +220,11 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                   -- An adapter that uses abilities gets their handlers first.
                   call = E.call (maybe (capitalize (declarationName adapter)) id bridge) $
                     [line (handlerOf a) | a <- declarationUses adapter, not (isFail a)] ++
-                    [if ty == Constructor "Unit" [] && bridge == Nothing then value else E.call ("codec" ++ show i ++ ".toNative") [value]
-                    | (i, (ty, value)) <- zip [0::Int ..] (zip parameterTypes values)]
+                    [if ty == Constructor "Unit" [] && bridge == Nothing then value else E.call (codecName ++ ".toNative") [value]
+                    | (codecName, (ty, value)) <- zip adapterCodecNames (zip parameterTypes values)]
+                  -- Each argument's codec is named after the adapter's parameter.
+                  adapterCodecNames = helperNames Camel (words "schema bits symbols resultCodec native result")
+                    "codec" (paddedNames (length parameterTypes) "value" (declarationParameterNames "go" [] "value" adapter))
                   -- Within its stage's timeout and hedge, when it has them.
                   result
                     | declarationAsync adapter = E.call "lsAwaitStep"
@@ -243,7 +246,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                 _ -> pure id
               pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
                 (E.declare ([("schema", line schema, True), ("bits", line (show bits), True)] ++
-                   [("codec" ++ show i, line codec, True) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" [] || bridge /= Nothing] ++
+                   [(codecName, line codec, True) | (codecName, (ty, codec)) <- zip adapterCodecNames (zip parameterTypes codecs), ty /= Constructor "Unit" [] || bridge /= Nothing] ++
                    [("resultCodec", line resultCodec, True)])
                  [line "return " <> failing result])) <> line "()")
             _ -> Left "unresolved Go total call"

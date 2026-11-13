@@ -1,6 +1,7 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinCodecDocIn, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeCodecDocIn, kotlinNativeTypeDoc, namesFor, kotlinDataName, kotlinCodecReceiverIn, kotlinNativeCodecReceiverIn) where
 
+import LawSpec.Naming (fieldCodecNames)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
@@ -544,12 +545,15 @@ emitCodecs mappings owner layout declarations = do
             call "schema.fieldType" ([D.text "type", quoted (C.idText (C.constructorId variant)), D.text (show i)] ++
               [keys | witnessCount variant > 0])])
           else codecDocUsingOwner ("schema", "bits") owner (Just (D.text "symbols")) names parameters (C.binderType field)
-        pure ("field" ++ show i, C.binderName field,
-          KotlinLayout.bind ("field" ++ show i) bridge)
+        pure (codecNames !! i, C.binderName field,
+          KotlinLayout.bind (codecNames !! i) bridge)
       text <- codecDocUsingOwner ("schema", "bits") owner (Just (D.text "symbols")) names parameters (C.Constructor "Text" [])
       let n = length (C.constructorFields variant)
-      pure (declared ++ [("field" ++ show (n + k), S.witnessFieldName (witnessCount variant) k,
-        KotlinLayout.bind ("field" ++ show (n + k)) text) | k <- [0 .. witnessCount variant - 1]])
+      pure (declared ++ [(codecNames !! (n + k), S.witnessFieldName (witnessCount variant) k,
+        KotlinLayout.bind (codecNames !! (n + k)) text) | k <- [0 .. witnessCount variant - 1]])
+      where
+        codecNames = fieldCodecNames "kotlin" (words "schema bits symbols type value data item keys owner") (map C.binderName (C.constructorFields variant) ++
+          [S.witnessFieldName (witnessCount variant) k | k <- [0 .. witnessCount variant - 1]])
     nativeKeys variant = call "listOf" [D.text ("value." ++ S.witnessFieldName (witnessCount variant) k) | k <- [0 .. witnessCount variant - 1]]
     dataKeys variant = call "LawSpecSchema.witnessKeys" [D.text "data.fields()", D.text (show (witnessCount variant))]
     layoutCodecs names parameters bound=mapM

@@ -12,6 +12,7 @@
 -- ref:DEC-actors-otp-supervision ref:DEC-fsharp-runtime-from-scratch
 module LawSpec.DotNet.Actors (emitActors, emitActorHandlersCs) where
 
+import LawSpec.Naming (paddedNames, declarationParameterNames)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..))
@@ -237,7 +238,7 @@ emitActorHandlersCs layout bits datas units
           pts <- mapM native params
           rt <- native r
           let isUnit t = t == C.Constructor "Unit" []
-              names' = ["a" ++ show i | (i, _) <- zip [0 :: Int ..] params]
+              names' = paddedNames (length params) "a" (if null ps then [] else declarationParameterNames "csharp" [] "value" d)
               call = unitQualified (C.unitId (actorUnit a)) ++ "." ++ functionName CSharp d ++
                 "(" ++ intercalate ", " [n | (n, t) <- zip names' params, not (isUnit t)] ++ ")"
               result = if C.declarationAsync d then "System.Threading.Tasks.Task<" ++ rt ++ ">" else rt

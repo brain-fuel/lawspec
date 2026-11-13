@@ -4,7 +4,7 @@
 -- (LawSpec.Naming). A collision gets _2, _3 in declaration order.
 -- ref:DEC-readable-generated-names
 module LawSpec.BeamNames
-  ( erlangReserved, functionAtom, definitionEntries, abilityEntries
+  ( nativeModuleAliases, erlangReserved, functionAtom, definitionEntries, abilityEntries
   , variableName, variables, generatedVariables, stubParameters, operationVariables
   ) where
 
@@ -100,3 +100,17 @@ operationVariables target ability operation = case C.operationParameters ability
 -- takes one of these names.
 generatedVariables :: [String]
 generatedVariables = words "Schema Symbols Values BaseSchema ExampleSchema Result Native Handler Context Resources"
+
+-- | The alias a generated Gleam module imports each native module under:
+-- native_ and the module's path (native_application_factory), numbered from
+-- 2 where two paths spell alike.
+nativeModuleAliases :: [[String]] -> [([String], String)]
+nativeModuleAliases = go []
+  where
+    go _ [] = []
+    go used (parts : rest) =
+      let stem = "native_" ++ map (\c -> if c `elem` (['a' .. 'z'] ++ ['0' .. '9'] ++ "_") then c else '_') (concatMap (\(i, part) -> (if i == (0 :: Int) then "" else "_") ++ part) (zip [0 ..] parts))
+          chosen = case [candidate | candidate <- stem : [stem ++ "_" ++ show n | n <- [2 :: Int ..]], candidate `notElem` used] of
+            candidate : _ -> candidate
+            [] -> stem
+      in (parts, chosen) : go (chosen : used) rest

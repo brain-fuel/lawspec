@@ -1557,11 +1557,16 @@ others with default handlers) name their parameters in their signatures, so
 their interfaces read `sleep(duration)`, `sign(signingKey, message)` and
 `writeBytes(path, contents)`. The code generated around an ability, such as
 spec handlers, recordings and binding bridges, uses the same names; a name
-the generated code needs for itself is numbered from 2 (`state2`). What stays
-numbered by position is the code nobody reads as an interface: the evaluator
-behind a checked definition (`input0`), codec locals (`codec0`, `field0`)
-and generic type parameters (`T0`). A JavaScript or TypeScript data class's
-constructor names its parameters after its fields.
+the generated code needs for itself is numbered from 2 (`state2`). A helper
+local is named after the parameter or field it serves (`pathCodec`,
+`amountCodec`), and a JavaScript or TypeScript data class's constructor names
+its parameters after its fields.
+
+What stays numbered by position is short: the adapter reference above,
+generic type parameters (`T0`) and the generator a scaffold takes for each
+(`argument0`), Rust's temporaries for a call's arguments (`argument_1`,
+`field_0`) and the arguments a generated Haskell test evaluates before a
+native call (`argument1`).
 
 ## Ownership
 

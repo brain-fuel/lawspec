@@ -23,6 +23,7 @@ import qualified LawSpec.Model as S
 import qualified LawSpec.SourceContext as Source
 import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
+import LawSpec.Naming (sourceParameterNames)
 import qualified LawSpec.Core.Machine as C
 import LawSpec.Core.Validate (operationEvidenceWithRegistry)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
@@ -869,7 +870,7 @@ machineBridges ds machine = mapM bridge
       let ty = C.declarationType adapter
           (args, result) = C.functionType ty
           origin = C.GeneratedFrom target
-          binders = [C.Binder (C.Id (C.idText run ++ "::argument::" ++ show i)) ("argument" ++ show i) t | (i, t) <- zip [0 :: Int ..] args]
+          binders = [C.Binder (C.Id (C.idText run ++ "::argument::" ++ show i)) name t | (i, (name, t)) <- zip [0 :: Int ..] (zip (sourceParameterNames (C.declarationParameters adapter) args) args)]
           call = C.Expr result (C.ExternalCall target [C.Expr (C.binderType b) (C.Local (C.binderId b)) origin | b <- binders]) origin
           name = reverse (takeWhile (/= ':') (reverse (C.idText run)))
           declaration = adapter { C.declarationId = run, C.declarationName = name, C.declarationOrigin = origin, C.declarationSource = Nothing, C.declarationTemplate = Nothing }

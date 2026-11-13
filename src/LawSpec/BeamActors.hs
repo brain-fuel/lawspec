@@ -13,6 +13,7 @@ import qualified LawSpec.BeamDefinitions as Definitions
 import qualified LawSpec.BeamEffects as Effects
 import qualified LawSpec.BeamAbilities as Abilities
 import LawSpec.Actors.Types
+import LawSpec.Naming (Casing(..), parameterNamesWith, escapeKeyword)
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 import LawSpec.Common (Artifact(..))
 import LawSpec.MachineSpec (describe)
@@ -92,10 +93,11 @@ emit target layout bits declarations units = do
         own = ownType publicType
     handleTy <- native (actorHandle a)
     parameters <- handlerParams [a]
-    startParams <- forM [(i,t) | (i,(_,t)) <- zip [0::Int ..] (actorStartArguments a), not (isUnit t)] $ \(i,t) ->
-      (,) ("argument" ++ show i) <$> native t
-    let values = [if isUnit t then unitValue else variable ("argument" ++ show i)
-          | (i,(_,t)) <- zip [0::Int ..] (actorStartArguments a)]
+    let startNames = actorArgumentNames target (actorStartArguments a)
+    startParams <- forM [(n,t) | (n,(_,t)) <- zip startNames (actorStartArguments a), not (isUnit t)] $ \(n,t) ->
+      (,) n <$> native t
+    let values = [if isUnit t then unitValue else variable n
+          | (n,(_,t)) <- zip startNames (actorStartArguments a)]
         interfaces = supplied parameters
         allParams = signatures parameters ++ startParams
     start <- checked interfaces (actorStart a) values (bridge "to_native" (actorState a))
@@ -111,8 +113,8 @@ emit target layout bits declarations units = do
           (E.atom "metadata",E.record [(E.atom "tag",E.atom moduleName),
             (E.atom "handlers",E.array (map snd interfaces))])]
     methods <- concat <$> forM (actorHandlers a) (\h -> do
-      arguments <- sequence [(,) ("argument" ++ show i) <$> native t
-        | (i,(_,t)) <- zip [0::Int ..] (handlerArguments h)]
+      arguments <- sequence [(,) n <$> native t
+        | (n,(_,t)) <- zip (actorArgumentNames target (handlerArguments h)) (handlerArguments h)]
       replyType <- maybe (pure resultType) native (handlerReply h)
       invoke <- checked interfaces (handlerDeclaration h)
         (D.text "_State" : map (variable . fst) arguments) (\result -> case handlerReply h of
@@ -149,9 +151,9 @@ emit target layout bits declarations units = do
         parts <- forM handlers $ \(h,ds,r) -> do
           let name = E.nativeName target (E.snake (handlerName h))
               types = map snd (handlerArguments h)
-              argumentNames = ["argument" ++ show i | (i,_) <- zip [0::Int ..] types]
-              args = map variable argumentNames
-          parameters' <- sequence [ (,) n <$> native t | (n,t) <- zip argumentNames types]
+              named = actorArgumentNames target (handlerArguments h)
+              args = map variable named
+          parameters' <- sequence [ (,) n <$> native t | (n,t) <- zip named types]
           replyType <- maybe (pure resultType) native (handlerReply h)
           nativeArgs <- sequence [bridge "to_native" t v | (t,v) <- zip types args]
           logicalArgs <- sequence [bridge "from_native" t v | (t,v) <- zip types args]
@@ -343,3 +345,12 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
        [maybe (D.text ("pub type " ++ typeName)) (G.typeAlias typeName . gleamType) handleTy] ++
        [G.external moduleName n (if n == "otp_child_spec" then "child_spec" else n)
          [D.text (p ++ ": ") <> gleamType t | (p,t) <- ps] (gleamType result) | Function n ps result _ <- public])
+
+-- | An actor's start or handler arguments under the names the spec gives
+-- them, in snake_case (a variable is cased where it is written), clear of
+-- the names the generated functions take for themselves.
+-- ref:DEC-generated-parameter-names
+actorArgumentNames :: String -> [(String, C.Type)] -> [String]
+actorArgumentNames target arguments = parameterNamesWith Snake (escapeKeyword target)
+  (words "handle remote node address observer state timeout_milliseconds result reply schema symbols")
+  "argument" (C.DeclaredParameters (map (Just . fst) arguments)) (map snd arguments)

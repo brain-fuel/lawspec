@@ -651,7 +651,7 @@ emit target layout bits typed declarations units boundSchema = do
     gleamBoundHelpers = do
       let bound = [a | a <- F.abilities units, C.abilityNative a /= Nothing]
           modules = nub [init ref | a <- bound, Just ref <- [C.abilityNative a]]
-          imports = zip modules ["native_" ++ show i | i <- [0::Int ..]]
+          imports = Names.nativeModuleAliases modules
           canonicalFactory a ref = hasDefault a && not (null ref) &&
             intercalate "/" (init ref) == E.gleamPath (C.abilityOwner a) &&
             last ref `elem` map fst (productionExports a)

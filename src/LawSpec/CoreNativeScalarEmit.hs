@@ -612,8 +612,13 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       in jvmFailing name (\failure native -> ktNativeResult failure (ktCast native)) "{ nativeValue -> "
         (ktNativeResult result (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
           (map ktHandler (usesOf name) ++ [ktNativeArgument ty value | (ty,value) <- typed]))))
+    -- A wrapper around an adapter takes the adapter's own parameter names,
+    -- clear of what its body binds. ref:DEC-generated-parameter-names
+    wrapperParameters target count name = Naming.paddedNames count "value" (concat (take 1
+      [ declarationParameterNames target (words "symbols nativeValue native result failure err value") "value" d
+      | d <- C.unitDeclarations u, C.declarationName d == name ]))
     ktAdapterWrappers = zipWith (\key@(identity, arguments, result) name ->
-      let parameters = ["value" ++ show i | i <- [0 :: Int .. length arguments - 1]]
+      let parameters = wrapperParameters "kotlin" (length arguments) (declarationName identity)
           body = ktAdapterCall identity result (zip arguments [KotlinExpr.call parameter [] | parameter <- parameters])
           header = KotlinExpr.call ("private fun " ++ name)
             (Doc.text "symbols: MutableMap<String, Any>" :
@@ -627,7 +632,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
         (javaNativeResult result (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity)
           (map javaHandler (usesOf name) ++ [javaNativeArgument ty value | (ty,value) <- typed]))))
     javaAdapterWrappers = zipWith (\key@(identity, arguments, result) name ->
-      let parameters = ["value" ++ show i | i <- [0 :: Int .. length arguments - 1]]
+      let parameters = wrapperParameters "java" (length arguments) (declarationName identity)
           body = javaAdapterCall identity result (zip arguments [JavaExpr.call (parameter ++ ".get") [] | parameter <- parameters])
           header = JavaExpr.call ("private static LawSpecRuntime.Value " ++ name)
             (Doc.text "Map<String, Object> symbols" :
@@ -1209,7 +1214,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
     goUniverse term = term : concatMap goUniverse (C.children term)
     goScalarsUsed = goUnitScalarNames dataDeclarations definitions u allLaws
     goAdapterWrappers = zipWith (\(n, argTypes, resultType) name ->
-        let parameters = ["value" ++ show i | i <- [0 .. length argTypes - 1]]
+        let parameters = wrapperParameters "go" (length argTypes) n
             body = goAdapterCall n resultType (zip argTypes (map Doc.text parameters))
             contextual = "symbols" `elem` GoExpr.identifiers (Doc.render Doc.Compact body)
             link = listToMaybe [l | d <- C.unitDeclarations u, C.declarationName d == n, Just l <- [sourceLink (C.declarationOrigin d)]]

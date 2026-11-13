@@ -16,6 +16,7 @@ import LawSpec.Core.Machine
 import LawSpec.Flow (flowTypeName)
 import LawSpec.Indexed (indexedRefinementName)
 import LawSpec.Model
+import LawSpec.SourceNames (operationValueNames)
 import LawSpec.ModelTime (timeStep, timePasses, timeAdapter)
 import LawSpec.Scalar (isInteger)
 
@@ -247,7 +248,7 @@ elaborateModel u m = do
         Just (_, indices) -> pure (mapM constant indices)
         Nothing -> pure Nothing
       let generated = modelName m ++ "Start"
-          parameters = [("input" ++ show i, a) | (i, a) <- zip [0 :: Int ..] args]
+          parameters = zip (operationValueNames [generated, f] args) args
           body = case stripLocation initial of
             Var g | Just _ <- definitionType g, not (all isUnitType args) ->
               foldl Apply (Var g) [Var p | (p, _) <- parameters]
@@ -388,7 +389,7 @@ behaviour u m
             "; it has " ++ unwords (operations kind)))
           pure (operation kind elements (modelReference c))
         let name = modelName m ++ capitalize (modelCommand c) ++ "Reference"
-            parameters = [("argument" ++ show i, t) | (i, t) <- zip [0 :: Int ..] inputs] ++ [("state", modelBy m)]
+            parameters = [(referenceArgument kind i, t) | (i, t) <- zip [0 :: Int ..] inputs] ++ [("state", modelBy m)]
             resultType = maybe (modelBy m) (\r -> Application "Pair" [r, modelBy m]) result
         pure (c { modelReference = name, modelAs = False },
           FunctionDefinition name parameters resultType [] body (modelSpan m), (modelCommand c, key))
@@ -428,8 +429,17 @@ operations kind = case kind of
   _ -> ["put", "get", "remove", "putIfAbsent", "containsKey", "size", "isEmpty"]
   where setOperations = ["add", "remove", "contains", "size", "isEmpty"]
 
+-- | What a reference operation calls its argument at a position: a
+-- collection's element, or a map's key and value.
+referenceArgument :: String -> Int -> String
+referenceArgument kind i
+  | kind `elem` ["Queue", "Stack", "Deque", "Set", "SortedSet"] = "element"
+  | i == 0 = "key"
+  | otherwise = "value"
+
 -- | An operation's other arguments, its result (Nothing for Unit), its body
--- over `state` and `argument<i>`, and which argument is its key.
+-- over `state` and its arguments (referenceArgument), and which argument is
+-- its key.
 operation :: String -> [Type] -> String -> Maybe ([Type], Maybe Type, Expr, Maybe Int)
 operation kind elements op = case (if kind=="SortedSet" then "Set" else kind, elements, op) of
   (_, _, "size") -> Just ([], Just (Named "Integer"), pair (call "size" [s]) s, Nothing)
@@ -459,7 +469,7 @@ operation kind elements op = case (if kind=="SortedSet" then "Set" else kind, el
   _ -> Nothing
   where
     s = Var "state"
-    a i = Var ("argument" ++ show (i :: Int))
+    a i = Var (referenceArgument kind i)
     call f args = foldl Apply (Var ("prelude." ++ reference f)) args
     reference f | kind=="SortedSet" = case f of
       "member" -> "sortedSetMember"

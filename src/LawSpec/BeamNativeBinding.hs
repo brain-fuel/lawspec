@@ -4,6 +4,7 @@
 -- ref:DEC-native-bindings-typed-identity
 module LawSpec.BeamNativeBinding (emitBindings, boundEntries, hasGenerators) where
 
+import LawSpec.BeamNames (nativeModuleAliases)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
@@ -125,7 +126,7 @@ emitBindings target layout bindings plan = do
           (Left "BEAM generator scaffold module conflicts with a production or generated module")
         let nativeModules = nub [init (referenceParts (resolvedNativeType m)) | g <- group, m <- mappings,
               C.dataId (resolvedDeclaration m) == resolvedGeneratorType g]
-            nativeAliases = zip nativeModules ["native_" ++ show i | i <- [0::Int ..]]
+            nativeAliases = nativeModuleAliases nativeModules
         bodies <- forM group $ \g -> do
           let name = last (referenceParts (resolvedGeneratorFactory g))
               parameters = [(C.Id ("a" ++ show i),"a" ++ show i) | i <- [0..generatorParameterCount g - 1]]
@@ -246,7 +247,7 @@ emitBindings target layout bindings plan = do
     gleamConstructors = do
       let modules = nub [init parts | (m,c) <- constructors,
             ref <- [resolvedNativeType m,resolvedNativeConstructor c], let parts = referenceParts ref]
-          aliases = zip modules ["native_" ++ show i | i <- [0::Int ..]]
+          aliases = nativeModuleAliases modules
           reference ref = case referenceParts ref of
             [] -> Left "empty Gleam native reference"
             parts -> do

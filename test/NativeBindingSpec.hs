@@ -62,8 +62,8 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
           Left message -> expectationFailure message
           Right output -> do
             output `shouldSatisfy` isInfixOf "Codec.Codec Domain.Price"
-            output `shouldSatisfy` isInfixOf "Domain.major = value0"
-            output `shouldSatisfy` isInfixOf "Domain.unit = field1"
+            output `shouldSatisfy` isInfixOf "Domain.major = amountIn"
+            output `shouldSatisfy` isInfixOf "Domain.unit = currencyOut"
             output `shouldSatisfy` isInfixOf "import qualified Domain"
         mapped ["Domain.major"] `shouldSatisfy` isLeft
   it "imports only emitted Rust converters and preserves mixed handle indices" $ do

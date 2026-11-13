@@ -9,6 +9,7 @@ module LawSpec.Swift.Data
   , nativeCollection, recursiveTypes, comparedParameters, typeParameterDeclarations
   ) where
 
+import LawSpec.Naming (fieldHelperNames)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
@@ -559,7 +560,7 @@ emitSchema layout bits crypto declarations = do
     refKey (S.Named n args) = n ++ concat [" (" ++ refKey a ++ ")" | a <- args]
     contractRender contract = do
       let local identity = maybe (error "unbound Swift constructor field") id
-            (lookup identity [(C.binderId b, "field" ++ show i) | (i, b) <- zip [0 :: Int ..] (S.contractFields contract)])
+            (lookup identity (zip (map C.binderId (S.contractFields contract)) (contractFieldNames contract)))
           ref ty = do
             raw <- S.typeReference (S.contractParameters contract) ty
             pure (pure' "Schema" "substitute" [X.typeOfKey (refKey raw), Var "known"])
@@ -569,8 +570,10 @@ emitSchema layout bits crypto declarations = do
     withFields contract = withEarlier (length (S.contractFields contract)) contract
     withEarlier count contract inner = Let "known" (Ty "[Int: TypeRef]") (pure' "Schema" "known" [Var "types"])
       (Let "symbols" tSymbols (Raw "SymbolContext()")
-        (foldr (\(i, _) rest -> Let ("field" ++ show i) tValue (pure' "Runtime" "item" [IntLit i, Var "fields"]) rest)
-          inner (zip [0 :: Integer ..] (take count (S.contractFields contract)))))
+        (foldr (\(i, name) rest -> Let name tValue (pure' "Runtime" "item" [IntLit i, Var "fields"]) rest)
+          inner (zip [0 :: Integer ..] (take count (contractFieldNames contract)))))
+    -- A constructor's fields in its predicate: each under its own name.
+    contractFieldNames contract = fieldHelperNames "field" "swift" (words "known symbols fields types schema value result") (map C.binderName (S.contractFields contract))
     predicate contract expression = do
       context <- contractRender contract
       body <- X.render context expression
