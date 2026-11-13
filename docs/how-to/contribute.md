@@ -363,6 +363,14 @@ Environment:
   output format.
 - `LAWSPEC_OFFLINE=1` uses existing dependency caches.
 - `LAWSPEC_PYTHON=3.14` selects the additional Python reference environment.
+- `LAWSPEC_JAVA_RELEASE=21` compiles and tests the Java target at release 21:
+  the scaffold's `maven.compiler.release` and the request's `release`. A suite
+  that imports `lawspec.crypto` or `lawspec.network` is refused there, with
+  the `release` diagnostic.
+- `LAWSPEC_JUNIT=6.0.3` tests the Java target on that JUnit Jupiter release in
+  place of the scaffold's 5.14.0. Run the Java suites with it before widening
+  the range in `templates/npm/compatibility.json`. Neither variable is part of
+  `lawspec-dev ci`.
 - Gradle 9.3.0 is used from `.tools/gradle-9.3.0` when present, otherwise from
   `PATH`.
 

@@ -10,7 +10,7 @@ where generated files go, and how LawSpec types appear in your code.
 
 | Target | Build setup | Test libraries | Test command |
 | --- | --- | --- | --- |
-| [`java`](java.md) | Maven, JDK 25, release 25 | JetCheck 0.3.0, JUnit Jupiter 5.14.x | `mvn test` |
+| [`java`](java.md) | Maven, JDK 25, release 25 (or release 21) | JetCheck 0.3.0, JUnit Jupiter 5.14.x or 6.0.x | `mvn test` |
 | [`python`](python.md) | Python 3.13 or 3.14, pyproject | pytest 8.4.x, Hypothesis 6.135.26+ (6.x) | `python -m pytest` |
 | [`javascript`](javascript.md) | Node 22+, npm, ESM | fast-check 4.x, node:test | `npm test` |
 | [`typescript`](typescript.md) | Node 22+, npm, TypeScript 5.9.x, ESM | fast-check 4.x, node:test | `npm test` |

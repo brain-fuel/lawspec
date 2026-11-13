@@ -26,8 +26,46 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   there; WSL runs all of them. The Windows code paths are tested on macOS
   against Windows path and quoting rules, and have not yet been run on
   Windows.
+- `:release 21` on a Java target, for a build on that LTS; the default stays
+  25. `lawspec init --target java --release 21` scaffolds the POM at release
+  21, and `doctor` requires that release of the build and accepts a JDK from
+  21 to 25. The generated code and runtime needed no change: every construct
+  compiles at release 21 except the ML-KEM and ML-DSA calls of
+  `lawspec.crypto` and `lawspec.network`, which need Java 24. Generating a
+  program that imports either for a release 21 target stops with a `release`
+  diagnostic naming the unit and that minimum. Certified with
+  `javac --release 21` on JDK 25; a JDK 21 virtual machine has not been
+  exercised.
+- JUnit Jupiter 6.0.x is supported on the Java target beside 5.14.x. The Java
+  acceptance suites pass on 6.0.3, the release Spring Boot 4.0 and 4.1 manage.
+  `init` still pins 5.14.0.
+- `:generated-source-dir` and `:generated-test-dir` on a Java target place
+  files by ownership: generated source, tests, test support and a harness's
+  JUnit configuration go to the generated directories, and adapters and
+  generator factories stay in `source-dir` and `test-dir`. A build can keep
+  generated code under `target/` without losing adapters to `mvn clean`, and
+  generating again writes the same bytes. `lawspec init` takes
+  `--generated-source-dir` and `--generated-test-dir` and prints the
+  `build-helper-maven-plugin` executions and Gradle `sourceSets` lines that
+  register the directories; `doctor` checks that a Maven build has them. The
+  compiler request gains `generatedSourceDir`, `generatedTestDir` and
+  `release`.
+- A how-to, [Add LawSpec to a Spring Boot service](docs/how-to/spring-boot.md):
+  a separate target root on the application's non-repackaged jar, the
+  application's BOMs, JUnit BOM ordering, release 21, generated directories
+  under `target/`, and native bindings for classes the application already
+  generates.
 
 ### Fixed
+
+- `lawspec doctor` read a Java build's JUnit version from the first
+  `junit-jupiter` line of `mvn dependency:tree`, which is the declared
+  aggregate. Under a BOM that manages JUnit, such as Spring Boot's, the
+  `junit-jupiter-api` and engine beneath it resolve to the BOM's release, and
+  doctor then reported a missing test engine. It now reads the resolved
+  `junit-jupiter-api` and `junit-jupiter-engine`, names the resolved release
+  when it is outside the supported range, and says to import
+  `org.junit:junit-bom` before the managing BOM.
 
 - On Windows the CLI could not start `mvn`, `gradle`, `gradlew.bat`, `npm`,
   `npx`, `mix` or `rebar3`: Node does not apply `PATHEXT` and refuses to start

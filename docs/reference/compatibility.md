@@ -52,9 +52,9 @@ unknown, prerelease, missing and out-of-range versions.
 
 | Target | Tool or library | Supported |
 | --- | --- | --- |
-| Java | Java | 25 |
+| Java | Java | 25; 21 to 25 with [`:release 21`](#java-release-21) |
 | | JetCheck | 0.3.0 |
-| | JUnit Jupiter | 5.14.x |
+| | JUnit Jupiter | 5.14.x, 6.0.x |
 | | Maven compiler plugin | 3.14.x, 3.15.x |
 | | Surefire | 3.5.x |
 | Python | Python | 3.13, 3.14 |
@@ -124,6 +124,44 @@ unknown, prerelease, missing and out-of-range versions.
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
 
+### Java release 21
+
+A Java target with `:release 21` in `lawspec.edn` compiles its generated code,
+runtime and tests at Java 21, for a build on that LTS. `doctor` then requires
+`maven.compiler.release` 21 and a JDK from 21 to 25. The default stays 25, and
+no other release is accepted.
+
+The generated code and runtime are the same at both releases. Two units need a
+newer release, because their Java handlers use the JDK's ML-KEM and ML-DSA
+(JEP 496 and JEP 497, Java 24):
+
+| Unit | Minimum Java release |
+| --- | --- |
+| `lawspec.crypto` | 24 |
+| `lawspec.network` | 24 |
+
+Generating a program that imports either for a release 21 target stops with a
+`release` diagnostic naming the unit and that minimum. Give such a program a
+target at release 25.
+
+Release 21 is certified by compiling and running the Java acceptance suites,
+other than the two that import those units, with `javac --release 21` on
+JDK 25, which checks the language level and the Java 21 API. Running the tests
+on a JDK 21 virtual machine has not been exercised.
+
+### JUnit Jupiter
+
+The Java target supports JUnit Jupiter 5.14.x and 6.0.x. The acceptance
+suites run on 5.14.0, which `init` pins, and on 6.0.3, which Spring Boot 4.0
+and 4.1 manage. JUnit 6.1 has not been tested and is rejected.
+
+`doctor` checks the versions Maven resolved, not the ones a POM declares. A
+BOM in `dependencyManagement` decides the versions of `junit-jupiter-api` and
+`junit-jupiter-engine` beneath a `junit-jupiter` dependency whatever version
+that dependency names. When the resolved release is outside the range, import
+`org.junit:junit-bom` 5.14.0 before the BOM that manages it; see
+[Add LawSpec to a Spring Boot service](../how-to/spring-boot.md#let-one-bom-decide-junit).
+
 BEAM crypto projects additionally require a Unix C toolchain and OpenSSL
 3.5 or later development files with the same major version as OTP's OpenSSL.
 The bridge builder supports macOS and Linux; Windows uses WSL. Native Windows
@@ -179,7 +217,7 @@ When `init` creates a scaffold, it pins:
 
 | Target | Pinned |
 | --- | --- |
-| Java | release 25, JetCheck 0.3.0, JUnit Jupiter 5.14.0, compiler plugin 3.14.1, Surefire 3.5.4 |
+| Java | release 25 (21 with `init --release 21`), JetCheck 0.3.0, JUnit Jupiter 5.14.0, compiler plugin 3.14.1, Surefire 3.5.4 |
 | Python | `requires-python = ">=3.13"`, pytest 8.4.2, Hypothesis 6.135.26, setuptools 80.9.0 |
 | Prolog | Python scaffold pins plus janus-swi 1.5.3; the selected interpreter loads SWI-Prolog |
 | JavaScript | fast-check 4.10.2 |

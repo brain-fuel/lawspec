@@ -26,7 +26,7 @@ Every target needs Node 22 or later. Beyond that:
 
 | Target | Checks |
 | --- | --- |
-| `java` | Maven runs on Java 25+. The effective POM uses compiler plugin 3.14.x or 3.15.x with release 25, Surefire 3.5.x, and source directories that match `sourceDir` and `testDir`. JetCheck 0.3.0 and JUnit Jupiter 5.14.x (with its engine) resolve on the test classpath. Tests are not skipped or filtered. |
+| `java` | Maven runs on Java 25+, or on Java 21+ for a target with `:release 21`. The effective POM uses compiler plugin 3.14.x or 3.15.x with the target's release (25 by default), Surefire 3.5.x, and source directories that match `sourceDir` and `testDir`. A target with generated directories has the `build-helper-maven-plugin` executions that add them. JetCheck 0.3.0 resolves on the test classpath, and so do `junit-jupiter-api` and `junit-jupiter-engine` at one release, 5.14.x or 6.0.x. Doctor reads the resolved versions from `mvn dependency:tree`, so a version that a BOM manages is the one checked. Tests are not skipped or filtered. |
 | `kotlin` | Gradle 9.1–9.3 on Java 25+, JVM target and test runtime 25+, Kotlin plugin 2.3.21, Kotest 5.9.1, unfiltered JUnit Platform test execution, and source sets that include the configured directories. |
 | `python` | The selected interpreter is Python 3.13+, with pytest 8.4.x and Hypothesis 6.135.26 or a later 6.x installed. `pyproject.toml` sets pytest `pythonpath` and `testpaths` to the configured directories and has no custom test selection options. `PYTEST_ADDOPTS` is unset. |
 | `javascript` | `package.json` has `"type": "module"` and fast-check 4.x is installed. |

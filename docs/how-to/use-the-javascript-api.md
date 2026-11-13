@@ -67,7 +67,8 @@ shim serializes them.
 
 TypeScript declarations ship in the package (`index.d.ts`). Requests accept
 `machineBits`, `generation`, `nativeBindings`, `dependencies`, `packages` and
-`package`; generation requests also accept `sourceDir`, `testDir` and `minify`.
+`package`; generation requests also accept `sourceDir`, `testDir`, `minify`
+and, for Java, `generatedSourceDir`, `generatedTestDir` and `release`.
 The API defaults to schema 5. Every ordinary request supplies the explicit
 `1.0-rc.2` language profile; older schemas are rejected. An omitted verification
 selection defaults to `[]`, retaining mandatory definition checks without

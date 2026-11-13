@@ -10,10 +10,16 @@ title: Set up Java
 - JDK 25 or later, and Maven running on it.
 - Maven compiler plugin 3.14.x or 3.15.x with `maven.compiler.release` 25.
 - Surefire 3.5.x.
-- Test dependencies: JetCheck 0.3.0 and JUnit Jupiter 5.14.x.
+- Test dependencies: JetCheck 0.3.0 and JUnit Jupiter 5.14.x or 6.0.x.
 
 New JVM releases are admitted after testing; the current profile certifies
 Java 25.
+
+A build on the earlier LTS can set `:release 21` on the target instead. The
+requirements are then a JDK from 21 to 25 and `maven.compiler.release` 21;
+see [Java release 21](../../reference/compatibility.md#java-release-21). To add
+the target to an existing Spring Boot application, follow
+[Add LawSpec to a Spring Boot service](../spring-boot.md).
 
 ## Create the project
 
@@ -28,6 +34,8 @@ In a directory without build files, `init` creates a readable `pom.xml` with
 these settings. In an existing Maven project it changes nothing and prints the
 settings to add. Use `init --minify` for a compact POM. Set a target's `maven`
 field in `lawspec.edn` to use a Maven command other than `mvn`.
+`init --release 21` creates the POM at release 21 and records the release on
+the target.
 
 ## Layout
 

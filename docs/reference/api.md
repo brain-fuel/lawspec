@@ -88,6 +88,9 @@ interface GenerationRequest extends CheckRequest {
   target: Target;                           // 'java' | 'python' | ... | 'rust'
   sourceDir?: string;
   testDir?: string;
+  generatedSourceDir?: string;              // java: generated source goes here
+  generatedTestDir?: string;                // java: generated tests go here
+  release?: 21 | 25;                        // java: default 25
   minify?: boolean;                         // default false
 }
 ```
