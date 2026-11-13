@@ -102,6 +102,7 @@ import System.Posix.Process (getProcessID)
 import System.Posix.Types (ProcessGroupID)
 import System.Process (CreateProcess(..), ProcessHandle, StdStream(..), createProcess, getPid, proc, readCreateProcessWithExitCode, terminateProcess, waitForProcess)
 import Text.Printf (printf)
+import LawSpec.Core.Vacuity (reachTargets)
 import qualified LawSpec.Targets as Targets
 import Scheduler
 import Ci.Budget (Budget, newBudget, withEverySlot, withMachineLock, withSlot)
@@ -1101,6 +1102,20 @@ targetSteps target =
   | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
   | suite <- ["integration", "definitions", "mutual-recursion", "text-pieces", "list-mapping", "rc1-nesting", "rc1-codec", "rc1-native-names", "rc1-existence", "rc1-composition", "rc1-empty-domains", "rc1-recursive-records", "rc1-record-payloads", "minor-empty-record-patterns", "minor-stateful-initializers", "minor-positional-products", "minor-branch-admission", "minor-gadt-payload-indices", "minor-existential-records", "minor-container-records", "minor-refined-gadt-indices", "minor-record-predicate-functions", "minor-native-failure-products", "minor-refined-primitive-inputs", "minor-smt-arithmetic", "minor-typed-mappings", "minor-unicode-filenames", "minor-exact-widening", "minor-bounded-generators", "rc1-record-refinements", "rc1-metadata", "rc1-references", "rc1-witnesses", "rc1-integer-domains", "rc1-search", "rc1-eq-set-foundation", "rc1-eq-set-operations", "rc1-sets", "rc1-set-literals", "rc1-set-domains", "rc1-set-generation", "rc1-collection-membership", "rc1-prelude-names", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "calendar", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "restarts", "consistency", "distribution", "packages", "refinement", "scalar", "records", "sequences", "composition", "contracts"] ] ++
+  -- What a guarded law's generated cases reached, on the targets whose tests
+  -- count it: with every layer, and with the property layer alone on the
+  -- targets that suite has adapters for. ref:DEC-vacuous-outcome
+  [ step (target ++ "-vacuity") (acceptance ["vacuity", target]) | target `elem` reachTargets ] ++
+  [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
+  -- Java at the other supported release, and on the JUnit release beyond the
+  -- scaffold's, each on three suites. The switches change the build files,
+  -- which are part of the harness's cache key, so each variant records its
+  -- own passes; the variants of a suite share its project directory and so
+  -- never run at once.
+  [ Step ("java-" ++ suite ++ suffix) env (acceptance [suite, target])
+  | target == "java"
+  , (suffix, env) <- [("-release-21", [("LAWSPEC_JAVA_RELEASE", "21")]), ("-junit-6", [("LAWSPEC_JUNIT", "6.0.3")])]
+  , suite <- ["integration", "harness", "generation"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
   -- also runs their TypeScript, F#, C# and Swift implementations.
   [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript", "fsharp", "csharp", "swift"] ] ++
