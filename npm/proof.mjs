@@ -1,7 +1,7 @@
 // Generated from templates/npm/proof.mjs by lawspec-dev generate. Do not edit.
 // Host execution of compiler-produced tasks. The browser/WASM compiler stays
 // pure; this Node host invokes Z3's SMT-LIB interface without a shell.
-import {spawn} from 'node:child_process';
+import {ToolNotFoundError, resolveCommand, spawnTool} from './spawn.mjs';
 import {createHash, randomUUID} from 'node:crypto';
 import {
   access,
@@ -70,6 +70,14 @@ function optionsWithDefaults(options)
 
 async function executable(binary)
 {
+  // Windows names executables through PATHEXT and has no execute permission
+  // to test; a batch-file wrapper is started through cmd.exe by spawnTool.
+  if (process.platform === 'win32')
+  {
+    const resolution = resolveCommand(binary);
+    if (!resolution.found) throw new ToolNotFoundError(binary, resolution);
+    return resolution.file;
+  }
   const candidates =
     path.isAbsolute(binary) || binary.includes('/') || binary.includes('\\')
       ? [path.resolve(binary)]
@@ -113,10 +121,7 @@ function execute(
   return new Promise(resolve =>
   {
     const started = performance.now();
-    const child = spawn(binary, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: false,
-    });
+    const child = spawnTool(binary, args, {stdio: ['pipe', 'pipe', 'pipe']});
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     let stdout = '',

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {lstat, mkdir, readFile} from 'node:fs/promises';
-import {spawnSync} from 'node:child_process';
+import {spawnToolSync} from './spawn.mjs';
 import {initialize} from 'ricestax/setup.mjs';
 import {createCompiler} from './api.mjs';
 import {readManifest, writeManifest, dependencyRanges} from './component.mjs';
@@ -29,7 +29,7 @@ async function exists(file)
 }
 function run(root, file, args, node = true)
 {
-  const result = spawnSync(
+  const result = spawnToolSync(
     node ? process.execPath : file,
     node ? [file, ...args] : args,
     {cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024},

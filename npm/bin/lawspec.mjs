@@ -52,7 +52,12 @@ import {
   isScalaCompilationFailure,
 } from '../scala-build-state.mjs';
 import {failureDatabase, projectKey} from '../failure-database.mjs';
-import {spawn, spawnSync} from 'node:child_process';
+import {
+  describeSpawnError,
+  shellHint,
+  spawnTool,
+  spawnToolSync,
+} from '../spawn.mjs';
 import {
   benchmarkInvocations,
   presentationInvocations,
@@ -159,7 +164,8 @@ const output = value =>
   console.log(
     typeof value === 'string' ? value : JSON.stringify(value, null, 2),
   );
-const shellQuote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
+// The Test: line is written for the shell of the platform it is printed on.
+const {quote: shellQuote, inDirectory} = shellHint();
 function testCommand(target, root)
 {
   if (artifactTargets.includes(target.language)) return null;
@@ -179,7 +185,7 @@ function testCommand(target, root)
     command = `node --test ${shellQuote(testDir)}/*.test.mjs`;
   if (target.language === 'typescript')
     command = `npm exec -- tsc -p tsconfig.json && node --test ${shellQuote('dist/' + testDir)}/*.test.js`;
-  return `(cd ${shellQuote(root)} && ${command})`;
+  return inDirectory(root, command);
 }
 // A refuted law fails the command, but evidence still lists it: the
 // diagnostics then only say which laws are refuted.
@@ -1088,7 +1094,7 @@ async function runTests(compiler, input, selected, roots, config)
     if (target.language === 'python' && stale.some(entry => entry.parallel))
     {
       xdist =
-        spawnSync(target.python || 'python3', ['-c', 'import xdist'], {
+        spawnToolSync(target.python || 'python3', ['-c', 'import xdist'], {
           cwd: root,
           stdio: 'ignore',
         }).status === 0;
@@ -1519,10 +1525,10 @@ async function coverageMissing(target, root, report)
   const probe = (command, args) =>
     new Promise(resolve =>
     {
-      const child = spawn(command, args, {cwd: root, stdio: 'ignore'});
+      const child = spawnTool(command, args, {cwd: root, stdio: 'ignore'});
       child.on('error', () => resolve(false));
       child.on('close', code => resolve(code === 0));
-    });
+    }).catch(() => false);
   if (['erlang', 'elixir', 'gleam'].includes(target.language))
   {
     const requirement = beamCoverageRequirement(target, report);
@@ -1560,11 +1566,8 @@ function spawned(command, args, cwd, env, goJson = false)
 {
   return new Promise((resolve, reject) =>
   {
-    const child = spawn(command, args, {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const settings = {cwd, env, stdio: ['ignore', 'pipe', 'pipe']};
+    const child = spawnTool(command, args, settings);
     const shown = options.json ? process.stderr : process.stdout;
     let output = '';
     let pending = '';
@@ -1594,7 +1597,9 @@ function spawned(command, args, cwd, env, goJson = false)
       output += chunk.toString();
       process.stderr.write(chunk);
     });
-    child.on('error', reject);
+    child.on('error', error =>
+      reject(describeSpawnError(error, command, settings)),
+    );
     child.on('close', code => resolve({ok: code === 0, output}));
   });
 }

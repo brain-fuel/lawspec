@@ -3,13 +3,12 @@
 // a Python project installs into and fetches dependencies with the target's
 // own build tool. What to add and which commands to run are LawSpec.Scaffold's
 // data; this module only reads, writes and runs.
-import {execFile, spawn} from 'node:child_process';
+
 import {access, readdir} from 'node:fs/promises';
 import path from 'node:path';
-import {promisify} from 'node:util';
 import {prepareCommands, requirements, templates} from './templates.mjs';
 import {atomicWrite, readOptional, safePath} from './files.mjs';
-const exec = promisify(execFile);
+import {describeSpawnError, execTool, spawnTool} from './spawn.mjs';
 const windows = process.platform === 'win32';
 
 // Directories that hold installed or generated files, not the project's own.
@@ -121,24 +120,24 @@ function runTool(command, args, cwd, environment)
 {
   return new Promise((resolve, reject) =>
   {
-    const child = spawn(command, args, {
+    const settings = {
       cwd,
       env: {...process.env, ...environment},
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: windows,
-    });
+    };
+    const child = spawnTool(command, args, settings);
     child.stdout.pipe(process.stderr, {end: false});
     child.stderr.pipe(process.stderr, {end: false});
     const shown = [command, ...args].join(' ');
     child.on('error', error =>
+    {
+      const described = describeSpawnError(error, command, settings);
       reject(
-        new Error(
-          error.code === 'ENOENT'
-            ? `${command} was not found on PATH`
-            : `${shown}: ${error.message}`,
-        ),
-      ),
-    );
+        described === error
+          ? new Error(`${shown}: ${error.message}`)
+          : described,
+      );
+    });
     child.on('close', code =>
       code === 0 ? resolve() : reject(new Error(`${shown} exited with ${code}`)),
     );
@@ -150,7 +149,7 @@ async function findPython()
 {
   for (const candidate of ['python3', 'python3.14', 'python3.13', 'python'])
   {
-    const recent = await exec(candidate, [
+    const recent = await execTool(candidate, [
       '-c',
       'import sys; print(sys.version_info[:2] >= (3, 13))',
     ]).then(
@@ -200,7 +199,7 @@ export async function gradleFor(target, root)
   );
 }
 
-async function toolFor(command, target, root)
+export async function toolFor(command, target, root)
 {
   if (command === 'gradle') return gradleFor(target, root);
   return target[overrides[command]] || command;

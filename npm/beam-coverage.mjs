@@ -1,5 +1,4 @@
 // Generated from templates/npm/beam-coverage.mjs by lawspec-dev generate. Do not edit.
-import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {
   mkdir,
@@ -12,9 +11,8 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {promisify} from 'node:util';
+import {execTool as exec} from './spawn.mjs';
 
-const exec = promisify(execFile);
 export function beamCoverageRequirement(target, report)
 {
   if (

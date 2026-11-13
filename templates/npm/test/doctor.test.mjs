@@ -65,6 +65,29 @@ test('incompatible or unverifiable environments prevent generation writes', asyn
   }
 });
 
+test('a build tool that is not installed is a doctor finding, not a spawn error', async t =>
+{
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-doctor-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const cases = [
+    ['java', {maven: 'lawspec-no-such-mvn'}, 'lawspec-no-such-mvn'],
+    ['kotlin', {gradle: 'lawspec-no-such-gradle'}, 'lawspec-no-such-gradle'],
+    ['groovy', {gradle: './gradlew'}, './gradlew'],
+  ];
+  for (const [language, tool, command] of cases)
+  {
+    const report = await doctor({language, root: '.', ...tool}, root);
+    assert.equal(report.ok, false);
+    assert.ok(
+      report.message.startsWith(`${command} was not found`),
+      report.message,
+    );
+    assert.match(report.message, /; (?:searched|looked for) /);
+    assert.doesNotMatch(report.message, /ENOENT|EINVAL/);
+    assert.ok(report.instructions);
+  }
+});
+
 test('Rapid accepts both stable baselines and rejects unsupported versions', () =>
 {
   for (const version of ['1.2.0', 'v1.3.0', '1.3.1'])

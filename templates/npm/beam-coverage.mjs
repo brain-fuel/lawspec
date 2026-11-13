@@ -1,11 +1,9 @@
-import {execFile} from "node:child_process";
 import {createHash} from "node:crypto";
 import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {promisify} from "node:util";
+import {execTool as exec} from "./spawn.mjs";
 
-const exec = promisify(execFile);
 export function beamCoverageRequirement(target, report) {
   if (target.language === "gleam" && Number(report?.versions?.gleam?.split(".")[1] ?? 0) < 19)
     return {tool: "Gleam 1.19 for source coverage", install: "upgrade Gleam to 1.19 so native counters refer to the original source lines"};
