@@ -15,6 +15,7 @@ extra-source-files:
     test/fixtures/application-port/manifest-service.json
     test/fixtures/application-port/README.txt
     dev/ci-cache-test/Main.hs
+    dev/ci-coordination-test/Main.hs
     vendor/unicode/LICENSE.txt
     vendor/unicode/NORMALIZATION-LICENSES.txt
     vendor/unicode/17.0.0/CaseFolding.txt

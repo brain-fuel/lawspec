@@ -108,6 +108,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A constructor may be given where a prelude combinator takes a function:
   `prelude.map Present m`, `m >>= Right`, `value |> Present`.
 
+- For contributors, `lawspec-dev ci` chooses its steps: `--only <glob>` by
+  name, `--affected [<base>]` by the files a step declares it reads,
+  `--no-core` for the build and the target checks alone, `--exact` without
+  the steps the selection follows, and `--list` to print the selection
+  without running it. Each finished step appends its seconds to
+  `.artifacts/ci/timings.jsonl`. Recorded passes live in one cache for the
+  machine (`LAWSPEC_DEV_CACHE`, by default `~/.cache/lawspec-dev`), concurrent
+  runs share one job budget, and `lawspec-dev clean --artifacts
+  [--keep-cache]` removes a worktree's build output. The check now also runs
+  the `vacuity` suites and Java at release 21 and on JUnit 6.0.3. See
+  [Contribute](docs/how-to/contribute.md#checks).
+
 ### Changed
 
 - Generated parameters take their names from the signature. `add :: (a ::
