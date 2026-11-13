@@ -70,7 +70,9 @@ of linking it, use `npm install --save-dev --install-links ../lawspec/npm`.
 - `lawspec.edn`, the [project configuration](../reference/configuration.md);
 - `laws/atoi_codec.lawspec`, a starter specification with two functions,
   `itoa` and `atoi`, and a round-trip law with a three-row expectation table;
-- the target's build files, when the directory has none.
+- the target's build files, when the directory has none. They name the
+  project after the directory, here `lawspec-example`; `--name <name>` gives
+  another name. See [project name](../reference/cli.md#project-name).
 
 `init` then installs the target's dependencies with its build tool and runs the
 `doctor` checks, so the project is ready for `generate`. In a directory that

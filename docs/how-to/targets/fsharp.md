@@ -28,9 +28,13 @@ In a directory without build files, `init` creates:
 | File | What it holds |
 | --- | --- |
 | `global.json` | Opts `dotnet test` into Microsoft.Testing.Platform |
-| `Example.slnx` | The source and test projects and the runtime projects |
-| `src/Example.fsproj` | Your project; it imports `src/LawSpec.Sources.props` |
-| `tests/Example.Tests.fsproj` | The tests; it imports `tests/LawSpec.Tests.props` and references xunit.v3 |
+| `<Name>.slnx` | The source and test projects and the runtime projects |
+| `src/<Name>.fsproj` | Your project; it imports `src/LawSpec.Sources.props` |
+| `tests/<Name>.Tests.fsproj` | The tests; it imports `tests/LawSpec.Tests.props` and references xunit.v3 |
+
+`<Name>` is the [project's name](../../reference/cli.md#project-name) in
+PascalCase, by default the directory's (`BillingService` in
+`billing-service`); it is also the source project's `RootNamespace`.
 
 `generate` writes the runtime as two projects under `lawspec/`:
 `LawSpec.Runtime` (values, schemas, codecs, effects, actors, sessions and the

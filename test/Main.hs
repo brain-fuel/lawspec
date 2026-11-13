@@ -63,6 +63,7 @@ import qualified DomainModelSpec
 import qualified StatefulModelSpec
 import qualified ScenarioSpec
 import qualified TargetNamesSpec
+import qualified ProjectNameSpec
 import qualified TargetOptionsSpec
 import qualified ParameterNamesSpec
 import qualified CalendarSpec
@@ -196,6 +197,7 @@ main = hspec $ do
   TargetNamesSpec.test_targetNamesNeverCollideWithKeywords
   TargetOptionsSpec.test_generatedDirectoriesPlaceFilesByOwnership
   TargetOptionsSpec.test_javaReleaseRefusesWhatItCannotCompile
+  ProjectNameSpec.test_projectNames
   ParameterNamesSpec.test_generatedParametersTakeTheirSignaturesNames
   TimeSpec.test_durationsAreExactAndPortable
   CalendarSpec.test_calendarDatesAreCheckedDefinitions

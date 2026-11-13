@@ -9,7 +9,7 @@ title: CLI
 lawspec fmt [paths...] [--check] [--compile] [--json] [--config <path>]
 lawspec lsp --stdio
 lawspec mcp [--config <path>]
-lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--no-install] [--config <path>]
+lawspec init --target <language> [--project <directory>] [--name <name>] [--group <id>] [--machine-bits <32|64>] [--minify] [--no-install] [--config <path>]
 lawspec init --target java [--release <21|25>] [--generated-source-dir <directory>] [--generated-test-dir <directory>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--timings] [--config <path>]
@@ -205,6 +205,10 @@ Creates or extends a project configuration.
 - `--target <language>` (required): the target to add.
 - `--project <directory>`: the target's root, relative to the configuration
   file. Default: the configuration file's directory.
+- `--name <name>`: the project's name in the build files `init` creates and
+  in a new configuration. Default: see [project name](#project-name).
+- `--group <id>`, with `--target java`, `kotlin`, `groovy` or `go` only: the
+  Maven `groupId`, the Gradle `group`, or the start of the Go module path.
 - `--machine-bits <32|64>`: write `machineBits` into the configuration.
 - `--minify`: write compact scaffolds and an EDN configuration.
 - `--release <21|25>`, `--generated-source-dir <directory>` and
@@ -232,6 +236,75 @@ For a Java target with generated directories, given as options or already in
 the configuration, `init` also prints what registers them in the build: the
 `build-helper-maven-plugin` executions for Maven and the `sourceSets` lines for
 Gradle. It prints them and does not edit the build file.
+
+### Project name
+
+The build files `init` creates name your project. `init` takes the name from
+the first of these that gives one:
+
+1. `--name <name>`;
+2. a build file already in the target's root: `package.json`, `Cargo.toml`,
+   `pyproject.toml`, `pom.xml` (its own `artifactId`), `settings.gradle.kts`
+   or `settings.gradle`, `go.mod` (the last element of the module path),
+   `mix.exs`, `gleam.toml`, `package.yaml`, a `.cabal` file, a `.slnx` or
+   `.sln` file (its file name) or `Package.swift`, tried in that order;
+3. the `:name` of the `:component` or `:package` in `lawspec.edn`;
+4. the name of the directory that holds `lawspec.edn`.
+
+`init` never renames an existing build file. The second source applies to
+the files it adds beside one, such as a missing `package.json`. When it
+creates `lawspec.edn`, the component takes the same name, as given when the
+configuration admits it (letters, digits, `.`, `_` and `-`) and in kebab-case
+otherwise. After creating build files, `init` prints the name and its source:
+`Project name: billing-service (from the directory name).`
+
+The name is one value. Capitals, spaces, dots, hyphens and underscores
+separate its words, so `Billing Service`, `billing_service` and
+`BillingService` are the same name, and each target writes it in its own way:
+
+| Target | Where | `Billing Service` is written |
+| --- | --- | --- |
+| JavaScript, TypeScript | `name` in `package.json` | `billing-service` |
+| Rust | package `name` in `Cargo.toml` | `billing-service` |
+| Python, Prolog | project `name` in `pyproject.toml` | `billing-service` |
+| Haskell | `name` in `package.yaml` | `billing-service` |
+| Java | `artifactId` in `pom.xml`; `groupId` | `billing-service`; `billing_service` |
+| Kotlin, Groovy | `rootProject.name` in the settings file | `billing-service` |
+| Go | module path in `go.mod` | `example.com/billing-service` |
+| Erlang | application and `src/<name>.app.src` | `billing_service` |
+| Elixir | `app` and the project module in `mix.exs` | `billing_service`, `BillingService.MixProject` |
+| Gleam | `name` in `gleam.toml`; `test/<name>_test.gleam` | `billing_service` |
+| F#, C# | solution, project files and `RootNamespace` | `BillingService` |
+| Swift | package `name` in `Package.swift` | `BillingService` |
+
+Scala CLI's `project.scala`, Clojure's `deps.edn` and the artifact targets
+carry no project name.
+
+- Characters other than ASCII letters and digits only separate words: `café`
+  is written `caf`. Give `--name` when the directory's name loses too much.
+- Where a name must begin with a letter (Rust, Haskell, Erlang, Elixir,
+  Gleam, F#, C#, Swift and the default Java `groupId`), a leading digit gets
+  the word `project` in front: `2048` is `project-2048` in `Cargo.toml`.
+- A name the target reserves gets the word `project` after it: a keyword or
+  a standard crate in Rust (`test` is `test-project`), and on every target a
+  package the scaffold depends on (`lawspec`, `pytest`, `containers`,
+  `stream_data`), which a project of the same name would hide.
+- Each part of a Haskell package name needs a letter, so a part made of
+  digits joins the part before it: `app-2` is `app2`.
+- A name with no ASCII letter or digit, or one longer than 64 characters as
+  written (Cargo's limit, applied to every target), is an error that says so
+  and asks for `--name`. Nothing is written.
+
+`--group` is checked and written as given. For Java, Kotlin and Groovy it is
+a Java package name such as `com.acme.billing`. Without it, the Maven
+`groupId` is the project name as one Java package segment
+(`billing_service`), because `init` cannot know a domain you own, and the
+Gradle scripts set no `group`. For Go it is a host and path such as `github.com/acme`, and the
+module is `github.com/acme/billing-service`. Without it, the module is under
+`example.com`, the domain reserved for examples, which works for a module
+that nothing fetches. On other targets `--group` is an error.
+
+The examples that `lawspec examples` exports keep the name `lawspec-example`.
 
 ## `check`
 

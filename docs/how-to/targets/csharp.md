@@ -27,9 +27,12 @@ npx lawspec generate --target csharp
 dotnet test
 ```
 
-`init` creates `global.json`, `Example.slnx`, `src/Example.csproj` (which
-imports `src/LawSpec.Sources.props`) and `tests/Example.Tests.csproj` (which
-imports `tests/LawSpec.Tests.props` and references xunit.v3). `generate` writes
+`init` creates `global.json`, `<Name>.slnx`, `src/<Name>.csproj` (which
+imports `src/LawSpec.Sources.props`) and `tests/<Name>.Tests.csproj` (which
+imports `tests/LawSpec.Tests.props` and references xunit.v3). `<Name>` is the
+[project's name](../../reference/cli.md#project-name) in PascalCase, by
+default the directory's (`BillingService` in `billing-service`); it is also
+the source project's `RootNamespace`. `generate` writes
 three F# projects under `lawspec/`: `LawSpec.Runtime`, `LawSpec.Testing` and
 `LawSpec.Model`, the program's model, which the source props reference.
 
