@@ -69,6 +69,7 @@ end unit
 | `x is within d of y` | `x` and `y` are at most `d` apart | one numeric type |
 | `t starts with p`, `t ends with p` | `p` is a prefix, or a suffix, of `t` | `Text` |
 | `t matches regex "..."` | the regex matches all of `t` | `Text` |
+| `t matches format email` | `t` is in the named format (`email`, `uuid`; see [record rules](record-rules.md#formats)) | `Text` |
 | `t matches r` | the same, with `r :: Regex` | `Text` and `Regex` |
 | `v matches C p1 p2` | `C` built `v`, and its fields match `p1`, `p2` | any data type |
 | `e fails with C p1` | `e` raises a failure that matches `C p1` | see [typed failures](failures.md) |

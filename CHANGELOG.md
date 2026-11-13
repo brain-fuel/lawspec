@@ -8,6 +8,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Record rules. A record's rules are the restrictions its fields carry,
+  split at `&&`, and named rules of the whole record (`rule <name> is
+  <condition>` after its fields). Each has a stable id: `<field>.<suffix>`
+  (`age.min`, `code.maxLength`, `plan.oneOf`), a name given with `as`, or the
+  rule's name. Naming `validateR`, `violationsOfR`, `draftOfR` or `RDraft`
+  for a record `R` generates them: the validator takes a draft and returns
+  the record or every `Violation` (rule id, field, message). An example may
+  end `fails with <rule id>`. LawSpec adds a law that every record passes its
+  validator and, per field rule, a law that breaking it alone is reported as
+  it alone; a rule of the whole record needs such an example. Run on Java,
+  JavaScript, TypeScript and Python; other targets were not run.
+- Named formats: `v matches format email` and `v matches format uuid`.
+  `email` accepts exactly what the regex of Perl's Mail::RFC822::Address 0.3
+  accepts (an RFC 822 address, including display names, routes and groups;
+  comments are refused), checked against the module on recorded vectors.
+- Masking: `masking R is <field> shown as hidden | last <n> | email ... end
+  masking` generates `maskedR` and `maskedRDraft`, shows masked fields
+  through their masks in violation messages, and adds a law per masked field
+  that what the mask hides appears in no rendering and no message. `hash` is
+  parsed and refused by name; a target's native rendering (Java's
+  `toString()`) and logging hooks are not masked yet.
+- JSON Schema output writes `pattern`, `minLength`, `maxLength`, `minItems`,
+  `maxItems` and `enum` for a record's rules. A rule it cannot express is
+  still refused as `target-unsupported`.
 - Guarded laws report their reach. For a law `for all x => guard implies
   claim`, the generated tests of the Java, JavaScript, TypeScript, Python and Scala
   targets count the generated cases that satisfied each guard, and `lawspec test`
@@ -122,6 +146,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Generated texts for a regex with nested repetitions are shorter: an inner
+  repetition repeats at most twice more than its minimum, and one inside
+  that at most once more. A regex's pattern is no longer itself a seed text
+  for the fields of the record it restricts. Generated cases for such
+  records change.
+- Boundary values for a record with several restricted fields are searched
+  per field: each field's candidates are first narrowed by the restrictions
+  that read only that field.
 - Generated parameters take their names from the signature. `add :: (a ::
   Int32) -> (b :: Int32) -> Int32` gives `add(int a, int b)` in Java,
   `def add(a: int, b: int)` in Python and `add(_A, _B)` in Erlang: the name

@@ -4485,36 +4485,36 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/artifact-targets.md:136: HCL",
+      "id": "reference:docs/reference/artifact-targets.md:141: HCL",
       "kind": "reference",
-      "name": "docs/reference/artifact-targets.md:136: HCL",
+      "name": "docs/reference/artifact-targets.md:141: HCL",
       "source": "docs/reference/artifact-targets.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/artifact-targets.md:208: ANTLR",
+      "id": "reference:docs/reference/artifact-targets.md:213: ANTLR",
       "kind": "reference",
-      "name": "docs/reference/artifact-targets.md:208: ANTLR",
+      "name": "docs/reference/artifact-targets.md:213: ANTLR",
       "source": "docs/reference/artifact-targets.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/artifact-targets.md:246: Make",
+      "id": "reference:docs/reference/artifact-targets.md:251: Make",
       "kind": "reference",
-      "name": "docs/reference/artifact-targets.md:246: Make",
+      "name": "docs/reference/artifact-targets.md:251: Make",
       "source": "docs/reference/artifact-targets.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/artifact-targets.md:264: Acceptance tools",
+      "id": "reference:docs/reference/artifact-targets.md:269: Acceptance tools",
       "kind": "reference",
-      "name": "docs/reference/artifact-targets.md:264: Acceptance tools",
+      "name": "docs/reference/artifact-targets.md:269: Acceptance tools",
       "source": "docs/reference/artifact-targets.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6546,9 +6546,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/index.md:79: Current limits",
+      "id": "reference:docs/reference/language/index.md:81: Current limits",
       "kind": "reference",
-      "name": "docs/reference/language/index.md:79: Current limits",
+      "name": "docs/reference/language/index.md:81: Current limits",
       "source": "docs/reference/language/index.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6771,18 +6771,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:128: Laws of the matchers",
+      "id": "reference:docs/reference/language/matchers.md:129: Laws of the matchers",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:128: Laws of the matchers",
+      "name": "docs/reference/language/matchers.md:129: Laws of the matchers",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:139: Failure messages",
+      "id": "reference:docs/reference/language/matchers.md:140: Failure messages",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:139: Failure messages",
+      "name": "docs/reference/language/matchers.md:140: Failure messages",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6798,18 +6798,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:85: Constructor patterns",
+      "id": "reference:docs/reference/language/matchers.md:86: Constructor patterns",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:85: Constructor patterns",
+      "name": "docs/reference/language/matchers.md:86: Constructor patterns",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/matchers.md:97: Regular expressions",
+      "id": "reference:docs/reference/language/matchers.md:98: Regular expressions",
       "kind": "reference",
-      "name": "docs/reference/language/matchers.md:97: Regular expressions",
+      "name": "docs/reference/language/matchers.md:98: Regular expressions",
       "source": "docs/reference/language/matchers.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7000,6 +7000,60 @@
       "kind": "reference",
       "name": "docs/reference/language/rc1.md:779: Checked rejection examples",
       "source": "docs/reference/language/rc1.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:107: Generated laws",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:107: Generated laws",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:121: Formats",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:121: Formats",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:141: Masking",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:141: Masking",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:190: Limits",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:190: Limits",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:56: Rule ids",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:56: Rule ids",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:82: What is generated",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:82: What is generated",
+      "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
@@ -8286,6 +8340,15 @@
       "id": "syntax:mapping",
       "kind": "syntax",
       "name": "mapping",
+      "source": "src/LawSpec/Blocks.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "syntax:masking",
+      "kind": "syntax",
+      "name": "masking",
       "source": "src/LawSpec/Blocks.hs",
       "exampleStatus": "deferred",
       "checkedExample": null,

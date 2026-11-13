@@ -23,6 +23,7 @@ shows how to do it.
 
 - [Compare alternative implementations](compare-alternative-implementations.md)
 - [Test text properties and idempotence](test-text-properties-and-idempotence.md)
+- [Validate and mask a record](validate-and-mask-records.md)
 - [Use imports and packages](use-imports-and-packages.md)
 - [Use 32-bit and compact profiles](use-32-bit-and-compact-profiles.md)
 

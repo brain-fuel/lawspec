@@ -54,6 +54,8 @@ types, checked definitions, refinements and laws.
 - [Logs and traces](logging.md): logging, and inspecting what was logged.
 - [Durations](durations.md): whole microseconds, their literals, arithmetic and
   native types.
+- [Record rules, validators and masking](record-rules.md): rule ids,
+  generated validators, named formats and masked renderings.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is
   discharged.
 - [Domain modeling](domain-modeling.md): wrappers and workflows.
