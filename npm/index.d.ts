@@ -671,6 +671,7 @@ export type DischargeStatus =
   | 'unsupported'
   | 'known-discrepancy'
   | 'flaky'
+  | 'vacuous'
   | 'skipped'
   | 'pending'
   | 'proved'
@@ -1141,6 +1142,7 @@ export type NativeConformanceStatus =
   | 'incomplete'
   | 'skipped'
   | 'known-discrepancy'
+  | 'vacuous'
   | 'not-selected'
   | 'stale'
   | 'unavailable';
@@ -1151,7 +1153,8 @@ export type NativeOutcome =
   | 'skipped'
   | 'incomplete'
   | 'not-run'
-  | 'known-discrepancy';
+  | 'known-discrepancy'
+  | 'vacuous';
 
 export interface NativeCompletedTest
 {
@@ -1206,6 +1209,7 @@ export interface NativeExecutionAttempt
   invocation: NativeInvocation;
   verification: 'native-execution';
   searchCompleteness: 'not-established';
+  reach?: NativeReach;
   executionRun?: string;
   environment?: string;
 }
@@ -1296,6 +1300,23 @@ export interface NativeTestEntry
   scope?: string;
   obligations?: NativeEvidenceTarget[];
   coverage: NativeCheckCoverage;
+  reach?: NativeReachPlan;
+}
+
+export interface NativeReachPlan
+{
+  guards: number;
+  measured: boolean;
+  advice: {rule: string; input: string; message: string}[];
+}
+
+export interface NativeReach
+{
+  status: 'measured' | 'unknown';
+  cases?: number;
+  reached?: number;
+  sites?: {evaluated: number; held: number}[];
+  reason?: string;
 }
 
 export interface Result

@@ -474,7 +474,7 @@ declarations =
               ("actors?", "NativeActorBinding[]")
             ]
         ),
-      alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-discrepancy", "flaky", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"]),
+      alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-discrepancy", "flaky", "vacuous", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"]),
       interface
         "ObligationEvidence"
         ( fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")]
@@ -742,12 +742,13 @@ declarations =
               "incomplete",
               "skipped",
               "known-discrepancy",
+              "vacuous",
               "not-selected",
               "stale",
               "unavailable"
             ]
         ),
-      alias "NativeOutcome" (map quoted ["passed", "failed", "skipped", "incomplete", "not-run", "known-discrepancy"]),
+      alias "NativeOutcome" (map quoted ["passed", "failed", "skipped", "incomplete", "not-run", "known-discrepancy", "vacuous"]),
       interface
         "NativeCompletedTest"
         ( fields
@@ -799,6 +800,7 @@ declarations =
               ("invocation", "NativeInvocation"),
               ("verification", "'native-execution'"),
               ("searchCompleteness", "'not-established'"),
+              ("reach?", "NativeReach"),
               ("executionRun?", "string"),
               ("environment?", "string")
             ]
@@ -894,7 +896,26 @@ declarations =
               ("kind?", "'model'"),
               ("scope?", "string"),
               ("obligations?", "NativeEvidenceTarget[]"),
-              ("coverage", "NativeCheckCoverage")
+              ("coverage", "NativeCheckCoverage"),
+              ("reach?", "NativeReachPlan")
+            ]
+        ),
+      interface
+        "NativeReachPlan"
+        ( fields
+            [ ("guards", "number"),
+              ("measured", "boolean"),
+              ("advice", "{rule: string; input: string; message: string}[]")
+            ]
+        ),
+      interface
+        "NativeReach"
+        ( fields
+            [ ("status", "'measured' | 'unknown'"),
+              ("cases?", "number"),
+              ("reached?", "number"),
+              ("sites?", "{evaluated: number; held: number}[]"),
+              ("reason?", "string")
             ]
         ),
       interface

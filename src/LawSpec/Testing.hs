@@ -15,6 +15,7 @@ import LawSpec.Core.Search (Candidate(..), applyCandidate, strategyCandidates)
 import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms, finiteQuantifierCandidates)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
+import LawSpec.Core.Vacuity (guardedQuantifier, membership, memberCovers)
 import LawSpec.Testing.Cover (FiniteCover(..), compressCases, coverCases, coverCount)
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
@@ -277,8 +278,8 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
       -- a value whose field is, from values with such fields.
       bs <- sequence [case domain of
           Just values | hasValueContracts registry ty -> pure values
-          _ -> (\base -> patternValues definitions q ++ fieldPatternValues definitions q base ++ base) <$> boundariesWithRegistry registry programMachineBits ty
-        | (q,ty,domain) <- zip3 qs types domains]
+          _ -> (\base -> patternValues definitions hinted ++ fieldPatternValues definitions hinted base ++ memberValues hinted ++ base) <$> boundariesWithRegistry registry programMachineBits ty
+        | (q,ty,domain) <- zip3 qs types domains, let hinted = guardedQuantifier (propertyBody p) q]
       unless (all (not . null) bs) (Left "uninhabited input domain")
       let tuples = if null bs then [[]] else [[xs !! (i `mod` length xs) | xs <- bs] | i <- [0..maximum (map length bs)-1]]
       cases <- filterM (validTupleWithDefinitions registry programMachineBits invoke qs) tuples
@@ -301,7 +302,7 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
           (exhaustiveLimit settings) (propertyId p)) (exampleExpectations example)
         pure (example { exampleExpectations = expectations })) (propertyExamples p)
       cover <- traverse compressCases finite
-      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) cover cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs] (propertyBody p))
+      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) cover cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (generationHints definitions (guardedQuantifier (propertyBody p) q)) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs] (propertyBody p))
 
 -- | Bounded deterministic search shares typed strategy expressions with the
 -- ordinary harness. Samples are never exposed as complete finite covers.
@@ -381,14 +382,35 @@ boundedLawSearch registry bits property q body = case selected of
 finiteUniversalInputs :: TypeRegistry -> Int -> Int -> (Id -> [Value] -> Either String Value)
   -> [Quantifier] -> Either String (Maybe [[Value]])
 finiteUniversalInputs registry bits limit invoke qs = do
-  domains <- mapM (finiteQuantifierCandidates bits limit (finiteValuesWithRegistry registry bits limit)) qs
-  if Just [] `elem` domains then pure (Just []) else case sequence domains of
-    Just covers | product (map (toInteger . length) covers) <= toInteger limit ->
-      Just <$> walk [] (zip qs covers)
+  static <- mapM (finiteQuantifierCandidates bits limit (finiteValuesWithRegistry registry bits limit)) qs
+  -- An input with no cover of its own may still be a member of a list its
+  -- refinement names (x in c, c over the inputs before it): the list's items
+  -- in the actual prefix are then its cover. ref:DEC-vacuous-outcome
+  let domains = [ case (cover, memberCovers q) of
+                    (Nothing, items : _) -> Just (Right items)
+                    _ -> fmap Left cover
+                | (q, cover) <- zip qs static ]
+      fixed = product [toInteger (length terms) | Just (Left terms) <- domains]
+  if Just [] `elem` static then pure (Just []) else case sequence domains of
+    Just covers | fixed <= toInteger limit ->
+      -- A list that cannot be evaluated here (it calls an adapter) or a
+      -- product past the limit leaves the law to property testing.
+      pure (case walk [] (zip qs covers) of
+        Right tuples | length (take (limit + 1) tuples) <= limit -> Just tuples
+        _ -> Nothing)
     _ -> pure Nothing
   where
     walk prefix [] = pure [map snd prefix]
-    walk prefix ((q,terms):rest) = fmap concat $ mapM (\candidate -> do
+    walk prefix ((q,Right items):rest) = do
+      list <- evaluateValue registry bits invoke prefix items
+      members <- maybe (Left "membership in a value that is not a list") Right (listMembers list)
+      when (length (take (limit + 1) members) > limit) (Left "membership list exceeds the exhaustive limit")
+      fmap concat $ mapM (\value -> do
+        let bindings = prefix ++ [(binderId (quantifiedBinder q),value)]
+        accepted <- allM (\predicate -> (== ScalarValue (SBool True)) <$>
+          evaluateValue registry bits invoke bindings predicate) (quantifiedPredicates q)
+        if accepted then walk bindings rest else pure []) (nub members)
+    walk prefix ((q,Left terms):rest) = fmap concat $ mapM (\candidate -> do
       let optional = Constructor "Maybe" [TypeArgument (binderType (quantifiedBinder q))]
           origin = GeneratedFrom (binderId (quantifiedBinder q))
           absent = Expr optional (Construct (Id "Maybe::Absent") []) origin
@@ -402,6 +424,10 @@ finiteUniversalInputs registry bits limit invoke qs = do
             evaluateValue registry bits invoke bindings predicate) (quantifiedPredicates q)
           if accepted then walk bindings rest else pure []
         _ -> Left "invalid guarded finite candidate") terms
+    listMembers value = case value of
+      DataValue _ (Id "List::Nil") [] -> Just []
+      DataValue _ (Id "List::Cons") [first, others] -> (first :) <$> listMembers others
+      _ -> Nothing
     allM _ [] = pure True
     allM f (x:xs) = do accepted <- f x; if accepted then allM f xs else pure False
 
@@ -577,12 +603,38 @@ fieldRegexSamples binder predicates =
       Convert CheckedArgument _ inner -> aliases names inner
       _ -> False
 
+-- | Every hint an input's generator draws among: comparison operands, the
+-- members of a literal list and texts its regexes match. The quantifier may
+-- carry the law's guards about the input beside its refinements
+-- (guardedQuantifier): hints only bias generation, and each refinement and
+-- guard is still evaluated on every case. ref:DEC-vacuous-outcome
+generationHints :: [Definition] -> Quantifier -> [Expr]
+generationHints definitions q = nub (domainHints q ++ patternHints definitions q)
+
+-- | The members of the literal lists an input must be in, as boundary values:
+-- the first generated cases are then inside the list.
+memberValues :: Quantifier -> [Value]
+memberValues q = nub
+  [ ScalarValue scalar | predicate <- quantifiedPredicates q, part <- parts predicate
+  , Just (subject, items) <- [membership part]
+  , expressionNode (unconverted subject) == Local (binderId (quantifiedBinder q))
+  , item <- items, expressionType item == binderType (quantifiedBinder q)
+  , Constant scalar <- [expressionNode item] ]
+  where
+    parts e = case expressionNode e of
+      ShortCircuit And a b -> parts a ++ parts b
+      _ -> [e]
+
 -- | Safe comparison operands seed sparse domains without eagerly evaluating a
--- partial expression that the predicate would otherwise guard.
+-- partial expression that the predicate would otherwise guard. x in [e1, e2]
+-- seeds each item of the list written out, so the list is the domain drawn
+-- from instead of a filter over the whole type.
 domainHints :: Quantifier -> [Expr]
 domainHints q = concatMap walk (quantifiedPredicates q) where
   current = binderId (quantifiedBinder q)
   walk Expr{expressionNode=ShortCircuit _ a b} = concatMap walk [a,b]
+  walk e | Just (subject, items) <- membership e, expressionNode (unconverted subject) == Local current =
+    [item | item <- items, expressionType item == binderType (quantifiedBinder q), current `notElem` freeBinders item, safe item]
   walk Expr{expressionNode=Binary op _ a b} | isComparison op =
     [rhs | (lhs,rhs) <- [(a,b),(b,a)], expressionNode lhs == Local current, current `notElem` freeBinders rhs, safe rhs]
   walk _ = []

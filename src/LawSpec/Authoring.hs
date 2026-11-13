@@ -8,6 +8,7 @@ import Data.Char (toLower)
 import Data.List (isInfixOf, isPrefixOf, nub, sort)
 import LawSpec.Common (Diagnostic (..), Source (..))
 import qualified LawSpec.Core as C
+import LawSpec.Core.Vacuity (GuardAdvice (..), programGuardAdvice)
 import LawSpec.Prelude (preludeSource)
 import LawSpec.PreludeNames (preludeDefinitionTarget, publicPreludeNames)
 import LawSpec.Scalar (Scalar (..), isNumeric, primitiveName, primitives)
@@ -89,7 +90,9 @@ adviceView syntax program =
         .= ( [ object ["rule" .= (rule :: String), "status" .= ("complete" :: String), "scope" .= (scope :: String)]
              | (rule, scope) <-
                  [ ("prelude-helper", "recursive List length and membership shapes"),
-                   ("prelude-law", "unrestricted unary idempotence and left-inverse equations")
+                   ("prelude-law", "unrestricted unary idempotence and left-inverse equations"),
+                   ("vacuous-guard", "regex and literal-list guards on a directly quantified input"),
+                   ("adapter-guard", "guards that call an adapter on a quantified input")
                  ]
              ]
                ++ missing
@@ -122,7 +125,21 @@ adviceView syntax program =
         (owner, name) `notElem` known
       ]
 
-    unitFindings unit = concatMap definitionFindings (C.unitDefinitions unit) ++ concatMap lawFindings (C.unitProperties unit)
+    unitFindings unit = concatMap definitionFindings (C.unitDefinitions unit) ++ concatMap lawFindings (C.unitProperties unit) ++
+      concatMap guardFindings (C.unitProperties unit)
+    -- Guards generation cannot be expected to satisfy (LawSpec.Core.Vacuity).
+    -- ref:DEC-vacuous-outcome
+    guardFindings law =
+      [ object
+          [ "rule" .= adviceRule advice,
+            "declaration" .= C.idText (C.propertyId law),
+            "severity" .= ("warning" :: String),
+            "suggestion" .= adviceSuggestion advice,
+            "message" .= adviceMessage advice,
+            "status" .= ("unresolved" :: String)
+          ]
+      | advice <- programGuardAdvice program law
+      ]
     finding rule declaration suggestion =
       object
         [ "rule" .= (rule :: String),
