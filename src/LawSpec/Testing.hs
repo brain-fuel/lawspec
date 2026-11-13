@@ -919,8 +919,11 @@ constrainedBoundaries registry bits root = case root of
     table = population registry
     constants = concat [concatMap literals (constructorPredicates c)
       | d <- registryDeclarations registry, c <- dataConstructors d]
+    -- A regex's pattern is not a text its subject may be: the samples below
+    -- are. As a seed it only repeats the pattern through every literal.
     literals expression = case expressionNode expression of
       Constant scalar -> [scalar]
+      Helper RegexMatches [_, subject] -> literals subject
       _ -> concatMap literals (children expression)
     -- A field a regex constrains takes texts the regex matches as seeds.
     patterns = nub [map toEnum points | d <- registryDeclarations registry, c <- dataConstructors d
@@ -961,12 +964,33 @@ constrainedBoundaries registry bits root = case root of
         concat <$> mapM (construct depth ty) (sortOn (idText . fst) constructors)
       _ -> lift (Left ("no boundary witnesses for " ++ show ty))
     construct depth ty (tag, fields) = do
-      domains <- mapM (walk (depth-1)) fields
+      domains <- narrowed ty tag <$> mapM (walk (depth-1)) fields
       let candidates = [DataValue ty tag payload | payload <- combinations domains]
           (small, large) = partition ((<= 32) . valueNodes) candidates
       preferred <- lift (acceptedPrefix 32 (acceptsValue registry bits ty) small)
       if null preferred then lift (acceptedPrefix 32 (acceptsValue registry bits ty) large)
         else pure preferred
+    -- A restriction that reads one field alone is settled before the fields
+    -- are combined: each field keeps the seeds its own restrictions accept.
+    -- Without this, a record of three or more restricted fields has too few
+    -- acceptable combinations among those tried. It is a hint only: a field
+    -- none of whose seeds pass keeps them all, and every candidate is still
+    -- checked whole.
+    narrowed ty tag domains = case ty of
+      Constructor name _
+        | Right declaration <- lookupData registry (Id name)
+        , Just constructor <- find ((== tag) . constructorId) (dataConstructors declaration)
+        , length (constructorFields constructor) == length domains ->
+            [ if null kept then domain else kept
+            | (binder, domain) <- zip (constructorFields constructor) domains
+            , let own = [part | predicate <- constructorPredicates constructor, part <- conjunctions predicate
+                               , nub (freeBinders part) == [binderId binder]]
+                  holds candidate part = evaluateValuePure registry bits [(binderId binder, candidate)] part == Right (ScalarValue (SBool True))
+                  kept = if null own then domain else [candidate | candidate <- domain, all (holds candidate) own] ]
+      _ -> domains
+    conjunctions expression = case expressionNode expression of
+      ShortCircuit And left right -> conjunctions left ++ conjunctions right
+      _ -> [expression]
     valueNodes value = case value of
       DataValue _ _ fields -> 1 + sum (map valueNodes fields)
       PresenceValue _ (Just inner) -> 1 + valueNodes inner

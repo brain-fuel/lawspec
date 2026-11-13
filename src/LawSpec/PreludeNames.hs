@@ -12,6 +12,7 @@ import qualified LawSpec.Matchers as Matchers
 import qualified LawSpec.Time as Time
 import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldAlias,caseFoldOperation)
 import LawSpec.Matchers (matcherOperations)
+import qualified LawSpec.ContractRules as Rules
 import LawSpec.Time (timeOperations)
 import LawSpec.Railway (railwayNames)
 import LawSpec.Scalar (isNumeric)
@@ -28,6 +29,7 @@ preludeDefinition canonical name = listToMaybe
     [(Collections.collectionsUnit,Collections.collectionsAlias,
       fst <$> (if canonical then Collections.canonicalCollectionOperation else Collections.collectionOperation) name)
     ,(Matchers.matchersUnit,Matchers.matchersAlias,Matchers.matcherOperation name)
+    ,(Rules.rulesUnit,Rules.rulesAlias,Rules.ruleOperation name)
     ,(caseFoldUnit,caseFoldAlias,caseFoldOperation name)
     ,(Time.timeUnit,Time.timeAlias,Time.timeOperation name)]]
 
@@ -59,7 +61,7 @@ preludeValueName name = isNumeric name || name `elem` publicPreludeNames
 
 publicPreludeNames :: [String]
 publicPreludeNames = map fst simplePreludeHelpers ++ map fst sequencePreludeHelpers ++
-      map fst canonicalCollectionOperations ++ map fst matcherOperations ++ map fst timeOperations ++ railwayNames ++
+      map fst canonicalCollectionOperations ++ map fst matcherOperations ++ map fst Rules.ruleOperations ++ map fst timeOperations ++ railwayNames ++
       ["any","all","filter","member","contains","startsWith","endsWith","regexMatches","within","messageContains","recorded","caseFold","textContains"
       ,"toList","size","isEmpty","quot","rem","pow","wrapping","saturating","bounded"
       ,"raise","attempt","calls","append","slice","take","drop","at","range"]

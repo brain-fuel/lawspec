@@ -1,0 +1,20 @@
+{
+  "languageProfile": "1.0-rc.2",
+  "verification": {
+    "layers": [
+      "exhaustive",
+      "property",
+      "examples"
+    ]
+  },
+  "specs": [
+    "examples/specs/masking.lawspec"
+  ],
+  "reach": {
+    "example.masking::Card reports holder.minLength alone": "reached",
+    "example.masking::Card reports number.pattern alone": "reached",
+    "example.masking::Card reports contact.email alone": "reached",
+    "example.masking::Card reports limit.min alone": "reached",
+    "example.masking::Card reports limit.max alone": "reached"
+  }
+}

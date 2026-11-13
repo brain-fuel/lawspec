@@ -288,6 +288,7 @@ extra-source-files:
     examples/specs/list_mapping.lawspec
     examples/specs/list_refinements.lawspec
     examples/specs/lists.lawspec
+    examples/specs/masking.lawspec
     examples/specs/matchers.lawspec
     examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
@@ -317,6 +318,7 @@ extra-source-files:
     examples/specs/text_pieces.lawspec
     examples/specs/total_functions.lawspec
     examples/specs/vacuity.lawspec
+    examples/specs/validation.lawspec
     examples/specs/workflows.lawspec
     examples/rc1-authoring.lawspec
     examples/rc1/authorization-snapshots.lawspec
@@ -702,6 +704,7 @@ library
       LawSpec.Common
       LawSpec.Compile
       LawSpec.Component
+      LawSpec.ContractRules
       LawSpec.Core
       LawSpec.Core.CapabilityScope
       LawSpec.Core.Counterexample
@@ -885,6 +888,7 @@ library
       LawSpec.Remote
       LawSpec.Resilience
       LawSpec.Resources
+      LawSpec.RuleNames
       LawSpec.RuntimeSources
       LawSpec.RustAbilityPaths
       LawSpec.RustData
@@ -1141,6 +1145,7 @@ test-suite lawspec-test
       ConditionalSpec
       ContainerRecordViewsSpec
       ContextualSpec
+      ContractRulesSpec
       CoreSpec
       CounterexampleSpec
       DataShapeSpec

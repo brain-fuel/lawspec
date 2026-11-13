@@ -41,6 +41,10 @@ instance Binary S.LawClaims
 instance Binary S.ClaimItem
 instance Binary S.Exemption
 instance Binary S.Until
+instance Binary S.FieldMask
+instance Binary S.MaskingDeclaration
+instance Binary S.ContractRule
+instance Binary S.RecordContract
 instance Binary S.Unit
 instance Binary S.Protocol
 instance Binary S.Step

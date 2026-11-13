@@ -305,7 +305,17 @@ planEither extra sources target bits minify = do
     Just [] -> pure ()
     _ -> Left (show (encode (field "diagnostics" response)))
   let files = fromMaybe [] (list (field "files" response))
-      budget = TestSize.testSizeBudget [Source path content | (path,content) <- sources]
+      -- A law LawSpec generates (from a record's rules, or in a built-in
+      -- unit) has no text among the sources. Its statement is its source:
+      -- the output must stay proportional to that too.
+      written name = any (\(_, content) -> name `isInfixOf` content) sources
+      generatedStatements = concat
+        [ text statement
+        | (law, statement) <- zip (fromMaybe [] (list (field "laws" response)))
+                                  (fromMaybe [] (list (field "expansions" response)))
+        , not (written (text (field "name" law))) ]
+      budget = TestSize.testSizeBudget
+        (Source "generated laws" generatedStatements : [Source path content | (path,content) <- sources])
         (length (fromMaybe [] (list (field "tests" response))))
   mapM_ (\file -> TestSize.checkTestSize budget (Common.Artifact
     (text (field "path" file)) (text (field "content" file))

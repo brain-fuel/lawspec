@@ -25,6 +25,8 @@ import qualified LawSpec.SourceTokens as Tokens
 import LawSpec.Indexed
 import LawSpec.PreludeNames (preludeValueName)
 import LawSpec.DomainModel
+import LawSpec.ContractRules (elaborateContracts, contractDemand, draftName)
+import LawSpec.Formats (formatNames, formatPattern)
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), ModelRestart(..), elaborateModels, checkSupervisors)
 import LawSpec.ModelTime (timeStep, timePasses)
 import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
@@ -1004,17 +1006,51 @@ canonicalRecordP = sourceNode "record-declaration" (const Nothing) $ do
     keyword "is"; keyword "a"; keyword "record"
     fields <- recordTypeBody (recoverMany (void (symbol "}")) recordFieldStart field)
     unless (length (map fst fields) == length (nub (map fst fields))) (fail "duplicate record field")
+    rules <- many recordRule
+    unless (length (map fst rules) == length (nub (map fst rules))) (fail "two rules of a record have the same name")
+    when (not (null rules) && null fields) (fail "a record without fields has nothing for a rule to read")
     closeP "type"
-    pure (name, parameters, fields)
+    pure (name, parameters, carrying rules fields)
   pure (Right (DataTypeDeclaration name parameters [ConstructorDeclaration name fields range []] range Nothing))
   where typeParameter = sourceNode "type-parameter" Just $
           parens (ident <* annotationP <* sourceNode "type-parameter-kind" (const (Just "Type")) (keyword "Type"))
         field = sourceNode "record-type-field" (Just . fst) $ do
           label <- ident
           annotationP
-          ty <- typeP
+          ty <- local (M.insert "delimiter:rule-labels" AliasHeader) typeP
           void (optional (sourceNode "record-type-separator" (const Nothing) (symbol ",")))
           pure (label,ty)
+        -- rule name is p: a rule of the whole record, over its fields. It
+        -- ends with its line. The last field carries the rules, since its
+        -- restriction may read every field (LawSpec.ContractRules).
+        recordRule = sourceNode "record-rule" (Just . fst) $ do
+          name <- try (keyword "rule" *> ident <* keyword "is")
+          unless (maybe False (isLower . fst) (uncons name)) (fail "a rule's name starts with a lowercase letter")
+          predicate <- regionExpr []
+          pure (name, predicate)
+        carrying [] fields = fields
+        carrying rules fields = init fields ++
+          [(label, Refined recordRuleBinder ty (Just (foldr1 (Binary "&&") [Apply (Var (recordRulePrefix ++ name)) predicate | (name, predicate) <- rules])))
+          | (label, ty) <- [last fields]]
+
+-- | masking Record is field shown as mask ... end masking. A mask is email,
+-- last n, hash or hidden.
+maskingP :: P MaskingDeclaration
+maskingP = blockP "masking" $ do
+  ((record, fields), range) <- withSpan $ do
+    keyword "masking"
+    record <- ident
+    keyword "is"
+    fields <- many (sourceNode "masking-field" (Just . fst) $ do
+      label <- try (ident <* keyword "shown")
+      keyword "as"
+      mask <- (MaskEmail <$ keyword "email") <|> (MaskHash <$ keyword "hash") <|> (MaskHidden <$ keyword "hidden")
+        <|> (MaskLast <$> (keyword "last" *> lexeme L.decimal))
+        <?> "a mask: email, last <n>, hash or hidden"
+      pure (label, mask))
+    closeP "masking"
+    pure (record, fields)
+  pure (MaskingDeclaration record fields range)
 
 -- Ordered selection reuses lazy matches and select. Binding the scrutinee
 -- once also scopes it correctly in nested cases.
@@ -1348,6 +1384,7 @@ operatorExpr :: P Expr
 operatorExpr = located $ makeExprParser
     (located $ makeExprParser (located higher) [[InfixN canonicalEqualityP]])
     [ [Prefix (Unary "!" <$ canonicalLogical "not")]
+    , [Postfix ruleLabel]
     , [InfixL (Binary "&&" <$ logicalOperator "&&" "and")]
     , [InfixL (Binary "||" <$ logicalOperator "||" "or")]
     , [InfixR ((\a b -> Binary "||" (Unary "!" a) b) <$ canonicalLogical "implies")]
@@ -1356,6 +1393,14 @@ operatorExpr = located $ makeExprParser
     -- Preserve operand spans independently of the lower equality/logic layers.
     higher = makeExprParser application (higherOperators ++ matchers)
     matchers = [[Postfix (matcherSuffix (located (makeExprParser application (init higherOperators))))]]
+    -- p as name, in a record field's restriction: the rule's name in its
+    -- id, in place of the one its shape gives it (LawSpec.ContractRules).
+    ruleLabel = do
+      labelling <- asks (M.member "delimiter:rule-labels")
+      unless labelling empty
+      name <- sourceNode "rule-label" Just (try (keyword "as") *> ident)
+      unless (maybe False (isLower . fst) (uncons name)) (fail "a rule's name starts with a lowercase letter")
+      pure (Apply (Var (ruleLabelPrefix ++ name)))
     logicalOperator symbolic word = do
 
       proposition <- asks (M.member "delimiter:proposition-logic")
@@ -1492,7 +1537,7 @@ matcherSuffix operand = choice
   , try (keyword "starts" *> keyword "with") *> (call "startsWith" <$> operand)
   , try (keyword "ends" *> keyword "with") *> (call "endsWith" <$> operand)
   , try (keyword "fails" *> keyword "with") *> failsWith
-  , keyword "matches" *> (regexLiteral <|> matcherPatternP <|> (call "matchesRegex" <$> operand))
+  , keyword "matches" *> (regexLiteral <|> formatLiteral <|> matcherPatternP <|> (call "matchesRegex" <$> operand))
   ]
   where
     call name other subject = Apply (Apply (Var ("prelude." ++ name)) subject) other
@@ -1500,8 +1545,23 @@ matcherSuffix operand = choice
       keyword "regex"
       pattern <- regexText
       pure (\subject -> Apply (Apply (Var "prelude.regexMatches") (StringLit pattern)) subject)
+    -- t matches format email: the whole text is in the named format, which
+    -- is a regex of the same dialect (LawSpec.Formats).
+    formatLiteral = sourceNode "format" Just (try (keyword "format" *> lookAhead identRaw) *> ident) >>= \name ->
+      case formatPattern name of
+        Just pattern -> pure (\subject -> Apply (Apply (Var "prelude.regexMatches") (StringLit pattern)) subject)
+        Nothing -> fail ("there is no format called " ++ name ++ "; the formats are " ++ intercalate ", " formatNames)
+    -- e fails with age.min: a validation whose only violation is that rule
+    -- (LawSpec.ContractRules). A rule's id starts with a lowercase letter,
+    -- which no failure pattern does.
+    ruleFailure = sourceNode "rule-id" Just (lexeme (try (do
+      first <- identRaw
+      unless (maybe False (isLower . fst) (uncons first)) empty
+      rest <- optional (char '.' *> identRaw)
+      pure (maybe first (\suffix -> first ++ "." ++ suffix) rest)))) >>= \identity ->
+        pure (\subject -> Apply (Apply (Var "prelude.failsWithRule") (StringLit identity)) subject)
     -- e fails with P: attempt e, and its failure matches P.
-    failsWith = do
+    failsWith = ruleFailure <|> do
       test <- matcherPatternP
       message <- optional (try (keyword "message" *> keyword "contains") *> operand)
       let failure = "lawspecFailure"
@@ -2611,6 +2671,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
   | ClaimsMember LawClaims
   | TemporalPropertyMember TemporalProperty | ModelLawMember ModelLaw | HistoryLawMember HistoryLaw
+  | MaskingMember MaskingDeclaration
 
 memberSyntax :: UnitMember -> (String,Maybe String)
 memberSyntax member = ("declaration." ++ kind,name)
@@ -2641,6 +2702,7 @@ memberSyntax member = ("declaration." ++ kind,name)
       TemporalPropertyMember t -> ("property",Just (temporalName t))
       ModelLawMember l -> ("law",Just (modelLawName l))
       HistoryLawMember l -> ("law",Just (historyLawName l))
+      MaskingMember m -> ("masking",Just (maskingRecord m))
 
 -- | laws for f are ... end laws. Each line is a claim (complete over c,
 -- without overlap, without conflict) or an exemption with its reason:
@@ -2781,6 +2843,8 @@ unitP = blockP "unit" $ do
   (n, imports) <- preambleP
   members' <- recoverMany (keyword "end" *> keyword "unit") memberStart (sourceNodeBy memberSyntax $ (either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
+    -- masking Record is ...: how the record's fields are shown.
+    <|> (MaskingMember <$> (try (lookAhead (keyword "masking" *> ident >>= upper)) *> maskingP))
     <|> (WorkflowMember <$> workflowP)
     <|> (ProtocolMember <$> (try (lookAhead (keyword "protocol" *> ident >>= upper)) *> protocolP))
     <|> (ScenarioMember <$> (try (lookAhead (keyword "scenario" *> quoted)) *> scenarioP))
@@ -2838,7 +2902,8 @@ unitP = blockP "unit" $ do
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
     (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
     [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members]
-    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members] [l | HistoryLawMember l <- members] (map fst signatures), imports, [f | FamilyMember f <- members],
+    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members] [l | HistoryLawMember l <- members] (map fst signatures)
+    [m | MaskingMember m <- members] [], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -2985,7 +3050,8 @@ parseSourcesWithInventoryMode syntaxOnly origins capture canonical collections b
           ownersOut = [(name, cs) | (name, _, o) <- found, Just cs <- [lookup name o]]
       in (M.union table entries, owners ++ ownersOut)
     canonicalSource _ = True
-    profile _ = M.insert "profile:canonical" AliasHeader
+    profile _ = M.union demanded . M.insert "profile:canonical" AliasHeader
+    demanded = M.fromList [(contractDemandPrefix ++ name, AliasHeader) | Source _ text <- allSources, name <- contractDemand text]
     imported source = profile source $ case preamble source of
       Left _ -> M.empty
       Right (_, imports) -> M.unions
@@ -3042,6 +3108,11 @@ parseWithProfiles :: (Source -> M.Map String Header -> M.Map String Header) -> M
 parseWithProfiles profile extra importedFamilies harnessFiles source =
   fst <$> parseWithProfilesInventory [] False profile extra importedFamilies harnessFiles source
 
+-- | A generated name another source of the program asks for, as a key of the
+-- parse environment, so that the unit declaring the record generates it.
+contractDemandPrefix :: String
+contractDemandPrefix = "demand:"
+
 -- | One source's parse, kept by everything the parse reads: the source, the
 -- headers and indexed families its imports give it, its harness files and
 -- the coordinates of inserted names. A later run with the same inputs reads
@@ -3071,9 +3142,13 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
       (_, []) -> pure u0
       (Nothing, [h]) -> pure u0 { unitHarness = Just h }
       _ -> Left [Diagnostic "harness" ("the unit " ++ unitName u0 ++ " has more than one harness; a unit has at most one") Nothing]
-    domained <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
+    domained0 <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows
         u)
+    -- Validators and masked renderers, for the records a source of the
+    -- program names them for (LawSpec.ContractRules).
+    domained <- either (\(at, message) -> Left [Diagnostic "rules" message at]) Right
+      (elaborateContracts (contractDemand s ++ [name | key <- M.keys environment, Just name <- [stripDemand key]]) domained0)
     -- Models read typestate from flow parameters, so they come first.
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
       (elaborateModels models domained >>= \m -> m <$ checkSupervisors m)
@@ -3094,6 +3169,9 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
           else []
     pure (((elaborated, imports), families'),inventory)
   where
+    stripDemand key = case splitAt (length contractDemandPrefix) key of
+      (prefix, name) | prefix == contractDemandPrefix -> Just name
+      _ -> Nothing
     initialContext input = ParseContext (if capture then Just [] else Nothing) (Just (sourceCoordinatesFor origins input)) False []
     environment = literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile True s) extra)
 
@@ -3201,6 +3279,11 @@ literalHeaders coordinates source initial = case runReader (runParserWithCoordin
     [("record:" ++ dataTypeName d, RecordHeader (dataConstructorFields c))
       | Just d <- declarations, [c] <- [dataTypeConstructors d], dataConstructorName c == dataTypeName d,
         dataConstructorSpan c == dataTypeSpan d] ++
+    -- A record's draft (LawSpec.ContractRules) is written like any record.
+    [("record:" ++ draftName (dataTypeName d), RecordHeader (dataConstructorFields c))
+      | Just d <- declarations, [c] <- [dataTypeConstructors d], dataConstructorName c == dataTypeName d,
+        dataConstructorSpan c == dataTypeSpan d, null (dataTypeParameters d),
+        draftName (dataTypeName d) `notElem` [dataTypeName other | Just other <- declarations]] ++
     [("constructor:" ++ dataConstructorName c, DataHeader (replicate (length (dataConstructorFields c)) True))
       | Just d <- declarations, c <- dataTypeConstructors d]))
     -- A local alternative constructor shadows an imported record constructor

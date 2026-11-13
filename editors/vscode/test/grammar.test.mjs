@@ -349,6 +349,7 @@ test('every named closing phrase has one closing scope', () =>
     'bind',
     'benchmark',
     'property',
+    'masking',
   ])
   {
     const closing = 'end ' + label;

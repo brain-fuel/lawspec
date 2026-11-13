@@ -150,6 +150,7 @@ blockContexts =
   , ("laws","ability Signal is signal :: Bool -> Bool laws law requirement is definition: true end definition end law\n","\nend ability")
   , ("handler","handler echo for Signal is operation signal value is value end operation\n","")
   , ("handlers","handlers observations is echo\n","")
+  , ("masking","type Card is a record{pin :: Int32} end type\nmasking Card is\n  pin shown as hidden\n","")
   , ("operation","handler echo for Signal is operation signal value is value\n","\nend handler")
   , ("handle",functionPrefix ++ "handle value with echo\n","\nend function")
   , ("resource","resource Scratch is acquire is openScratch () end acquire release scratch is closeScratch scratch end release\n","")
