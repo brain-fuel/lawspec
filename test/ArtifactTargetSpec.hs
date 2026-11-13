@@ -97,6 +97,27 @@ test_artifactTargets = describe "artifact targets" $ do
         schema `shouldSatisfy` isInfixOf "\"enum\": [\n"
         schema `shouldSatisfy` isInfixOf "\"exclusiveMaximum\": 100"
         decode (B.pack schema) `shouldSatisfy` (\value -> case value of Just (Object _) -> True; _ -> False)
+  it "annotates a masked record's schema with how each field is shown" $ do
+    let masked = unlines
+          [ "unit configuration"
+          , "type Card is a record{number :: Text, contact :: Text, pin :: Int32} end type"
+          , "masking Card is"
+          , "  number shown as last 4"
+          , "  contact shown as email"
+          , "  pin shown as hidden"
+          , "end masking"
+          , "function card (unused :: Unit) -> Card is Card record{number = \"4111\", contact = \"a@b.example\", pin = 1} end function"
+          , "end unit" ]
+    case emit "yaml" masked of
+      Left message -> expectationFailure message
+      Right files -> do
+        let schema = contents "configuration.schema.json" files
+        schema `shouldSatisfy` isInfixOf "\"x-lawspec-masking\": {\n"
+        schema `shouldSatisfy` isInfixOf "\"number\": \"last 4\""
+        schema `shouldSatisfy` isInfixOf "\"contact\": \"email\""
+        schema `shouldSatisfy` isInfixOf "\"pin\": \"hidden\""
+        -- The value itself is the wire form.
+        contents "configuration.yaml" files `shouldSatisfy` isInfixOf "4111"
   it "refuses a rule JSON Schema cannot express, naming the target" $ do
     let crossed = unlines
           [ "unit configuration"

@@ -1,8 +1,14 @@
 -- | Record rules, validators and masking (LawSpec.ContractRules).
 module ContractRulesSpec (test_recordRulesBecomeCheckedValidators) where
 
+import Data.Aeson (Value(..), decode, encode, object, (.=))
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+import Data.Foldable (toList)
 import Data.List (isInfixOf, sort)
+import qualified Data.Text as T
 import Test.Hspec
+import LawSpec.Api (dispatch)
 import LawSpec.Compile
 import LawSpec.ContractRules
 import LawSpec.Model hiding (Expectation)
@@ -18,6 +24,23 @@ refused :: [String] -> String -> Expectation
 refused body expected = case check body of
   Left diagnostics -> concatMap message diagnostics `shouldSatisfy` isInfixOf expected
   Right _ -> expectationFailure ("expected a diagnostic saying: " ++ expected)
+
+-- | The files and warnings of a generation request for one target.
+planned :: String -> [String] -> ([(String, String)], [String])
+planned target body = case decode (dispatch (encode (object
+    [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String), "method" .= ("planGeneration" :: String)
+    , "target" .= target
+    , "verification" .= object ["layers" .= (["property", "examples"] :: [String])]
+    , "sources" .= [object ["path" .= ("probe.lawspec" :: String), "content" .= unlines (["unit probe.rules", ""] ++ body ++ ["end unit"])]] ]))) of
+  Just (Object response) ->
+    ( [ (text (look "path" file), text (look "content" file)) | Just (Array files) <- [KM.lookup "files" response], Object file <- toList files ]
+    , [ text (look "code" row) ++ ": " ++ text (look "message" row) | Just (Array rows) <- [KM.lookup "warnings" response], Object row <- toList rows ] )
+  _ -> ([], ["no response"])
+  where
+    look name fields = KM.lookup (K.fromString name) fields
+    text value = case value of
+      Just (String content) -> T.unpack content
+      _ -> ""
 
 account :: [String]
 account =
@@ -126,5 +149,40 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
     refused (card ["  pin shown as hidden", "  pin shown as hidden"]) "a field is masked twice"
   it "refuse a masking block for a record the unit does not declare" $
     refused ["masking Card is", "  pin shown as hidden", "end masking"] "this unit declares no such record"
+  it "mask a Java record's toString and name the unmasked rendering" $ do
+    let (files, warnings) = planned "java" (card ["  number shown as last 4", "  pin shown as hidden"])
+        record = concat [content | (path, content) <- files, "lawspec/data/Card.java" `isInfixOf` path]
+    warnings `shouldBe` []
+    record `shouldSatisfy` isInfixOf "public String toString()"
+    record `shouldSatisfy` isInfixOf "\"Card{number=\" + lawspec.runtime.LawSpecMasks.last(4, number)"
+    record `shouldSatisfy` isInfixOf "+ \", pin=***\""
+    record `shouldSatisfy` isInfixOf "public String toUnmaskedString()"
+    map fst files `shouldSatisfy` any (isInfixOf "lawspec-logback/lawspec/logging/LawSpecMaskedConverter.java")
+    concat [content | (path, content) <- files, "LawSpecDataSchema.java" `isInfixOf` path]
+      `shouldSatisfy` isInfixOf "LawSpecRuntime.maskFields(\"probe.rules::type::Card::Card\", 0, 1);"
+  it "leave a Java record without a masking block as it was" $ do
+    let (files, _) = planned "java" ["type Plain is a record{pin :: Int32} end type", "function f (p :: Plain) -> Int32 is p.pin end function"]
+        record = concat [content | (path, content) <- files, "lawspec/data/Plain.java" `isInfixOf` path]
+    record `shouldSatisfy` isInfixOf "java.lang.Integer pin) {}"
+    map fst files `shouldSatisfy` all (not . isInfixOf "LawSpecMask")
+  it "mask the native renderings of JavaScript and Python classes, not their wire form" $ do
+    let masks = card ["  number shown as last 4", "  pin shown as hidden"]
+        web = concat [content | (path, content) <- fst (planned "javascript" masks), "lawspec_data.mjs" `isInfixOf` path]
+        python = concat [content | (path, content) <- fst (planned "python" masks), "lawspec_data.py" `isInfixOf` path]
+    web `shouldSatisfy` isInfixOf "ls.maskLast(4, this.number)"
+    web `shouldSatisfy` isInfixOf "[Symbol.for('nodejs.util.inspect.custom')]()"
+    web `shouldSatisfy` isInfixOf "toUnmaskedString()"
+    web `shouldSatisfy` (not . isInfixOf "toJSON")
+    web `shouldSatisfy` isInfixOf "ls.maskFields('probe.rules::type::Card::Card', [0, 1]);"
+    python `shouldSatisfy` isInfixOf "def __repr__(self)"
+    python `shouldSatisfy` isInfixOf "ls.mask_last(4, self.number)"
+    python `shouldSatisfy` isInfixOf "def unmasked_repr(self)"
+    python `shouldSatisfy` isInfixOf "ls.mask_fields(\"probe.rules::type::Card::Card\", [0, 1])"
+  it "say so on a target whose native rendering is not masked" $ do
+    let (files, warnings) = planned "kotlin" (card ["  pin shown as hidden"])
+    files `shouldSatisfy` (not . null)
+    warnings `shouldSatisfy` any (\warning -> "target-unsupported: kotlin: the masking block of Card" `isInfixOf` warning)
+    snd (planned "kotlin" ["type Plain is a record{pin :: Int32} end type", "function f (p :: Plain) -> Int32 is p.pin end function"])
+      `shouldBe` []
   it "hide a sentinel no source can write by accident" $
     maskSentinel `shouldBe` "<lawspec-masked-sentinel>"

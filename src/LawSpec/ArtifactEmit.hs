@@ -384,7 +384,19 @@ shape registry bits ref ty@(C.Constructor name arguments)
           (Left ("existential or refined configuration constructor: " ++ C.constructorName constructor))
         fields <- constructorFieldsFor registry ty (C.constructorId constructor)
         restrictions <- mapM (schemaRestriction fields) (C.constructorPredicates constructor)
-        let body = objectSchema [(C.binderName b,ref (C.binderType b)) | b <- fields]
+        -- x-lawspec-masking names how each masked field is shown to people.
+        -- It is an annotation: a validator ignores it, and the schema still
+        -- describes the unmasked wire form. ref:DEC-masking
+        let masking = [ (field, JString (case mask of
+                          C.MaskHidden -> "hidden"
+                          C.MaskLast count -> "last " ++ show count
+                          C.MaskEmail -> "email"
+                          C.MaskHash -> "hash"))
+                      | (field, mask) <- C.dataMasking declaration ]
+            annotated schema = case schema of
+              JObject members | not (null masking) -> JObject (members ++ [("x-lawspec-masking", JObject masking)])
+              other -> other
+            body = annotated (objectSchema [(C.binderName b,ref (C.binderType b)) | b <- fields])
             restricted = if null restrictions then body else JObject [("allOf", JArray (body : restrictions))]
             tagged = objectSchema [("tag",JObject [("const", JString (C.idText (C.constructorId constructor)))]),("fields",restricted)]
         pure (if length (C.dataConstructors declaration) == 1 then restricted else tagged, map C.binderType fields)

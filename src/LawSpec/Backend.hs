@@ -160,6 +160,11 @@ domainInput g = C.Quantifier (generatorBinder g) (generatorPredicates g) (genera
 domainBounds :: GeneratorRequirement -> [(String,Expr)]
 domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 
+-- | The targets whose generated records render themselves masked and whose
+-- test runtime hides masked fields in failure output. ref:DEC-masking
+maskedRenderingTargets :: [String]
+maskedRenderingTargets = ["java", "javascript", "python", "typescript"]
+
 -- | Each masked record's constructor and the positions of the fields its
 -- masking block hides, for a runtime to hide them in what it prints.
 -- ref:DEC-masking

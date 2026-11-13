@@ -12,11 +12,13 @@ import Data.Aeson.Types (parseEither, parseMaybe)
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as BC
 import Data.Foldable (toList)
+import Data.List (intercalate, isSuffixOf)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import LawSpec.Attestation (Attestation, attestationView, attestedFields, parseAttestation)
 import qualified LawSpec.Authoring as Authoring
+import qualified LawSpec.Backend as Backend
 import LawSpec.Compile (prettyExpanded)
 import qualified LawSpec.Component as Component
 import qualified LawSpec.Core as C
@@ -148,6 +150,7 @@ dispatch bytes
                                   -- A refuted law keeps its row and fails the request.
                                   result files =
                                     withGoEmbeddingWarnings target method
+                                      $ withMaskingWarnings target method core
                                       $ withSamplingWarnings
                                       $ withAuthoring syntax core
                                       $ withRefutations (refutations core obligations)
@@ -412,6 +415,28 @@ dispatch bytes
           existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
        in Object (if null rows then response else KM.insert "warnings" (toJSON (existing ++ rows)) response)
     withGoEmbeddingWarnings _ _ response = response
+    -- A masking block is honoured by maskedR and by violation messages on
+    -- every target, since those are checked definitions. Only some targets
+    -- also mask a record's native rendering and their failure output; on the
+    -- others that is said, not left to be found in a log. ref:DEC-masking
+    withMaskingWarnings emitted "planGeneration" program (Object response)
+      | emitted `notElem` Backend.maskedRenderingTargets, not (null masked) =
+          let rows =
+                [ object
+                    [ "code" .= ("target-unsupported" :: String),
+                      "severity" .= ("warning" :: String),
+                      "at" .= Null,
+                      "message" .= (emitted ++ ": the masking block of " ++ name ++ " is applied by masked" ++ name ++
+                        " and in violation messages only. This target's native rendering of the record and the output of a failed generated test show every field. Targets that mask those too: " ++
+                        intercalate ", " Backend.maskedRenderingTargets)
+                    ]
+                | name <- masked ]
+              existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
+           in Object (KM.insert "warnings" (toJSON (existing ++ rows)) response)
+      where masked = [C.dataName declaration | declaration <- C.programDataDeclarations program
+                                             , not (null (C.dataMasking declaration))
+                                             , not ("Draft" `isSuffixOf` C.dataName declaration) ]
+    withMaskingWarnings _ _ _ response = response
     -- A scoped quantifier that bounded sampling can refute and never
     -- establish (law.sampledQuantifiers) is reported when the law is
     -- compiled, before a generated test fails with
