@@ -1372,6 +1372,31 @@ export function generateTuple(domains, seed, attempts, prefix = [])
       `prefix=${lastPrefix.map(String)}; seed=${seed}`,
   );
 }
+// A refinement as a fast-check filter that gives up. fast-check's filter
+// draws until a value passes, so a refinement random values never meet would
+// run forever; after `attempts` rejections in a row this throws instead.
+export function accepting(attempts, accept)
+{
+  let rejected = 0;
+  return value =>
+  {
+    if (accept(value))
+    {
+      rejected = 0;
+      return true;
+    }
+    rejected++;
+    if (rejected >= attempts)
+    {
+      rejected = 0;
+      throw new Error(
+        `refinement-generation-exhausted after ${attempts} attempts; ` +
+          'no generated value satisfied the refinement',
+      );
+    }
+    return false;
+  };
+}
 export function requireContract(condition, context, names = [], values = [])
 {
   if (condition === true) return;

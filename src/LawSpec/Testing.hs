@@ -144,10 +144,15 @@ planTestingWith config program = do
             -- A complete singleton has no varying choices. Execute that
             -- input once, just as a law with no inputs, instead of asking a
             -- native framework to invent distinct random samples.
-            if null (propertyInputs (plannedProperty p)) || singleton p then finiteCover p else Nothing
+            -- An input refined by membership ranges over a list's items
+            -- (memberCovers): sampling it means drawing those items, which a
+            -- random value of its type practically never equals. Its cover is
+            -- kept, as the cases a property test of that domain would draw.
+            if null (propertyInputs (plannedProperty p)) || singleton p || memberCovered p then finiteCover p else Nothing
           else Just (Alternatives [])
       , boundaryCases = if V.selected config V.Property then boundaryCases p else [] }
     singleton p = maybe False ((== 1) . coverCount) (finiteCover p)
+    memberCovered p = any (not . null . memberCovers) (propertyInputs (plannedProperty p))
 
 planLowered :: Program -> Either [Diagnostic] Plan
 planLowered program@Program{..} = do

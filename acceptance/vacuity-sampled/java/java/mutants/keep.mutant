@@ -1,0 +1,6 @@
+@@ src/main/java/example/Vacuity.java
+<<<<<<<
+return value0;
+=======
+return value0.equals("south") ? "" : value0;
+>>>>>>>

@@ -2,7 +2,9 @@
 -- authoring advice and the vacuous status. ref:DEC-vacuous-outcome
 module VacuitySpec (test_guardsDirectGenerationAndAreReported) where
 
-import Data.Aeson (Value(..))
+import Data.Aeson (Value(..), decode, encode, object, (.=))
+import qualified Data.Text as T
+import LawSpec.Api (dispatch)
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
 import Data.List (isInfixOf)
@@ -52,7 +54,24 @@ spec = unlines
   , "law \"|every stage has a meaning| is"
   , "  definition : for all (kind :: Kind) (stage :: Stage where stage in stagesOf kind) => prelude.length stage.meaning > 0 end for all end definition"
   , "end law"
+  , "law \"|tokened stage| is"
+  , "  definition : for all (stage :: Stage where prelude.length stage.token > 0) => prelude.length stage.token > 0 end for all end definition"
+  , "end law"
   , "end unit" ]
+
+-- | The JavaScript tests lawspec generate writes with only the property and
+-- examples layers, as a project that does not select exhaustive checking.
+sampledJavaScript :: String
+sampledJavaScript = case decode (dispatch (encode request)) of
+  Just (Object response) | Just (Array files) <- KM.lookup "files" response ->
+    concat [T.unpack content | Object file <- toList files, Just (String content) <- [KM.lookup "content" file]]
+  other -> error ("no generated files: " ++ show (other :: Maybe Value))
+  where
+    request = object
+      [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String)
+      , "method" .= ("planGeneration" :: String), "target" .= ("javascript" :: String)
+      , "verification" .= object ["layers" .= (["property", "examples"] :: [String])]
+      , "sources" .= [object ["path" .= ("guards.lawspec" :: String), "content" .= spec]] ]
 
 compiled :: Either [Diagnostic] C.Program
 compiled = compileCore 64 defaultGeneration [Source "guards.lawspec" spec]
@@ -121,6 +140,15 @@ test_guardsDirectGenerationAndAreReported = describe "guards of a law's claim" $
         [ obligationStatus o | o <- obligations
         , "every stage has a meaning" `isInfixOf` C.idText (obligationDeclaration o), obligationStage o == "law" ]
           `shouldBe` [ExhaustivelyChecked]
+  it "draws a membership domain from its items when only sampling is selected" $ do
+    -- Random stages never equal a row of the mapping: without the cover the
+    -- JavaScript property filtered forever.
+    sampledJavaScript `shouldSatisfy` isInfixOf "|every stage has a meaning| boundary "
+    sampledJavaScript `shouldNotSatisfy` isInfixOf "|every stage has a meaning| property"
+    sampledJavaScript `shouldSatisfy` isInfixOf "|listed key| boundary "
+  it "bounds the filter of a sampled structural refinement in JavaScript" $ do
+    sampledJavaScript `shouldSatisfy` isInfixOf "|tokened stage| property"
+    sampledJavaScript `shouldSatisfy` isInfixOf "ls.accepting(10000,"
   it "advises the refined quantifier for regex and list guards" $
     case compiled of
       Left ds -> expectationFailure (show ds)
