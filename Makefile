@@ -8,9 +8,11 @@ SUITE   ?= integration
 TARGET  ?=
 SITE    := .artifacts/site
 PORT    ?= 8080
+SDK_DIST ?= $(HOME)/para/projects/wasm-platform-kit/dist
+DEV_CACHE := $(if $(LAWSPEC_DEV_CACHE),$(LAWSPEC_DEV_CACHE),$(HOME)/.cache/lawspec-dev)
 
 .DEFAULT_GOAL := help
-.PHONY: help build generate generate-check wasm test integrity boundaries check parity artifact-targets lock \
+.PHONY: help build generate generate-check wasm component test integrity boundaries check parity artifact-targets lock \
         smoke smoke-release package acceptance lessons ci ci-fresh ci-core ci-affected examples editor-test docs docs-check \
         docs-serve docs-deploy canon assess tax audit bump version release-check clean clean-all
 
@@ -28,6 +30,14 @@ generate-check: ## Fail if a generated file is stale
 
 wasm: ## Build core.wasm and stage the npm package (needs wasm32-wasi-ghc)
 	tools/wasm.sh
+
+component: ## Build and stage npm/host-component: make component SDK_DIST=<SDK tarballs> (needs wasm32-wasi-ghc)
+	node component/tools/install-sdk.mjs $(SDK_DIST)
+	mkdir -p $(DEV_CACHE)/locks
+	python3 tools/with-lock.py $(DEV_CACHE)/locks/wasm.lock npm run build --prefix component
+	node component/tools/package-native.mjs
+	$(STACK) build --test --no-run-tests
+	$(STACK) exec lawspec-dev -- integrity --record
 
 test: ## Compiler tests and npm tests
 	$(STACK) test

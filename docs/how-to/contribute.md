@@ -67,6 +67,19 @@ source and artifact hashes in `npm/build.json`. WASM dependencies are frozen in
 `wasm/cabal.project.freeze`. The npm archive is self-contained: no install-time
 compilation or download.
 
+`npm/host-component/` is a build product that git ignores, and `integrity`
+fingerprints its files, so a new worktree has none until `make component`
+builds it. The target installs the packed Wasm Platform Kit from
+`~/para/projects/wasm-platform-kit/dist` (`make component SDK_DIST=<directory>`
+names another), builds the component under the same machine-wide lock as
+`tools/wasm.sh`, packages this machine's native artifact, and records the
+fingerprints in `npm/build.json`. Packaging rewrites
+`component/native-packages.json` with the platforms built here; unless a
+release is being prepared, restore it with
+`git checkout component/native-packages.json`. See
+[the component build instructions](../../component/README.md) for the steps
+one by one.
+
 To build and install a local archive:
 
 ```sh
