@@ -15,7 +15,8 @@ import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.JavaData as J
 import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
-import LawSpec.AbilityEmit.Java (abilitiesClassOf)
+import LawSpec.Naming (declarationParameterNames, handlerParameterNames)
+import LawSpec.AbilityEmit.Java (abilitiesClassOf, operationNames)
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaLayout as JL
 import qualified LawSpec.Code.Doc as D
@@ -73,7 +74,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
         let (args,result) = C.functionType (C.declarationType d)
         argTypes <- mapM (J.javaDataTypeDoc declarations) args
         resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else J.javaDataTypeDoc declarations result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+        let values = map D.text (declarationParameterNames "java" [] "value" d)
         pure (D.group (D.text "public static " <> resultType <>
           D.nest 4 (D.softline <> call (C.declarationName d) [t <> D.text " " <> v | (t,v) <- zip argTypes values])) <>
           D.hardline <> D.block 2 (D.text "throw " <> call "new UnsupportedOperationException"
@@ -89,11 +90,14 @@ emitBindingsProduct javaStyle minify plan testing product = do
         canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
         nativeResult <- codec [] (D.text "SCHEMA") (D.text (show bits)) result
         nativeResultType <- nativeType [] result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-            -- An adapter that uses abilities gets their handlers first, as
-            -- the generated interfaces.
-            handlerParams = [ (D.text (interfaceType a), D.text ("handler" ++ show i))
-                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
+        let -- An adapter that uses abilities gets their handlers first, as
+            -- the generated interfaces, each named for its ability; its
+            -- values are named as its signature declares (LawSpec.Naming).
+            used = [a | a <- C.declarationUses d, not (C.isFail a)]
+            bridgeLocals = words "symbols result found error"
+            handlerNames = handlerParameterNames "java" bridgeLocals used
+            values = map D.text (declarationParameterNames "java" (bridgeLocals ++ handlerNames) "value" d)
+            handlerParams = [(D.text (interfaceType a), D.text h) | (a, h) <- zip used handlerNames]
             converted = map snd handlerParams ++ [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
             handleArgument = lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args]
         application <- case ref of
@@ -160,7 +164,7 @@ emitBindingsProduct javaStyle minify plan testing product = do
           native <- mapM (codec [] (D.text "SCHEMA") (D.text (show bits))) args
           canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
           nativeResult <- codec [] (D.text "SCHEMA") (D.text (show bits)) result
-          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+          let values = map D.text (take (length args) (operationNames a op))
               invocation = call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
               body = if result == C.scalarType "Unit" then invocation <> D.text ";"
                 else D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [invocation]] <> D.text ";"

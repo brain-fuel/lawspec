@@ -156,6 +156,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   numbers (`int32_1`); Clojure writes `order-line-1`. This applies to adapter stubs, ability interfaces and production
   handler stubs on every target, and to the native API of checked definitions
   in Java, Kotlin and Scala. A result's name stays in the spec.
+- The built-in abilities name their parameters. Their signatures in
+  `lawspec.time`, `lawspec.randomness`, `lawspec.crypto`, `lawspec.host` and
+  `lawspec.logging` now read `sleep :: (duration :: Duration) -> Unit`,
+  `sign :: (signingKey :: SigningKey) -> (message :: Bytes) -> SignatureBytes`
+  and `writeBytes :: (path :: Text) -> (contents :: Bytes) -> Unit`, so
+  their generated interfaces say `sleep(duration)` where they said
+  `sleep(value0)`, and the default handlers use the same names. The code
+  generated around any ability (spec handlers, typed handlers, recordings,
+  try-methods and binding bridges) takes the operation's names as well; a
+  name that code needs for itself is numbered from 2. A JavaScript or
+  TypeScript data class's constructor names its parameters after its fields
+  (`constructor(verifyingKey, signingKey)`). Positional names remain in the
+  adapter reference and in code that is no interface: the evaluator behind a
+  checked definition, codec locals, generic type parameters and actor and
+  model drivers.
+  **Migration:** a handler you wrote for a built-in ability keeps compiling
+  with its old parameter names, except that Kotlin warns when an override
+  renames a parameter (rename it, or the build fails if it treats warnings as
+  errors). A call that passes a built-in operation's arguments by name
+  (`clock.sleep(value0 = d)` in Kotlin, Scala, Python, C# or F#) needs the
+  new name.
 - Existing adapters are not rewritten and are not reported as needing an
   update: the reference an adapter is compared with keeps positional names,
   so neither the upgrade nor naming a parameter later changes it. Interfaces

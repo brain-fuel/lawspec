@@ -43,9 +43,9 @@ object Time {
     override def now(): @@Instant@@ = @@Instant@@(nowMicros())
 
     override def sleep(
-        value0: scala.concurrent.duration.FiniteDuration
+        duration: scala.concurrent.duration.FiniteDuration
     ): scala.Unit = {
-      val target = nowMicros() + value0.toMicros
+      val target = nowMicros() + duration.toMicros
       var left = target - nowMicros()
       while (left > 0) {
         Thread.sleep(left / 1000L, ((left % 1000L) * 1000L).toInt)

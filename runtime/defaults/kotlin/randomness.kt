@@ -26,10 +26,10 @@ object Randomness {
     class RandomHandler : lawspec.abilities.lawspec.Randomness.Random {
         private var state = runSeed()
 
-        override fun randomBelow(value0: kotlin.Long): kotlin.Long {
+        override fun randomBelow(bound: kotlin.Long): kotlin.Long {
             val current = state
             state = randomStep(randomStep(current))
-            return randomDraw(current, value0)
+            return randomDraw(current, bound)
         }
     }
 
@@ -37,11 +37,11 @@ object Randomness {
 
     /** The operating system's generator (java.security.SecureRandom). */
     class SecureRandomHandler : lawspec.abilities.lawspec.Randomness.SecureRandom {
-        override fun secureBytes(value0: kotlin.Int): kotlin.ByteArray =
-            ByteArray(maxOf(value0, 0)).also { secure.nextBytes(it) }
+        override fun secureBytes(count: kotlin.Int): kotlin.ByteArray =
+            ByteArray(maxOf(count, 0)).also { secure.nextBytes(it) }
 
-        override fun secureBelow(value0: kotlin.Long): kotlin.Long =
-            if (value0 < 1) 0L else secure.nextLong(value0)
+        override fun secureBelow(bound: kotlin.Long): kotlin.Long =
+            if (bound < 1) 0L else secure.nextLong(bound)
 
         override fun secureToken(): kotlin.String =
             java.util.HexFormat.of().formatHex(ByteArray(32).also { secure.nextBytes(it) })

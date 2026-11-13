@@ -12,12 +12,12 @@ public final class Host
   public static final class FileSystemHandler implements lawspec.abilities.lawspec.Host.FileSystem
   {
     @Override
-    public lawspec.runtime.LawSpecRuntime.Maybe<byte[]> readBytes(java.lang.String value0)
+    public lawspec.runtime.LawSpecRuntime.Maybe<byte[]> readBytes(java.lang.String path)
     {
       try
       {
         return new lawspec.runtime.LawSpecRuntime.Present<>(
-            java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0)));
+            java.nio.file.Files.readAllBytes(java.nio.file.Path.of(path)));
       }
       catch (java.io.IOException | RuntimeException failed)
       {
@@ -26,11 +26,11 @@ public final class Host
     }
 
     @Override
-    public void writeBytes(java.lang.String value0, byte[] value1)
+    public void writeBytes(java.lang.String path, byte[] contents)
     {
       try
       {
-        java.nio.file.Files.write(java.nio.file.Path.of(value0), value1);
+        java.nio.file.Files.write(java.nio.file.Path.of(path), contents);
       }
       catch (java.io.IOException failed)
       {
@@ -39,11 +39,11 @@ public final class Host
     }
 
     @Override
-    public void createDirectories(java.lang.String value0)
+    public void createDirectories(java.lang.String path)
     {
       try
       {
-        java.nio.file.Files.createDirectories(java.nio.file.Path.of(value0));
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of(path));
       }
       catch (java.io.IOException failed)
       {
@@ -52,12 +52,12 @@ public final class Host
     }
 
     @Override
-    public java.lang.Boolean pathExists(java.lang.String value0)
+    public java.lang.Boolean pathExists(java.lang.String path)
     {
       try
       {
         return java.nio.file.Files.exists(
-            java.nio.file.Path.of(value0), java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            java.nio.file.Path.of(path), java.nio.file.LinkOption.NOFOLLOW_LINKS);
       }
       catch (RuntimeException failed)
       {
@@ -66,14 +66,14 @@ public final class Host
     }
 
     @Override
-    public void removePath(java.lang.String value0)
+    public void removePath(java.lang.String path)
     {
-      java.nio.file.Path path = java.nio.file.Path.of(value0);
+      java.nio.file.Path target = java.nio.file.Path.of(path);
       try
       {
-        if (java.nio.file.Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+        if (java.nio.file.Files.isDirectory(target, java.nio.file.LinkOption.NOFOLLOW_LINKS))
         {
-          try (var walk = java.nio.file.Files.walk(path))
+          try (var walk = java.nio.file.Files.walk(target))
           {
             for (java.nio.file.Path entry :
                 walk.sorted(java.util.Comparator.reverseOrder()).toList())
@@ -84,7 +84,7 @@ public final class Host
         }
         else
         {
-          java.nio.file.Files.deleteIfExists(path);
+          java.nio.file.Files.deleteIfExists(target);
         }
       }
       catch (java.io.IOException failed)
@@ -94,15 +94,15 @@ public final class Host
     }
 
     @Override
-    public java.lang.String temporaryDirectory(java.lang.String value0)
+    public java.lang.String temporaryDirectory(java.lang.String prefix)
     {
-      return temporary(value0, true);
+      return temporary(prefix, true);
     }
 
     @Override
-    public java.lang.String temporaryFile(java.lang.String value0)
+    public java.lang.String temporaryFile(java.lang.String prefix)
     {
-      return temporary(value0, false);
+      return temporary(prefix, false);
     }
   }
 
@@ -132,9 +132,9 @@ public final class Host
   {
     @Override
     public lawspec.runtime.LawSpecRuntime.Maybe<java.lang.String> environmentVariable(
-        java.lang.String value0)
+        java.lang.String name)
     {
-      java.lang.String value = validName(value0) ? java.lang.System.getenv(value0) : null;
+      java.lang.String value = validName(name) ? java.lang.System.getenv(name) : null;
       return value == null
           ? new lawspec.runtime.LawSpecRuntime.Absent<>()
           : new lawspec.runtime.LawSpecRuntime.Present<>(value);
@@ -147,9 +147,9 @@ public final class Host
     }
 
     @Override
-    public void restoreEnvironment(java.lang.String value0)
+    public void restoreEnvironment(java.lang.String snapshot)
     {
-      lawspec.runtime.LawSpecRuntime.releaseResource("environment", value0);
+      lawspec.runtime.LawSpecRuntime.releaseResource("environment", snapshot);
     }
   }
 

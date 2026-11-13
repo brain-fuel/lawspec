@@ -268,11 +268,11 @@ object Crypto {
 
     /** SHA3-256 and SHAKE256. */
     class HashHandler : lawspec.abilities.lawspec.Crypto.Hash {
-        override fun sha3(value0: kotlin.ByteArray): @@Digest@@ =
-            @@Digest@@(sha3_256(value0))
+        override fun sha3(message: kotlin.ByteArray): @@Digest@@ =
+            @@Digest@@(sha3_256(message))
 
-        override fun shake(value0: kotlin.ByteArray, value1: kotlin.Int): kotlin.ByteArray =
-            shake256(value0, value1)
+        override fun shake(message: kotlin.ByteArray, outputLength: kotlin.Int): kotlin.ByteArray =
+            shake256(message, outputLength)
     }
 
     /** ML-KEM-768. */
@@ -286,9 +286,9 @@ object Crypto {
         }
 
         override fun encapsulate(
-            value0: @@ExchangePublicKey@@
+            publicKey: @@ExchangePublicKey@@
         ): @@Encapsulated@@ {
-            val (ciphertext, secret) = mlKem768Encapsulate(value0.value, secure)
+            val (ciphertext, secret) = mlKem768Encapsulate(publicKey.value, secure)
             return @@Encapsulated@@(
                 @@Ciphertext@@(ciphertext),
                 @@SharedSecret@@(secret),
@@ -296,10 +296,10 @@ object Crypto {
         }
 
         override fun decapsulate(
-            value0: @@ExchangeSecretKey@@,
-            value1: @@Ciphertext@@,
+            secretKey: @@ExchangeSecretKey@@,
+            ciphertext: @@Ciphertext@@,
         ): @@SharedSecret@@ =
-            @@SharedSecret@@(mlKem768Decapsulate(value0.value, value1.value))
+            @@SharedSecret@@(mlKem768Decapsulate(secretKey.value, ciphertext.value))
     }
 
     /** ML-DSA-65, hedged. */
@@ -313,16 +313,16 @@ object Crypto {
         }
 
         override fun sign(
-            value0: @@SigningKey@@,
-            value1: kotlin.ByteArray,
+            signingKey: @@SigningKey@@,
+            message: kotlin.ByteArray,
         ): @@SignatureBytes@@ =
-            @@SignatureBytes@@(mlDsa65Sign(value0.value, value1, false))
+            @@SignatureBytes@@(mlDsa65Sign(signingKey.value, message, false))
 
         override fun verify(
-            value0: @@VerifyingKey@@,
-            value1: kotlin.ByteArray,
-            value2: @@SignatureBytes@@,
-        ): kotlin.Boolean = mlDsa65Verify(value0.value, value1, value2.value)
+            verifyingKey: @@VerifyingKey@@,
+            message: kotlin.ByteArray,
+            signature: @@SignatureBytes@@,
+        ): kotlin.Boolean = mlDsa65Verify(verifyingKey.value, message, signature.value)
     }
 
     /**
@@ -341,16 +341,16 @@ object Crypto {
         }
 
         override fun sign(
-            value0: @@SigningKey@@,
-            value1: kotlin.ByteArray,
+            signingKey: @@SigningKey@@,
+            message: kotlin.ByteArray,
         ): @@SignatureBytes@@ =
-            @@SignatureBytes@@(slhDsaSign(value0.value, value1, ByteArray(0)))
+            @@SignatureBytes@@(slhDsaSign(signingKey.value, message, ByteArray(0)))
 
         override fun verify(
-            value0: @@VerifyingKey@@,
-            value1: kotlin.ByteArray,
-            value2: @@SignatureBytes@@,
-        ): kotlin.Boolean = slhDsaVerify(value0.value, value1, value2.value, ByteArray(0))
+            verifyingKey: @@VerifyingKey@@,
+            message: kotlin.ByteArray,
+            signature: @@SignatureBytes@@,
+        ): kotlin.Boolean = slhDsaVerify(verifyingKey.value, message, signature.value, ByteArray(0))
     }
 
     /** AES-256-GCM, a fresh random nonce per message. */
@@ -358,35 +358,35 @@ object Crypto {
         override fun aeadKey(): @@AeadKey@@ = @@AeadKey@@(randomBytes(32))
 
         override fun deriveAeadKey(
-            value0: @@SharedSecret@@,
-            value1: kotlin.ByteArray,
-        ): @@AeadKey@@ = @@AeadKey@@(shake256(value0.value + value1, 32))
+            sharedSecret: @@SharedSecret@@,
+            keyContext: kotlin.ByteArray,
+        ): @@AeadKey@@ = @@AeadKey@@(shake256(sharedSecret.value + keyContext, 32))
 
         override fun seal(
-            value0: @@AeadKey@@,
-            value1: kotlin.ByteArray,
-            value2: kotlin.ByteArray,
+            key: @@AeadKey@@,
+            plaintext: kotlin.ByteArray,
+            associatedData: kotlin.ByteArray,
         ): @@Sealed@@ {
             val nonce = randomBytes(12)
             return @@Sealed@@(
-                nonce + aes256GcmEncrypt(value0.value, nonce, value1, value2)
+                nonce + aes256GcmEncrypt(key.value, nonce, plaintext, associatedData)
             )
         }
 
         override fun unseal(
-            value0: @@AeadKey@@,
-            value1: @@Sealed@@,
-            value2: kotlin.ByteArray,
+            key: @@AeadKey@@,
+            sealedMessage: @@Sealed@@,
+            associatedData: kotlin.ByteArray,
         ): LawSpecRuntime.Maybe<kotlin.ByteArray> {
-            val sealed = value1.value
+            val sealed = sealedMessage.value
             val opened =
                 if (sealed.size < 12) null
                 else
                     aes256GcmDecrypt(
-                        value0.value,
+                        key.value,
                         sealed.copyOf(12),
                         sealed.copyOfRange(12, sealed.size),
-                        value2,
+                        associatedData,
                     )
             return if (opened == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(opened)
         }

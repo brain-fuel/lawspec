@@ -121,7 +121,7 @@ emitBridges FSharp layout bits declarations units
       members <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
             unitOnly = args == [C.Constructor "Unit" []]
-            parameters = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] args, not unitOnly]
+            parameters = [name | (name, _) <- zip (operationParameterNames FSharp a op) args, not unitOnly]
             values = if unitOnly then ["()"] else parameters
         codecs <- mapM (Data.codec FSharp bits names []) args
         out <- Data.codec FSharp bits names [] result

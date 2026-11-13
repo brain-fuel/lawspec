@@ -4,7 +4,7 @@
 -- Handlers travel in the symbols map generated code passes to every
 -- definition; the shared JVM bodies reach a Kotlin handler through a bridge
 -- in LawSpecKotlinAdapters (see LawSpec.KotlinDefinitions).
-module LawSpec.AbilityEmit.Kotlin (emit, productionStub, abilitiesObject, abilitiesObjectOf) where
+module LawSpec.AbilityEmit.Kotlin (emit, productionStub, abilitiesObject, abilitiesObjectOf, operationNames) where
 
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)

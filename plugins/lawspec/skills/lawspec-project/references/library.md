@@ -1549,12 +1549,19 @@ a claims block leaves out is reported as `current = Cancelled`, or
 Names never affect what an adapter must implement. An existing adapter is not
 rewritten, and neither naming a parameter nor renaming one reports an adapter
 update: the stub an adapter is compared with is written with positional names
-(`value0`, `value1`). Generated glue that nobody edits, such as bridges,
-codecs and spec handlers, also keeps positional names, and so do the
-interfaces of the built-in units' abilities (`lawspec.time`,
-`lawspec.crypto` and the others with default handlers), whose handlers are
-the runtime's own. A parameter's name is not part of a declaration's semantic
-hash.
+(`value0`, `value1`). A parameter's name is not part of a declaration's
+semantic hash.
+
+The abilities of the built-in units (`lawspec.time`, `lawspec.crypto` and the
+others with default handlers) name their parameters in their signatures, so
+their interfaces read `sleep(duration)`, `sign(signingKey, message)` and
+`writeBytes(path, contents)`. The code generated around an ability, such as
+spec handlers, recordings and binding bridges, uses the same names; a name
+the generated code needs for itself is numbered from 2 (`state2`). What stays
+numbered by position is the code nobody reads as an interface: the evaluator
+behind a checked definition (`input0`), codec locals (`codec0`, `field0`)
+and generic type parameters (`T0`). A JavaScript or TypeScript data class's
+constructor names its parameters after its fields.
 
 ## Ownership
 

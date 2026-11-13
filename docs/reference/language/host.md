@@ -35,13 +35,13 @@ end unit
 
 ```lawspec fragment
 ability FileSystem is
-  readBytes :: Text -> Maybe Bytes
-  writeBytes :: Text -> Bytes -> Unit
-  createDirectories :: Text -> Unit
-  pathExists :: Text -> Bool
-  removePath :: Text -> Unit
-  temporaryDirectory :: Text -> Text
-  temporaryFile :: Text -> Text
+  readBytes :: (path :: Text) -> Maybe Bytes
+  writeBytes :: (path :: Text) -> (contents :: Bytes) -> Unit
+  createDirectories :: (path :: Text) -> Unit
+  pathExists :: (path :: Text) -> Bool
+  removePath :: (path :: Text) -> Unit
+  temporaryDirectory :: (prefix :: Text) -> Text
+  temporaryFile :: (prefix :: Text) -> Text
 end ability
 ```
 
@@ -69,9 +69,9 @@ from the working directory.
 
 ```lawspec fragment
 ability Environment is
-  environmentVariable :: Text -> Maybe Text
+  environmentVariable :: (name :: Text) -> Maybe Text
   environmentSnapshot :: Text
-  restoreEnvironment :: Text -> Unit
+  restoreEnvironment :: (snapshot :: Text) -> Unit
 end ability
 ```
 

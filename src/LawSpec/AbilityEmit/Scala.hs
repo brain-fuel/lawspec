@@ -5,7 +5,7 @@
 -- generated code passes to every definition; the shared JVM bodies reach a
 -- Scala handler through a bridge in LawSpecScalaAdapters (see
 -- LawSpec.ScalaDefinitions).
-module LawSpec.AbilityEmit.Scala (emit, productionStub, abilitiesObject, abilitiesObjectOf, operationResult) where
+module LawSpec.AbilityEmit.Scala (emit, productionStub, abilitiesObject, abilitiesObjectOf, operationResult, operationNames) where
 
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
@@ -13,7 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames, positionalNames)
+import LawSpec.Naming (operationParameterNames)
 import qualified LawSpec.ScalaData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.ScalaExpr as E
@@ -122,7 +122,7 @@ emit minify bits datas units = do
             comment 0 ("The abilities of " ++ C.idText (C.unitId u) ++ ": a trait for each, its spec handlers, and a recording of any handler of it.") <>
             line ("object " ++ name ++ " ") <> block (D.joinWith (D.hardline <> D.hardline) members) <> D.hardline
       pure (Artifact ("src/main/scala/" ++ intercalate "/" qualified ++ ".scala") (D.render layout (Native.rootQualifiedDoc source)) "generated" "source")
-    signature = signatureNamed (positionalNames "value")
+    signature a op = signatureNamed (operationNames a op) a op
     signatureNamed names a op ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.scalaDataTypeDoc datas) args
@@ -165,11 +165,12 @@ emit minify bits datas units = do
         let owner = owning answered op
         s <- signature owner op ty
         let (args, result) = C.functionType ty
+            named = operationNames owner op
         argumentCodecs <- mapM codec args
         resultCodec <- codec result
         let arguments = line "symbols" : [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "LawSpecRuntime.absent(\"Unit\")"]
-               else [L.chain c [("encode", [line ("value" ++ show i)])] | (i, c) <- zip [0 :: Int ..] argumentCodecs])
+               else [L.chain c [("encode", [line v])] | (v, c) <- zip named argumentCodecs])
             invocation = E.call evaluate arguments
             outcome = case C.handlerState h of
               Nothing -> [L.bind "result" invocation]
@@ -202,6 +203,7 @@ emit minify bits datas units = do
         let owner = owning answered op
         s <- signature owner op ty
         let (args, result) = C.functionType ty
+            named = operationNames owner op
         argumentCodecs <- mapM codec args
         typedCodecs <- mapM (jvmTypedCodec typed) args
         resultCodec <- codec result
@@ -209,12 +211,12 @@ emit minify bits datas units = do
         -- A value converts directly between its native and typed forms where
         -- it can; otherwise through its codecs and the dynamic Value.
         let direct = jvmTypedNative typed
-            argument i aty c t = case direct aty of
-              Just (fromNative, _) -> L.call fromNative [line ("value" ++ show i)]
-              Nothing -> L.call (t ++ ".decode") [L.chain c [("encode", [line ("value" ++ show i)])]]
+            argument v aty c t = case direct aty of
+              Just (fromNative, _) -> L.call fromNative [line v]
+              Nothing -> L.call (t ++ ".decode") [L.chain c [("encode", [line v])]]
             arguments = [line "symbols" | isContextual (jvmTypedPlan typed) clause] ++ [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lawspec.runtime.LawSpecFast.Unit.UNIT"]
-               else [argument i aty c t | (i, (aty, (c, t))) <- zip [0 :: Int ..] (zip args (zip argumentCodecs typedCodecs))])
+               else [argument v aty c t | (v, (aty, (c, t))) <- zip named (zip args (zip argumentCodecs typedCodecs))])
             invocation = L.call function arguments
             outcome = case C.handlerState h of
               Nothing -> [L.bind "result" invocation]
@@ -256,9 +258,10 @@ emit minify bits datas units = do
       methods <- mapM (\(op, ty) -> do
         s <- signature a op ty
         let (args, _) = C.functionType ty
+            named = operationNames a op
         argumentCodecs <- mapM codec args
-        let logged = E.call "java.util.List.of[LawSpecRuntime.Value]" [L.chain c [("encode", [line ("value" ++ show i)])] | (i, c) <- zip [0 :: Int ..] argumentCodecs]
-            forward = L.call ("inner." ++ Native.escaped op) [line ("value" ++ show i) | i <- [0 .. length args - 1]]
+        let logged = E.call "java.util.List.of[LawSpecRuntime.Value]" [L.chain c [("encode", [line v])] | (v, c) <- zip named argumentCodecs]
+            forward = L.call ("inner." ++ Native.escaped op) (map line (take (length args) named))
         pure (line "override " <> s <> line " = " <> block (D.joinWith D.hardline
           [ L.call "calls.add" [L.call "LawSpecRuntime.RecordedCall" [E.quoted op, logged]]
           , forward ]))) (C.abilityOperations a)
@@ -288,8 +291,9 @@ productionStub datas u a = do
       D.nest 4 (D.softline <> D.text ("extends " ++ abilitiesObject u ++ "." ++ interfaceName a))) <> D.text " " <>
     D.block 2 (D.joinWith D.hardline methods))
 
--- An operation's parameter names where a user writes or reads them: the
--- interface and the production handler's stub (LawSpec.Naming). A generated
--- handler's own methods keep positional names.
+-- An operation's parameter names (LawSpec.Naming), the same in the trait,
+-- the production handler's stub and every generated handler. They stay
+-- clear of the names a generated handler's body uses.
+-- ref:DEC-generated-parameter-names
 operationNames :: C.Ability -> String -> [String]
-operationNames = operationParameterNames "scala" [] "value"
+operationNames = operationParameterNames "scala" (words "symbols state result pair inner calls failure resource") "value"

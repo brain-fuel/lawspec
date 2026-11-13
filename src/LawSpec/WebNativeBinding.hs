@@ -6,6 +6,7 @@ import Control.Monad (forM, unless)
 import Data.Char (toLower)
 import Data.List (intercalate, nub)
 import qualified LawSpec.Core as C
+import LawSpec.Naming (declarationParameterNames, handlerParameterNames)
 import LawSpec.Common
 import LawSpec.Backend (unitName)
 import LawSpec.Testing
@@ -88,10 +89,14 @@ emitBindingsWithSourceRoots sourceRoots ts minify bindings plan files = do
         resultType <- typeOf result
         argRefs <- mapM Data.webTypeReference args
         resultRef <- Data.webTypeReference result
-        let values = ["value" ++ show i | i <- [0::Int ..length args-1]]
-            -- An adapter that uses abilities gets their handlers first, as
+        let -- An adapter that uses abilities gets their handlers first, as
             -- they are: application code's handlers take the bound types.
-            handlerNames = ["handler" ++ show i | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
+            -- Each is named for its ability, and each value as the
+            -- signature declares or from its type (LawSpec.Naming).
+            bridgeLocals = words "bridge symbols result found error"
+            webTarget = if ts then "typescript" else "javascript"
+            handlerNames = handlerParameterNames webTarget bridgeLocals [a | a <- C.declarationUses decl, not (C.isFail a)]
+            values = declarationParameterNames webTarget (bridgeLocals ++ handlerNames) "value" decl
             bits = E.num (toInteger (planMachineBits plan))
             convert schema method' ty value = E.call ("bridge." ++ schema ++ "." ++ method') [ty,value,bits,E.Ident "symbols"]
             arguments = [convert "native" "toNative" ty (convert "canonical" "fromNative" ty (E.Ident value)) | (ty,value) <- zip argRefs values]

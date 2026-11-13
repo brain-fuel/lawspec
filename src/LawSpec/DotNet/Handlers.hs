@@ -58,7 +58,7 @@ emitHandlers lang layout bits typed declarations units = do
       operations <- fmap concat $ forM answered $ \a -> forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, _) = C.functionType ty
         (ps, r) <- operationSignatureOf names a (op, ty)
-        pure (a, Effects.operationMember op, zip ["value" ++ show i | i <- [0 :: Int ..]] ps, r, length args)
+        pure (a, Effects.operationMember op, zip (operationParameterNamesClear lang (map field answered) a op) ps, r, length args)
       stateCodec <- traverse (Data.codec lang bits names [] . fst) (C.handlerState h)
       stateType <- traverse (Data.nativeType lang bits names [] . fst) (C.handlerState h)
       let interfaces = [Effects.interfaceType a | a <- answered]

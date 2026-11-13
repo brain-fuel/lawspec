@@ -17,7 +17,7 @@ import qualified LawSpec.GoExpr as E
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Naming (claimAll, scopeWith)
+import LawSpec.Naming (claimAll, scopeWith, declarationParameterNames, operationParameterNames, handlerParameterNames)
 
 -- One import resolution table serves every kind of configured native reference.
 goImports :: BindingPlan -> [(String,(String,FilePath))]
@@ -218,11 +218,18 @@ emitBindings minify plan testing files = do
         native <- mapM (G.goNativeCodec declarations usedMappings) args
         canonicalResult <- G.goCodecWithContext "symbols" declarations result
         nativeResult <- G.goNativeCodec declarations usedMappings result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-            -- An adapter that uses abilities gets their handlers first, as
-            -- the generated interfaces.
-            handlerParams = [ (interfaceOf a, D.text ("handler" ++ show i))
-                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
+        let -- An adapter that uses abilities gets their handlers first, as
+            -- the generated interfaces, each named for its ability; its
+            -- values are named as its signature declares (LawSpec.Naming).
+            -- None takes the name the bridge calls.
+            used = [a | a <- C.declarationUses d, not (C.isFail a)]
+            bridgeLocals = words "symbols done bound" ++ case call of
+              StaticCall ref -> take 1 (referenceParts ref)
+              ConstructorCall ref -> take 1 (referenceParts ref)
+              MethodCall _ -> []
+            handlerNames = handlerParameterNames "go" bridgeLocals used
+            values = map D.text (declarationParameterNames "go" (bridgeLocals ++ handlerNames) "value" d)
+            handlerParams = [(interfaceOf a, D.text h) | (a, h) <- zip used handlerNames]
             converted = [E.call (n ++ ".toNative") [E.call (c ++ ".fromNative") [v]] |
               (n,c,v) <- zip3 native canonical values]
             function ref = do
@@ -291,7 +298,7 @@ emitBindings minify plan testing files = do
           native <- mapM (G.goNativeCodec declarations usedMappings) args
           canonicalResult <- G.goCodecWithContext "symbols" declarations result
           nativeResult <- G.goNativeCodec declarations usedMappings result
-          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+          let values = map D.text (operationParameterNames "go" (words "bound symbols") "value" a op)
               invocation = E.call ("bound.inner." ++ methodName op)
                 [E.call (n ++ ".toNative") [E.call (c ++ ".fromNative") [v]] | (n,c,v) <- zip3 native canonical values]
               body = if result == C.scalarType "Unit" then invocation

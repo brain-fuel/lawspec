@@ -5,7 +5,7 @@
 -- ref:DEC-idiomatic-generated-types ref:DEC-csharp-over-fsharp
 module LawSpec.DotNet.Names
   ( langOf, extension, pascal, camel, unitNamespace, unitModule, unitQualified, generatedModule
-  , adapterPath, functionName, parameterName, parameterNames, operationParameterNames, dataNames, fsharpKeywords, csharpKeywords, escapeFSharp
+  , adapterPath, functionName, parameterName, parameterNames, operationParameterNames, operationParameterNamesClear, dataNames, fsharpKeywords, csharpKeywords, escapeFSharp
   , splitDots, testModule, handleKey, localName, localNames, keywords
   ) where
 
@@ -116,12 +116,19 @@ camelKeep name
 parameterName :: Lang -> Int -> String
 parameterName _ i = "value" ++ show i
 
--- | A declaration's parameter names: the ones its signature declares, or
+-- | An operation's parameter names: the ones its signature declares, or
 -- ones made from their types, in camelCase, a keyword with a trailing
--- underscore, clear of the names given. ref:DEC-generated-parameter-names
+-- underscore. The interface, the production stub, the bridges and the spec
+-- handlers' classes all write them, so they stay clear of the names those
+-- generated bodies use. ref:DEC-generated-parameter-names
 operationParameterNames :: Lang -> C.Ability -> String -> [String]
-operationParameterNames lang a op = parameterNamesWith Camel (\name -> if name `elem` keywords lang then name ++ "_" else name)
-  [] "value" (C.operationParameters a op) (maybe [] (fst . C.functionType) (lookup op (C.abilityOperations a)))
+operationParameterNames lang = operationParameterNamesClear lang []
+
+-- | The same, clear of further names a generated body uses.
+operationParameterNamesClear :: Lang -> [String] -> C.Ability -> String -> [String]
+operationParameterNamesClear lang taken a op = parameterNamesWith Camel (\name -> if name `elem` keywords lang then name ++ "_" else name)
+  (taken ++ words "schema symbols handler gate state pair failure native current arguments value") "value"
+  (C.operationParameters a op) (maybe [] (fst . C.functionType) (lookup op (C.abilityOperations a)))
 
 parameterNames :: Lang -> [String] -> C.Declaration -> [String]
 parameterNames lang taken d = parameterNamesWith Camel (\name -> if name `elem` keywords lang then name ++ "_" else name)

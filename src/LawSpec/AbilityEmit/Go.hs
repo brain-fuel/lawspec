@@ -14,7 +14,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames, positionalNames)
+import LawSpec.Naming (operationParameterNames)
 import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.GoExpr as E
@@ -57,7 +57,7 @@ emit minify bits datas units = case clashes of
             D.joinWith (D.hardline <> D.hardline) (interfaces ++ handlers ++ recordings) <> D.hardline
       pure (Artifact (map (\c -> if c == '.' then '/' else c) identity ++ "/lawspec_abilities.go")
         (D.render layout source) "generated" "source")
-    signature = signatureNamed (positionalNames "value")
+    signature a op = signatureNamed (operationNames a op)
     signatureNamed names ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.goDataType datas) args
@@ -82,6 +82,7 @@ emit minify bits datas units = case clashes of
         (lookup ref [(C.abilityInstance a, a) | a <- everyAbility])) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       initialState <- case C.handlerState h of
@@ -97,12 +98,13 @@ emit minify bits datas units = case clashes of
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         evaluate <- maybe (Left ("unresolved clause " ++ C.idText clause)) Right (lookup clause calls)
-        s <- signature ty
+        s <- signature ability op ty
         (argumentCodecs, resultCodec) <- codecs ty
         let (args, result) = C.functionType ty
+            named = operationNames ability op
             arguments = line "symbols" : [line "handler.state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lsAbsent(\"Unit\")"]
-               else [E.call ("codec" ++ show i ++ ".fromNative") [line ("value" ++ show i)] | i <- [0 .. length args - 1]])
+               else [E.call ("codec" ++ show i ++ ".fromNative") [line v] | (i, v) <- zip [0 :: Int ..] (take (length args) named)])
             invocation = E.call evaluate arguments
             outcome = case C.handlerState h of
               Nothing -> [line "result := " <> invocation]
@@ -130,6 +132,7 @@ emit minify bits datas units = case clashes of
         (lookup ref [(C.abilityInstance a, a) | a <- everyAbility])) (C.handlerAbilities h)
       let ability = case answered of
             first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityOperationParameters = concatMap C.abilityOperationParameters answered
                                , C.abilityName = intercalate ", " (map C.abilityName answered) }
             [] -> C.failAbility
       stateType <- traverse (goTypedType typed . fst) (C.handlerState h)
@@ -138,20 +141,21 @@ emit minify bits datas units = case clashes of
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (goTypedFunction typed clause)
-        s <- signature ty
+        s <- signature ability op ty
         (argumentCodecs, resultCodec) <- codecs ty
         let (args, result) = C.functionType ty
+            named = operationNames ability op
         froms <- mapM (goTypedFrom typed) args
         to <- goTypedTo typed result
         -- A value converts directly between its native and typed forms
         -- where it can; otherwise through its codec and LawSpecValue.
         let direct = goTypedNative typed
-            argument i ty f = case direct ty of
-              Just (fromNative, _) -> fromNative ++ "(value" ++ show i ++ ")"
-              Nothing -> f ++ "(codec" ++ show i ++ ".fromNative(value" ++ show i ++ "))"
+            argument i v ty f = case direct ty of
+              Just (fromNative, _) -> fromNative ++ "(" ++ v ++ ")"
+              Nothing -> f ++ "(codec" ++ show (i :: Int) ++ ".fromNative(" ++ v ++ "))"
             arguments = ["handler.symbols" | isContextual (goTypedPlan typed) clause] ++ ["handler.state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then ["lsfUnit{}"]
-               else [argument i ty f | (i, (ty, f)) <- zip [0 :: Int ..] (zip args froms)])
+               else [argument i v ty f | (i, (v, (ty, f))) <- zip [0 ..] (zip named (zip args froms))])
             invocation = function ++ "(" ++ intercalate ", " arguments ++ ")"
             finish typedResult = case direct result of
               Just (_, toNative) | result == C.scalarType "Unit" -> [line ("_ = " ++ typedResult)]
@@ -196,7 +200,7 @@ emit minify bits datas units = case clashes of
           resultType <- if result == C.scalarType "Unit" then pure Nothing else Just <$> Native.goDataType datas result
           failureType <- Native.goDataType datas failure
           failureCodec <- Native.goCodecWithContext "symbols" datas failure
-          let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+          let values = take (length args) (operationNames a op)
               call = "handler." ++ methodName op ++ "(" ++ intercalate ", " values ++ ")"
               results = maybe "(err error)" (\r -> "(result " ++ r ++ ", err error)") resultType
           pure (line ("// Try" ++ methodName op ++ " is " ++ methodName op ++ ", with the failure it raises returned as a *LawSpecRaised[" ++ failureType ++ "] error rather than a panic.") <> D.hardline <>
@@ -223,11 +227,12 @@ emit minify bits datas units = case clashes of
     recording a = do
       let name = recordingName a
       methods <- mapM (\(op, ty) -> do
-        s <- signature ty
+        s <- signature a op ty
         (argumentCodecs, _) <- codecs ty
         let (args, result) = C.functionType ty
-            values = intercalate ", " ["value" ++ show i | i <- [0 .. length args - 1]]
-            logged = "[]LawSpecValue{" ++ intercalate ", " ["codec" ++ show i ++ ".fromNative(value" ++ show i ++ ")" | i <- [0 .. length args - 1]] ++ "}"
+            named = take (length args) (operationNames a op)
+            values = intercalate ", " named
+            logged = "[]LawSpecValue{" ++ intercalate ", " ["codec" ++ show i ++ ".fromNative(" ++ v ++ ")" | (i, v) <- zip [0 :: Int ..] named] ++ "}"
             forward = "recording.Inner." ++ methodName op ++ "(" ++ values ++ ")"
         pure (line ("func (recording *" ++ name ++ ") " ++ methodName op ++ s ++ " ") <> D.block 8 (D.joinWith D.hardline
           (E.declare (context "recording" ++ codecLines (zip [0 :: Int ..] argumentCodecs))
@@ -263,8 +268,11 @@ productionStub datas a = do
     "// New" ++ productionName a ++ " makes the native handler the generated tests use.\nfunc New" ++ productionName a ++
     "(" ++ parameter ++ ") " ++ interfaceName a ++ " {\n\treturn &" ++ productionName a ++ made ++ "\n}\n\n" ++ intercalate "\n" methods)
 
--- An operation's parameter names where a user writes or reads them: the
--- interface and the production handler's stub (LawSpec.Naming). A generated
--- handler's own methods keep positional names.
+-- An operation's parameter names (LawSpec.Naming), the same in the
+-- interface, the production handler's stub and every generated handler.
+-- They stay clear of the names a generated handler's body uses.
+-- ref:DEC-generated-parameter-names
 operationNames :: C.Ability -> String -> [String]
-operationNames = operationParameterNames "go" ["handler"] "value"
+operationNames = operationParameterNames "go"
+  (words "handler recording symbols schema bits result next pair codec resultCodec err problem failure ok" ++
+   ["codec" ++ show i | i <- [0 :: Int .. 31]]) "value"

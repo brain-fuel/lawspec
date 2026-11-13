@@ -35,11 +35,11 @@ export class RandomHandler
     this.state =
       seed === undefined ? runSeed() : ((seed % modulus) + modulus) % modulus;
   }
-  randomBelow(value0)
+  randomBelow(bound)
   {
     const state = this.state;
     this.state = randomStep(randomStep(state));
-    return randomDraw(state, value0);
+    return randomDraw(state, bound);
   }
 }
 /** A uniform draw from 0 up to bound, by rejection. */
@@ -56,13 +56,13 @@ export function secureBelow(bound)
 /** The operating system's generator (node:crypto). */
 export class SecureRandomHandler
 {
-  secureBytes(value0)
+  secureBytes(count)
   {
-    return new Uint8Array(randomBytes(Math.max(value0, 0)));
+    return new Uint8Array(randomBytes(Math.max(count, 0)));
   }
-  secureBelow(value0)
+  secureBelow(bound)
   {
-    return secureBelow(value0);
+    return secureBelow(bound);
   }
   secureToken()
   {

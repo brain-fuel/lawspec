@@ -300,7 +300,7 @@ emit target layout bits typed declarations units boundSchema = do
         "erlang" -> do
           tries <- forM (failingOperations ability) $ \(op,ty,failure) -> do
             let (args,result) = C.functionType ty
-                values = [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]
+                values = map D.text (Names.operationVariables target ability op)
             inputs <- mapM (E.nativeType bits names []) args
             out <- E.nativeType bits names [] result
             failed <- E.nativeType bits names [] failure
@@ -316,7 +316,7 @@ emit target layout bits typed declarations units boundSchema = do
           typeLayouts <- mapM (elixirOperationType bits names . snd) (C.abilityOperations ability)
           tries <- forM (failingOperations ability) $ \(op,ty,failure) -> do
             let (args,_) = C.functionType ty
-                values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
+                values = map D.text (Names.operationVariables target ability op)
             inputs <- mapM (X.nativeTypeLayout bits names []) args
             out <- X.nativeTypeLayout bits names [] (snd (C.functionType ty))
             failed <- X.nativeTypeLayout bits names [] failure
@@ -345,16 +345,16 @@ emit target layout bits typed declarations units boundSchema = do
               partsType = G.tuple [D.text "effects.HandlerOrigin",G.tuple ts]
               parts = G.function ("parts_" ++ n) [D.text "handler: " <> ty] partsType
                 [G.tuple [D.text "handler.lawspec_origin",G.tuple [D.text ("handler." ++ f) | f <- fields]]]
-          ops <- forM (zip (C.abilityOperations ability) fields) $ \((_,signature),field) -> do
+          ops <- forM (zip (C.abilityOperations ability) fields) $ \((op,signature),field) -> do
             let (args,result) = C.functionType signature
             inputs <- mapM (G.nativeType False names []) args
             out <- G.nativeType False names [] result
-            let values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
+            let values = map D.text (Names.operationVariables target ability op)
             pure (G.function (n ++ "_" ++ field) (D.text "handler: " <> ty :
               [v <> D.text ": " <> t | (v,t) <- zip values inputs]) out [G.call ("handler." ++ field) values])
           tries <- forM (failingOperations ability) $ \(op,signature,failure) -> do
             let (args,result) = C.functionType signature
-                values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
+                values = map D.text (Names.operationVariables target ability op)
             inputs <- mapM (G.nativeType False names []) args
             out <- G.nativeType False names [] result
             failed <- G.nativeType False names [] failure
@@ -384,7 +384,7 @@ emit target layout bits typed declarations units boundSchema = do
               [single] -> single
               _ | target == "gleam" -> G.tuple types
                 | otherwise -> E.tuple types
-        pure (handlerPublicName as h,entry ++ "_native",[contextType target],ty,
+        pure (handlerPublicName as h,entry ++ "_native",["context"],[contextType target],ty,
           ([X.TypeCall ":lawspec_beam_effects.context" []],case elixirTypes of [single] -> single; _ -> X.TypeContainer "{" elixirTypes "}"))
       -- A handler with state reads and replaces it in its native types,
       -- through the interface of its first ability.
@@ -413,14 +413,14 @@ emit target layout bits typed declarations units boundSchema = do
               "gleam" -> D.text (typedStateName public)
               "elixir" -> D.text "term()"
               _ -> D.text "term()"
-        pure ([(public ++ "_state",entry ++ "_state",[handle],stateType,([elixirHandle],elixirState)),
-              (public ++ "_set_state",entry ++ "_set_state",[handle,stateType],done,([elixirHandle,elixirState],elixirDone))] ++
-              [(public ++ "_typed_state",entry ++ "_typed_state",[handle],typedType,([elixirHandle],elixirTyped)) | typedHandler h] ++
-              [(public ++ "_set_typed_state",entry ++ "_set_typed_state",[handle,typedType],done,([elixirHandle,elixirTyped],elixirDone)) | typedHandler h])
+        pure ([(public ++ "_state",entry ++ "_state",["handler"],[handle],stateType,([elixirHandle],elixirState)),
+              (public ++ "_set_state",entry ++ "_set_state",["handler","state"],[handle,stateType],done,([elixirHandle,elixirState],elixirDone))] ++
+              [(public ++ "_typed_state",entry ++ "_typed_state",["handler"],[handle],typedType,([elixirHandle],elixirTyped)) | typedHandler h] ++
+              [(public ++ "_set_typed_state",entry ++ "_set_typed_state",["handler","state"],[handle,typedType],done,([elixirHandle,elixirTyped],elixirDone)) | typedHandler h])
       recordings <- forM as $ \a -> do
         entry <- F.abilityEntry units (C.abilityInstance a)
         let elixirAbility = X.TypeCall (interfaceModule "elixir" a ++ ".t") []
-        pure ("recording_" ++ E.snake (interfaceName a),entry ++ "_recording",[contextType target,interfaceNameDoc a],interfaceNameDoc a,
+        pure ("recording_" ++ E.snake (interfaceName a),entry ++ "_recording",["context","inner"],[contextType target,interfaceNameDoc a],interfaceNameDoc a,
           ([X.TypeCall ":lawspec_beam_effects.context" [],elixirAbility],elixirAbility))
       let typedStates = [D.text ("/// A typed state of " ++ C.handlerName h ++ ": its KeyVal values are maps, its Set values sets.") <> D.hardline <>
             D.text ("pub type " ++ typedStateName (handlerPublicName as h)) | target == "gleam", h <- hs, typedStateful h]
@@ -429,15 +429,17 @@ emit target layout bits typed declarations units boundSchema = do
         [Artifact ("lib/lawspec/handlers/" ++ E.moduleName (C.unitId unit) ++ ".ex")
           (D.render (X.layoutFor layout) (X.moduleDoc ("LawSpec.Handlers." ++ E.pascal (C.idText (C.unitId unit))) False bodies)) "generated" "source"
           | not (null bodies)] else map fragment bodies
-    publicFunction (name,entry,args,result,(elixirArgs,elixirResult)) =
-      let values = [D.text ("value" ++ show i) | (i,_) <- zip [0::Int ..] args]
+    -- A public function's parameters say what each is: the law's context, a
+    -- handler, a state.
+    publicFunction (name,entry,parameters,args,result,(elixirArgs,elixirResult)) =
+      let values = map D.text parameters
+          variables = [D.text (E.pascal parameter) | parameter <- parameters]
       in case target of
         "gleam" -> G.external "lawspec_abilities" entry name [v <> D.text ": " <> ty | (v,ty) <- zip values args] result
         "elixir" -> X.typeAttribute "spec" (X.TypeCall name elixirArgs) elixirResult <> D.hardline <>
           X.function name values [X.remote ":lawspec_abilities" entry values]
         _ -> E.spec name args result <> D.hardline <>
-          E.function name [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]
-            [E.remote "lawspec_abilities" entry [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]]
+          E.function name variables [E.remote "lawspec_abilities" entry variables]
     abilityBodies ability = do
       name <- F.abilityEntry units (C.abilityInstance ability)
       home <- nativeOwner ability

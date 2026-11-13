@@ -124,11 +124,12 @@ emitEntriesWithLayouts bindings lang layout bits calls typedCall declarations un
           (parameterTypes, resultType) = C.functionType (C.declarationType declaration)
           definition = lookup identity definitions
           -- A definition's parameters keep their source names; an adapter's
-          -- declaration has none of its own.
+          -- take the names its signature declares, or ones made from their
+          -- types (LawSpec.Naming).
           arguments = case definition of
             Just d | length (C.definitionArguments d) == length parameterTypes ->
               localNames lang ["schema", "symbols", "result", "receiver"] (map C.binderName (C.definitionArguments d))
-            _ -> ["argument" ++ show i | (i, _) <- zip [0 :: Int ..] parameterTypes]
+            _ -> take (length parameterTypes) (parameterNames lang ["schema", "symbols", "result", "receiver"] declaration)
           locals = maybe [] (\d -> zip (map C.binderId (C.definitionArguments d)) arguments) definition
           resolve table variable = maybe (error ("unbound .NET binder: " ++ C.idText variable)) id (lookup variable table)
           context table = X.Context bits X.schemaVar X.symbolsVar (resolve table) (Effects.external units) X.typeRef X.typeKeyOf

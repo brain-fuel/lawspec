@@ -5,10 +5,12 @@ import Control.Monad (forM_)
 import Data.Aeson (Value(..), object, (.=), decode, encode)
 import qualified Data.Aeson.KeyMap as K
 import Data.Foldable (toList)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
+import Data.Maybe (isJust)
 import qualified Data.Text as T
 import Test.Hspec
 import qualified LawSpec.Api as API
+import LawSpec.Builtins (defaultedUnits)
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.CoreEmit (emitPlanWithOptions)
@@ -51,6 +53,29 @@ adapters named = unlines
 
 program :: Bool -> C.Program
 program named = either (error . show) id (compileCore 64 defaultGeneration [Source "named.lawspec" (adapters named)])
+
+-- | A unit that imports every built-in unit with abilities.
+builtins :: C.Program
+builtins = either (error . show) id (compileCore 64 defaultGeneration
+  [Source "everything.lawspec" (unlines (["unit example.everything", ""] ++ ["import " ++ unit | unit <- defaultedUnits] ++ ["end unit"]))])
+
+-- | The built-in abilities' operations whose signature leaves a parameter
+-- unnamed.
+unnamedBuiltinOperations :: [String]
+unnamedBuiltinOperations =
+  [ C.abilityName a ++ "." ++ operation
+  | u <- C.programUnits builtins, a <- C.unitAbilities u, "lawspec." `isPrefixOf` C.idText (C.abilityOwner a)
+  , (operation, t) <- C.abilityOperations a
+  , let arity = length (fst (C.functionType t))
+  , case C.operationParameters a operation of
+      C.DeclaredParameters names -> length names /= arity || not (all isJust names)
+      C.PositionalParameters -> True ]
+
+-- | Everything a target generates for the built-in units.
+builtinOutput :: String -> String
+builtinOutput target = case planTesting builtins >>= emitPlanWithOptions False target Nothing Nothing of
+  Left problems -> error (target ++ ": " ++ show problems)
+  Right files -> concatMap artifactContent files
 
 -- | The user-owned stubs of a target, and their canonical references.
 stubs :: Bool -> String -> (String, String)
@@ -158,6 +183,25 @@ test_generatedParametersTakeTheirSignaturesNames = describe "generated parameter
       take 2 (positionalNames "argument") `shouldBe` ["argument0", "argument1"]
     it "shows names as the spec writes them in text about a law" $
       sourceParameterNames (declared [Just "orderId", Nothing]) [text, int32] `shouldBe` ["orderId", "int32_1"]
+    it "names a handler parameter after its ability" $ do
+      let ref name = C.AbilityRef (C.Id ("example.shop::ability::" ++ name)) []
+      handlerParameterNames "java" [] [ref "Clock", ref "AuditLog"] `shouldBe` ["clock", "auditLog"]
+      handlerParameterNames "python" ["clock"] [ref "Clock", ref "AuditLog"] `shouldBe` ["clock_2", "audit_log"]
+  describe "the built-in abilities" $ do
+    it "name every parameter in their signatures" $
+      unnamedBuiltinOperations `shouldBe` []
+    forM_
+      [ ("java", ["void sleep(java.time.Duration duration)", "void writeBytes(java.lang.String path, byte[] contents)"])
+      , ("python", ["def sleep(self, duration: ", "def logMessage(self, level: "])
+      , ("typescript", ["sleep(duration: data.Duration): void", "constructor(verifyingKey: VerifyingKey, signingKey: SigningKey)"])
+      , ("go", ["Sleep(duration "])
+      , ("rust", ["fn sleep(&self, duration: "])
+      , ("kotlin", ["fun sleep(duration: "])
+      , ("scala", ["def sleep(duration: "]) ] $ \(target, signatures) ->
+      it ("give " ++ target ++ " interfaces those names, and no positional one") $ do
+        let output = builtinOutput target
+        forM_ signatures $ \signature -> output `shouldSatisfy` isInfixOf signature
+        output `shouldNotSatisfy` isInfixOf "value0"
   describe "a signature's names in Core" $ do
     it "are kept on the adapter's declaration, without its result's" $ do
       let named = [(C.declarationName d, C.declarationParameters d) | u <- C.programUnits (program True), d <- C.unitDeclarations u]

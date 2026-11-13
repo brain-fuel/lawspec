@@ -9,46 +9,46 @@ pub struct FileSystemHandler;
 
 impl crate::lawspec_abilities::lawspec_host::FileSystem for FileSystemHandler
 {
-    fn readBytes(&self, value0: std::string::String) -> std::option::Option<std::vec::Vec<u8>>
+    fn readBytes(&self, path: std::string::String) -> std::option::Option<std::vec::Vec<u8>>
     {
-        std::fs::read(&value0).ok()
+        std::fs::read(&path).ok()
     }
 
-    fn writeBytes(&self, value0: std::string::String, value1: std::vec::Vec<u8>) -> ()
+    fn writeBytes(&self, path: std::string::String, contents: std::vec::Vec<u8>) -> ()
     {
-        std::fs::write(&value0, &value1).expect("writing the file failed");
+        std::fs::write(&path, &contents).expect("writing the file failed");
     }
 
-    fn createDirectories(&self, value0: std::string::String) -> ()
+    fn createDirectories(&self, path: std::string::String) -> ()
     {
-        std::fs::create_dir_all(&value0).expect("creating directories failed");
+        std::fs::create_dir_all(&path).expect("creating directories failed");
     }
 
-    fn pathExists(&self, value0: std::string::String) -> bool
+    fn pathExists(&self, path: std::string::String) -> bool
     {
-        std::fs::symlink_metadata(&value0).is_ok()
+        std::fs::symlink_metadata(&path).is_ok()
     }
 
-    fn removePath(&self, value0: std::string::String) -> ()
+    fn removePath(&self, path: std::string::String) -> ()
     {
-        match std::fs::symlink_metadata(&value0)
+        match std::fs::symlink_metadata(&path)
         {
             Ok(metadata) if metadata.is_dir() =>
             {
-                std::fs::remove_dir_all(&value0).expect("removing the directory failed")
+                std::fs::remove_dir_all(&path).expect("removing the directory failed")
             }
-            Ok(_) => std::fs::remove_file(&value0).expect("removing the file failed"),
+            Ok(_) => std::fs::remove_file(&path).expect("removing the file failed"),
             Err(_) =>
             {}
         }
     }
 
-    fn temporaryDirectory(&self, value0: std::string::String) -> std::string::String
+    fn temporaryDirectory(&self, prefix: std::string::String) -> std::string::String
     {
         ls::acquire_resource("temporaryDirectory").expect("making a temporary directory failed")
     }
 
-    fn temporaryFile(&self, value0: std::string::String) -> std::string::String
+    fn temporaryFile(&self, prefix: std::string::String) -> std::string::String
     {
         ls::acquire_resource("temporaryFile").expect("making a temporary file failed")
     }
@@ -67,12 +67,12 @@ impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler
 {
     fn environmentVariable(
         &self,
-        value0: std::string::String,
+        name: std::string::String,
     ) -> std::option::Option<std::string::String>
     {
-        if valid_name(&value0)
+        if valid_name(&name)
         {
-            std::env::var(&value0).ok()
+            std::env::var(&name).ok()
         }
         else
         {
@@ -85,9 +85,9 @@ impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler
         ls::acquire_resource("environment").expect("saving the environment failed")
     }
 
-    fn restoreEnvironment(&self, value0: std::string::String) -> ()
+    fn restoreEnvironment(&self, snapshot: std::string::String) -> ()
     {
-        ls::release_resource("environment", &value0).expect("restoring the environment failed");
+        ls::release_resource("environment", &snapshot).expect("restoring the environment failed");
     }
 }
 

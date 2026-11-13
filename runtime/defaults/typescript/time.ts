@@ -24,9 +24,9 @@ export class ClockHandler implements abilities.Clock
   {
     return new @@Instant@@(nowMicros());
   }
-  sleep(value0: @@Duration@@): void
+  sleep(duration: @@Duration@@): void
   {
-    const target = nowMicros() + value0.value;
+    const target = nowMicros() + duration.value;
     for (
       let left = target - nowMicros();
       left > 0n;

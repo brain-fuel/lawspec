@@ -10,30 +10,30 @@ import * as path from 'node:path';
 /** Files by path; a relative path is from the working directory. */
 export class FileSystemHandler
 {
-  readBytes(value0)
+  readBytes(path)
   {
     try
     {
-      return new data.Present(new Uint8Array(fs.readFileSync(value0)));
+      return new data.Present(new Uint8Array(fs.readFileSync(path)));
     }
     catch
     {
       return new data.Absent();
     }
   }
-  writeBytes(value0, value1)
+  writeBytes(path, contents)
   {
-    fs.writeFileSync(value0, value1);
+    fs.writeFileSync(path, contents);
   }
-  createDirectories(value0)
+  createDirectories(path)
   {
-    fs.mkdirSync(value0, {recursive: true});
+    fs.mkdirSync(path, {recursive: true});
   }
-  pathExists(value0)
+  pathExists(path)
   {
     try
     {
-      fs.lstatSync(value0);
+      fs.lstatSync(path);
       return true;
     }
     catch
@@ -41,18 +41,18 @@ export class FileSystemHandler
       return false;
     }
   }
-  removePath(value0)
+  removePath(path)
   {
-    fs.rmSync(value0, {recursive: true, force: true});
+    fs.rmSync(path, {recursive: true, force: true});
   }
-  temporaryDirectory(value0)
+  temporaryDirectory(prefix)
   {
-    return fs.mkdtempSync(path.join(os.tmpdir(), value0));
+    return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   }
-  temporaryFile(value0)
+  temporaryFile(prefix)
   {
     const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), value0)),
+      fs.mkdtempSync(path.join(os.tmpdir(), prefix)),
       'file',
     );
     fs.writeFileSync(file, '');
@@ -66,18 +66,18 @@ export function validName(name)
 /** The process's environment. */
 export class EnvironmentHandler
 {
-  environmentVariable(value0)
+  environmentVariable(name)
   {
-    const value = validName(value0) ? process.env[value0] : undefined;
+    const value = validName(name) ? process.env[name] : undefined;
     return value === undefined ? new data.Absent() : new data.Present(value);
   }
   environmentSnapshot()
   {
     return ls.acquireResource('environment');
   }
-  restoreEnvironment(value0)
+  restoreEnvironment(snapshot)
   {
-    ls.releaseResource('environment', value0);
+    ls.releaseResource('environment', snapshot);
   }
 }
 // Node binds sockets only asynchronously, so a child process asks.

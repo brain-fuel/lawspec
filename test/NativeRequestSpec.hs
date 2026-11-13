@@ -552,8 +552,8 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
         bridge = concat [content | (path,content) <- files,path == "src/main/scala/sample/Constructors.scala"]
     diagnostics `shouldBe` []
     bridge `shouldContain` "new application.Factory.Box()"
-    filter (not . isSpace) bridge `shouldContain` ".encode(value0)"
-    filter (not . isSpace) bridge `shouldContain` ".encode(value1)"
+    filter (not . isSpace) bridge `shouldContain` ".encode(unit1)"
+    filter (not . isSpace) bridge `shouldContain` ".encode(unit2)"
     [path | (path,_) <- files,"LawSpecNativeCalls.java" `isInfixOf` path] `shouldBe` []
     let (argumentDiagnostics,argumentFiles) = emitted "Int32"
     argumentDiagnostics `shouldBe` []

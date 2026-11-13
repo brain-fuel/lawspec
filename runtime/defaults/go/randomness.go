@@ -51,10 +51,10 @@ func NewRandomHandler() Random {
 	return &RandomHandler{state: lsRunSeed()}
 }
 
-func (handler *RandomHandler) RandomBelow(value0 int64) int64 {
+func (handler *RandomHandler) RandomBelow(bound int64) int64 {
 	state := handler.state
 	handler.state = lsRandomStep(lsRandomStep(state))
-	return lsRandomDraw(state, value0)
+	return lsRandomDraw(state, bound)
 }
 
 // SecureRandomHandler is the operating system's generator (crypto/rand).
@@ -65,22 +65,22 @@ func NewSecureRandomHandler() SecureRandom {
 	return &SecureRandomHandler{}
 }
 
-func (handler *SecureRandomHandler) SecureBytes(value0 int32) []byte {
-	if value0 < 0 {
-		value0 = 0
+func (handler *SecureRandomHandler) SecureBytes(count int32) []byte {
+	if count < 0 {
+		count = 0
 	}
-	out := make([]byte, value0)
+	out := make([]byte, count)
 	if _, err := cryptorand.Read(out); err != nil {
 		panic(err)
 	}
 	return out
 }
 
-func (handler *SecureRandomHandler) SecureBelow(value0 int64) int64 {
-	if value0 < 1 {
+func (handler *SecureRandomHandler) SecureBelow(bound int64) int64 {
+	if bound < 1 {
 		return 0
 	}
-	n, err := cryptorand.Int(cryptorand.Reader, big.NewInt(value0))
+	n, err := cryptorand.Int(cryptorand.Reader, big.NewInt(bound))
 	if err != nil {
 		panic(err)
 	}

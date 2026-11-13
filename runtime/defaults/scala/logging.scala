@@ -11,23 +11,23 @@ object Logging {
   /** Logs to the "lawspec" platform logger, at the matching level. */
   class LogHandler extends lawspec.abilities.lawspec.Logging.Log {
     override def logMessage(
-        value0: @@LogLevel@@,
-        value1: java.lang.String
+        level: @@LogLevel@@,
+        message: java.lang.String
     ): scala.Unit = {
-      val level = value0 match {
+      val loggerLevel = level match {
         case @@LogLevel/Debug@@ => java.lang.System.Logger.Level.DEBUG
         case @@LogLevel/Warning@@ =>
           java.lang.System.Logger.Level.WARNING
         case @@LogLevel/Error@@ => java.lang.System.Logger.Level.ERROR
         case _                           => java.lang.System.Logger.Level.INFO
       }
-      logger.log(level, value1)
+      logger.log(loggerLevel, message)
     }
   }
 
   /** Trace events, at debug level. */
   class TraceHandler extends lawspec.abilities.lawspec.Logging.Trace {
-    override def traceEvent(value0: java.lang.String): scala.Unit =
-      logger.log(java.lang.System.Logger.Level.DEBUG, s"trace: $value0")
+    override def traceEvent(event: java.lang.String): scala.Unit =
+      logger.log(java.lang.System.Logger.Level.DEBUG, s"trace: $event")
   }
 }

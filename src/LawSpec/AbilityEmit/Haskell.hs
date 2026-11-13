@@ -146,7 +146,7 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
     attempts a = forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a
                       , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ] $ \(op, ty, failing, failure) -> do
       let (args, result) = C.functionType ty
-          values = H.uniqueValues (length args)
+          values = operationNames a op
           name = "try" ++ capitalize (fieldName a op)
       types <- mapM nativeType args
       resultType <- nativeType result
@@ -166,7 +166,7 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
     recording a = do
       fields <- mapM (\(op, ty) -> do
         let (args, _) = C.functionType ty
-            values = H.uniqueValues (length args)
+            values = operationNames a op
         codecs <- mapM codec args
         let logged = call "LS.runClause" [call "P.sequence" [H.List [call "Codec.encode" [c, var v] | (c, v) <- zip codecs values]]]
             steps = H.Do
@@ -181,6 +181,16 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
         , H.declaration (name ++ " symbols inner") (H.Do
             [ Bind "calls" (var "LS.newCalls")
             , Run (call "P.pure" [H.Tuple [H.Record (interfaceName a) fields, var "calls"]]) ]) ])
+
+-- An operation's values where a generated function passes them on, named
+-- as the operation declares or from their types (LawSpec.Naming), clear of
+-- the function's own names and of the ability's fields.
+-- ref:DEC-generated-parameter-names
+operationNames :: C.Ability -> String -> [String]
+operationNames a op = take (length args) (parameterNames "haskell"
+  (words "handler failing outcome result failure ability value inner logged calls symbols schema machineBits" ++
+   [fieldName a o | (o, _) <- C.abilityOperations a]) "value" (C.operationParameters a op) args)
+  where args = maybe [] (fst . C.functionType) (lookup op (C.abilityOperations a))
 
 -- The user-owned production handler of each ability, in the unit's adapter
 -- module: gatewayHandler :: IO Gateway is what the tests use.

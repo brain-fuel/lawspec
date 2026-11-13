@@ -253,9 +253,13 @@ emitLayoutBranch env@(declarations,_) parameters declaration binding outward can
 
 -- | A bound adapter calls the user's function directly, converting arguments in
 -- and the result out. ref:DEC-native-bindings-typed-identity
-emitCall :: Int -> [C.DataDeclaration] -> BindingPlan -> [String] -> C.Declaration -> NativeCall -> Either String D.Doc
-emitCall bits declarations plan handlers declaration native = do
+emitCall :: Int -> [C.DataDeclaration] -> BindingPlan -> [String] -> [String] -> C.Declaration -> NativeCall -> Either String D.Doc
+emitCall bits declarations plan handlers parameters declaration native = do
   let env = environment declarations plan
+      -- The adapter's parameters, as its signature names them.
+      parameter index = case drop index parameters of
+        name : _ -> name
+        [] -> "value" ++ show index
       (arguments,result) = C.functionType (C.declarationType declaration)
       context = C.idText (C.declarationId declaration)
       indexed = zip [0::Int ..] arguments
@@ -284,9 +288,9 @@ emitCall bits declarations plan handlers declaration native = do
               D.text ".unwrap_or_else(|error| panic!(\"{}: {}\", "<>
               E.stringLiteral ("native binding "++context++" "++label)<>D.text ", error))")
   checkedArguments<-forM indexed $ \(index,ty)->if not (reachesLayout [] ty) then pure [] else do
-    value<-checked ("argument "++show index) ty (D.text ("value"++show index))
+    value<-checked ("argument "++show index) ty (D.text (parameter index))
     canonical<-canonicalType env [] ty
-    pure [D.text ("let value"++show index++": "++canonical++" = ")<>value<>D.text ";"]
+    pure [D.text ("let "++parameter index++": "++canonical++" = ")<>value<>D.text ";"]
   -- The native function, and the adapter's arguments it takes.
   (receiving, target, passed) <- case native of
     StaticCall reference -> (\destination -> ([], D.text destination, indexed)) <$> rustReference reference
@@ -301,10 +305,10 @@ emitCall bits declarations plan handlers declaration native = do
       receiverType <- rustReference (resolvedNativeType binding)
       method <- rustReference (NativeRef [name])
       -- The handle lends its native value; a method never takes it over.
-      pure ([L.stmt (L.Let ("_native_self: &" ++ receiverType) (L.method (L.method (L.atom ("value" ++ show receiver)) "native" [])
+      pure ([L.stmt (L.Let ("_native_self: &" ++ receiverType) (L.method (L.method (L.atom (parameter receiver)) "native" [])
           "unwrap_or_else" [L.closure "|error|" (L.macroCall "panic" [L.atom "\"{}\"", L.atom "error"])]))],
         D.text ("_native_self." ++ method), [a | a@(i,_) <- indexed, i /= receiver])
-  values <- mapM (\(i,ty) -> convert env [] Nothing True ty (D.text ("value" ++ show i))) passed
+  values <- mapM (\(i,ty) -> convert env [] Nothing True ty (D.text (parameter i))) passed
   types <- mapM (nativeTypeName env [] . snd) passed
   let locals = concat checkedArguments ++ receiving ++ [D.text ("let _native_arg" ++ show i ++ ": " ++ ty ++ " = ") <> value <> D.text ";" |
         ((i,_),(ty,value)) <- zip passed (zip types values)]

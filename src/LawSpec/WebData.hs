@@ -6,7 +6,9 @@ import LawSpec.Memo (newPersistentTableByShow, Table, memoized)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import Control.Monad (unless, forM)
+import Data.Char (isAlphaNum, isAscii, isDigit)
 import Data.List (intercalate, isPrefixOf)
+import LawSpec.TargetNames (targetKeywords)
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
@@ -123,9 +125,15 @@ emitWebDataWithProfile ts bits layout declarations = do
          [E.Field (["readonly" | ts]) (key field) (if ts then Just ty else Nothing) Nothing | (field,ty) <- fields] ++
          [E.MemberBlank | not (null fields) || ts] ++
          [E.Method False False "method" "constructor"
-           [(E.param ("value" ++ show i)) { E.paramType = if ts then Just ty else Nothing } | (i,(_,ty)) <- zip [0::Int ..] fields] Nothing
-           ([E.ExprStmt (E.Assign "=" (E.member E.This field) (E.Ident ("value" ++ show i))) | (i,(field,_)) <- zip [0::Int ..] fields] ++
+           [(E.param argument) { E.paramType = if ts then Just ty else Nothing } | (argument,(_,ty)) <- zip arguments fields] Nothing
+           ([E.ExprStmt (E.Assign "=" (E.member E.This field) (E.Ident argument)) | (argument,(field,_)) <- zip arguments fields] ++
             [E.ExprStmt (E.call "Object.freeze" [E.This])])])]
+      where
+        -- A constructor's parameter takes its field's name where that is a
+        -- plain identifier (publicKey, value), and its position otherwise.
+        arguments = [if plain field then field else "value" ++ show i | (i,(field,_)) <- zip [0::Int ..] fields]
+        plain field = not (null field) && all (\c -> isAscii c && (isAlphaNum c || c == '_')) field && not (any isDigit (take 1 field)) &&
+          field `notElem` (["arguments", "eval", "constructor", "__proto__"] ++ targetKeywords "typescript" ++ parameters)
     key name = if name `elem` ["constructor","__proto__"] then "[" ++ q name ++ "]" else name
     builtins =
       [alias "Maybe" ["T"] [E.TRef "Absent" [E.TRef "T" []], E.TRef "Present" [E.TRef "T" []]]] ++

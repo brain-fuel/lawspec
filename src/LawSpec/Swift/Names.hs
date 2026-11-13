@@ -165,7 +165,7 @@ parameterName i = "value" ++ show i
 -- clear of the names given and of generated code's own locals.
 -- ref:DEC-generated-parameter-names
 operationParameterNames :: C.Ability -> String -> [C.Type] -> [String]
-operationParameterNames a op = N.parameterNamesWith N.Camel escape reservedLocals "value" (C.operationParameters a op)
+operationParameterNames a op = N.parameterNamesWith N.Camel escape (reservedLocals ++ words "current arguments box failure") "value" (C.operationParameters a op)
 
 parameterNames :: [String] -> C.Declaration -> [String]
 parameterNames taken d = N.parameterNamesWith N.Camel escape (taken ++ reservedLocals) "value"

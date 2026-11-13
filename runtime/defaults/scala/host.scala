@@ -13,12 +13,12 @@ object Host {
   /** Files by path; a relative path is from the working directory. */
   class FileSystemHandler extends lawspec.abilities.lawspec.Host.FileSystem {
     override def readBytes(
-        value0: java.lang.String
+        path: java.lang.String
     ): scala.Option[scala.IArray[scala.Byte]] =
       try
         Some(
           IArray.unsafeFromArray(
-            java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0))
+            java.nio.file.Files.readAllBytes(java.nio.file.Path.of(path))
           )
         )
       catch {
@@ -27,53 +27,53 @@ object Host {
       }
 
     override def writeBytes(
-        value0: java.lang.String,
-        value1: scala.IArray[scala.Byte]
+        path: java.lang.String,
+        contents: scala.IArray[scala.Byte]
     ): scala.Unit = {
-      java.nio.file.Files.write(java.nio.file.Path.of(value0), bytes(value1))
+      java.nio.file.Files.write(java.nio.file.Path.of(path), bytes(contents))
       ()
     }
 
-    override def createDirectories(value0: java.lang.String): scala.Unit = {
-      java.nio.file.Files.createDirectories(java.nio.file.Path.of(value0))
+    override def createDirectories(path: java.lang.String): scala.Unit = {
+      java.nio.file.Files.createDirectories(java.nio.file.Path.of(path))
       ()
     }
 
-    override def pathExists(value0: java.lang.String): scala.Boolean =
+    override def pathExists(path: java.lang.String): scala.Boolean =
       try
         java.nio.file.Files.exists(
-          java.nio.file.Path.of(value0),
+          java.nio.file.Path.of(path),
           java.nio.file.LinkOption.NOFOLLOW_LINKS
         )
       catch { case _: RuntimeException => false }
 
-    override def removePath(value0: java.lang.String): scala.Unit = {
-      val path = java.nio.file.Path.of(value0)
+    override def removePath(path: java.lang.String): scala.Unit = {
+      val target = java.nio.file.Path.of(path)
       if (
         java.nio.file.Files.isDirectory(
-          path,
+          target,
           java.nio.file.LinkOption.NOFOLLOW_LINKS
         )
       ) {
-        val walk = java.nio.file.Files.walk(path)
+        val walk = java.nio.file.Files.walk(target)
         try
           walk
             .sorted(java.util.Comparator.reverseOrder())
             .forEach(p => java.nio.file.Files.deleteIfExists(p))
         finally walk.close()
       } else {
-        java.nio.file.Files.deleteIfExists(path)
+        java.nio.file.Files.deleteIfExists(target)
         ()
       }
     }
 
     override def temporaryDirectory(
-        value0: java.lang.String
+        prefix: java.lang.String
     ): java.lang.String =
-      java.nio.file.Files.createTempDirectory(value0).toString
+      java.nio.file.Files.createTempDirectory(prefix).toString
 
-    override def temporaryFile(value0: java.lang.String): java.lang.String =
-      java.nio.file.Files.createTempFile(value0, "").toString
+    override def temporaryFile(prefix: java.lang.String): java.lang.String =
+      java.nio.file.Files.createTempFile(prefix, "").toString
   }
 
   def validName(name: String): Boolean =
@@ -82,15 +82,15 @@ object Host {
   /** The process's environment. */
   class EnvironmentHandler extends lawspec.abilities.lawspec.Host.Environment {
     override def environmentVariable(
-        value0: java.lang.String
+        name: java.lang.String
     ): scala.Option[java.lang.String] =
-      if (validName(value0)) Option(java.lang.System.getenv(value0)) else None
+      if (validName(name)) Option(java.lang.System.getenv(name)) else None
 
     override def environmentSnapshot(): java.lang.String =
       LawSpecRuntime.acquireResource("environment")
 
-    override def restoreEnvironment(value0: java.lang.String): scala.Unit =
-      LawSpecRuntime.releaseResource("environment", value0)
+    override def restoreEnvironment(snapshot: java.lang.String): scala.Unit =
+      LawSpecRuntime.releaseResource("environment", snapshot)
   }
 
   /** A TCP port on 127.0.0.1 the operating system reports free. */

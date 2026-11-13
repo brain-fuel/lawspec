@@ -32,7 +32,7 @@ import qualified LawSpec.Code.Doc as Doc
 import Data.Char (isAlphaNum, isAscii, isUpper, toLower)
 import Data.List (intercalate, find, nub, sortOn, stripPrefix, tails)
 import Data.Maybe (mapMaybe)
-import LawSpec.Naming (NameKind(..), nativeIdentifier, claim, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword, declarationParameterNames)
+import LawSpec.Naming (NameKind(..), nativeIdentifier, claim, claimAll, scopeWith, exampleTestSuffix, boundaryTestSuffix, displayLabel, escapeKeyword, declarationParameterNames, operationParameterNames)
 import LawSpec.SourceLink (sourceLink, locationLink, exampleLocation, labelled, generatedHeader, unitSourceFile)
 import LawSpec.RustExpr (mentions, unusedAs)
 import qualified LawSpec.RustLayout as RL
@@ -290,10 +290,11 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
         let (args, result) = functionType ty
         types <- mapM (NativeData.rustDataType planDataDeclarations) args
         resultType <- NativeData.rustDataType planDataDeclarations result
-        converted <- sequence [RB.convertExpression planDataDeclarations bindings True t (Doc.text ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
+        let named = operationParameterNames "rust" (words "self native_result") "value" a op
+        converted <- sequence [RB.convertExpression planDataDeclarations bindings True t (Doc.text v) | (v, t) <- zip named args]
         back <- RB.convertExpression planDataDeclarations bindings False result (Doc.text "native_result")
         pure (RL.function ("fn " ++ op)
-          ("&self" : ["value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types]) resultType
+          ("&self" : [v ++ ": " ++ t | (v, t) <- zip named types]) resultType
           (statements [Doc.text "let native_result = self.inner." <> Doc.text op <> Doc.delimitTrailing 4 "(" ")" converted <> Doc.text ";", back]))
       pure (Doc.text ("/// The bound production handler of " ++ abilityName a ++ ", " ++ native ++ ", as the generated trait.") <> Doc.hardline <>
         Doc.text ("pub struct " ++ name) <> Doc.hardline <> block (Doc.text ("inner: " ++ native ++ ",")) <> Doc.hardline <> Doc.hardline <>
@@ -561,14 +562,14 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               [Doc.text (parameter ++ ": " ++ t) | (parameter,t) <- zip parameters argTypes]
             -- Its own parameters take the names its signature declares, or
             -- ones made from their types (LawSpec.Naming).
-            parameters = declarationParameterNames "rust" [handlerName ability | ability <- declarationUses d, not (isFail ability)] "value" d
+            parameters = declarationParameterNames "rust" ([handlerName ability | ability <- declarationUses d, not (isFail ability)] ++ words "error schema") "value" d
             handlerName ability = case [interfaceName a | Just (_, a) <- [findAbility allUnits ability]] of
               n : _ -> nativeIdentifier "rust" ValueName n
               [] -> "handler"
             signature = (if declarationAsync d then "pub async fn " else "pub fn ") ++ declarationName d
         body <- case nativeCall d of
           Nothing -> pure (invoke "todo!" [string (idText (declarationId d))])
-          Just native -> RB.emitCall planMachineBits planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] d native
+          Just native -> RB.emitCall planMachineBits planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] parameters d native
         -- The adapter keeps its declaration's name, which Rust's lint may
         -- not call snake case.
         pure (Doc.lineComment 100 "// " (labelled (declarationName d) (sourceLink (declarationOrigin d))) <>
@@ -583,7 +584,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             -- contract names them.
             argumentNames = case contract of
               Just c | length (contractArguments c) == length args -> Expression.sourceLocals [] (contractArguments c)
-              _ -> ["value" ++ show i | i <- [0 .. length args - 1]]
+              _ -> take (length args) (declarationParameterNames "rust" Expression.reservedLocals "value" d)
             names = case contract of
               Nothing -> []
               Just c -> zip (map binderId (contractArguments c)) argumentNames ++ [(binderId (contractResult c),"result")]
