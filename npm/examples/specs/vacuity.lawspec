@@ -1,0 +1,78 @@
+unit example.vacuity
+
+-- Laws whose claim sits behind a guard. A generated case that fails the guard
+-- says nothing about the claim, so each law's tests count the cases that
+-- reach it (see docs/reference/refinements.md, "Guards and reach").
+
+type Proposal is a record{
+
+    code :: Text
+    amount :: Int32}
+end type
+
+type Kind is one of | Short | Long end type
+
+type Stage is a record{
+
+    token :: Text
+    meaning :: Text}
+end type
+
+mapping stagesOf of type Kind -> List Stage is
+  row Short, [Stage record{ token = "A" , meaning = "Act"}]
+  row Long, [Stage record{ token = "P" , meaning = "Plan"}, Stage record{ token = "D" , meaning = "Do"}]
+end mapping
+
+shout :: (name :: Text) -> Text
+abbreviate :: (stage :: Stage) -> Text
+accepts :: (offer :: Proposal) -> Bool
+describe :: (offer :: Proposal) -> Text
+keep :: (key :: Text) -> Text
+
+-- A regex guard on a quantified input: the compiler reads the guard and
+-- draws texts it matches, so generated cases reach the claim.
+law "|a guarded name keeps its length| is
+  definition :
+    for all (name :: Text) =>
+      name matches regex "[A-Za-z]{2,40}" implies prelude.length (shout name) = prelude.length name
+    end for all
+  end definition
+end law
+
+-- A guard that calls an adapter: the compiler cannot see what it accepts, and
+-- no random record satisfies it. Only the example reaches the claim, so the
+-- generated tests are reported vacuous.
+law "|an accepted offer is described by its code| is
+  definition :
+    for all (offer :: Proposal) => accepts offer implies describe offer = offer.code end for all
+  end definition
+  example "|a well-formed offer| :
+    offer = Proposal record{ code = "OFFER-2026-AB" , amount = 5}
+    expect describe offer = "OFFER-2026-AB"
+  end example
+end law
+
+-- A literal list as a refinement is the input's domain.
+law "|a listed key is kept| is
+  definition :
+    for all (key :: Text where key in ["a", "b", "c"]) => keep key = key end for all
+  end definition
+end law
+
+-- Membership in a list computed from an earlier input: the stages of each
+-- kind are the whole domain, so the law is checked on every pair.
+law "|a stage is abbreviated by its token| is
+  definition :
+    for all (kind :: Kind) (stage :: Stage where stage in stagesOf kind) =>
+      abbreviate stage = stage.token
+    end for all
+  end definition
+end law
+
+-- The same list as a guard seeds generation with its members.
+law "|a guarded key is kept| is
+  definition :
+    for all (key :: Text) => key in ["north", "south"] implies keep key = key end for all
+  end definition
+end law
+end unit

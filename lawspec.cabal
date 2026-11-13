@@ -943,6 +943,7 @@ library
       LawSpec.Swift.Sessions
       LawSpec.SwiftSources
       LawSpec.TargetNames
+      LawSpec.TargetOptions
       LawSpec.Targets
       LawSpec.Temporal
       LawSpec.Testing
@@ -1229,6 +1230,7 @@ test-suite lawspec-test
       StructuralSpec
       SwiftReadableSpec
       TargetNamesSpec
+      TargetOptionsSpec
       TemporalSpec
       TestManifestSpec
       TimeSpec

@@ -10,6 +10,7 @@ lawspec fmt [paths...] [--check] [--compile] [--json] [--config <path>]
 lawspec lsp --stdio
 lawspec mcp [--config <path>]
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--no-install] [--config <path>]
+lawspec init --target java [--release <21|25>] [--generated-source-dir <directory>] [--generated-test-dir <directory>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--timings] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -206,6 +207,11 @@ Creates or extends a project configuration.
   file. Default: the configuration file's directory.
 - `--machine-bits <32|64>`: write `machineBits` into the configuration.
 - `--minify`: write compact scaffolds and an EDN configuration.
+- `--release <21|25>`, `--generated-source-dir <directory>` and
+  `--generated-test-dir <directory>`, with `--target java` only: write the
+  target's [`release`](configuration.md#java-release) and
+  [generated directories](configuration.md#generated-directories) into the
+  configuration. A new scaffold compiles at that release.
 
 When there is no configuration file, `init` creates `lawspec.edn` with
 `sources: ["laws"]` and a starter specification `laws/atoi_codec.lawspec`. It
@@ -221,6 +227,11 @@ If the target root has no build files (such as `pom.xml`, `pyproject.toml`,
 `Cargo.toml` or Gradle files), `init` creates the target's scaffold. Otherwise
 it leaves the build alone. Either way it prints the target's setup instructions.
 It never overwrites a file.
+
+For a Java target with generated directories, given as options or already in
+the configuration, `init` also prints what registers them in the build: the
+`build-helper-maven-plugin` executions for Maven and the `sourceSets` lines for
+Gradle. It prints them and does not edit the build file.
 
 ## `check`
 

@@ -35,8 +35,10 @@ import qualified LawSpec.Targets as Targets
 import LawSpec.Collections (collectionsSource)
 import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
-import LawSpec.Scaffold (PresentationCheck(..), prepareCommands, presentationChecks, rapidMinimum, rapidMaximum, scaffoldFiles, scaffoldRequirements, scaffoldTargets, setupAdvice, testCommand)
+import LawSpec.Scaffold (PresentationCheck(..), prepareCommands, presentationChecks, rapidMinimum, rapidMaximum, scaffoldFiles, scaffoldFilesForRelease, generatedRootsAdvice, scaffoldRequirements, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
+import LawSpec.TargetOptions (defaultJavaRelease, javaReleases)
+import LawSpec.ActorRuntime (defaultActorSettings)
 import qualified LawSpec.PreludeNames as PreludeNames
 import qualified LawSpec.Scalar as Scalar
 import qualified LawSpec.Collections as Collections
@@ -332,10 +334,32 @@ factFills version =
   , ("scaffolds", Inline (json (Object
       [ (t, Object [(layout, Object [(path, String content) | (path, content) <- files]) | (layout, minify) <- [("readable", False), ("compact", True)], Right files <- [scaffoldFiles minify t]])
       | t <- scaffoldTargets ])))
+  , ("java-releases", Inline (json (Array (map (Number . fromIntegral) javaReleases))))
+  , ("java-default-release", Inline (json (Number (fromIntegral defaultJavaRelease))))
+  -- The Java build file at each release other than the default.
+  , ("java-release-scaffolds", Inline (json (Object
+      [ (show release, Object [(layout, Object [(path, String content) | (path, content) <- files])
+          | (layout, minify) <- [("readable", False), ("compact", True)]
+          , Right files <- [scaffoldFilesForRelease release defaultActorSettings False minify "java"]])
+      | release <- javaReleases, release /= defaultJavaRelease ])))
+  -- The build registration of generated directories, for each combination a
+  -- target can set. The host fills in the two directory names.
+  , ("generated-roots-advice", Inline (json (Object
+      [ ("both", String (generatedRootsAdvice (Just generatedSourceHole) (Just generatedTestHole)))
+      , ("source", String (generatedRootsAdvice (Just generatedSourceHole) Nothing))
+      , ("test", String (generatedRootsAdvice Nothing (Just generatedTestHole))) ])))
+  , ("generated-source-hole", Inline (jsonString generatedSourceHole))
+  , ("generated-test-hole", Inline (jsonString generatedTestHole))
   , ("package-files", Inline (json (Array (map String shippedFiles))))
   , ("package-documents", Inline (json (Array [String f | f <- shippedFiles, ".md" `isSuffixOf` f || f `elem` ["LICENSE","UNICODE-LICENSE.txt","NORMALIZATION-LICENSES.txt"]])))
   , ("copy-documents", Inline (jsonString copyDocuments))
   , ("hpack-version", Inline (jsonString "0.38.1")) ]
+
+-- | Stand-ins for a target's generated directories in the advice the host
+-- prints; a directory name cannot contain them.
+generatedSourceHole, generatedTestHole :: String
+generatedSourceHole = "@@generated-source-dir@@"
+generatedTestHole = "@@generated-test-dir@@"
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]

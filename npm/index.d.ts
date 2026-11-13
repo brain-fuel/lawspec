@@ -1037,6 +1037,9 @@ export interface GenerationRequest extends CheckRequest
   target: Target;
   sourceDir?: string;
   testDir?: string;
+  generatedSourceDir?: string;
+  generatedTestDir?: string;
+  release?: 21 | 25;
   minify?: boolean;
   actors?: {runtime?: 'lawspec' | 'pekko' | 'spring'; remote?: 'cluster'};
 }

@@ -31,6 +31,8 @@ shows how to do it.
 - [Bind native types and functions](bind-native-types.md)
 - [Write custom codecs and generators](custom-codecs-and-generators.md)
 - [Embed a generated model](embed-a-generated-model.md)
+- [Add LawSpec to a Spring Boot service](spring-boot.md): a separate Maven
+  project on the application's jar, Java release and BOMs
 - [Check Pekko actors with LawSpec](check-pekko-actors.md), with
   apache/pekko-samples as worked examples
 

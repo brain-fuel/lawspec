@@ -96,6 +96,9 @@ generated files; `test-dir` and native bindings are rejected.
 | `root` | all | The target's project root. Each target needs its own root. |
 | `source-dir` | all | Source directory, relative to the root. |
 | `test-dir` | all | Test directory, relative to the root. |
+| `generated-source-dir` | `java` | Where generated source goes, relative to the root. Adapters stay in `source-dir`. See [generated directories](#generated-directories). |
+| `generated-test-dir` | `java` | Where generated tests and test support go, relative to the root. Generator factories stay in `test-dir`. |
+| `release` | `java` | The Java release generated code compiles at: `21` or `25`. Default `25`. See [Java release](#java-release). |
 | `python` | `python`, `prolog` | Interpreter command. Default `python3`. |
 | `maven` | `java` | Maven command. Default `mvn`. |
 | `gradle` | `kotlin` | Gradle command. Default: `gradlew` in the root, otherwise `gradle`. |
@@ -112,6 +115,51 @@ Default directories:
 | `python`, `rust`, `prolog` | `src` | `tests` |
 | `javascript`, `typescript`, `haskell` | `src` | `test` |
 | `go` | the root | the root |
+
+### Generated directories
+
+By default a target's generated files and your adapters share `source-dir`,
+and generated tests and your generator factories share `test-dir`. A Java
+target can send the generated files elsewhere, for a build that does not commit
+generated source:
+
+```edn
+{
+  :language :java
+  :root "java"
+  :generated-source-dir "target/generated-sources/lawspec"
+  :generated-test-dir "target/generated-test-sources/lawspec"
+}
+```
+
+Files are placed by ownership. Every generated file under `source-dir` goes to
+`generated-source-dir` at the same package path. Every generated file under
+`test-dir` goes to `generated-test-dir`, and so does the JUnit configuration a
+[harness](language/harness.md) generates (`junit-platform.properties`, by
+default in `src/test/resources`). Adapters and generator factories, which are
+yours, stay in `source-dir` and `test-dir`. Either field may be set without the
+other.
+
+Each directory is a relative path without `..`, separate from the other and
+from `source-dir` and `test-dir`: none may equal or contain another. The fields
+are rejected on every target but `java`.
+
+The build must compile the generated directories. `lawspec init` prints the
+`build-helper-maven-plugin` executions and the Gradle `sourceSets` lines that
+register them, and `doctor` checks that a Maven build has them. A clean
+checkout has no generated files: run `lawspec generate` before the build
+compiles. Generating again after the directories were deleted writes the same
+bytes, which `.lawspec/generated.json` records by hash; see
+[ownership and regeneration](../explanation/ownership-and-regeneration.md#generated-directories).
+
+### Java release
+
+`:release 21` on a Java target makes `init` scaffold a build at release 21 and
+makes `doctor` require that release of the build. The generated code and
+runtime are the same at both releases. Two units are not: `lawspec.crypto` and
+`lawspec.network` call the JDK's ML-KEM and ML-DSA, which arrived in Java 24.
+Generating a program that imports either at release 21 stops with a `release`
+diagnostic that names the unit. See [compatibility](compatibility.md#java-release-21).
 
 ### Actor runtimes
 

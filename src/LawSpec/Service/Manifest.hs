@@ -67,7 +67,7 @@ strings at values = [at ++ " must contain nonempty strings" | any (not . nonempt
 
 target :: Int -> Field Target -> [String]
 target index (Present value) =
-  unknown at ["name", "language", "root", "sourceDir", "testDir", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings", "actors"] (targetKeys value)
+  unknown at ["name", "language", "root", "sourceDir", "testDir", "generatedSourceDir", "generatedTestDir", "release", "python", "maven", "gradle", "rustc", "cargo", "scala", "swift", "clojure", "dotnet", "nativeBindings", "actors"] (targetKeys value)
     ++ [at ++ ".language is unsupported" | targetLanguage value `notElem` map Present targets]
     ++ [at ++ ".root must be a nonempty path" | not (nonempty (targetRoot value))]
     ++ actors (targetActors value)

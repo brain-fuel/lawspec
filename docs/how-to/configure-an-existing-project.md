@@ -99,6 +99,12 @@ must be the same, because Go tests live beside the package they test. Configure
 your build so it compiles and discovers those directories before you generate;
 `doctor` checks that it does.
 
+A Java build that keeps generated code out of version control can send the
+generated files to directories of their own, such as
+`target/generated-sources/lawspec`, while your adapters stay in `sourceDir`;
+see [generated directories](../reference/configuration.md#generated-directories)
+and [Add LawSpec to a Spring Boot service](spring-boot.md).
+
 ## Select the build tools
 
 Some targets accept the command to run:

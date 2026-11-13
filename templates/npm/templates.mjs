@@ -20,8 +20,32 @@ export const requirements = /*@ requirements @*/;
 // Each target's build files in the readable and the compact (minified) layout.
 const scaffolds = /*@ scaffolds @*/;
 
-export function templates(target, { minify = false } = {}) {
+// The Java releases generated code compiles at (lawspec.edn's :release), and
+// the Java build file at each release other than the default.
+export const javaReleases = /*@ java-releases @*/;
+export const defaultJavaRelease = /*@ java-default-release @*/;
+const javaReleaseScaffolds = /*@ java-release-scaffolds @*/;
+
+export function templates(target, { minify = false, release } = {}) {
   if (typeof minify !== "boolean") throw new Error("minify must be a boolean");
   if (!targets.includes(target)) throw new Error(`Unknown target: ${target}`);
-  return { ...scaffolds[target][minify ? "compact" : "readable"] };
+  const layout = minify ? "compact" : "readable";
+  if (release === undefined || (target === "java" && release === defaultJavaRelease))
+    return { ...scaffolds[target][layout] };
+  if (target !== "java") throw new Error("release is supported by the java target only");
+  if (!javaReleases.includes(release))
+    throw new Error(`release ${release} is not supported for java; choose ${javaReleases.join(" or ")}`);
+  return { ...javaReleaseScaffolds[release][layout] };
+}
+
+// What a Java build needs so that it compiles a target's generated
+// directories. The text is LawSpec.Scaffold's; only the names are filled in.
+const generatedRoots = /*@ generated-roots-advice @*/;
+
+export function generatedRootsAdvice(target) {
+  const source = target.generatedSourceDir, test = target.generatedTestDir;
+  if (source === undefined && test === undefined) return "";
+  return generatedRoots[source === undefined ? "test" : test === undefined ? "source" : "both"]
+    .replaceAll(/*@ generated-source-hole @*/, source)
+    .replaceAll(/*@ generated-test-hole @*/, test);
 }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, readFile, writeFile, rm, symlink} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {planWrites, applyWrites, readOptional} from '../files.mjs';
+import {planWrites, applyWrites, readOptional, digest} from '../files.mjs';
 const artifacts = [
   {path: 'src/adapter.py', content: 'user stub\n', ownership: 'user'},
   {path: 'tests/test_law.py', content: 'generated\n', ownership: 'generated'},
@@ -85,6 +85,75 @@ test('concurrent edits abort all planned writes', async t =>
     await readFile(path.join(p, 'tests/test_law.py'), 'utf8'),
     'concurrent edit\n',
   );
+});
+// A build that never commits generated source cleans the generated
+// directories away; generating again must restore exactly what was there,
+// and never touch the adapters beside them.
+test('a cleaned generated tree is reproduced byte for byte', async t =>
+{
+  const generated = [
+    {
+      path: 'src/main/java/example/SuccessorAdapter.java',
+      content: 'class SuccessorAdapter {}\n',
+      ownership: 'user',
+    },
+    {
+      path: 'target/generated-sources/lawspec/lawspec/runtime/LawSpecRuntime.java',
+      content: 'final class LawSpecRuntime {}\r\n// caf\u00e9\n',
+      ownership: 'generated',
+    },
+    {
+      path: 'target/generated-test-sources/lawspec/example/SuccessorLawSpecTest.java',
+      content: 'class SuccessorLawSpecTest {}\n',
+      ownership: 'generated',
+    },
+    {
+      path: 'target/generated-test-sources/lawspec/junit-platform.properties',
+      content: 'junit.jupiter.execution.parallel.enabled=true\n',
+      ownership: 'generated',
+    },
+  ];
+  const owned = generated.filter(a => a.ownership === 'generated');
+  const tree = p => Promise.all(owned.map(a => readFile(path.join(p, a.path))));
+  const manifestOf = p =>
+    readFile(path.join(p, '.lawspec/generated.json'), 'utf8');
+  for (const committed of [true, false])
+  {
+    const p = await project(t);
+    await applyWrites([await planWrites(p, generated)]);
+    const adapter = path.join(p, generated[0].path);
+    await writeFile(adapter, 'class SuccessorAdapter { /* mine */ }\n');
+    const before = await tree(p);
+    const manifest = await manifestOf(p);
+    // mvn clean, and a checkout that does not commit the ownership record.
+    await rm(path.join(p, 'target'), {recursive: true});
+    if (!committed) await rm(path.join(p, '.lawspec'), {recursive: true});
+    const plan = await planWrites(p, generated);
+    assert.deepEqual(
+      plan.changes.map(c => [c.action, c.relative]).sort(),
+      [
+        ...owned.map(a => ['create', a.path]),
+        ...(committed ? [] : [['create', '.lawspec/generated.json']]),
+      ].sort(),
+    );
+    assert.deepEqual(plan.preserved, [generated[0].path]);
+    await applyWrites([plan]);
+    const after = await tree(p);
+    for (const [i, bytes] of after.entries())
+    {
+      assert.ok(bytes.equals(before[i]), owned[i].path);
+      assert.equal(
+        digest(bytes.toString('utf8')),
+        JSON.parse(manifest).files[owned[i].path],
+      );
+    }
+    assert.equal(await manifestOf(p), manifest);
+    assert.equal(
+      await readFile(adapter, 'utf8'),
+      'class SuccessorAdapter { /* mine */ }\n',
+    );
+    assert.equal((await planWrites(p, generated)).changes.length, 0);
+  }
 });
 test('path traversal and symlink output paths are refused', async t =>
 {
