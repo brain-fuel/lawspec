@@ -169,6 +169,8 @@ test_guardsDirectGenerationAndAreReported = describe "guards of a law's claim" $
         map adviceRule (advice "accepted offer") `shouldBe` ["adapter-guard"]
         map adviceInput (advice "accepted offer") `shouldBe` ["offer"]
         advice "accepted offer" `shouldSatisfy` all (("use accepted for offer" `isInfixOf`) . adviceSuggestion)
+        -- The type is written as the author writes it, not by its Core name.
+        advice "accepted offer" `shouldSatisfy` all (("strategy accepted :: Offer is" `isInfixOf`) . adviceSuggestion)
         advice "guarded name" `shouldSatisfy` all ((== "vacuous-guard") . adviceRule)
         advice "listed key" `shouldBe` []
   it "names vacuous among the statuses, after flaky" $ do

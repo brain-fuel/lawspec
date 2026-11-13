@@ -204,8 +204,9 @@ guardAdvice adapter law = nub (concatMap input (propertyInputs law) ++ adapters)
       Constant (SInteger _ n) -> Just (show n)
       Constant (SBool b) -> Just (if b then "true" else "false")
       _ -> Nothing
+    -- A declared type is named unit::type::Name in Core; the author writes Name.
     typeText ty = case ty of
-      Constructor name [] -> name
+      Constructor name [] -> reverse (takeWhile (/= ':') (reverse name))
       _ -> "T"
 
 -- | A text as a LawSpec string literal.
