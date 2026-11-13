@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Calendar dates: the built-in unit `lawspec.calendar`, with `Date` (days
+  since 1970-01-01, from 0001-01-01 to 9999-12-31), `Weekday` and `CivilDate`,
+  and `dateOf`, `dateFromDays`, `civilOf`, `weekdayOf`, `weekdayNumber`,
+  `addDays`, `daysBetween`, `isLeapYear`, `daysInMonth` and `daysFromCivil` as
+  checked definitions on every target. Z3 proves its laws, and the `calendar`
+  acceptance suite runs them (DEC-calendar-date). Time zones are not included.
+
 ## [0.33.0] - 2026-11-11
 
 ### Added

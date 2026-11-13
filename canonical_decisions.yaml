@@ -2012,3 +2012,16 @@ DEC-init-prepares-project:
   opened: 0.33.0
   decided: 0.33.0
   refs: []
+
+DEC-calendar-date:
+  status: decided
+  question: Specs with deadlines, reviews and daily occurrences need calendar dates that mean the same on every target. What is a date in LawSpec, and what is trusted?
+  answer: |
+    A built-in unit, lawspec.calendar, added to a program that imports it (as lawspec.network is). Date is a wrapper over Integer: days since 1970-01-01 in the proleptic Gregorian calendar, from -719162 (0001-01-01) to 2932896 (9999-12-31). Weekday is a seven-constructor data type and CivilDate a record of year, month and day. dateOf, dateFromDays, civilOf, weekdayOf, weekdayNumber, addDays, daysBetween, isLeapYear, daysInMonth and daysFromCivil are checked LawSpec definitions, so every target gets the same generated code and no target's date library is called. Operations that can leave the range return Maybe rather than fail, so user definitions stay total without range proofs. Date is not mapped to a native date type in this decision; a later one may map it, as Duration is mapped.
+
+    Precedent. The day count from 1970-01-01 is java.time's epoch day (LocalDate.ofEpochDay) and C++20's sys_days (java-time-localdate, hinnant-date-algorithms). The conversions are Hinnant's days_from_civil and civil_from_days, which shift the year to start in March so the leap day is last and use 400-year eras of 146097 days; his paper gives the derivation and an exhaustive test over millions of years. They need floor division for negative years; LawSpec's prelude.quot rounds toward zero, and the two agree here because, with years from 1, every dividend is non-negative (the shifted year is at least 0, and days + 719468 is at least 306). The range is the narrowest native one among LawSpec's targets: Python's datetime.date and .NET's DateOnly both span years 1 to 9999 (python-datetime-date, dotnet-dateonly); java.time, Haskell's Data.Time.Calendar.Day and Lean 4's Std.Time.PlainDate hold more. Lean 4's Std.Time keeps PlainDate in its Date modules, apart from its Zoned modules (lean4-std-time), and ISO 8601 numbers weekdays from Monday as 1, which weekdayNumber follows. Ada.Calendar was not consulted: its reference manual could not be reached when this was written, and Ada is not a target.
+
+    Trust boundary. Nothing bespoke is trusted beyond the compiler and the selected solver: the laws in examples/specs/calendar.lawspec (civil round trip for every date, weekday period, year and month lengths, addDays) are proved by Z3 through the existing obligation generator, without a kernel-checked certificate, and the calendar acceptance suite runs them on every target. Time zones are out of scope here: turning an Instant into a Date needs zone rules, which will be a separate ability with a pinned-snapshot handler and a host handler.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [hinnant-date-algorithms, java-time-localdate, python-datetime-date, dotnet-dateonly, lean4-std-time]

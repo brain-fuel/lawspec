@@ -1023,3 +1023,23 @@ ip-dill-scalarsets:
   kind: paper
   title: "C. Norris Ip and David L. Dill, Better Verification Through Symmetry, Formal Methods in System Design 9, 1996"
   locator: https://doi.org/10.1007/BF00625968
+hinnant-date-algorithms:
+  kind: article
+  title: "Howard Hinnant: chrono-Compatible Low-Level Date Algorithms (days_from_civil, civil_from_days)"
+  locator: https://howardhinnant.github.io/date_algorithms.html
+java-time-localdate:
+  kind: article
+  title: "Java SE 21: java.time.LocalDate (ofEpochDay, MIN, MAX)"
+  locator: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/LocalDate.html
+python-datetime-date:
+  kind: article
+  title: "Python 3.13: datetime.date, MINYEAR and MAXYEAR"
+  locator: https://docs.python.org/3.13/library/datetime.html#date-objects
+dotnet-dateonly:
+  kind: article
+  title: ".NET: System.DateOnly (MinValue, MaxValue, DayNumber)"
+  locator: https://learn.microsoft.com/en-us/dotnet/api/system.dateonly
+lean4-std-time:
+  kind: article
+  title: "Lean 4: Std.Time.Date.PlainDate"
+  locator: https://github.com/leanprover/lean4/blob/master/src/Std/Time/Date/PlainDate.lean
