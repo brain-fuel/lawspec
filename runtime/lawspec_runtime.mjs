@@ -902,6 +902,8 @@ const sequenceHelpers = {
   join: ([separator, parts]) => parts.join(separator),
   split: ([separator, text]) => splitText(separator, text),
   trim: ([text]) => trimText(text),
+  isUnicodeWhitespace: ([text]) => isUnicodeWhitespaceText(text),
+  trimAsciiControl: ([text]) => trimAsciiControlText(text),
   words: ([text]) => wordsOfText(text),
   lines: ([text]) => linesOfText(text),
 };
@@ -937,6 +939,26 @@ function trimText(text)
   while (start < end && isWhiteSpace(points[start].codePointAt(0))) start++;
   while (end > start && isWhiteSpace(points[end - 1].codePointAt(0))) end--;
   return points.slice(start, end).join('');
+}
+
+// Whether every code point is Unicode White_Space; the empty text is.
+function isUnicodeWhitespaceText(text)
+{
+  for (const character of text)
+  {
+    if (!isWhiteSpace(character.codePointAt(0))) return false;
+  }
+  return true;
+}
+
+// The text without the code points up to U+0020 at its two ends.
+function trimAsciiControlText(text)
+{
+  let start = 0;
+  let end = text.length;
+  while (start < end && text.charCodeAt(start) <= 0x20) start++;
+  while (end > start && text.charCodeAt(end - 1) <= 0x20) end--;
+  return text.slice(start, end);
 }
 
 function wordsOfText(text)

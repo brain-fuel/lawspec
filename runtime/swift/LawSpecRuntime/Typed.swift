@@ -146,6 +146,12 @@ public enum Typed {
     PersistentList(Scalar.textSplit(separator, text))
   }
   public static func trim(_ text: String) -> String { Scalar.textTrim(text) }
+  public static func isUnicodeWhitespace(_ text: String) -> Bool {
+    Scalar.textIsUnicodeWhitespace(text)
+  }
+  public static func trimAsciiControl(_ text: String) -> String {
+    Scalar.textTrimAsciiControl(text)
+  }
   public static func words(_ text: String) -> PersistentList<String> {
     PersistentList(Scalar.textWords(text))
   }

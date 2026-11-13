@@ -32,6 +32,8 @@
     join/2,
     split/2,
     trim/1,
+    is_unicode_whitespace/1,
+    trim_ascii_control/1,
     words/1,
     lines/1,
     compare/2,
@@ -135,6 +137,8 @@ join(Separator, Parts) -> iolist_to_binary(lists:join(Separator, Parts)).
 
 split(Separator, Text) -> lawspec_beam_scalar:text_split(Separator, Text).
 trim(Text) -> lawspec_beam_scalar:text_trim(Text).
+is_unicode_whitespace(Text) -> lawspec_beam_scalar:text_is_unicode_whitespace(Text).
+trim_ascii_control(Text) -> lawspec_beam_scalar:text_trim_ascii_control(Text).
 words(Text) -> lawspec_beam_scalar:text_words(Text).
 lines(Text) -> lawspec_beam_scalar:text_lines(Text).
 

@@ -879,6 +879,24 @@ let textTrim (text: string) : string =
 
     text.Substring(first, last - first)
 
+/// Whether every code point is Unicode White_Space; the empty text is.
+[<CompiledName("TextIsUnicodeWhitespace")>]
+let textIsUnicodeWhitespace (text: string) : bool = text |> Seq.forall textWhiteSpace
+
+/// The text without the code points up to U+0020 at its two ends.
+[<CompiledName("TextTrimAsciiControl")>]
+let textTrimAsciiControl (text: string) : string =
+    let mutable first = 0
+    let mutable last = text.Length
+
+    while first < last && text[first] <= '\u0020' do
+        first <- first + 1
+
+    while last > first && text[last - 1] <= '\u0020' do
+        last <- last - 1
+
+    text.Substring(first, last - first)
+
 [<CompiledName("TextWords")>]
 let textWords (text: string) : string list =
     let words = ResizeArray<string>()
@@ -985,6 +1003,8 @@ let helper (name: string) (values: Value list) (types: string list) (bits: int) 
     | "join", [ Text separator; List parts ] -> Text(String.Join(separator, parts |> List.map text))
     | "split", [ Text separator; Text t ] -> List(textSplit separator t |> List.map Text)
     | "trim", [ Text t ] -> Text(textTrim t)
+    | "isUnicodeWhitespace", [ Text t ] -> Bool(textIsUnicodeWhitespace t)
+    | "trimAsciiControl", [ Text t ] -> Text(textTrimAsciiControl t)
     | "words", [ Text t ] -> List(textWords t |> List.map Text)
     | "lines", [ Text t ] -> List(textLines t |> List.map Text)
     | ("quot" | "rem" | "pow"), [ a; b ] -> binary name a b (List.item 0 types) (List.item 1 types)

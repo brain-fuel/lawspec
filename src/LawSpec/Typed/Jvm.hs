@@ -788,6 +788,8 @@ cexpr env scope e
         (sb, b) <- cexpr env scope text
         pure (sa ++ sb, jcall "LawSpecFast.split" [a, b])
       Helper Trim [text] -> one "LawSpecFast.trim" text
+      Helper IsUnicodeWhitespace [text] -> one "LawSpecFast.isUnicodeWhitespace" text
+      Helper TrimAsciiControl [text] -> one "LawSpecFast.trimAsciiControl" text
       Helper Words [text] -> one "LawSpecFast.words" text
       Helper Lines [text] -> one "LawSpecFast.lines" text
       _ -> lift' (Left ("typed Java: unsupported expression " ++ take 80 (show (expressionNode e))))

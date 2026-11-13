@@ -750,6 +750,21 @@ def _text_trim(text):
     return text[start:end]
 
 
+def _text_is_unicode_whitespace(text):
+    """Whether every code point is Unicode White_Space; the empty text is."""
+    return all(ord(character) in _TEXT_WHITE_SPACE for character in text)
+
+
+def _text_trim_ascii_control(text):
+    """The text without the code points up to U+0020 at its two ends."""
+    start, end = 0, len(text)
+    while start < end and ord(text[start]) <= 0x20:
+        start += 1
+    while end > start and ord(text[end - 1]) <= 0x20:
+        end -= 1
+    return text[start:end]
+
+
 def _text_words(text):
     out, word = [], []
     for character in text:
@@ -776,6 +791,8 @@ _SEQUENCE_HELPERS = {
     "join": lambda separator, parts: separator.join(parts),
     "split": lambda separator, text: _text_split(separator, text),
     "trim": lambda text: _text_trim(text),
+    "isUnicodeWhitespace": lambda text: _text_is_unicode_whitespace(text),
+    "trimAsciiControl": lambda text: _text_trim_ascii_control(text),
     "words": lambda text: _text_words(text),
     "lines": lambda text: _text_lines(text),
 }

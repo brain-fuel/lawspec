@@ -53,6 +53,8 @@ end unit
 | `prelude.join separator texts` | a list of texts joined, the separator between each two |
 | `prelude.split separator text` | the pieces of a text between occurrences of the separator, a `List Text` |
 | `prelude.trim text` | the text without white space at its start and end |
+| `prelude.isUnicodeWhitespace text` | whether every code point of the text is white space; true of the empty text |
+| `prelude.trimAsciiControl text` | the text without the code points up to U+0020 at its start and end |
 | `prelude.words text` | the runs of a text without white space, a `List Text` |
 | `prelude.lines text` | the pieces of a text between line feeds, a `List Text` |
 | `prelude.map function items` | the list of `function item` for each item of a list, in order |
@@ -99,8 +101,40 @@ end unit
   property: tab to carriage return, space, U+0085, no-break space, and the
   spaces and separators U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F,
   U+205F and U+3000. Every target uses this set, not its own library's.
-- A proof does not look inside these four: a law about them is evaluated
-  and tested, and a solver result for one is "unsupported".
+- A proof does not look inside these built-ins: a law about them is
+  evaluated and tested, and a solver result for one is "unsupported".
+
+### Modelling a host's trim and blank tests
+
+Two built-ins are named for exactly what they do, for laws about code that
+uses a host's own text functions. Neither is a portable `trim`; `prelude.trim`
+is.
+
+- `prelude.trimAsciiControl text` removes every code point up to U+0020 (the
+  C0 controls and the space) from both ends. That is what Java's
+  `String.trim()` removes. It differs from `prelude.trim`: U+0000 to U+0008
+  and U+000E to U+001F go, and U+0085, the no-break space and the other
+  Unicode spaces stay.
+- `prelude.isUnicodeWhitespace text` holds when every code point has the
+  `White_Space` property, the set `trim` and `words` use, so
+  `prelude.isUnicodeWhitespace text = (prelude.trim text == "")` for every
+  text. It is close to Java's `String.isBlank()` and differs on eight code
+  points, because `isBlank` follows `Character.isWhitespace`: U+0085, U+00A0,
+  U+2007 and U+202F are white space here and not for `isBlank`; U+001C to
+  U+001F are white space for `isBlank` and not here. A law that must agree
+  with `isBlank` on those states them, or restricts its inputs.
+
+```lawspec fragment
+law "|host trims| is
+  definition :
+    prelude.trimAsciiControl "\0\31 a\tb \n" = "a\tb"
+    and prelude.trimAsciiControl "\160a\160" = "\160a\160"
+    and prelude.trim "\160a\160" = "a"
+    and prelude.isUnicodeWhitespace " \t\160"
+    and not prelude.isUnicodeWhitespace "\31"
+  end definition
+end law
+```
 
 ## Mapping and filtering a list
 

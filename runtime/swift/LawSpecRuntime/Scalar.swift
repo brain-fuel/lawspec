@@ -949,6 +949,10 @@ public enum Scalar {
       }
     case ("trim", 1):
       if case .text(let t) = values[0] { return .text(textTrim(t)) }
+    case ("isUnicodeWhitespace", 1):
+      if case .text(let t) = values[0] { return .bool(textIsUnicodeWhitespace(t)) }
+    case ("trimAsciiControl", 1):
+      if case .text(let t) = values[0] { return .text(textTrimAsciiControl(t)) }
     case ("words", 1):
       if case .text(let t) = values[0] { return .list(textWords(t).map { .text($0) }) }
     case ("lines", 1):
@@ -1007,6 +1011,21 @@ public enum Scalar {
     var last = scalars.count
     while first < last && textWhiteSpace(scalars[first]) { first += 1 }
     while last > first && textWhiteSpace(scalars[last - 1]) { last -= 1 }
+    return textOf(scalars[first..<last])
+  }
+
+  /// Whether every code point is Unicode White_Space; the empty text is.
+  public static func textIsUnicodeWhitespace(_ text: String) -> Bool {
+    text.unicodeScalars.allSatisfy(textWhiteSpace)
+  }
+
+  /// The text without the code points up to U+0020 at its two ends.
+  public static func textTrimAsciiControl(_ text: String) -> String {
+    let scalars = Array(text.unicodeScalars)
+    var first = 0
+    var last = scalars.count
+    while first < last && scalars[first].value <= 0x20 { first += 1 }
+    while last > first && scalars[last - 1].value <= 0x20 { last -= 1 }
     return textOf(scalars[first..<last])
   }
 

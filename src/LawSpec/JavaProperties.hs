@@ -576,8 +576,16 @@ emitTests Config{..} unit laws = do
               [check,returned (text "true")])]]
       let kinds = ["_" ++ suffix | suffix <- take (length exampleDocs) exampleSuffixes] ++
             ["_property" | not (null property)]
-      pure $ mconcat (map (D.lineComment 98 "// ") (lawCommentLines e)) <>
+      pure $ mconcat (map (D.lineComment 98 "// " . javaCommentLine) (lawCommentLines e)) <>
         separate (searchDocs ++ sharedBoundaryDocs ++ harnessTests base label h kinds extraBodies (exampleDocs ++ boundaryDocs ++ property))
+    -- javac reads Unicode escapes before it reads comments, so the readable
+    -- form of an unprintable character (\u{85}) is a compile error even in a
+    -- comment. JLS 3.3. Show it as \x{85} there.
+    javaCommentLine line = case line of
+      '\\' : '\\' : rest -> '\\' : '\\' : javaCommentLine rest
+      '\\' : 'u' : rest -> '\\' : 'x' : javaCommentLine rest
+      c : rest -> c : javaCommentLine rest
+      [] -> []
     finiteDeclaration name value =
       D.group (text "private static final LawSpecRuntime.FiniteCover" <> D.nest 4 (D.softline <> text name <> text " =")) <>
         D.nest 4 (D.hardline <> value) <> text ";"

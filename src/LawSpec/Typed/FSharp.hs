@@ -452,6 +452,8 @@ cexpr env scope e = case expressionNode e of
   Helper Join [sep, parts] -> call2 "Typed.join" sep parts
   Helper Split [sep, text] -> call2 "Typed.split" sep text
   Helper Trim [text] -> one "Typed.trim" text
+  Helper IsUnicodeWhitespace [text] -> one "Typed.isUnicodeWhitespace" text
+  Helper TrimAsciiControl [text] -> one "Typed.trimAsciiControl" text
   Helper Words [text] -> one "Typed.words" text
   Helper Lines [text] -> one "Typed.lines" text
   _ -> lift' (Left ("typed F#: unsupported expression " ++ take 80 (show (expressionNode e))))

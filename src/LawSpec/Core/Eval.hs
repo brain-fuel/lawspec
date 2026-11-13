@@ -257,6 +257,8 @@ evaluateWithAdmissionM admitted tick registry bits adapter bindings = run (M.fro
   helper Split [ScalarValue (SSequence "Text" separator), ScalarValue (SSequence "Text" text)] =
     Right (texts (splitText separator text))
   helper Trim [ScalarValue (SSequence "Text" text)] = Right (ScalarValue (SSequence "Text" (trimText text)))
+  helper IsUnicodeWhitespace [ScalarValue (SSequence "Text" text)] = Right (ScalarValue (SBool (all textWhiteSpace text)))
+  helper TrimAsciiControl [ScalarValue (SSequence "Text" text)] = Right (ScalarValue (SSequence "Text" (trimAsciiControlText text)))
   helper Words [ScalarValue (SSequence "Text" text)] = Right (texts (wordsOfText text))
   helper Lines [ScalarValue (SSequence "Text" text)] = Right (texts (linesOfText text))
   helper builtin values = ScalarValue <$> (mapM toScalarValue values >>= helperValue bits (builtinName builtin))

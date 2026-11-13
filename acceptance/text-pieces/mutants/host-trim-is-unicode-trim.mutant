@@ -1,0 +1,7 @@
+expect: a host-trimmed key keeps its no-break space
+@@ examples/specs/text_pieces.lawspec
+<<<<<<<
+  prelude.trimAsciiControl line
+=======
+  prelude.trim line
+>>>>>>>

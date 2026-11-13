@@ -589,6 +589,10 @@ func lsSequenceHelper(n string, args []LawSpecValue) (LawSpecValue, bool) {
 		return lsTextList(lsTextSplit(lsCodePointsText(args[0].Data.([]int)), lsCodePointsText(args[1].Data.([]int)))), true
 	case "trim":
 		return LawSpecValue{"Text", lsTextUnits(lsTextTrim(lsCodePointsText(args[0].Data.([]int))))}, true
+	case "isUnicodeWhitespace":
+		return lsBool(lsTextIsUnicodeWhitespace(lsCodePointsText(args[0].Data.([]int)))), true
+	case "trimAsciiControl":
+		return LawSpecValue{"Text", lsTextUnits(lsTextTrimASCIIControl(lsCodePointsText(args[0].Data.([]int))))}, true
 	case "words":
 		return lsTextList(lsTextWords(lsCodePointsText(args[0].Data.([]int)))), true
 	case "lines":
@@ -9877,6 +9881,23 @@ func lsTextSplit(separator, text string) []string {
 
 func lsTextTrim(text string) string {
 	return strings.TrimFunc(text, lsTextWhiteSpace)
+}
+
+// lsTextIsUnicodeWhitespace reports whether every code point is Unicode
+// White_Space; the empty text is.
+func lsTextIsUnicodeWhitespace(text string) bool {
+	for _, point := range text {
+		if !lsTextWhiteSpace(point) {
+			return false
+		}
+	}
+	return true
+}
+
+// lsTextTrimASCIIControl gives the text without the code points up to U+0020
+// at its two ends.
+func lsTextTrimASCIIControl(text string) string {
+	return strings.TrimFunc(text, func(point rune) bool { return point <= 0x20 })
 }
 
 func lsTextWords(text string) []string {

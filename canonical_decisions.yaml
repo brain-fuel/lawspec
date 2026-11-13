@@ -1501,6 +1501,15 @@ DEC-text-pieces:
     compared by code point, as elsewhere. The built-ins are opaque to the
     proof view, as join is: a law about them is tested and evaluated, and a
     solver proof of one is an explicit unsupported result.
+    From 0.34 two more built-ins are named for exactly what they do, for laws
+    about code that uses a host's own text functions (adopter feedback F8.9).
+    isUnicodeWhitespace text holds when every code point has the White_Space
+    property above, so it equals trim text == "" and holds of the empty text.
+    trimAsciiControl text removes the code points up to U+0020 from both
+    ends, which is Java's String.trim(); it is deliberately not called trim.
+    Neither claims to be a host function: Java's isBlank follows
+    Character.isWhitespace, which differs from White_Space on U+0085, U+00A0,
+    U+2007, U+202F and U+001C to U+001F, and the reference states that.
   opened: 0.33.0
   decided: 0.33.0
   refs: [unicode-white-space]

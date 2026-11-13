@@ -4390,6 +4390,8 @@ fn sequence_helper(name: &str, args: &[Value]) -> Result<Option<Value>>
                 .collect(),
         ),
         ("trim", [Text(text)]) => Text(text_trim(text).to_string()),
+        ("isUnicodeWhitespace", [Text(text)]) => Bool(text_is_unicode_whitespace(text)),
+        ("trimAsciiControl", [Text(text)]) => Text(text_trim_ascii_control(text).to_string()),
         ("words", [Text(text)]) => List(
             text_words(text)
                 .into_iter()
@@ -4439,6 +4441,18 @@ pub fn text_split<'a>(separator: &str, text: &'a str) -> Vec<&'a str>
 pub fn text_trim(text: &str) -> &str
 {
     text.trim_matches(text_white_space)
+}
+
+/// Whether every code point is Unicode White_Space; the empty text is.
+pub fn text_is_unicode_whitespace(text: &str) -> bool
+{
+    text.chars().all(text_white_space)
+}
+
+/// The text without the code points up to U+0020 at its two ends.
+pub fn text_trim_ascii_control(text: &str) -> &str
+{
+    text.trim_matches(|point: char| point as u32 <= 0x20)
 }
 
 pub fn text_words(text: &str) -> Vec<&str>
@@ -17943,6 +17957,16 @@ pub mod fast
     pub fn trim(text: &str) -> Text
     {
         Arc::from(super::text_trim(text))
+    }
+
+    pub fn is_unicode_whitespace(text: &str) -> bool
+    {
+        super::text_is_unicode_whitespace(text)
+    }
+
+    pub fn trim_ascii_control(text: &str) -> Text
+    {
+        Arc::from(super::text_trim_ascii_control(text))
     }
 
     pub fn words(text: &str) -> List<Text>

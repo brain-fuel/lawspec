@@ -237,6 +237,21 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         [ "function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function"
         , "law \"|wrong| is definition : prelude.filter isEven [1, 2] = [1, 2] end definition end law" ]
         `shouldSatisfy` isLeft
+    it "tests Unicode white space and trims ASCII controls, named for what they do" $ do
+      evaluated
+        [ "law \"|host text| is definition :"
+        , "  prelude.isUnicodeWhitespace \" \\t\\n\\133\\160\\12288\" and prelude.isUnicodeWhitespace \"\""
+        , "    and not prelude.isUnicodeWhitespace \" a \" and not prelude.isUnicodeWhitespace \"\\31\""
+        , "    and prelude.trimAsciiControl \"\\0\\31 a\\tb \\n\" = \"a\\tb\" and prelude.trimAsciiControl \" \\t \" = \"\""
+        , "    and prelude.trimAsciiControl \"\\160a\\160\" = \"\\160a\\160\" and prelude.trim \"\\160a\\160\" = \"a\""
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+      evaluated
+        [ "law \"|blank| is definition : for all (text :: Text) =>"
+        , "  prelude.isUnicodeWhitespace text = (prelude.trim text == \"\") end for all end definition end law" ]
+        `shouldSatisfy` isRight
+      evaluated [ "law \"|wrong| is definition : prelude.trimAsciiControl \"\\160a\" = \"a\" end definition end law" ]
+        `shouldSatisfy` isLeft
     it "joins the pieces of a split back into the text" $
       evaluated
         [ "law \"|inverse| is definition : for all (separator :: Text) (text :: Text) =>"

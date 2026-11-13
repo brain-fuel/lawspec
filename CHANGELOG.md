@@ -32,6 +32,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Present` value, or `v` when it is `Absent`, as `fallback` and `fromEither`
   do for an `Either`. Like them they are rewritten into a match, so every
   target runs them.
+- `prelude.isUnicodeWhitespace text` (every code point has Unicode's
+  `White_Space` property, the set `trim` and `words` use) and
+  `prelude.trimAsciiControl text` (the text without the code points up to
+  U+0020 at its ends, which is Java's `String.trim()`), on every target. They
+  are named for what they do; the sequences reference says how each relates
+  to Java's `trim()` and `isBlank()`.
 - A constructor may be given where a prelude combinator takes a function:
   `prelude.map Present m`, `m >>= Right`, `value |> Present`.
 

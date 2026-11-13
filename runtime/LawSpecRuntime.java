@@ -1705,6 +1705,10 @@ public final class LawSpecRuntime
         return textList(textSplit(codePointsText(args[0]), codePointsText(args[1])));
       case "trim":
         return textValue(textTrim(codePointsText(args[0])));
+      case "isUnicodeWhitespace":
+        return bool(textIsUnicodeWhitespace(codePointsText(args[0])));
+      case "trimAsciiControl":
+        return textValue(textTrimAsciiControl(codePointsText(args[0])));
       case "words":
         return textList(textWords(codePointsText(args[0])));
       case "lines":
@@ -9552,6 +9556,31 @@ public final class LawSpecRuntime
       end--;
     }
     return new String(points, start, end - start);
+  }
+
+  /** Whether every code point is Unicode White_Space; the empty text is. */
+  public static boolean textIsUnicodeWhitespace(String text)
+  {
+    return text.codePoints().allMatch(LawSpecRuntime::textWhiteSpace);
+  }
+
+  /**
+   * The text without the code points up to U+0020 at its two ends, which is what String.trim()
+   * removes.
+   */
+  public static String textTrimAsciiControl(String text)
+  {
+    int start = 0;
+    int end = text.length();
+    while (start < end && text.charAt(start) <= 0x20)
+    {
+      start++;
+    }
+    while (end > start && text.charAt(end - 1) <= 0x20)
+    {
+      end--;
+    }
+    return text.substring(start, end);
   }
 
   /** The runs of a text that hold no white space. */
